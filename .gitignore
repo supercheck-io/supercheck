@@ -1,0 +1,54 @@
+# Global ignores
+## OS
+.DS_Store
+
+## IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+## IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+## Logs / Debug files
+logs # General logs dir
+*.log
+npm-debug.log*
+pnpm-debug.log* # From runner
+.pnpm-debug.log* # From app
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log* # From runner
+
+## Environment / Secrets
+.env.local
+.env.*.local
+.env
+*.pem
+
+## Temp / Runtime / Reports
+.temp
+.tmp
+pids
+*.pid
+*.seed
+*.pid.lock
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+*.tsbuildinfo # General typescript build info
+*.claude
+
+## Node modules
+node_modules
+*/node_modules
+**/node_modules
+**/*/node_modules
+
+

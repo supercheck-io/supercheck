@@ -1,0 +1,297 @@
+# Supercheck - Docker Compose Configuration
+#
+# This is a simplified configuration without HTTPS/SSL setup (uses HTTP)
+
+x-common-env: &common-env 
+
+  # Database Configuration
+  DATABASE_URL: postgresql://postgres:postgres@postgres:5432/supercheck
+  DB_HOST: postgres
+  DB_PORT: 5432
+  DB_USER: postgres
+  DB_PASSWORD: postgres
+  DB_NAME: supercheck
+
+  # Redis Configuration
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-supersecure-redis-password-change-this}
+  REDIS_URL: redis://:${REDIS_PASSWORD:-supersecure-redis-password-change-this}@redis:6379
+
+  # App Configuration
+  NODE_ENV: production
+  RUNNING_CAPACITY: 5
+  QUEUED_CAPACITY: 50
+  TEST_EXECUTION_TIMEOUT_MS: 120000
+  JOB_EXECUTION_TIMEOUT_MS: 900000
+
+  # AWS S3 / MinIO Configuration
+  AWS_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: minioadmin
+  AWS_SECRET_ACCESS_KEY: minioadmin
+  S3_ENDPOINT: http://minio:9000
+  S3_JOB_BUCKET_NAME: playwright-job-artifacts
+  S3_TEST_BUCKET_NAME: playwright-test-artifacts
+  S3_FORCE_PATH_STYLE: true
+  S3_OPERATION_TIMEOUT: 10000
+  S3_MAX_RETRIES: 3
+
+  # Notification Channel Limits
+  MAX_JOB_NOTIFICATION_CHANNELS: 10
+  MAX_MONITOR_NOTIFICATION_CHANNELS: 10
+  NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS: 10
+  NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS: 10
+
+  # Monitor Configuration
+  RECENT_MONITOR_RESULTS_LIMIT: 1000
+
+  # Playwright Configuration - Optimized for Supercheck execution service
+  PLAYWRIGHT_HEADLESS: true
+  PLAYWRIGHT_RETRIES: 2
+  PLAYWRIGHT_TRACE: ${PLAYWRIGHT_TRACE:-on}
+  PLAYWRIGHT_SCREENSHOT: ${PLAYWRIGHT_SCREENSHOT:-on}
+  PLAYWRIGHT_VIDEO: ${PLAYWRIGHT_VIDEO:-on}
+
+  # Browser support (disabled by default for performance)
+  ENABLE_FIREFOX: false
+  ENABLE_WEBKIT: false
+  ENABLE_MOBILE: false
+
+  # Advanced Playwright settings
+  ENABLE_JSON_REPORTER: false
+
+  # Playground Cleanup Configuration
+  PLAYGROUND_CLEANUP_ENABLED: true
+  PLAYGROUND_CLEANUP_CRON: "0 */12 * * *" # Every 12 hours
+  PLAYGROUND_CLEANUP_MAX_AGE_HOURS: 24
+
+  # Security Configuration
+  CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-your-credential-encryption-key-change-this-in-production}
+  VARIABLES_ENCRYPTION_KEY: ${VARIABLES_ENCRYPTION_KEY:-your-64-character-encryption-key-for-variable-secrets-change-this-in-prod}
+
+  # Better Auth Admin Configuration
+  SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-admin@example.com}
+  MAX_PROJECTS_PER_ORG: 10
+  DEFAULT_PROJECT_NAME: "Default Project"
+
+  # SMTP Email Configuration for Notifications
+  # Supports any SMTP provider including Resend SMTP, Gmail, SendGrid, etc.
+  SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-test@gmail.com}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-your-app-password}
+  SMTP_SECURE: ${SMTP_SECURE:-false}
+  SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-test@gmail.com}
+
+  # App URLs for HTTP deployment (localhost/IP)
+  NEXT_PUBLIC_APP_URL: http://localhost:3000
+  BETTER_AUTH_URL: http://localhost:3000
+
+  # Auth Configuration
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-7pQ4ME2JCMxhcinoTtvUYpque24t2uh1}
+
+services:
+  # App (Next.js Frontend) - Handles migrations internally
+  app:
+    image: ghcr.io/krish-kant/supercheck/app:organization-22538e9
+    ports:
+      - "3000:3000"
+    environment:
+      <<: *common-env
+      # App-specific configuration
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-7pQ4ME2JCMxhcinoTtvUYpque24t2uh1}
+      BETTER_AUTH_URL: http://localhost:3000
+    volumes:
+      - ./app/public/tests:/app/public/tests
+      - ./app/public/test-results:/app/public/test-results
+      - ./app/public/artifacts:/app/public/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const http = require('http'); const req = http.request({hostname: 'localhost', port: 3000, path: '/', timeout: 5000}, (res) => process.exit(res.statusCode < 400 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s # Increased to allow for migrations
+    networks:
+      - supercheck-network
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 1G
+
+  # Worker (NestJS Runner) - 2 replicas
+  worker:
+    image: ghcr.io/krish-kant/supercheck/worker:organization-22538e9
+    environment:
+      <<: *common-env
+      # Worker-specific configuration
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      BETTER_AUTH_URL: http://localhost:3000
+      # Node.js memory optimization - Conservative heap size with CPU throttling
+      NODE_OPTIONS: "--max-old-space-size=2048 --max-semi-space-size=64 --expose-gc --experimental-worker"
+      # Additional performance optimizations
+      UV_THREADPOOL_SIZE: 4
+      NODE_ENV: production
+    volumes:
+      # Use named volumes instead of bind mounts to avoid permission issues
+      - worker-playwright-reports:/app/playwright-reports
+      - worker-reports:/app/report
+    depends_on:
+      postgres:
+        condition: service_healthy
+      app:
+        condition: service_healthy # Wait for app to complete migrations
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const http = require('http'); const req = http.request({hostname: 'localhost', port: 3001, path: '/health', timeout: 5000}, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - supercheck-network
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 3G
+        reservations:
+          cpus: "0.5"
+          memory: 1.5G
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16.2
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=supercheck
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    networks:
+      - supercheck-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 512M
+
+  # Redis (for job queues) - Secured with authentication
+  redis:
+    image: redis:latest
+    # Removed public port exposure for security - only accessible within Docker network
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-supersecure-redis-password-change-this}
+    command: sh -c "rm -rf /data/* && redis-server --requirepass \"${REDIS_PASSWORD:-supersecure-redis-password-change-this}\" --maxmemory 256mb --maxmemory-policy noeviction --save '' --appendonly no --protected-mode yes --bind 0.0.0.0"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "-a",
+          "${REDIS_PASSWORD:-supersecure-redis-password-change-this}",
+          "ping",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - supercheck-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+
+  # MinIO (S3-compatible storage)
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - supercheck-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 512M
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  minio-data:
+    driver: local
+  worker-playwright-reports:
+    driver: local
+  worker-reports:
+    driver: local
+
+networks:
+  supercheck-network:
+    driver: bridge
