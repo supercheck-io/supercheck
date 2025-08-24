@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./supercheck-logo.png" alt="Supercheck Logo" width="120">
+  <img src="./supercheck-logo.png" alt="Supercheck Logo" width="90">
   
   # Supercheck
 
