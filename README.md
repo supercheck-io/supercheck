@@ -1,57 +1,30 @@
-# Supercheck
+<div align="center">
+  <img src="./supercheck-logo.png" alt="Supercheck Logo" width="60">
+  
+  # Supercheck
 
-**Automation & Monitoring Platform Platform for Modern Applications**
+**Automation & Monitoring Platform for Modern Applications**
 
-Supercheck is a modern distributed platform built for scalability, reliability, and enterprise-grade security. It enables comprehensive automation testing with real-time monitoring, intelligent job scheduling, and parallel test execution, giving teams a robust and resilient solution to accelerate quality and delivery.
+</div>
+
+[Supercheck](https://supercheck.io) is a modern distributed platform built for scalability, reliability, and enterprise-grade security. It enables comprehensive automation testing with real-time monitoring, intelligent job scheduling, and parallel test execution, giving teams a robust and resilient solution to accelerate quality and delivery.
 
 [![Deploy](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-blue?logo=docker)](./docker-compose.yml)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Key Features
-
-### Test Execution
-
-- **Playwright Integration**: Full browser automation with Chromium, Firefox, and WebKit
-- **Parallel Execution**: Configurable parallel test execution with capacity management
-- **Real-time Updates**: Server-Sent Events (SSE) for live test status updates
-- **Artifact Storage**: Automatic screenshot, video and Playwright Trace capture with secure storage
-
-### Job Scheduling
-
-- **Cron Scheduling**: Flexible cron-based job scheduling
-- **Manual Triggers**: On-demand test execution via UI or API
-- **Retry Logic**: Configurable retry mechanisms for failed tests
-- **Queue Management**: Advanced queue processing with capacity limits
-
-### Monitoring System
-
-- **HTTP/HTTPS Request Monitoring**: Full web service monitoring with custom headers, authentication, and response validation
-- **Website Monitoring**: Simplified web page monitoring with SSL certificate checking
-- **Network Connectivity (Ping)**: ICMP ping monitoring for server availability and network path verification
-- **Port Accessibility**: TCP/UDP port monitoring to verify service availability on specific ports
-- **Uptime Tracking**: Comprehensive availability metrics
-- **Alerting**: Multi-channel notifications (email, webhooks, Slack)
-
-### Security & Admin
-
-- **Role-Based Access Control**: Six-tier permission system (Super Admin, Org Owner, Org Admin, Project Admin, Project Editor, Project Viewer)
-- **User Impersonation**: Secure admin impersonation with full audit trail
-- **Comprehensive Audit Logging**: Database-backed security event tracking
-
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Docker and Docker Compose installed
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or alternative like [Orbstack](https://orbstack.dev))
 - At least 4GB of available RAM
 - At least 10GB of available disk space
 
 ### 1. Clone and Setup
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/supercheck-io/supercheck.git
 cd supercheck
-cp .env.example .env  # Configure your environment variables
 ```
 
 ### 2. Start Application Services
@@ -59,16 +32,23 @@ cp .env.example .env  # Configure your environment variables
 ```bash
 # Start the full application stack
 docker-compose up -d
-
-# Stop the full application stack
-docker-compose down
 ```
 
 ### 3. Access the Application
 
-- **Main App**: http://localhost:3000
+```bash
+# Main app
+http://localhost:3000
+```
 
-## Configuration
+### 4. Stop Application Services
+
+```bash
+# Stop the full application stack
+docker-compose down
+```
+
+## ⚙️ Configuration
 
 ### Environment Variables
 
@@ -88,7 +68,7 @@ AWS_SECRET_ACCESS_KEY=minioadmin
 S3_ENDPOINT=http://localhost:9000
 
 # Capacity Management
-RUNNING_CAPACITY=5         # Max concurrent test executions
+RUNNING_CAPACITY=5         # Max concurrent test/job executions
 QUEUED_CAPACITY=50         # Max queued jobs
 
 # Security
@@ -99,12 +79,12 @@ VARIABLES_ENCRYPTION_KEY=your-64-character-encryption-key-for-variable-secrets
 
 # Playwright Configuration
 PLAYWRIGHT_HEADLESS=true
-PLAYWRIGHT_RETRIES=2
+PLAYWRIGHT_RETRIES=1
 ENABLE_FIREFOX=false      # Disabled by default for performance
 ENABLE_WEBKIT=false
 ENABLE_MOBILE=false
 
-# Playground Cleanup
+# Playground Cleanup for redundant playwright reports
 PLAYGROUND_CLEANUP_ENABLED=true
 PLAYGROUND_CLEANUP_CRON="0 */12 * * *"  # Every 12 hours
 
@@ -126,9 +106,9 @@ SMTP_FROM_EMAIL=test@gmail.com
 - `CREDENTIAL_ENCRYPTION_KEY`
 - `SMTP_PASSWORD`
 
-## Usage
+## 📚 Usage
 
-### Creating Tests
+### 🧪 Creating Tests
 
 1. Navigate to the Tests section
 2. Click "New Test" to create a Playwright test
@@ -136,45 +116,71 @@ SMTP_FROM_EMAIL=test@gmail.com
 4. Configure test settings (timeouts, retries, etc.)
 5. Run immediately or schedule for later
 
-### Setting Up Monitoring
+### 📊 Setting Up Monitoring
 
 1. Go to the Monitors section
-2. Choose monitor type: HTTP/HTTPS requests, Website monitoring, Ping checks, or Port monitoring
+2. Add HTTP/HTTPS endpoints or heartbeat monitors
 3. Configure check intervals and alert thresholds
 4. Set up notification channels (email, webhooks, Slack)
 
-### Managing Variables and Secrets
+### 📈 Using the Dashboard
 
-1. Navigate to the Variables section in the main navigation
-2. Add project-scoped variables and encrypted secrets
-3. Use role-based access control for variable management
-4. Access variables in tests using `getVariable()` and `getSecret()` functions
+1. Navigate to the main Dashboard for system overview
+2. View real-time test execution status and metrics
+3. Monitor system health and performance indicators
+4. Track recent activity across tests, jobs, and monitors
+5. Access quick creation shortcuts for common tasks
 
-### Managing Alerts and Notifications
+### ⏰ Managing Jobs
 
-1. Go to the Alerts section to configure notification providers
-2. Set up multiple notification channels: Email, Slack, Webhook, Telegram, Discord
-3. Configure alert thresholds to prevent notification spam
-4. Enable specific alert types: failure alerts, recovery alerts, SSL expiration alerts
+1. Go to the Jobs section to schedule automated test execution
+2. Create new jobs with cron-based scheduling
+3. Configure job settings: timeouts, retries, and execution parameters
+4. Link jobs to specific tests or test suites
+5. Monitor job execution history and status
 
-### Managing Users (Admin)
+### 📋 Viewing Test Runs
+
+1. Navigate to the Runs section for execution history
+2. Filter runs by test, status, date range, or execution type
+3. View detailed run reports with logs and artifacts
+4. Download test results and Playwright reports
+5. Analyze performance trends and failure patterns
+
+### 🎮 Using the Playground
+
+1. Access the Playground for interactive test creation
+2. Choose test type: Browser Test, API Test, Database Test, or Custom Test
+3. Write and edit test scripts with real-time syntax highlighting
+4. Run tests immediately with live feedback
+5. Save successful tests to your test library
+
+### 🏢 Organization Administration
+
+1. Access the Organization Admin panel at `/org-admin`
+2. Manage organization members and their roles
+3. Configure organization-wide settings and preferences
+4. Monitor organization usage and capacity
+5. Set up billing and subscription management
+
+### 🔧 Super Admin Management
 
 1. Access the Super Admin Dashboard at `/super-admin`
-2. View system statistics and user activity
-3. Manage user roles and permissions
-4. Impersonate users for support and testing
-5. Monitor system performance and capacity
+2. View system-wide statistics and user activity
+3. Manage user roles and permissions across all organizations
+4. Impersonate users for support and testing purposes
+5. Monitor system performance and capacity limits
 
-### API Access
+### 🔄 CI/CD Remote Job Trigger
 
 ```bash
-# Get API key from the dashboard
+# Get API key from the Jobs section by editing a specific job
 curl -H "Authorization: Bearer your-api-key" \
-     -X POST http://localhost:3000/api/jobs \
-     -d '{"name": "API Test Job", "tests": ["test-id"]}'
+     -X POST http://localhost:3000/api/jobs/[job-id]/trigger \
+     -H "Content-Type: application/json"
 ```
 
-## Security Features
+## 🔐 Security Features
 
 ### Role-Based Access Control (RBAC)
 
@@ -268,58 +274,6 @@ graph TD
 
 Legend: ✅ = Full Access, ✏️ = Create/Edit Only (no delete), 👁️ = View Only, ❌ = No Access
 
-### Permission Matrix Diagram
-
-```mermaid
-flowchart TD
-    subgraph "Resource Access Control"
-        subgraph "System Resources"
-            SR1[User Management<br/>ban/unban] --> SA[SUPER_ADMIN ✅]
-            SR1 --> OTHERS1[All Others ❌]
-        end
-
-        subgraph "Organization Resources"
-            OR1[Organization CRUD] --> SA
-            OR1 --> OO[ORG_OWNER ✅]
-            OR1 --> OA[ORG_ADMIN ✅*]
-            OR1 --> PROJ_ROLES1[Project Roles 👁️]
-
-            OR2[Member Management] --> SA
-            OR2 --> OO
-            OR2 --> OA
-            OR2 --> PROJ_ROLES2[Project Roles 👁️]
-        end
-
-        subgraph "Project Resources"
-            PR1[Project Management] --> SA
-            PR1 --> OO
-            PR1 --> OA
-            PR1 --> PA[PROJECT_ADMIN ✅*]
-            PR1 --> PE[PROJECT_EDITOR 👁️]
-            PR1 --> PV[PROJECT_VIEWER 👁️]
-
-            PR2[Tests/Jobs/Monitors] --> SA
-            PR2 --> OO
-            PR2 --> OA
-            PR2 --> PA
-            PR2 --> PE2[PROJECT_EDITOR ✅*]
-            PR2 --> PV2[PROJECT_VIEWER 👁️]
-        end
-    end
-
-    style SA fill:#ff6b6b,stroke:#d63031,color:#fff
-    style OO fill:#fd79a8,stroke:#e84393,color:#fff
-    style OA fill:#fdcb6e,stroke:#e17055,color:#fff
-    style PA fill:#a29bfe,stroke:#6c5ce7,color:#fff
-    style PE2 fill:#55a3ff,stroke:#2d96ff,color:#fff
-    style PV2 fill:#74b9ff,stroke:#0984e3,color:#fff
-```
-
-**Notes:**
-
-- ✅\* = Access limited to assigned projects only (for project-specific roles)
-- OA cannot delete organizations (unlike OO)
-
 ### Security Best Practices
 
 - Database audit logging for all security events
@@ -329,7 +283,7 @@ flowchart TD
 - Comprehensive permission checking
 - Secure impersonation with context switching
 
-## Organization and Project System
+## 🏗️ Organization and Project System
 
 ### Overview
 
@@ -393,31 +347,6 @@ Super Admin → Org Owner/Admin → Project Admin/Editor/Viewer
 - **Context Switching**: API endpoints for switching between organizations and projects
 - **Impersonation Support**: Admin impersonation preserves organization and project context
 
-#### **API Endpoints**
-
-```bash
-# Organization Management
-GET /api/organizations                    # List user organizations
-POST /api/organizations                   # Create organization
-GET /api/organizations/[id]               # Get organization details
-PUT /api/organizations/[id]               # Update organization
-DELETE /api/organizations/[id]            # Delete organization
-
-# Project Management
-GET /api/projects                         # List organization projects
-POST /api/projects                        # Create project
-GET /api/projects/[id]                    # Get project details
-PUT /api/projects/[id]                    # Update project
-DELETE /api/projects/[id]                 # Delete project
-POST /api/projects/switch                 # Switch active project
-
-# Member Management
-GET /api/organizations/members            # List organization members
-POST /api/organizations/members/invite    # Invite organization member
-GET /api/projects/[id]/members            # List project members
-POST /api/projects/[id]/members           # Add project member
-```
-
 ### Data Scoping and Security
 
 #### **Resource Isolation**
@@ -457,7 +386,7 @@ MAX_PROJECTS_PER_ORG=10                  # Maximum projects per organization (de
 DEFAULT_PROJECT_NAME="Default Project"   # Name for auto-created projects
 ```
 
-## Variables and Secrets Management
+## 🔑 Variables and Secrets Management
 
 ### Overview
 
@@ -515,7 +444,7 @@ await page.goto(apiUrl);
 await page.fill('[name="password"]', password);
 ```
 
-## Alerts and Notifications System
+## 🚨 Alerts and Notifications System
 
 ### Overview
 
@@ -581,21 +510,6 @@ Supercheck includes a sophisticated multi-channel alerting system that keeps you
 - **Unlimited recovery alerts** to ensure resolution visibility
 - **Status change detection** for intelligent alert triggers
 
-### Alert Configuration
-
-```json
-{
-  "enabled": true,
-  "alertOnFailure": true,
-  "alertOnRecovery": true,
-  "alertOnSslExpiration": true,
-  "failureThreshold": 3,
-  "recoveryThreshold": 1,
-  "notificationProviders": ["email-provider-id", "slack-provider-id"],
-  "customMessage": "Critical production service monitoring"
-}
-```
-
 ### Alert History and Monitoring
 
 - **Complete audit trail** of all sent notifications
@@ -603,7 +517,7 @@ Supercheck includes a sophisticated multi-channel alerting system that keeps you
 - **Failed delivery logging** with error details and retry information
 - **Alert frequency analysis** to optimize threshold settings
 
-## Acknowledgments
+## 🙏 Acknowledgments
 
 Built with modern, battle-tested technologies:
 
