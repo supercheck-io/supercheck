@@ -1,5 +1,5 @@
 # Supercheck - Secure Docker Compose Configuration
-# 
+#
 # This configuration sets up a complete Supercheck instance with:
 # - HTTPS/SSL termination with automatic Let's Encrypt certificates
 
@@ -44,11 +44,11 @@ x-common-env: &common-env # Database Configuration
   NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS: 10
 
   # Monitor Configuration
-  RECENT_MONITOR_RESULTS_LIMIT: 1000
+  RECENT_MONITOR_RESULTS_LIMIT: 5000
 
   # Playwright Configuration - Optimized for Supercheck execution service
   PLAYWRIGHT_HEADLESS: true
-  PLAYWRIGHT_RETRIES: 2
+  PLAYWRIGHT_RETRIES: 1
   PLAYWRIGHT_TRACE: ${PLAYWRIGHT_TRACE:-on}
   PLAYWRIGHT_SCREENSHOT: ${PLAYWRIGHT_SCREENSHOT:-on}
   PLAYWRIGHT_VIDEO: ${PLAYWRIGHT_VIDEO:-on}
