@@ -102,9 +102,9 @@ NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS=10
 - `CREDENTIAL_ENCRYPTION_KEY`
 - `SMTP_PASSWORD`
 
-## 📚 Usage
+## 📑 Usage
 
-### 🧪 Creating Tests
+### 🎭 Creating Tests
 
 1. Navigate to the Tests section
 2. Click "New Test" to create a Playwright test
@@ -156,7 +156,7 @@ NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS=10
 3. Configure organization-wide settings and preferences
 4. Monitor organization usage and capacity
 
-### 🔧 Super Admin Management
+### 🛡️ Super Admin Management
 
 1. Access the Super Admin Dashboard at `/super-admin`
 2. View system-wide statistics and user activity
@@ -483,9 +483,9 @@ Supercheck includes a sophisticated multi-channel alerting system that keeps you
 - **Failed delivery logging** with error details and retry information
 - **Alert frequency analysis** to optimize threshold settings
 
-# Core Service Interactions
+## 🎯 Core Service Interactions
 
-## ⚙️ **Test Execution Workflow (Playground)**
+### 🎭 **Test Execution Workflow (Playground)**
 
 ```mermaid
 sequenceDiagram
@@ -570,7 +570,7 @@ sequenceDiagram
     end
 ```
 
-## 🕒 **Job Execution Workflow (Multi-Test Jobs)**
+### 🕒 **Job Execution Workflow (Multi-Test Jobs)**
 
 ```mermaid
 sequenceDiagram
@@ -679,7 +679,7 @@ sequenceDiagram
     end
 ```
 
-## 🌐 **Monitor Execution Workflow (Automated Monitoring)**
+### 🌐 **Monitor Execution Workflow (Automated Monitoring)**
 
 ```mermaid
 sequenceDiagram
