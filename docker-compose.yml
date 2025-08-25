@@ -2,9 +2,7 @@
 #
 # This is a simplified configuration without HTTPS/SSL setup (uses HTTP)
 
-x-common-env: &common-env 
-
-  # Database Configuration
+x-common-env: &common-env # Database Configuration
   DATABASE_URL: postgresql://postgres:postgres@postgres:5432/supercheck
   DB_HOST: postgres
   DB_PORT: 5432
@@ -43,11 +41,11 @@ x-common-env: &common-env
   NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS: 10
 
   # Monitor Configuration
-  RECENT_MONITOR_RESULTS_LIMIT: 1000
+  RECENT_MONITOR_RESULTS_LIMIT: 5000
 
   # Playwright Configuration - Optimized for Supercheck execution service
   PLAYWRIGHT_HEADLESS: true
-  PLAYWRIGHT_RETRIES: 2
+  PLAYWRIGHT_RETRIES: 1
   PLAYWRIGHT_TRACE: ${PLAYWRIGHT_TRACE:-on}
   PLAYWRIGHT_SCREENSHOT: ${PLAYWRIGHT_SCREENSHOT:-on}
   PLAYWRIGHT_VIDEO: ${PLAYWRIGHT_VIDEO:-on}
