@@ -38,8 +38,6 @@ x-common-env: &common-env # Database Configuration
   S3_MAX_RETRIES: 3
 
   # Notification Channel Limits
-  MAX_JOB_NOTIFICATION_CHANNELS: 10
-  MAX_MONITOR_NOTIFICATION_CHANNELS: 10
   NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS: 10
   NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS: 10
 
@@ -125,7 +123,7 @@ services:
 
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/krish-kant/supercheck/app:main-3be3a88
+    image: ghcr.io/supercheck-io/supercheck/app:1.0.0-beta
     expose:
       - "3000"
     environment:
@@ -180,7 +178,7 @@ services:
 
   # Worker (NestJS Runner) - 2 replicas
   worker:
-    image: ghcr.io/krish-kant/supercheck/worker:playground-variables-f34e520
+    image: ghcr.io/supercheck-io/supercheck/worker:1.0.0-beta
     environment:
       <<: *common-env
       # Worker-specific configuration

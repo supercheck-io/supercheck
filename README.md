@@ -48,6 +48,13 @@ http://localhost:3000
 docker-compose down
 ```
 
+## 🏞️ App Screenshot
+
+<div align="center">
+  <img src="./supercheck-app.png" alt="Supercheck Application Interface" >
+  <p><em>supercheck.io - Automation & Monitoring Platform for Modern Applications</em></p>
+</div>
+
 ## ⚙️ Configuration
 
 ### Important Environment Variables
@@ -86,9 +93,7 @@ SMTP_PASSWORD=your-app-password
 SMTP_FROM_EMAIL=test@gmail.com
 
 # Notification Channel Limits
-MAX_JOB_NOTIFICATION_CHANNELS=10
-MAX_MONITOR_NOTIFICATION_CHANNELS=10
-NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS=10       # Same variable but required by browser client hence has NEXT_PUBLIC prefix
+NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS=10
 NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS=10
 ```
 
