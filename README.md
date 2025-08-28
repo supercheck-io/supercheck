@@ -1,22 +1,23 @@
-<div align="center">
-  <img src="./supercheck-logo.png" alt="Supercheck Logo" width="90">
-  
-  # Supercheck
+<img src="./supercheck-logo.png" alt="Supercheck Logo" width="60">
+
+# Supercheck
 
 **Automation & Monitoring Platform for Modern Applications**
 
-</div>
-
-[Supercheck](https://supercheck.io) is a modern distributed platform built for scalability, reliability, and enterprise-grade security. It enables comprehensive automation testing with real-time monitoring, intelligent job scheduling, and parallel test execution, giving teams a robust and resilient solution to accelerate quality and delivery.
+[Supercheck](https://supercheck.io) is an enterprise-grade distributed platform engineered for scalability and reliability at scale. It delivers comprehensive test automation with real-time monitoring, intelligent job orchestration, and parallel execution capabilities, empowering development and SRE teams with a robust solution to accelerate software quality and delivery cycles.
 
 [![Deploy](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-blue?logo=docker)](./docker-compose.yml)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Website](https://img.shields.io/badge/Website-supercheck.io-orange?logo=firefox)](https://supercheck.io)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey?logo=docker)](https://supercheck.io)
+[![Monitoring](https://img.shields.io/badge/Monitoring-Real--time-brightgreen?logo=grafana)](https://supercheck.io)
+[![Testing](https://img.shields.io/badge/Testing-Playwright-red?logo=playwright)](https://playwright.dev)
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or alternative like [Orbstack](https://orbstack.dev))
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or an alternative like [Orbstack](https://orbstack.dev))
 - At least 4GB of available RAM
 - At least 10GB of available disk space
 
