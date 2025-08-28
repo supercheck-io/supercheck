@@ -63,7 +63,7 @@ x-common-env: &common-env # Database Configuration
   VARIABLES_ENCRYPTION_KEY: your-64-character-encryption-key-for-variable-secrets-change-this-in-prod
 
   # Better Auth Admin Configuration
-  SUPER_ADMIN_EMAILS: superadmin@example.com
+  SUPER_ADMIN_EMAILS: super.admin@example.com
   MAX_PROJECTS_PER_ORG: 10
   DEFAULT_PROJECT_NAME: "Default Project"
 
