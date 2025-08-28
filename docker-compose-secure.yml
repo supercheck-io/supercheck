@@ -1,8 +1,3 @@
-# Supercheck - Secure Docker Compose Configuration
-#
-# This configuration sets up a complete Supercheck instance with:
-# - HTTPS/SSL termination with automatic Let's Encrypt certificates
-
 # YAML anchors for shared configuration
 x-common-env: &common-env # Database Configuration
   DATABASE_URL: postgresql://postgres:postgres@postgres:5432/supercheck
@@ -15,13 +10,15 @@ x-common-env: &common-env # Database Configuration
   # Redis Configuration
   REDIS_HOST: redis
   REDIS_PORT: 6379
-  REDIS_PASSWORD: ${REDIS_PASSWORD:-supersecure-redis-password-change-this}
-  REDIS_URL: redis://:${REDIS_PASSWORD:-supersecure-redis-password-change-this}@redis:6379
+  REDIS_PASSWORD: supersecure-redis-password-change-this
+  REDIS_URL: redis://:supersecure-redis-password-change-this@redis:6379
 
   # App Configuration
-  NEXT_PUBLIC_APP_URL: https://${DOMAIN:-demo.supercheck.io}
+  NEXT_PUBLIC_APP_URL: https://demo.supercheck.io
+  BETTER_AUTH_URL: https://demo.supercheck.io
+  BETTER_AUTH_SECRET: your-super-secret-key-change-this-in-production
   NODE_ENV: production
-  RUNNING_CAPACITY: 5
+  RUNNING_CAPACITY: 6 # Optimized for 4-core server: 4 workers × 1.5 jobs per worker
   QUEUED_CAPACITY: 50
   TEST_EXECUTION_TIMEOUT_MS: 120000
   JOB_EXECUTION_TIMEOUT_MS: 900000
@@ -42,22 +39,19 @@ x-common-env: &common-env # Database Configuration
   NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS: 10
 
   # Monitor Configuration
-  RECENT_MONITOR_RESULTS_LIMIT: 5000
+  RECENT_MONITOR_RESULTS_LIMIT: 10000
 
   # Playwright Configuration - Optimized for Supercheck execution service
   PLAYWRIGHT_HEADLESS: true
   PLAYWRIGHT_RETRIES: 1
-  PLAYWRIGHT_TRACE: ${PLAYWRIGHT_TRACE:-on}
-  PLAYWRIGHT_SCREENSHOT: ${PLAYWRIGHT_SCREENSHOT:-on}
-  PLAYWRIGHT_VIDEO: ${PLAYWRIGHT_VIDEO:-on}
+  PLAYWRIGHT_TRACE: on
+  PLAYWRIGHT_SCREENSHOT: on
+  PLAYWRIGHT_VIDEO: on
 
   # Browser support (disabled by default for performance)
   ENABLE_FIREFOX: false
   ENABLE_WEBKIT: false
   ENABLE_MOBILE: false
-
-  # Advanced Playwright settings
-  ENABLE_JSON_REPORTER: false
 
   # Playground Cleanup Configuration
   PLAYGROUND_CLEANUP_ENABLED: true
@@ -65,24 +59,24 @@ x-common-env: &common-env # Database Configuration
   PLAYGROUND_CLEANUP_MAX_AGE_HOURS: 24
 
   # Security Configuration
-  CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-your-credential-encryption-key-change-this-in-production}
+  CREDENTIAL_ENCRYPTION_KEY: your-credential-encryption-key-change-this-in-production
 
   # Better Auth Admin Configuration
-  SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-admin@example.com}
+  SUPER_ADMIN_EMAILS: super-admin@example.com
   MAX_PROJECTS_PER_ORG: 10
   DEFAULT_PROJECT_NAME: "Default Project"
 
   # SMTP Email Configuration for Notifications
   # Supports any SMTP provider including Resend SMTP, Gmail, SendGrid, etc.
-  SMTP_HOST: ${SMTP_HOST:-smtp.resend.com}
-  SMTP_PORT: ${SMTP_PORT:-587}
-  SMTP_USER: ${SMTP_USER:-resend}
-  SMTP_PASSWORD: ${SMTP_PASSWORD:-re_884Swhji_ATQ26fsZGbveY9xmzPCay7YM}
-  SMTP_SECURE: ${SMTP_SECURE:-false}
-  SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-hello@supercheck.io}
+  SMTP_HOST: smtp.resend.com
+  SMTP_PORT: 587
+  SMTP_USER: resend
+  SMTP_PASSWORD: your-smtp-password-change-this-in-production
+  SMTP_SECURE: false
+  SMTP_FROM_EMAIL: notification@supercheck.io
 
   # Variable Encryption Configuration
-  VARIABLES_ENCRYPTION_KEY: ${VARIABLES_ENCRYPTION_KEY:-your-64-character-encryption-key-for-variable-secrets-change-this-in-prod}
+  VARIABLES_ENCRYPTION_KEY: your-64-character-encryption-key-for-variable-secrets-change-this-in-prod
 
 services:
   # Traefik Reverse Proxy with HTTPS
@@ -96,7 +90,7 @@ services:
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
       - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.myresolver.acme.email=${ACME_EMAIL:-hello@demo.supercheck.io}"
+      - "--certificatesresolvers.myresolver.acme.email=hello@demo.supercheck.io"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.myresolver.acme.caserver=https://acme-v02.api.letsencrypt.org/directory"
       - "--log.level=INFO"
@@ -110,7 +104,7 @@ services:
     labels:
       - "traefik.enable=true"
       # Dashboard router (HTTPS only) - matches both /api and /dashboard per official docs
-      - "traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN:-demo.supercheck.io}`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.demo.supercheck.io`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
       - "traefik.http.routers.dashboard.entrypoints=websecure"
       - "traefik.http.routers.dashboard.tls.certresolver=myresolver"
       - "traefik.http.routers.dashboard.service=api@internal"
@@ -123,18 +117,12 @@ services:
 
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.0.0-beta
+    image: ghcr.io/supercheck-io/supercheck/app:1.0.1-beta
     expose:
       - "3000"
     environment:
       <<: *common-env
-      NEXT_PUBLIC_APP_URL: https://${DOMAIN:-demo.supercheck.io}
-      # App-specific configuration
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-your-super-secret-key-change-this-in-production}
-      BETTER_AUTH_URL: https://${DOMAIN:-demo.supercheck.io}
-      # Migration Configuration
-      # Migrations are always run on app startup
-    # Use default CMD from Dockerfile which runs migrations then starts server
+      # App-specific configuration (inherits all common env vars)
     volumes:
       - ./app/public/tests:/app/public/tests
       - ./app/public/test-results:/app/public/test-results
@@ -161,7 +149,7 @@ services:
       start_period: 120s # Increased to allow for migrations
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.app.rule=Host(`${DOMAIN:-demo.supercheck.io}`)"
+      - "traefik.http.routers.app.rule=Host(`demo.supercheck.io`)"
       - "traefik.http.routers.app.entrypoints=websecure"
       - "traefik.http.routers.app.tls.certresolver=myresolver"
       - "traefik.http.services.app.loadbalancer.server.port=3000"
@@ -176,24 +164,17 @@ services:
           cpus: "0.5"
           memory: 1G
 
-  # Worker (NestJS Runner) - 2 replicas
+  # Worker (NestJS Runner)
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.0.0-beta
+    image: ghcr.io/supercheck-io/supercheck/worker:1.0.1-beta
     environment:
       <<: *common-env
-      # Worker-specific configuration
-      NEXT_PUBLIC_APP_URL: https://${DOMAIN:-demo.supercheck.io}
-      BETTER_AUTH_URL: https://${DOMAIN:-demo.supercheck.io}
-      # Simple configuration - concurrency and memory limits are hard-coded
-      # Node.js memory optimization - Conservative heap size with CPU throttling
-      NODE_OPTIONS: "--max-old-space-size=2048 --max-semi-space-size=64 --expose-gc --experimental-worker"
-      # Additional performance optimizations
-      UV_THREADPOOL_SIZE: 4
-      NODE_ENV: production
-      # Note: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD already in common-env
-    # Use default CMD from Dockerfile
+      # Worker-specific configuration (inherits all common env vars)
+      # Memory Protection (prevents memory leaks and OOM conditions)
+      NODE_OPTIONS: "--max-old-space-size=1024 --expose-gc --experimental-worker"
+      # Thread Protection (optimized for I/O performance)
+      UV_THREADPOOL_SIZE: 4 # Optimal for 4-core server - balances performance with resource usage
     volumes:
-      # Use named volumes instead of bind mounts to avoid permission issues
       - worker-playwright-reports:/app/playwright-reports
       - worker-reports:/app/report
     depends_on:
@@ -221,14 +202,31 @@ services:
     networks:
       - supercheck-network
     deploy:
-      replicas: 2
+      replicas: 4
+      # Enhanced Resource Protection (prevents resource exhaustion attacks)
       resources:
         limits:
           cpus: "1.5"
-          memory: 3G
+          memory: 1.5G
+          pids: 512 # Prevents fork bombs and process explosion
         reservations:
           cpus: "0.5"
-          memory: 1.5G
+          memory: 512M
+
+      # Container Restart Protection (handles stuck/crashed containers)
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+        delay: 5s
+
+    # System-level Resource Limits (additional protection layer)
+    sysctls:
+      - net.core.somaxconn=1024 # Limits network connection backlog
+    ulimits:
+      nproc: 65535 # Limits total processes per container
+      nofile: # Limits file descriptors (prevents file exhaustion)
+        soft: 65535
+        hard: 65535
 
   # PostgreSQL Database
   postgres:
@@ -240,8 +238,6 @@ services:
       # PostgreSQL Performance Tuning for 8GB server
       - POSTGRES_INITDB_ARGS=--data-checksums
       - PGDATA=/var/lib/postgresql/data/pgdata
-    ports:
-      - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -257,18 +253,17 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 2G
+          memory: 1.5G
         reservations:
           cpus: "0.5"
           memory: 1G
 
-  # Redis (for job queues) - Secured with authentication
+  # Redis (for job queues)
   redis:
     image: redis:latest
-    # Removed public port exposure for security - only accessible within Docker network
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-supersecure-redis-password-change-this}
-    command: sh -c "rm -rf /data/* && redis-server --requirepass \"${REDIS_PASSWORD:-supersecure-redis-password-change-this}\" --maxmemory 512mb --maxmemory-policy allkeys-lru --save '' --appendonly no --protected-mode yes --bind 0.0.0.0 --tcp-keepalive 300"
+      - REDIS_PASSWORD=supersecure-redis-password-change-this
+    command: sh -c "rm -rf /data/* && redis-server --requirepass \"supersecure-redis-password-change-this\" --maxmemory 512mb --maxmemory-policy allkeys-lru --save '' --appendonly no --protected-mode yes --bind 0.0.0.0 --tcp-keepalive 300"
     volumes:
       - redis-data:/data
     restart: unless-stopped
@@ -278,7 +273,7 @@ services:
           "CMD",
           "redis-cli",
           "-a",
-          "${REDIS_PASSWORD:-supersecure-redis-password-change-this}",
+          "supersecure-redis-password-change-this",
           "ping",
         ]
       interval: 10s
@@ -299,9 +294,6 @@ services:
   # MinIO (S3-compatible storage)
   minio:
     image: minio/minio:latest
-    ports:
-      - "9000:9000"
-      - "9001:9001"
     environment:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
