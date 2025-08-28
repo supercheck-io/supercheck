@@ -62,7 +62,7 @@ x-common-env: &common-env # Database Configuration
   CREDENTIAL_ENCRYPTION_KEY: your-credential-encryption-key-change-this-in-production
 
   # Better Auth Admin Configuration
-  SUPER_ADMIN_EMAILS: super-admin@example.com
+  SUPER_ADMIN_EMAILS: super.admin@example.com
   MAX_PROJECTS_PER_ORG: 10
   DEFAULT_PROJECT_NAME: "Default Project"
 
