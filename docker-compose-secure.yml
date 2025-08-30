@@ -14,8 +14,8 @@ x-common-env: &common-env # Database Configuration
   REDIS_URL: redis://:supersecure-redis-password-change-this@redis:6379
 
   # App Configuration
-  NEXT_PUBLIC_APP_URL: https://demo.supercheck.io
-  BETTER_AUTH_URL: https://demo.supercheck.io
+  NEXT_PUBLIC_APP_URL: https://app.example.com
+  BETTER_AUTH_URL: https://app.example.com
   BETTER_AUTH_SECRET: your-super-secret-key-change-this-in-production
   NODE_ENV: production
   RUNNING_CAPACITY: 6 # Optimized for 4-core server: 4 workers × 1.5 jobs per worker
@@ -73,7 +73,7 @@ x-common-env: &common-env # Database Configuration
   SMTP_USER: resend
   SMTP_PASSWORD: your-smtp-password-change-this-in-production
   SMTP_SECURE: false
-  SMTP_FROM_EMAIL: notification@supercheck.io
+  SMTP_FROM_EMAIL: notification@example.com
 
   # Variable Encryption Configuration
   VARIABLES_ENCRYPTION_KEY: your-64-character-encryption-key-for-variable-secrets-change-this-in-prod
@@ -83,14 +83,14 @@ services:
   traefik:
     image: traefik:v3.0
     command:
-      - "--api.dashboard=true"
+      - "--api.dashboard=false"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
       - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.myresolver.acme.email=hello@demo.supercheck.io"
+      - "--certificatesresolvers.myresolver.acme.email=hello@example.com"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.myresolver.acme.caserver=https://acme-v02.api.letsencrypt.org/directory"
       - "--log.level=INFO"
@@ -102,22 +102,14 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik-letsencrypt:/letsencrypt
     labels:
-      - "traefik.enable=true"
-      # Dashboard router (HTTPS only) - matches both /api and /dashboard per official docs
-      - "traefik.http.routers.dashboard.rule=Host(`traefik.demo.supercheck.io`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"
-      - "traefik.http.routers.dashboard.entrypoints=websecure"
-      - "traefik.http.routers.dashboard.tls.certresolver=myresolver"
-      - "traefik.http.routers.dashboard.service=api@internal"
-      - "traefik.http.routers.dashboard.middlewares=dashboard-auth"
-      # Basic auth middleware
-      - "traefik.http.middlewares.dashboard-auth.basicauth.users=admin:$$apr1$$FY28Hi7I$$HBfY4It75DZpccigvT0Ht/"
+      - "traefik.enable=false"
     networks:
       - supercheck-network
     restart: unless-stopped
 
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.0.1-beta
+    image: ghcr.io/supercheck-io/supercheck/app:1.0.3-beta
     expose:
       - "3000"
     environment:
@@ -149,7 +141,7 @@ services:
       start_period: 120s # Increased to allow for migrations
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.app.rule=Host(`demo.supercheck.io`)"
+      - "traefik.http.routers.app.rule=Host(`app.example.com`)"
       - "traefik.http.routers.app.entrypoints=websecure"
       - "traefik.http.routers.app.tls.certresolver=myresolver"
       - "traefik.http.services.app.loadbalancer.server.port=3000"
@@ -166,7 +158,7 @@ services:
 
   # Worker (NestJS Runner)
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.0.1-beta
+    image: ghcr.io/supercheck-io/supercheck/worker:1.0.3-beta
     environment:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)
