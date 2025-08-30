@@ -70,16 +70,16 @@ TEST_EXECUTION_TIMEOUT_MS=120000    # Test execution timeout in milliseconds (2 
 JOB_EXECUTION_TIMEOUT_MS=900000     # Job execution timeout in milliseconds (15 mins)
 
 # Security
-SUPER_ADMIN_EMAILS=admin@example.com   # Comma-separated super admin emails
+SUPER_ADMIN_EMAILS=super.admin@example.com   # Comma-separated super admin emails
 
 # Monitor Configuration
 RECENT_MONITOR_RESULTS_LIMIT=5000   # Checks limit for 'Recent Check Results' table
 
 # Playwright Configuration
 PLAYWRIGHT_RETRIES=1
-PLAYWRIGHT_TRACE=on         # Other options - 'off', 'on-first-retry'
-PLAYWRIGHT_SCREENSHOT=on    # Other options - 'off', 'on-first-retry'
-PLAYWRIGHT_VIDEO=on         # Other options - 'off', 'on-first-retry'
+PLAYWRIGHT_TRACE=on
+PLAYWRIGHT_SCREENSHOT=on
+PLAYWRIGHT_VIDEO=on
 
 # Browser support (disabled by default for performance)
 ENABLE_FIREFOX=false
@@ -436,23 +436,23 @@ Supercheck includes a sophisticated multi-channel alerting system that keeps you
 
 #### **Email**
 
-- **Configuration**=SMTP-based email delivery
+- **Configuration**: SMTP-based email delivery
 
 #### **Slack**
 
-- **Configuration**=Webhook URL and channel configuration
+- **Configuration**: Webhook URL and channel configuration
 
 #### **Webhook**
 
-- **Configuration**=Custom URL, HTTP method, headers, and payload
+- **Configuration**: Custom URL, HTTP method, headers, and payload
 
 #### **Telegram**
 
-- **Configuration**=Bot token and chat ID
+- **Configuration**: Bot token and chat ID
 
 #### **Discord**
 
-- **Configuration**=Discord webhook URL
+- **Configuration**: Discord webhook URL
 
 ### Alert Types
 
