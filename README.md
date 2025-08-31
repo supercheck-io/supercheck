@@ -51,7 +51,7 @@ docker-compose down
 
 ## ▶️ Overview Video
 
-[![Supercheck Platform Overview](./supercheck-app.png)](https://www.youtube.com/watch?v=eQ_aCghTpeI)
+[![Supercheck Platform Overview](./supercheck-app.png)](https://www.youtube.com/watch?v=eQ_aCghTpeI&list=PLw76CEQ8n7V6__OFWqtsvsgX1anVmuRk0)
 
 ## ⚙️ Configuration
 
