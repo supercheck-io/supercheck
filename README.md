@@ -51,13 +51,7 @@ docker-compose down
 
 ## ▶️ Overview Video
 
-<div align="center">
-  <a href="https://www.youtube.com/watch?v=eQ_aCghTpeI" target="_blank" style="position: relative; display: inline-block;">
-    <img src="./supercheck-app.png" alt="Supercheck Overview Video" width="1080" style="border-radius: 8px;">
-    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 80px; color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.7); pointer-events: none;">▶</div>
-  </a>
-  <p>🔴 <em>Click to watch the Supercheck platform overview on Youtube</em></p>
-</div>
+[![Supercheck Platform Overview](./supercheck-app.png)](https://www.youtube.com/watch?v=eQ_aCghTpeI)
 
 ## ⚙️ Configuration
 
