@@ -93,6 +93,14 @@ SMTP_FROM_EMAIL=test@gmail.com
 # Notification Channel Limits
 NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS=10
 NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS=10
+
+# AI Fix Feature Configuration
+AI_PROVIDER=openai
+AI_MODEL=gpt-4o-mini    # gpt-4o-mini (recommended), gpt-4o, gpt-5, gpt-5-mini etc.
+OPENAI_API_KEY=your-openai-api-key-here
+AI_TIMEOUT_MS=90000     # Request timeout in milliseconds (10000-120000, higher for GPT-5 models)
+AI_MAX_RETRIES=2        # Number of retry attempts (1-5)
+AI_TEMPERATURE=0.1      # Response randomness (0.0-2.0, lower = more deterministic)
 ```
 
 ### Production Security

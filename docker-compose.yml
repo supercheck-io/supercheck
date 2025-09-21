@@ -1,85 +1,93 @@
 # YAML anchors for shared configuration
 x-common-env: &common-env # Database Configuration
-  DATABASE_URL: postgresql://postgres:postgres@postgres:5432/supercheck
-  DB_HOST: postgres
-  DB_PORT: 5432
-  DB_USER: postgres
-  DB_PASSWORD: postgres
-  DB_NAME: supercheck
+  DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/supercheck}
+  DB_HOST: ${DB_HOST:-postgres}
+  DB_PORT: ${DB_PORT:-5432}
+  DB_USER: ${DB_USER:-postgres}
+  DB_PASSWORD: ${DB_PASSWORD:-postgres}
+  DB_NAME: ${DB_NAME:-supercheck}
 
   # Redis Configuration
-  REDIS_HOST: redis
-  REDIS_PORT: 6379
-  REDIS_PASSWORD: supersecure-redis-password-change-this
-  REDIS_URL: redis://:supersecure-redis-password-change-this@redis:6379
+  REDIS_HOST: ${REDIS_HOST:-redis}
+  REDIS_PORT: ${REDIS_PORT:-6379}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-supersecure-redis-password-change-this}
+  REDIS_URL: ${REDIS_URL:-redis://:supersecure-redis-password-change-this@redis:6379}
 
   # App Configuration
-  NEXT_PUBLIC_APP_URL: http://localhost:3000
-  BETTER_AUTH_URL: http://localhost:3000
-  BETTER_AUTH_SECRET: your-super-secret-auth-key-change-this-in-production
-  NODE_ENV: production
-  RUNNING_CAPACITY: 6 # Optimized for 4-core server: 4 workers × 1.5 jobs per worker
-  QUEUED_CAPACITY: 50
-  TEST_EXECUTION_TIMEOUT_MS: 120000
-  JOB_EXECUTION_TIMEOUT_MS: 900000
+  NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-your-super-secret-auth-key-change-this-in-production}
+  NODE_ENV: ${NODE_ENV:-production}
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-6} # Optimized for 4-core server: 4 workers × 1.5 jobs per worker
+  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-50}
+  TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-120000}
+  JOB_EXECUTION_TIMEOUT_MS: ${JOB_EXECUTION_TIMEOUT_MS:-900000}
 
   # AWS S3 / MinIO Configuration
-  AWS_REGION: us-east-1
-  AWS_ACCESS_KEY_ID: minioadmin
-  AWS_SECRET_ACCESS_KEY: minioadmin
-  S3_ENDPOINT: http://minio:9000
-  S3_JOB_BUCKET_NAME: playwright-job-artifacts
-  S3_TEST_BUCKET_NAME: playwright-test-artifacts
-  S3_FORCE_PATH_STYLE: true
-  S3_OPERATION_TIMEOUT: 10000
-  S3_MAX_RETRIES: 3
+  AWS_REGION: ${AWS_REGION:-us-east-1}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
+  S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+  S3_JOB_BUCKET_NAME: ${S3_JOB_BUCKET_NAME:-playwright-job-artifacts}
+  S3_TEST_BUCKET_NAME: ${S3_TEST_BUCKET_NAME:-playwright-test-artifacts}
+  S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+  S3_OPERATION_TIMEOUT: ${S3_OPERATION_TIMEOUT:-10000}
+  S3_MAX_RETRIES: ${S3_MAX_RETRIES:-3}
 
   # Notification Channel Limits
-  NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS: 10
-  NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS: 10
+  NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS: ${NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS:-10}
+  NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS: ${NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS:-10}
 
   # Monitor Configuration
-  RECENT_MONITOR_RESULTS_LIMIT: 10000
+  RECENT_MONITOR_RESULTS_LIMIT: ${RECENT_MONITOR_RESULTS_LIMIT:-10000}
 
   # Playwright Configuration - Optimized for Supercheck execution service
-  PLAYWRIGHT_HEADLESS: true
-  PLAYWRIGHT_RETRIES: 1
-  PLAYWRIGHT_TRACE: on
-  PLAYWRIGHT_SCREENSHOT: on
-  PLAYWRIGHT_VIDEO: on
+  PLAYWRIGHT_HEADLESS: ${PLAYWRIGHT_HEADLESS:-true}
+  PLAYWRIGHT_RETRIES: ${PLAYWRIGHT_RETRIES:-1}
+  PLAYWRIGHT_TRACE: ${PLAYWRIGHT_TRACE:-on}
+  PLAYWRIGHT_SCREENSHOT: ${PLAYWRIGHT_SCREENSHOT:-on}
+  PLAYWRIGHT_VIDEO: ${PLAYWRIGHT_VIDEO:-on}
 
   # Browser support (disabled by default for performance)
-  ENABLE_FIREFOX: false
-  ENABLE_WEBKIT: false
-  ENABLE_MOBILE: false
+  ENABLE_FIREFOX: ${ENABLE_FIREFOX:-false}
+  ENABLE_WEBKIT: ${ENABLE_WEBKIT:-false}
+  ENABLE_MOBILE: ${ENABLE_MOBILE:-false}
 
   # Playground Cleanup Configuration
-  PLAYGROUND_CLEANUP_ENABLED: true
-  PLAYGROUND_CLEANUP_CRON: "0 */12 * * *" # Every 12 hours
-  PLAYGROUND_CLEANUP_MAX_AGE_HOURS: 24
+  PLAYGROUND_CLEANUP_ENABLED: ${PLAYGROUND_CLEANUP_ENABLED:-true}
+  PLAYGROUND_CLEANUP_CRON: ${PLAYGROUND_CLEANUP_CRON:-"0 */12 * * *"} # Every 12 hours
+  PLAYGROUND_CLEANUP_MAX_AGE_HOURS: ${PLAYGROUND_CLEANUP_MAX_AGE_HOURS:-24}
 
   # Security Configuration
-  CREDENTIAL_ENCRYPTION_KEY: your-credential-encryption-key-change-this-in-production
-  VARIABLES_ENCRYPTION_KEY: your-64-character-encryption-key-for-variable-secrets-change-this-in-prod
+  CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-your-credential-encryption-key-change-this-in-production}
+  VARIABLES_ENCRYPTION_KEY: ${VARIABLES_ENCRYPTION_KEY:-your-64-character-encryption-key-for-variable-secrets-change-this-in-prod}
 
   # Better Auth Admin Configuration
-  SUPER_ADMIN_EMAILS: super.admin@example.com
-  MAX_PROJECTS_PER_ORG: 10
-  DEFAULT_PROJECT_NAME: "Default Project"
+  SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-super.admin@example.com}
+  MAX_PROJECTS_PER_ORG: ${MAX_PROJECTS_PER_ORG:-10}
+  DEFAULT_PROJECT_NAME: ${DEFAULT_PROJECT_NAME:-Default Project}
 
   # SMTP Email Configuration for Notifications
   # Supports any SMTP provider including Resend SMTP, Gmail, SendGrid, etc.
-  SMTP_HOST: smtp.resend.com
-  SMTP_PORT: 587
-  SMTP_USER: resend
-  SMTP_PASSWORD: your-smtp-password-change-this-in-production
-  SMTP_SECURE: false
-  SMTP_FROM_EMAIL: notification@example.com
+  SMTP_HOST: ${SMTP_HOST:-smtp.resend.com}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-resend}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-your-smtp-password-change-this-in-production}
+  SMTP_SECURE: ${SMTP_SECURE:-false}
+  SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-notification@example.com}
+
+  # AI Fix Feature Configuration
+  AI_PROVIDER: ${AI_PROVIDER:-openai}
+  AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-your-openai-api-key-here}
+  AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-90000}
+  AI_MAX_RETRIES: ${AI_MAX_RETRIES:-2}
+  AI_TEMPERATURE: ${AI_TEMPERATURE:-0.1}
 
 services:
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.0.3-beta
+    image: ghcr.io/supercheck-io/supercheck/app:1.1.0-beta
     ports:
       - "3000:3000"
     environment:
@@ -92,6 +100,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
       redis:
         condition: service_healthy
       minio:
@@ -122,7 +131,7 @@ services:
 
   # Worker (NestJS Runner) - Enhanced security and resource protection
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.0.3-beta
+    image: ghcr.io/supercheck-io/supercheck/worker:1.1.0-beta
     environment:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)
@@ -189,9 +198,9 @@ services:
   postgres:
     image: postgres:16.2
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=supercheck
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME:-supercheck}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -214,10 +223,10 @@ services:
 
   # Redis (for job queues)
   redis:
-    image: redis:latest
+    image: redis:8
     environment:
-      - REDIS_PASSWORD=supersecure-redis-password-change-this
-    command: sh -c "rm -rf /data/* && redis-server --requirepass \"supersecure-redis-password-change-this\" --maxmemory 256mb --maxmemory-policy noeviction --save '' --appendonly no --protected-mode yes --bind 0.0.0.0"
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-supersecure-redis-password-change-this}
+    command: sh -c "rm -rf /data/* && redis-server --requirepass \"${REDIS_PASSWORD:-supersecure-redis-password-change-this}\" --maxmemory 256mb --maxmemory-policy noeviction --save '' --appendonly no --protected-mode yes --bind 0.0.0.0"
     volumes:
       - redis-data:/data
     restart: unless-stopped
@@ -227,7 +236,7 @@ services:
           "CMD",
           "redis-cli",
           "-a",
-          "supersecure-redis-password-change-this",
+          "${REDIS_PASSWORD:-supersecure-redis-password-change-this}",
           "ping",
         ]
       interval: 10s
@@ -249,8 +258,8 @@ services:
   minio:
     image: minio/minio:latest
     environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
+      - MINIO_ROOT_USER=${AWS_ACCESS_KEY_ID:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${AWS_SECRET_ACCESS_KEY:-minioadmin}
     command: server /data --console-address ":9001"
     volumes:
       - minio-data:/data
