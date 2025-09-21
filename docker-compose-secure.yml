@@ -78,7 +78,7 @@ x-common-env: &common-env # Database Configuration
 
   # AI Fix Feature Configuration
   AI_PROVIDER: ${AI_PROVIDER:-openai}
-  AI_MODEL: ${AI_MODEL:-gpt-4o}
+  AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-your-openai-api-key-here}
   AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-90000}
   AI_MAX_RETRIES: ${AI_MAX_RETRIES:-2}
