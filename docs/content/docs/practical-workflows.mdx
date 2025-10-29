@@ -1,0 +1,76 @@
+---
+title: Daily Workflows
+description: Repeatable routines that keep your Supercheck workspace healthy
+---
+
+# Daily Workflows
+
+Use these playbooks to stay ahead of issues, keep coverage fresh, and communicate clearly with your team.
+
+## Morning Health Check
+
+<Steps>
+  <Step>Open the dashboard Overview to review pass rate, uptime, and active alerts.</Step>
+  <Step>Scan the **Needs Attention** list and assign owners to anything red.</Step>
+  <Step>Snooze known issues for a set window so the team avoids duplicate noise.</Step>
+  <Step>Post a brief status update in your chosen channel if downtime is expected.</Step>
+</Steps>
+
+<Callout type="tip">
+  Tag runs with release versions so you can correlate incident spikes with recent changes.
+</Callout>
+
+## Release Readiness
+
+<Tabs items={['Prep', 'Verify', 'Sign Off']}>
+  <Tab value="Prep">
+    Duplicate the last successful regression job, adjust the test list, and set
+    a short-lived notification channel for the launch team.
+  </Tab>
+  <Tab value="Verify">
+    Run the job in staging, review screenshots and logs, then promote the same
+    bundle to production monitoring.
+  </Tab>
+  <Tab value="Sign Off">
+    Export the consolidated report and attach it to your release notes or change
+    ticket.
+  </Tab>
+</Tabs>
+
+## Responding to Failures
+
+<Cards>
+  <Card
+    title="Triage"
+    description="Open the failing run, read the timeline, and replay the video or screenshots."
+  />
+  <Card
+    title="Investigate"
+    description="Use the AI summary to confirm what changed, then leave a run note for context."
+  />
+  <Card
+    title="Fix"
+    description="Apply safe code suggestions or edit the test directly, re-run, and mark the incident resolved."
+  />
+</Cards>
+
+## Keeping Monitors Relevant
+
+- Review monitors every sprint; pause anything you no longer need
+- Adjust alert thresholds when you expand infrastructure or change SLAs
+- Use maintenance windows during planned downtime to prevent noise
+- Share public status page updates as soon as incidents start and end
+
+## Sharing Insights
+
+<Steps>
+  <Step>Bookmark the analytics tab that resonates most with your stakeholders.</Step>
+  <Step>Schedule a weekly digest email summarizing pass rates and uptime.</Step>
+  <Step>Highlight recurring failures in retrospectives with links to the runs.</Step>
+  <Step>Celebrate wins — green dashboards mean fewer on-call surprises!</Step>
+</Steps>
+
+<Callout type="note">
+  Custom dashboards are on the roadmap. Vote for early access in the in-app
+  feedback portal.
+</Callout>
