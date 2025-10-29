@@ -15,21 +15,6 @@
 
 ---
 
-## Overview
-
-Supercheck is an open-source platform for automated testing, multi-location monitoring, and status communication. It combines Playwright-based end-to-end testing with distributed monitoring capabilities across multiple geographic regions.
-
-**Key Capabilities:**
-
-- Automated testing (Browser, API, Database, Custom)
-- Multi-location monitoring (US East, EU Central, Asia Pacific etc.)
-- Public status pages with incident management
-- AI-powered test failure analysis
-- Multi-channel alerting (Email, Slack, Webhooks, Telegram, Discord)
-- Enterprise RBAC and multi-tenancy
-
----
-
 ## Features
 
 ### Testing & Automation
@@ -236,11 +221,3 @@ Licensed under the MIT License. See [LICENSE](LICENSE) for details.
 - **Support**: See [SUPPORT.md](SUPPORT.md)
 
 ---
-
-<div align="center">
-
-Built with ❤️ for the open source community
-
-[⬆ Back to top](#supercheck)
-
-</div>
