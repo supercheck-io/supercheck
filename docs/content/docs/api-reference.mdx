@@ -1,0 +1,77 @@
+---
+title: API Overview
+description: Learn how to connect Supercheck with your existing tools
+---
+
+# API Overview
+
+Supercheck’s REST API lets you automate routine tasks, sync results to other systems, and trigger activity from your own tooling. This page explains everything a developer needs to get started without diving into low-level implementation details.
+
+## Before You Begin
+
+<Steps>
+  <Step>Confirm you have the `Owner` or `Admin` role in your workspace.</Step>
+  <Step>Decide which project or team the integration should operate within.</Step>
+  <Step>Create a dedicated service account if you need auditable access separation.</Step>
+</Steps>
+
+## Create an API Key
+
+1. Go to **Settings → API access**.
+2. Click **Generate key** and give it a descriptive name (e.g., “CI Smoke Tests”).
+3. Choose the scopes you need:
+   - `tests:read` / `tests:write` for managing scripted checks
+   - `jobs:execute` for triggering jobs
+   - `monitors:read` for pulling uptime data
+4. Store the generated token in your secrets manager — you will not see it again.
+
+<Callout type="tip">
+  Rotate API keys at least every 90 days. Create separate keys per environment
+  so you can revoke access safely if needed.
+</Callout>
+
+## Common Use Cases
+
+<Cards>
+  <Card
+    title="Kick Off Jobs from CI"
+    description="Trigger a Supercheck job at the end of your deployment pipeline and block release on failure."
+  />
+  <Card
+    title="Sync Results to Dashboards"
+    description="Pull run summaries into your BI tool to blend reliability metrics with business KPIs."
+  />
+  <Card
+    title="Update Status Pages"
+    description="Feed incident updates into Supercheck when your external monitoring detects downtime."
+  />
+</Cards>
+
+## Making Secure Requests
+
+- Use the `Authorization: Bearer <token>` header on every request.
+- Send requests over HTTPS only; Supercheck rejects plain HTTP.
+- Scope keys narrowly — for example, avoid write permissions if you only need to read status data.
+
+## Helpful Endpoints
+
+| Goal | Endpoint | Notes |
+| ---- | -------- | ----- |
+| List tests | `GET /api/tests` | Filter by tag to target specific suites |
+| Trigger job | `POST /api/jobs/{jobId}/run` | Include a release tag to trace the execution |
+| Check monitor status | `GET /api/monitors/{id}` | Returns latest uptime and incident info |
+| Fetch run details | `GET /api/runs/{id}` | Contains URLs to logs, screenshots, and playback |
+
+<Callout type="note">
+  Full OpenAPI specs and language SDKs are available from the **Developer
+  Portal** link inside the app. They include authentication samples and error
+  codes.
+</Callout>
+
+## Keep Integrations Healthy
+
+- Monitor rate limit headers to avoid throttling; upgrade plans increase throughput if needed.
+- Log request IDs (`X-Request-Id`) so support can help troubleshoot quickly.
+- Review key usage in **Settings → API access** and revoke tokens that are no longer required.
+
+Questions about the API? Reach out via support@supercheck.io or chat with us in-app for integration guidance.
