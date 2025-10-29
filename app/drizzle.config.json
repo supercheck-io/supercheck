@@ -1,0 +1,15 @@
+{
+  "out": "./src/db/migrations",
+  "schema": ["./src/db/schema/schema.ts"],
+  "dialect": "postgresql",
+  "dbCredentials": {
+    "host": "postgres",
+    "port": 5432,
+    "user": "postgres",
+    "password": "postgres",
+    "database": "supercheck",
+    "ssl": false
+  },
+  "verbose": true,
+  "strict": true
+}
