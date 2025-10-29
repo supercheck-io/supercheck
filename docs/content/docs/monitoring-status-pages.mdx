@@ -1,0 +1,68 @@
+---
+title: Monitoring & Status Pages
+description: Keep critical journeys available and share real-time status updates
+---
+
+# Monitoring & Status Pages
+
+Supercheck monitors help you stay ahead of downtime and keep everyone informed. Use this guide to choose the right monitor, set alerts, and publish status pages your customers can trust.
+
+## Pick the Right Monitor
+
+| Monitor | What it tracks | Use it when |
+| ------- | -------------- | ----------- |
+| **Journey Monitor** | Full end-to-end flows using your browser tests | Protect checkout, onboarding, or other critical customer paths |
+| **API Monitor** | REST or GraphQL responses, latency, headers, and payloads | Verify service health and contract expectations |
+| **Website Monitor** | High-level page availability with keyword checks | Catch homepage outages or marketing site issues |
+| **Ping Monitor** | Low-level network connectivity | Watch infrastructure nodes and network hops |
+| **Port Monitor** | TCP/UDP port availability | Confirm databases and services remain reachable |
+
+<Callout type="tip">
+  Already have a passing test? Promote it directly to a monitor from the run
+  drawer — no need to rebuild steps.
+</Callout>
+
+## Create Your First Monitor
+
+<Steps>
+  <Step>Open **Monitors → New monitor** and choose the type that matches your goal.</Step>
+  <Step>Name it plainly so alerts are instantly recognizable.</Step>
+  <Step>Set the check frequency (5 minutes works well for most teams).</Step>
+  <Step>Define what success looks like — expected status codes, keywords, or response times.</Step>
+  <Step>Select who should be alerted and how quickly (email, Slack, webhook).</Step>
+  <Step>Test the monitor once before turning it on for continuous coverage.</Step>
+</Steps>
+
+## Smart Alerting
+
+- **Failure windows** control how many consecutive failures trigger an alert.
+- **Recovery notifications** confirm when things are back to normal.
+- **Maintenance windows** pause alerts during planned work.
+- **Escalations** send follow-up messages if nobody acknowledges the incident.
+
+## Publish Status Pages
+
+<Tabs items={['Internal', 'Public']}>
+  <Tab value="Internal">
+    Create a private dashboard for leadership and support teams to see live
+    uptime, incidents, and notes.
+  </Tab>
+  <Tab value="Public">
+    Share a branded page with customers showing real-time system health,
+    historical uptime, and incident timelines.
+  </Tab>
+</Tabs>
+
+<Callout type="note">
+  Customize colors, logos, and custom domains so your status page feels like an
+  extension of your brand.
+</Callout>
+
+## Best Practices
+
+- Group monitors by product or region to keep alerts focused.
+- Add links to runbooks or dashboards in the monitor description for quick follow-up.
+- Keep incident updates short, timestamped, and honest.
+- Review downtime summaries with your team to improve processes.
+
+Need more help? Visit **Support & Resources** for templates and live training.
