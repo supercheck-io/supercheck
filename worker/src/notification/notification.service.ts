@@ -530,7 +530,7 @@ export class NotificationService {
           pass: process.env.SMTP_PASSWORD,
         },
         tls: {
-          rejectUnauthorized: false, // For development
+          rejectUnauthorized: true, // Validate SSL certificates for security
         },
         connectionTimeout: 10000, // 10 seconds
         greetingTimeout: 5000, // 5 seconds
