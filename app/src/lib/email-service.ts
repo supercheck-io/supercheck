@@ -20,26 +20,31 @@ export class EmailService {
   /**
    * Send email using SMTP
    */
-  async sendEmail(options: EmailOptions): Promise<{ success: boolean; message: string; error?: string }> {
+  async sendEmail(
+    options: EmailOptions
+  ): Promise<{ success: boolean; message: string; error?: string }> {
     return await this.sendViaSMTP(options);
   }
 
-  private async sendViaSMTP(options: EmailOptions): Promise<{ success: boolean; message: string; error?: string }> {
+  private async sendViaSMTP(
+    options: EmailOptions
+  ): Promise<{ success: boolean; message: string; error?: string }> {
     try {
       // SMTP configuration from environment variables
       const smtpHost = process.env.SMTP_HOST;
-      const smtpPort = parseInt(process.env.SMTP_PORT || '587');
+      const smtpPort = parseInt(process.env.SMTP_PORT || "587");
       const smtpUser = process.env.SMTP_USER;
       const smtpPassword = process.env.SMTP_PASSWORD;
-      const smtpSecure = process.env.SMTP_SECURE === 'true';
+      const smtpSecure = process.env.SMTP_SECURE === "true";
       const fromEmail = process.env.SMTP_FROM_EMAIL;
 
       // Validate SMTP configuration
       if (!smtpHost || !smtpUser || !smtpPassword || !fromEmail) {
         return {
           success: false,
-          message: '',
-          error: 'SMTP not configured (missing environment variables: SMTP_HOST, SMTP_USER, SMTP_PASSWORD, SMTP_FROM_EMAIL)'
+          message: "",
+          error:
+            "SMTP not configured (missing environment variables: SMTP_HOST, SMTP_USER, SMTP_PASSWORD, SMTP_FROM_EMAIL)",
         };
       }
 
@@ -53,7 +58,7 @@ export class EmailService {
           pass: smtpPassword,
         },
         tls: {
-          rejectUnauthorized: false,
+          rejectUnauthorized: true,
         },
         connectionTimeout: 10000,
         greetingTimeout: 5000,
@@ -70,13 +75,13 @@ export class EmailService {
 
       return {
         success: true,
-        message: 'Email sent successfully via SMTP'
+        message: "Email sent successfully via SMTP",
       };
     } catch (error) {
       return {
         success: false,
-        message: '',
-        error: error instanceof Error ? error.message : String(error)
+        message: "",
+        error: error instanceof Error ? error.message : String(error),
       };
     }
   }
