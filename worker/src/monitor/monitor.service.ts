@@ -1755,7 +1755,7 @@ export class MonitorService {
           {
             host: hostname,
             port: port,
-            rejectUnauthorized: false, // We want to check the cert even if it's invalid
+            rejectUnauthorized: true, // We want to check the cert even if it's invalid
             servername: hostname, // SNI support for proper certificate validation
             secureProtocol: 'TLS_method', // Use modern TLS
             // Don't set socket timeout here to avoid dual timeout issue
