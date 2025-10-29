@@ -62,9 +62,9 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app
           tags: |
             # Full version for releases (e.g. 1.2.3)
-            type=semver,pattern={{version}}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             # Major.minor for releases (e.g. 1.2)
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             # Custom version from manual workflow input
             type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event.inputs.version != '' }}
             # Latest tag for version releases
@@ -82,9 +82,9 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker
           tags: |
             # Full version for releases (e.g. 1.2.3)
-            type=semver,pattern={{version}}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             # Major.minor for releases (e.g. 1.2)
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             # Custom version from manual workflow input
             type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event.inputs.version != '' }}
             # Latest tag for version releases
