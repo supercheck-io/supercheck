@@ -2,46 +2,27 @@
 @import 'fumadocs-ui/css/neutral.css';
 @import 'fumadocs-ui/css/preset.css';
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
-
-  .animate-fade-in {
-    animation: fade-in 0.8s ease-out forwards;
-  }
-
-  .animate-fade-in-delayed {
-    animation: fade-in 0.9s ease-out 0.2s forwards;
-  }
-
-  .animate-slide-up {
-    animation: slide-up 0.8s ease-out forwards;
-  }
-
-  .animate-slide-up-delayed {
-    animation: slide-up 0.9s ease-out 0.15s forwards;
-  }
+body {
+  overscroll-behavior-y: none;
+  background-color: var(--color-fd-background);
 }
 
-@keyframes fade-in {
-  0% {
-    opacity: 0;
-    filter: blur(4px);
-  }
-  100% {
-    opacity: 1;
-    filter: blur(0);
-  }
+
+/* Hide dropdown chevron/arrow in sidebar */
+[data-sidebar] [data-icon] svg {
+  display: none !important;
 }
 
-@keyframes slide-up {
-  0% {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* Hide all chevron/arrow icons in the sidebar */
+[data-sidebar] button[data-collapsible] svg,
+[data-sidebar] [role="button"] svg,
+aside nav button svg,
+.sidebar-folder button svg {
+  display: none !important;
+}
+
+/* Make folder buttons non-clickable */
+[data-sidebar] button[data-collapsible] {
+  pointer-events: none !important;
+  cursor: default !important;
 }
