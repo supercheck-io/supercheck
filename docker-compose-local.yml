@@ -125,9 +125,8 @@ services:
     environment:
       <<: *common-env
     volumes:
-      - ./app/public/tests:/app/public/tests
-      - ./app/public/test-results:/app/public/test-results
-      - ./app/public/artifacts:/app/public/artifacts
+      # Mount TypeScript definitions for Monaco Editor in playground
+      - ./app/public/supercheck.d.ts:/app/public/supercheck.d.ts:ro
     depends_on:
       postgres:
         condition: service_healthy

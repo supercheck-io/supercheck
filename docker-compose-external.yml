@@ -145,9 +145,8 @@ services:
       <<: *common-env
       # App-specific configuration (inherits all common env vars)
     volumes:
-      - ./app/public/tests:/app/public/tests
-      - ./app/public/test-results:/app/public/test-results
-      - ./app/public/artifacts:/app/public/artifacts
+      # Mount TypeScript definitions for Monaco Editor in playground
+      - ./app/public/supercheck.d.ts:/app/public/supercheck.d.ts:ro
     restart: unless-stopped
     healthcheck:
       test:
