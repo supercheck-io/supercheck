@@ -12,6 +12,7 @@ import { RedisService } from './execution/services/redis.service';
 import { TestExecutionProcessor } from './execution/processors/test-execution.processor';
 import { JobExecutionProcessor } from './execution/processors/job-execution.processor';
 import { NotificationModule } from './notification/notification.module';
+import { ReportUploadService } from './common/services/report-upload.service';
 import * as schema from './db/schema';
 
 // Import constants from constants file
@@ -79,6 +80,7 @@ const drizzleProvider: Provider = {
     S3Service,
     DbService,
     RedisService,
+    ReportUploadService,
     TestExecutionProcessor,
     JobExecutionProcessor,
   ],
