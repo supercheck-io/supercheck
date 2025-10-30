@@ -22,7 +22,6 @@ import {
   TrendingUp,
   Home as HomeIcon,
   Clock,
-  NotepadText,
   Info,
 } from "lucide-react";
 import { useEffect, useState, useMemo, useCallback } from "react";
@@ -259,6 +258,53 @@ const CustomTooltip: React.FC<TooltipProps> = ({ active, payload, label }) => {
 };
 
 const LOOKBACK_DAYS = 30;
+
+/**
+ * Formats execution time with unit notation for readability
+ * - Shows seconds if less than 1 minute (e.g., "45 sec")
+ * - Shows minutes with 2 decimals if 1-999 minutes (e.g., "56.72 min")
+ * - Shows 'k' notation for 1,000-999,999 minutes (e.g., "5.30k min")
+ * - Shows 'M' notation for 1,000,000+ minutes (e.g., "1.20M min")
+ *
+ * @param totalMinutes - Total execution time in minutes
+ * @param totalSeconds - Total execution time in seconds (fallback for <1 minute)
+ * @returns Formatted time string with appropriate unit
+ */
+const formatExecutionTime = (
+  totalMinutes: number,
+  totalSeconds: number
+): string => {
+  // Validate inputs
+  if (!Number.isFinite(totalMinutes) || !Number.isFinite(totalSeconds)) {
+    return "0 sec";
+  }
+
+  // Handle negative values
+  if (totalMinutes < 0 || totalSeconds < 0) {
+    return "0 sec";
+  }
+
+  // Less than 1 minute: show seconds
+  if (totalMinutes < 1) {
+    const seconds = Math.round(totalSeconds);
+    return `${seconds} sec`;
+  }
+
+  // 1 to 999 minutes: show minutes with 2 decimal places
+  if (totalMinutes < 1000) {
+    return `${totalMinutes.toFixed(2)} min`;
+  }
+
+  // 1,000 to 999,999 minutes: show in thousands (k notation)
+  if (totalMinutes < 1000000) {
+    const kiloMinutes = totalMinutes / 1000;
+    return `${kiloMinutes.toFixed(2)}k min`;
+  }
+
+  // 1,000,000+ minutes: show in millions (M notation)
+  const megaMinutes = totalMinutes / 1000000;
+  return `${megaMinutes.toFixed(2)}M min`;
+};
 
 export default function Home() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(
@@ -948,7 +994,7 @@ export default function Home() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="flex items-center gap-1 text-sm font-medium">
-                  Total Runs
+                  Job Runs
                   <MetricInfoButton
                     title="What counts as a run?"
                     description="This number shows completed job executions within the selected project over the last 30 days."
@@ -958,10 +1004,10 @@ export default function Home() {
                       "Synthetic monitor checks are excluded",
                       "Playground executions are excluded",
                     ]}
-                    ariaLabel="Learn what Total Runs includes"
+                    ariaLabel="Learn what Total Job Runs includes"
                   />
                 </CardTitle>
-                <NotepadText className="h-4 w-4 text-muted-foreground" />
+                <RefreshCw className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 {dashboardData.stats.runs > 0 ? (
@@ -969,7 +1015,9 @@ export default function Home() {
                     <div className="text-2xl font-bold">
                       {dashboardData.stats.runs}
                     </div>
-                    <p className="text-sm text-muted-foreground">Last 30 days</p>
+                    <p className="text-sm text-muted-foreground">
+                      Last 30 days
+                    </p>
                   </>
                 ) : (
                   <div className="text-center py-4">
@@ -1004,9 +1052,10 @@ export default function Home() {
                 {dashboardData.jobs.executionTime.totalMinutes > 0 ? (
                   <>
                     <div className="text-2xl font-bold">
-                      {dashboardData.jobs.executionTime.totalMinutes < 1
-                        ? `${dashboardData.jobs.executionTime.totalSeconds}s`
-                        : `${dashboardData.jobs.executionTime.totalMinutes}m`}
+                      {formatExecutionTime(
+                        dashboardData.jobs.executionTime.totalMinutes,
+                        dashboardData.jobs.executionTime.totalSeconds
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {dashboardData.jobs.executionTime.processedRuns} runs •
@@ -1035,8 +1084,8 @@ export default function Home() {
             <Card className="h-full p-4">
               <CardHeader className="pb-1 px-3 pt-1">
                 <CardTitle className="flex items-center gap-1 text-sm">
-                  <NotepadText className="h-4 w-4" />
-                  Job Runs
+                  <CalendarClock className="h-4 w-4" />
+                  Job Status
                 </CardTitle>
                 <CardDescription className="text-sm">
                   Job execution success vs failure last 30 days
@@ -1063,7 +1112,7 @@ export default function Home() {
                 ) : (
                   <div className="h-40 flex items-center justify-center">
                     <div className="text-center">
-                      <NotepadText className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                      <CalendarClock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">
                         No job runs
                       </p>
@@ -1224,7 +1273,7 @@ export default function Home() {
             <Card className="h-full p-4">
               <CardHeader className="pb-1 px-3 pt-1">
                 <CardTitle className="flex items-center gap-1 text-sm">
-                  <CalendarClock className="h-4 w-4" />
+                  <Activity className="h-4 w-4" />
                   Job Activity
                 </CardTitle>
                 <CardDescription className="text-sm">

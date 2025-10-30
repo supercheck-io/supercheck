@@ -3,20 +3,25 @@ import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 
 /**
  * Content Security Policy configuration
- * Helps prevent XSS attacks and other code injection attacks
+ * Balanced approach: secure but not overly restrictive
+ * Allows common CDNs, cloud storage, and third-party services
  */
 const ContentSecurityPolicy = `
   default-src 'self';
-  script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://challenges.cloudflare.com;
-  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net;
-  img-src 'self' blob: data: https:;
-  font-src 'self' data: https://fonts.gstatic.com;
-  connect-src 'self' https://*.amazonaws.com https://api.openai.com https://cdn.jsdelivr.net;
-  media-src 'self' https://*.amazonaws.com;
-  frame-src 'self' https://challenges.cloudflare.com;
-  frame-ancestors 'none';
+  script-src 'self' 'unsafe-eval' 'unsafe-inline' https: http://localhost:* http://127.0.0.1:*;
+  style-src 'self' 'unsafe-inline' https: http://localhost:* http://127.0.0.1:*;
+  img-src 'self' blob: data: https: http://localhost:* http://127.0.0.1:*;
+  font-src 'self' data: https: http://localhost:* http://127.0.0.1:*;
+  connect-src 'self' https: wss: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*;
+  media-src 'self' blob: data: https: http://localhost:* http://127.0.0.1:*;
+  object-src 'none';
+  frame-src 'self' https: http://localhost:* http://127.0.0.1:*;
+  frame-ancestors 'self' https://*.supercheck.io https://supercheck.io http://localhost:* http://127.0.0.1:*;
+  worker-src 'self' blob:;
+  child-src 'self' blob:;
   base-uri 'self';
-  form-action 'self';
+  form-action 'self' https:;
+  manifest-src 'self';
   upgrade-insecure-requests;
 `;
 
@@ -39,7 +44,7 @@ const securityHeaders = [
   },
   {
     key: 'X-Frame-Options',
-    value: 'DENY',
+    value: 'SAMEORIGIN',
   },
   {
     key: 'X-Content-Type-Options',

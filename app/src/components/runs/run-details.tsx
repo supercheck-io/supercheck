@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { canManageRuns } from "@/lib/rbac/client-permissions";
 import { Role } from "@/lib/rbac/permissions";
-import { LoadingBadge, Spinner } from "@/components/ui/spinner";
+import { Spinner } from "@/components/ui/spinner";
 import { RunStatusListener } from "./run-status-listener";
 import { TestRunStatus } from "@/db/schema";
 import { Button } from "@/components/ui/button";
@@ -297,7 +297,11 @@ export function RunDetails({
           {!isNotificationView && (
             <div className="flex items-center gap-2">
               {/* Loading permissions */}
-              {permissionsLoading && <LoadingBadge />}
+              {permissionsLoading && (
+                <div className="h-9 px-3 flex items-center justify-center border rounded-md bg-muted/50 border-border/50">
+                  <Spinner size="sm" className="text-muted-foreground" />
+                </div>
+              )}
 
               {/* Show disabled delete button for viewer role */}
               {!permissionsLoading && userRole && !canManageRuns(userRole) && (
