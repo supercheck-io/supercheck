@@ -37,241 +37,30 @@ import {
   MONITORING_LOCATIONS,
 } from '../common/location/location.service';
 
-// Placeholder for actual execution libraries (axios, ping, net, dns, playwright-runner)
+// Import shared constants
+import {
+  TIMEOUTS,
+  TIMEOUTS_SECONDS,
+  MEMORY_LIMITS,
+  SECURITY,
+} from '../common/constants';
 
-// Utility function to safely extract error message
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
-
-// Security utility functions
-function maskCredentials(value: string): string {
-  if (!value || value.length <= 4) return '***';
-  return (
-    value.substring(0, 2) +
-    '*'.repeat(value.length - 4) +
-    value.substring(value.length - 2)
-  );
-}
-
-function sanitizeResponseBody(body: string, maxLength: number = 1000): string {
-  if (!body) return '';
-
-  // Remove potentially sensitive patterns (credit cards, social security numbers, etc.)
-  let sanitized = body
-    .replace(/\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b/g, '[CARD-REDACTED]')
-    .replace(/\b\d{3}-?\d{2}-?\d{4}\b/g, '[SSN-REDACTED]')
-    .replace(
-      /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
-      '[EMAIL-REDACTED]',
-    );
-
-  // Truncate to prevent memory issues
-  if (sanitized.length > maxLength) {
-    sanitized = sanitized.substring(0, maxLength) + '... [TRUNCATED]';
-  }
-
-  return sanitized;
-}
-
-function validateTargetUrl(target: string): { valid: boolean; error?: string } {
-  try {
-    const url = new URL(target);
-
-    // Check protocol
-    if (!['http:', 'https:'].includes(url.protocol)) {
-      return {
-        valid: false,
-        error: 'Only HTTP and HTTPS protocols are allowed',
-      };
-    }
-
-    // Check for localhost/internal IPs (basic SSRF protection)
-    const hostname = url.hostname.toLowerCase();
-    if (
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname.startsWith('10.') ||
-      hostname.startsWith('192.168.') ||
-      hostname.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./) ||
-      hostname === '::1' ||
-      hostname === '0.0.0.0'
-    ) {
-      // Allow if explicitly configured (could be added as environment variable)
-      if (!process.env.ALLOW_INTERNAL_TARGETS) {
-        return {
-          valid: false,
-          error:
-            'Internal/localhost targets are not allowed for security reasons',
-        };
-      }
-    }
-
-    return { valid: true };
-  } catch (error) {
-    return { valid: false, error: 'Invalid URL format' };
-  }
-}
-
-function validatePingTarget(target: string): {
-  valid: boolean;
-  error?: string;
-} {
-  // Basic validation to prevent command injection
-  if (!target || typeof target !== 'string') {
-    return { valid: false, error: 'Target must be a non-empty string' };
-  }
-
-  // Remove leading/trailing whitespace
-  target = target.trim();
-
-  // Check length
-  if (target.length === 0 || target.length > 253) {
-    return {
-      valid: false,
-      error: 'Target must be between 1 and 253 characters',
-    };
-  }
-
-  // Check for command injection attempts
-  const dangerousChars = /[;&|`$(){}[\]<>'"\\]/;
-  if (dangerousChars.test(target)) {
-    return { valid: false, error: 'Target contains invalid characters' };
-  }
-
-  // Check for IPv4 address format
-  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
-  if (ipv4Regex.test(target)) {
-    // Validate IPv4 octets
-    const octets = target.split('.');
-    for (const octet of octets) {
-      const num = parseInt(octet, 10);
-      if (num < 0 || num > 255) {
-        return { valid: false, error: 'Invalid IPv4 address' };
-      }
-    }
-    return { valid: true };
-  }
-
-  // Check for IPv6 address format (basic)
-  const ipv6Regex = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::1$|^::/;
-  if (ipv6Regex.test(target)) {
-    return { valid: true };
-  }
-
-  // Check for hostname format
-  const hostnameRegex =
-    /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/;
-  if (!hostnameRegex.test(target)) {
-    return { valid: false, error: 'Invalid hostname format' };
-  }
-
-  // Additional security check for localhost/internal IPs
-  const lowerTarget = target.toLowerCase();
-  if (
-    lowerTarget === 'localhost' ||
-    target.startsWith('127.') ||
-    target.startsWith('10.') ||
-    target.startsWith('192.168.') ||
-    target.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./)
-  ) {
-    // Allow if explicitly configured
-    if (!process.env.ALLOW_INTERNAL_TARGETS) {
-      return {
-        valid: false,
-        error:
-          'Internal/localhost targets are not allowed for security reasons',
-      };
-    }
-  }
-
-  return { valid: true };
-}
-
-function validatePortCheckTarget(
-  target: string,
-  port: number,
-  protocol: string,
-): { valid: boolean; error?: string } {
-  // Validate target (hostname or IP)
-  const targetValidation = validatePingTarget(target);
-  if (!targetValidation.valid) {
-    return targetValidation;
-  }
-
-  // Validate port range
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    return {
-      valid: false,
-      error: 'Port must be an integer between 1 and 65535',
-    };
-  }
-
-  // Validate protocol
-  if (!['tcp', 'udp'].includes(protocol.toLowerCase())) {
-    return { valid: false, error: 'Protocol must be either "tcp" or "udp"' };
-  }
-
-  // Warn about common reserved ports in production
-  const reservedPorts = [22, 23, 25, 53, 80, 110, 143, 443, 993, 995];
-  if (reservedPorts.includes(port)) {
-    // This is just informational, don't block it
-    // Could log a debug message about checking a reserved port
-  }
-
-  return { valid: true };
-}
+// Import shared validation utilities
+import {
+  validateTargetUrl,
+  validatePingTarget,
+  validatePortCheckTarget,
+  isExpectedStatus,
+  sanitizeResponseBody,
+  maskCredentials,
+  getErrorMessage,
+} from '../common/validation';
 
 // Use the Monitor type from schema
 type Monitor = z.infer<typeof monitorsSelectSchema>;
 
 // Use the MonitorResult type from schema
 type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
-
-// Replace generic DrizzleInstance with the specific type from Drizzle
-// interface DrizzleInstance {
-//   insert(table: any): any; // Simplified for now
-// }
-
-// Helper function to check status codes against a flexible string pattern
-function isExpectedStatus(
-  actualStatus: number,
-  expectedCodesString?: string,
-): boolean {
-  if (!expectedCodesString || expectedCodesString.trim() === '') {
-    // Default to 2xx if no specific codes are provided
-    return actualStatus >= 200 && actualStatus < 300;
-  }
-
-  const parts = expectedCodesString.split(',').map((part) => part.trim());
-
-  for (const part of parts) {
-    // Handle patterns like "2xx", "3xx", "4xx", "5xx"
-    if (part.endsWith('xx')) {
-      const prefix = parseInt(part.charAt(0));
-      const actualPrefix = Math.floor(actualStatus / 100);
-      if (actualPrefix === prefix) {
-        return true;
-      }
-    }
-    // Handle ranges like "200-299"
-    else if (part.includes('-')) {
-      const [min, max] = part.split('-').map(Number);
-      if (actualStatus >= min && actualStatus <= max) {
-        return true;
-      }
-    }
-    // Handle specific status codes like "200", "404"
-    else if (Number(part) === actualStatus) {
-      return true;
-    }
-  }
-
-  return false;
-}
 
 @Injectable()
 export class MonitorService {
@@ -380,8 +169,8 @@ export class MonitorService {
               try {
                 const sslResult = await this.executeSslCheck(jobData.target, {
                   sslDaysUntilExpirationWarning:
-                    jobData.config.sslDaysUntilExpirationWarning || 30,
-                  timeoutSeconds: jobData.config.timeoutSeconds || 10,
+                    jobData.config.sslDaysUntilExpirationWarning ?? SECURITY.SSL_DEFAULT_WARNING_DAYS,
+                  timeoutSeconds: jobData.config.timeoutSeconds ?? TIMEOUTS_SECONDS.SSL_CHECK_DEFAULT,
                 });
 
                 // Update SSL last checked timestamp (non-blocking)
@@ -1011,8 +800,8 @@ export class MonitorService {
         async () =>
           this.performHttpRequest(sanitizedTarget, config, errorContext),
         {
-          timeoutMs: (config?.timeoutSeconds || 30) * 1000,
-          maxMemoryMB: 50, // Limit per request
+          timeoutMs: (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.HTTP_REQUEST_DEFAULT) * 1000,
+          maxMemoryMB: MEMORY_LIMITS.MAX_MEMORY_PER_REQUEST_MB,
         },
       );
     } catch (error) {
@@ -1057,7 +846,7 @@ export class MonitorService {
 
     const timeout = config?.timeoutSeconds
       ? config.timeoutSeconds * 1000
-      : 30000; // Default 30s timeout
+      : TIMEOUTS.HTTP_REQUEST_DEFAULT_MS;
     const httpMethod = (config?.method || 'GET').toUpperCase() as Method;
 
     // Use high-resolution timer for more accurate timing
@@ -1092,7 +881,7 @@ export class MonitorService {
         // Enable automatic decompression for proper response parsing
         decompress: true,
         // Follow redirects but limit for security
-        maxRedirects: 5,
+        maxRedirects: SECURITY.MAX_REDIRECTS,
         // Handle various response types - keep as text for consistent keyword searching
         responseType: 'text',
         // Accept all status codes, we'll handle validation
@@ -1218,8 +1007,8 @@ export class MonitorService {
       const sanitizedResponseData =
         this.credentialSecurityService.maskCredentials(
           typeof response.data === 'string'
-            ? response.data.substring(0, 10000)
-            : String(response.data).substring(0, 10000),
+            ? response.data.substring(0, MEMORY_LIMITS.MAX_SANITIZED_RESPONSE_LENGTH)
+            : String(response.data).substring(0, MEMORY_LIMITS.MAX_SANITIZED_RESPONSE_LENGTH),
         );
 
       details = {
@@ -1251,7 +1040,10 @@ export class MonitorService {
             .includes(keyword.toLowerCase());
 
           // Store sanitized response for debugging (security improvement)
-          details.responseBodySnippet = sanitizeResponseBody(bodyString, 1000);
+          details.responseBodySnippet = sanitizeResponseBody(
+            bodyString,
+            MEMORY_LIMITS.RESPONSE_BODY_SNIPPET_LENGTH,
+          );
 
           this.logger.debug(
             `Keyword search: looking for '${keyword}' in response body (${bodyString.length} chars): found=${keywordFound}`,
@@ -1363,7 +1155,7 @@ export class MonitorService {
       };
     }
 
-    const timeout = (config?.timeoutSeconds || 5) * 1000; // Default 5s timeout for ping
+    const timeout = (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.PING_HOST_DEFAULT) * 1000;
     this.logger.debug(`Ping Host: ${target}, Timeout: ${timeout}ms`);
 
     const startTime = process.hrtime.bigint();
@@ -1520,7 +1312,7 @@ export class MonitorService {
   }> {
     const port = config?.port;
     const protocol = (config?.protocol || 'tcp').toLowerCase();
-    const timeout = (config?.timeoutSeconds || 10) * 1000; // Convert to milliseconds
+    const timeout = (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.PORT_CHECK_DEFAULT) * 1000;
 
     if (!port) {
       return {
@@ -1707,8 +1499,8 @@ export class MonitorService {
     responseTimeMs?: number;
     isUp: boolean;
   }> {
-    const timeout = (config?.timeoutSeconds || 10) * 1000; // Convert to milliseconds
-    const daysUntilExpirationWarning = config?.daysUntilExpirationWarning || 30;
+    const timeout = (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.SSL_CHECK_DEFAULT) * 1000;
+    const daysUntilExpirationWarning = config?.daysUntilExpirationWarning ?? SECURITY.SSL_DEFAULT_WARNING_DAYS;
 
     this.logger.debug(
       `SSL Check: ${target}, Timeout: ${timeout}ms, Warning threshold: ${daysUntilExpirationWarning} days`,
@@ -1956,13 +1748,13 @@ export class MonitorService {
       const monitorConfig = monitor.config as any;
       const sslLastCheckedAt = monitorConfig.sslLastCheckedAt;
       const sslCheckFrequencyHours =
-        config?.sslCheckFrequencyHours ||
-        monitorConfig.sslCheckFrequencyHours ||
-        24;
+        config?.sslCheckFrequencyHours ??
+        monitorConfig.sslCheckFrequencyHours ??
+        SECURITY.SSL_CHECK_FREQUENCY_HOURS;
       const sslDaysUntilExpirationWarning =
-        config?.sslDaysUntilExpirationWarning ||
-        monitorConfig.sslDaysUntilExpirationWarning ||
-        30;
+        config?.sslDaysUntilExpirationWarning ??
+        monitorConfig.sslDaysUntilExpirationWarning ??
+        SECURITY.SSL_DEFAULT_WARNING_DAYS;
 
       if (!sslLastCheckedAt) {
         return true; // Never checked before
@@ -2057,7 +1849,7 @@ export class MonitorService {
       if (sslCertificate?.daysRemaining !== undefined) {
         const daysUntilExpiration = sslCertificate.daysRemaining;
         const warningThreshold =
-          monitor.config?.sslDaysUntilExpirationWarning || 30;
+          monitor.config?.sslDaysUntilExpirationWarning ?? SECURITY.SSL_DEFAULT_WARNING_DAYS;
 
         // Removed debug logs
 
