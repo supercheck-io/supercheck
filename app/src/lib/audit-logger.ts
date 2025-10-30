@@ -57,7 +57,10 @@ export async function logAuditEvent(event: AuditEvent): Promise<void> {
     // Prepare audit log entry according to schema
     const auditEntry = {
       userId: event.userId || null,
-      organizationId: (event.metadata?.organizationId as string) || null,
+      organizationId:
+        event.organizationId ||
+        (event.metadata?.organizationId as string | undefined) ||
+        null,
       action: event.action,
       details: {
         resource: event.resource,
@@ -65,7 +68,8 @@ export async function logAuditEvent(event: AuditEvent): Promise<void> {
         success: event.success,
         ipAddress: event.ipAddress || ipAddress,
         userAgent: event.userAgent || userAgent,
-        ...event.metadata,
+        ...(event.metadata ?? {}),
+        ...(event.metadata ? { metadata: { ...event.metadata } } : {}),
       },
     };
 
