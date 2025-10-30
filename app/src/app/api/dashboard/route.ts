@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { monitors, monitorResults, jobs, runs, tests, auditLogs } from "@/db/schema";
+import { monitors, monitorResults, jobs, runs, tests, auditLogs, reports } from "@/db/schema";
 import { eq, desc, gte, and, count, sql } from "drizzle-orm";
 import { subDays, subHours } from "date-fns";
 import { getQueueStats } from "@/lib/queue-stats";
@@ -27,7 +27,7 @@ export async function GET() {
     const dbInstance = db;
     const now = new Date();
     const last24Hours = subHours(now, 24);
-    const last7Days = subDays(now, 7);
+    const last30Days = subDays(now, 30);
 
     // Get queue statistics
     const queueStats = await getQueueStats();
@@ -107,12 +107,12 @@ export async function GET() {
       dbInstance.select({ count: count() }).from(jobs)
         .where(and(eq(jobs.status, "running"), eq(jobs.projectId, targetProjectId), eq(jobs.organizationId, organizationId))),
       
-      // Recent runs (last 7 days) - only for jobs in this project
+      // Recent runs (last 30 days) - only for jobs in this project
       dbInstance.select({ count: count() })
         .from(runs)
         .innerJoin(jobs, eq(runs.jobId, jobs.id))
         .where(and(
-          gte(runs.startedAt, last7Days),
+          gte(runs.startedAt, last30Days),
           eq(jobs.projectId, targetProjectId),
           eq(jobs.organizationId, organizationId)
         )),
@@ -147,8 +147,8 @@ export async function GET() {
         .where(and(eq(jobs.projectId, targetProjectId), eq(jobs.organizationId, organizationId)))
         .groupBy(jobs.status),
       
-      // Recent job runs with details (last 7 days for chart data)
-      // Last 7 days only - already limited by time filter
+      // Recent job runs with details (last 30 days for chart data)
+      // Last 30 days only - already limited by time filter
       dbInstance.select({
         id: runs.id,
         jobId: runs.jobId,
@@ -160,13 +160,13 @@ export async function GET() {
       }).from(runs)
         .leftJoin(jobs, eq(runs.jobId, jobs.id))
         .where(and(
-          gte(runs.startedAt, last7Days),
+          gte(runs.startedAt, last30Days),
           eq(jobs.projectId, targetProjectId),
           eq(jobs.organizationId, organizationId)
         ))
         .orderBy(desc(runs.startedAt)),
       
-      // Total execution time (last 7 days) 
+      // Total execution time (last 30 days) 
       dbInstance.select({
         duration: runs.duration,
         status: runs.status,
@@ -175,7 +175,7 @@ export async function GET() {
       }).from(runs)
         .leftJoin(jobs, eq(runs.jobId, jobs.id))
         .where(and(
-          gte(runs.startedAt, last7Days),
+          gte(runs.startedAt, last30Days),
           eq(jobs.projectId, targetProjectId), 
           eq(jobs.organizationId, organizationId),
           // Only include completed runs
@@ -188,7 +188,7 @@ export async function GET() {
     const [
       totalTests,
       testsByType,
-      playgroundExecutions7d
+      playgroundExecutions30d
     ] = await Promise.all([
       // Total tests
       dbInstance.select({ count: count() }).from(tests)
@@ -202,13 +202,56 @@ export async function GET() {
         .where(and(eq(tests.projectId, targetProjectId), eq(tests.organizationId, organizationId)))
         .groupBy(tests.type),
       
-      // Playground test executions (last 7 days) from audit logs
+      // Playground test executions (last 30 days) from audit logs
       dbInstance.select({ count: count() })
         .from(auditLogs)
         .where(and(
           eq(auditLogs.action, 'playground_test_executed'),
           eq(auditLogs.organizationId, organizationId),
-          gte(auditLogs.createdAt, last7Days),
+          gte(auditLogs.createdAt, last30Days),
+          sql`${auditLogs.details}->'metadata'->>'projectId' = ${targetProjectId}`
+        ))
+    ]);
+
+    const [
+      monitorExecutionData,
+      playgroundExecutionReports
+    ] = await Promise.all([
+      // Synthetic monitor executions (Playwright-based) in last 30 days
+      dbInstance.select({
+        monitorId: monitorResults.monitorId,
+        responseTimeMs: monitorResults.responseTimeMs,
+        checkedAt: monitorResults.checkedAt,
+        location: monitorResults.location,
+        status: monitorResults.status
+      }).from(monitorResults)
+        .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
+        .where(and(
+          gte(monitorResults.checkedAt, last30Days),
+          eq(monitors.projectId, targetProjectId),
+          eq(monitors.organizationId, organizationId),
+          eq(monitors.type, 'synthetic_test')
+        )),
+
+      // Playground test executions matched with their report metadata
+      dbInstance.select({
+        reportEntityId: reports.entityId,
+        reportStatus: reports.status,
+        reportCreatedAt: reports.createdAt,
+        reportUpdatedAt: reports.updatedAt,
+        auditCreatedAt: auditLogs.createdAt
+      }).from(auditLogs)
+        .innerJoin(
+          reports,
+          and(
+            eq(reports.entityType, 'test'),
+            sql`${reports.entityId} = ${auditLogs.details}->>'resourceId'`
+          )
+        )
+        .where(and(
+          eq(auditLogs.action, 'playground_test_executed'),
+          eq(auditLogs.organizationId, organizationId),
+          gte(auditLogs.createdAt, last30Days),
           sql`${auditLogs.details}->'metadata'->>'projectId' = ${targetProjectId}`
         ))
     ]);
@@ -232,7 +275,7 @@ export async function GET() {
     const successfulChecks = uptimeStats.filter(r => r.isUp).length;
     const overallUptime = totalChecks > 0 ? (successfulChecks / totalChecks) * 100 : 100;
 
-    // Monitor availability trend (last 7 days) - only for monitors in this project
+    // Monitor availability trend (last 30 days) - only for monitors in this project
     const availabilityTrend = await dbInstance.select({
       date: sql<string>`DATE(${monitorResults.checkedAt})`,
       upCount: sql<number>`SUM(CASE WHEN ${monitorResults.isUp} THEN 1 ELSE 0 END)`,
@@ -240,7 +283,7 @@ export async function GET() {
     }).from(monitorResults)
       .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
       .where(and(
-        gte(monitorResults.checkedAt, last7Days),
+        gte(monitorResults.checkedAt, last30Days),
         eq(monitors.projectId, targetProjectId),
         eq(monitors.organizationId, organizationId)
       ))
@@ -261,7 +304,7 @@ export async function GET() {
         eq(monitors.organizationId, organizationId)
       ));
 
-    // Daily playground executions breakdown (last 7 days)
+    // Daily playground executions breakdown (last 30 days)
     const playgroundExecutionsTrend = await dbInstance.select({
       date: sql<string>`DATE(${auditLogs.createdAt})`,
       count: count()
@@ -269,7 +312,7 @@ export async function GET() {
       .where(and(
         eq(auditLogs.action, 'playground_test_executed'),
         eq(auditLogs.organizationId, organizationId),
-        gte(auditLogs.createdAt, last7Days),
+        gte(auditLogs.createdAt, last30Days),
         sql`${auditLogs.details}->'metadata'->>'projectId' = ${targetProjectId}`
       ))
       .groupBy(sql`DATE(${auditLogs.createdAt})`)
@@ -277,16 +320,20 @@ export async function GET() {
 
     // Calculate total execution time with accuracy
     const totalExecutionTimeCalculation = (() => {
-      let totalMs = 0;
-      let processedRuns = 0;
-      let skippedRuns = 0;
       const errors: string[] = [];
+
+      const jobAggregate = {
+        totalMs: 0,
+        processed: 0,
+        skipped: 0,
+        totalRecords: executionTimeData.length
+      };
 
       for (const run of executionTimeData) {
         try {
           // Skip runs without duration (incomplete or failed early)
           if (!run.duration) {
-            skippedRuns++;
+            jobAggregate.skipped++;
             continue;
           }
 
@@ -310,7 +357,7 @@ export async function GET() {
             durationMs = parseInt(durationStr, 10);
             if (isNaN(durationMs)) {
               errors.push(`Invalid duration format: ${durationStr}`);
-              skippedRuns++;
+              jobAggregate.skipped++;
               continue;
             }
           }
@@ -318,18 +365,116 @@ export async function GET() {
           // Validate duration is reasonable (0ms to 24 hours max)
           if (durationMs < 0 || durationMs > 24 * 60 * 60 * 1000) {
             errors.push(`Duration out of range: ${durationMs}ms`);
-            skippedRuns++;
+            jobAggregate.skipped++;
             continue;
           }
 
-          totalMs += durationMs;
-          processedRuns++;
+          jobAggregate.totalMs += durationMs;
+          jobAggregate.processed++;
 
         } catch (error) {
           errors.push(`Error processing run ${run.startedAt}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          skippedRuns++;
+          jobAggregate.skipped++;
         }
       }
+
+      const monitorAggregate = {
+        totalMs: 0,
+        processed: 0,
+        skipped: 0,
+        totalRecords: monitorExecutionData.length
+      };
+
+      for (const monitorRun of monitorExecutionData) {
+        try {
+          if (monitorRun.responseTimeMs === null || monitorRun.responseTimeMs === undefined) {
+            monitorAggregate.skipped++;
+            continue;
+          }
+
+          const responseTime = Number(monitorRun.responseTimeMs);
+          if (!Number.isFinite(responseTime)) {
+            errors.push(`Monitor response time not numeric for monitor ${monitorRun.monitorId}`);
+            monitorAggregate.skipped++;
+            continue;
+          }
+
+          if (responseTime < 0 || responseTime > 24 * 60 * 60 * 1000) {
+            errors.push(`Monitor response time out of range (${responseTime}ms) for monitor ${monitorRun.monitorId}`);
+            monitorAggregate.skipped++;
+            continue;
+          }
+
+          monitorAggregate.totalMs += responseTime;
+          monitorAggregate.processed++;
+        } catch (error) {
+          errors.push(`Error processing monitor execution ${monitorRun.monitorId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          monitorAggregate.skipped++;
+        }
+      }
+
+      const playgroundAggregate = {
+        totalMs: 0,
+        processed: 0,
+        skipped: 0,
+        totalRecords: playgroundExecutionReports.length
+      };
+
+      for (const report of playgroundExecutionReports) {
+        try {
+          if (!report.reportCreatedAt || !report.reportUpdatedAt) {
+            playgroundAggregate.skipped++;
+            continue;
+          }
+
+          if (report.reportStatus === 'running') {
+            // Execution still in progress - skip from aggregation
+            playgroundAggregate.skipped++;
+            continue;
+          }
+
+          const createdAtDate =
+            report.reportCreatedAt instanceof Date
+              ? report.reportCreatedAt
+              : new Date(report.reportCreatedAt);
+          const updatedAtDate =
+            report.reportUpdatedAt instanceof Date
+              ? report.reportUpdatedAt
+              : new Date(report.reportUpdatedAt);
+
+          if (Number.isNaN(createdAtDate.getTime()) || Number.isNaN(updatedAtDate.getTime())) {
+            errors.push(`Playground execution timestamps invalid for report ${report.reportEntityId}`);
+            playgroundAggregate.skipped++;
+            continue;
+          }
+
+          const createdAtMs = createdAtDate.getTime();
+          const updatedAtMs = updatedAtDate.getTime();
+          const durationMs = updatedAtMs - createdAtMs;
+
+          if (!Number.isFinite(durationMs) || durationMs < 0) {
+            errors.push(`Playground execution duration invalid for report ${report.reportEntityId}`);
+            playgroundAggregate.skipped++;
+            continue;
+          }
+
+          if (durationMs > 24 * 60 * 60 * 1000) {
+            errors.push(`Playground execution duration out of range (${durationMs}ms) for report ${report.reportEntityId}`);
+            playgroundAggregate.skipped++;
+            continue;
+          }
+
+          playgroundAggregate.totalMs += durationMs;
+          playgroundAggregate.processed++;
+        } catch (error) {
+          errors.push(`Error processing playground execution ${report.reportEntityId}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          playgroundAggregate.skipped++;
+        }
+      }
+
+      const totalMs = jobAggregate.totalMs + monitorAggregate.totalMs + playgroundAggregate.totalMs;
+      const processedRuns = jobAggregate.processed + monitorAggregate.processed + playgroundAggregate.processed;
+      const skippedRuns = jobAggregate.skipped + monitorAggregate.skipped + playgroundAggregate.skipped;
 
       // Log Exec time calculation details
       const execTimeAuditData = {
@@ -341,12 +486,17 @@ export async function GET() {
         totalExecutionTimeSeconds: Math.floor(totalMs / 1000),
         processedRuns,
         skippedRuns,
-        totalRuns: executionTimeData.length,
+        totalRuns: jobAggregate.totalRecords + monitorAggregate.totalRecords + playgroundAggregate.totalRecords,
         errorCount: errors.length,
-        period: 'last 7 days (UTC)',
-        queryStartTime: last7Days.toISOString(),
+        period: 'last 30 days (UTC)',
+        queryStartTime: last30Days.toISOString(),
         queryEndTime: now.toISOString(),
-        calculationMethod: 'duration_field_aggregation',
+        calculationMethod: 'multi_source_aggregation',
+        sources: {
+          jobs: jobAggregate,
+          monitors: monitorAggregate,
+          playground: playgroundAggregate
+        },
         dataIntegrity: {
           hasNegativeDurations: false,
           hasExcessiveDurations: false,
@@ -400,7 +550,7 @@ export async function GET() {
       jobs: {
         total: totalJobs[0].count,
         active: activeJobs[0].count,
-        recentRuns7d: recentRuns[0].count,
+        recentRuns30d: recentRuns[0].count,
         successfulRuns24h: successfulRuns24h[0].count,
         failedRuns24h: failedRuns24h[0].count,
         byStatus: jobsByStatus,
@@ -421,7 +571,7 @@ export async function GET() {
           processedRuns: totalExecutionTimeCalculation.processedRuns,
           skippedRuns: totalExecutionTimeCalculation.skippedRuns,
           errors: totalExecutionTimeCalculation.errors,
-          period: 'last 7 days'
+          period: 'last 30 days'
         }
       },
       
@@ -429,7 +579,7 @@ export async function GET() {
       tests: {
         total: totalTests[0].count,
         byType: testsByType,
-        playgroundExecutions7d: playgroundExecutions7d[0].count,
+        playgroundExecutions30d: playgroundExecutions30d[0].count,
         playgroundExecutionsTrend: playgroundExecutionsTrend
       },
       
