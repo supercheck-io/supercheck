@@ -8,10 +8,10 @@ import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 const ContentSecurityPolicy = `
   default-src 'self';
   script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://challenges.cloudflare.com;
-  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net;
   img-src 'self' blob: data: https:;
   font-src 'self' data: https://fonts.gstatic.com;
-  connect-src 'self' https://*.amazonaws.com https://api.openai.com;
+  connect-src 'self' https://*.amazonaws.com https://api.openai.com https://cdn.jsdelivr.net;
   media-src 'self' https://*.amazonaws.com;
   frame-src 'self' https://challenges.cloudflare.com;
   frame-ancestors 'none';
