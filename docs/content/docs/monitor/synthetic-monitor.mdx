@@ -1,0 +1,181 @@
+---
+title: Synthetic Monitor
+description: Run browser-based synthetic tests for real user experience monitoring
+icon: Globe
+---
+
+# Synthetic Monitor
+
+Run automated browser-based tests to monitor user journeys and complex workflows.
+
+## Synthetic Monitoring Flow
+
+```mermaid
+flowchart TB
+    A[Synthetic Monitor] --> B[Launch Browser]
+    B --> C[Configure Browser Context]
+    C --> D[Execute Playwright Script]
+
+    D --> E{Test Steps}
+    E --> F[Navigate to Page]
+    E --> G[Fill Forms]
+    E --> H[Click Buttons]
+    E --> I[Verify Elements]
+    E --> J[Check Content]
+
+    F --> K{Step Result}
+    G --> K
+    H --> K
+    I --> K
+    J --> K
+
+    K -->|Success| L[Continue to Next Step]
+    K -->|Failure| M[Capture Screenshot]
+
+    M --> N[Log Error Details]
+    N --> O[Mark Test Failed]
+
+    L --> P{More Steps?}
+    P -->|Yes| E
+    P -->|No| Q[All Steps Passed]
+
+    Q --> R[Measure Performance]
+    R --> S[Collect Metrics]
+
+    S --> T[Close Browser]
+    O --> T
+
+    T --> U{Test Result}
+    U -->|Pass| V[✓ Success]
+    U -->|Fail| W[✗ Failure]
+
+    V --> X[Update Status]
+    W --> X
+
+    X --> Y{Threshold Met?}
+    Y -->|>= 3 Failures| Z[Send Alert + Screenshots]
+    Y -->|< 3| AA[Continue Monitoring]
+
+    style A fill:#3b82f6,color:#fff
+    style Q fill:#10b981,color:#fff
+    style V fill:#10b981,color:#fff
+    style M fill:#f59e0b,color:#fff
+    style O fill:#ef4444,color:#fff
+    style W fill:#ef4444,color:#fff
+    style Z fill:#ef4444,color:#fff
+```
+
+## Features
+
+- Browser automation with Playwright
+- Real user journey testing
+- Screenshot capture on failures
+- Performance metrics
+- Multi-step workflow testing
+
+## Creating a Synthetic Monitor
+
+```mermaid
+graph LR
+    A[Start] --> B[Navigate to Monitor]
+    B --> C[Click Create]
+    C --> D[Select Synthetic Monitor]
+    D --> E[Write Playwright Script]
+    E --> F[Test Script Locally]
+    F --> G[Configure Schedule]
+    G --> H[Set Success Criteria]
+    H --> I[Choose Browser]
+    I --> J[Select Locations]
+    J --> K[Save Monitor]
+    K --> L[✓ Monitoring Active]
+
+    style A fill:#3b82f6,color:#fff
+    style L fill:#10b981,color:#fff
+    style D fill:#8b5cf6,color:#fff
+    style E fill:#f59e0b,color:#fff
+```
+
+<Steps>
+  <Step>Navigate to **Monitor → Create → Synthetic Monitor**</Step>
+  <Step>Write your Playwright test script</Step>
+  <Step>Configure execution schedule</Step>
+  <Step>Set success criteria</Step>
+  <Step>Choose browser and device settings</Step>
+</Steps>
+
+## User Journey Testing
+
+```mermaid
+sequenceDiagram
+    participant M as Monitor
+    participant B as Browser
+    participant A as Application
+    participant S as System
+
+    M->>B: Launch Headless Browser
+    B->>A: Navigate to Login Page
+    A-->>B: Render Page
+    B->>S: Screenshot: Initial State
+
+    B->>A: Fill Username
+    B->>A: Fill Password
+    B->>A: Click Login Button
+
+    alt Login Success
+        A-->>B: Redirect to Dashboard
+        B->>S: Screenshot: Success
+        B->>A: Verify Dashboard Elements
+        A-->>B: Elements Present
+        B->>M: ✓ Test Passed
+    else Login Failed
+        A-->>B: Show Error Message
+        B->>S: Screenshot: Error
+        B->>M: ✗ Test Failed
+    end
+
+    M->>S: Record Metrics
+    M->>S: Upload Screenshots
+    S->>S: Analyze Results
+```
+
+## Common Use Cases
+
+```mermaid
+mindmap
+  root((Synthetic Monitoring))
+    E-Commerce
+      Checkout Flow
+      Product Search
+      Cart Management
+      Payment Process
+    Authentication
+      Login/Logout
+      Password Reset
+      MFA Flow
+      Session Management
+    User Journeys
+      Registration
+      Profile Update
+      Settings Change
+      Data Export
+    Performance
+      Page Load Time
+      Interactive Elements
+      Form Submission
+      API Response
+```
+
+## Best Practices
+
+- Test critical user journeys end-to-end
+- Keep tests focused and maintainable (single responsibility)
+- Use appropriate wait strategies
+  - `waitForLoadState('networkidle')` for SPAs
+  - `waitForSelector()` for dynamic content
+  - Avoid fixed `wait()` calls
+- Monitor from relevant geographic locations
+- Review screenshots on failures for debugging
+- Set realistic timeouts (30-60 seconds for complex flows)
+- Use descriptive test names and comments
+- Configure alerts for consecutive failures (3+)
+- Capture performance metrics (FCP, LCP, TTI)

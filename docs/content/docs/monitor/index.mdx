@@ -1,0 +1,76 @@
+---
+title: Monitor
+description: 24/7 monitoring of your services and infrastructure
+icon: Activity
+---
+
+# Monitor
+
+Monitor your services, APIs, and infrastructure 24/7 with real-time health checks, alerting, and multi-location monitoring capabilities.
+
+<Callout type="info">
+  Monitors run continuously at configurable intervals and send alerts when issues are detected.
+</Callout>
+
+## Overview
+
+Supercheck's monitoring system provides comprehensive 24/7 monitoring with enterprise-grade reliability, security, and multi-location support for your services and infrastructure.
+
+```mermaid
+graph LR
+    A[Monitors] --> B{Monitor Types}
+    B --> C[HTTP Monitor]
+    B --> D[Website Monitor]
+    B --> E[Ping Monitor]
+    B --> F[Port Monitor]
+    B --> G[Synthetic Monitor]
+
+    C --> H[Multi-Location]
+    D --> H
+    E --> H
+    F --> H
+    G --> H
+
+    H --> I[US East]
+    H --> J[EU Central]
+    H --> K[Asia Pacific]
+
+    I --> L{Health Status}
+    J --> L
+    K --> L
+
+    L --> M[Alerts]
+    L --> N[Status Pages]
+    L --> O[Dashboard]
+
+    style A fill:#3b82f6,color:#fff
+    style H fill:#10b981,color:#fff
+    style L fill:#f59e0b,color:#fff
+    style M fill:#ef4444,color:#fff
+```
+
+## Monitor Types
+
+<Cards>
+  <Card title="HTTP Monitor" description="Advanced HTTP/HTTPS endpoint monitoring" href="./http-monitor" />
+  <Card title="Website Monitor" description="Simple website availability checking" href="./website-monitor" />
+  <Card title="Ping Monitor" description="Network connectivity via ICMP ping" href="./ping-monitor" />
+  <Card title="Port Monitor" description="TCP/UDP port availability monitoring" href="./port-monitor" />
+  <Card title="Synthetic Monitor" description="Playwright-based user journey validation" href="./synthetic-monitor" />
+</Cards>
+
+## Key Features
+
+- **Multi-Location Monitoring**: Check from US East, EU Central, and Asia Pacific
+- **Real-time Alerts**: Instant notifications via multiple channels
+- **SSL Certificate Tracking**: Automatic expiration monitoring
+- **Smart Thresholds**: Prevent alert fatigue with consecutive failure logic
+
+## Quick Start
+
+<Steps>
+  <Step>Choose a monitor type and create your first monitor</Step>
+  <Step>Configure check frequency and location settings</Step>
+  <Step>Set up alerts with threshold logic</Step>
+  <Step>Monitor real-time results and uptime trends</Step>
+</Steps>

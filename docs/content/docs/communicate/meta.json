@@ -1,0 +1,10 @@
+{
+  "title": "Communicate",
+  "icon": "MessageSquare",
+  "defaultOpen": true,
+  "pages": [
+    "dashboard",
+    "alerts",
+    "status-pages"
+  ]
+}

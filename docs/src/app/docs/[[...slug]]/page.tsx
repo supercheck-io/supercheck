@@ -18,7 +18,21 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   const MDX = page.data.body;
 
   return (
-    <DocsPage toc={page.data.toc} full={page.data.full}>
+    <DocsPage
+      toc={page.data.toc}
+      full={page.data.full}
+      lastUpdate={page.data.lastModified}
+      editOnGithub={{
+        owner: 'supercheck-io',
+        repo: 'supercheck',
+        sha: 'main',
+        path: `docs/content/docs/${params.slug?.join('/') || 'index'}.mdx`,
+      }}
+      tableOfContent={{
+        enabled: true,
+        style: 'clerk',
+      }}
+    >
       <DocsTitle>{page.data.title}</DocsTitle>
       <DocsDescription>{page.data.description}</DocsDescription>
       <DocsBody>

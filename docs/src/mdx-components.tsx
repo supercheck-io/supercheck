@@ -1,12 +1,10 @@
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import type { MDXComponents } from "mdx/types";
-import { Tab } from "fumadocs-ui/components/tabs";
-import { Tabs } from "fumadocs-ui/components/tabs";
+import { Tab, Tabs } from "fumadocs-ui/components/tabs";
 import { Callout } from "fumadocs-ui/components/callout";
-import { Step } from "fumadocs-ui/components/steps";
-import { Steps } from "fumadocs-ui/components/steps";
-
-import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
+import { Step, Steps } from "fumadocs-ui/components/steps";
+import { Card, Cards } from "fumadocs-ui/components/card";
+import { Mermaid } from "@/components/mdx/mermaid";
 
 // use this function to get MDX components, you will need it for rendering MDX
 export function getMDXComponents(components?: MDXComponents): MDXComponents {
@@ -17,10 +15,9 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     Step,
     Tabs,
     Tab,
+    Cards,
     Card,
-    CardContent,
-    CardHeader,
-    CardTitle,
+    Mermaid,
     ...components,
   };
 }

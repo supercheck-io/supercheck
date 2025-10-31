@@ -2,9 +2,9 @@
 
 # Supercheck
 
-**Automation & Monitoring Platform for Modern Applications**
+**Enterprise-grade automation and monitoring platform for modern applications.**
 
-[Supercheck](https://supercheck.io) is an enterprise-grade distributed platform engineered for scalability and reliability at scale. It delivers comprehensive test automation with real-time monitoring, intelligent job orchestration, and parallel execution capabilities, empowering development and SRE teams with a robust solution to accelerate software quality and delivery cycles.
+Supercheck delivers comprehensive test automation, real-time monitoring, intelligent job orchestration, and parallel execution capabilities for development and SRE teams.
 
 [![Deploy](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-blue?logo=docker)](./docker-compose.yml)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -13,211 +13,102 @@
 [![Monitoring](https://img.shields.io/badge/Monitoring-Real--time-brightgreen?logo=grafana)](https://supercheck.io)
 [![Testing](https://img.shields.io/badge/Testing-Playwright-red?logo=playwright)](https://playwright.dev)
 
----
-
 ## Features
 
-### Testing & Automation
+**Testing & Automation**
+- Browser (Playwright), API, Database, and custom script execution
+- Interactive code playground with built-in editor
+- Cron-based scheduled jobs with parallel execution
+- AI-powered failure analysis and fix suggestions
 
-- **Test Types**: Browser (Playwright), API, Database, and Custom script execution
-- **Interactive Playground**: Built-in code editor for test development
-- **Scheduled Jobs**: Cron-based test automation with parallel execution
-- **AI-Powered Fixing**: Automated failure analysis and fix suggestions
-- **Artifact Storage**: Reports, screenshots, and videos stored in MinIO
+**Monitoring**
+- Synthetic tests, HTTP/HTTPS, Website, Ping, and Port monitoring
+- Multi-location execution across 3 geographic regions
+- SSL certificate tracking and validation
+- Historical performance metrics
 
-### Monitoring
+**Status Pages**
+- Public status pages with custom branding
+- Incident management and tracking
+- Email and webhook notifications
+- Scheduled maintenance announcements
 
-- **5 Monitor Types**: Synthetic tests, HTTP/HTTPS, Website checks, Ping, Port monitoring
-- **Multi-Location**: Execute checks from 3 geographic regions with configurable strategies
-- **SSL Monitoring**: Certificate expiration tracking and validation
-- **Response Time Metrics**: Historical performance data and trending
+**Alerting**
+- Multi-channel: Email, Slack, Webhooks, Telegram, Discord
+- Configurable failure/recovery thresholds
+- Monitor failures, SSL expiration, job alerts
 
-### Status Pages
-
-- **Public Pages**: UUID-based subdomains for service status communication
-- **Incident Management**: Create, update, and track incidents with workflow states
-- **Subscriber Notifications**: Email and webhook notifications for status changes
-- **Custom Branding**: Configurable colors, logos, and styling
-- **Scheduled Maintenance**: Pre-announce maintenance windows
-
-### Alerting & Notifications
-
-- **Multi-Channel Support**: Email, Slack, Webhooks, Telegram, Discord
-- **Smart Rules**: Configurable failure/recovery thresholds
-- **Alert Types**: Monitor failures, SSL expiration, job failures, recoveries
-
-### Access Control
-
-- **Multi-Tenant**: Organizations and projects with isolated data
-- **RBAC**: 6 permission levels from Super Admin to Project Viewer
-- **API Keys**: Secure programmatic access
-- **Audit Logging**: Complete activity tracking
-
----
+**Access Control**
+- Multi-tenant organizations and projects
+- RBAC with 6 permission levels
+- API keys and audit logging
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│          Next.js App Service            │
-│  Frontend, API Routes, Job Schedulers   │
-└────────────────┬────────────────────────┘
-                 │
-     ┌───────────┼───────────┬──────────────┐
-     ↓           ↓           ↓              ↓
-┌──────────┐ ┌───────┐ ┌─────────┐  ┌──────────────────┐
-│PostgreSQL│ │ Redis │ │  MinIO  │  │  Worker Cluster  │
-│    DB    │ │ Queue │ │ Storage │  │                  │
-└──────────┘ └───────┘ └─────────┘  │ ┌──────────────┐ │
-                 ↓                   │ │  Worker #1   │ │
-                 └───────────────────┼→│  (NestJS)    │ │
-                                     │ └──────────────┘ │
-                                     │ ┌──────────────┐ │
-                                     │ │  Worker #2   │ │
-                                     │ │  (NestJS)    │ │
-                                     │ └──────────────┘ │
-                                     │ ┌──────────────┐ │
-                                     │ │  Worker #N   │ │
-                                     │ │  (NestJS)    │ │
-                                     │ └──────────────┘ │
-                                     └──────────────────┘
+┌─────────────────────────┐
+│   Next.js App Service   │
+│  Frontend + API Routes  │
+└───────────┬─────────────┘
+            │
+    ┌───────┼────────┬──────────┐
+    ↓       ↓        ↓          ↓
+┌────────┐ ┌─────┐ ┌──────┐ ┌────────────┐
+│Postgres│ │Redis│ │MinIO │ │NestJS Workers│
+└────────┘ └─────┘ └──────┘ └────────────┘
 ```
 
-**Technology Stack:**
-
-- **Frontend**: Next.js 16+, React 19+, TypeScript, TailwindCSS
-- **Backend**: NestJS for worker service
-- **Database**: PostgreSQL 18+ with Drizzle ORM
-- **Queue**: Redis + BullMQ for distributed job processing
-- **Storage**: MinIO (S3-compatible) for artifacts
-- **Testing**: Playwright for browser automation
-
----
+**Stack**: Next.js 16 · React 19 · NestJS · PostgreSQL 18 · Redis · MinIO · Playwright
 
 ## Quick Start
 
-### Docker (Recommended)
-
 ```bash
-# Clone repository
+# Clone and setup
 git clone https://github.com/supercheck-io/supercheck.git
 cd supercheck
-
-# Configure environment
 cp .env.example .env
 
-# Start services
+# Start with Docker
 docker-compose up -d
-
-# Create admin user
 docker-compose exec app npm run setup:admin admin@example.com
 ```
 
-Access at: `http://localhost:3000`
-
-### Local Development
-
-```bash
-# Install dependencies
-cd app && npm install
-cd ../worker && npm install
-
-# Configure environment
-cp .env.example .env.local
-
-# Start database
-docker-compose up -d postgres redis minio
-
-# Run migrations
-cd app && npm run db:migrate
-
-# Start services (separate terminals)
-cd app && npm run dev
-cd worker && npm run dev
-```
-
----
-
-## Documentation
-
-- **[Contributing Guide](CONTRIBUTING.md)** - Development setup and guidelines
-- **[Code of Conduct](CODE_OF_CONDUCT.md)** - Community standards
-- **[Support](SUPPORT.md)** - Getting help
-
----
+Access at `http://localhost:3000`
 
 ## Development
 
-### Prerequisites
-
-- Node.js 20.0.0+
-- Docker & Docker Compose
-- PostgreSQL 18+
-- Redis
-
-### Available Commands
-
-**App Service:**
+**Prerequisites**: Node.js 20+ · Docker · PostgreSQL 18+ · Redis
 
 ```bash
-cd app
-npm run dev              # Development server
-npm run build           # Production build
-npm run lint            # Lint code
-npm run db:generate     # Generate migrations
-npm run db:migrate      # Run migrations
+# Local development
+cd app && npm install && npm run db:migrate && npm run dev
+cd worker && npm install && npm run dev
 ```
 
-**Worker Service:**
-
-```bash
-cd worker
-npm run dev             # Development server
-npm run build           # Production build
-npm run lint            # Lint code
-npm run test            # Run tests
-```
-
-### Project Structure
-
+**Project Structure**:
 ```
 supercheck/
-├── app/                # Next.js frontend & API
-│   ├── src/
-│   │   ├── app/       # App Router pages
-│   │   ├── components/# React components
-│   │   ├── lib/       # Services and utilities
-│   │   └── db/        # Database schema
-├── worker/            # NestJS worker service
-│   └── src/
-│       └── modules/   # Worker modules
-├── docs/              # Documentation site
-└── docker-compose.yml # Docker configuration
+├── app/          # Next.js frontend & API
+├── worker/       # NestJS worker service
+└── docker-compose.yml
 ```
 
----
+## Documentation
+
+- [Contributing](CONTRIBUTING.md) - Development guidelines
+- [Code of Conduct](CODE_OF_CONDUCT.md) - Community standards
+- [Support](SUPPORT.md) - Getting help
+- [Security](SECURITY.md) - Vulnerability reporting
 
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-- Development environment setup
-- Code style and conventions
-- Pull request process
-- Testing requirements
+## Community
 
----
+- [GitHub Issues](https://github.com/supercheck-io/supercheck/issues)
+- [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions)
 
 ## License
 
-Licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
----
-
-## Community & Support
-
-- **Issues**: [GitHub Issues](https://github.com/supercheck-io/supercheck/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions)
-- **Support**: See [SUPPORT.md](SUPPORT.md)
-
----
+MIT License - see [LICENSE](LICENSE) for details.

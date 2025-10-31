@@ -1,5 +1,29 @@
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
+import type { LinkItemType } from 'fumadocs-ui/layouts/docs';
 import Image from 'next/image';
+import { BookOpen, Github, ExternalLink } from 'lucide-react';
+
+export const linkItems: LinkItemType[] = [
+  {
+    text: 'Home',
+    url: '/',
+    icon: <BookOpen />,
+  },
+  {
+    type: 'icon',
+    text: 'GitHub',
+    url: 'https://github.com/supercheck-io/supercheck',
+    icon: <Github />,
+    external: true,
+  },
+  {
+    type: 'icon',
+    text: 'Demo',
+    url: 'https://demo.supercheck.io/',
+    icon: <ExternalLink />,
+    external: true,
+  },
+];
 
 /**
  * Shared layout configurations
@@ -20,25 +44,10 @@ export function baseOptions(): BaseLayoutProps {
             height={24}
             className="rounded-md"
           />
-          Supercheck Docs
+          <span className="font-semibold max-md:hidden">Supercheck</span>
         </>
       ),
     },
-    links: [
-      {
-        text: 'Home',
-        url: '/',
-      },
-      {
-        text: 'GitHub',
-        url: 'https://github.com/supercheck-io/supercheck',
-        external: true,
-      },
-      {
-        text: 'Demo',
-        url: 'https://demo.supercheck.io/',
-        external: true,
-      },
-    ],
+    links: linkItems,
   };
 }

@@ -1,0 +1,264 @@
+---
+title: API Test
+description: Test REST APIs and GraphQL endpoints
+icon: Zap
+---
+
+# API Test
+
+Validate your backend APIs with automated HTTP requests and response assertions.
+
+## API Test Execution Flow
+
+```mermaid
+flowchart TB
+    A[API Test] --> B[Build HTTP Request]
+    B --> C[Add Headers]
+    C --> D[Add Authentication]
+    D --> E[Add Body]
+    E --> F[Send Request]
+
+    F --> G{Response Received?}
+    G -->|Yes| H[Parse Response]
+    G -->|No| I[✗ Timeout/Network Error]
+
+    H --> J{Validate Status Code}
+    J -->|Expected| K[✓ Status OK]
+    J -->|Unexpected| L[✗ Status Failed]
+
+    K --> M{Validate Headers}
+    M -->|Pass| N[✓ Headers OK]
+    M -->|Fail| O[✗ Headers Failed]
+
+    N --> P{Validate Body}
+    P -->|JSON Valid| Q[Parse JSON]
+    P -->|XML Valid| R[Parse XML]
+    P -->|Text Match| S[Check Content]
+
+    Q --> T{Assert Data}
+    R --> T
+    S --> T
+
+    T -->|Pass| U[✓ Assertions Passed]
+    T -->|Fail| V[✗ Assertions Failed]
+
+    U --> W{Check Response Time}
+    W -->|< Threshold| X[✓ Performance OK]
+    W -->|> Threshold| Y[⚠ Slow Response]
+
+    I --> Z[Log Error]
+    L --> Z
+    O --> Z
+    V --> Z
+
+    X --> AA[✓ Test Passed]
+    Y --> AA
+
+    Z --> AB[✗ Test Failed]
+
+    style A fill:#3b82f6,color:#fff
+    style K fill:#10b981,color:#fff
+    style N fill:#10b981,color:#fff
+    style U fill:#10b981,color:#fff
+    style X fill:#10b981,color:#fff
+    style AA fill:#10b981,color:#fff
+    style Y fill:#f59e0b,color:#fff
+    style I fill:#ef4444,color:#fff
+    style L fill:#ef4444,color:#fff
+    style O fill:#ef4444,color:#fff
+    style V fill:#ef4444,color:#fff
+    style AB fill:#ef4444,color:#fff
+```
+
+## What is an API Test?
+
+API tests send HTTP requests to your endpoints and validate:
+- Status codes
+- Response body content
+- Response headers
+- Response times
+- Data integrity
+
+## Creating an API Test
+
+```mermaid
+graph LR
+    A[Start] --> B[Click Create]
+    B --> C[Select API Test]
+    C --> D[Configure Request]
+    D --> E[Select Method]
+    E --> F[Enter URL]
+    F --> G[Add Headers]
+    G --> H[Add Body]
+    H --> I[Set Authentication]
+    I --> J[Add Assertions]
+    J --> K[Run Test]
+    K --> L{Test Passes?}
+    L -->|Yes| M[Save Test]
+    L -->|No| N[Debug & Fix]
+    N --> K
+    M --> O[✓ Test Created]
+
+    style A fill:#3b82f6,color:#fff
+    style O fill:#10b981,color:#fff
+    style C fill:#8b5cf6,color:#fff
+    style I fill:#f59e0b,color:#fff
+```
+
+<Steps>
+  <Step>Click **Create → API Test** in the sidebar</Step>
+  <Step>Configure the request (method, URL, headers, body)</Step>
+  <Step>Add assertions for the response</Step>
+  <Step>Run the test</Step>
+</Steps>
+
+## Request/Response Validation
+
+```mermaid
+sequenceDiagram
+    participant T as Test
+    participant R as Request Builder
+    participant A as API Server
+    participant V as Validator
+
+    T->>R: Configure Request
+    R->>R: Set Method & URL
+    R->>R: Add Headers
+    R->>R: Add Auth Token
+    R->>R: Add Request Body
+
+    R->>A: Send HTTP Request
+    Note over A: Process Request
+
+    alt Success Response
+        A-->>V: 200 OK + Data
+        V->>V: Validate Status: 200
+        V->>V: Validate Headers
+        V->>V: Parse JSON Body
+        V->>V: Assert Data Fields
+        V->>V: Check Response Time
+        V-->>T: ✓ All Validations Pass
+    else Error Response
+        A-->>V: 4xx/5xx Error
+        V->>V: Validate Status Code
+        V->>V: Check Error Message
+        V-->>T: ✗ Validation Failed
+    else Timeout
+        A--xV: No Response
+        V-->>T: ✗ Timeout Error
+    end
+```
+
+## Authentication Methods
+
+```mermaid
+graph TB
+    A[API Authentication] --> B[Bearer Token]
+    A --> C[API Key]
+    A --> D[Basic Auth]
+    A --> E[OAuth 2.0]
+
+    B --> B1[JWT Tokens]
+    B --> B2[Authorization Header]
+    B --> B3[Token Refresh]
+
+    C --> C1[X-API-Key Header]
+    C --> C2[Query Parameter]
+    C --> C3[Custom Header]
+
+    D --> D1[Username + Password]
+    D --> D2[Base64 Encoded]
+    D --> D3[Authorization Header]
+
+    E --> E1[Client Credentials]
+    E --> E2[Access Token]
+    E --> E3[Token Endpoint]
+
+    B1 --> F[Secure Request]
+    C1 --> F
+    D1 --> F
+    E1 --> F
+
+    style A fill:#3b82f6,color:#fff
+    style B fill:#10b981,color:#fff
+    style C fill:#8b5cf6,color:#fff
+    style D fill:#f59e0b,color:#fff
+    style E fill:#6366f1,color:#fff
+    style F fill:#10b981,color:#fff
+```
+
+## Example Test
+
+```typescript
+import { test, expect } from '@supercheck/test';
+
+test('GET /api/users returns user list', async ({ request }) => {
+  const response = await request.get('https://api.example.com/users', {
+    headers: {
+      'Authorization': `Bearer ${variables.apiToken}`,
+    },
+  });
+
+  expect(response.status()).toBe(200);
+
+  const data = await response.json();
+  expect(data.users).toBeInstanceOf(Array);
+  expect(data.users.length).toBeGreaterThan(0);
+});
+```
+
+## Common Assertions
+
+```mermaid
+mindmap
+  root((API Test Assertions))
+    Status Code
+      200 Success
+      201 Created
+      400 Bad Request
+      401 Unauthorized
+      404 Not Found
+      500 Server Error
+    Response Body
+      JSON structure
+      Field values
+      Array length
+      Data types
+    Response Headers
+      Content-Type
+      Authorization
+      Cache-Control
+      Custom headers
+    Performance
+      Response time < 500ms
+      Response time < 2s
+      Response time < 5s
+```
+
+## Best Practices
+
+- **Status Codes**: Validate expected status codes (2xx for success, 4xx/5xx for errors)
+- **Response Validation**: Check response structure and data types
+  - Use JSON schema validation for complex responses
+  - Validate required fields are present
+  - Check data types match expectations
+- **Authentication**: Store credentials as variables/secrets
+  - Use `getSecret()` for API tokens
+  - Never hardcode credentials in tests
+- **Performance**: Set appropriate timeout thresholds
+  - Fast APIs: < 500ms
+  - Standard APIs: < 2s
+  - Complex queries: < 5s
+- **Error Handling**: Test both success and error scenarios
+  - Happy path (200 OK)
+  - Validation errors (400)
+  - Authentication errors (401)
+  - Not found errors (404)
+- **Idempotency**: Ensure tests can run multiple times safely
+- **Data Cleanup**: Clean up test data after test completion
+
+## Next Steps
+
+- [Database tests](./database-test)
+- [Custom tests](./custom-test)
+- [View test runs](./runs)

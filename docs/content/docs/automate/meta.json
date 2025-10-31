@@ -1,0 +1,21 @@
+{
+  "title": "Automate",
+  "icon": "Workflow",
+  "defaultOpen": true,
+  "pages": [
+    {
+      "title": "Create",
+      "icon": "Plus",
+      "pages": [
+        "browser-test",
+        "api-test",
+        "database-test",
+        "custom-test"
+      ]
+    },
+    "tests",
+    "jobs",
+    "runs",
+    "variables"
+  ]
+}
