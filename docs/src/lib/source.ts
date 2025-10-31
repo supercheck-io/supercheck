@@ -1,12 +1,19 @@
 import { docs } from '@/.source';
 import { type InferPageType, loader } from 'fumadocs-core/source';
-import { lucideIconsPlugin } from 'fumadocs-core/source/lucide-icons';
+import { createElement, type ComponentType } from 'react';
+import * as icons from 'lucide-react';
 
 // See https://fumadocs.dev/docs/headless/source-api for more info
 export const source = loader({
   baseUrl: '/docs',
   source: docs.toFumadocsSource(),
-  plugins: [lucideIconsPlugin()],
+  icon(icon) {
+    if (!icon) return;
+    if (icon in icons) {
+      const IconComponent = icons[icon as keyof typeof icons] as ComponentType;
+      return createElement(IconComponent);
+    }
+  },
 });
 
 export function getPageImage(page: InferPageType<typeof source>) {

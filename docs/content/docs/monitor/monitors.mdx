@@ -1,0 +1,200 @@
+---
+title: Monitors
+description: View, manage, and organize your monitors
+icon: Activity
+---
+
+# Monitors
+
+The Monitors page provides a centralized view of all your active monitors across all types.
+
+## Monitor Management Architecture
+
+```mermaid
+graph TB
+    A[Monitors Dashboard] --> B[Monitor Types]
+    B --> C[HTTP Monitors]
+    B --> D[Website Monitors]
+    B --> E[Ping Monitors]
+    B --> F[Port Monitors]
+    B --> G[Synthetic Monitors]
+
+    C --> H[Unified Management]
+    D --> H
+    E --> H
+    F --> H
+    G --> H
+
+    H --> I[Actions]
+    I --> J[View Details]
+    I --> K[Edit Config]
+    I --> L[Pause/Resume]
+    I --> M[Delete]
+    I --> N[Clone]
+
+    H --> O[Organization]
+    O --> P[Filter by Type]
+    O --> Q[Group by Tags]
+    O --> R[Search by Name]
+    O --> S[Sort by Status]
+
+    J --> T[Metrics & History]
+    K --> U[Update Settings]
+    L --> V[Status Control]
+    M --> W[Remove Monitor]
+    N --> X[Duplicate Config]
+
+    style A fill:#3b82f6,color:#fff
+    style H fill:#8b5cf6,color:#fff
+    style I fill:#10b981,color:#fff
+    style O fill:#f59e0b,color:#fff
+```
+
+## Monitor Dashboard
+
+View all your monitors in one place:
+
+- Monitor status and health
+- Recent check results
+- Response times and trends
+- Alert history
+- Configuration details
+
+## Monitor Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Created: New Monitor
+    Created --> Active: Start Monitoring
+    Active --> Checking: Execute Check
+    Checking --> Healthy: All Checks Pass
+    Checking --> Degraded: Some Checks Fail
+    Checking --> Down: Threshold Exceeded
+
+    Healthy --> Checking: Next Interval
+    Degraded --> Checking: Next Interval
+    Down --> Checking: Next Interval
+
+    Degraded --> Alert: Consecutive Failures
+    Down --> Alert: Send Notification
+
+    Active --> Paused: User Pauses
+    Paused --> Active: User Resumes
+
+    Active --> Updating: Edit Configuration
+    Updating --> Active: Save Changes
+
+    Active --> [*]: Delete Monitor
+    Paused --> [*]: Delete Monitor
+
+    note right of Healthy
+        All checks passing
+        No alerts
+    end note
+
+    note right of Degraded
+        Intermittent failures
+        Below threshold
+    end note
+
+    note right of Down
+        Consecutive failures
+        Alerting active
+    end note
+```
+
+## Monitor Actions
+
+```mermaid
+graph LR
+    A[Monitor Actions] --> B[View Details]
+    A --> C[Edit Config]
+    A --> D[Pause/Resume]
+    A --> E[Delete]
+    A --> F[Clone]
+
+    B --> B1[Metrics Dashboard]
+    B --> B2[Check History]
+    B --> B3[Alert Logs]
+    B --> B4[Performance Trends]
+
+    C --> C1[Update URL]
+    C --> C2[Change Interval]
+    C --> C3[Modify Alerts]
+    C --> C4[Update Locations]
+
+    D --> D1[Temporary Disable]
+    D --> D2[Maintenance Mode]
+
+    E --> E1[Confirm Deletion]
+    E --> E2[Remove Data]
+
+    F --> F1[Copy Settings]
+    F --> F2[New Monitor]
+
+    style A fill:#3b82f6,color:#fff
+    style B fill:#10b981,color:#fff
+    style C fill:#f59e0b,color:#fff
+    style D fill:#8b5cf6,color:#fff
+    style E fill:#ef4444,color:#fff
+    style F fill:#6366f1,color:#fff
+```
+
+## Organization & Filtering
+
+```mermaid
+graph TB
+    A[Monitor Organization] --> B[Filters]
+    A --> C[Grouping]
+    A --> D[Search]
+    A --> E[Sorting]
+
+    B --> B1[By Type]
+    B --> B2[By Status]
+    B --> B3[By Location]
+    B --> B4[By Alert State]
+
+    C --> C1[By Service]
+    C --> C2[By Team]
+    C --> C3[By Environment]
+    C --> C4[By Tags]
+
+    D --> D1[Monitor Name]
+    D --> D2[URL/Hostname]
+    D --> D3[Description]
+
+    E --> E1[Status Priority]
+    E --> E2[Response Time]
+    E --> E3[Last Check Time]
+    E --> E4[Alphabetical]
+
+    B1 --> F[Filtered View]
+    B2 --> F
+    C1 --> F
+    D1 --> F
+    E1 --> F
+
+    style A fill:#3b82f6,color:#fff
+    style B fill:#10b981,color:#fff
+    style C fill:#8b5cf6,color:#fff
+    style D fill:#f59e0b,color:#fff
+    style E fill:#6366f1,color:#fff
+    style F fill:#10b981,color:#fff
+```
+
+## Best Practices
+
+- **Naming**: Use descriptive monitor names that clearly identify what's being monitored
+  - Good: "Production API - User Service"
+  - Bad: "Monitor 1"
+- **Tagging**: Tag monitors by service, team, or environment for easy filtering
+  - `service:api`, `team:backend`, `env:production`
+- **Review**: Regularly review monitor performance and adjust thresholds
+  - Check for false positives
+  - Adjust failure thresholds based on actual patterns
+- **Cleanup**: Remove or pause unused monitors to reduce noise
+- **Alert Routing**: Set up proper alert routing to notify the right teams
+  - Use tags to route alerts to specific channels
+  - Configure escalation policies
+- **Documentation**: Add descriptions to monitors explaining their purpose
+- **Maintenance**: Use pause feature during planned maintenance windows

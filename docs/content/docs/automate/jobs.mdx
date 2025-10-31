@@ -1,0 +1,210 @@
+---
+title: Jobs
+description: Group and schedule tests together
+icon: Briefcase
+---
+
+# Jobs
+
+Group related tests and run them as a suite on a schedule or on-demand.
+
+## Job Architecture
+
+```mermaid
+graph TB
+    A[Job] --> B[Test Selection]
+    A --> C[Execution Mode]
+    A --> D[Schedule]
+    A --> E[Triggers]
+
+    B --> B1[Test 1]
+    B --> B2[Test 2]
+    B --> B3[Test N]
+
+    C --> C1[Sequential]
+    C --> C2[Parallel]
+
+    D --> D1[Cron Schedule]
+    D --> D2[Time Zone]
+
+    E --> E1[Manual]
+    E --> E2[Scheduled]
+    E --> E3[Remote API]
+
+    B1 --> F[Execution]
+    B2 --> F
+    B3 --> F
+
+    F --> G{Results}
+    G -->|Success| H[✓ Pass]
+    G -->|Failure| I[✗ Fail]
+
+    H --> J[Generate Reports]
+    I --> J
+
+    J --> K[Send Alerts]
+    K --> L[Update Dashboard]
+
+    style A fill:#3b82f6,color:#fff
+    style F fill:#8b5cf6,color:#fff
+    style H fill:#10b981,color:#fff
+    style I fill:#ef4444,color:#fff
+    style J fill:#f59e0b,color:#fff
+```
+
+## What is a Job?
+
+Jobs allow you to:
+- Run multiple tests together
+- Schedule recurring executions
+- Create test suites
+- Trigger from CI/CD
+
+## Execution Modes Comparison
+
+```mermaid
+graph LR
+    subgraph Sequential
+    S1[Test 1] --> S2[Test 2]
+    S2 --> S3[Test 3]
+    S3 --> S4[Test 4]
+    end
+
+    subgraph Parallel
+    P1[Test 1]
+    P2[Test 2]
+    P3[Test 3]
+    P4[Test 4]
+    end
+
+    Sequential --> R1[Total: 40min]
+    Parallel --> R2[Total: 10min]
+
+    style Sequential fill:#3b82f6,color:#fff
+    style Parallel fill:#10b981,color:#fff
+    style R1 fill:#f59e0b,color:#000
+    style R2 fill:#10b981,color:#fff
+```
+
+### Sequential Mode
+Run tests one after another. Use when:
+- Tests depend on each other
+- Testing a workflow
+- Resource constraints exist
+
+### Parallel Mode
+Run tests simultaneously. Use when:
+- Tests are independent
+- Faster execution needed
+- Testing different features
+
+## Creating a Job
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant UI as Supercheck UI
+    participant API as API Server
+    participant DB as Database
+    participant W as Worker
+
+    U->>UI: Click Create Job
+    UI->>U: Show Job Form
+    U->>UI: Enter Job Details
+    U->>UI: Select Tests
+    U->>UI: Configure Schedule
+    U->>API: POST /api/jobs
+    API->>DB: Save Job Config
+    DB-->>API: Job Created
+    API-->>UI: Job ID
+    UI-->>U: ✓ Job Created
+
+    Note over W: When scheduled time arrives...
+    W->>DB: Fetch Job Config
+    DB-->>W: Job + Tests
+    W->>W: Execute Tests
+    W->>DB: Save Results
+    W->>API: Send Alerts
+    API-->>U: Notification
+```
+
+### Configuration Steps
+
+<Steps>
+  <Step>Navigate to **Jobs** in the sidebar</Step>
+  <Step>Click **Create Job**</Step>
+  <Step>Give your job a name</Step>
+  <Step>Add tests to the job</Step>
+  <Step>Configure execution settings (Sequential/Parallel)</Step>
+  <Step>Set up a schedule (optional)</Step>
+</Steps>
+
+## Scheduling Options
+
+```mermaid
+graph TB
+    A[Job Scheduling] --> B[Frequency]
+    B --> C[Hourly]
+    B --> D[Daily]
+    B --> E[Weekly]
+    B --> F[Custom Cron]
+    B --> G[On-Demand]
+
+    C --> H[Every N hours]
+    D --> I[Specific time]
+    E --> J[Specific days]
+    F --> K[Cron expression]
+    G --> L[API trigger]
+
+    H --> M[Time Zone]
+    I --> M
+    J --> M
+    K --> M
+
+    M --> N[Execution]
+
+    style A fill:#3b82f6,color:#fff
+    style B fill:#8b5cf6,color:#fff
+    style M fill:#f59e0b,color:#fff
+    style N fill:#10b981,color:#fff
+```
+
+Schedule jobs to run:
+- **Hourly**: Every 1-24 hours
+- **Daily**: At specific time
+- **Weekly**: On specific days
+- **Custom cron**: Advanced scheduling
+- **On-demand**: Via API trigger
+
+## Use Cases
+
+```mermaid
+mindmap
+  root((Job Use Cases))
+    Regression Testing
+      Critical paths
+      Before deployment
+      Full coverage
+    Smoke Tests
+      Quick validation
+      After releases
+      Core features
+    Nightly Tests
+      Comprehensive suite
+      Off-hours
+      Performance tests
+    Environment Validation
+      All services
+      New deployment
+      Integration tests
+    Monitoring
+      Synthetic monitoring
+      User journeys
+      24/7 checks
+```
+
+## Next Steps
+
+- [View job runs](./runs)
+- [Set up monitoring](../monitor)
+- [Configure alerts](../communicate/alerts)

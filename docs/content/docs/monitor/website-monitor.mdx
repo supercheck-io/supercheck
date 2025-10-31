@@ -1,0 +1,105 @@
+---
+title: Website Monitor
+description: Monitor website availability and performance
+icon: Monitor
+---
+
+# Website Monitor
+
+Monitor your websites to ensure they're accessible and performing well for your users.
+
+## Website Monitoring Flow
+
+```mermaid
+flowchart TB
+    A[Website Monitor] --> B{Check Type}
+    B --> C[HTTP Request]
+    B --> D[SSL Verification]
+    B --> E[Keyword Check]
+
+    C --> F{Status Code}
+    F -->|2xx/3xx| G[✓ Success]
+    F -->|4xx/5xx| H[✗ Failure]
+    F -->|Timeout| I[⏱ Timeout]
+
+    D --> J{Certificate Valid?}
+    J -->|Yes| K[Check Expiry]
+    J -->|No| L[Alert: Invalid Cert]
+
+    K -->|> 30 days| M[✓ OK]
+    K -->|< 30 days| N[⚠ Expiring Soon]
+    K -->|Expired| O[✗ Expired]
+
+    E --> P{Keyword Found?}
+    P -->|Yes| Q[✓ Content Valid]
+    P -->|No| R[✗ Content Error]
+
+    G --> S[Update Status]
+    H --> S
+    I --> S
+    M --> S
+    N --> S
+    O --> S
+    Q --> S
+    R --> S
+
+    S --> T{Threshold Met?}
+    T -->|Yes| U[Send Alerts]
+    T -->|No| V[Continue Monitoring]
+
+    style A fill:#3b82f6,color:#fff
+    style G fill:#10b981,color:#fff
+    style M fill:#10b981,color:#fff
+    style Q fill:#10b981,color:#fff
+    style H fill:#ef4444,color:#fff
+    style L fill:#ef4444,color:#fff
+    style O fill:#ef4444,color:#fff
+    style R fill:#ef4444,color:#fff
+    style N fill:#f59e0b,color:#fff
+    style I fill:#f59e0b,color:#fff
+```
+
+## Features
+
+- Page load time monitoring
+- Content verification
+- SSL certificate monitoring
+- Response code tracking
+- Performance metrics
+
+## Creating a Website Monitor
+
+```mermaid
+graph LR
+    A[Start] --> B[Navigate to Monitor]
+    B --> C[Click Create]
+    C --> D[Select Website Monitor]
+    D --> E[Enter URL]
+    E --> F[Configure Intervals]
+    F --> G[Set Up Alerts]
+    G --> H[Choose Locations]
+    H --> I[Save Monitor]
+    I --> J[✓ Monitoring Active]
+
+    style A fill:#3b82f6,color:#fff
+    style J fill:#10b981,color:#fff
+    style D fill:#8b5cf6,color:#fff
+    style G fill:#f59e0b,color:#fff
+```
+
+### Configuration Steps
+
+<Steps>
+  <Step>Navigate to **Monitor → Create → Website Monitor**</Step>
+  <Step>Enter your website URL</Step>
+  <Step>Configure check intervals (1-60 minutes)</Step>
+  <Step>Set up alerts for downtime</Step>
+  <Step>Choose monitoring locations (US East, EU Central, Asia Pacific)</Step>
+</Steps>
+
+## Best Practices
+
+- Monitor from multiple geographic locations
+- Set realistic timeout thresholds
+- Monitor SSL certificate expiration
+- Track performance trends over time

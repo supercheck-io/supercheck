@@ -1,0 +1,191 @@
+---
+title: HTTP Monitor
+description: Monitor HTTP/HTTPS endpoints for availability and performance
+icon: Zap
+---
+
+# HTTP Monitor
+
+Monitor HTTP/HTTPS endpoints to ensure your APIs and web services are responding correctly.
+
+## HTTP Monitoring Flow
+
+```mermaid
+flowchart TB
+    A[HTTP Monitor] --> B[Build Request]
+    B --> C[Add Headers]
+    C --> D[Add Authentication]
+    D --> E[Send HTTP Request]
+
+    E --> F{Response Received?}
+    F -->|Yes| G[Check Status Code]
+    F -->|No| H[✗ Timeout]
+
+    G --> I{Status Code}
+    I -->|2xx| J[✓ Success]
+    I -->|3xx| K[⚠ Redirect]
+    I -->|4xx| L[✗ Client Error]
+    I -->|5xx| M[✗ Server Error]
+
+    J --> N[Validate Response Body]
+    K --> N
+
+    N --> O{Content Validation}
+    O -->|JSON Valid| P[Parse JSON]
+    O -->|XML Valid| Q[Parse XML]
+    O -->|Text Match| R[Check Keywords]
+    O -->|Skip| S[Response Time Check]
+
+    P --> S
+    Q --> S
+    R --> S
+
+    S --> T{Response Time}
+    T -->|< 500ms| U[✓ Fast]
+    T -->|500-2000ms| V[⚠ Moderate]
+    T -->|> 2000ms| W[✗ Slow]
+
+    H --> X[Update Metrics]
+    L --> X
+    M --> X
+    U --> X
+    V --> X
+    W --> X
+
+    X --> Y{Threshold Met?}
+    Y -->|>= 3 Failures| Z[Send Alert]
+    Y -->|< 3| AA[Continue Monitoring]
+
+    Z --> AB[Notify Team]
+    AB --> AC{Recovers?}
+    AC -->|Yes| AD[Recovery Alert]
+    AC -->|No| AA
+
+    style A fill:#3b82f6,color:#fff
+    style J fill:#10b981,color:#fff
+    style U fill:#10b981,color:#fff
+    style K fill:#f59e0b,color:#fff
+    style V fill:#f59e0b,color:#fff
+    style H fill:#ef4444,color:#fff
+    style L fill:#ef4444,color:#fff
+    style M fill:#ef4444,color:#fff
+    style W fill:#ef4444,color:#fff
+    style Z fill:#ef4444,color:#fff
+    style AD fill:#10b981,color:#fff
+```
+
+## Features
+
+- Request/response validation
+- Custom headers and authentication
+- Response time tracking
+- Status code monitoring
+- JSON/XML response validation
+
+## Creating an HTTP Monitor
+
+```mermaid
+graph LR
+    A[Start] --> B[Navigate to Monitor]
+    B --> C[Click Create]
+    C --> D[Select HTTP Monitor]
+    D --> E[Enter URL]
+    E --> F[Select Method]
+    F --> G[Add Headers]
+    G --> H[Configure Auth]
+    H --> I[Set Success Criteria]
+    I --> J[Choose Interval]
+    J --> K[Select Locations]
+    K --> L[Save Monitor]
+    L --> M[✓ Monitoring Active]
+
+    style A fill:#3b82f6,color:#fff
+    style M fill:#10b981,color:#fff
+    style D fill:#8b5cf6,color:#fff
+    style H fill:#f59e0b,color:#fff
+```
+
+<Steps>
+  <Step>Navigate to **Monitor → Create → HTTP Monitor**</Step>
+  <Step>Configure your endpoint URL</Step>
+  <Step>Set up request headers and authentication if needed</Step>
+  <Step>Define success criteria (status codes, response validation)</Step>
+  <Step>Set monitoring interval and locations</Step>
+</Steps>
+
+## Request Methods & Use Cases
+
+```mermaid
+graph TB
+    A[HTTP Methods] --> B[GET]
+    A --> C[POST]
+    A --> D[PUT]
+    A --> E[DELETE]
+    A --> F[HEAD]
+
+    B --> B1[Health Checks]
+    B --> B2[API Endpoints]
+    B --> B3[Web Pages]
+
+    C --> C1[Form Submissions]
+    C --> C2[API Creation]
+    C --> C3[Login Endpoints]
+
+    D --> D1[Update Operations]
+    D --> D2[Configuration]
+
+    E --> E1[Deletion Validation]
+
+    F --> F1[Quick Availability]
+    F --> F2[Headers Only]
+
+    style A fill:#3b82f6,color:#fff
+    style B fill:#10b981,color:#fff
+    style C fill:#8b5cf6,color:#fff
+    style D fill:#f59e0b,color:#fff
+    style E fill:#ef4444,color:#fff
+    style F fill:#6366f1,color:#fff
+```
+
+## Authentication Types
+
+```mermaid
+graph LR
+    A[Authentication] --> B[Basic Auth]
+    A --> C[Bearer Token]
+    A --> D[API Key]
+    A --> E[Custom Headers]
+
+    B --> F[Username + Password]
+    C --> G[OAuth/JWT Tokens]
+    D --> H[X-API-Key Header]
+    E --> I[Custom Header Name]
+
+    F --> J[Base64 Encoded]
+    G --> K[Authorization Header]
+    H --> K
+    I --> K
+
+    K --> L[Secure Monitoring]
+
+    style A fill:#3b82f6,color:#fff
+    style B fill:#10b981,color:#fff
+    style C fill:#8b5cf6,color:#fff
+    style D fill:#f59e0b,color:#fff
+    style E fill:#6366f1,color:#fff
+    style L fill:#10b981,color:#fff
+```
+
+## Best Practices
+
+- Monitor critical API endpoints with appropriate HTTP methods
+- Set appropriate timeout values based on endpoint complexity
+  - Simple GET: 5-10 seconds
+  - Complex POST: 15-30 seconds
+- Use authentication when monitoring protected endpoints
+- Validate response body content for critical APIs
+- Monitor from multiple locations to detect regional issues
+- Track response time trends for performance monitoring
+- Configure alerts for consecutive failures (3+)
+- Use HEAD requests for simple availability checks (faster)
+- Set up proper success criteria (2xx status codes + content validation)

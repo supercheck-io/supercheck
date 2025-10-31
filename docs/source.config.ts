@@ -7,6 +7,7 @@ import {
 import {
   rehypeCodeDefaultOptions,
   remarkSteps,
+  remarkMdxMermaid,
 } from "fumadocs-core/mdx-plugins";
 import { z } from "zod";
 
@@ -50,6 +51,6 @@ export default defineConfig({
         id: "package-manager",
       },
     },
-    remarkPlugins: [remarkSteps],
+    remarkPlugins: [remarkSteps, remarkMdxMermaid],
   },
 });
