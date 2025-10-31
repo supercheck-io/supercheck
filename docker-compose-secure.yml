@@ -21,9 +21,9 @@ x-common-env: &common-env # Database Configuration
   BETTER_AUTH_URL: https://demo.supercheck.io
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
-  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-3} # Optimized for 4-core server: 4 workers × 1.5 jobs per worker
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-6} # 3 worker replicas × 2 concurrent runs (keep env + replicas in sync)
   QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10} # Max queued jobs before backpressure (default: 10)
-  MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-2} # Max parallel tests per worker (default: 1, use worker replicas for parallelism)
+  MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-2} # Two Playwright runs per worker; scale replicas before raising this
   TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-120000}
   JOB_EXECUTION_TIMEOUT_MS: ${JOB_EXECUTION_TIMEOUT_MS:-900000}
 
@@ -262,10 +262,14 @@ services:
     networks:
       - supercheck-network
     deploy:
-      replicas: 3 # Balanced for performance and stability
-      # REMOVED RESOURCE LIMITS - Let Docker and the host OS manage resources
-      # Docker will kill the container if it goes rogue (OOM killer, etc.)
-      # This prevents artificial constraints from breaking legitimate tests
+      replicas: 3 # Default footprint for an 8 vCPU / 16 GB host; add replicas to scale horizontally
+      resources:
+        limits:
+          cpus: "2.0" # Cap each worker at 2 vCPU so the host retains headroom for browsers and system services
+          memory: 4G # Empirically enough for two concurrent Playwright runs with trace/video enabled
+        reservations:
+          cpus: "1.0" # Ensure each worker always has at least one dedicated core
+          memory: 3072M # Reserve ~3 GB so the scheduler cannot overcommit browsers
 
       # Container Restart Protection (handles stuck/crashed containers)
       restart_policy:
@@ -326,6 +330,8 @@ services:
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-supersecure-redis-password-change-this}
     command: sh -c "rm -rf /data/* && redis-server --requirepass \"${REDIS_PASSWORD:-supersecure-redis-password-change-this}\" --maxmemory 512mb --maxmemory-policy noeviction --save '' --appendonly no --protected-mode yes --bind 0.0.0.0 --tcp-keepalive 300"
+    sysctls:
+      - vm.overcommit_memory=1
     volumes:
       - redis-data:/data
     restart: unless-stopped
