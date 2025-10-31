@@ -1,3 +1,9 @@
 {
-  "pages": ["getting-started", "features", "guides", "resources"]
+  "title": "Documentation",
+  "pages": [
+    "quickstart",
+    "communicate",
+    "automate",
+    "monitor"
+  ]
 }

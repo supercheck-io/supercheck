@@ -1,0 +1,305 @@
+---
+title: Variables
+description: Store and reuse configuration values
+icon: Variable
+---
+
+# Variables
+
+Store reusable values like URLs, credentials, and configuration data securely.
+
+## Variable System Architecture
+
+```mermaid
+graph TB
+    A[Variables] --> B{Type}
+    B --> C[Regular Variables]
+    B --> D[Secrets]
+
+    C --> E[Plain Text Storage]
+    D --> F[AES-128-GCM Encryption]
+
+    E --> G[Project Scoped]
+    F --> G
+
+    G --> H[Access Control]
+    H --> I{Role}
+    I -->|Owner/Admin| J[Full Access]
+    I -->|Editor| K[Read/Write]
+    I -->|Viewer| L[No Access]
+
+    J --> M[getVariable]
+    K --> M
+    J --> N[getSecret]
+    K --> N
+
+    M --> O[Test Execution]
+    N --> O
+
+    O --> P{Usage}
+    P --> Q[Browser Tests]
+    P --> R[API Tests]
+    P --> S[Database Tests]
+    P --> T[Custom Scripts]
+
+    style A fill:#3b82f6,color:#fff
+    style C fill:#10b981,color:#fff
+    style D fill:#ef4444,color:#fff
+    style F fill:#f59e0b,color:#fff
+    style O fill:#8b5cf6,color:#fff
+```
+
+## Variable Types Comparison
+
+```mermaid
+graph LR
+    subgraph RegularVariables[Regular Variables]
+    V1[URLs]
+    V2[Timeouts]
+    V3[Config]
+    V4[Feature Flags]
+    end
+
+    subgraph Secrets[Secrets]
+    S1[API Keys]
+    S2[Passwords]
+    S3[Tokens]
+    S4[Credentials]
+    end
+
+    V1 --> A[Plain Text]
+    V2 --> A
+    V3 --> A
+    V4 --> A
+
+    S1 --> B[Encrypted]
+    S2 --> B
+    S3 --> B
+    S4 --> B
+
+    A --> C[Visible in UI]
+    B --> D[Masked in UI]
+
+    C --> E[Can Log]
+    D --> F[Cannot Log]
+
+    style RegularVariables fill:#10b981,color:#fff
+    style Secrets fill:#ef4444,color:#fff
+    style B fill:#f59e0b,color:#fff
+    style F fill:#ef4444,color:#fff
+```
+
+## Variable Lifecycle
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant UI as Settings UI
+    participant API as API Server
+    participant DB as Database
+    participant E as Encryption Service
+    participant T as Test Execution
+
+    U->>UI: Create Variable
+    UI->>U: Enter Key & Value
+    U->>UI: Mark as Secret
+    UI->>API: POST /variables
+
+    alt Is Secret
+        API->>E: Encrypt Value
+        E-->>API: Encrypted Data
+        API->>DB: Store Encrypted
+    else Regular Variable
+        API->>DB: Store Plain Text
+    end
+
+    DB-->>API: Saved
+    API-->>UI: Success
+    UI-->>U: Variable Created
+
+    Note over T: When test runs...
+
+    T->>API: Request Variables
+    API->>DB: Fetch Project Variables
+    DB-->>API: Variables Data
+
+    alt Is Secret
+        API->>E: Decrypt Value
+        E-->>API: Plain Value
+    end
+
+    API-->>T: Inject Variables
+    T->>T: Execute with Variables
+```
+
+## Using Variables in Tests
+
+### Regular Variables
+```javascript
+// Configuration values
+const baseUrl = getVariable("BASE_URL");
+const timeout = getVariable("TIMEOUT", { type: "number" });
+const username = getVariable("TEST_USERNAME");
+
+// Use in your tests
+await page.goto(baseUrl + "/login");
+await page.fill("#username", username);
+```
+
+### Secrets (Protected from Logging)
+```javascript
+// Sensitive data
+const apiKey = getSecret("API_KEY");
+const password = getSecret("DB_PASSWORD");
+const token = getSecret("AUTH_TOKEN");
+
+// Safe usage - actual values hidden in logs
+await page.fill("#password", password);
+await page.setExtraHTTPHeaders({
+  Authorization: `Bearer ${token}`
+});
+
+// Protected from logging
+console.log(apiKey); // Shows: "[SECRET]"
+console.log(`Key: ${apiKey}`); // Shows: "Key: [SECRET]"
+```
+
+## Secret Protection Flow
+
+```mermaid
+flowchart TB
+    A[getSecret Called] --> B{Context}
+
+    B -->|Console.log| C[Return '[SECRET]']
+    B -->|JSON.stringify| D[Return '[SECRET]']
+    B -->|String Template| E[Return '[SECRET]']
+    B -->|Playwright Action| F[Use Actual Value]
+    B -->|API Call| G[Use Actual Value]
+    B -->|Comparison| H[Use Actual Value]
+
+    F --> I[✓ Test Executes]
+    G --> I
+    H --> I
+
+    C --> J[✓ Logs Protected]
+    D --> J
+    E --> J
+
+    style A fill:#3b82f6,color:#fff
+    style F fill:#10b981,color:#fff
+    style G fill:#10b981,color:#fff
+    style H fill:#10b981,color:#fff
+    style C fill:#ef4444,color:#fff
+    style D fill:#ef4444,color:#fff
+    style E fill:#ef4444,color:#fff
+    style J fill:#f59e0b,color:#fff
+```
+
+## Best Practices
+
+```mermaid
+mindmap
+  root((Variable Best Practices))
+    Naming
+      UPPER_CASE
+      Descriptive names
+      Consistent prefixes
+      No special chars
+    Organization
+      Group by environment
+      Document purpose
+      Version control
+      Team access
+    Security
+      Mark sensitive as Secret
+      Rotate regularly
+      Limit access
+      Audit usage
+    Usage
+      Use getVariable for config
+      Use getSecret for sensitive
+      Validate existence
+      Provide defaults
+```
+
+## Access Control Matrix
+
+```mermaid
+graph TB
+    A[User Roles] --> B[Owner]
+    A --> C[Admin]
+    A --> D[Editor]
+    A --> E[Viewer]
+
+    B --> F[Create Variables]
+    B --> G[Update Variables]
+    B --> H[Delete Variables]
+    B --> I[View Secrets]
+
+    C --> F
+    C --> G
+    C --> H
+    C --> I
+
+    D --> F
+    D --> G
+    D --> J[View Public Only]
+
+    E --> K[No Access]
+
+    style B fill:#10b981,color:#fff
+    style C fill:#10b981,color:#fff
+    style D fill:#f59e0b,color:#fff
+    style E fill:#ef4444,color:#fff
+    style K fill:#ef4444,color:#fff
+```
+
+## Creating Variables
+
+<Steps>
+  <Step>Navigate to **Automate → Variables**</Step>
+  <Step>Click **Add Variable**</Step>
+  <Step>Enter variable key (e.g., `API_KEY`)</Step>
+  <Step>Enter variable value</Step>
+  <Step>Toggle **Secret** if sensitive data</Step>
+  <Step>Add optional description</Step>
+  <Step>Save variable</Step>
+</Steps>
+
+## Common Use Cases
+
+### Environment Configuration
+```javascript
+const env = getVariable("ENVIRONMENT"); // "production"
+const apiUrl = getVariable(`${env.toUpperCase()}_API_URL`);
+const dbHost = getVariable(`${env.toUpperCase()}_DB_HOST`);
+```
+
+### Feature Flags
+```javascript
+const featureEnabled = getVariable("NEW_FEATURE_ENABLED", {
+  type: "boolean",
+  default: false
+});
+
+if (featureEnabled) {
+  // Test new feature
+}
+```
+
+### Database Connections
+```javascript
+const dbConfig = {
+  host: getVariable("DB_HOST"),
+  port: getVariable("DB_PORT", { type: "number" }),
+  database: getVariable("DB_NAME"),
+  user: getVariable("DB_USER"),
+  password: getSecret("DB_PASSWORD")
+};
+```
+
+## Next Steps
+
+- [Use variables in tests](./tests)
+- [Configure jobs with variables](./jobs)
+- [Set up environment-specific configs](./tests)

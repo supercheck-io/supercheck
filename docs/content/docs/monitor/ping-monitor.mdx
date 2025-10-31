@@ -1,0 +1,125 @@
+---
+title: Ping Monitor
+description: Monitor host availability via ICMP ping
+icon: Activity
+---
+
+# Ping Monitor
+
+Monitor network connectivity and host availability using ICMP ping.
+
+## Ping Monitoring Flow
+
+```mermaid
+flowchart TB
+    A[Ping Monitor] --> B[Send ICMP Echo Request]
+    B --> C{Response Received?}
+
+    C -->|Yes| D[Calculate Latency]
+    C -->|No| E[Timeout]
+
+    D --> F{Latency Threshold}
+    F -->|< 200ms| G[✓ Excellent]
+    F -->|200-500ms| H[⚠ Warning]
+    F -->|> 500ms| I[✗ Slow]
+
+    E --> J[Packet Loss Detected]
+    J --> K{Consecutive Failures}
+    K -->|< 3| L[Continue Monitoring]
+    K -->|>= 3| M[Send Alert]
+
+    G --> N[Update Metrics]
+    H --> N
+    I --> N
+
+    N --> O[Record Results]
+    O --> P[Dashboard Update]
+
+    M --> Q[Notify Team]
+    Q --> R{Host Recovers?}
+    R -->|Yes| S[Recovery Alert]
+    R -->|No| L
+
+    style A fill:#3b82f6,color:#fff
+    style G fill:#10b981,color:#fff
+    style H fill:#f59e0b,color:#fff
+    style I fill:#ef4444,color:#fff
+    style J fill:#ef4444,color:#fff
+    style M fill:#ef4444,color:#fff
+    style S fill:#10b981,color:#fff
+```
+
+## Features
+
+- ICMP ping monitoring
+- Latency tracking
+- Packet loss detection
+- Network diagnostics
+- Multi-location testing
+
+## Creating a Ping Monitor
+
+```mermaid
+graph LR
+    A[Start] --> B[Navigate to Monitor]
+    B --> C[Click Create]
+    C --> D[Select Ping Monitor]
+    D --> E[Enter Hostname/IP]
+    E --> F[Configure Interval]
+    F --> G[Set Packet Count]
+    G --> H[Set Timeout]
+    H --> I[Choose Locations]
+    I --> J[Save Monitor]
+    J --> K[✓ Monitoring Active]
+
+    style A fill:#3b82f6,color:#fff
+    style K fill:#10b981,color:#fff
+    style D fill:#8b5cf6,color:#fff
+    style I fill:#f59e0b,color:#fff
+```
+
+<Steps>
+  <Step>Navigate to **Monitor → Create → Ping Monitor**</Step>
+  <Step>Enter the hostname or IP address</Step>
+  <Step>Configure ping interval (1-60 minutes)</Step>
+  <Step>Set packet count and timeout</Step>
+  <Step>Choose monitoring locations (US East, EU Central, Asia Pacific)</Step>
+</Steps>
+
+## Latency Metrics
+
+```mermaid
+graph TB
+    A[ICMP Ping] --> B[Measure Round-Trip Time]
+    B --> C{Latency Analysis}
+
+    C --> D[Min Latency]
+    C --> E[Avg Latency]
+    C --> F[Max Latency]
+    C --> G[Packet Loss %]
+
+    D --> H[Performance Dashboard]
+    E --> H
+    F --> H
+    G --> H
+
+    H --> I{Alert Conditions}
+    I -->|High Latency| J[Latency Alert]
+    I -->|Packet Loss| K[Loss Alert]
+    I -->|No Issues| L[✓ Healthy]
+
+    style A fill:#3b82f6,color:#fff
+    style H fill:#8b5cf6,color:#fff
+    style J fill:#ef4444,color:#fff
+    style K fill:#ef4444,color:#fff
+    style L fill:#10b981,color:#fff
+```
+
+## Best Practices
+
+- Monitor critical infrastructure
+- Set appropriate timeout values (5-10 seconds)
+- Monitor from multiple geographic locations
+- Track latency trends over time
+- Set packet count to 3-5 for reliability
+- Configure alerts for consecutive failures (3+)
