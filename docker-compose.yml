@@ -253,8 +253,6 @@ services:
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-supersecure-redis-password-change-this}
     command: sh -c "rm -rf /data/* && redis-server --requirepass \"${REDIS_PASSWORD:-supersecure-redis-password-change-this}\" --maxmemory 256mb --maxmemory-policy noeviction --save '' --appendonly no --protected-mode yes --bind 0.0.0.0"
-    sysctls:
-      - vm.overcommit_memory=1
     volumes:
       - redis-data:/data
     restart: unless-stopped
