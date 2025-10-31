@@ -34,9 +34,9 @@ x-common-env: &common-env # Database Configuration
   BETTER_AUTH_URL: http://localhost:3000
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: development
-  RUNNING_CAPACITY: 3
+  RUNNING_CAPACITY: 2 # Single worker replica × 2 concurrent runs for local dev
   QUEUED_CAPACITY: 10
-  MAX_CONCURRENT_EXECUTIONS: 2
+  MAX_CONCURRENT_EXECUTIONS: 2 # Mirrors production default; bump replicas instead of this value
   TEST_EXECUTION_TIMEOUT_MS: 120000
   JOB_EXECUTION_TIMEOUT_MS: 900000
 
@@ -200,6 +200,13 @@ services:
       - supercheck-network
     deploy:
       replicas: 1
+      resources:
+        limits:
+          cpus: "1.5" # Keep local worker responsive without starving the host machine
+          memory: 3G # Enough for two Playwright sessions with tracing in dev
+        reservations:
+          cpus: "0.75"
+          memory: 2048M
     sysctls:
       - net.core.somaxconn=4096
     ulimits:
