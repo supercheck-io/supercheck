@@ -115,7 +115,12 @@ export class ExecutionService implements OnModuleDestroy {
   private readonly memoryThresholdMB = 2048; // 2GB memory threshold
   private activeExecutions: Map<
     string,
-    { pid?: number; startTime: number; memoryUsage: number }
+    {
+      pid?: number;
+      startTime: number;
+      memoryUsage: number;
+      countsTowardsLimit: boolean;
+    }
   > = new Map();
   private memoryCleanupInterval: NodeJS.Timeout;
   private readonly gcInterval: NodeJS.Timeout;
@@ -178,6 +183,19 @@ export class ExecutionService implements OnModuleDestroy {
 
     // Setup basic memory monitoring
     this.setupMemoryMonitoring();
+  }
+
+  /**
+   * Counts how many executions currently consume concurrency slots.
+   */
+  private getActiveConcurrencyCount(): number {
+    let count = 0;
+    for (const execution of this.activeExecutions.values()) {
+      if (execution.countsTowardsLimit !== false) {
+        count++;
+      }
+    }
+    return count;
   }
 
   /**
@@ -436,7 +454,7 @@ export class ExecutionService implements OnModuleDestroy {
     // Check concurrency limits (unless bypassed for monitors)
     if (
       !bypassConcurrencyCheck &&
-      this.activeExecutions.size >= this.maxConcurrentExecutions
+      this.getActiveConcurrencyCount() >= this.maxConcurrentExecutions
     ) {
       throw new Error(
         `Maximum concurrent executions limit reached: ${this.maxConcurrentExecutions}`,
@@ -460,6 +478,7 @@ export class ExecutionService implements OnModuleDestroy {
     this.activeExecutions.set(uniqueRunId, {
       startTime: Date.now(),
       memoryUsage: process.memoryUsage().heapUsed,
+      countsTowardsLimit: !bypassConcurrencyCheck,
     });
 
     try {
@@ -660,7 +679,9 @@ export class ExecutionService implements OnModuleDestroy {
     const { runId, testScripts } = task;
 
     // Check concurrency limits
-    if (this.activeExecutions.size >= this.maxConcurrentExecutions) {
+    if (
+      this.getActiveConcurrencyCount() >= this.maxConcurrentExecutions
+    ) {
       throw new Error(
         `Maximum concurrent executions limit reached: ${this.maxConcurrentExecutions}`,
       );
@@ -687,6 +708,7 @@ export class ExecutionService implements OnModuleDestroy {
     this.activeExecutions.set(uniqueRunId, {
       startTime: Date.now(),
       memoryUsage: process.memoryUsage().heapUsed,
+      countsTowardsLimit: true,
     });
 
     try {
