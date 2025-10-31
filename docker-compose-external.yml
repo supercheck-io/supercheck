@@ -22,9 +22,9 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   BETTER_AUTH_URL: ${BETTER_AUTH_URL}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
-  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-6}
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-6} # 3 worker replicas × 2 concurrent runs (align with worker deploy block)
   QUEUED_CAPACITY: ${QUEUED_CAPACITY:-50}
-  MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-2} # Max parallel tests per worker (default: 1, use worker replicas for parallelism)
+  MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-2} # Two Playwright runs per worker; add replicas before raising this
   TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-120000}
   JOB_EXECUTION_TIMEOUT_MS: ${JOB_EXECUTION_TIMEOUT_MS:-900000}
 
@@ -216,10 +216,14 @@ services:
     networks:
       - supercheck-network
     deploy:
-      replicas: 3 # Balanced for performance and stability
-      # REMOVED RESOURCE LIMITS - Let Docker and the host OS manage resources
-      # Docker will kill the container if it goes rogue (OOM killer, etc.)
-      # This prevents artificial constraints from breaking legitimate tests
+      replicas: 3 # Baseline footprint for production; scale horizontally by adding replicas
+      resources:
+        limits:
+          cpus: "2.0" # Limit to 2 vCPU so external dependencies retain headroom
+          memory: 4G # Sized for two Playwright browsers with tracing enabled
+        reservations:
+          cpus: "1.0" # Guarantee at least one core per worker
+          memory: 3072M # Reserve ~3 GB to avoid squeezing external infra
 
       # Container Restart Protection (handles stuck/crashed containers)
       restart_policy:

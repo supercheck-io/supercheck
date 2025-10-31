@@ -21,9 +21,9 @@ x-common-env: &common-env # Database Configuration
   STATUS_PAGE_BASE_DOMAIN: ${STATUS_PAGE_BASE_DOMAIN:-localhost}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
-  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-6} # Optimized for 4-core server: 4 workers × 1.5 jobs per worker
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-6} # 3 worker replicas × 2 concurrent runs (keep env + replicas in sync)
   QUEUED_CAPACITY: ${QUEUED_CAPACITY:-50}
-  MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-2} # Max parallel tests per worker (default: 1, use worker replicas for parallelism)
+  MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-2} # Two Playwright runs per worker; prefer more replicas over a larger single worker
   TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-120000}
   JOB_EXECUTION_TIMEOUT_MS: ${JOB_EXECUTION_TIMEOUT_MS:-900000}
 
@@ -185,10 +185,14 @@ services:
     networks:
       - supercheck-network
     deploy:
-      replicas: 3 # Balanced for performance and stability
-      # REMOVED RESOURCE LIMITS - Let Docker and the host OS manage resources
-      # Docker will kill the container if it goes rogue (OOM killer, etc.)
-      # This prevents artificial constraints from breaking legitimate tests
+      replicas: 3 # Default footprint for an 8 vCPU / 16 GB host; add replicas instead of raising concurrency
+      resources:
+        limits:
+          cpus: "2.0" # Cap each worker at 2 vCPU so browsers do not starve the OS
+          memory: 4G # Headroom for two parallel Playwright sessions with trace/video
+        reservations:
+          cpus: "1.0" # Guarantee a dedicated core per worker
+          memory: 3072M # Reserve ~3 GB to avoid overcommitting when scaling
 
       # Container Restart Protection (handles stuck/crashed containers)
       restart_policy:
