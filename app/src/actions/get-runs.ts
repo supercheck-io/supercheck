@@ -2,6 +2,7 @@
 
 import { db } from "@/utils/db";
 import { runs, reports, jobs, jobTests, projects } from "@/db/schema";
+import type { JobType } from "@/db/schema";
 import { eq, and, count, sql } from "drizzle-orm";
 import {
   requireAuth,
@@ -13,9 +14,10 @@ import { Role } from "@/lib/rbac/permissions";
 // Type based on the actual API response from /api/runs/[runId]
 type RunResponse = {
   id: string;
-  jobId: string;
+  jobId: string | null;
   jobName?: string | undefined;
   projectName?: string | undefined;
+  jobType?: JobType;
   status: string;
   duration?: string | null;
   startedAt?: string | null;
@@ -26,6 +28,7 @@ type RunResponse = {
   timestamp?: string;
   testCount?: number;
   trigger?: string;
+  location?: string | null;
 };
 
 export async function getRun(
@@ -55,6 +58,8 @@ export async function getRun(
         errorDetails: runs.errorDetails,
         reportUrl: reports.s3Url,
         trigger: runs.trigger,
+        location: runs.location,
+        jobType: jobs.jobType,
         projectId: jobs.projectId,
         organizationId: jobs.organizationId,
       })
@@ -91,20 +96,51 @@ export async function getRun(
       }
     }
 
-    // Get test count for this job
-    const testCountResult = await db
-      .select({ count: count() })
-      .from(jobTests)
-      .where(eq(jobTests.jobId, run.jobId));
+    // Get test count for this job (if associated with a job)
+    let testCount = 0;
+    if (run.jobId) {
+      const testCountResult = await db
+        .select({ count: count() })
+        .from(jobTests)
+        .where(eq(jobTests.jobId, run.jobId));
 
-    const testCount = testCountResult[0]?.count || 0;
+      testCount = testCountResult[0]?.count || 0;
+    }
+
+    const computeDuration = () => {
+      if (run.duration && run.duration.trim() !== "") {
+        return run.duration;
+      }
+      if (run.startedAt && run.completedAt) {
+        const start = run.startedAt.getTime();
+        const end = run.completedAt.getTime();
+        if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+          const seconds = Math.round((end - start) / 1000);
+          if (seconds >= 60) {
+            const minutes = Math.floor(seconds / 60);
+            const remainder = seconds % 60;
+            return `${minutes}m${remainder ? ` ${remainder}s` : ""}`.trim();
+          }
+          if (seconds === 0) {
+            return "<1s";
+          }
+          if (seconds > 0) {
+            return `${seconds}s`;
+          }
+        }
+      }
+      return run.duration ?? null;
+    };
 
     const response: RunResponse = {
       ...run,
       jobName: run.jobName || undefined,
       projectName: run.projectName || undefined,
+      jobType: run.jobType || undefined,
+      duration: computeDuration(),
       startedAt: run.startedAt?.toISOString() || null,
       completedAt: run.completedAt?.toISOString() || null,
+      location: run.location || null,
       testCount,
     };
 

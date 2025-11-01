@@ -71,12 +71,15 @@ export async function GET(
     }
 
     // Get test count for this job
-    const testCountResult = await db
-      .select({ count: count() })
-      .from(jobTests)
-      .where(eq(jobTests.jobId, run.jobId));
+    let testCount = 0;
+    if (run.jobId) {
+      const testCountResult = await db
+        .select({ count: count() })
+        .from(jobTests)
+        .where(eq(jobTests.jobId, run.jobId));
 
-    const testCount = testCountResult[0]?.count || 0;
+      testCount = testCountResult[0]?.count || 0;
+    }
 
     const response = {
       ...run,

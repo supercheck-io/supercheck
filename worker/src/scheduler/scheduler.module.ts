@@ -8,6 +8,7 @@ import {
   JOB_EXECUTION_QUEUE,
   MONITOR_EXECUTION_QUEUE,
 } from './constants';
+import { K6_EXECUTION_QUEUE } from '../k6/k6.module';
 import { DbModule } from '../db/db.module';
 import { MonitorModule } from '../monitor/monitor.module';
 import { LocationModule } from '../common/location/location.module';
@@ -23,6 +24,7 @@ import { LocationModule } from '../common/location/location.module';
       // Queues that the schedulers will add jobs to
       { name: JOB_EXECUTION_QUEUE },
       { name: MONITOR_EXECUTION_QUEUE },
+      { name: K6_EXECUTION_QUEUE },
     ),
   ],
   providers: [JobSchedulerProcessor, MonitorSchedulerProcessor],

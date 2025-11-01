@@ -1,9 +1,11 @@
 # Use platform-agnostic base image with LTS version for better availability
 FROM node:20-slim AS base
 
-# Install base system dependencies for Playwright browsers
+# Install base system dependencies for Playwright browsers and k6
 # Note: Playwright's --with-deps will install additional required packages including fonts
 RUN apt-get update && apt-get install -y \
+    curl \
+    tar \
     libglib2.0-0 \
     libnss3 \
     libnspr4 \
@@ -33,6 +35,18 @@ RUN apt-get update && apt-get install -y \
     iputils-ping \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# Install k6 (latest stable version)
+RUN curl -L https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-linux-amd64.tar.gz | tar -xz && \
+    mv k6-v0.49.0-linux-amd64/k6 /usr/local/bin/ && \
+    rm -rf k6-v0.49.0-linux-amd64 && \
+    chmod +x /usr/local/bin/k6
+
+# Verify k6 installation
+RUN k6 version
+
+# Set k6 binary path environment variable
+ENV K6_BIN_PATH=/usr/local/bin/k6
 
 # Dependencies stage
 FROM base AS deps
@@ -93,12 +107,14 @@ COPY --from=builder --chown=nodejs:nodejs /app/playwright-browsers /app/playwrig
 
 # Create directories for test execution with proper permissions
 # Create video output directory for recording on test failures
+# Create k6-reports directory for k6 performance test artifacts
 RUN mkdir -p playwright-reports report \
+    k6-reports \
     /home/nodejs/.cache \
     /tmp/playwright-tests \
     /tmp/playwright-videos && \
-    chown -R nodejs:nodejs playwright-reports report /app /home/nodejs /tmp/playwright-tests /tmp/playwright-videos && \
-    chmod -R 755 playwright-reports report && \
+    chown -R nodejs:nodejs playwright-reports report k6-reports /app /home/nodejs /tmp/playwright-tests /tmp/playwright-videos && \
+    chmod -R 755 playwright-reports report k6-reports && \
     chmod -R 777 /home/nodejs/.cache /tmp/playwright-tests /tmp/playwright-videos
 
 # Set Playwright browser cache path

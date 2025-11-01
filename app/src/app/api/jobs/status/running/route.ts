@@ -24,7 +24,17 @@ export async function GET(): Promise<NextResponse> {
     }
     
     // Extract job IDs from active runs
-    const jobIds = [...new Set(activeRuns.map(run => run.jobId))];
+    const jobIds = [
+      ...new Set(
+        activeRuns
+          .map((run) => run.jobId)
+          .filter((jobId): jobId is string => Boolean(jobId))
+      ),
+    ];
+
+    if (jobIds.length === 0) {
+      return NextResponse.json({ runningJobs: [] });
+    }
     
     // Get job details for these active runs
     const jobsWithRuns = await Promise.all(

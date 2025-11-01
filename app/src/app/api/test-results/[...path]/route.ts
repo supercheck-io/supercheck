@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { reports } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { fetchFromS3 } from "@/lib/s3-proxy";
 import { notFound } from "next/navigation";
 import { requireAuth } from "@/lib/rbac/middleware";
@@ -55,19 +55,25 @@ export async function GET(request: Request) {
 
   try {
     // Query the reports table to get the s3Url for this entity
-    const reportResult = await db.query.reports.findFirst({
-      where: eq(reports.entityId, entityId),
-      columns: {
-        s3Url: true,
-        reportPath: true,
-        entityType: true,
-        status: true,
-      },
-    });
+    const reportRows = await db
+      .select({
+        s3Url: reports.s3Url,
+        reportPath: reports.reportPath,
+        entityType: reports.entityType,
+        status: reports.status,
+        updatedAt: reports.updatedAt,
+      })
+      .from(reports)
+      .where(eq(reports.entityId, entityId))
+      .orderBy(desc(reports.updatedAt));
 
-    if (!reportResult) {
+    if (!reportRows.length) {
       return notFound();
     }
+
+    const reportResult =
+      reportRows.find((row) => row.entityType === "k6_performance") ??
+      reportRows[0];
 
     if (!reportResult.s3Url) {
       if (reportResult.status === "running") {
@@ -147,23 +153,33 @@ export async function GET(request: Request) {
     // Determine the file path based on what's being requested
     const targetFile = reportFile || "index.html";
 
-    // Extract the base path without the file part and use only the entityId/report structure
-    const entityIdIndex = pathParts.indexOf(entityId);
-    let s3Key;
+    // Prefer the stored reportPath when available
+    const storedReportPath = reportResult.reportPath
+      ? reportResult.reportPath.replace(/^\/+/, "").replace(/\/+$/, "")
+      : null;
 
-    if (entityIdIndex !== -1) {
-      // Use the actual entityId and report path structure from S3 URL
-      const prefix = pathParts
-        .slice(entityIdIndex, pathParts.length - 1)
-        .join("/");
-      s3Key = `${prefix}/${targetFile}`;
+    let s3Key: string;
+
+    if (storedReportPath) {
+      const normalizedBase = storedReportPath.replace(/\/+$/, "");
+      s3Key = `${normalizedBase}/${targetFile}`;
     } else {
-      // Fallback to direct construction if we can't find entityId in path
-      s3Key = `${entityId}/report/${targetFile}`;
+      const entityIdIndex = pathParts.indexOf(entityId);
+      if (entityIdIndex !== -1) {
+        const prefix = pathParts
+          .slice(entityIdIndex, pathParts.length - 1)
+          .join("/");
+        s3Key = `${prefix}/${targetFile}`;
+      } else {
+        s3Key = `${entityId}/report/${targetFile}`;
+      }
     }
 
-    // Clean up any duplicate path segments (like report/report)
-    s3Key = s3Key.replace(/\/report\/report\//g, "/report/");
+    // Normalise potential duplicate segments
+    s3Key = s3Key
+      .replace(/\/+/g, "/")
+      .replace(/\/report\/report\//g, "/report/")
+      .replace(/\/*$/, "");
 
     try {
       // Use the shared S3 proxy utility

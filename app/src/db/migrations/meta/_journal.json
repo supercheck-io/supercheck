@@ -8,6 +8,27 @@
       "when": 1761501426647,
       "tag": "0000_purple_master_chief",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1762001835935,
+      "tag": "0001_parallel_loki",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1762007060000,
+      "tag": "0002_relax_runs_job_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1762007160000,
+      "tag": "0003_drop_k6_test_fk",
+      "breakpoints": true
     }
   ]
 }
