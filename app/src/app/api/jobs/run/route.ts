@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, JobTrigger, tests, jobs } from "@/db/schema";
+import type { JobType, K6Location } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
 import { addJobToQueue, JobExecutionTask } from "@/lib/queue";
@@ -8,6 +9,29 @@ import { requireProjectContext } from '@/lib/project-context';
 import { hasPermission } from '@/lib/rbac/middleware';
 import { logAuditEvent } from '@/lib/audit-logger';
 import { applyVariablesToTestScripts, decodeTestScript } from "@/lib/job-execution-utils";
+import { Queue } from "bullmq";
+import { validateK6Script } from "@/lib/k6-validator";
+
+const DEFAULT_K6_LOCATION: K6Location = "us-east";
+
+const getRedisConnection = () => {
+  const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+  const url = new URL(redisUrl);
+
+  return {
+    host: url.hostname,
+    port: parseInt(url.port || "6379", 10),
+    password: url.password || undefined,
+    username: url.username || undefined,
+  };
+};
+
+const normalizeK6Location = (value?: string): K6Location => {
+  if (value === "us-east" || value === "eu-central" || value === "asia-pacific") {
+    return value;
+  }
+  return DEFAULT_K6_LOCATION;
+};
 
 export async function POST(request: Request) {
   let jobId: string | null = null;
@@ -45,7 +69,8 @@ export async function POST(request: Request) {
     const jobDetails = await db
       .select({ 
         organizationId: jobs.organizationId, 
-        projectId: jobs.projectId 
+        projectId: jobs.projectId,
+        jobType: jobs.jobType,
       })
       .from(jobs)
       .where(eq(jobs.id, jobId))
@@ -79,25 +104,47 @@ export async function POST(request: Request) {
       );
     }
     
+    const jobRecord = jobDetails[0];
+    const jobType = (jobRecord?.jobType || "playwright") as JobType;
+    const isPerformanceJob = jobType === "k6";
+    const requestedLocation =
+      isPerformanceJob && typeof data.location === "string"
+        ? (data.location as string)
+        : undefined;
+    const resolvedLocation = isPerformanceJob
+      ? normalizeK6Location(requestedLocation)
+      : null;
+
     runId = crypto.randomUUID();
     const startTime = new Date();
     
     await db.insert(runs).values({
       id: runId,
       jobId,
-      projectId: jobDetails.length > 0 ? jobDetails[0].projectId : null,
+      projectId: jobRecord?.projectId ?? null,
       status: "running",
       startedAt: startTime,
       trigger, // Include trigger value
+      location: resolvedLocation,
+      metadata: {
+        jobType,
+        ...(isPerformanceJob
+          ? {
+              executionEngine: "k6",
+              location: resolvedLocation,
+            }
+          : { executionEngine: "playwright" }),
+      },
     });
 
     console.log(`[${jobId}/${runId}] Created running test run record: ${runId}`);
 
-    const testScripts = [];
+    const testScripts: Array<{ id: string; name: string; script: string; type?: string }> = [];
     
     for (const test of testData) {
       let testScript = test.script;
       let testName = test.name || test.title || `Test ${test.id}`;
+      let testType: string | undefined = test.type;
       
       if (!testScript) {
         console.log(`[${jobId}/${runId}] Fetching script for test ${test.id} from database`);
@@ -107,7 +154,8 @@ export async function POST(request: Request) {
           .select({
             id: tests.id,
             title: tests.title,
-            script: tests.script
+            script: tests.script,
+            type: tests.type,
           })
           .from(tests)
           .where(eq(tests.id, test.id))
@@ -117,13 +165,71 @@ export async function POST(request: Request) {
           // Decode the base64 script
           testScript = await decodeTestScript(testResult[0].script);
           testName = testResult[0].title || testName;
+          testType = testResult[0].type ?? testType;
         } else {
           console.error(`[${jobId}/${runId}] Failed to fetch script for test ${test.id}, skipping.`);
           continue;
         }
       }
       
-      testScripts.push({ id: test.id, name: testName, script: testScript });
+      if (isPerformanceJob && testType !== "performance") {
+        const errorMessage = `Test ${test.id} is not a performance test and cannot be executed in a k6 job`;
+        console.error(`[${jobId}/${runId}] ${errorMessage}`);
+        await db
+          .update(runs)
+          .set({
+            status: "failed",
+            completedAt: new Date(),
+            errorDetails: errorMessage,
+          })
+          .where(eq(runs.id, runId));
+        return NextResponse.json({ error: errorMessage }, { status: 400 });
+      }
+
+      if (isPerformanceJob) {
+        try {
+          const validation = validateK6Script(testScript);
+          if (!validation.valid) {
+            const errorMessage = validation.errors?.[0] || "Invalid k6 script detected for job execution";
+            console.error(`[${jobId}/${runId}] ${errorMessage}`);
+            await db
+              .update(runs)
+              .set({
+                status: "failed",
+                completedAt: new Date(),
+                errorDetails: errorMessage,
+              })
+              .where(eq(runs.id, runId));
+            return NextResponse.json(
+              {
+                error: "Invalid k6 script",
+                details: validation.errors,
+                warnings: validation.warnings,
+              },
+              { status: 400 }
+            );
+          }
+        } catch (validationError) {
+          console.error(
+            `[${jobId}/${runId}] Failed to validate k6 script for test ${test.id}:`,
+            validationError
+          );
+          await db
+            .update(runs)
+            .set({
+              status: "failed",
+              completedAt: new Date(),
+              errorDetails: "Failed to validate k6 script",
+            })
+            .where(eq(runs.id, runId));
+          return NextResponse.json(
+            { error: "Failed to validate k6 script" },
+            { status: 400 }
+          );
+        }
+      }
+      
+      testScripts.push({ id: test.id, name: testName, script: testScript, type: testType });
     }
 
     if (testScripts.length === 0) {
@@ -137,6 +243,12 @@ export async function POST(request: Request) {
 
     console.log(`[${jobId}/${runId}] Prepared ${testScripts.length} test scripts for queuing.`);
 
+    if (isPerformanceJob && testScripts.length !== 1) {
+      console.warn(
+        `[${jobId}/${runId}] k6 jobs currently support exactly one performance test. Received ${testScripts.length}.`
+      );
+    }
+
     // Apply variable resolution using the unified function
     const { processedTestScripts, variableResolution } = await applyVariablesToTestScripts(
       testScripts,
@@ -144,20 +256,68 @@ export async function POST(request: Request) {
       `[${jobId}/${runId}]`
     );
 
-    const task: JobExecutionTask = {
-      jobId: jobId,
-      testScripts: processedTestScripts,
-      runId: runId,
-      originalJobId: jobId,
-      trigger: trigger,
-      organizationId: jobDetails[0]?.organizationId || '',
-      projectId: jobDetails[0]?.projectId || '',
-      variables: variableResolution.variables,
-      secrets: variableResolution.secrets
-    };
-
     try {
-      await addJobToQueue(task);
+      if (isPerformanceJob) {
+        const primaryScript = processedTestScripts[0]?.script ?? "";
+        const primaryTestId = processedTestScripts[0]?.id ?? testScripts[0]?.id;
+
+        if (!primaryScript || !primaryTestId) {
+          const errorMessage = "Unable to prepare k6 script for execution";
+          console.error(`[${jobId}/${runId}] ${errorMessage}`);
+          await db
+            .update(runs)
+            .set({
+              status: "failed",
+              completedAt: new Date(),
+              errorDetails: errorMessage,
+            })
+            .where(eq(runs.id, runId));
+          return NextResponse.json({ error: errorMessage }, { status: 400 });
+        }
+
+        const redisConnection = getRedisConnection();
+        const k6Queue = new Queue("k6-execution", { connection: redisConnection });
+
+        await k6Queue.add(
+          "k6-job-execution",
+          {
+            runId,
+            jobId,
+            testId: primaryTestId,
+            script: primaryScript,
+            tests: processedTestScripts.map((script) => ({
+              id: script.id,
+              script: script.script,
+            })),
+            organizationId: jobRecord?.organizationId,
+            projectId: jobRecord?.projectId,
+            location: resolvedLocation ?? DEFAULT_K6_LOCATION,
+          },
+          {
+            jobId: runId,
+            removeOnComplete: true,
+            removeOnFail: false,
+            attempts: 1,
+          }
+        );
+
+        await k6Queue.close();
+      } else {
+        const task: JobExecutionTask = {
+          jobId: jobId,
+          testScripts: processedTestScripts,
+          runId: runId,
+          originalJobId: jobId,
+          trigger: trigger,
+          organizationId: jobRecord?.organizationId || "",
+          projectId: jobRecord?.projectId || "",
+          variables: variableResolution.variables,
+          secrets: variableResolution.secrets,
+          jobType,
+        };
+
+        await addJobToQueue(task);
+      }
       
       // Log the audit event for job execution trigger
       await logAuditEvent({
@@ -171,7 +331,10 @@ export async function POST(request: Request) {
           trigger,
           testsCount: testScripts.length,
           projectId: project.id,
-          projectName: project.name
+          projectName: project.name,
+          jobType,
+          executionEngine: isPerformanceJob ? "k6" : "playwright",
+          location: resolvedLocation ?? undefined,
         },
         success: true
       });

@@ -14,6 +14,8 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { canTriggerJobs } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
+import { PlaywrightLogo } from "@/components/logo/playwright-logo";
+import { K6Logo } from "@/components/logo/k6-logo";
 
 // Type definition for the extended meta object used in this table
 interface JobsTableMeta {
@@ -275,6 +277,26 @@ export const columns: ColumnDef<Job>[] = [
 
       return <NameWithPopover name={name} />;
     },
+  },
+  {
+    accessorKey: "jobType",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Type" />
+    ),
+    cell: ({ row }) => {
+      const jobType = row.getValue("jobType") as string;
+      const isK6 = jobType === "k6";
+      const LabelIcon = isK6 ? K6Logo : PlaywrightLogo;
+      const label = isK6 ? "Performance" : "Playwright";
+
+      return (
+        <div className="flex items-center gap-2 w-[140px]">
+          <LabelIcon width={20} height={20} />
+          <span>{label}</span>
+        </div>
+      );
+    },
+    enableSorting: true,
   },
   {
     accessorKey: "description",

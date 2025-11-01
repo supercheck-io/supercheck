@@ -24,6 +24,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -36,6 +38,7 @@ interface TestSelectorProps {
   buttonLabel?: string;
   emptyStateMessage?: string;
   required?: boolean;
+  performanceMode?: boolean; // For k6 jobs - single test with radio buttons
 }
 
 export default function TestSelector({
@@ -44,6 +47,7 @@ export default function TestSelector({
   buttonLabel = "Select Tests",
   emptyStateMessage = "No tests selected",
   required = true,
+  performanceMode = false,
 }: TestSelectorProps) {
   const [isSelectTestsDialogOpen, setIsSelectTestsDialogOpen] = useState(false);
   const [testSelections, setTestSelections] = useState<Record<string, boolean>>({});
@@ -64,7 +68,7 @@ export default function TestSelector({
     id: string;
     title: string;
     description: string | null;
-    type: "browser" | "api" | "custom" | "database";
+    type: "browser" | "api" | "custom" | "database" | "performance";
     updatedAt: string | null;
     script?: string;
     priority?: string;
@@ -82,7 +86,7 @@ export default function TestSelector({
         
         if (response.ok && data) {
           // Map the API response to the Test type
-          const formattedTests: Test[] = (data as ActionTest[]).map(
+          let formattedTests: Test[] = (data as ActionTest[]).map(
             (test: ActionTest) => {
               let mappedType: Test["type"];
               switch (test.type) {
@@ -90,6 +94,7 @@ export default function TestSelector({
                 case "api":
                 case "custom":
                 case "database":
+                case "performance":
                   mappedType = test.type;
                   break;
                 default:
@@ -108,6 +113,16 @@ export default function TestSelector({
               };
             },
           );
+
+          // Filter tests based on mode
+          if (performanceMode) {
+            // Performance mode: show only performance tests
+            formattedTests = formattedTests.filter(test => test.type === "performance");
+          } else {
+            // Regular mode: exclude performance tests, show all other types
+            formattedTests = formattedTests.filter(test => test.type !== "performance");
+          }
+
           setAvailableTests(formattedTests);
         } else {
           console.error("Failed to fetch tests:", data.error);
@@ -120,14 +135,20 @@ export default function TestSelector({
     }
 
     fetchTests();
-  }, []);
+  }, [performanceMode]);
 
   // Handle test selection
   const handleTestSelection = (testId: string, checked: boolean) => {
-    setTestSelections((prev) => ({
-      ...prev,
-      [testId]: checked,
-    }));
+    if (performanceMode) {
+      // Performance mode: single test selection
+      setTestSelections(checked ? { [testId]: true } : {});
+    } else {
+      // Regular mode: multiple test selection
+      setTestSelections((prev) => ({
+        ...prev,
+        [testId]: checked,
+      }));
+    }
   };
 
   // Handle test selection confirmation
@@ -374,10 +395,16 @@ export default function TestSelector({
       >
         <DialogContent className="w-full min-w-[1100px]">
           <DialogHeader>
-            <DialogTitle>Select Tests</DialogTitle>
+            <DialogTitle>{performanceMode ? "Select Performance Test" : "Select Tests"}</DialogTitle>
             <DialogDescription className="flex justify-between items-center">
-              <span>Choose the tests to include in this job</span>
-              <span className="text-sm text-muted-foreground">Max: <span className="font-bold">50</span> tests per job</span>
+              <span>
+                {performanceMode
+                  ? "Choose a performance test to run in this job"
+                  : "Choose the tests to include in this job"}
+              </span>
+              {!performanceMode && (
+                <span className="text-sm text-muted-foreground">Max: <span className="font-bold">50</span> tests per job</span>
+              )}
             </DialogDescription>
           </DialogHeader>
           {isLoadingTests ? (
@@ -389,70 +416,75 @@ export default function TestSelector({
             </div>
           ) : (
             <>
-              <div className="mb-4 space-y-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="relative w-[500px]">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Filter by test name, ID, type, tags, or description..."
-                      className="pl-8"
-                      value={testFilter}
-                      onChange={(e) => setTestFilter(e.target.value)}
-                    />
-                      {testFilter.length > 0 && (
-                        <button
-                          type="reset"
-                          className="absolute right-2 top-1/2 -translate-y-1/2  text-red-500 rounded-sm bg-red-200 p-0.5"
-                          onClick={() => setTestFilter("")}
-                          tabIndex={0}
-                          aria-label="Clear search"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      )}
-                  </div>
-                    
-         
+              <div className="mb-4">
+                <div className="relative w-full">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder={performanceMode ? "Filter by test name or description..." : "Filter by test name, ID, type, tags, or description..."}
+                    className="pl-8"
+                    value={testFilter}
+                    onChange={(e) => setTestFilter(e.target.value)}
+                  />
+                  {testFilter.length > 0 && (
+                    <button
+                      type="reset"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-red-500 rounded-sm bg-red-200 p-0.5"
+                      onClick={() => setTestFilter("")}
+                      tabIndex={0}
+                      aria-label="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
+
+              {/* Table view for both performance and regular modes */}
               <div className="max-h-[500px] w-full overflow-y-auto rounded-sm">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                     <TableHead> </TableHead>
-                        <TableHead className="w-[120px] sticky top-0 rounded-md">
-                          ID
-                        </TableHead>
-                        <TableHead className="w-[250px] sticky top-0">
-                          Name
-                        </TableHead>
-                        <TableHead className="w-[150px] sticky top-0">
-                          Type
-                        </TableHead>
-                        <TableHead className="w-[200px] sticky top-0">
-                          Tags
-                        </TableHead>
-                        <TableHead className="w-[200px] sticky top-0">
-                          Description
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12"></TableHead>
+                      <TableHead className="w-[120px] sticky top-0">ID</TableHead>
+                      <TableHead className="w-[250px] sticky top-0">Name</TableHead>
+                      <TableHead className="w-[150px] sticky top-0">Type</TableHead>
+                      <TableHead className="w-[200px] sticky top-0">Tags</TableHead>
+                      <TableHead className="w-[200px] sticky top-0">Description</TableHead>
+                    </TableRow>
+                  </TableHeader>
                   <TableBody>
                     {currentTests.map((test) => (
                       <TableRow
-                        key={test.id} 
+                        key={test.id}
                         className="hover:bg-muted cursor-pointer transition-opacity"
                         onClick={() => handleTestSelection(test.id, !testSelections[test.id])}
                       >
                         <TableCell>
-                          <Checkbox
-                            checked={testSelections[test.id] || false}
-                            onCheckedChange={(checked) =>
-                              handleTestSelection(test.id, checked as boolean)
-                            }
-                            className="border-blue-600"
-                            onClick={(e) => e.stopPropagation()}
-                          />
+                          {performanceMode ? (
+                            // Radio button for performance mode
+                            <RadioGroup
+                              value={Object.keys(testSelections).find(k => testSelections[k]) || ""}
+                              onValueChange={(value) => handleTestSelection(value, true)}
+                            >
+                              <Label className="flex items-center cursor-pointer">
+                                <RadioGroupItem
+                                  value={test.id}
+                                  checked={testSelections[test.id] || false}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </Label>
+                            </RadioGroup>
+                          ) : (
+                            // Checkbox for regular mode
+                            <Checkbox
+                              checked={testSelections[test.id] || false}
+                              onCheckedChange={(checked) =>
+                                handleTestSelection(test.id, checked as boolean)
+                              }
+                              className="border-blue-600"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          )}
                         </TableCell>
                         <TableCell
                           className="font-mono text-sm truncate"
@@ -491,12 +523,12 @@ export default function TestSelector({
                                 <TooltipTrigger asChild>
                                   <div className="flex items-center gap-1 min-h-[24px]">
                                     {test.tags.slice(0, 2).map((tag) => (
-                                      <Badge 
-                                        key={tag.id} 
-                                        variant="secondary" 
+                                      <Badge
+                                        key={tag.id}
+                                        variant="secondary"
                                         className="text-xs whitespace-nowrap flex-shrink-0"
-                                        style={tag.color ? { 
-                                          backgroundColor: tag.color + "20", 
+                                        style={tag.color ? {
+                                          backgroundColor: tag.color + "20",
                                           color: tag.color,
                                           borderColor: tag.color + "40"
                                         } : {}}
@@ -514,12 +546,12 @@ export default function TestSelector({
                                 <TooltipContent side="top" className="max-w-[300px]">
                                   <div className="flex flex-wrap gap-1">
                                     {test.tags.map((tag) => (
-                                      <Badge 
-                                        key={tag.id} 
-                                        variant="secondary" 
+                                      <Badge
+                                        key={tag.id}
+                                        variant="secondary"
                                         className="text-xs"
-                                        style={tag.color ? { 
-                                          backgroundColor: tag.color + "20", 
+                                        style={tag.color ? {
+                                          backgroundColor: tag.color + "20",
                                           color: tag.color,
                                           borderColor: tag.color + "40"
                                         } : {}}
@@ -537,7 +569,7 @@ export default function TestSelector({
                           className="truncate"
                           title={test.description || ""}
                         >
-                          {test.description && test.description.length > 40 
+                          {test.description && test.description.length > 40
                             ? test.description.substring(0, 40) + "..."
                             : test.description || "No description provided"}
                         </TableCell>
@@ -546,13 +578,13 @@ export default function TestSelector({
                   </TableBody>
                 </Table>
               </div>
+
+              {/* Pagination */}
               <div className="flex justify-center items-center mt-4 space-x-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() =>
-                    setCurrentPage((prev) => Math.max(prev - 1, 1))
-                  }
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                   disabled={currentPage === 1}
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -563,26 +595,31 @@ export default function TestSelector({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() =>
-                    setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-                  }
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
                   disabled={currentPage === totalPages}
                 >
-                    <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
+
+              {/* Footer with selected count */}
               <div className="mt-4 flex justify-between items-center">
                 <div className="text-sm text-muted-foreground">
-                    <span className="font-bold">{
-                    Object.keys(testSelections).filter(
-                      (id) => testSelections[id],
-                    ).length
-                  }{" "} </span>
-                    of <span className="font-bold">{availableTests.length}</span> test
-                    {availableTests.length !== 1
-                    ? "s"
-                    : ""}{" "}
-                  selected
+                  {performanceMode ? (
+                    <span>
+                      {Object.keys(testSelections).filter((id) => testSelections[id]).length > 0
+                        ? "1 test selected"
+                        : "No test selected"}
+                    </span>
+                  ) : (
+                    <>
+                      <span className="font-bold">
+                        {Object.keys(testSelections).filter((id) => testSelections[id]).length}
+                      </span>
+                      {" "}of <span className="font-bold">{availableTests.length}</span> test
+                      {availableTests.length !== 1 ? "s" : ""}{" "} selected
+                    </>
+                  )}
                 </div>
                 <DialogFooter>
                   <Button
@@ -592,7 +629,7 @@ export default function TestSelector({
                     Cancel
                   </Button>
                   <Button onClick={handleSelectTests}>
-                    Add Selected Tests
+                    {performanceMode ? "Select Test" : "Add Selected Tests"}
                   </Button>
                 </DialogFooter>
               </div>
