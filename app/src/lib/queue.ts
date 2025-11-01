@@ -6,6 +6,7 @@ import type {
   MonitorConfig,
   MonitoringLocation,
 } from "@/db/schema";
+import type { JobType as SchemaJobType } from "@/db/schema";
 import {
   getEffectiveLocations,
   isMonitoringLocation,
@@ -33,6 +34,7 @@ export interface JobExecutionTask {
   projectId: string; // Required for RBAC filtering
   variables?: Record<string, string>; // Resolved variables for job execution
   secrets?: Record<string, string>; // Resolved secrets for job execution
+  jobType?: SchemaJobType;
 }
 
 // Health check task interface - REMOVING
@@ -100,7 +102,7 @@ const MULTI_LOCATION_DISTRIBUTED =
   (process.env.MULTI_LOCATION_DISTRIBUTED || "").toLowerCase() === "true";
 
 // Queue event subscription type
-export type JobType = "test" | "job"; // Removed 'healthCheck'
+export type QueueEventType = "test" | "job"; // Removed 'healthCheck'
 
 /**
  * Get or create Redis connection using environment variables.

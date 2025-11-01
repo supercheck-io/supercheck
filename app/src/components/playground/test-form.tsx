@@ -37,6 +37,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TagSelector, type Tag } from "@/components/ui/tag-selector";
 import { priorities, types } from "@/components/tests/data";
+import {
+  PERFORMANCE_LOCATION_OPTIONS,
+  type PerformanceLocation,
+  getPerformanceLocationOption,
+} from "./performance-locations";
+
+const PLAYWRIGHT_TYPE_OPTIONS = types.filter((t) => t.value !== "performance");
+const PERFORMANCE_TYPE_OPTIONS = types.filter((t) => t.value === "performance");
 
 // Using the testsInsertSchema from schema.ts with extensions for playground-specific fields
 const testCaseSchema = testsInsertSchema
@@ -60,10 +68,18 @@ const testCaseSchema = testsInsertSchema
       required_error: "Priority is required",
       invalid_type_error: "Priority must be low, medium, or high",
     }),
-    type: z.enum(["browser", "api", "custom", "database"] as const, {
-      required_error: "Test type is required",
-      invalid_type_error: "Test type must be browser, api, custom, or database",
-    }),
+    type: z.enum(
+      ["browser", "api", "custom", "database", "performance"] as const,
+      {
+        required_error: "Test type is required",
+        invalid_type_error:
+          "Test type must be browser, api, custom, database, or performance",
+      }
+    ),
+    location: z
+      .enum(["us-east", "eu-central", "asia-pacific"] as const)
+      .optional()
+      .nullable(),
     updatedAt: z.string().nullable().optional(),
     createdAt: z.string().nullable().optional(),
   })
@@ -83,6 +99,7 @@ interface TestFormProps {
     script?: string;
     updatedAt?: string | null;
     createdAt?: string | null;
+    location?: PerformanceLocation | null;
   };
   setTestCase: React.Dispatch<
     React.SetStateAction<{
@@ -93,6 +110,7 @@ interface TestFormProps {
       script?: string;
       updatedAt?: string | null;
       createdAt?: string | null;
+      location?: PerformanceLocation | null;
     }>
   >;
   errors: Record<string, string>;
@@ -108,6 +126,7 @@ interface TestFormProps {
     script?: string;
     updatedAt?: string | null;
     createdAt?: string | null;
+    location?: PerformanceLocation | null;
   }>;
   initialEditorContent: string;
   testId?: string | null;
@@ -116,6 +135,9 @@ interface TestFormProps {
   testExecutionStatus: "none" | "passed" | "failed"; // Test execution status
   userRole?: string; // User's role for permission checks
   userId?: string; // Current user ID for permission checks
+  isPerformanceMode?: boolean;
+  performanceLocation?: PerformanceLocation;
+  onPerformanceLocationChange?: (location: PerformanceLocation) => void;
 }
 
 export function TestForm({
@@ -134,12 +156,22 @@ export function TestForm({
   testExecutionStatus,
   userRole,
   userId,
+  isPerformanceMode = false,
+  performanceLocation,
+  onPerformanceLocationChange,
 }: TestFormProps) {
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [formChanged, setFormChanged] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const performanceMode = isPerformanceMode || testCase.type === "performance";
+  const currentPerformanceLocation = (performanceLocation ||
+    testCase.location ||
+    "us-east") as PerformanceLocation;
+  const currentLocationOption = getPerformanceLocationOption(
+    currentPerformanceLocation
+  );
 
   // Tag management state
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
@@ -152,6 +184,49 @@ export function TestForm({
   const canUserCreateTags = role ? canCreateTags(role) : false;
   const canUserDeleteTags = role ? canDeleteTags(role) : false;
   const canUserDeleteTests = role ? canDeleteTests(role) : false;
+
+  const availableTypes = performanceMode
+    ? PERFORMANCE_TYPE_OPTIONS
+    : PLAYWRIGHT_TYPE_OPTIONS;
+  const typeSelectValue = performanceMode
+    ? availableTypes[0]?.value ?? "performance"
+    : testCase.type || "browser";
+
+  useEffect(() => {
+    if (performanceMode && testCase.type !== "performance") {
+      setTestCase((prev) => ({
+        ...prev,
+        type: "performance",
+      }));
+    }
+  }, [performanceMode, testCase.type, setTestCase]);
+
+  useEffect(() => {
+    if (!performanceMode) {
+      return;
+    }
+
+    const resolvedLocation =
+      performanceLocation ?? testCase.location ?? "us-east";
+
+    if (testCase.location !== resolvedLocation) {
+      setTestCase((prev) => ({
+        ...prev,
+        location: resolvedLocation,
+      }));
+    }
+  }, [performanceMode, performanceLocation, testCase.location, setTestCase]);
+
+  const handlePerformanceLocationSelect = (value: PerformanceLocation) => {
+    setTestCase((prev) => ({
+      ...prev,
+      location: value,
+    }));
+
+    if (onPerformanceLocationChange) {
+      onPerformanceLocationChange(value);
+    }
+  };
 
   // Function to check if specific tag can be deleted by current user
   const canDeleteSpecificTag = (tag: Tag): boolean => {
@@ -279,11 +354,18 @@ export function TestForm({
   // Track if form has changes compared to initial values
   const hasChangesLocal = useCallback(() => {
     // Check if any form field has changed
+    const initialLocation = initialFormValues.location ?? null;
+    const currentLocation = testCase.location ?? null;
+    const locationChanged =
+      (performanceMode || initialFormValues.type === "performance") &&
+      currentLocation !== initialLocation;
+
     const formFieldsChanged =
       testCase.title !== (initialFormValues.title || "") ||
       testCase.description !== (initialFormValues.description || "") ||
       testCase.priority !== (initialFormValues.priority || "medium") ||
-      testCase.type !== (initialFormValues.type || "browser");
+      testCase.type !== (initialFormValues.type || "browser") ||
+      locationChanged;
 
     // Check if editor content has changed
     const editorChanged = editorContent !== initialEditorContentProp;
@@ -312,6 +394,7 @@ export function TestForm({
     initialEditorContentProp,
     selectedTags,
     initialTags,
+    performanceMode,
   ]);
 
   // Update formChanged state whenever form values change
@@ -440,8 +523,10 @@ export function TestForm({
       const base64Script = btoa(unescape(encodeURIComponent(editorContent)));
 
       // Update the test case with base64-encoded script
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { location: _playgroundLocation, ...testCaseForSave } = testCase;
       const updatedTestCase = {
-        ...testCase,
+        ...testCaseForSave,
         script: base64Script,
         // Ensure description is at least an empty string if null
         description: testCase.description || "",
@@ -721,7 +806,7 @@ export function TestForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <label htmlFor="priority" className="block text-sm font-medium">
             Priority
@@ -774,7 +859,7 @@ export function TestForm({
             </SelectContent>
           </Select>
           {errors.priority && (
-            <p className="text-red-500 text-xs mt-1.5">{errors.priority}</p>
+            <p className="mt-1.5 text-xs text-red-500">{errors.priority}</p>
           )}
         </div>
 
@@ -783,25 +868,40 @@ export function TestForm({
             Type
           </label>
           <Select
-            value={testCase.type || "browser"}
-            onValueChange={(value) =>
+            value={typeSelectValue}
+            onValueChange={(value) => {
+              if (performanceMode) return;
               setTestCase((prev) => ({
                 ...prev,
                 type: value as TestType,
-              }))
-            }
-            defaultValue="browser"
-            disabled={isRunning}
+                location:
+                  value === "performance"
+                    ? (prev.location as PerformanceLocation) ||
+                      performanceLocation ||
+                      "us-east"
+                    : null,
+              }));
+              if (value === "performance" && onPerformanceLocationChange) {
+                onPerformanceLocationChange(
+                  (performanceLocation || "us-east") as PerformanceLocation
+                );
+              }
+            }}
+            disabled={isRunning || performanceMode}
           >
             <SelectTrigger
               className={cn(
                 "h-10",
-                isRunning ? "opacity-70 cursor-not-allowed" : ""
+                isRunning || performanceMode
+                  ? "opacity-70 cursor-not-allowed"
+                  : ""
               )}
             >
               <SelectValue placeholder="Select type">
                 {(() => {
-                  const selected = types.find((t) => t.value === testCase.type);
+                  const selected =
+                    availableTypes.find((t) => t.value === testCase.type) ||
+                    availableTypes[0];
                   if (!selected) return "Select type";
                   const Icon = selected.icon;
                   return (
@@ -814,7 +914,7 @@ export function TestForm({
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {types.map((type) => {
+              {availableTypes.map((type) => {
                 const Icon = type.icon;
                 return (
                   <SelectItem key={type.value} value={type.value}>
@@ -828,9 +928,70 @@ export function TestForm({
             </SelectContent>
           </Select>
           {errors.type && (
-            <p className="text-red-500 text-xs mt-1.5">{errors.type}</p>
+            <p className="mt-1.5 text-xs text-red-500">{errors.type}</p>
           )}
         </div>
+
+        {performanceMode && (
+          <div className="space-y-2">
+            <label htmlFor="location" className="block text-sm font-medium">
+              Execution Location
+            </label>
+            <div className="flex w-full flex-col gap-3 md:flex-row md:items-center md:gap-4">
+              <Select
+                value={currentPerformanceLocation}
+                onValueChange={(value) =>
+                  handlePerformanceLocationSelect(value as PerformanceLocation)
+                }
+                disabled={isRunning}
+              >
+                <SelectTrigger
+                  className={cn(
+                    "h-10 md:w-48 md:flex-shrink-0",
+                    isRunning ? "opacity-70 cursor-not-allowed" : ""
+                  )}
+                >
+                  <SelectValue placeholder="Select execution region">
+                    {currentLocationOption ? (
+                      <span className="flex items-center gap-2">
+                        {currentLocationOption.flag && (
+                          <span className="text-lg">
+                            {currentLocationOption.flag}
+                          </span>
+                        )}
+                        <span className="text-sm font-medium">
+                          {currentLocationOption.name}
+                        </span>
+                      </span>
+                    ) : (
+                      "Select execution region"
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {PERFORMANCE_LOCATION_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      <div className="flex items-center gap-2">
+                        {option.flag && (
+                          <span className="text-lg">{option.flag}</span>
+                        )}
+                        <span className="text-sm font-medium">
+                          {option.name}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground flex-1 leading-relaxed min-w-44">
+                Performance tests originate from the selected region.
+              </p>
+            </div>
+            {errors.location && (
+              <p className="mt-1.5 text-xs text-red-500">{errors.location}</p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Tags Section */}
