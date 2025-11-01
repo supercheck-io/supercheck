@@ -34,6 +34,7 @@ export class S3Service implements OnModuleInit {
   private testBucketName: string;
   private monitorBucketName: string;
   private statusBucketName: string;
+  private k6PerformanceBucketName: string;
   private s3Endpoint: string;
   private maxRetries: number;
   private operationTimeout: number;
@@ -55,6 +56,10 @@ export class S3Service implements OnModuleInit {
       'S3_STATUS_BUCKET_NAME',
       'supercheck-status-artifacts',
     );
+    this.k6PerformanceBucketName = this.configService.get<string>(
+      'S3_K6_PERFORMANCE_BUCKET_NAME',
+      'supercheck-performance-artifacts',
+    );
     this.s3Endpoint = this.configService.get<string>(
       'S3_ENDPOINT',
       'http://localhost:9000',
@@ -75,7 +80,7 @@ export class S3Service implements OnModuleInit {
     );
 
     this.logger.debug(
-      `S3 initialized with buckets: job=${this.jobBucketName}, test=${this.testBucketName}, monitor=${this.monitorBucketName}, status=${this.statusBucketName}`,
+      `S3 initialized with buckets: job=${this.jobBucketName}, test=${this.testBucketName}, monitor=${this.monitorBucketName}, status=${this.statusBucketName}, k6=${this.k6PerformanceBucketName}`,
     );
 
     this.s3Client = new S3Client({
@@ -94,6 +99,7 @@ export class S3Service implements OnModuleInit {
       await this.ensureBucketExists(this.testBucketName);
       await this.ensureBucketExists(this.monitorBucketName);
       await this.ensureBucketExists(this.statusBucketName);
+      await this.ensureBucketExists(this.k6PerformanceBucketName);
 
       this.logger.log('S3 buckets initialized successfully');
     } catch (error) {
@@ -114,6 +120,9 @@ export class S3Service implements OnModuleInit {
     }
     if (entityType === 'monitor') {
       return this.monitorBucketName;
+    }
+    if (entityType === 'k6_performance') {
+      return this.k6PerformanceBucketName;
     }
     return this.jobBucketName; // Default to job bucket for 'job' and other entity types
   }
@@ -439,10 +448,15 @@ export class S3Service implements OnModuleInit {
   }
 
   // Get the base URL for entity reports
-  getBaseUrlForEntity(entityType: string, entityId: string): string {
+  getBaseUrlForEntity(
+    entityType: string,
+    entityId: string,
+    customPrefix?: string,
+  ): string {
     const bucket = this.getBucketForEntityType(entityType);
-    // Use direct UUID without nested folders
-    const prefix = `${entityId}/report`;
+    const prefix = customPrefix
+      ? customPrefix.replace(/^\/+/, '').replace(/\/*$/, '')
+      : `${entityId}/report`;
 
     // Fix: Make sure URL format is correct for MinIO
     return `${this.s3Endpoint}/${bucket}/${prefix}`;

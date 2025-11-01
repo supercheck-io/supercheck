@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ExecutionModule } from './execution.module';
+import { K6Module } from './k6/k6.module';
 import { MonitorModule } from './monitor/monitor.module';
 import { NotificationModule } from './notification/notification.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
@@ -48,6 +49,7 @@ import { HealthModule } from './health/health.module';
       inject: [ConfigService],
     }),
     ExecutionModule,
+    K6Module,
     MonitorModule,
     NotificationModule,
     SchedulerModule,

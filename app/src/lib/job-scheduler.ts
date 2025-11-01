@@ -59,6 +59,7 @@ export async function scheduleJob(options: ScheduleOptions): Promise<string> {
       id: script.id,
       title: script.name,
       script: script.script, // This is already decoded and has variables resolved
+      type: script.type,
     }));
 
     // Prepared test cases with variables resolved

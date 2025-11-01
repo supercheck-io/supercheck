@@ -53,7 +53,7 @@ export const testSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string().nullable(),
-  type: z.enum(["browser", "api", "custom", "database"]),
+  type: z.enum(["browser", "api", "custom", "database", "performance"]),
   status: z.enum(["running", "passed", "failed", "error"]).optional(),
   lastRunAt: z.string().nullable().optional(),
   duration: z.number().nullable().optional(), // in milliseconds
@@ -69,6 +69,7 @@ export const jobSchema = z.object({
   description: z.string().nullable(),
   cronSchedule: z.string().nullable(),
   status: jobStatusEnum,
+  jobType: z.enum(["playwright", "k6"]),
   config: jobConfigSchema.optional(),
   retryCount: z.number().optional(),
   timeoutSeconds: z.number().optional(),

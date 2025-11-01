@@ -19,6 +19,9 @@ export * from "./test";
 // Job and run tables
 export * from "./job";
 
+// K6 performance runs
+export * from "./k6Runs";
+
 // Monitor tables
 export * from "./monitor";
 

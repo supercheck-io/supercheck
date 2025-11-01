@@ -5,6 +5,7 @@ import {
   ReportType,
   MonitorType,
   MonitoringLocation,
+  JobType,
 } from '../db/schema';
 
 // Result of a single test execution
@@ -68,6 +69,7 @@ export interface JobExecutionTask {
   projectId: string; // Required for RBAC filtering
   variables?: Record<string, string>; // Resolved variables for job execution
   secrets?: Record<string, string>; // Resolved secrets for job execution
+  jobType?: JobType;
 }
 
 // Optional: Interface for database report metadata storage

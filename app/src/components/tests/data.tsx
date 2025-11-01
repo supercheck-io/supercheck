@@ -7,7 +7,7 @@ import {
   ArrowLeftRight,
   SquareFunction,
 } from "lucide-react";
-
+import { K6Logo } from "@/components/logo/k6-logo";
 
 export const priorities = [
   {
@@ -55,6 +55,10 @@ export const types = [
     icon: SquareFunction,
     color: "text-blue-600",
   },
-
-
+  {
+    label: "Performance",
+    value: "performance",
+    icon: K6Logo,
+    color: "text-purple-600",
+  },
 ];

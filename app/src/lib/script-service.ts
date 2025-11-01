@@ -10,6 +10,7 @@ export enum ScriptType {
   API = "api",
   Database = "database",
   Custom = "custom",
+  Performance = "performance",
 }
 
 // Sample scripts content
@@ -429,6 +430,59 @@ test("GitHub User Profile Analysis", async ({ request, page }) => {
 });
 
 `,
+
+  [ScriptType.Performance]: `/**
+ * Sample k6 Performance Test Script
+ *
+ * This script demonstrates k6 performance and load testing capabilities.
+ * k6 is a modern load testing tool for testing the performance of APIs,
+ * microservices, and websites. It uses JavaScript ES6 for test scripting.
+ *
+ * Test Coverage:
+ * - HTTP GET request performance testing
+ * - Virtual users (VUs) simulation
+ * - Response time analysis (avg, p95, p99)
+ * - Pass/fail thresholds validation
+ * - Error rate monitoring
+ *
+ * Configuration:
+ * - 10 virtual users
+ * - 30 second test duration
+ * - Success criteria: 95% of requests < 500ms, error rate < 10%
+ *
+ * Target API: test-api.k6.io - k6's official test API
+ * Documentation: https://k6.io/docs/
+ *
+ * @requires k6 binary
+ */
+
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+// Test configuration - all settings in script
+export const options = {
+  vus: 10,              // 10 virtual users
+  duration: '30s',      // Run for 30 seconds
+
+  // Pass/fail criteria
+  thresholds: {
+    http_req_duration: ['p(95)<500'],  // 95% of requests < 500ms
+    http_req_failed: ['rate<0.1'],     // Error rate < 10%
+  },
+};
+
+export default function() {
+  // Test logic
+  const response = http.get('https://test-api.k6.io/public/crocodiles/');
+
+  // Validation checks
+  check(response, {
+    'status is 200': (r) => r.status === 200,
+    'response time < 500ms': (r) => r.timings.duration < 500,
+  });
+
+  sleep(1);
+}`,
 };
 
 /**

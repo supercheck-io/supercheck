@@ -678,6 +678,12 @@ export class ExecutionService implements OnModuleDestroy {
   async runJob(task: JobExecutionTask): Promise<TestExecutionResult> {
     const { runId, testScripts } = task;
 
+    if (task.jobType === 'k6') {
+      throw new Error(
+        `Received performance job ${task.jobId} in Playwright execution pipeline. k6 jobs must be enqueued on the k6-execution queue.`,
+      );
+    }
+
     // Check concurrency limits
     if (
       this.getActiveConcurrencyCount() >= this.maxConcurrentExecutions

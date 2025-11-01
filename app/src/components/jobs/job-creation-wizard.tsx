@@ -113,6 +113,7 @@ export function JobCreationWizard() {
       const finalData = {
         ...formData,
         alertConfig: alertConfig,
+        jobType: "playwright" as const,
       };
 
       // Create job via API

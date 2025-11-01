@@ -71,11 +71,51 @@ export function Runs() {
       // Handle new paginated response format
       const runs = result.data || result;
 
+      const formatDuration = (rawDuration?: unknown, startedAt?: unknown, completedAt?: unknown) => {
+        if (typeof rawDuration === "string" && rawDuration.trim() !== "") {
+          return rawDuration;
+        }
+
+        if (typeof startedAt === "string" && typeof completedAt === "string") {
+          const start = Date.parse(startedAt);
+          const end = Date.parse(completedAt);
+          if (!Number.isNaN(start) && !Number.isNaN(end) && end >= start) {
+            const seconds = Math.round((end - start) / 1000);
+            if (seconds >= 60) {
+              const minutes = Math.floor(seconds / 60);
+              const remainder = seconds % 60;
+              return `${minutes}m${remainder ? ` ${remainder}s` : ""}`.trim();
+            }
+            if (seconds === 0) {
+              return "<1s";
+            }
+            if (seconds > 0) {
+              return `${seconds}s`;
+            }
+          }
+        }
+
+        return typeof rawDuration === "string" ? rawDuration : null;
+      };
+
       // Cast the data to TestRun[] to ensure type compatibility and handle trigger field
-      const typedRuns = runs.map((run: { trigger?: string; [key: string]: unknown }) => ({
-        ...run,
-        trigger: run.trigger ?? undefined,
-      }));
+      const typedRuns = runs.map(
+        (run: {
+          trigger?: string;
+          jobType?: string;
+          location?: string | null;
+          duration?: string | null;
+          startedAt?: string | null;
+          completedAt?: string | null;
+          [key: string]: unknown;
+        }) => ({
+          ...run,
+          trigger: run.trigger ?? undefined,
+          jobType: (run.jobType === "k6" ? "k6" : "playwright") as TestRun["jobType"],
+          location: run.location ?? null,
+          duration: formatDuration(run.duration, run.startedAt, run.completedAt),
+        })
+      );
       safeSetRuns(typedRuns as TestRun[]);
     } catch (error) {
       console.error("Failed to fetch runs:", error);

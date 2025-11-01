@@ -36,13 +36,18 @@ import {
 import { NavUser } from "@/components/nav-user";
 import { CheckIcon } from "@/components/logo/supercheck-logo";
 import { Home } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { PerformanceTestReport } from "@/components/playground/performance-test-report";
+import type { K6RunStatus } from "@/lib/k6-runs";
 
 // Type based on the actual API response from /api/runs/[runId]
 type RunResponse = {
   id: string;
-  jobId: string;
+  jobId: string | null;
   jobName?: string;
   projectName?: string;
+  jobType?: string;
   status: string;
   duration?: string | null;
   startedAt?: string | null;
@@ -53,6 +58,7 @@ type RunResponse = {
   timestamp?: string;
   testCount?: number;
   trigger?: string;
+  location?: string | null;
 };
 
 export function RunDetails({
@@ -71,6 +77,10 @@ export function RunDetails({
   const [isDeleting, setIsDeleting] = useState(false);
   const [userRole, setUserRole] = useState<Role | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(true);
+  const isPerformanceRun = run.jobType === "k6";
+  const [headerLocation, setHeaderLocation] = useState<string | null>(
+    run.location ?? null
+  );
 
   // Helper to validate status is one of the allowed values
   const mapStatusForDisplay = (status: string): TestRunStatus => {
@@ -287,11 +297,31 @@ export function RunDetails({
               </Button>
             )}
             <div>
-              <h1 className="text-2xl font-semibold flex items-center gap-2">
-                {run.jobName && run.jobName.length > 40
-                  ? run.jobName.slice(0, 40) + "..."
-                  : run.jobName || "Unknown Job"}
-              </h1>
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-2xl font-semibold">
+                  {run.jobName && run.jobName.length > 40
+                    ? run.jobName.slice(0, 40) + "..."
+                    : run.jobName || "Unknown Job"}
+                </h1>
+                {run.jobType ? (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-xs uppercase",
+                      run.jobType === "k6"
+                        ? "border-purple-500/30 bg-purple-500/10 text-purple-200"
+                        : "border-blue-500/30 bg-blue-500/10 text-blue-200",
+                    )}
+                  >
+                    {run.jobType === "k6" ? "Performance (k6)" : "Playwright"}
+                  </Badge>
+                ) : null}
+                {headerLocation ? (
+                  <Badge variant="secondary" className="text-xs text-slate-700">
+                    {`Location: ${headerLocation}`}
+                  </Badge>
+                ) : null}
+              </div>
             </div>
           </div>
           {!isNotificationView && (
@@ -435,38 +465,57 @@ export function RunDetails({
                 <div className="text-xs font-medium text-muted-foreground">
                   Job ID
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5 p-0 ml-1"
-                  onClick={() => {
-                    navigator.clipboard.writeText(run.jobId);
-                    toast.success("Job ID copied");
-                  }}
-                >
-                  <Copy className="h-3 w-3" />
-                </Button>
+                {run.jobId ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 p-0 ml-1"
+                    onClick={() => {
+                      navigator.clipboard.writeText(run.jobId ?? "");
+                      toast.success("Job ID copied");
+                    }}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                ) : null}
               </div>
-              <div className="text-sm font-semibold truncate">{run.jobId}</div>
+              <div className="text-sm font-semibold truncate">
+                {run.jobId ?? "No Job"}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Report viewer */}
-      <div className="bg-card rounded-lg border overflow-hidden">
-        <div className="w-full h-full">
-          <ReportViewer
-            reportUrl={reportUrl}
-            isRunning={currentStatus === "running"}
-            backToLabel="Back to Runs"
-            backToUrl="/runs"
-            containerClassName="w-full h-[calc(100vh-270px)] relative"
-            iframeClassName="w-full h-full border-0 rounded-lg"
-            hideEmptyMessage={true}
-          />
+      {isPerformanceRun ? (
+        <div className="bg-card rounded-lg border overflow-hidden">
+          <div className="h-[calc(100vh-280px)]">
+            <PerformanceTestReport
+              runId={run.id}
+              onStatusChange={(status: K6RunStatus, payload) => {
+                handleStatusUpdate(status, payload?.reportUrl, payload?.duration);
+                if (payload?.location && payload.location !== headerLocation) {
+                  setHeaderLocation(payload.location);
+                }
+              }}
+            />
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-card rounded-lg border overflow-hidden">
+          <div className="w-full h-full">
+            <ReportViewer
+              reportUrl={reportUrl}
+              isRunning={currentStatus === "running"}
+              backToLabel="Back to Runs"
+              backToUrl="/runs"
+              containerClassName="w-full h-[calc(100vh-270px)] relative"
+              iframeClassName="w-full h-full border-0 rounded-lg"
+              hideEmptyMessage={true}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Delete confirmation dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

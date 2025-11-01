@@ -28,6 +28,12 @@ import { AIFixButton } from "./ai-fix-button";
 import { AIDiffViewer } from "./ai-diff-viewer";
 import { GuidanceModal } from "./guidance-modal";
 import { PlaywrightLogo } from "../logo/playwright-logo";
+import { K6Logo } from "../logo/k6-logo";
+import { PerformanceTestReport } from "./performance-test-report";
+import {
+  LocationSelectionDialog,
+  PerformanceLocation,
+} from "./location-selection-dialog";
 
 // Define our own TestCaseFormData interface
 interface TestCaseFormData {
@@ -38,6 +44,7 @@ interface TestCaseFormData {
   script?: string;
   updatedAt?: string | null;
   createdAt?: string | null;
+  location?: PerformanceLocation | null;
 }
 
 interface PlaygroundProps {
@@ -50,6 +57,7 @@ interface PlaygroundProps {
     type: TestType;
     updatedAt?: string;
     createdAt?: string;
+    location?: PerformanceLocation | null;
   };
   initialTestId?: string;
 }
@@ -66,6 +74,12 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(
     undefined
   );
+
+  const initialPerformanceLocation: PerformanceLocation | null =
+    initialTestData?.type === "performance"
+      ? ((initialTestData.location as PerformanceLocation) ??
+        ("us-east" as PerformanceLocation))
+      : null;
 
   // Fetch current user ID for permissions
   useEffect(() => {
@@ -89,11 +103,20 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [isReportLoading, setIsReportLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
   const [reportUrl, setReportUrl] = useState<string | null>(null);
+  const [performanceRunId, setPerformanceRunId] = useState<string | null>(null);
+  const [performanceLocation, setPerformanceLocation] =
+    useState<PerformanceLocation>(
+      initialPerformanceLocation ?? "us-east"
+    );
+  const [locationDialogOpen, setLocationDialogOpen] = useState(false);
   // Only set testId from initialTestId if we're on a specific test page
   // Always ensure testId is null when on the main playground page
   const [testId, setTestId] = useState<string | null>(initialTestId || null);
   // Separate state for tracking the current test execution ID (for AI Fix functionality)
   const [executionTestId, setExecutionTestId] = useState<string | null>(null);
+  const [executionTestType, setExecutionTestType] = useState<string | null>(
+    null
+  ); // Track test type (browser/performance)
   const [completedTestIds, setCompletedTestIds] = useState<string[]>([]);
   const [editorContent, setEditorContent] = useState(
     initialTestData?.script || ""
@@ -112,6 +135,7 @@ const Playground: React.FC<PlaygroundProps> = ({
           type: initialTestData.type,
           updatedAt: initialTestData.updatedAt || undefined,
           createdAt: initialTestData.createdAt || undefined,
+          location: initialPerformanceLocation,
         }
       : {}
   );
@@ -123,6 +147,7 @@ const Playground: React.FC<PlaygroundProps> = ({
     script: initialTestData?.script || "",
     updatedAt: initialTestData?.updatedAt || undefined,
     createdAt: initialTestData?.createdAt || undefined,
+    location: initialPerformanceLocation,
   });
 
   // Create empty errors object for TestForm
@@ -165,6 +190,7 @@ const Playground: React.FC<PlaygroundProps> = ({
     testExecutionStatus === "passed" && editorContent === lastExecutedScript;
   const isCurrentScriptReadyToSave =
     isCurrentScriptValidated && isCurrentScriptExecutedSuccessfully;
+  const isPerformanceMode = testCase.type === "performance";
 
   // Clear validation state when script changes
   const resetValidationState = () => {
@@ -182,6 +208,7 @@ const Playground: React.FC<PlaygroundProps> = ({
     setTestExecutionStatus("none");
     setExecutionTestId(null); // Clear execution test ID for new script
     // Don't reset lastExecutedScript here - only when test passes
+    setPerformanceRunId(null);
   };
 
   // Editor reference
@@ -284,6 +311,9 @@ const Playground: React.FC<PlaygroundProps> = ({
           type: result.type as TestType,
           updatedAt: result.updatedAt || null,
           createdAt: result.createdAt || null,
+          location:
+            (result.location as PerformanceLocation | null) ??
+            (result.type === "performance" ? ("us-east" as PerformanceLocation) : null),
         });
 
         // Update the editor content
@@ -298,7 +328,17 @@ const Playground: React.FC<PlaygroundProps> = ({
           type: result.type as TestType,
           updatedAt: result.updatedAt || null,
           createdAt: result.createdAt || null,
+          location:
+            (result.location as PerformanceLocation | null) ??
+            (result.type === "performance" ? ("us-east" as PerformanceLocation) : null),
         });
+
+        if (result.type === "performance") {
+          setPerformanceLocation(
+            (result.location as PerformanceLocation) ??
+              ("us-east" as PerformanceLocation)
+          );
+        }
 
         // Set the test ID
         setTestId(id);
@@ -328,11 +368,25 @@ const Playground: React.FC<PlaygroundProps> = ({
       const defaultType = "browser" as TestType;
       const typeToSet =
         scriptTypeParam &&
-        ["browser", "api", "custom", "database"].includes(scriptTypeParam)
+        ["browser", "api", "custom", "database", "performance"].includes(
+          scriptTypeParam
+        )
           ? scriptTypeParam
           : defaultType;
 
-      setTestCase((prev) => ({ ...prev, type: typeToSet }));
+      setTestCase((prev) => ({
+        ...prev,
+        type: typeToSet,
+        location:
+          typeToSet === "performance"
+            ? (performanceLocation ?? prev.location ??
+              ("us-east" as PerformanceLocation))
+            : null,
+      }));
+
+      if (typeToSet === "performance" && !performanceLocation) {
+        setPerformanceLocation("us-east" as PerformanceLocation);
+      }
 
       const loadScriptForType = async () => {
         if (typeToSet) {
@@ -351,7 +405,7 @@ const Playground: React.FC<PlaygroundProps> = ({
       };
       loadScriptForType();
     }
-  }, [searchParams, initialTestId]);
+  }, [searchParams, initialTestId, performanceLocation]);
 
   // Handle initialTestData when provided from server-side
   useEffect(() => {
@@ -365,7 +419,23 @@ const Playground: React.FC<PlaygroundProps> = ({
         type: initialTestData.type,
         updatedAt: initialTestData.updatedAt || undefined,
         createdAt: initialTestData.createdAt || undefined,
+        location:
+          initialTestData.type === "performance"
+            ? ((initialTestData.location as PerformanceLocation) ??
+              ("us-east" as PerformanceLocation))
+            : null,
       });
+
+      if (initialTestData.type === "performance") {
+        const resolvedLocation: PerformanceLocation =
+          (initialTestData.location as PerformanceLocation) ??
+          ("us-east" as PerformanceLocation);
+        setPerformanceLocation(resolvedLocation);
+        setTestCase((prev) => ({
+          ...prev,
+          location: resolvedLocation,
+        }));
+      }
     }
   }, [initialTestData]);
 
@@ -441,6 +511,13 @@ const Playground: React.FC<PlaygroundProps> = ({
         newErrors.priority = "Priority is required";
       }
 
+      if (
+        (validationData.type === "performance" || testCase.type === "performance") &&
+        !(testCase.location || performanceLocation)
+      ) {
+        newErrors.location = "Execution location is required";
+      }
+
       // Set errors state
       setErrors(newErrors);
 
@@ -461,165 +538,146 @@ const Playground: React.FC<PlaygroundProps> = ({
     }
   };
 
-  const runTest = async () => {
-    if (!userCanRunTests) {
-      toast.error("Insufficient permissions", {
-        description:
-          "You don't have permission to run tests. Contact your organization admin for access.",
-      });
-      return;
-    }
-
-    if (isRunning) {
-      toast.warning("A script is already running", {
-        description:
-          "Please wait for the current script to complete, or cancel it before running a new script.",
-      });
-      return;
-    }
-
-    // Validate the script content
-    const validationResult = await validateScript(editorContent);
-    setValidationError(validationResult.error || null);
-    setValidationLine(validationResult.line);
-    setValidationColumn(validationResult.column);
-    setValidationErrorType(validationResult.errorType);
-    setIsValid(validationResult.valid);
-    setHasValidated(true);
-
-    if (validationResult.valid) {
-      setLastValidatedScript(editorContent); // Update last validated script on success
-    }
-
-    if (!validationResult.valid) {
-      toast.error("Script validation failed", {
-        description:
-          validationResult.error ||
-          "Please fix validation errors before running the test.",
-        duration: 5000,
-      });
-      return;
+  const executeQueuedTest = async (options?: {
+    location?: PerformanceLocation;
+  }) => {
+    if (isPerformanceMode) {
+      setPerformanceRunId(null);
+      setReportUrl(null);
+    } else {
+      setIsReportLoading(true);
     }
 
     setIsRunning(true);
 
     try {
-      // Execute the test by sending the current script content to the API
+      const payload: Record<string, unknown> = {
+        id: testId,
+        script: editorContent,
+        testType: testCase.type,
+      };
+
+      const resolvedLocation =
+        options?.location ??
+        (testCase.type === "performance"
+          ? testCase.location || performanceLocation
+          : undefined);
+
+      if (testCase.type === "performance" && resolvedLocation) {
+        payload.location = resolvedLocation;
+        setPerformanceLocation(resolvedLocation as PerformanceLocation);
+        setTestCase((prev) => ({
+          ...prev,
+          location: resolvedLocation as PerformanceLocation,
+        }));
+      }
+
       const res = await fetch(`/api/test`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          id: testId,
-          script: editorContent,
-        }),
+        body: JSON.stringify(payload),
       });
 
-      // Parse the response
       const result = await res.json();
 
-      // If we successfully started a test and got back the needed test info
-      if (res.ok && result.testId && result.reportUrl) {
-        // No need for success toast here - the loading toast is already shown
-        // We'll keep the loading toast until we get the final status update
+      if (res.ok && result.testId) {
+        const responseTestType: string =
+          (result.testType as string) || "browser";
 
-        // Don't set testId for playground executions - only for editing existing tests
-        // But do set the execution test ID for AI Fix functionality
         setExecutionTestId(result.testId);
-
-        // Set the report URL to display the test results
-        setReportUrl(result.reportUrl);
-
-        // Switch to the report tab
+        setExecutionTestType(responseTestType);
         setActiveTab("report");
 
-        // Set up Server-Sent Events (SSE) to get real-time status updates
+        if (responseTestType === "performance") {
+          const resolvedRunId: string = result.runId || result.testId;
+          setPerformanceRunId(resolvedRunId);
+          const fallbackLocation =
+            (result.location as PerformanceLocation) ||
+            options?.location ||
+            ("us-east" as PerformanceLocation);
+          setPerformanceLocation(fallbackLocation);
+          setTestCase((prev) => ({
+            ...prev,
+            location: fallbackLocation,
+          }));
+          setIsReportLoading(false);
+          setTestExecutionStatus("none");
+          return;
+        }
+
+        if (!result.reportUrl) {
+          throw new Error("Missing report URL from test execution response");
+        }
+
+        setReportUrl(result.reportUrl);
+
         const eventSource = new EventSource(
           `/api/test-status/events/${result.testId}`
         );
         let eventSourceClosed = false;
 
-        // Handle status updates from the SSE endpoint
         eventSource.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            if (data) {
-              // Check if data includes status field
-              if (data.status) {
-                // Normalize status value for consistency
-                const normalizedStatus = data.status.toLowerCase();
+            if (data?.status) {
+              const normalizedStatus = data.status.toLowerCase();
+              if (
+                normalizedStatus === "completed" ||
+                normalizedStatus === "passed" ||
+                normalizedStatus === "failed" ||
+                normalizedStatus === "error"
+              ) {
+                setIsRunning(false);
+                setIsReportLoading(false);
 
-                // Handle status - this could update a state variable to show in UI
-                if (
+                const testPassed =
                   normalizedStatus === "completed" ||
-                  normalizedStatus === "passed" ||
-                  normalizedStatus === "failed" ||
-                  normalizedStatus === "error"
-                ) {
-                  // Test is done, update the UI
-                  setIsRunning(false);
-                  setIsReportLoading(false);
-
-                  // Update test execution status based on result
-                  const testPassed =
-                    normalizedStatus === "completed" ||
-                    normalizedStatus === "passed";
-                  setTestExecutionStatus(testPassed ? "passed" : "failed");
-                  if (testPassed) {
-                    setLastExecutedScript(editorContent); // Mark this script as successfully executed
-                  }
-
-                  // Close the SSE connection
-                  eventSource.close();
-                  eventSourceClosed = true;
-
-                  // Construct the relative API report URL, don't use the direct S3 URL from data
-                  if (result.testId) {
-                    // Ensure we have the testId from the initial API call
-                    const apiUrl = `/api/test-results/${
-                      result.testId
-                    }/report/index.html?t=${Date.now()}&forceIframe=true`;
-                    setReportUrl(apiUrl); // Use the relative API path
-
-                    // Always stay on report tab and ensure we're viewing the report
-                    setActiveTab("report");
-
-                    // Add test ID to the list of completed tests
-                    if (
-                      result.testId &&
-                      !completedTestIds.includes(result.testId)
-                    ) {
-                      setCompletedTestIds((prev) => [...prev, result.testId]);
-                    }
-                  } else {
-                    console.error(
-                      "Cannot construct report URL: testId from initial API call is missing."
-                    );
-                    toast.error("Error displaying report", {
-                      description:
-                        "Could not determine the test ID to load the report.",
-                    });
-                  }
-
-                  // Determine if it was a success or failure for the toast
-                  const isSuccess =
-                    normalizedStatus === "completed" ||
-                    normalizedStatus === "passed";
-
-                  // Show completion toast
-                  toast[isSuccess ? "success" : "error"](
-                    isSuccess
-                      ? "Script execution passed"
-                      : "Script execution failed",
-                    {
-                      description: isSuccess
-                        ? "All checks completed successfully."
-                        : "All checks did not complete successfully.",
-                      duration: 10000,
-                    }
-                  );
+                  normalizedStatus === "passed";
+                setTestExecutionStatus(testPassed ? "passed" : "failed");
+                if (testPassed) {
+                  setLastExecutedScript(editorContent);
                 }
+
+                eventSource.close();
+                eventSourceClosed = true;
+
+                if (result.testId) {
+                  const apiUrl = `/api/test-results/${
+                    result.testId
+                  }/report/index.html?t=${Date.now()}&forceIframe=true`;
+                  setReportUrl(apiUrl);
+                  setActiveTab("report");
+
+                  if (!completedTestIds.includes(result.testId)) {
+                    setCompletedTestIds((prev) => [...prev, result.testId]);
+                  }
+                } else {
+                  console.error(
+                    "Cannot construct report URL: testId from initial API call is missing."
+                  );
+                  toast.error("Error displaying report", {
+                    description:
+                      "Could not determine the test ID to load the report.",
+                  });
+                }
+
+                const isSuccess =
+                  normalizedStatus === "completed" ||
+                  normalizedStatus === "passed";
+
+                toast[isSuccess ? "success" : "error"](
+                  isSuccess
+                    ? "Script execution passed"
+                    : "Script execution failed",
+                  {
+                    description: isSuccess
+                      ? "All checks completed successfully."
+                      : "All checks did not complete successfully.",
+                    duration: 10000,
+                  }
+                );
               }
             }
           } catch (e) {
@@ -632,14 +690,11 @@ const Playground: React.FC<PlaygroundProps> = ({
           }
         };
 
-        // Handle SSE errors
         eventSource.onerror = (e) => {
           console.error("SSE connection error:", e);
-          // Fallback for SSE errors - just set not running
           setIsRunning(false);
           setIsReportLoading(false);
 
-          // Show error toast
           toast.error("Script execution error", {
             description:
               "Connection to test status updates was lost. The test may still be running in the background.",
@@ -650,12 +705,11 @@ const Playground: React.FC<PlaygroundProps> = ({
             eventSource.close();
             eventSourceClosed = true;
 
-            // Try to load the report anyway using the API path if testId is available
             if (result.testId) {
               const apiUrl = `/api/test-results/${
                 result.testId
               }/report/index.html?t=${Date.now()}&forceIframe=true`;
-              setReportUrl(apiUrl); // Use the relative API path
+              setReportUrl(apiUrl);
               setActiveTab("report");
             } else {
               console.error(
@@ -665,15 +719,12 @@ const Playground: React.FC<PlaygroundProps> = ({
           }
         };
       } else {
-        // If we didn't get a report URL or test ID, something went wrong
-        setIsReportLoading(false);
         setIsRunning(false);
+        setIsReportLoading(false);
 
-        // Check for errors first
         if (result.error) {
           console.error("Script execution error:", result.error);
 
-          // Handle validation errors specially
           if (result.isValidationError) {
             setValidationError(result.validationError);
             setIsValid(false);
@@ -685,7 +736,6 @@ const Playground: React.FC<PlaygroundProps> = ({
               duration: 5000,
             });
           } else {
-            // Always show a user-friendly message regardless of the actual error
             toast.error("Script Execution Failed", {
               description:
                 result.error ||
@@ -708,7 +758,64 @@ const Playground: React.FC<PlaygroundProps> = ({
         duration: 5000,
       });
       setIsRunning(false);
+      setIsReportLoading(false);
     }
+  };
+
+  const runTest = async () => {
+    if (!userCanRunTests) {
+      toast.error("Insufficient permissions", {
+        description:
+          "You don't have permission to run tests. Contact your organization admin for access.",
+      });
+      return;
+    }
+
+    if (isRunning) {
+      toast.warning("A script is already running", {
+        description:
+          "Please wait for the current script to complete, or cancel it before running a new script.",
+      });
+      return;
+    }
+
+    const validationResult = await validateScript(editorContent);
+    setValidationError(validationResult.error || null);
+    setValidationLine(validationResult.line);
+    setValidationColumn(validationResult.column);
+    setValidationErrorType(validationResult.errorType);
+    setIsValid(validationResult.valid);
+    setHasValidated(true);
+
+    if (validationResult.valid) {
+      setLastValidatedScript(editorContent);
+    }
+
+    if (!validationResult.valid) {
+      toast.error("Script validation failed", {
+        description:
+          validationResult.error ||
+          "Please fix validation errors before running the test.",
+        duration: 5000,
+      });
+      return;
+    }
+
+    if (isPerformanceMode) {
+      setLocationDialogOpen(true);
+      return;
+    }
+
+    await executeQueuedTest();
+  };
+
+  const handleLocationSelect = async (location: PerformanceLocation) => {
+    setPerformanceLocation(location);
+    setTestCase((prev) => ({
+      ...prev,
+      location,
+    }));
+    await executeQueuedTest({ location });
   };
 
   // AI Fix handlers
@@ -813,8 +920,11 @@ const Playground: React.FC<PlaygroundProps> = ({
                           value="report"
                           className="flex items-center gap-2"
                         >
-                          {/* <FileTextIcon className="h-4 w-4" /> */}
-                          <PlaywrightLogo className="h-5 w-5" />
+                          {isPerformanceMode ? (
+                            <K6Logo width={20} height={20} />
+                          ) : (
+                            <PlaywrightLogo className="h-5 w-5" />
+                          )}
                           <span>Report</span>
                         </TabsTrigger>
                       </TabsList>
@@ -822,7 +932,7 @@ const Playground: React.FC<PlaygroundProps> = ({
 
                     {/* Runtime Libraries Info */}
                     <div className="-ml-4">
-                      <RuntimeInfoPopover />
+                      <RuntimeInfoPopover testType={testCase.type} />
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -834,12 +944,14 @@ const Playground: React.FC<PlaygroundProps> = ({
                         testType={testCase.type || "browser"}
                         isVisible={
                           // Always show when test execution is completely finished AND failed
+                          // But hide for performance tests (k6) since AI Fix is only for Playwright
                           testExecutionStatus === "failed" &&
                           !isRunning &&
                           !isValidating &&
                           !isReportLoading &&
                           userCanRunTests &&
-                          !!executionTestId // Ensure we have an execution test ID
+                          !!executionTestId && // Ensure we have an execution test ID
+                          executionTestType !== "performance" // Hide AI Fix for k6 performance tests
                         }
                         onAIFixSuccess={handleAIFixSuccess}
                         onShowGuidance={handleShowGuidance}
@@ -871,6 +983,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                       ) : (
                         <>
                           <ZapIcon className="h-4 w-4" />
+
                           <span className="mr-2">Run</span>
                         </>
                       )}
@@ -928,12 +1041,31 @@ const Playground: React.FC<PlaygroundProps> = ({
                       value="report"
                       className="h-full border-0 p-0 mt-0"
                     >
-                      <ReportViewer
-                        reportUrl={reportUrl}
-                        isRunning={isRunning || isReportLoading}
-                        containerClassName="h-full w-full relative border-1 rounded-bl-lg"
-                        iframeClassName="h-full w-full rounded-bl-lg"
-                      />
+                      {executionTestType === "performance" &&
+                      performanceRunId ? (
+                        <PerformanceTestReport
+                          runId={performanceRunId}
+                          onStatusChange={(status) => {
+                            if (status !== "running") {
+                              setIsRunning(false);
+                              // Update test execution status for performance tests
+                              if (status === "passed") {
+                                setTestExecutionStatus("passed");
+                                setLastExecutedScript(editorContent);
+                              } else if (status === "failed" || status === "error") {
+                                setTestExecutionStatus("failed");
+                              }
+                            }
+                          }}
+                        />
+                      ) : (
+                        <ReportViewer
+                          reportUrl={reportUrl}
+                          isRunning={isRunning || isReportLoading}
+                          containerClassName="h-full w-full relative border-1 rounded-bl-lg"
+                          iframeClassName="h-full w-full rounded-bl-lg"
+                        />
+                      )}
                     </TabsContent>
                   </Tabs>
                 </div>
@@ -972,6 +1104,15 @@ const Playground: React.FC<PlaygroundProps> = ({
                       testExecutionStatus={testExecutionStatus}
                       userRole={currentProject?.userRole}
                       userId={currentUserId}
+                      isPerformanceMode={isPerformanceMode}
+                      performanceLocation={performanceLocation}
+                      onPerformanceLocationChange={(location) => {
+                        setPerformanceLocation(location);
+                        setTestCase((prev) => ({
+                          ...prev,
+                          location,
+                        }));
+                      }}
                     />
                   </div>
                 </ScrollArea>
@@ -985,6 +1126,15 @@ const Playground: React.FC<PlaygroundProps> = ({
           </div>
         )}
       </div>
+
+      <LocationSelectionDialog
+        open={locationDialogOpen && isPerformanceMode}
+        onOpenChange={(open) => {
+          setLocationDialogOpen(open);
+        }}
+        onSelect={handleLocationSelect}
+        defaultLocation={performanceLocation}
+      />
 
       {/* AI Diff Viewer Modal */}
       <AIDiffViewer

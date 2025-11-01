@@ -13,6 +13,9 @@ import * as crypto from 'crypto';
 import { getNextRunDate } from '../utils/cron-utils';
 import { jobs, runs } from '../../db/schema';
 import { eq, and } from 'drizzle-orm';
+import { K6_EXECUTION_QUEUE } from '../../k6/k6.module';
+
+const DEFAULT_K6_LOCATION = 'us-east';
 
 @Processor(JOB_SCHEDULER_QUEUE)
 export class JobSchedulerProcessor extends WorkerHost {
@@ -21,6 +24,7 @@ export class JobSchedulerProcessor extends WorkerHost {
   constructor(
     private readonly dbService: DbService,
     @InjectQueue(JOB_EXECUTION_QUEUE) private jobExecutionQueue: Queue,
+    @InjectQueue(K6_EXECUTION_QUEUE) private k6ExecutionQueue: Queue,
   ) {
     super();
   }
@@ -29,7 +33,7 @@ export class JobSchedulerProcessor extends WorkerHost {
     job: Job<
       {
         jobId: string;
-        testCases: Array<{ id: string; script: string; title: string }>;
+        testCases: Array<{ id: string; script: string; title: string; type?: string }>;
         retryLimit?: number;
         variables: Record<string, string>;
         secrets: Record<string, string>;
@@ -50,7 +54,7 @@ export class JobSchedulerProcessor extends WorkerHost {
   private async handleScheduledJobTrigger(
     job: Job<{
       jobId: string;
-      testCases: Array<{ id: string; script: string; title: string }>;
+      testCases: Array<{ id: string; script: string; title: string; type?: string }>;
       retryLimit?: number;
       variables: Record<string, string>;
       secrets: Record<string, string>;
@@ -99,7 +103,12 @@ export class JobSchedulerProcessor extends WorkerHost {
         name: jobRecord.name,
         projectId: jobRecord.projectId,
         organizationId: jobRecord.organizationId,
+        jobType: jobRecord.jobType,
       });
+
+      const jobType = jobRecord.jobType ?? 'playwright';
+      const isK6Job = jobType === 'k6';
+      const resolvedLocation = isK6Job ? DEFAULT_K6_LOCATION : null;
 
       const runId = crypto.randomUUID();
 
@@ -113,6 +122,12 @@ export class JobSchedulerProcessor extends WorkerHost {
         startedAt: new Date(),
         trigger: 'schedule', // Set trigger to 'schedule'
         projectId: projectId, // Add projectId for proper filtering
+        location: resolvedLocation,
+        metadata: {
+          jobType,
+          executionEngine: isK6Job ? 'k6' : 'playwright',
+          ...(isK6Job ? { location: resolvedLocation } : {}),
+        },
       });
 
       this.logger.log(`Created run record ${runId} for scheduled job ${jobId}`);
@@ -152,10 +167,11 @@ export class JobSchedulerProcessor extends WorkerHost {
       );
 
       const processedTestScripts = data.testCases.map(
-        (test: { id: string; script: string; title: string }) => ({
+        (test: { id: string; script: string; title: string; type?: string }) => ({
           id: test.id,
           script: test.script, // Script is already decoded and has variables resolved
           name: test.title,
+          type: test.type,
         }),
       );
 
@@ -176,6 +192,7 @@ export class JobSchedulerProcessor extends WorkerHost {
         projectId: projectId,
         variables: variableResolution.variables,
         secrets: variableResolution.secrets,
+        jobType: jobType,
       };
 
       const jobOptions = {
@@ -189,10 +206,68 @@ export class JobSchedulerProcessor extends WorkerHost {
         removeOnFail: false,
       };
 
-      await this.jobExecutionQueue.add(runId, task, jobOptions);
-      this.logger.log(
-        `Created execution task for scheduled job ${jobId}, run ${runId}`,
-      );
+      if (isK6Job) {
+        const primaryScript = processedTestScripts[0]?.script ?? '';
+        const primaryTestId = processedTestScripts[0]?.id;
+        const primaryType = processedTestScripts[0]?.type;
+
+        if (!primaryTestId || !primaryScript) {
+          this.logger.error(
+            `[${jobId}/${runId}] Unable to prepare k6 script for scheduled job execution`,
+          );
+          await this.dbService.db
+            .update(runs)
+            .set({
+              status: 'failed',
+              completedAt: new Date(),
+              errorDetails: 'Unable to prepare k6 script for execution',
+            })
+            .where(eq(runs.id, runId));
+          return;
+        }
+
+        if (primaryType && primaryType !== 'performance') {
+          this.logger.error(
+            `[${jobId}/${runId}] Scheduled k6 job references non-performance test ${primaryTestId}`,
+          );
+          await this.dbService.db
+            .update(runs)
+            .set({
+              status: 'failed',
+              completedAt: new Date(),
+              errorDetails: 'k6 jobs require performance tests',
+            })
+            .where(eq(runs.id, runId));
+          return;
+        }
+
+        await this.k6ExecutionQueue.add(
+          'k6-job-execution',
+          {
+            runId,
+            jobId,
+            testId: primaryTestId,
+            script: primaryScript,
+            tests: processedTestScripts.map((script) => ({
+              id: script.id,
+              script: script.script,
+            })),
+            organizationId,
+            projectId,
+            location: resolvedLocation ?? DEFAULT_K6_LOCATION,
+          },
+          jobOptions,
+        );
+
+        this.logger.log(
+          `Enqueued k6 execution task for scheduled job ${jobId}, run ${runId}`,
+        );
+      } else {
+        await this.jobExecutionQueue.add(runId, task, jobOptions);
+        this.logger.log(
+          `Created execution task for scheduled job ${jobId}, run ${runId}`,
+        );
+      }
     } catch (error) {
       this.logger.error(
         `Failed to process scheduled job trigger for job ${jobId}:`,

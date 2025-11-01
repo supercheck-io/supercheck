@@ -52,15 +52,17 @@ interface CreateJobProps {
   };
   selectedTests?: Test[];
   setSelectedTests?: (tests: Test[]) => void;
+  performanceMode?: boolean;
 }
 
-export function CreateJob({ 
-  hideAlerts = false, 
-  onSave, 
-  onCancel, 
-  initialValues = {}, 
+export function CreateJob({
+  hideAlerts = false,
+  onSave,
+  onCancel,
+  initialValues = {},
   selectedTests = [], // Default to empty array
-  setSelectedTests 
+  setSelectedTests,
+  performanceMode = false
 }: CreateJobProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -82,7 +84,10 @@ export function CreateJob({
         name: values.name.trim(),
         description: values.description.trim(),
         cronSchedule: values.cronSchedule?.trim() || "",
-        tests: Array.isArray(selectedTests) ? selectedTests : [], // Ensure array
+        tests: Array.isArray(selectedTests)
+          ? selectedTests.map((test) => ({ id: test.id }))
+          : [],
+        jobType: (performanceMode ? "k6" : "playwright") as "playwright" | "k6",
       };
 
       if (onSave) {
@@ -201,8 +206,10 @@ export function CreateJob({
               <TestSelector
                 selectedTests={selectedTests}
                 onTestsSelected={setSelectedTests || (() => {})}
-                buttonLabel="Select Tests"
+                buttonLabel={performanceMode ? "Select Performance Test" : "Select Tests"}
+                emptyStateMessage={performanceMode ? "No performance test selected" : "No tests selected"}
                 required={true}
+                performanceMode={performanceMode}
               />
 
               <div className="flex justify-end space-x-4 mt-6">

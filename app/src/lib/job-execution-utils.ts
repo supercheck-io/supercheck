@@ -15,6 +15,7 @@ export interface ProcessedTestScript {
   id: string;
   name: string;
   script: string;
+  type?: string;
 }
 
 /**
@@ -134,7 +135,8 @@ export async function prepareJobTestScripts(
     .select({
       id: tests.id,
       title: tests.title,
-      script: tests.script
+      script: tests.script,
+      type: tests.type,
     })
     .from(tests)
     .where(inArray(tests.id, testIds));
@@ -161,7 +163,8 @@ export async function prepareJobTestScripts(
     testScripts.push({
       id: test.id,
       name: testName,
-      script: decodedScript
+      script: decodedScript,
+      type: test.type,
     });
   }
 

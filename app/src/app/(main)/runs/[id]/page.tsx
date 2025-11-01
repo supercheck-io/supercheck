@@ -34,10 +34,18 @@ export default async function RunPage({ params }: Params) {
       notFound();
     }
     
+    const jobLabel =
+      run.jobName && run.jobName.length > 20
+        ? `${run.jobName.substring(0, 20)}...`
+        : run.jobName || id;
+
     const breadcrumbs = [
       { label: "Home", href: "/" },
       { label: "Runs", href: "/runs" },
-      { label: run.jobName && run.jobName.length > 20 ? `${run.jobName.substring(0, 20)}...` : run.jobName || id, href: `/jobs?job=${run.jobId}` },
+      {
+        label: jobLabel,
+        href: run.jobId ? `/jobs?job=${run.jobId}` : "/runs",
+      },
       { label: "Report", isCurrentPage: true },
     ];
 

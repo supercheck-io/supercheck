@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/popover";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { PlaywrightLogo } from "@/components/logo/playwright-logo";
+import { K6Logo } from "@/components/logo/k6-logo";
 
 // Separate component for job name with popover
 function JobNameWithPopover({ jobName }: { jobName: string | undefined }) {
@@ -112,6 +114,26 @@ export const createColumns = (onDelete?: () => void, canDelete?: boolean): Colum
 
       );
     },
+  },
+  {
+    accessorKey: "jobType",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Type" />
+    ),
+    cell: ({ row }) => {
+      const jobType = row.getValue("jobType") as string | undefined;
+      const isK6 = jobType === "k6";
+      const LabelIcon = isK6 ? K6Logo : PlaywrightLogo;
+      const label = isK6 ? "Performance" : "Playwright";
+
+      return (
+        <div className="flex items-center gap-2 w-[140px]">
+          <LabelIcon width={20} height={20} />
+          <span>{label}</span>
+        </div>
+      );
+    },
+    enableSorting: true,
   },
   {
     accessorKey: "trigger",

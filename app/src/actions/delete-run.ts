@@ -22,7 +22,7 @@ type DeleteRunResult = {
 type RunData = {
   id: string;
   projectId: string | null;
-  jobId: string;
+  jobId: string | null;
   status: string;
   trigger: string;
   startedAt: Date | null;

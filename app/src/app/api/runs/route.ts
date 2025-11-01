@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
         id: runs.id,
         jobId: runs.jobId,
         jobName: jobs.name,
+        jobType: jobs.jobType,
         status: runs.status,
         duration: runs.duration,
         startedAt: runs.startedAt,
@@ -67,6 +68,7 @@ export async function GET(request: NextRequest) {
         errorDetails: runs.errorDetails,
         reportUrl: reports.s3Url,
         trigger: runs.trigger,
+        location: runs.location,
       })
       .from(runs)
       .leftJoin(jobs, eq(runs.jobId, jobs.id))
@@ -88,11 +90,39 @@ export async function GET(request: NextRequest) {
     const result = await dataQuery;
 
     // Convert dates to ISO strings
-    const formattedRuns = result.map(run => ({
-      ...run,
-      startedAt: run.startedAt ? run.startedAt.toISOString() : null,
-      completedAt: run.completedAt ? run.completedAt.toISOString() : null,
-    }));
+    const formattedRuns = result.map(run => {
+      const computeDuration = () => {
+        if (run.duration && run.duration.trim() !== "") {
+          return run.duration;
+        }
+        if (run.startedAt && run.completedAt) {
+          const start = run.startedAt.getTime();
+          const end = run.completedAt.getTime();
+          if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+            const seconds = Math.round((end - start) / 1000);
+            if (seconds >= 60) {
+              const minutes = Math.floor(seconds / 60);
+              const remainder = seconds % 60;
+              return `${minutes}m${remainder ? ` ${remainder}s` : ""}`.trim();
+            }
+            if (seconds === 0) {
+              return "<1s";
+            }
+            if (seconds > 0) {
+              return `${seconds}s`;
+            }
+          }
+        }
+        return run.duration ?? null;
+      };
+
+      return {
+        ...run,
+        duration: computeDuration(),
+        startedAt: run.startedAt ? run.startedAt.toISOString() : null,
+        completedAt: run.completedAt ? run.completedAt.toISOString() : null,
+      };
+    });
 
     // Calculate pagination metadata
     const totalPages = Math.ceil(total / limit);
