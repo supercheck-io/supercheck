@@ -32,31 +32,31 @@ export const priorities = [
 
 export const types = [
   {
-    label: "Browser",
+    label: "Browser Test",
     value: "browser",
     icon: Chrome,
     color: "text-sky-600",
   },
   {
-    label: "API",
+    label: "API Test",
     value: "api",
     icon: ArrowLeftRight,
     color: "text-teal-600",
   },
   {
-    label: "Database",
+    label: "Database Test",
     value: "database",
     icon: Database,
     color: "text-cyan-600",
   },
   {
-    label: "Custom",
+    label: "Custom Test",
     value: "custom",
     icon: SquareFunction,
     color: "text-blue-600",
   },
   {
-    label: "Performance",
+    label: "Performance Test",
     value: "performance",
     icon: K6Logo,
     color: "text-purple-600",

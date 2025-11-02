@@ -41,6 +41,11 @@ interface TestSelectorProps {
   performanceMode?: boolean; // For k6 jobs - single test with radio buttons
   testTypeFilter?: Test["type"]; // For synthetic monitors - filter by specific test type (e.g., "browser" for playwright)
   hideButton?: boolean; // For synthetic monitors - hide button when test is already selected
+  singleSelection?: boolean; // Force single test selection regardless of mode
+  excludeTypes?: Test["type"][]; // Exclude specific test types from the selector
+  dialogTitle?: string;
+  dialogDescription?: string;
+  maxSelectionLabel?: React.ReactNode;
 }
 
 export default function TestSelector({
@@ -52,6 +57,11 @@ export default function TestSelector({
   performanceMode = false,
   testTypeFilter,
   hideButton = false,
+  singleSelection = false,
+  excludeTypes = [],
+  dialogTitle,
+  dialogDescription,
+  maxSelectionLabel,
 }: TestSelectorProps) {
   const [isSelectTestsDialogOpen, setIsSelectTestsDialogOpen] = useState(false);
   const [testSelections, setTestSelections] = useState<Record<string, boolean>>({});
@@ -64,8 +74,15 @@ export default function TestSelector({
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
   const [testToRemove, setTestToRemove] = useState<{id: string, name: string} | null>(null);
 
+  const excludeTypesKey = excludeTypes.length
+    ? [...excludeTypes].sort().join("|")
+    : "";
+
   // Always ensure we have an array
-  const tests = useMemo(() => Array.isArray(selectedTests) ? selectedTests : [], [selectedTests]);
+  const tests = useMemo(
+    () => (Array.isArray(selectedTests) ? selectedTests : []),
+    [selectedTests],
+  );
 
   // Define the structure expected from the API
   interface ActionTest {
@@ -130,6 +147,13 @@ export default function TestSelector({
             formattedTests = formattedTests.filter(test => test.type !== "performance");
           }
 
+          if (excludeTypesKey.length > 0) {
+            const excludeTypesSet = new Set(excludeTypesKey.split("|"));
+            formattedTests = formattedTests.filter((test) => {
+              return !excludeTypesSet.has(test.type);
+            });
+          }
+
           setAvailableTests(formattedTests);
         } else {
           console.error("Failed to fetch tests:", data.error);
@@ -142,13 +166,12 @@ export default function TestSelector({
     }
 
     fetchTests();
-  }, [performanceMode, testTypeFilter]);
+  }, [performanceMode, testTypeFilter, excludeTypesKey]);
+
+  const useSingleSelection = performanceMode || !!testTypeFilter || singleSelection;
 
   // Handle test selection
   const handleTestSelection = (testId: string, checked: boolean) => {
-    // Use single selection mode if performanceMode is true OR testTypeFilter is set (for synthetic monitors)
-    const useSingleSelection = performanceMode || !!testTypeFilter;
-
     if (useSingleSelection) {
       // Single test selection (radio button mode)
       setTestSelections(checked ? { [testId]: true } : {});
@@ -209,6 +232,37 @@ export default function TestSelector({
 
   // Calculate total pages
   const totalPages = Math.max(1, Math.ceil(filteredTests.length / itemsPerPage));
+
+  const dialogTitleText =
+    dialogTitle ??
+    (testTypeFilter
+      ? "Select Playwright Test"
+      : performanceMode
+      ? "Select Performance Test"
+      : useSingleSelection
+      ? "Select Test"
+      : "Select Tests");
+
+  const dialogDescriptionText =
+    dialogDescription ??
+    (testTypeFilter
+      ? "Choose a Playwright test to monitor"
+      : performanceMode
+      ? "Choose a performance test to run in this job"
+      : useSingleSelection
+      ? "Choose the test to include in this job"
+      : "Choose the tests to include in this job");
+
+  const headerNote =
+    maxSelectionLabel !== undefined
+      ? maxSelectionLabel
+      : !performanceMode && !testTypeFilter && !singleSelection
+      ? (
+          <>
+            Max: <span className="font-bold">50</span> tests per job
+          </>
+        )
+      : undefined;
 
   return (
     <div className="space-y-4">
@@ -407,19 +461,13 @@ export default function TestSelector({
       >
         <DialogContent className="w-full min-w-[1100px]">
           <DialogHeader>
-            <DialogTitle>
-              {testTypeFilter ? "Select Playwright Test" : performanceMode ? "Select Performance Test" : "Select Tests"}
-            </DialogTitle>
+            <DialogTitle>{dialogTitleText}</DialogTitle>
             <DialogDescription className="flex justify-between items-center">
-              <span>
-                {testTypeFilter
-                  ? "Choose a Playwright test to monitor"
-                  : performanceMode
-                  ? "Choose a performance test to run in this job"
-                  : "Choose the tests to include in this job"}
-              </span>
-              {!performanceMode && !testTypeFilter && (
-                <span className="text-sm text-muted-foreground">Max: <span className="font-bold">50</span> tests per job</span>
+              <span>{dialogDescriptionText}</span>
+              {headerNote && (
+                <span className="text-sm text-muted-foreground">
+                  {headerNote}
+                </span>
               )}
             </DialogDescription>
           </DialogHeader>
@@ -476,8 +524,8 @@ export default function TestSelector({
                         onClick={() => handleTestSelection(test.id, !testSelections[test.id])}
                       >
                         <TableCell>
-                          {performanceMode || testTypeFilter ? (
-                            // Radio button for performance mode or synthetic test filter
+                          {useSingleSelection ? (
+                            // Radio button for single-selection modes
                             <RadioGroup
                               value={Object.keys(testSelections).find(k => testSelections[k]) || ""}
                               onValueChange={(value) => handleTestSelection(value, true)}
@@ -621,7 +669,7 @@ export default function TestSelector({
               {/* Footer with selected count */}
               <div className="mt-4 flex justify-between items-center">
                 <div className="text-sm text-muted-foreground">
-                  {performanceMode || testTypeFilter ? (
+                  {useSingleSelection ? (
                     <span>
                       {Object.keys(testSelections).filter((id) => testSelections[id]).length > 0
                         ? "1 test selected"
@@ -645,7 +693,7 @@ export default function TestSelector({
                     Cancel
                   </Button>
                   <Button onClick={handleSelectTests}>
-                    {performanceMode || testTypeFilter ? "Select Test" : "Add Selected Tests"}
+                    {useSingleSelection ? "Select Test" : "Add Selected Tests"}
                   </Button>
                 </DialogFooter>
               </div>
