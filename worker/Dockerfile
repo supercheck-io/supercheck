@@ -36,11 +36,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Install k6 (v0.50.0 - latest stable with better compatibility)
-# Note: v0.49.0 had issues with exit code 255 in some environments
-RUN curl -L https://github.com/grafana/k6/releases/download/v0.50.0/k6-v0.50.0-linux-amd64.tar.gz | tar -xz && \
-    mv k6-v0.50.0-linux-amd64/k6 /usr/local/bin/ && \
-    rm -rf k6-v0.50.0-linux-amd64 && \
+# Install k6 (v1.3.0 - latest stable release)
+RUN curl -L https://github.com/grafana/k6/releases/download/v1.3.0/k6-v1.3.0-linux-amd64.tar.gz | tar -xz && \
+    mv k6-v1.3.0-linux-amd64/k6 /usr/local/bin/ && \
+    rm -rf k6-v1.3.0-linux-amd64 && \
     chmod +x /usr/local/bin/k6
 
 # Verify k6 installation

@@ -1193,10 +1193,9 @@ export function MonitorForm({
                       form.setValue("syntheticConfig_testId", "");
                     }
                   }}
-                  buttonLabel="Select Playwright Test"
-                  emptyStateMessage="No Playwright test selected"
+                  buttonLabel="Select Test"
+                  emptyStateMessage="No test selected"
                   required={true}
-                  testTypeFilter="browser"
                   hideButton={selectedTests.length > 0}
                 />
               )}
