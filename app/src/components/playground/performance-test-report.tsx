@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Separator } from "@/components/ui/separator";
 import { ReportViewer } from "@/components/shared/report-viewer";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -36,6 +36,15 @@ export function PerformanceTestReport({
   const [consoleBuffer, setConsoleBuffer] = useState<string>("");
   const [runDetails, setRunDetails] = useState<K6RunDetails | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [shouldStream, setShouldStream] = useState(false);
+
+  // Keep a ref to the latest onStatusChange callback
+  const onStatusChangeRef = useRef(onStatusChange);
+
+  useEffect(() => {
+    onStatusChangeRef.current = onStatusChange;
+  }, [onStatusChange]);
 
   // Reset state when runId changes
   useEffect(() => {
@@ -43,38 +52,86 @@ export function PerformanceTestReport({
     setConsoleBuffer("");
     setRunDetails(null);
     setStreamError(null);
+    setIsInitializing(true);
+    setShouldStream(false);
   }, [runId]);
 
+  // Fetch initial run details to determine if test is already complete
   useEffect(() => {
-    onStatusChange?.(status);
-  }, [status, onStatusChange]);
+    const checkInitialStatus = async () => {
+      try {
+        const details = await fetchK6RunDetails(runId);
+        if (details) {
+          setRunDetails(details);
+          const derivedStatus = toDisplayStatus(details.runStatus ?? details.status);
+          setStatus(derivedStatus);
+
+          // If test is already complete, don't set up streaming
+          const isComplete = derivedStatus !== "running";
+          const hasReport = details.reportS3Url || details.runReportUrl;
+
+          if (isComplete && hasReport) {
+            // Test is complete with report available - skip streaming
+            setShouldStream(false);
+            const reportHref = `/api/test-results/${encodeURIComponent(runId)}/index.html?forceIframe=true`;
+            onStatusChangeRef.current?.(derivedStatus, {
+              reportUrl: reportHref,
+              location: details.location ?? null,
+              duration: computeDuration(details),
+            });
+          } else if (derivedStatus === "running") {
+            // Test is still running - set up streaming
+            setShouldStream(true);
+          } else if (!hasReport) {
+            // Test complete but no report yet - stream will be set up to get final results
+            setShouldStream(true);
+          }
+        } else {
+          // Failed to get details - assume still running and set up streaming
+          setShouldStream(true);
+        }
+      } catch (err) {
+        console.error("Failed to check initial k6 run status:", err);
+        // On error, assume test might still be running and set up streaming
+        setShouldStream(true);
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+
+    checkInitialStatus();
+  }, [runId]);
+
+  const computeDuration = (details: K6RunDetails): string | undefined => {
+    if (!details.startedAt || !details.completedAt) return undefined;
+    const start = Date.parse(details.startedAt);
+    const end = Date.parse(details.completedAt);
+    if (Number.isNaN(start) || Number.isNaN(end) || end < start) {
+      return undefined;
+    }
+    const seconds = Math.round((end - start) / 1000);
+    if (seconds >= 60) {
+      const minutes = Math.floor(seconds / 60);
+      const remainder = seconds % 60;
+      return `${minutes}m${remainder ? ` ${remainder}s` : ""}`.trim();
+    }
+    if (seconds === 0) {
+      return "<1s";
+    }
+    if (seconds > 0) {
+      return `${seconds}s`;
+    }
+    return undefined;
+  };
+
+  useEffect(() => {
+    onStatusChangeRef.current?.(status);
+  }, [status]);
 
   const handleCompletion = useCallback(
     async (finalStatus: string) => {
       const displayStatus = toDisplayStatus(finalStatus);
       setStatus(displayStatus);
-
-      const computeDuration = (details: K6RunDetails): string | undefined => {
-        if (!details.startedAt || !details.completedAt) return undefined;
-        const start = Date.parse(details.startedAt);
-        const end = Date.parse(details.completedAt);
-        if (Number.isNaN(start) || Number.isNaN(end) || end < start) {
-          return undefined;
-        }
-        const seconds = Math.round((end - start) / 1000);
-        if (seconds >= 60) {
-          const minutes = Math.floor(seconds / 60);
-          const remainder = seconds % 60;
-          return `${minutes}m${remainder ? ` ${remainder}s` : ""}`.trim();
-        }
-        if (seconds === 0) {
-          return "<1s";
-        }
-        if (seconds > 0) {
-          return `${seconds}s`;
-        }
-        return undefined;
-      };
 
       try {
         // Fetch run details with retry logic for better reliability
@@ -111,24 +168,29 @@ export function PerformanceTestReport({
             details.reportS3Url || details.runReportUrl
               ? `/api/test-results/${encodeURIComponent(runId)}/index.html?forceIframe=true`
               : undefined;
-          onStatusChange?.(derivedStatus, {
+          onStatusChangeRef.current?.(derivedStatus, {
             reportUrl: reportHref,
             location: details.location ?? null,
             duration: computeDuration(details),
           });
         } else {
           console.warn("Could not fetch k6 run details after retries");
-          onStatusChange?.(displayStatus);
+          onStatusChangeRef.current?.(displayStatus);
         }
       } catch (err) {
         console.error("Failed to load k6 run details", err);
-        onStatusChange?.(displayStatus);
+        onStatusChangeRef.current?.(displayStatus);
       }
     },
-    [onStatusChange, runId]
+    [runId]
   );
 
   useEffect(() => {
+    // Only set up streaming if we determined the test is still running or needs to be checked
+    if (!shouldStream || isInitializing) {
+      return;
+    }
+
     const source = new EventSource(
       `/api/runs/${encodeURIComponent(runId)}/stream`
     );
@@ -169,7 +231,7 @@ export function PerformanceTestReport({
       source.removeEventListener("complete", onComplete);
       source.close();
     };
-  }, [handleCompletion, runId]);
+  }, [handleCompletion, runId, shouldStream, isInitializing]);
 
   const reportUrl = useMemo(() => {
     if (!runDetails) return null;
@@ -198,6 +260,18 @@ export function PerformanceTestReport({
       </>
     );
   }, []);
+
+  // Show loading state while initializing
+  if (isInitializing) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="flex items-center gap-2">
+          <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+          <span className="text-sm text-muted-foreground">Loading report…</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col">

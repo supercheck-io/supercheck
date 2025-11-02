@@ -9,6 +9,7 @@ import { ExecutionService } from './execution/services/execution.service';
 import { S3Service } from './execution/services/s3.service';
 import { DbService, DB_PROVIDER_TOKEN } from './execution/services/db.service';
 import { RedisService } from './execution/services/redis.service';
+import { JobNotificationService } from './execution/services/job-notification.service';
 import { TestExecutionProcessor } from './execution/processors/test-execution.processor';
 import { JobExecutionProcessor } from './execution/processors/job-execution.processor';
 import { NotificationModule } from './notification/notification.module';
@@ -80,6 +81,7 @@ const drizzleProvider: Provider = {
     S3Service,
     DbService,
     RedisService,
+    JobNotificationService,
     ReportUploadService,
     TestExecutionProcessor,
     JobExecutionProcessor,
@@ -88,6 +90,7 @@ const drizzleProvider: Provider = {
     drizzleProvider,
     DbService,
     RedisService,
+    JobNotificationService,
     ExecutionService,
     S3Service,
   ],
