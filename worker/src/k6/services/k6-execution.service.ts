@@ -74,9 +74,8 @@ export class K6ExecutionService {
       this.k6BinaryPath = configuredPath;
     } else {
       // Default to /usr/local/bin/k6 (Docker) or 'k6' (local dev, assumes in PATH)
-      this.k6BinaryPath = process.env.NODE_ENV === 'production'
-        ? '/usr/local/bin/k6'
-        : 'k6';
+      this.k6BinaryPath =
+        process.env.NODE_ENV === 'production' ? '/usr/local/bin/k6' : 'k6';
     }
 
     this.baseLocalRunDir = path.join(process.cwd(), 'k6-reports');
@@ -88,6 +87,45 @@ export class K6ExecutionService {
     this.logger.log(`K6 binary path: ${this.k6BinaryPath}`);
     this.logger.log(`Max concurrent k6 runs: ${this.maxConcurrentK6Runs}`);
     this.logger.log(`K6 reports directory: ${this.baseLocalRunDir}`);
+
+    // Verify k6 installation on startup
+    this.verifyK6Installation();
+  }
+
+  /**
+   * Verify k6 is installed and working
+   */
+  private verifyK6Installation(): void {
+    const childProcess = spawn(this.k6BinaryPath, ['version'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let versionOutput = '';
+    let versionError = '';
+
+    childProcess.stdout?.on('data', (data) => {
+      versionOutput += data.toString();
+    });
+
+    childProcess.stderr?.on('data', (data) => {
+      versionError += data.toString();
+    });
+
+    childProcess.on('close', (code) => {
+      if (code === 0 && versionOutput) {
+        this.logger.log(`K6 is installed: ${versionOutput.trim()}`);
+      } else {
+        this.logger.warn(
+          `K6 verification failed. Code: ${code}, Output: ${versionOutput}, Error: ${versionError}`,
+        );
+      }
+    });
+
+    childProcess.on('error', (error) => {
+      this.logger.error(
+        `K6 verification error: ${getErrorMessage(error)}. Make sure k6 is installed at ${this.k6BinaryPath}`,
+      );
+    });
   }
 
   /**
@@ -124,25 +162,19 @@ export class K6ExecutionService {
       // 3. Build k6 command
       const reportDir = path.join(runDir, 'report');
       await fs.mkdir(reportDir, { recursive: true });
-      const reportPath = path.join(reportDir, 'index.html');
       const summaryPath = path.join(runDir, 'summary.json');
       const consolePath = path.join(runDir, 'console.log');
-      const args = [
-        'run',
-        '--out',
-        `web-dashboard=${reportDir}`,
-        '--summary-export',
-        summaryPath,
-        scriptPath,
-      ];
-      const k6EnvOverrides = {
-        K6_WEB_DASHBOARD: process.env.K6_WEB_DASHBOARD ?? 'true',
-        K6_WEB_DASHBOARD_OPEN: process.env.K6_WEB_DASHBOARD_OPEN ?? 'false',
-        K6_WEB_DASHBOARD_EXPORT:
-          process.env.K6_WEB_DASHBOARD_EXPORT ?? reportPath,
-        K6_WEB_DASHBOARD_RECORD:
-          process.env.K6_WEB_DASHBOARD_RECORD ?? 'true',
-      };
+      // Note: k6 web-dashboard would create index.html, but we don't use it
+      // to avoid port 5665 conflicts in Docker with multiple concurrent processes
+      const reportPath = path.join(reportDir, 'index.html');
+
+      // Note: Removed --out web-dashboard to avoid port 5665 conflicts in Docker
+      // with multiple concurrent k6 processes. The --summary-export JSON contains
+      // all metrics and is sufficient for reporting and display.
+      const args = ['run', '--summary-export', summaryPath, scriptPath];
+
+      // No k6EnvOverrides needed since we're not using web-dashboard
+      const k6EnvOverrides = {};
 
       // 4. Execute k6 and stream output
       const execResult = await this.executeK6Binary(
@@ -234,7 +266,10 @@ export class K6ExecutionService {
 
       await this.s3Service.uploadDirectory(runDir, s3KeyPrefix, bucket);
 
-      const baseUrl = this.s3Service.getBaseUrlForEntity('k6_performance', runId);
+      const baseUrl = this.s3Service.getBaseUrlForEntity(
+        'k6_performance',
+        runId,
+      );
       const reportUrl = hasHtmlReport ? `${baseUrl}/index.html` : null;
       const summaryUrl = `${baseUrl}/summary.json`;
       const consoleUrl = `${baseUrl}/console.log`;
@@ -370,10 +405,32 @@ export class K6ExecutionService {
         stderr += chunk;
       });
 
-      childProcess.on('close', (code) => {
-        const exitCode = code || 0;
+      childProcess.on('close', (code, signal) => {
+        const wasSignaled = code === null;
+        const exitCode = typeof code === 'number' ? code : 128;
+        const exitDescription = wasSignaled
+          ? `terminated by signal ${signal ?? 'unknown'}`
+          : `exited with code: ${exitCode}`;
 
-        this.logger.log(`[${runId}] k6 exited with code: ${exitCode}`);
+        if (wasSignaled) {
+          this.logger.warn(`[${runId}] k6 ${exitDescription}`);
+        } else {
+          this.logger.log(`[${runId}] k6 ${exitDescription}`);
+        }
+
+        // Log stderr if there was an error
+        if (stderr && exitCode !== 0) {
+          this.logger.error(`[${runId}] k6 stderr output:\n${stderr}`);
+        }
+
+        // Log stdout for debugging even on success (first 1000 chars)
+        if (stdout && exitCode !== 0) {
+          const truncatedStdout =
+            stdout.length > 1000
+              ? stdout.substring(0, 1000) + '\n... (truncated)'
+              : stdout;
+          this.logger.debug(`[${runId}] k6 stdout:\n${truncatedStdout}`);
+        }
 
         this.activeK6Runs.delete(uniqueRunId);
 
@@ -381,7 +438,11 @@ export class K6ExecutionService {
           exitCode,
           stdout,
           stderr,
-          error: exitCode !== 0 ? `k6 exited with code ${exitCode}` : null,
+          error: wasSignaled
+            ? `k6 terminated by signal ${signal ?? 'unknown'}`
+            : exitCode !== 0
+              ? `k6 exited with code ${exitCode}`
+              : null,
         });
       });
 
@@ -416,5 +477,4 @@ export class K6ExecutionService {
       },
     );
   }
-
 }

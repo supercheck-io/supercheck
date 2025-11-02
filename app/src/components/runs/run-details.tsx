@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { runStatuses, triggerTypes } from "./data";
 import { toast } from "sonner";
 import { ReportViewer } from "@/components/shared/report-viewer";
@@ -14,6 +14,7 @@ import {
   Code,
   CalendarDays,
   FolderOpen,
+  MapPin,
 } from "lucide-react";
 import { canManageRuns } from "@/lib/rbac/client-permissions";
 import { Role } from "@/lib/rbac/permissions";
@@ -35,9 +36,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { NavUser } from "@/components/nav-user";
 import { CheckIcon } from "@/components/logo/supercheck-logo";
+import { K6Logo } from "@/components/logo/k6-logo";
+import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { Home } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import { PerformanceTestReport } from "@/components/playground/performance-test-report";
 import type { K6RunStatus } from "@/lib/k6-runs";
 
@@ -185,29 +186,32 @@ export function RunDetails({
     return durationStr;
   };
 
-  // Handle status updates from SSE
-  const handleStatusUpdate = (
-    status: string,
-    newReportUrl?: string,
-    newDuration?: string
-  ) => {
-    if (status !== currentStatus) {
-      setCurrentStatus(mapStatusForDisplay(status as TestRunStatus));
-    }
+  // Handle status updates from SSE - memoized to prevent unnecessary re-renders
+  const handleStatusUpdate = useCallback(
+    (
+      status: string,
+      newReportUrl?: string,
+      newDuration?: string
+    ) => {
+      if (status !== currentStatus) {
+        setCurrentStatus(mapStatusForDisplay(status as TestRunStatus));
+      }
 
-    if (newReportUrl) {
-      // Regardless of the reportUrl from SSE, use our API proxy with direct UUID
-      const apiUrl = `/api/test-results/${
-        run.id
-      }/report/index.html?t=${Date.now()}`;
-      setReportUrl(apiUrl);
-    }
+      if (newReportUrl) {
+        // Regardless of the reportUrl from SSE, use our API proxy with direct UUID
+        const apiUrl = `/api/test-results/${
+          run.id
+        }/report/index.html?t=${Date.now()}`;
+        setReportUrl(apiUrl);
+      }
 
-    // Update duration if it changed
-    if (newDuration && newDuration !== duration) {
-      setDuration(newDuration);
-    }
-  };
+      // Update duration if it changed
+      if (newDuration && newDuration !== duration) {
+        setDuration(newDuration);
+      }
+    },
+    [currentStatus, run.id, duration]
+  );
 
   const statusInfo = runStatuses.find((s) => s.value === currentStatus);
 
@@ -297,30 +301,19 @@ export function RunDetails({
               </Button>
             )}
             <div>
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {run.jobType ? (
+                  run.jobType === "k6" ? (
+                    <K6Logo width={28} height={28} />
+                  ) : (
+                    <PlaywrightLogo width={28} height={28} />
+                  )
+                ) : null}
                 <h1 className="text-2xl font-semibold">
                   {run.jobName && run.jobName.length > 40
                     ? run.jobName.slice(0, 40) + "..."
                     : run.jobName || "Unknown Job"}
                 </h1>
-                {run.jobType ? (
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-xs uppercase",
-                      run.jobType === "k6"
-                        ? "border-purple-500/30 bg-purple-500/10 text-purple-200"
-                        : "border-blue-500/30 bg-blue-500/10 text-blue-200",
-                    )}
-                  >
-                    {run.jobType === "k6" ? "Performance (k6)" : "Playwright"}
-                  </Badge>
-                ) : null}
-                {headerLocation ? (
-                  <Badge variant="secondary" className="text-xs text-slate-700">
-                    {`Location: ${headerLocation}`}
-                  </Badge>
-                ) : null}
               </div>
             </div>
           </div>
@@ -404,17 +397,31 @@ export function RunDetails({
             })()}
           </div>
 
-          <div className="bg-muted/30 rounded-lg p-2 border flex items-center overflow-hidden">
-            <Code className="h-6 w-6 min-w-6 mr-2 text-blue-500" />
-            <div className="min-w-0 w-full">
-              <div className="text-xs font-medium text-muted-foreground">
-                Tests Executed
-              </div>
-              <div className="text-sm font-semibold truncate">
-                {run.testCount}
+          {isPerformanceRun ? (
+            <div className="bg-muted/30 rounded-lg p-2 border flex items-center overflow-hidden">
+              <MapPin className="h-6 w-6 min-w-6 mr-2 text-amber-500" />
+              <div className="min-w-0 w-full">
+                <div className="text-xs font-medium text-muted-foreground">
+                  Location
+                </div>
+                <div className="text-sm font-semibold truncate">
+                  {headerLocation || "Not specified"}
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-muted/30 rounded-lg p-2 border flex items-center overflow-hidden">
+              <Code className="h-6 w-6 min-w-6 mr-2 text-blue-500" />
+              <div className="min-w-0 w-full">
+                <div className="text-xs font-medium text-muted-foreground">
+                  Tests Executed
+                </div>
+                <div className="text-sm font-semibold truncate">
+                  {run.testCount}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="bg-muted/30 rounded-lg p-2 border flex items-center overflow-hidden">
             <ClockIcon className="h-6 w-6 min-w-6 mr-2 text-orange-400" />
