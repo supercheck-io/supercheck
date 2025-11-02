@@ -168,7 +168,7 @@ export function LocationMapCard({
   return (
     <div
       className={cn(
-        "w-full rounded-2xl border border-border/60 bg-muted/30 px-6 py-6 shadow-md",
+        "w-full rounded-2xl border border-border/60 bg-muted/30 px-6 py-6",
         size === "compact" ? "min-h-[360px]" : "min-h-[420px]",
         className
       )}

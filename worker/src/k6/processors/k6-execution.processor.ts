@@ -1,7 +1,7 @@
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Job } from 'bullmq';
+import { Job, JobsOptions, Queue } from 'bullmq';
 import { sql, eq } from 'drizzle-orm';
 import {
   K6ExecutionService,
@@ -9,6 +9,7 @@ import {
 } from '../services/k6-execution.service';
 import { DbService } from '../../execution/services/db.service';
 import * as schema from '../../db/schema';
+import { JobNotificationService } from '../../execution/services/job-notification.service';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -28,6 +29,13 @@ function getErrorStack(error: unknown): string | undefined {
 
 type K6Task = K6ExecutionTask;
 
+class LocationMismatchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LocationMismatchError';
+  }
+}
+
 @Processor('k6-execution', {
   concurrency: 3, // Process up to 3 k6 tests in parallel
 })
@@ -35,11 +43,13 @@ export class K6ExecutionProcessor extends WorkerHost {
   private readonly logger = new Logger(K6ExecutionProcessor.name);
   private readonly workerLocation: string;
   private readonly enableLocationFiltering: boolean;
+  private readonly locationMismatchRetryDelayMs = 1000;
 
   constructor(
     private k6ExecutionService: K6ExecutionService,
     private dbService: DbService,
     private configService: ConfigService,
+    private jobNotificationService: JobNotificationService,
   ) {
     super();
 
@@ -72,10 +82,23 @@ export class K6ExecutionProcessor extends WorkerHost {
   }
 
   async process(job: Job<K6Task>): Promise<void> {
-    const jobLocation = job.data.location || 'us-east'; // Default location
-    const runId = job.data.runId;
-    const isJobRun = Boolean(job.data.jobId);
-    const testId = job.data.tests?.[0]?.id || job.data.testId || null;
+    const processStartTime = Date.now();
+    const requestedLocation = job.data.location || 'us-east';
+    const normalizedJobLocation = requestedLocation.toLowerCase();
+    const normalizedWorkerLocation = this.workerLocation.toLowerCase();
+    const jobLocationIsWildcard = this.isWildcardLocation(normalizedJobLocation);
+    const workerIsWildcard = this.isWildcardLocation(normalizedWorkerLocation);
+    const effectiveJobLocation = jobLocationIsWildcard
+      ? this.workerLocation
+      : requestedLocation;
+    const taskData: K6Task = {
+      ...job.data,
+      location: effectiveJobLocation,
+    };
+
+    const runId = taskData.runId;
+    const isJobRun = Boolean(taskData.jobId);
+    const testId = taskData.tests?.[0]?.id || taskData.testId || null;
 
     if (!testId) {
       this.logger.warn(
@@ -84,14 +107,16 @@ export class K6ExecutionProcessor extends WorkerHost {
     }
 
     // Location filtering (multi-region mode)
-    if (this.enableLocationFiltering && jobLocation !== this.workerLocation) {
-      // Skip this job - wrong location
-      this.logger.debug(
-        `[Job ${job.id}] Skipping - job location (${jobLocation}) doesn't match worker location (${this.workerLocation})`,
-      );
-      // Important: Don't throw error, just return
-      // Another worker in correct location will pick it up
-      return;
+    const shouldFilter =
+      this.enableLocationFiltering &&
+      !workerIsWildcard &&
+      !jobLocationIsWildcard &&
+      normalizedJobLocation !== normalizedWorkerLocation;
+
+    if (shouldFilter) {
+      const message = `[Job ${job.id}] Skipping - job location (${requestedLocation}) doesn't match worker location (${this.workerLocation})`;
+      this.logger.debug(message);
+      throw new LocationMismatchError(message);
     }
 
     this.logger.log(
@@ -105,12 +130,12 @@ export class K6ExecutionProcessor extends WorkerHost {
         .set({
           status: 'running',
           startedAt: new Date(),
-          location: jobLocation as any,
+          location: effectiveJobLocation as any,
         })
         .where(eq(schema.runs.id, runId));
 
       // Execute k6
-      const result = await this.k6ExecutionService.runK6Test(job.data);
+      const result = await this.k6ExecutionService.runK6Test(taskData);
 
       // Extract metrics from summary
       const metrics = this.extractMetrics(result.summary);
@@ -121,9 +146,9 @@ export class K6ExecutionProcessor extends WorkerHost {
         .values({
           testId,
           runId,
-          jobId: job.data.jobId ?? null,
-          organizationId: job.data.organizationId,
-          projectId: job.data.projectId,
+          jobId: taskData.jobId ?? null,
+          organizationId: taskData.organizationId,
+          projectId: taskData.projectId,
           location: this.workerLocation as any, // Actual execution location
           status: result.success ? 'passed' : 'failed',
           startedAt: new Date(Date.now() - result.durationMs),
@@ -186,23 +211,37 @@ export class K6ExecutionProcessor extends WorkerHost {
         durationString,
       );
 
-      if (job.data.jobId) {
+      if (taskData.jobId) {
         try {
           const finalRunStatuses =
-            await this.dbService.getRunStatusesForJob(job.data.jobId);
+            await this.dbService.getRunStatusesForJob(taskData.jobId);
           await this.dbService.updateJobStatus(
-            job.data.jobId,
+            taskData.jobId,
             finalRunStatuses,
           );
           await this.dbService.db
             .update(schema.jobs)
             .set({ lastRunAt: new Date() })
-            .where(eq(schema.jobs.id, job.data.jobId));
+            .where(eq(schema.jobs.id, taskData.jobId));
         } catch (statusError) {
           this.logger.error(
             `[Job ${job.id}] Failed to update job status after k6 run: ${getErrorMessage(statusError)}`,
           );
         }
+      }
+
+      if (taskData.jobId) {
+        await this.jobNotificationService.handleJobNotifications({
+          jobId: taskData.jobId,
+          organizationId: taskData.organizationId,
+          projectId: taskData.projectId,
+          runId,
+          finalStatus: result.success ? 'passed' : 'failed',
+          durationSeconds,
+          results: [{ success: result.success }],
+          jobType: 'k6',
+          location: this.workerLocation,
+        });
       }
 
       this.logger.log(
@@ -238,6 +277,31 @@ export class K6ExecutionProcessor extends WorkerHost {
         }
       }
 
+      if (taskData.jobId) {
+        const elapsedSeconds = Math.max(
+          0,
+          Math.round((Date.now() - processStartTime) / 1000),
+        );
+        try {
+          await this.jobNotificationService.handleJobNotifications({
+            jobId: taskData.jobId,
+            organizationId: taskData.organizationId,
+            projectId: taskData.projectId,
+            runId,
+            finalStatus: 'error',
+            durationSeconds: elapsedSeconds,
+            results: [{ success: false }],
+            jobType: 'k6',
+            location: this.workerLocation,
+            errorMessage: getErrorMessage(error),
+          });
+        } catch (notificationError) {
+          this.logger.error(
+            `[Job ${job.id}] Failed to send error notification: ${getErrorMessage(notificationError)}`,
+          );
+        }
+      }
+
       throw error;
     }
   }
@@ -248,7 +312,72 @@ export class K6ExecutionProcessor extends WorkerHost {
   }
 
   @OnWorkerEvent('failed')
-  onFailed(job: Job, error: Error) {
+  async onFailed(job: Job, error: Error) {
+    if (this.enableLocationFiltering && error instanceof LocationMismatchError) {
+      this.logger.debug(
+        `Job ${job.id} rescheduled due to location mismatch`,
+      );
+
+      try {
+        const rescheduleDelay = Math.max(
+          job.opts.delay ?? 0,
+          this.locationMismatchRetryDelayMs,
+        );
+        const jobId = job.opts.jobId ?? job.id;
+        const {
+          attempts,
+          backoff,
+          removeOnComplete,
+          removeOnFail,
+          priority,
+          lifo,
+        } = job.opts;
+
+        const queue = (job as unknown as { queue: Queue | undefined }).queue;
+        if (!queue) {
+          this.logger.warn(
+            `Job ${job.id} missing queue reference; skipping reschedule`,
+          );
+          await job.remove();
+          return;
+        }
+
+        const requeueOptions: JobsOptions = {
+          jobId,
+          delay: rescheduleDelay,
+          attempts,
+          backoff,
+          removeOnComplete,
+          removeOnFail,
+        };
+
+        if (priority !== undefined) {
+          requeueOptions.priority = priority;
+        }
+        if (lifo !== undefined) {
+          requeueOptions.lifo = lifo;
+        }
+
+        await job.remove();
+        await queue.add(job.name, job.data, requeueOptions);
+      } catch (rescheduleError) {
+        this.logger.error(
+          `Job ${job.id} failed to reschedule after location mismatch: ${getErrorMessage(rescheduleError)}`,
+          getErrorStack(rescheduleError),
+        );
+        try {
+          await job.retry();
+        } catch (retryError) {
+          this.logger.error(
+            `Job ${job.id} retry after reschedule failure also failed: ${getErrorMessage(retryError)}`,
+            getErrorStack(retryError),
+          );
+        }
+      }
+
+      return;
+    }
+
     this.logger.error(
       `Job ${job.id} failed: ${error.message}`,
       error.stack,
@@ -304,5 +433,13 @@ export class K6ExecutionProcessor extends WorkerHost {
     }
 
     return metrics;
+  }
+
+  private isWildcardLocation(location?: string | null): boolean {
+    if (!location) {
+      return false;
+    }
+    const normalized = location.toLowerCase();
+    return normalized === 'local' || normalized === 'any' || normalized === 'all';
   }
 }
