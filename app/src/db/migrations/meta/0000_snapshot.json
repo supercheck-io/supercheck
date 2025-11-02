@@ -1,5 +1,5 @@
 {
-  "id": "7dcc98bc-7c3a-44fd-8841-08685fd76286",
+  "id": "66155244-1ceb-4bc2-88c8-005792ba46fc",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1390,6 +1390,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "job_type": {
+          "name": "job_type",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'playwright'"
+        },
         "cron_schedule": {
           "name": "cron_schedule",
           "type": "varchar(100)",
@@ -1503,7 +1510,7 @@
           "name": "job_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "project_id": {
           "name": "project_id",
@@ -1524,6 +1531,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "started_at": {
           "name": "started_at",
           "type": "timestamp",
@@ -1533,6 +1546,30 @@
         "completed_at": {
           "name": "completed_at",
           "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "report_s3_url": {
+          "name": "report_s3_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "logs_s3_url": {
+          "name": "logs_s3_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "video_s3_url": {
+          "name": "video_s3_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "screenshots_s3_path": {
+          "name": "screenshots_s3_path",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -1547,6 +1584,19 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "location": {
+          "name": "location",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'{}'::jsonb"
         },
         "error_details": {
           "name": "error_details",
@@ -1594,6 +1644,232 @@
         "runs_project_id_projects_id_fk": {
           "name": "runs_project_id_projects_id_fk",
           "tableFrom": "runs",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.k6_performance_runs": {
+      "name": "k6_performance_runs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "test_id": {
+          "name": "test_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "job_id": {
+          "name": "job_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "location": {
+          "name": "location",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'us-east'"
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary_json": {
+          "name": "summary_json",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "thresholds_passed": {
+          "name": "thresholds_passed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_requests": {
+          "name": "total_requests",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failed_requests": {
+          "name": "failed_requests",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "request_rate": {
+          "name": "request_rate",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "avg_response_time_ms": {
+          "name": "avg_response_time_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "p95_response_time_ms": {
+          "name": "p95_response_time_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "p99_response_time_ms": {
+          "name": "p99_response_time_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "report_s3_url": {
+          "name": "report_s3_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary_s3_url": {
+          "name": "summary_s3_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "console_s3_url": {
+          "name": "console_s3_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_details": {
+          "name": "error_details",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "console_output": {
+          "name": "console_output",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "k6_performance_runs_job_id_jobs_id_fk": {
+          "name": "k6_performance_runs_job_id_jobs_id_fk",
+          "tableFrom": "k6_performance_runs",
+          "tableTo": "jobs",
+          "columnsFrom": [
+            "job_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "k6_performance_runs_run_id_runs_id_fk": {
+          "name": "k6_performance_runs_run_id_runs_id_fk",
+          "tableFrom": "k6_performance_runs",
+          "tableTo": "runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "k6_performance_runs_organization_id_organization_id_fk": {
+          "name": "k6_performance_runs_organization_id_organization_id_fk",
+          "tableFrom": "k6_performance_runs",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "k6_performance_runs_project_id_projects_id_fk": {
+          "name": "k6_performance_runs_project_id_projects_id_fk",
+          "tableFrom": "k6_performance_runs",
           "tableTo": "projects",
           "columnsFrom": [
             "project_id"
