@@ -39,6 +39,8 @@ interface TestSelectorProps {
   emptyStateMessage?: string;
   required?: boolean;
   performanceMode?: boolean; // For k6 jobs - single test with radio buttons
+  testTypeFilter?: Test["type"]; // For synthetic monitors - filter by specific test type (e.g., "browser" for playwright)
+  hideButton?: boolean; // For synthetic monitors - hide button when test is already selected
 }
 
 export default function TestSelector({
@@ -48,6 +50,8 @@ export default function TestSelector({
   emptyStateMessage = "No tests selected",
   required = true,
   performanceMode = false,
+  testTypeFilter,
+  hideButton = false,
 }: TestSelectorProps) {
   const [isSelectTestsDialogOpen, setIsSelectTestsDialogOpen] = useState(false);
   const [testSelections, setTestSelections] = useState<Record<string, boolean>>({});
@@ -115,7 +119,10 @@ export default function TestSelector({
           );
 
           // Filter tests based on mode
-          if (performanceMode) {
+          if (testTypeFilter) {
+            // Filter by specific test type (e.g., "browser" for synthetic monitors, "performance" for k6 jobs)
+            formattedTests = formattedTests.filter(test => test.type === testTypeFilter);
+          } else if (performanceMode) {
             // Performance mode: show only performance tests
             formattedTests = formattedTests.filter(test => test.type === "performance");
           } else {
@@ -135,15 +142,18 @@ export default function TestSelector({
     }
 
     fetchTests();
-  }, [performanceMode]);
+  }, [performanceMode, testTypeFilter]);
 
   // Handle test selection
   const handleTestSelection = (testId: string, checked: boolean) => {
-    if (performanceMode) {
-      // Performance mode: single test selection
+    // Use single selection mode if performanceMode is true OR testTypeFilter is set (for synthetic monitors)
+    const useSingleSelection = performanceMode || !!testTypeFilter;
+
+    if (useSingleSelection) {
+      // Single test selection (radio button mode)
       setTestSelections(checked ? { [testId]: true } : {});
     } else {
-      // Regular mode: multiple test selection
+      // Multiple test selection (checkbox mode)
       setTestSelections((prev) => ({
         ...prev,
         [testId]: checked,
@@ -209,24 +219,26 @@ export default function TestSelector({
             Manage the tests associated with this job
           </p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => setIsSelectTestsDialogOpen(true)}
-          className={cn(
-            required && tests.length === 0 && "border-destructive",
-            "transition-colors",
-          )}
-          size="sm"
-        >
-          <PlusIcon
+        {!hideButton && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsSelectTestsDialogOpen(true)}
             className={cn(
-              "mr-2 h-4 w-4",
-              required && tests.length === 0 && "text-destructive",
+              required && tests.length === 0 && "border-destructive",
+              "transition-colors",
             )}
-          />
-          {buttonLabel}
-        </Button>
+            size="sm"
+          >
+            <PlusIcon
+              className={cn(
+                "mr-2 h-4 w-4",
+                required && tests.length === 0 && "text-destructive",
+              )}
+            />
+            {buttonLabel}
+          </Button>
+        )}
       </div>
 
       {tests.length === 0 ? (
@@ -395,14 +407,18 @@ export default function TestSelector({
       >
         <DialogContent className="w-full min-w-[1100px]">
           <DialogHeader>
-            <DialogTitle>{performanceMode ? "Select Performance Test" : "Select Tests"}</DialogTitle>
+            <DialogTitle>
+              {testTypeFilter ? "Select Playwright Test" : performanceMode ? "Select Performance Test" : "Select Tests"}
+            </DialogTitle>
             <DialogDescription className="flex justify-between items-center">
               <span>
-                {performanceMode
+                {testTypeFilter
+                  ? "Choose a Playwright test to monitor"
+                  : performanceMode
                   ? "Choose a performance test to run in this job"
                   : "Choose the tests to include in this job"}
               </span>
-              {!performanceMode && (
+              {!performanceMode && !testTypeFilter && (
                 <span className="text-sm text-muted-foreground">Max: <span className="font-bold">50</span> tests per job</span>
               )}
             </DialogDescription>
@@ -460,8 +476,8 @@ export default function TestSelector({
                         onClick={() => handleTestSelection(test.id, !testSelections[test.id])}
                       >
                         <TableCell>
-                          {performanceMode ? (
-                            // Radio button for performance mode
+                          {performanceMode || testTypeFilter ? (
+                            // Radio button for performance mode or synthetic test filter
                             <RadioGroup
                               value={Object.keys(testSelections).find(k => testSelections[k]) || ""}
                               onValueChange={(value) => handleTestSelection(value, true)}
@@ -605,7 +621,7 @@ export default function TestSelector({
               {/* Footer with selected count */}
               <div className="mt-4 flex justify-between items-center">
                 <div className="text-sm text-muted-foreground">
-                  {performanceMode ? (
+                  {performanceMode || testTypeFilter ? (
                     <span>
                       {Object.keys(testSelections).filter((id) => testSelections[id]).length > 0
                         ? "1 test selected"
@@ -629,7 +645,7 @@ export default function TestSelector({
                     Cancel
                   </Button>
                   <Button onClick={handleSelectTests}>
-                    {performanceMode ? "Select Test" : "Add Selected Tests"}
+                    {performanceMode || testTypeFilter ? "Select Test" : "Add Selected Tests"}
                   </Button>
                 </DialogFooter>
               </div>
