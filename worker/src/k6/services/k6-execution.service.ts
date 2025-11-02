@@ -7,6 +7,7 @@ import * as crypto from 'crypto';
 import { S3Service } from '../../execution/services/s3.service';
 import { DbService } from '../../execution/services/db.service';
 import { RedisService } from '../../execution/services/redis.service';
+import * as net from 'net';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -55,9 +56,15 @@ export class K6ExecutionService {
   private readonly k6BinaryPath: string;
   private readonly baseLocalRunDir: string;
   private readonly maxConcurrentK6Runs: number;
+  private readonly dashboardPortStart: number;
+  private readonly dashboardPortRange: number;
+  private readonly dashboardBindAddress: string;
+  private readonly useDashboardPortPool: boolean;
+  private nextWebDashboardPort: number;
+  private readonly allocatedDashboardPorts: Set<number> = new Set();
   private activeK6Runs: Map<
     string,
-    { pid: number; startTime: number; runId: string }
+    { pid: number; startTime: number; runId: string; dashboardPort?: number }
   > = new Map();
 
   constructor(
@@ -90,6 +97,21 @@ export class K6ExecutionService {
 
     // Verify k6 installation on startup
     this.verifyK6Installation();
+
+    this.dashboardPortStart = this.configService.get<number>(
+      'K6_WEB_DASHBOARD_START_PORT',
+      6000,
+    );
+    this.dashboardPortRange = this.configService.get<number>(
+      'K6_WEB_DASHBOARD_PORT_RANGE',
+      0,
+    );
+    this.dashboardBindAddress = this.configService.get<string>(
+      'K6_WEB_DASHBOARD_ADDR',
+      '127.0.0.1',
+    );
+    this.useDashboardPortPool = this.dashboardPortRange > 0;
+    this.nextWebDashboardPort = this.dashboardPortStart;
   }
 
   /**
@@ -159,33 +181,96 @@ export class K6ExecutionService {
       const scriptPath = path.join(runDir, 'test.js');
       await fs.writeFile(scriptPath, script);
 
-      // 3. Build k6 command
+      // 3. Build k6 command with web dashboard for HTML report generation
       const reportDir = path.join(runDir, 'report');
       await fs.mkdir(reportDir, { recursive: true });
       const summaryPath = path.join(runDir, 'summary.json');
+      const htmlReportPath = path.join(reportDir, 'report.html'); // k6 will export here
       const consolePath = path.join(runDir, 'console.log');
-      // Note: k6 web-dashboard would create index.html, but we don't use it
-      // to avoid port 5665 conflicts in Docker with multiple concurrent processes
-      const reportPath = path.join(reportDir, 'index.html');
 
-      // Note: Removed --out web-dashboard to avoid port 5665 conflicts in Docker
-      // with multiple concurrent k6 processes. The --summary-export JSON contains
-      // all metrics and is sufficient for reporting and display.
-      const args = ['run', '--summary-export', summaryPath, scriptPath];
+      // Build robust k6 command for HTML report generation
+      // The web-dashboard output generates the interactive HTML report
+      // K6_WEB_DASHBOARD_EXPORT writes it directly to a file without needing the web server
+      const args = [
+        'run',
+        '--summary-export',
+        summaryPath,
+        '--out',
+        'web-dashboard',
+        scriptPath,
+      ];
 
-      // No k6EnvOverrides needed since we're not using web-dashboard
-      const k6EnvOverrides = {};
-
-      // 4. Execute k6 and stream output
-      const execResult = await this.executeK6Binary(
-        args,
-        runDir,
-        runId,
-        uniqueRunId,
-        k6EnvOverrides,
+      // Configure web dashboard environment variables for robust HTML export
+      // These settings ensure the HTML report is generated regardless of port conflicts
+      const maxDashboardAttempts = Math.max(
+        this.configService.get<number>('K6_WEB_DASHBOARD_MAX_ATTEMPTS', 5),
+        1,
       );
 
-      // 5. Read summary
+      let execResult:
+        | {
+            exitCode: number;
+            stdout: string;
+            stderr: string;
+            error: string | null;
+          }
+        | null = null;
+      for (let attempt = 1; attempt <= maxDashboardAttempts; attempt++) {
+        const dashboardPort = this.useDashboardPortPool
+          ? await this.allocateDashboardPort(runId)
+          : 0; // Let the OS choose a free ephemeral port
+
+        const k6EnvOverrides = {
+          K6_WEB_DASHBOARD: 'true',
+          K6_WEB_DASHBOARD_EXPORT: htmlReportPath, // Write HTML report to this path
+          K6_WEB_DASHBOARD_PORT: dashboardPort.toString(), // Use unique port
+          K6_WEB_DASHBOARD_ADDR: this.dashboardBindAddress,
+          K6_NO_COLOR: '1', // Disable ANSI colors in output
+        };
+
+        try {
+          execResult = await this.executeK6Binary(
+            args,
+            runDir,
+            runId,
+            uniqueRunId,
+            k6EnvOverrides,
+            dashboardPort,
+          );
+        } finally {
+          if (this.useDashboardPortPool) {
+            this.releaseDashboardPort(dashboardPort);
+          }
+        }
+
+        const portConflict =
+          execResult.stderr.includes('address already in use') ||
+          execResult.error?.includes('address already in use') ||
+          execResult.stderr.includes('EADDRINUSE');
+
+        if (execResult.exitCode === 0 || !portConflict) {
+          break;
+        }
+
+        if (attempt < maxDashboardAttempts) {
+          this.logger.warn(
+            `[${runId}] k6 dashboard port ${dashboardPort} unavailable (attempt ${attempt}/${maxDashboardAttempts}). Retrying with a new port...`,
+          );
+          await this.resetDashboardArtifacts({
+            reportDir,
+            summaryPath,
+            htmlReportPath,
+            consolePath,
+          });
+          await this.delay(150);
+        }
+      }
+
+      if (!execResult) {
+        throw new Error(`[${runId}] k6 did not produce an execution result`);
+      }
+
+      // 5. Read summary file (created by --summary-export)
       let summary = null;
       try {
         const summaryContent = await fs.readFile(summaryPath, 'utf8');
@@ -196,7 +281,32 @@ export class K6ExecutionService {
         );
       }
 
-      // 5a. Persist console output for artifact upload
+      // 5a. HTML report is created directly by k6 web-dashboard with K6_WEB_DASHBOARD_EXPORT
+      // Verify that k6 generated the HTML report
+      try {
+        await fs.access(htmlReportPath);
+        this.logger.debug(`[${runId}] HTML report generated by k6 web-dashboard`);
+      } catch (error) {
+        this.logger.error(
+          `[${runId}] CRITICAL: HTML report not generated by k6 web-dashboard at ${htmlReportPath}: ${getErrorMessage(error)}`,
+        );
+        throw new Error(
+          `K6 failed to generate HTML report. Ensure K6_WEB_DASHBOARD_EXPORT environment variable is set correctly.`,
+        );
+      }
+
+      const htmlIndexPath = path.join(reportDir, 'index.html');
+      if (htmlIndexPath !== htmlReportPath) {
+        try {
+          await fs.copyFile(htmlReportPath, htmlIndexPath);
+        } catch (error) {
+          this.logger.warn(
+            `[${runId}] Failed to create index.html alias for HTML report: ${getErrorMessage(error)}`,
+          );
+        }
+      }
+
+      // 5b. Persist console output for artifact upload
       try {
         const combinedLog =
           execResult.stdout +
@@ -243,6 +353,8 @@ export class K6ExecutionService {
         }
       }
 
+      // HTML report is already in the report directory (generated directly by k6 web dashboard)
+
       try {
         await fs.rm(scriptPath);
       } catch (error) {
@@ -254,13 +366,15 @@ export class K6ExecutionService {
       const s3KeyPrefix = `${runId}`;
       const bucket = this.s3Service.getBucketForEntityType('k6_performance');
 
+      // Check if HTML report was generated
       let hasHtmlReport = false;
       try {
-        await fs.access(reportPath);
+        await fs.access(htmlReportPath);
         hasHtmlReport = true;
+        this.logger.debug(`[${runId}] HTML report file confirmed at ${htmlReportPath}`);
       } catch (error) {
         this.logger.warn(
-          `[${runId}] HTML report not generated by k6: ${getErrorMessage(error)}`,
+          `[${runId}] HTML report file not found: ${getErrorMessage(error)}`,
         );
       }
 
@@ -347,6 +461,99 @@ export class K6ExecutionService {
   }
 
   /**
+   * Allocate a free port for the k6 web dashboard, probing to avoid clashes with lingering listeners.
+   */
+  private async allocateDashboardPort(runId: string): Promise<number> {
+    const range = Math.max(this.dashboardPortRange, 1);
+    const maxAttempts = range * 2;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      let candidate = this.nextWebDashboardPort;
+
+      if (
+        candidate >= this.dashboardPortStart + range ||
+        candidate < this.dashboardPortStart
+      ) {
+        candidate = this.dashboardPortStart;
+      }
+
+      this.nextWebDashboardPort =
+        candidate + 1 >= this.dashboardPortStart + range
+          ? this.dashboardPortStart
+          : candidate + 1;
+
+      if (this.allocatedDashboardPorts.has(candidate)) {
+        continue;
+      }
+
+      const available = await this.isPortAvailable(candidate);
+      if (available) {
+        this.allocatedDashboardPorts.add(candidate);
+        this.logger.debug(
+          `[${runId}] Allocated k6 web dashboard port ${candidate}`,
+        );
+        return candidate;
+      }
+    }
+
+    throw new Error(
+      `[${runId}] Unable to allocate a free port for k6 web dashboard. Verify that ports ${this.dashboardPortStart}-${this.dashboardPortStart + range - 1} are available.`,
+    );
+  }
+
+  private releaseDashboardPort(port?: number): void {
+    if (typeof port === 'number') {
+      this.allocatedDashboardPorts.delete(port);
+    }
+  }
+
+  private async isPortAvailable(port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const tester = net.createServer();
+      tester.unref();
+
+      tester.once('error', () => {
+        tester.close(() => resolve(false));
+      });
+
+      tester.once('listening', () => {
+        tester.close(() => resolve(true));
+      });
+
+      tester.listen(port, this.dashboardBindAddress);
+    });
+  }
+
+  private async resetDashboardArtifacts(paths: {
+    reportDir: string;
+    summaryPath: string;
+    htmlReportPath: string;
+    consolePath: string;
+  }): Promise<void> {
+    const { reportDir, summaryPath, htmlReportPath, consolePath } = paths;
+
+    await Promise.allSettled([
+      fs.rm(summaryPath, { force: true }),
+      fs.rm(consolePath, { force: true }),
+      fs.rm(htmlReportPath, { force: true }),
+    ]);
+
+    try {
+      await fs.rm(reportDir, { recursive: true, force: true });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to remove report directory during retry cleanup: ${getErrorMessage(error)}`,
+      );
+    }
+
+    await fs.mkdir(reportDir, { recursive: true });
+  }
+
+  private async delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
    * Execute k6 binary and stream stdout
    */
   private async executeK6Binary(
@@ -355,6 +562,7 @@ export class K6ExecutionService {
     runId: string,
     uniqueRunId: string,
     overrideEnv: Record<string, string> = {},
+    dashboardPort?: number,
   ): Promise<{
     exitCode: number;
     stdout: string;
@@ -381,6 +589,7 @@ export class K6ExecutionService {
           pid: childProcess.pid,
           startTime: Date.now(),
           runId,
+          dashboardPort,
         });
       }
 

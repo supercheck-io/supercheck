@@ -14,24 +14,24 @@ brew install k6
 #### Option 2: Direct Download
 ```bash
 # Download latest release
-curl -L https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-darwin-arm64.tar.gz -o k6.tar.gz
+curl -L https://github.com/grafana/k6/releases/download/v1.3.0/k6-v1.3.0-darwin-arm64.tar.gz -o k6.tar.gz
 
 # Extract
 tar -xzf k6.tar.gz
 
 # Move to /usr/local/bin
-sudo mv k6-v0.49.0-darwin-arm64/k6 /usr/local/bin/
+sudo mv k6-v1.3.0-darwin-arm64/k6 /usr/local/bin/
 
 # Make executable
 sudo chmod +x /usr/local/bin/k6
 
 # Clean up
-rm -rf k6.tar.gz k6-v0.49.0-darwin-arm64
+rm -rf k6.tar.gz k6-v1.3.0-darwin-arm64
 ```
 
 For Intel Macs, use:
 ```bash
-curl -L https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-darwin-amd64.tar.gz -o k6.tar.gz
+curl -L https://github.com/grafana/k6/releases/download/v1.3.0/k6-v1.3.0-darwin-amd64.tar.gz -o k6.tar.gz
 ```
 
 ### Linux
@@ -48,24 +48,24 @@ sudo apt-get install k6
 #### Option 2: Direct Download
 ```bash
 # Download latest release
-curl -L https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-linux-amd64.tar.gz -o k6.tar.gz
+curl -L https://github.com/grafana/k6/releases/download/v1.3.0/k6-v1.3.0-linux-amd64.tar.gz -o k6.tar.gz
 
 # Extract
 tar -xzf k6.tar.gz
 
 # Move to /usr/local/bin
-sudo mv k6-v0.49.0-linux-amd64/k6 /usr/local/bin/
+sudo mv k6-v1.3.0-linux-amd64/k6 /usr/local/bin/
 
 # Make executable
 sudo chmod +x /usr/local/bin/k6
 
 # Clean up
-rm -rf k6.tar.gz k6-v0.49.0-linux-amd64
+rm -rf k6.tar.gz k6-v1.3.0-linux-amd64
 ```
 
 For ARM64 Linux, use:
 ```bash
-curl -L https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-linux-arm64.tar.gz -o k6.tar.gz
+curl -L https://github.com/grafana/k6/releases/download/v1.3.0/k6-v1.3.0-linux-arm64.tar.gz -o k6.tar.gz
 ```
 
 ### Windows
@@ -81,7 +81,7 @@ winget install k6 --source winget
 ```
 
 #### Option 3: Direct Download
-1. Download the latest Windows release from: https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-windows-amd64.zip
+1. Download the latest Windows release from: https://github.com/grafana/k6/releases/download/v1.3.0/k6-v1.3.0-windows-amd64.zip
 2. Extract the ZIP file
 3. Add the extracted directory to your PATH environment variable
 4. Or move `k6.exe` to a directory already in PATH (e.g., `C:\Windows\System32`)
@@ -96,7 +96,7 @@ k6 version
 
 You should see output like:
 ```
-k6 v0.49.0 (commit/..., go1.21.6, darwin/arm64)
+k6 v1.3.0 (commit/..., go..., darwin/arm64)
 ```
 
 ## Configuration for Supercheck Worker
@@ -179,15 +179,15 @@ chmod +x /usr/local/bin/k6
 
 **Recommendation**: Keep the same version for consistency.
 
-Current Docker version: **v0.49.0**
+Current Docker version: **v1.3.0**
 
 To install the same version locally:
 ```bash
 # macOS (Homebrew)
-brew install k6@0.49.0
+brew install k6
 
 # Linux (direct download - use the specific version URL)
-curl -L https://github.com/grafana/k6/releases/download/v0.49.0/k6-v0.49.0-linux-amd64.tar.gz -o k6.tar.gz
+curl -L https://github.com/grafana/k6/releases/download/v1.3.0/k6-v1.3.0-linux-amd64.tar.gz -o k6.tar.gz
 ```
 
 ## Path Handling in Code

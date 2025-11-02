@@ -62,7 +62,7 @@ I've successfully implemented the k6 performance testing feature for Supercheck 
 
 #### Dockerfile
 - **Location**: `worker/Dockerfile`
-- Installs k6 v0.49.0 from official GitHub releases
+- Installs k6 v1.3.0 from official GitHub releases
 - Verifies installation with `k6 version`
 - Sets `K6_BIN_PATH` environment variable
 - Creates `k6-reports` directory with proper permissions
