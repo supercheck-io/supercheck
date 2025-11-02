@@ -37,6 +37,10 @@ function logError(message) {
   console.error(`[${new Date().toISOString()}] [ERROR] ${message}`);
 }
 
+function logWarning(message) {
+  console.log(`[${new Date().toISOString()}] [WARNING] ${message}`);
+}
+
 // Function to wait for database to be ready
 async function waitForDatabase() {
   log("Waiting for database to be ready...");

@@ -77,7 +77,7 @@ export function LocationSelectionDialog({
                 <RadioGroupItem
                   id={`location-${option.value}`}
                   value={option.value}
-                  className="h-4 w-4"
+                  className="h-3.5 w-3.5"
                 />
               </Label>
             ))}
@@ -103,7 +103,7 @@ export function LocationSelectionDialog({
             className="bg-card/60"
           >
             {selectedOption && (
-              <div className="rounded-xl border border-border/60 bg-background/60 p-4 shadow-sm">
+              <div className="rounded-xl border border-border/60 bg-background/60 p-4">
                 <div className="flex items-center gap-3">
                   {selectedOption.flag && (
                     <span className="text-2xl leading-none">

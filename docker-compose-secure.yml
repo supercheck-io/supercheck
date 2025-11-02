@@ -145,15 +145,12 @@ services:
 
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.1.6-beta.1
+    image: ghcr.io/supercheck-io/supercheck/app:1.1.6-beta.6
     expose:
       - "3000"
     environment:
       <<: *common-env
       # App-specific configuration (inherits all common env vars)
-    volumes:
-      # Mount TypeScript definitions for Monaco Editor in playground
-      - ./app/public/supercheck.d.ts:/app/public/supercheck.d.ts:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -222,7 +219,7 @@ services:
 
   # Worker (NestJS Runner) - Minimal resource limits for maximum test compatibility
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.1.6-beta.1
+    image: ghcr.io/supercheck-io/supercheck/worker:1.1.6-beta.6
     environment:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)
