@@ -79,7 +79,8 @@ export function DataTableToolbar<TData>({
                       Variables & Secrets Usage
                     </h3>
                     <p className="text-xs text-muted-foreground">
-                      Access methods for your test scripts in Playground
+                      Access methods in Playground for Playwright and k6
+                      scripts.
                     </p>
                   </div>
 
@@ -87,17 +88,6 @@ export function DataTableToolbar<TData>({
                     <div className="space-y-2">
                       <h4 className="text-xs font-medium">Example Usage</h4>
                       <div className="relative bg-muted p-2 rounded">
-                        <pre className="text-xs font-mono leading-relaxed">
-                          {`// Variables (plain text)
-const baseUrl = getVariable('BASE_URL');
-
-// Secrets (encrypted)
-const apiKey = getSecret('API_KEY');
-
-// In Playwright script
-await page.goto(getVariable('APP_URL'));
-await page.fill('#password', getSecret('PASSWORD').toString());`}
-                        </pre>
                         <Button
                           size="sm"
                           variant="ghost"
@@ -106,24 +96,34 @@ await page.fill('#password', getSecret('PASSWORD').toString());`}
                             handleCopyCode(`// Variables
 const baseUrl = getVariable('BASE_URL');
 
-// Secrets  
-const apiKey = getSecret('API_KEY');
+// Secrets
+const apiKey = getSecret('API_KEY').toString();
 
 // In Playwright
-await page.goto(getVariable('APP_URL'));
-await page.fill('#password', getSecret('PASSWORD').toString());`)
+await page.goto(getVariable(baseUrl));
+await page.fill('#password', apiKey);
+
+// In k6
+  http.get(\`\${baseUrl}/protected\`, {
+    headers: { Authorization: \`Bearer \${apiKey}\` }
+}`)
                           }
                         >
                           {copiedCode ===
                           `// Variables
 const baseUrl = getVariable('BASE_URL');
 
-// Secrets  
-const apiKey = getSecret('API_KEY');
+// Secrets
+const apiKey = getSecret('API_KEY').toString();
 
 // In Playwright
-await page.goto(getVariable('APP_URL'));
-await page.fill('#password', getSecret('PASSWORD').toString());` ? (
+await page.goto(getVariable(baseUrl));
+await page.fill('#password', apiKey);
+
+// In k6
+  http.get(\`\${baseUrl}/protected\`, {
+    headers: { Authorization: \`Bearer \${apiKey}\` }
+})` ? (
                             <Check className="h-3 w-3 text-green-500" />
                           ) : (
                             <Copy className="h-3 w-3" />
@@ -134,7 +134,8 @@ await page.fill('#password', getSecret('PASSWORD').toString());` ? (
 
                     <div className="text-xs text-muted-foreground">
                       <strong>Tip:</strong> Use variables for config, secrets
-                      for sensitive data
+                      for sensitive data. These helpers are available wherever
+                      your Playground scripts run.
                     </div>
                   </div>
                 </div>
