@@ -93,6 +93,9 @@ app/test-results/*
 # Worker specific ignores
 worker/dist/
 worker/coverage/
+worker/public/
+worker/k6-reports/
+worker/playwright-reports/
 
 # OS and editor specific
 .DS_Store

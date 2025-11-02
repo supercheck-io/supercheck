@@ -287,10 +287,10 @@ export const columns: ColumnDef<Job>[] = [
       const jobType = row.getValue("jobType") as string;
       const isK6 = jobType === "k6";
       const LabelIcon = isK6 ? K6Logo : PlaywrightLogo;
-      const label = isK6 ? "Performance" : "Playwright";
+      const label = isK6 ? "k6" : "Playwright";
 
       return (
-        <div className="flex items-center gap-2 w-[140px]">
+        <div className="flex items-center gap-2 w-[100px]">
           <LabelIcon width={20} height={20} />
           <span>{label}</span>
         </div>

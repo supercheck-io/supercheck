@@ -7,10 +7,10 @@ import { cn } from "@/lib/utils";
 type LineStyle = "error" | "warn" | "success" | "info";
 
 const styleMap: Record<LineStyle, string> = {
-  error: "text-red-300",
-  warn: "text-amber-300",
-  success: "text-emerald-300",
-  info: "text-slate-200",
+  error: "text-red-400 dark:text-red-300",
+  warn: "text-amber-500 dark:text-amber-400",
+  success: "text-emerald-500 dark:text-emerald-400",
+  info: "text-slate-600 dark:text-slate-300",
 };
 
 const weightMap: Record<LineStyle, string> = {
@@ -61,7 +61,7 @@ export function ConsoleViewer({
   const renderedLines = useMemo(() => {
     if (!content) {
       return (
-        <div className="text-xs text-muted-foreground/70 italic">
+        <div className="text-xs text-muted-foreground/60 italic py-2">
           {emptyMessage}
         </div>
       );
@@ -69,15 +69,28 @@ export function ConsoleViewer({
 
     return content.split(/\r?\n/).map((line, idx) => {
       if (!line.trim()) {
-        return <div key={`line-${idx}`} className="h-3" />;
+        return <div key={`line-${idx}`} className="h-2" />;
       }
 
       const variant = classifyLine(line);
+      const getPrefix = () => {
+        if (variant === "error") return "✕ ";
+        if (variant === "warn") return "⚠ ";
+        if (variant === "success") return "✓ ";
+        return "";
+      };
+
       return (
         <div
           key={`line-${idx}`}
-          className={cn("whitespace-pre-wrap break-words", styleMap[variant], weightMap[variant])}
+          className={cn(
+            "whitespace-pre-wrap break-words py-0.5",
+            styleMap[variant],
+            weightMap[variant],
+            variant === "info" && "opacity-85"
+          )}
         >
+          {variant !== "info" && <span className="mr-1">{getPrefix()}</span>}
           {line}
         </div>
       );
@@ -87,12 +100,12 @@ export function ConsoleViewer({
   return (
     <div
       className={cn(
-        "h-full overflow-hidden rounded-lg border border-border/60 bg-slate-950 dark:bg-slate-950",
+        "h-full overflow-hidden rounded-lg border border-border/50 bg-card/40 backdrop-blur-sm",
         className,
       )}
     >
       <ScrollArea className="h-full">
-        <div className="p-4 text-[13px] font-mono leading-6 space-y-1">
+        <div className="p-4 text-[13px] font-mono leading-relaxed">
           {renderedLines}
         </div>
         <div ref={bottomRef} />
