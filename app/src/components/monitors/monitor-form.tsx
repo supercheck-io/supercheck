@@ -76,7 +76,6 @@ const statusCodePresets = [
   { label: "Specific Code", value: "custom" }, // User can input custom code
 ];
 
-
 // Interval options for non-synthetic monitors (can start from 1 minute)
 const standardCheckIntervalOptions = [
   { value: "60", label: "1 minute" },
@@ -386,7 +385,6 @@ export function MonitorForm({
   const { currentProject } = useProjectContext();
   const normalizedRole = normalizeRole(currentProject?.userRole);
   const canCreate = canCreateMonitors(normalizedRole);
-  const [formChanged, setFormChanged] = useState(false);
   const [isAuthSectionOpen, setIsAuthSectionOpen] = useState(false);
   const [isKeywordSectionOpen, setIsKeywordSectionOpen] = useState(false);
   const [isCustomStatusCode, setIsCustomStatusCode] = useState(false);
@@ -408,21 +406,21 @@ export function MonitorForm({
   const [showLocationSettings, setShowLocationSettings] = useState(false);
 
   // Store initial configs for change detection
-  const initialLocationConfig = (initialConfig?.locationConfig as LocationConfig) || DEFAULT_LOCATION_CONFIG;
-  const [locationConfig, setLocationConfig] = useState<LocationConfig>(initialLocationConfig);
+  const initialLocationConfig =
+    (initialConfig?.locationConfig as LocationConfig) ||
+    DEFAULT_LOCATION_CONFIG;
+  const [locationConfig, setLocationConfig] = useState<LocationConfig>(
+    initialLocationConfig
+  );
   const [selectedTests, setSelectedTests] = useState<Test[]>([]);
 
-  // Helper functions to detect changes
-  const hasLocationConfigChanged = (): boolean => {
-    return JSON.stringify(locationConfig) !== JSON.stringify(initialLocationConfig);
-  };
-
-  const hasAlertConfigChanged = (): boolean => {
-    return JSON.stringify(alertConfig) !== JSON.stringify(initialAlertConfigValue);
-  };
-
   const hasAnyConfigChanged = (): boolean => {
-    return formChanged || hasLocationConfigChanged() || hasAlertConfigChanged();
+    const formDirty = form.formState.isDirty;
+    const locationChanged =
+      JSON.stringify(locationConfig) !== JSON.stringify(initialLocationConfig);
+    const alertChanged =
+      JSON.stringify(alertConfig) !== JSON.stringify(initialAlertConfigValue);
+    return formDirty || locationChanged || alertChanged;
   };
 
   // Get current monitor type from URL params if not provided as prop
@@ -439,7 +437,6 @@ export function MonitorForm({
       setShowAlerts(alertConfig.enabled);
     }
   }, [alertConfig, editMode]);
-
 
   // Create default values based on monitor type if provided
   const getDefaultValues = useCallback((): FormValues => {
@@ -485,12 +482,10 @@ export function MonitorForm({
     },
   });
 
-
   const type = form.watch("type");
   const httpMethod = form.watch("httpConfig_method");
   const authType = form.watch("httpConfig_authType");
   const expectedStatusCodes = form.watch("httpConfig_expectedStatusCodes");
-
 
   // Auto-adjust interval when switching to synthetic monitor
   useEffect(() => {
@@ -525,7 +520,6 @@ export function MonitorForm({
 
       // Reset form completely
       form.reset(newDefaults);
-      setFormChanged(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlType, type, editMode, initialData]);
@@ -552,16 +546,26 @@ export function MonitorForm({
 
   // Initialize selectedTests when editing a synthetic monitor
   useEffect(() => {
-    if (editMode && initialData?.type === "synthetic_test" && initialData?.syntheticConfig_testId) {
+    if (
+      editMode &&
+      initialData?.type === "synthetic_test" &&
+      initialData?.syntheticConfig_testId
+    ) {
       const fetchTest = async () => {
         try {
-          const response = await fetch(`/api/tests/${initialData.syntheticConfig_testId}`);
+          const response = await fetch(
+            `/api/tests/${initialData.syntheticConfig_testId}`
+          );
           if (response.ok) {
             const testData = await response.json();
             // Map API response to Test type
-            const validTestType: Test["type"] = (["browser", "api", "custom", "database", "performance"].includes(testData.type)
-              ? testData.type
-              : "browser") as Test["type"];
+            const validTestType: Test["type"] = (
+              ["browser", "api", "custom", "database", "performance"].includes(
+                testData.type
+              )
+                ? testData.type
+                : "browser"
+            ) as Test["type"];
 
             const mappedTest: Test = {
               id: testData.id,
@@ -591,11 +595,6 @@ export function MonitorForm({
     port_check: "e.g., example.com or 192.168.1.1 (hostname or IP address)",
     synthetic_test: "Select a test to monitor",
   };
-
-  // Track form changes using react-hook-form's built-in dirty state
-  useEffect(() => {
-    setFormChanged(form.formState.isDirty);
-  }, [form.formState.isDirty]);
 
   async function onSubmit(data: FormValues) {
     setIsSubmitting(true);
@@ -1127,20 +1126,32 @@ export function MonitorForm({
                                 <Info className="h-4 w-4 text-muted-foreground" />
                               </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-56 text-xs" side="right" align="start">
+                            <PopoverContent
+                              className="w-56 text-xs"
+                              side="right"
+                              align="start"
+                            >
                               <div className="space-y-2">
-                                <p className="font-semibold text-foreground">Recommended intervals:</p>
+                                <p className="font-semibold text-foreground">
+                                  Recommended intervals:
+                                </p>
                                 <ul className="space-y-1.5 text-muted-foreground">
                                   <li className="flex items-start gap-2">
-                                    <span className="text-foreground font-medium">Critical:</span>
+                                    <span className="text-foreground font-medium">
+                                      Critical:
+                                    </span>
                                     <span>5-10 min</span>
                                   </li>
                                   <li className="flex items-start gap-2">
-                                    <span className="text-foreground font-medium">Standard:</span>
+                                    <span className="text-foreground font-medium">
+                                      Standard:
+                                    </span>
                                     <span>15-30 min</span>
                                   </li>
                                   <li className="flex items-start gap-2">
-                                    <span className="text-foreground font-medium">Low-priority:</span>
+                                    <span className="text-foreground font-medium">
+                                      Low-priority:
+                                    </span>
                                     <span>1+ hour</span>
                                   </li>
                                 </ul>
@@ -1183,20 +1194,33 @@ export function MonitorForm({
                     setSelectedTests(tests);
                     // Update form field with first test ID
                     if (tests.length > 0) {
-                      form.setValue("syntheticConfig_testId", tests[0].id);
+                      form.setValue("syntheticConfig_testId", tests[0].id, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                      void form.trigger("syntheticConfig_testId");
                       // Auto-update monitor name if empty
                       const currentName = form.getValues("name");
                       if (!currentName) {
                         form.setValue("name", tests[0].name);
                       }
                     } else {
-                      form.setValue("syntheticConfig_testId", "");
+                      form.setValue("syntheticConfig_testId", "", {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                      void form.trigger("syntheticConfig_testId");
                     }
                   }}
                   buttonLabel="Select Test"
                   emptyStateMessage="No test selected"
                   required={true}
                   hideButton={selectedTests.length > 0}
+                  singleSelection
+                  excludeTypes={["performance"]}
+                  dialogTitle="Select Test"
+                  dialogDescription="Choose a test to monitor"
+                  maxSelectionLabel="Select 1 playwright test"
                 />
               )}
 
@@ -2123,7 +2147,7 @@ export function MonitorForm({
                   type="submit"
                   disabled={
                     isSubmitting ||
-                    (editMode && !formChanged) ||
+                    (editMode && !hasAnyConfigChanged()) ||
                     (!editMode && !canCreate)
                   }
                   className="flex items-center"
