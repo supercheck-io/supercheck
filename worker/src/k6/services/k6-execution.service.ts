@@ -370,10 +370,18 @@ export class K6ExecutionService {
         stderr += chunk;
       });
 
-      childProcess.on('close', (code) => {
-        const exitCode = code || 0;
+      childProcess.on('close', (code, signal) => {
+        const wasSignaled = code === null;
+        const exitCode = typeof code === 'number' ? code : 128;
+        const exitDescription = wasSignaled
+          ? `terminated by signal ${signal ?? 'unknown'}`
+          : `exited with code: ${exitCode}`;
 
-        this.logger.log(`[${runId}] k6 exited with code: ${exitCode}`);
+        if (wasSignaled) {
+          this.logger.warn(`[${runId}] k6 ${exitDescription}`);
+        } else {
+          this.logger.log(`[${runId}] k6 ${exitDescription}`);
+        }
 
         this.activeK6Runs.delete(uniqueRunId);
 
@@ -381,7 +389,11 @@ export class K6ExecutionService {
           exitCode,
           stdout,
           stderr,
-          error: exitCode !== 0 ? `k6 exited with code ${exitCode}` : null,
+          error: wasSignaled
+            ? `k6 terminated by signal ${signal ?? 'unknown'}`
+            : exitCode !== 0
+            ? `k6 exited with code ${exitCode}`
+            : null,
         });
       });
 
