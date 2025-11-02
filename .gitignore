@@ -128,7 +128,7 @@ build/
 *.sln.docstates
 
 # Database backups
-*.sql
+!app/src/db/migrations/*.sql
 *.backup
 *.dump
 
