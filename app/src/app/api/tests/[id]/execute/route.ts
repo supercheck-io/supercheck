@@ -4,22 +4,14 @@ import { tests, runs, type K6Location } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { hasPermission } from '@/lib/rbac/middleware';
 import { requireProjectContext } from '@/lib/project-context';
-import { Queue } from 'bullmq';
+import {
+  addK6TestToQueue,
+  addTestToQueue,
+  K6ExecutionTask,
+  TestExecutionTask,
+} from '@/lib/queue';
 import { validateK6Script } from '@/lib/k6-validator';
 import { randomUUID } from 'crypto';
-
-// Redis connection configuration
-const getRedisConnection = () => {
-  const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-  const url = new URL(redisUrl);
-
-  return {
-    host: url.hostname,
-    port: parseInt(url.port || '6379', 10),
-    password: url.password || undefined,
-    username: url.username || undefined,
-  };
-};
 
 declare const Buffer: {
   from(data: string, encoding: string): { toString(encoding: string): string };
@@ -130,13 +122,8 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
     const decodedScript = Buffer.from(test.script, 'base64').toString('utf-8');
 
     // Enqueue based on test type
-    const redisConnection = getRedisConnection();
-
     if (test.type === 'performance') {
-      // K6 execution queue
-      const k6Queue = new Queue('k6-execution', { connection: redisConnection });
-
-      await k6Queue.add('k6-single-test-execution', {
+      const k6Task: K6ExecutionTask = {
         runId: run.id,
         jobId: null,
         testId: test.id,
@@ -147,27 +134,22 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
             script: decodedScript,
           },
         ],
-        organizationId: test.organizationId,
-        projectId: test.projectId,
+        organizationId: test.organizationId ?? "",
+        projectId: test.projectId ?? "",
         location: resolvedLocation,
-      });
+      };
 
-      await k6Queue.close();
+      await addK6TestToQueue(k6Task, 'k6-single-test-execution');
     } else {
-      // Playwright execution queue
-      const playwrightQueue = new Queue('test-execution', {
-        connection: redisConnection,
-      });
-
-      await playwrightQueue.add('playwright-single-test-execution', {
-        runId: run.id,
+      const playwrightTask: TestExecutionTask = {
         testId: test.id,
-        script: decodedScript,
-        organizationId: test.organizationId,
-        projectId: test.projectId,
-      });
+        code: decodedScript,
+        runId: run.id,
+        organizationId: test.organizationId ?? "",
+        projectId: test.projectId ?? "",
+      };
 
-      await playwrightQueue.close();
+      await addTestToQueue(playwrightTask);
     }
 
     return NextResponse.json({

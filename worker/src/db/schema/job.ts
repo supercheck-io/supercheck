@@ -98,8 +98,7 @@ export const runs = pgTable('runs', {
   id: uuid('id')
     .primaryKey()
     .$defaultFn(() => sql`uuidv7()`),
-  jobId: uuid('job_id')
-    .references(() => jobs.id),
+  jobId: uuid('job_id').references(() => jobs.id),
   projectId: uuid('project_id').references(() => projects.id, {
     onDelete: 'cascade',
   }),

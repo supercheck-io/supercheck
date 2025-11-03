@@ -45,15 +45,27 @@ export class ReportUploadService {
    * @param options Report upload configuration
    * @returns Upload result with S3 URL or error
    */
-  async uploadReport(options: ReportUploadOptions): Promise<ReportUploadResult> {
-    const { runDir, testId, executionId, s3ReportKeyPrefix, entityType, processReportFiles = true } = options;
+  async uploadReport(
+    options: ReportUploadOptions,
+  ): Promise<ReportUploadResult> {
+    const {
+      runDir,
+      testId,
+      executionId,
+      s3ReportKeyPrefix,
+      entityType,
+      processReportFiles = true,
+    } = options;
 
     const testBucket = this.s3Service.getBucketForEntityType(entityType);
     let reportFound = false;
     let s3Url: string | null = null;
 
     // Location 1: Check custom output directory (report-{testId})
-    const customOutputDir = path.join(runDir, `report-${testId.substring(0, 8)}`);
+    const customOutputDir = path.join(
+      runDir,
+      `report-${testId.substring(0, 8)}`,
+    );
 
     if (existsSync(customOutputDir)) {
       const result = await this._uploadFromDirectory(
@@ -68,7 +80,9 @@ export class ReportUploadService {
 
       if (result.success) {
         reportFound = true;
-        s3Url = this.s3Service.getBaseUrlForEntity(entityType, executionId) + '/index.html';
+        s3Url =
+          this.s3Service.getBaseUrlForEntity(entityType, executionId) +
+          '/index.html';
         return { success: true, reportUrl: s3Url };
       }
     }
@@ -90,7 +104,9 @@ export class ReportUploadService {
 
         if (result.success) {
           reportFound = true;
-          s3Url = this.s3Service.getBaseUrlForEntity(entityType, executionId) + '/index.html';
+          s3Url =
+            this.s3Service.getBaseUrlForEntity(entityType, executionId) +
+            '/index.html';
           return { success: true, reportUrl: s3Url };
         }
       }
@@ -179,14 +195,8 @@ export class ReportUploadService {
 
       // Fix trace file references to work with S3
       // Replace relative paths with absolute S3 paths
-      htmlContent = htmlContent.replace(
-        /href="\.\/data\//g,
-        `href="./data/`,
-      );
-      htmlContent = htmlContent.replace(
-        /src="\.\/data\//g,
-        `src="./data/`,
-      );
+      htmlContent = htmlContent.replace(/href="\.\/data\//g, `href="./data/`);
+      htmlContent = htmlContent.replace(/src="\.\/data\//g, `src="./data/`);
 
       await fs.writeFile(indexPath, htmlContent, 'utf-8');
     } catch (error) {

@@ -56,6 +56,11 @@ export interface TestExecutionTask {
   // as the worker service doesn't share the filesystem
   code: string;
   // testPath: string; // Original field - needs adaptation
+  runId?: string | null;
+  organizationId?: string;
+  projectId?: string;
+  location?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 // Task data for the job execution queue

@@ -1,7 +1,7 @@
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Job, JobsOptions, Queue } from 'bullmq';
+import { Job } from 'bullmq';
 import { sql, eq } from 'drizzle-orm';
 import {
   K6ExecutionService,
@@ -10,22 +10,10 @@ import {
 import { DbService } from '../../execution/services/db.service';
 import * as schema from '../../db/schema';
 import { JobNotificationService } from '../../execution/services/job-notification.service';
-
-// Utility function to safely get error message
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
-
-// Utility function to safely get error stack
-function getErrorStack(error: unknown): string | undefined {
-  if (error instanceof Error) {
-    return error.stack;
-  }
-  return undefined;
-}
+import {
+  K6_JOB_EXECUTION_QUEUE,
+  K6_TEST_EXECUTION_QUEUE,
+} from '../k6.constants';
 
 type K6Task = K6ExecutionTask;
 
@@ -36,30 +24,26 @@ class LocationMismatchError extends Error {
   }
 }
 
-@Processor('k6-execution', {
-  concurrency: 3, // Process up to 3 k6 tests in parallel
-})
-export class K6ExecutionProcessor extends WorkerHost {
-  private readonly logger = new Logger(K6ExecutionProcessor.name);
-  private readonly workerLocation: string;
-  private readonly enableLocationFiltering: boolean;
-  private readonly locationMismatchRetryDelayMs = 1000;
+abstract class BaseK6ExecutionProcessor extends WorkerHost {
+  protected readonly logger: Logger;
+  protected readonly workerLocation: string;
+  protected readonly enableLocationFiltering: boolean;
 
-  constructor(
-    private k6ExecutionService: K6ExecutionService,
-    private dbService: DbService,
-    private configService: ConfigService,
-    private jobNotificationService: JobNotificationService,
+  protected constructor(
+    processorName: string,
+    protected readonly k6ExecutionService: K6ExecutionService,
+    protected readonly dbService: DbService,
+    protected readonly configService: ConfigService,
+    protected readonly jobNotificationService: JobNotificationService,
   ) {
     super();
+    this.logger = new Logger(processorName);
 
-    // Worker location from environment
     this.workerLocation = this.configService.get<string>(
       'WORKER_LOCATION',
       'us-east',
     );
 
-    // Enable location filtering (false for MVP, true for multi-region)
     const enableLocationFiltering = this.configService.get<string>(
       'ENABLE_LOCATION_FILTERING',
       'false',
@@ -81,12 +65,14 @@ export class K6ExecutionProcessor extends WorkerHost {
     }
   }
 
-  async process(job: Job<K6Task>): Promise<void> {
+  async handleProcess(job: Job<K6Task>): Promise<void> {
     const processStartTime = Date.now();
     const requestedLocation = job.data.location || 'us-east';
     const normalizedJobLocation = requestedLocation.toLowerCase();
     const normalizedWorkerLocation = this.workerLocation.toLowerCase();
-    const jobLocationIsWildcard = this.isWildcardLocation(normalizedJobLocation);
+    const jobLocationIsWildcard = this.isWildcardLocation(
+      normalizedJobLocation,
+    );
     const workerIsWildcard = this.isWildcardLocation(normalizedWorkerLocation);
     const effectiveJobLocation = jobLocationIsWildcard
       ? this.workerLocation
@@ -141,36 +127,40 @@ export class K6ExecutionProcessor extends WorkerHost {
       const metrics = this.extractMetrics(result.summary);
 
       // Create k6_performance_runs record
-      const [k6Run] = await this.dbService.db
-        .insert(schema.k6PerformanceRuns)
-        .values({
-          testId,
-          runId,
-          jobId: taskData.jobId ?? null,
-          organizationId: taskData.organizationId,
-          projectId: taskData.projectId,
-          location: this.workerLocation as any, // Actual execution location
-          status: result.success ? 'passed' : 'failed',
-          startedAt: new Date(Date.now() - result.durationMs),
-          completedAt: new Date(),
-          durationMs: result.durationMs,
-          summaryJson: result.summary,
-          thresholdsPassed: result.thresholdsPassed,
-          totalRequests: metrics.totalRequests,
-          failedRequests: metrics.failedRequests,
-          requestRate: Math.round((metrics.requestRate || 0) * 100),
-          avgResponseTimeMs: metrics.avgResponseTimeMs,
-          p95ResponseTimeMs: metrics.p95ResponseTimeMs,
-          p99ResponseTimeMs: metrics.p99ResponseTimeMs,
-          reportS3Url: result.reportUrl,
-          summaryS3Url: result.summaryUrl ?? null,
-          consoleS3Url: result.consoleUrl ?? null,
-          errorDetails: result.error,
-          consoleOutput: result.consoleOutput
-            ? result.consoleOutput.slice(0, 10000)
-            : null,
-        })
-        .returning();
+      const totalRequests = Math.round(metrics.totalRequests || 0);
+      const failedRequests = Math.round(metrics.failedRequests || 0);
+      const requestRateScaled = Math.round((metrics.requestRate || 0) * 100);
+      const avgDurationMs = Math.round(metrics.avgResponseTimeMs || 0);
+      const p95DurationMs = Math.round(metrics.p95ResponseTimeMs || 0);
+      const p99DurationMs = Math.round(metrics.p99ResponseTimeMs || 0);
+
+      await this.dbService.db.insert(schema.k6PerformanceRuns).values({
+        testId,
+        runId,
+        jobId: taskData.jobId ?? null,
+        organizationId: taskData.organizationId,
+        projectId: taskData.projectId,
+        location: this.workerLocation as any, // Actual execution location
+        status: result.success ? 'passed' : 'failed',
+        startedAt: new Date(Date.now() - result.durationMs),
+        completedAt: new Date(),
+        durationMs: result.durationMs,
+        summaryJson: result.summary,
+        thresholdsPassed: result.thresholdsPassed,
+        totalRequests,
+        failedRequests,
+        requestRate: requestRateScaled,
+        avgResponseTimeMs: avgDurationMs,
+        p95ResponseTimeMs: p95DurationMs,
+        p99ResponseTimeMs: p99DurationMs,
+        reportS3Url: result.reportUrl,
+        summaryS3Url: result.summaryUrl ?? null,
+        consoleS3Url: result.consoleUrl ?? null,
+        errorDetails: result.error,
+        consoleOutput: result.consoleOutput
+          ? result.consoleOutput.slice(0, 10000)
+          : null,
+      });
 
       // Update run with final status and artifacts
       const durationSeconds = Math.max(0, Math.round(result.durationMs / 1000));
@@ -180,55 +170,35 @@ export class K6ExecutionProcessor extends WorkerHost {
       } else if (durationSeconds >= 60) {
         const minutes = Math.floor(durationSeconds / 60);
         const remainder = durationSeconds % 60;
-        durationString = `${minutes}m${remainder ? ` ${remainder}s` : ''}`.trim();
+        durationString =
+          `${minutes}m${remainder ? ` ${remainder}s` : ''}`.trim();
       } else {
         durationString = `${durationSeconds}s`;
       }
 
+      const runUpdate: Record<string, any> = {
+        status: result.success ? 'passed' : 'failed',
+        completedAt: new Date(),
+        durationMs: result.durationMs,
+        duration: durationString,
+        reportS3Url: result.reportUrl,
+        logsS3Url: result.logsUrl ?? null,
+      };
+
+      if (result.summary?.runId) {
+        runUpdate.metadata = sql`
+          jsonb_set(
+            coalesce(metadata, '{}'::jsonb),
+            '{k6RunId}',
+            to_jsonb(${String(result.summary.runId)})
+          )
+        `;
+      }
+
       await this.dbService.db
         .update(schema.runs)
-        .set({
-          status: result.success ? 'passed' : 'failed',
-          completedAt: new Date(),
-          durationMs: result.durationMs,
-          duration: durationString,
-          reportS3Url: result.reportUrl,
-          logsS3Url: result.logsUrl ?? null,
-          metadata: sql`
-            jsonb_set(
-              coalesce(metadata, '{}'::jsonb),
-              '{k6RunId}',
-              to_jsonb(${k6Run.id}::text),
-              true
-            )
-          `,
-        })
+        .set(runUpdate)
         .where(eq(schema.runs.id, runId));
-
-      await this.dbService.updateRunStatus(
-        runId,
-        result.success ? 'passed' : 'failed',
-        durationString,
-      );
-
-      if (taskData.jobId) {
-        try {
-          const finalRunStatuses =
-            await this.dbService.getRunStatusesForJob(taskData.jobId);
-          await this.dbService.updateJobStatus(
-            taskData.jobId,
-            finalRunStatuses,
-          );
-          await this.dbService.db
-            .update(schema.jobs)
-            .set({ lastRunAt: new Date() })
-            .where(eq(schema.jobs.id, taskData.jobId));
-        } catch (statusError) {
-          this.logger.error(
-            `[Job ${job.id}] Failed to update job status after k6 run: ${getErrorMessage(statusError)}`,
-          );
-        }
-      }
 
       if (taskData.jobId) {
         await this.jobNotificationService.handleJobNotifications({
@@ -236,210 +206,194 @@ export class K6ExecutionProcessor extends WorkerHost {
           organizationId: taskData.organizationId,
           projectId: taskData.projectId,
           runId,
-          finalStatus: result.success ? 'passed' : 'failed',
-          durationSeconds,
-          results: [{ success: result.success }],
-          jobType: 'k6',
-          location: this.workerLocation,
+          finalStatus: 'passed',
+          durationSeconds: Math.round((Date.now() - processStartTime) / 1000),
+          results: [{ success: true }],
+          jobType: taskData.jobType ?? 'k6',
+          location: taskData.location ?? null,
         });
       }
-
-      this.logger.log(
-        `[Job ${job.id}] Completed: ${result.success ? 'PASSED' : 'FAILED'}`,
-      );
     } catch (error) {
-      this.logger.error(
-        `[Job ${job.id}] Failed: ${getErrorMessage(error)}`,
-        getErrorStack(error),
-      );
-
-      await this.dbService.db
-        .update(schema.runs)
-        .set({
-          status: 'error',
-          completedAt: new Date(),
-          errorDetails: getErrorMessage(error),
-        })
-        .where(eq(schema.runs.id, runId));
-
-      if (job.data.jobId) {
-        try {
-          const finalRunStatuses =
-            await this.dbService.getRunStatusesForJob(job.data.jobId);
-          await this.dbService.updateJobStatus(
-            job.data.jobId,
-            finalRunStatuses,
-          );
-        } catch (statusError) {
-          this.logger.error(
-            `[Job ${job.id}] Failed to update job status after k6 error: ${getErrorMessage(statusError)}`,
-          );
-        }
+      if (error instanceof LocationMismatchError) {
+        this.logger.warn(error.message);
+        throw error;
       }
 
+      const message = `[Job ${job.id}] Failed with error: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+      this.logger.error(
+        message,
+        error instanceof Error ? error.stack : undefined,
+      );
+
       if (taskData.jobId) {
-        const elapsedSeconds = Math.max(
-          0,
-          Math.round((Date.now() - processStartTime) / 1000),
-        );
-        try {
-          await this.jobNotificationService.handleJobNotifications({
-            jobId: taskData.jobId,
-            organizationId: taskData.organizationId,
-            projectId: taskData.projectId,
-            runId,
-            finalStatus: 'error',
-            durationSeconds: elapsedSeconds,
-            results: [{ success: false }],
-            jobType: 'k6',
-            location: this.workerLocation,
-            errorMessage: getErrorMessage(error),
-          });
-        } catch (notificationError) {
-          this.logger.error(
-            `[Job ${job.id}] Failed to send error notification: ${getErrorMessage(notificationError)}`,
-          );
-        }
+        await this.jobNotificationService.handleJobNotifications({
+          jobId: taskData.jobId,
+          organizationId: taskData.organizationId,
+          projectId: taskData.projectId,
+          runId,
+          finalStatus: 'failed',
+          durationSeconds: Math.round((Date.now() - processStartTime) / 1000),
+          results: [{ success: false }],
+          jobType: taskData.jobType ?? 'k6',
+          location: taskData.location ?? null,
+          errorMessage: message,
+        });
       }
 
       throw error;
     }
   }
 
+  private extractMetrics(summary: any): {
+    totalRequests: number;
+    failedRequests: number;
+    requestRate: number;
+    avgResponseTimeMs: number;
+    p95ResponseTimeMs: number;
+    p99ResponseTimeMs: number;
+  } {
+    if (!summary || !summary.metrics) {
+      return {
+        totalRequests: 0,
+        failedRequests: 0,
+        requestRate: 0,
+        avgResponseTimeMs: 0,
+        p95ResponseTimeMs: 0,
+        p99ResponseTimeMs: 0,
+      };
+    }
+
+    const metrics = summary.metrics;
+    const httpReqs = metrics['http_reqs'] || {};
+    const httpReqDuration = metrics['http_req_duration'] || {};
+
+    return {
+      totalRequests: httpReqs.count || 0,
+      failedRequests: (metrics['checks']?.fails as number) || 0,
+      requestRate: httpReqs.rate || 0,
+      avgResponseTimeMs: httpReqDuration.avg || 0,
+      p95ResponseTimeMs: httpReqDuration['p(95)'] || 0,
+      p99ResponseTimeMs: httpReqDuration['p(99)'] || 0,
+    };
+  }
+
+  private formatSummary(summaryJson: any, success: boolean): string {
+    if (!summaryJson) {
+      return success
+        ? 'k6 test completed successfully.'
+        : 'k6 test failed with unknown error.';
+    }
+
+    try {
+      const metrics = summaryJson.metrics || {};
+      const httpReqDuration = metrics['http_req_duration'] || {};
+      const avg = httpReqDuration.avg || 0;
+      const p95 = httpReqDuration['p(95)'] || 0;
+      const p99 = httpReqDuration['p(99)'] || 0;
+
+      return `k6 test ${success ? 'passed' : 'failed'}. Avg=${avg.toFixed(
+        2,
+      )}ms, p95=${p95.toFixed(2)}ms, p99=${p99.toFixed(2)}ms`;
+    } catch (error) {
+      return success
+        ? 'k6 test completed successfully.'
+        : 'k6 test failed with unknown error.';
+    }
+  }
+
+  private isWildcardLocation(location: string): boolean {
+    return location === '*' || location === 'any';
+  }
+}
+
+@Processor(K6_TEST_EXECUTION_QUEUE, { concurrency: 3 })
+export class K6TestExecutionProcessor extends BaseK6ExecutionProcessor {
+  constructor(
+    k6ExecutionService: K6ExecutionService,
+    dbService: DbService,
+    configService: ConfigService,
+    jobNotificationService: JobNotificationService,
+  ) {
+    super(
+      'K6TestExecutionProcessor',
+      k6ExecutionService,
+      dbService,
+      configService,
+      jobNotificationService,
+    );
+  }
+
+  async process(job: Job<K6Task>): Promise<void> {
+    await this.handleProcess(job);
+  }
+
   @OnWorkerEvent('completed')
-  onCompleted(job: Job) {
-    this.logger.log(`Job ${job.id} completed successfully`);
+  onCompleted(job: Job, result: unknown) {
+    const status = (result as any)?.success ? 'passed' : 'failed';
+    this.logger.log(`k6 test ${job.id} completed: ${status}`);
   }
 
   @OnWorkerEvent('failed')
-  async onFailed(job: Job, error: Error) {
-    if (this.enableLocationFiltering && error instanceof LocationMismatchError) {
-      this.logger.debug(
-        `Job ${job.id} rescheduled due to location mismatch`,
-      );
-
-      try {
-        const rescheduleDelay = Math.max(
-          job.opts.delay ?? 0,
-          this.locationMismatchRetryDelayMs,
-        );
-        const jobId = job.opts.jobId ?? job.id;
-        const {
-          attempts,
-          backoff,
-          removeOnComplete,
-          removeOnFail,
-          priority,
-          lifo,
-        } = job.opts;
-
-        const queue = (job as unknown as { queue: Queue | undefined }).queue;
-        if (!queue) {
-          this.logger.warn(
-            `Job ${job.id} missing queue reference; skipping reschedule`,
-          );
-          await job.remove();
-          return;
-        }
-
-        const requeueOptions: JobsOptions = {
-          jobId,
-          delay: rescheduleDelay,
-          attempts,
-          backoff,
-          removeOnComplete,
-          removeOnFail,
-        };
-
-        if (priority !== undefined) {
-          requeueOptions.priority = priority;
-        }
-        if (lifo !== undefined) {
-          requeueOptions.lifo = lifo;
-        }
-
-        await job.remove();
-        await queue.add(job.name, job.data, requeueOptions);
-      } catch (rescheduleError) {
-        this.logger.error(
-          `Job ${job.id} failed to reschedule after location mismatch: ${getErrorMessage(rescheduleError)}`,
-          getErrorStack(rescheduleError),
-        );
-        try {
-          await job.retry();
-        } catch (retryError) {
-          this.logger.error(
-            `Job ${job.id} retry after reschedule failure also failed: ${getErrorMessage(retryError)}`,
-            getErrorStack(retryError),
-          );
-        }
-      }
-
-      return;
-    }
-
+  onFailed(job: Job | undefined, error: Error) {
+    const jobId = job?.id || 'unknown';
     this.logger.error(
-      `Job ${job.id} failed: ${error.message}`,
+      `[Event:failed] k6 test ${jobId} failed with error: ${error.message}`,
       error.stack,
     );
   }
 
-  /**
-   * Extract key metrics from k6 summary for database storage
-   */
-  private extractMetrics(summary: any) {
-    if (!summary?.metrics) return {};
+  @OnWorkerEvent('error')
+  onError(error: Error) {
+    this.logger.error(
+      `[Event:error] k6 test worker encountered an error: ${error.message}`,
+      error.stack,
+    );
+  }
+}
 
-    const metrics: any = {};
-
-    // HTTP requests
-    const httpReqs =
-      summary.metrics.http_reqs?.values ??
-      summary.metrics.http_reqs?.value ??
-      {};
-    if (httpReqs) {
-      metrics.totalRequests =
-        typeof httpReqs.count === 'number' ? httpReqs.count : 0;
-      metrics.requestRate =
-        typeof httpReqs.rate === 'number' ? httpReqs.rate : 0;
-    }
-
-    // Failed requests
-    const httpReqFailed =
-      summary.metrics.http_req_failed?.values ??
-      summary.metrics.http_req_failed?.value ??
-      {};
-    if (httpReqFailed) {
-      metrics.failedRequests =
-        typeof httpReqFailed.fails === 'number' ? httpReqFailed.fails : 0;
-    }
-
-    // Response times
-    const httpReqDuration =
-      summary.metrics.http_req_duration?.values ??
-      summary.metrics.http_req_duration?.value ??
-      {};
-    if (httpReqDuration) {
-      metrics.avgResponseTimeMs =
-        typeof httpReqDuration.avg === 'number' ? httpReqDuration.avg : 0;
-      metrics.p95ResponseTimeMs =
-        typeof httpReqDuration['p(95)'] === 'number'
-          ? httpReqDuration['p(95)']
-          : 0;
-      metrics.p99ResponseTimeMs =
-        typeof httpReqDuration['p(99)'] === 'number'
-          ? httpReqDuration['p(99)']
-          : 0;
-    }
-
-    return metrics;
+@Processor(K6_JOB_EXECUTION_QUEUE, { concurrency: 3 })
+export class K6JobExecutionProcessor extends BaseK6ExecutionProcessor {
+  constructor(
+    k6ExecutionService: K6ExecutionService,
+    dbService: DbService,
+    configService: ConfigService,
+    jobNotificationService: JobNotificationService,
+  ) {
+    super(
+      'K6JobExecutionProcessor',
+      k6ExecutionService,
+      dbService,
+      configService,
+      jobNotificationService,
+    );
   }
 
-  private isWildcardLocation(location?: string | null): boolean {
-    if (!location) {
-      return false;
-    }
-    const normalized = location.toLowerCase();
-    return normalized === 'local' || normalized === 'any' || normalized === 'all';
+  async process(job: Job<K6Task>): Promise<void> {
+    await this.handleProcess(job);
+  }
+
+  @OnWorkerEvent('completed')
+  onCompleted(job: Job, result: unknown) {
+    const status = (result as any)?.success ? 'passed' : 'failed';
+    this.logger.log(`k6 job ${job.id} completed: ${status}`);
+  }
+
+  @OnWorkerEvent('failed')
+  onFailed(job: Job | undefined, error: Error) {
+    const jobId = job?.id || 'unknown';
+    this.logger.error(
+      `[Event:failed] k6 job ${jobId} failed with error: ${error.message}`,
+      error.stack,
+    );
+  }
+
+  @OnWorkerEvent('error')
+  onError(error: Error) {
+    this.logger.error(
+      `[Event:error] k6 job worker encountered an error: ${error.message}`,
+      error.stack,
+    );
   }
 }

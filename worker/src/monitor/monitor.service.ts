@@ -169,8 +169,11 @@ export class MonitorService {
               try {
                 const sslResult = await this.executeSslCheck(jobData.target, {
                   sslDaysUntilExpirationWarning:
-                    jobData.config.sslDaysUntilExpirationWarning ?? SECURITY.SSL_DEFAULT_WARNING_DAYS,
-                  timeoutSeconds: jobData.config.timeoutSeconds ?? TIMEOUTS_SECONDS.SSL_CHECK_DEFAULT,
+                    jobData.config.sslDaysUntilExpirationWarning ??
+                    SECURITY.SSL_DEFAULT_WARNING_DAYS,
+                  timeoutSeconds:
+                    jobData.config.timeoutSeconds ??
+                    TIMEOUTS_SECONDS.SSL_CHECK_DEFAULT,
                 });
 
                 // Update SSL last checked timestamp (non-blocking)
@@ -800,7 +803,9 @@ export class MonitorService {
         async () =>
           this.performHttpRequest(sanitizedTarget, config, errorContext),
         {
-          timeoutMs: (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.HTTP_REQUEST_DEFAULT) * 1000,
+          timeoutMs:
+            (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.HTTP_REQUEST_DEFAULT) *
+            1000,
           maxMemoryMB: MEMORY_LIMITS.MAX_MEMORY_PER_REQUEST_MB,
         },
       );
@@ -1007,8 +1012,14 @@ export class MonitorService {
       const sanitizedResponseData =
         this.credentialSecurityService.maskCredentials(
           typeof response.data === 'string'
-            ? response.data.substring(0, MEMORY_LIMITS.MAX_SANITIZED_RESPONSE_LENGTH)
-            : String(response.data).substring(0, MEMORY_LIMITS.MAX_SANITIZED_RESPONSE_LENGTH),
+            ? response.data.substring(
+                0,
+                MEMORY_LIMITS.MAX_SANITIZED_RESPONSE_LENGTH,
+              )
+            : String(response.data).substring(
+                0,
+                MEMORY_LIMITS.MAX_SANITIZED_RESPONSE_LENGTH,
+              ),
         );
 
       details = {
@@ -1155,7 +1166,8 @@ export class MonitorService {
       };
     }
 
-    const timeout = (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.PING_HOST_DEFAULT) * 1000;
+    const timeout =
+      (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.PING_HOST_DEFAULT) * 1000;
     this.logger.debug(`Ping Host: ${target}, Timeout: ${timeout}ms`);
 
     const startTime = process.hrtime.bigint();
@@ -1312,7 +1324,8 @@ export class MonitorService {
   }> {
     const port = config?.port;
     const protocol = (config?.protocol || 'tcp').toLowerCase();
-    const timeout = (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.PORT_CHECK_DEFAULT) * 1000;
+    const timeout =
+      (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.PORT_CHECK_DEFAULT) * 1000;
 
     if (!port) {
       return {
@@ -1499,8 +1512,10 @@ export class MonitorService {
     responseTimeMs?: number;
     isUp: boolean;
   }> {
-    const timeout = (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.SSL_CHECK_DEFAULT) * 1000;
-    const daysUntilExpirationWarning = config?.daysUntilExpirationWarning ?? SECURITY.SSL_DEFAULT_WARNING_DAYS;
+    const timeout =
+      (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.SSL_CHECK_DEFAULT) * 1000;
+    const daysUntilExpirationWarning =
+      config?.daysUntilExpirationWarning ?? SECURITY.SSL_DEFAULT_WARNING_DAYS;
 
     this.logger.debug(
       `SSL Check: ${target}, Timeout: ${timeout}ms, Warning threshold: ${daysUntilExpirationWarning} days`,
@@ -1849,7 +1864,8 @@ export class MonitorService {
       if (sslCertificate?.daysRemaining !== undefined) {
         const daysUntilExpiration = sslCertificate.daysRemaining;
         const warningThreshold =
-          monitor.config?.sslDaysUntilExpirationWarning ?? SECURITY.SSL_DEFAULT_WARNING_DAYS;
+          monitor.config?.sslDaysUntilExpirationWarning ??
+          SECURITY.SSL_DEFAULT_WARNING_DAYS;
 
         // Removed debug logs
 

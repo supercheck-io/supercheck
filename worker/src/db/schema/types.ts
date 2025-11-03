@@ -6,7 +6,12 @@
 
 // Test types
 export type TestPriority = 'low' | 'medium' | 'high';
-export type TestType = 'browser' | 'api' | 'database' | 'custom' | 'performance';
+export type TestType =
+  | 'browser'
+  | 'api'
+  | 'database'
+  | 'custom'
+  | 'performance';
 
 // K6 Performance Testing types
 export type K6Location = 'us-east' | 'eu-central' | 'asia-pacific';

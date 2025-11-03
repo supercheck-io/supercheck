@@ -1,48 +1,57 @@
-import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
+import {
+  Processor,
+  WorkerHost,
+  OnWorkerEvent,
+  InjectQueue,
+} from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import {
   JOB_SCHEDULER_QUEUE,
   JOB_EXECUTION_QUEUE,
+  K6_JOB_EXECUTION_QUEUE,
+  K6_JOB_SCHEDULER_QUEUE,
   JobExecutionTask,
 } from '../constants';
 import { DbService } from '../../db/db.service';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import * as crypto from 'crypto';
 import { getNextRunDate } from '../utils/cron-utils';
 import { jobs, runs } from '../../db/schema';
 import { eq, and } from 'drizzle-orm';
-import { K6_EXECUTION_QUEUE } from '../../k6/k6.module';
+import { Queue } from 'bullmq';
 
 const DEFAULT_K6_LOCATION = 'us-east';
 
-@Processor(JOB_SCHEDULER_QUEUE)
-export class JobSchedulerProcessor extends WorkerHost {
-  private readonly logger = new Logger(JobSchedulerProcessor.name);
+abstract class BaseJobSchedulerProcessor extends WorkerHost {
+  protected readonly logger: Logger;
 
-  constructor(
-    private readonly dbService: DbService,
-    @InjectQueue(JOB_EXECUTION_QUEUE) private jobExecutionQueue: Queue,
-    @InjectQueue(K6_EXECUTION_QUEUE) private k6ExecutionQueue: Queue,
+  protected constructor(
+    processorName: string,
+    protected readonly dbService: DbService,
+    @InjectQueue(JOB_EXECUTION_QUEUE)
+    protected readonly jobExecutionQueue: Queue,
+    @InjectQueue(K6_JOB_EXECUTION_QUEUE)
+    protected readonly k6JobExecutionQueue: Queue,
   ) {
     super();
+    this.logger = new Logger(processorName);
   }
 
-  async process(
-    job: Job<
-      {
-        jobId: string;
-        testCases: Array<{ id: string; script: string; title: string; type?: string }>;
-        retryLimit?: number;
-        variables: Record<string, string>;
-        secrets: Record<string, string>;
-        projectId: string;
-        organizationId: string;
-      },
-      any,
-      string
-    >,
+  async handleProcess(
+    job: Job<{
+      jobId: string;
+      testCases: Array<{
+        id: string;
+        script: string;
+        title: string;
+        type?: string;
+      }>;
+      retryLimit?: number;
+      variables: Record<string, string>;
+      secrets: Record<string, string>;
+      projectId: string;
+      organizationId: string;
+    }>,
   ): Promise<{ success: boolean }> {
     this.logger.log(
       `Processing scheduled job trigger: ${job.name} (${job.id})`,
@@ -51,10 +60,15 @@ export class JobSchedulerProcessor extends WorkerHost {
     return { success: true };
   }
 
-  private async handleScheduledJobTrigger(
+  protected async handleScheduledJobTrigger(
     job: Job<{
       jobId: string;
-      testCases: Array<{ id: string; script: string; title: string; type?: string }>;
+      testCases: Array<{
+        id: string;
+        script: string;
+        title: string;
+        type?: string;
+      }>;
       retryLimit?: number;
       variables: Record<string, string>;
       secrets: Record<string, string>;
@@ -120,8 +134,8 @@ export class JobSchedulerProcessor extends WorkerHost {
         jobId: jobId,
         status: 'running',
         startedAt: new Date(),
-        trigger: 'schedule', // Set trigger to 'schedule'
-        projectId: projectId, // Add projectId for proper filtering
+        trigger: 'schedule',
+        projectId: projectId,
         location: resolvedLocation,
         metadata: {
           jobType,
@@ -160,16 +174,19 @@ export class JobSchedulerProcessor extends WorkerHost {
         .set(updatePayload)
         .where(eq(jobs.id, jobId));
 
-      // Use pre-resolved variables and test scripts from app side
-      // All scheduled jobs should have variables resolved on app side for consistency
       this.logger.log(
         `[${jobId}/${runId}] Using pre-resolved variables: ${Object.keys(data.variables).length} variables, ${Object.keys(data.secrets).length} secrets`,
       );
 
       const processedTestScripts = data.testCases.map(
-        (test: { id: string; script: string; title: string; type?: string }) => ({
+        (test: {
+          id: string;
+          script: string;
+          title: string;
+          type?: string;
+        }) => ({
           id: test.id,
-          script: test.script, // Script is already decoded and has variables resolved
+          script: test.script,
           name: test.title,
           type: test.type,
         }),
@@ -180,7 +197,6 @@ export class JobSchedulerProcessor extends WorkerHost {
         secrets: data.secrets,
       };
 
-      // Use pre-resolved organization info
       const organizationId = data.organizationId;
 
       const task: JobExecutionTask = {
@@ -241,7 +257,7 @@ export class JobSchedulerProcessor extends WorkerHost {
           return;
         }
 
-        await this.k6ExecutionQueue.add(
+        await this.k6JobExecutionQueue.add(
           'k6-job-execution',
           {
             runId,
@@ -277,7 +293,7 @@ export class JobSchedulerProcessor extends WorkerHost {
     }
   }
 
-  private async handleError(jobId: string | undefined, error: unknown) {
+  protected async handleError(jobId: string | undefined, error: unknown) {
     if (!jobId) {
       this.logger.error('Cannot handle error for undefined jobId:', error);
       return;
@@ -306,6 +322,26 @@ export class JobSchedulerProcessor extends WorkerHost {
       );
     }
   }
+}
+
+@Processor(JOB_SCHEDULER_QUEUE)
+export class PlaywrightJobSchedulerProcessor extends BaseJobSchedulerProcessor {
+  constructor(
+    dbService: DbService,
+    @InjectQueue(JOB_EXECUTION_QUEUE) jobExecutionQueue: Queue,
+    @InjectQueue(K6_JOB_EXECUTION_QUEUE) k6JobExecutionQueue: Queue,
+  ) {
+    super(
+      PlaywrightJobSchedulerProcessor.name,
+      dbService,
+      jobExecutionQueue,
+      k6JobExecutionQueue,
+    );
+  }
+
+  async process(job: Job<any>): Promise<{ success: boolean }> {
+    return this.handleProcess(job);
+  }
 
   @OnWorkerEvent('completed')
   onCompleted(job: Job) {
@@ -315,5 +351,35 @@ export class JobSchedulerProcessor extends WorkerHost {
   @OnWorkerEvent('failed')
   onFailed(job: Job, error: unknown) {
     this.logger.error(`Scheduled job failed: ${job?.name}`, error);
+  }
+}
+
+@Processor(K6_JOB_SCHEDULER_QUEUE)
+export class K6JobSchedulerProcessor extends BaseJobSchedulerProcessor {
+  constructor(
+    dbService: DbService,
+    @InjectQueue(JOB_EXECUTION_QUEUE) jobExecutionQueue: Queue,
+    @InjectQueue(K6_JOB_EXECUTION_QUEUE) k6JobExecutionQueue: Queue,
+  ) {
+    super(
+      K6JobSchedulerProcessor.name,
+      dbService,
+      jobExecutionQueue,
+      k6JobExecutionQueue,
+    );
+  }
+
+  async process(job: Job<any>): Promise<{ success: boolean }> {
+    return this.handleProcess(job);
+  }
+
+  @OnWorkerEvent('completed')
+  onCompleted(job: Job) {
+    this.logger.log(`Scheduled k6 job completed: ${job.name}`);
+  }
+
+  @OnWorkerEvent('failed')
+  onFailed(job: Job, error: unknown) {
+    this.logger.error(`Scheduled k6 job failed: ${job?.name}`, error);
   }
 }
