@@ -49,9 +49,7 @@ export const k6PerformanceRuns = pgTable('k6_performance_runs', {
     .default('us-east'),
 
   // Status tracking
-  status: varchar('status', { length: 20 })
-    .$type<TestRunStatus>()
-    .notNull(),
+  status: varchar('status', { length: 20 }).$type<TestRunStatus>().notNull(),
   startedAt: timestamp('started_at').defaultNow(),
   completedAt: timestamp('completed_at'),
   durationMs: integer('duration_ms'),

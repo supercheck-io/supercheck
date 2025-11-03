@@ -4,27 +4,19 @@ import { runs, JobTrigger, tests, jobs } from "@/db/schema";
 import type { JobType, K6Location } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
-import { addJobToQueue, JobExecutionTask } from "@/lib/queue";
+import {
+  addJobToQueue,
+  addK6JobToQueue,
+  JobExecutionTask,
+  K6ExecutionTask,
+} from "@/lib/queue";
 import { requireProjectContext } from '@/lib/project-context';
 import { hasPermission } from '@/lib/rbac/middleware';
 import { logAuditEvent } from '@/lib/audit-logger';
 import { applyVariablesToTestScripts, decodeTestScript } from "@/lib/job-execution-utils";
-import { Queue } from "bullmq";
 import { validateK6Script } from "@/lib/k6-validator";
 
 const DEFAULT_K6_LOCATION: K6Location = "us-east";
-
-const getRedisConnection = () => {
-  const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
-  const url = new URL(redisUrl);
-
-  return {
-    host: url.hostname,
-    port: parseInt(url.port || "6379", 10),
-    password: url.password || undefined,
-    username: url.username || undefined,
-  };
-};
 
 const normalizeK6Location = (value?: string): K6Location => {
   if (value === "us-east" || value === "eu-central" || value === "asia-pacific") {
@@ -71,6 +63,7 @@ export async function POST(request: Request) {
         organizationId: jobs.organizationId, 
         projectId: jobs.projectId,
         jobType: jobs.jobType,
+        name: jobs.name,
       })
       .from(jobs)
       .where(eq(jobs.id, jobId))
@@ -138,6 +131,8 @@ export async function POST(request: Request) {
     });
 
     console.log(`[${jobId}/${runId}] Created running test run record: ${runId}`);
+
+    // Notify listeners that this job is running
 
     const testScripts: Array<{ id: string; name: string; script: string; type?: string }> = [];
     
@@ -275,33 +270,22 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: errorMessage }, { status: 400 });
         }
 
-        const redisConnection = getRedisConnection();
-        const k6Queue = new Queue("k6-execution", { connection: redisConnection });
+        const k6Task: K6ExecutionTask = {
+          runId,
+          jobId,
+          testId: primaryTestId,
+          script: primaryScript,
+          tests: processedTestScripts.map((script) => ({
+            id: script.id,
+            script: script.script,
+          })),
+          organizationId: jobRecord?.organizationId ?? "",
+          projectId: jobRecord?.projectId ?? "",
+          location: resolvedLocation ?? DEFAULT_K6_LOCATION,
+          jobType,
+        };
 
-        await k6Queue.add(
-          "k6-job-execution",
-          {
-            runId,
-            jobId,
-            testId: primaryTestId,
-            script: primaryScript,
-            tests: processedTestScripts.map((script) => ({
-              id: script.id,
-              script: script.script,
-            })),
-            organizationId: jobRecord?.organizationId,
-            projectId: jobRecord?.projectId,
-            location: resolvedLocation ?? DEFAULT_K6_LOCATION,
-          },
-          {
-            jobId: runId,
-            removeOnComplete: true,
-            removeOnFail: false,
-            attempts: 1,
-          }
-        );
-
-        await k6Queue.close();
+        await addK6JobToQueue(k6Task, "k6-job-execution");
       } else {
         const task: JobExecutionTask = {
           jobId: jobId,

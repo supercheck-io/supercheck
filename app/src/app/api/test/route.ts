@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { addTestToQueue, TestExecutionTask } from "@/lib/queue";
+import {
+  addK6TestToQueue,
+  addTestToQueue,
+  K6ExecutionTask,
+  TestExecutionTask,
+} from "@/lib/queue";
 import { validationService } from "@/lib/validation-service";
 import { requireProjectContext } from "@/lib/project-context";
 import { hasPermission } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { resolveProjectVariables, extractVariableNames, generateVariableFunctions, type VariableResolutionResult } from "@/lib/variable-resolver";
-import { Queue } from "bullmq";
 import { validateK6Script } from "@/lib/k6-validator";
 import { db } from "@/utils/db";
 import { runs, type K6Location } from "@/db/schema";
@@ -16,19 +20,6 @@ function isK6Script(script: string): boolean {
   // Check for k6 imports
   return /import\s+.*\s+from\s+['"]k6(\/[^'"]+)?['"]/.test(script);
 }
-
-// Redis connection configuration
-const getRedisConnection = () => {
-  const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-  const url = new URL(redisUrl);
-
-  return {
-    host: url.hostname,
-    port: parseInt(url.port || '6379', 10),
-    password: url.password || undefined,
-    username: url.username || undefined,
-  };
-};
 
 export async function POST(request: NextRequest) {
   try {
@@ -192,22 +183,18 @@ export async function POST(request: NextRequest) {
       }
 
       if (isPerformanceTest) {
-        // Route to k6-execution queue
-        const redisConnection = getRedisConnection();
-        const k6Queue = new Queue('k6-execution', { connection: redisConnection });
-
-        await k6Queue.add('k6-playground-execution', {
+        const performanceTask: K6ExecutionTask = {
           runId: runIdForQueue || testId,
           jobId: null,
-          testId: testId,
-          script: code, // Use original code without variable injection
+          testId,
+          script: code,
           tests: [{ id: testId, script: code }],
           organizationId,
           projectId: project.id,
           location: resolvedLocation ?? "us-east",
-        });
+        };
 
-        await k6Queue.close();
+        await addK6TestToQueue(performanceTask, 'k6-playground-execution');
       } else {
         // Route to Playwright test-execution queue
         const task: TestExecutionTask = {
@@ -215,6 +202,9 @@ export async function POST(request: NextRequest) {
           code: scriptToExecute,
           variables: variableResolution.variables,
           secrets: variableResolution.secrets,
+          runId: runIdForQueue || testId,
+          organizationId,
+          projectId: project.id,
         };
 
         await addTestToQueue(task);

@@ -1,9 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  AlertStatus,
-  AlertType,
-  TestRunStatus,
-} from '../../db/schema';
+import { AlertStatus, AlertType, TestRunStatus } from '../../db/schema';
 import { DbService } from './db.service';
 import {
   NotificationPayload,
@@ -117,8 +113,7 @@ export class JobNotificationService {
         Math.max(alertConfig.failureThreshold, alertConfig.recoveryThreshold),
       );
 
-      const normalizedStatus =
-        finalStatus === 'error' ? 'failed' : finalStatus;
+      const normalizedStatus = finalStatus === 'error' ? 'failed' : finalStatus;
 
       let consecutiveFailures = normalizedStatus === 'failed' ? 1 : 0;
       let consecutiveSuccesses = normalizedStatus === 'passed' ? 1 : 0;
