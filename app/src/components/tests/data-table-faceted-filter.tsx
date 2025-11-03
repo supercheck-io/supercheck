@@ -26,8 +26,9 @@ interface DataTableFacetedFilterProps<TData, TValue> {
   options: {
     label: string;
     value: string;
-    icon?: React.ComponentType<{ className?: string }>;
+    icon?: React.ComponentType<{ className?: string } & Record<string, unknown>>;
     color?: string;
+    iconProps?: Record<string, unknown>;
   }[];
 }
 
@@ -119,6 +120,7 @@ export function DataTableFacetedFilter<TData, TValue>({
                           "mr-2 h-4 w-4 flex-shrink-0",
                           option.color ?? "text-foreground"
                         )}
+                        {...(option.iconProps ?? {})}
                       />
                     )}
                     <span className="truncate flex-1">{option.label}</span>

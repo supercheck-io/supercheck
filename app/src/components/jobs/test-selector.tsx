@@ -5,7 +5,15 @@ import { Test } from "./schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { XCircle, Search, PlusIcon, AlertCircle, X, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  XCircle,
+  Search,
+  PlusIcon,
+  AlertCircle,
+  X,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { types } from "../tests/data";
 import {
   Dialog,
@@ -26,10 +34,24 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 // import { getTests } from "@/actions/get-tests"; // Replaced with API call
 
 interface TestSelectorProps {
@@ -64,7 +86,9 @@ export default function TestSelector({
   maxSelectionLabel,
 }: TestSelectorProps) {
   const [isSelectTestsDialogOpen, setIsSelectTestsDialogOpen] = useState(false);
-  const [testSelections, setTestSelections] = useState<Record<string, boolean>>({});
+  const [testSelections, setTestSelections] = useState<Record<string, boolean>>(
+    {}
+  );
   const [availableTests, setAvailableTests] = useState<Test[]>([]);
   const [isLoadingTests, setIsLoadingTests] = useState(true);
   const [testFilter, setTestFilter] = useState("");
@@ -72,7 +96,10 @@ export default function TestSelector({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
-  const [testToRemove, setTestToRemove] = useState<{id: string, name: string} | null>(null);
+  const [testToRemove, setTestToRemove] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const excludeTypesKey = excludeTypes.length
     ? [...excludeTypes].sort().join("|")
@@ -81,7 +108,7 @@ export default function TestSelector({
   // Always ensure we have an array
   const tests = useMemo(
     () => (Array.isArray(selectedTests) ? selectedTests : []),
-    [selectedTests],
+    [selectedTests]
   );
 
   // Define the structure expected from the API
@@ -102,9 +129,9 @@ export default function TestSelector({
     async function fetchTests() {
       setIsLoadingTests(true);
       try {
-        const response = await fetch('/api/tests');
+        const response = await fetch("/api/tests");
         const data = await response.json();
-        
+
         if (response.ok && data) {
           // Map the API response to the Test type
           let formattedTests: Test[] = (data as ActionTest[]).map(
@@ -132,19 +159,25 @@ export default function TestSelector({
                 duration: null as number | null,
                 tags: test.tags || [],
               };
-            },
+            }
           );
 
           // Filter tests based on mode
           if (testTypeFilter) {
             // Filter by specific test type (e.g., "browser" for synthetic monitors, "performance" for k6 jobs)
-            formattedTests = formattedTests.filter(test => test.type === testTypeFilter);
+            formattedTests = formattedTests.filter(
+              (test) => test.type === testTypeFilter
+            );
           } else if (performanceMode) {
             // Performance mode: show only performance tests
-            formattedTests = formattedTests.filter(test => test.type === "performance");
+            formattedTests = formattedTests.filter(
+              (test) => test.type === "performance"
+            );
           } else {
             // Regular mode: exclude performance tests, show all other types
-            formattedTests = formattedTests.filter(test => test.type !== "performance");
+            formattedTests = formattedTests.filter(
+              (test) => test.type !== "performance"
+            );
           }
 
           if (excludeTypesKey.length > 0) {
@@ -168,7 +201,8 @@ export default function TestSelector({
     fetchTests();
   }, [performanceMode, testTypeFilter, excludeTypesKey]);
 
-  const useSingleSelection = performanceMode || !!testTypeFilter || singleSelection;
+  const useSingleSelection =
+    performanceMode || !!testTypeFilter || singleSelection;
 
   // Handle test selection
   const handleTestSelection = (testId: string, checked: boolean) => {
@@ -208,18 +242,21 @@ export default function TestSelector({
   const removeTest = (testId: string, testName: string) => {
     toast.success(`Removed test "${testName}"`);
     onTestsSelected(tests.filter((test) => test.id !== testId));
- 
   };
 
   // Filter the tests based on search input
   const filteredTests = availableTests.filter((test) => {
-    const matchesTextFilter = 
+    const matchesTextFilter =
       testFilter === "" ||
       test.name.toLowerCase().includes(testFilter.toLowerCase()) ||
       test.id.toLowerCase().includes(testFilter.toLowerCase()) ||
       test.type.toLowerCase().includes(testFilter.toLowerCase()) ||
-      (test.description && test.description.toLowerCase().includes(testFilter.toLowerCase())) ||
-      (test.tags && test.tags.some(tag => tag.name.toLowerCase().includes(testFilter.toLowerCase())));
+      (test.description &&
+        test.description.toLowerCase().includes(testFilter.toLowerCase())) ||
+      (test.tags &&
+        test.tags.some((tag) =>
+          tag.name.toLowerCase().includes(testFilter.toLowerCase())
+        ));
 
     return matchesTextFilter;
   });
@@ -227,11 +264,14 @@ export default function TestSelector({
   // Get the current page of tests
   const currentTests = filteredTests.slice(
     (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage,
+    currentPage * itemsPerPage
   );
 
   // Calculate total pages
-  const totalPages = Math.max(1, Math.ceil(filteredTests.length / itemsPerPage));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredTests.length / itemsPerPage)
+  );
 
   const dialogTitleText =
     dialogTitle ??
@@ -254,24 +294,41 @@ export default function TestSelector({
       : "Choose the tests to include in this job");
 
   const headerNote =
-    maxSelectionLabel !== undefined
-      ? maxSelectionLabel
-      : !performanceMode && !testTypeFilter && !singleSelection
-      ? (
-          <>
-            Max: <span className="font-bold">50</span> tests per job
-          </>
-        )
-      : undefined;
+    maxSelectionLabel !== undefined ? (
+      maxSelectionLabel
+    ) : performanceMode ? (
+      <>
+        Max: <span className="font-bold">1</span> performance test per job
+      </>
+    ) : !testTypeFilter && !singleSelection ? (
+      <>
+        Max: <span className="font-bold">50</span> tests per job
+      </>
+    ) : undefined;
+
+  const selectedTestsTitle = performanceMode
+    ? "Selected Performance Test"
+    : "Selected Tests";
+
+  const selectedTestsDescription = performanceMode
+    ? "Only one performance test can be attached to k6 job."
+    : "Manage the tests associated with this job";
+
+  const pageHeaderNote = performanceMode ? undefined : headerNote;
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
-          <h3 className="text-lg font-medium">Selected Tests</h3>
+          <h3 className="text-lg font-medium">{selectedTestsTitle}</h3>
           <p className="text-sm text-muted-foreground">
-            Manage the tests associated with this job
+            {selectedTestsDescription}
           </p>
+          {pageHeaderNote && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {pageHeaderNote}
+            </p>
+          )}
         </div>
         {!hideButton && (
           <Button
@@ -280,14 +337,14 @@ export default function TestSelector({
             onClick={() => setIsSelectTestsDialogOpen(true)}
             className={cn(
               required && tests.length === 0 && "border-destructive",
-              "transition-colors",
+              "transition-colors"
             )}
             size="sm"
           >
             <PlusIcon
               className={cn(
                 "mr-2 h-4 w-4",
-                required && tests.length === 0 && "text-destructive",
+                required && tests.length === 0 && "text-destructive"
               )}
             />
             {buttonLabel}
@@ -297,7 +354,12 @@ export default function TestSelector({
 
       {tests.length === 0 ? (
         <div className="text-center my-8">
-          <p className={cn("text-sm flex items-center justify-center bg-muted/80 p-2 rounded-md w-fit mx-auto", required && "text-destructive")}>
+          <p
+            className={cn(
+              "text-sm flex items-center justify-center bg-muted/80 p-2 rounded-md w-fit mx-auto",
+              required && "text-destructive"
+            )}
+          >
             <AlertCircle className="h-4 w-4 mr-2" />
             {emptyStateMessage}
           </p>
@@ -306,7 +368,7 @@ export default function TestSelector({
         <div
           className={cn(
             "overflow-y-auto border rounded-md",
-            tests.length > 5 && "max-h-[350px]",
+            tests.length > 5 && "max-h-[350px]"
           )}
         >
           <Table>
@@ -315,16 +377,10 @@ export default function TestSelector({
                 <TableHead className="w-[120px] sticky top-0">
                   Test ID
                 </TableHead>
-                <TableHead className="w-[180px] sticky top-0">
-                  Name
-                </TableHead>
-                <TableHead className="w-[120px] sticky top-0 ">
-                  Type
-                </TableHead>
-                <TableHead className="w-[170px] sticky top-0">
-                  Tags
-                </TableHead>
-                  <TableHead className="w-[170px]  sticky top-0">
+                <TableHead className="w-[180px] sticky top-0">Name</TableHead>
+                <TableHead className="w-[120px] sticky top-0 ">Type</TableHead>
+                <TableHead className="w-[170px] sticky top-0">Tags</TableHead>
+                <TableHead className="w-[170px]  sticky top-0">
                   Description
                 </TableHead>
                 <TableHead className="w-[100px] sticky top-0">
@@ -344,9 +400,9 @@ export default function TestSelector({
                     </code>
                   </TableCell>
                   <TableCell className="truncate" title={test.name || ""}>
-                    {(test.name|| "").length > 40
-                      ? (test.name  || "").substring(0, 40) + "..."
-                      : (test.name || "")}
+                    {(test.name || "").length > 40
+                      ? (test.name || "").substring(0, 40) + "..."
+                      : test.name || ""}
                   </TableCell>
                   <TableCell>
                     {(() => {
@@ -355,7 +411,9 @@ export default function TestSelector({
                       const Icon = type.icon;
                       return (
                         <div className="flex items-center w-[120px]">
-                          {Icon && <Icon className={`mr-2 h-4 w-4 ${type.color}`} />}
+                          {Icon && (
+                            <Icon className={`mr-2 h-4 w-4 ${type.color}`} />
+                          )}
                           <span>{type.label}</span>
                         </div>
                       );
@@ -372,21 +430,28 @@ export default function TestSelector({
                           <TooltipTrigger asChild>
                             <div className="flex items-center gap-1 min-h-[24px]">
                               {test.tags.slice(0, 2).map((tag) => (
-                                <Badge 
-                                  key={tag.id} 
-                                  variant="secondary" 
+                                <Badge
+                                  key={tag.id}
+                                  variant="secondary"
                                   className="text-xs whitespace-nowrap flex-shrink-0"
-                                  style={tag.color ? { 
-                                    backgroundColor: tag.color + "20", 
-                                    color: tag.color,
-                                    borderColor: tag.color + "40"
-                                  } : {}}
+                                  style={
+                                    tag.color
+                                      ? {
+                                          backgroundColor: tag.color + "20",
+                                          color: tag.color,
+                                          borderColor: tag.color + "40",
+                                        }
+                                      : {}
+                                  }
                                 >
                                   {tag.name}
                                 </Badge>
                               ))}
                               {test.tags.length > 2 && (
-                                <Badge variant="secondary" className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
+                                <Badge
+                                  variant="secondary"
+                                  className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0"
+                                >
                                   +{test.tags.length - 2}
                                 </Badge>
                               )}
@@ -395,15 +460,19 @@ export default function TestSelector({
                           <TooltipContent side="top" className="max-w-[500px]">
                             <div className="flex flex-wrap gap-1">
                               {test.tags.map((tag) => (
-                                <Badge 
-                                  key={tag.id} 
-                                  variant="secondary" 
+                                <Badge
+                                  key={tag.id}
+                                  variant="secondary"
                                   className="text-xs"
-                                  style={tag.color ? { 
-                                    backgroundColor: tag.color + "20", 
-                                    color: tag.color,
-                                    borderColor: tag.color + "40"
-                                  } : {}}
+                                  style={
+                                    tag.color
+                                      ? {
+                                          backgroundColor: tag.color + "20",
+                                          color: tag.color,
+                                          borderColor: tag.color + "40",
+                                        }
+                                      : {}
+                                  }
                                 >
                                   {tag.name}
                                 </Badge>
@@ -484,7 +553,11 @@ export default function TestSelector({
                 <div className="relative w-full">
                   <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder={performanceMode ? "Filter by test name or description..." : "Filter by test name, ID, type, tags, or description..."}
+                    placeholder={
+                      performanceMode
+                        ? "Filter by test name or description..."
+                        : "Filter by test name, ID, type, tags, or description..."
+                    }
                     className="pl-8"
                     value={testFilter}
                     onChange={(e) => setTestFilter(e.target.value)}
@@ -509,11 +582,21 @@ export default function TestSelector({
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12"></TableHead>
-                      <TableHead className="w-[120px] sticky top-0">ID</TableHead>
-                      <TableHead className="w-[250px] sticky top-0">Name</TableHead>
-                      <TableHead className="w-[150px] sticky top-0">Type</TableHead>
-                      <TableHead className="w-[200px] sticky top-0">Tags</TableHead>
-                      <TableHead className="w-[200px] sticky top-0">Description</TableHead>
+                      <TableHead className="w-[120px] sticky top-0">
+                        ID
+                      </TableHead>
+                      <TableHead className="w-[250px] sticky top-0">
+                        Name
+                      </TableHead>
+                      <TableHead className="w-[150px] sticky top-0">
+                        Type
+                      </TableHead>
+                      <TableHead className="w-[200px] sticky top-0">
+                        Tags
+                      </TableHead>
+                      <TableHead className="w-[200px] sticky top-0">
+                        Description
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -521,14 +604,22 @@ export default function TestSelector({
                       <TableRow
                         key={test.id}
                         className="hover:bg-muted cursor-pointer transition-opacity"
-                        onClick={() => handleTestSelection(test.id, !testSelections[test.id])}
+                        onClick={() =>
+                          handleTestSelection(test.id, !testSelections[test.id])
+                        }
                       >
                         <TableCell>
                           {useSingleSelection ? (
                             // Radio button for single-selection modes
                             <RadioGroup
-                              value={Object.keys(testSelections).find(k => testSelections[k]) || ""}
-                              onValueChange={(value) => handleTestSelection(value, true)}
+                              value={
+                                Object.keys(testSelections).find(
+                                  (k) => testSelections[k]
+                                ) || ""
+                              }
+                              onValueChange={(value) =>
+                                handleTestSelection(value, true)
+                              }
                             >
                               <Label className="flex items-center cursor-pointer">
                                 <RadioGroupItem
@@ -561,16 +652,22 @@ export default function TestSelector({
                         <TableCell className="truncate" title={test.name || ""}>
                           {(test.name || "").length > 40
                             ? (test.name || "").substring(0, 40) + "..."
-                            : (test.name || "")}
+                            : test.name || ""}
                         </TableCell>
                         <TableCell>
                           {(() => {
-                            const type = types.find((t) => t.value === test.type);
+                            const type = types.find(
+                              (t) => t.value === test.type
+                            );
                             if (!type) return null;
                             const Icon = type.icon;
                             return (
                               <div className="flex items-center w-[120px]">
-                                {Icon && <Icon className={`mr-2 h-4 w-4 ${type.color}`} />}
+                                {Icon && (
+                                  <Icon
+                                    className={`mr-2 h-4 w-4 ${type.color}`}
+                                  />
+                                )}
                                 <span>{type.label}</span>
                               </div>
                             );
@@ -591,34 +688,50 @@ export default function TestSelector({
                                         key={tag.id}
                                         variant="secondary"
                                         className="text-xs whitespace-nowrap flex-shrink-0"
-                                        style={tag.color ? {
-                                          backgroundColor: tag.color + "20",
-                                          color: tag.color,
-                                          borderColor: tag.color + "40"
-                                        } : {}}
+                                        style={
+                                          tag.color
+                                            ? {
+                                                backgroundColor:
+                                                  tag.color + "20",
+                                                color: tag.color,
+                                                borderColor: tag.color + "40",
+                                              }
+                                            : {}
+                                        }
                                       >
                                         {tag.name}
                                       </Badge>
                                     ))}
                                     {test.tags.length > 2 && (
-                                      <Badge variant="secondary" className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
+                                      <Badge
+                                        variant="secondary"
+                                        className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0"
+                                      >
                                         +{test.tags.length - 2}
                                       </Badge>
                                     )}
                                   </div>
                                 </TooltipTrigger>
-                                <TooltipContent side="top" className="max-w-[300px]">
+                                <TooltipContent
+                                  side="top"
+                                  className="max-w-[300px]"
+                                >
                                   <div className="flex flex-wrap gap-1">
                                     {test.tags.map((tag) => (
                                       <Badge
                                         key={tag.id}
                                         variant="secondary"
                                         className="text-xs"
-                                        style={tag.color ? {
-                                          backgroundColor: tag.color + "20",
-                                          color: tag.color,
-                                          borderColor: tag.color + "40"
-                                        } : {}}
+                                        style={
+                                          tag.color
+                                            ? {
+                                                backgroundColor:
+                                                  tag.color + "20",
+                                                color: tag.color,
+                                                borderColor: tag.color + "40",
+                                              }
+                                            : {}
+                                        }
                                       >
                                         {tag.name}
                                       </Badge>
@@ -648,7 +761,9 @@ export default function TestSelector({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.max(prev - 1, 1))
+                  }
                   disabled={currentPage === 1}
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -659,7 +774,9 @@ export default function TestSelector({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                  }
                   disabled={currentPage === totalPages}
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -671,17 +788,25 @@ export default function TestSelector({
                 <div className="text-sm text-muted-foreground">
                   {useSingleSelection ? (
                     <span>
-                      {Object.keys(testSelections).filter((id) => testSelections[id]).length > 0
+                      {Object.keys(testSelections).filter(
+                        (id) => testSelections[id]
+                      ).length > 0
                         ? "1 test selected"
                         : "No test selected"}
                     </span>
                   ) : (
                     <>
                       <span className="font-bold">
-                        {Object.keys(testSelections).filter((id) => testSelections[id]).length}
-                      </span>
-                      {" "}of <span className="font-bold">{availableTests.length}</span> test
-                      {availableTests.length !== 1 ? "s" : ""}{" "} selected
+                        {
+                          Object.keys(testSelections).filter(
+                            (id) => testSelections[id]
+                          ).length
+                        }
+                      </span>{" "}
+                      of{" "}
+                      <span className="font-bold">{availableTests.length}</span>{" "}
+                      test
+                      {availableTests.length !== 1 ? "s" : ""} selected
                     </>
                   )}
                 </div>
@@ -702,30 +827,34 @@ export default function TestSelector({
         </DialogContent>
       </Dialog>
       {showRemoveDialog && testToRemove && (
-  <AlertDialog open={showRemoveDialog} onOpenChange={setShowRemoveDialog}>
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Remove Test from Job</AlertDialogTitle>
-        <AlertDialogDescription>
-          Are you sure you want to remove <span className="font-semibold">&quot;{testToRemove.name}&quot;</span> from this job?
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel>Cancel</AlertDialogCancel>
-        <AlertDialogAction
-          onClick={() => {
-            removeTest(testToRemove.id, testToRemove.name);
-            setShowRemoveDialog(false);
-            setTestToRemove(null);
-          }}
-          className="bg-red-600 hover:bg-red-700"
-        >
-          Remove
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
-)}
+        <AlertDialog open={showRemoveDialog} onOpenChange={setShowRemoveDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove Test from Job</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to remove{" "}
+                <span className="font-semibold">
+                  &quot;{testToRemove.name}&quot;
+                </span>{" "}
+                from this job?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  removeTest(testToRemove.id, testToRemove.name);
+                  setShowRemoveDialog(false);
+                  setTestToRemove(null);
+                }}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Remove
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
-} 
+}

@@ -35,6 +35,26 @@ import {
   PerformanceLocation,
 } from "./location-selection-dialog";
 
+const VALID_TEST_TYPES: TestType[] = [
+  "browser",
+  "api",
+  "database",
+  "custom",
+  "performance",
+];
+
+const VALID_TEST_PRIORITIES: TestPriority[] = ["low", "medium", "high"];
+
+const normalizeTestTypeValue = (value: unknown): TestType =>
+  VALID_TEST_TYPES.includes(value as TestType)
+    ? (value as TestType)
+    : ("browser" as TestType);
+
+const normalizePriorityValue = (value: unknown): TestPriority =>
+  VALID_TEST_PRIORITIES.includes(value as TestPriority)
+    ? (value as TestPriority)
+    : ("medium" as TestPriority);
+
 // Define our own TestCaseFormData interface
 interface TestCaseFormData {
   title: string;
@@ -66,6 +86,10 @@ const Playground: React.FC<PlaygroundProps> = ({
   initialTestData,
   initialTestId,
 }) => {
+  const initialResolvedType = normalizeTestTypeValue(initialTestData?.type);
+  const initialResolvedPriority = normalizePriorityValue(
+    initialTestData?.priority
+  );
   // Permission checking
   const { currentProject } = useProjectContext();
   const userCanRunTests = currentProject?.userRole
@@ -76,7 +100,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   );
 
   const initialPerformanceLocation: PerformanceLocation | null =
-    initialTestData?.type === "performance"
+    initialResolvedType === "performance" && initialTestData
       ? ((initialTestData.location as PerformanceLocation) ??
         ("us-east" as PerformanceLocation))
       : null;
@@ -131,8 +155,8 @@ const Playground: React.FC<PlaygroundProps> = ({
       ? {
           title: initialTestData.title,
           description: initialTestData.description,
-          priority: initialTestData.priority,
-          type: initialTestData.type,
+          priority: initialResolvedPriority,
+          type: initialResolvedType,
           updatedAt: initialTestData.updatedAt || undefined,
           createdAt: initialTestData.createdAt || undefined,
           location: initialPerformanceLocation,
@@ -142,8 +166,8 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [testCase, setTestCase] = useState<TestCaseFormData>({
     title: initialTestData?.title || "",
     description: initialTestData?.description || "",
-    priority: initialTestData?.priority || ("medium" as TestPriority),
-    type: initialTestData?.type || ("browser" as TestType),
+    priority: initialResolvedPriority,
+    type: initialResolvedType,
     script: initialTestData?.script || "",
     updatedAt: initialTestData?.updatedAt || undefined,
     createdAt: initialTestData?.createdAt || undefined,
@@ -303,17 +327,21 @@ const Playground: React.FC<PlaygroundProps> = ({
       const result = await response.json();
 
       if (response.ok && result) {
+        const resolvedType = normalizeTestTypeValue(result.type);
+        const resolvedPriority = normalizePriorityValue(result.priority);
         // Update the test case data
         setTestCase({
           title: result.title,
           description: result.description,
-          priority: result.priority as TestPriority,
-          type: result.type as TestType,
+          priority: resolvedPriority,
+          type: resolvedType,
           updatedAt: result.updatedAt || null,
           createdAt: result.createdAt || null,
           location:
             (result.location as PerformanceLocation | null) ??
-            (result.type === "performance" ? ("us-east" as PerformanceLocation) : null),
+            (resolvedType === "performance"
+              ? ("us-east" as PerformanceLocation)
+              : null),
         });
 
         // Update the editor content
@@ -324,16 +352,18 @@ const Playground: React.FC<PlaygroundProps> = ({
         setInitialFormValues({
           title: result.title,
           description: result.description,
-          priority: result.priority as TestPriority,
-          type: result.type as TestType,
+          priority: resolvedPriority,
+          type: resolvedType,
           updatedAt: result.updatedAt || null,
           createdAt: result.createdAt || null,
           location:
             (result.location as PerformanceLocation | null) ??
-            (result.type === "performance" ? ("us-east" as PerformanceLocation) : null),
+            (resolvedType === "performance"
+              ? ("us-east" as PerformanceLocation)
+              : null),
         });
 
-        if (result.type === "performance") {
+        if (resolvedType === "performance") {
           setPerformanceLocation(
             (result.location as PerformanceLocation) ??
               ("us-east" as PerformanceLocation)
@@ -410,23 +440,27 @@ const Playground: React.FC<PlaygroundProps> = ({
   // Handle initialTestData when provided from server-side
   useEffect(() => {
     if (initialTestData) {
+      const resolvedType = normalizeTestTypeValue(initialTestData.type);
+      const resolvedPriority = normalizePriorityValue(
+        initialTestData.priority
+      );
       // If we have initial test data from the server, use it
       // Update the initial form values to match the loaded test
       setInitialFormValues({
         title: initialTestData.title,
         description: initialTestData.description || undefined,
-        priority: initialTestData.priority,
-        type: initialTestData.type,
+        priority: resolvedPriority,
+        type: resolvedType,
         updatedAt: initialTestData.updatedAt || undefined,
         createdAt: initialTestData.createdAt || undefined,
         location:
-          initialTestData.type === "performance"
+          resolvedType === "performance"
             ? ((initialTestData.location as PerformanceLocation) ??
               ("us-east" as PerformanceLocation))
             : null,
       });
 
-      if (initialTestData.type === "performance") {
+      if (resolvedType === "performance") {
         const resolvedLocation: PerformanceLocation =
           (initialTestData.location as PerformanceLocation) ??
           ("us-east" as PerformanceLocation);
@@ -480,39 +514,65 @@ const Playground: React.FC<PlaygroundProps> = ({
         script: editorContent,
         description: testCase.description || "", // Convert null to empty string for validation
       };
+      const normalizedType = normalizeTestTypeValue(validationData.type);
+      const normalizedPriority = normalizePriorityValue(validationData.priority);
+
+      if (
+        normalizedType !== testCase.type ||
+        normalizedPriority !== testCase.priority
+      ) {
+        setTestCase((prev: TestCaseFormData) => ({
+          ...prev,
+          type: normalizedType,
+          priority: normalizedPriority,
+        }));
+      }
+
+      const mergedValidationData = {
+        ...validationData,
+        type: normalizedType,
+        priority: normalizedPriority,
+      };
 
       const newErrors: Record<string, string> = {};
 
       // Validate title
-      if (!validationData.title || validationData.title.trim() === "") {
+      if (
+        !mergedValidationData.title ||
+        mergedValidationData.title.trim() === ""
+      ) {
         newErrors.title = "Title is required";
       }
 
       // Validate description - make it mandatory
       if (
-        !validationData.description ||
-        validationData.description.trim() === ""
+        !mergedValidationData.description ||
+        mergedValidationData.description.trim() === ""
       ) {
         newErrors.description = "Description is required";
       }
 
       // Validate script
-      if (!validationData.script || validationData.script.trim() === "") {
+      if (
+        !mergedValidationData.script ||
+        mergedValidationData.script.trim() === ""
+      ) {
         newErrors.script = "Test script is required";
       }
 
       // Validate type - explicit check for missing type without comparing to empty string
-      if (!validationData.type) {
+      if (!mergedValidationData.type) {
         newErrors.type = "Test type is required";
       }
 
       // Validate priority - explicit check for missing priority without comparing to empty string
-      if (!validationData.priority) {
+      if (!mergedValidationData.priority) {
         newErrors.priority = "Priority is required";
       }
 
       if (
-        (validationData.type === "performance" || testCase.type === "performance") &&
+        (mergedValidationData.type === "performance" ||
+          testCase.type === "performance") &&
         !(testCase.location || performanceLocation)
       ) {
         newErrors.location = "Execution location is required";
