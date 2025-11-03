@@ -87,11 +87,26 @@ export function DataTableToolbar<TData>({
                   <div className="space-y-3">
                     <div className="space-y-2">
                       <h4 className="text-xs font-medium">Example Usage</h4>
-                      <div className="relative bg-muted p-2 rounded">
+                      <div className="relative bg-muted p-3 rounded border border-muted-foreground/20">
+                        <pre className="font-mono text-xs overflow-auto max-h-40 text-foreground pr-8 leading-relaxed">
+                          {`// Variables
+const baseUrl = getVariable('BASE_URL');
+// Secrets
+const apiKey = getSecret('API_KEY').toString();
+
+// In Playwright
+await page.goto(getVariable(baseUrl));
+await page.fill('#password', apiKey);
+
+// In k6
+  http.get(\`\${baseUrl}/protected\`, {
+    headers: { Authorization: \`Bearer \${apiKey}\` }
+})`}
+                        </pre>
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="absolute top-1 right-1 h-6 w-6 p-0"
+                          className="absolute top-2 right-2 h-6 w-6 p-0"
                           onClick={() =>
                             handleCopyCode(`// Variables
 const baseUrl = getVariable('BASE_URL');

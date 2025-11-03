@@ -158,18 +158,25 @@ export class K6ExecutionService {
     const { runId, testId, script, location } = task;
     const startTime = Date.now();
 
-    // Check concurrency
+    const uniqueRunId = `${runId}-${crypto.randomUUID().substring(0, 8)}`;
+
+    // Check concurrency and reserve a slot atomically to prevent race condition
     if (this.activeK6Runs.size >= this.maxConcurrentK6Runs) {
       throw new Error(
         `Max concurrent k6 runs reached: ${this.maxConcurrentK6Runs}`,
       );
     }
 
+    // Reserve slot before async setup to prevent other calls from bypassing the limit
+    this.activeK6Runs.set(uniqueRunId, {
+      pid: 0, // Placeholder, will be updated in executeK6Binary
+      startTime,
+      runId,
+    });
+
     this.logger.log(
       `[${runId}] Starting k6 test${location ? ` (location: ${location})` : ''}`,
     );
-
-    const uniqueRunId = `${runId}-${crypto.randomUUID().substring(0, 8)}`;
     const runDir = path.join(this.baseLocalRunDir, uniqueRunId);
 
     let finalResult: K6ExecutionResult;
@@ -588,9 +595,11 @@ export class K6ExecutionService {
       let stderr = '';
 
       if (childProcess.pid) {
+        // Update placeholder entry with actual process info
+        const existing = this.activeK6Runs.get(uniqueRunId);
         this.activeK6Runs.set(uniqueRunId, {
           pid: childProcess.pid,
-          startTime: Date.now(),
+          startTime: existing?.startTime ?? Date.now(),
           runId,
           dashboardPort,
         });

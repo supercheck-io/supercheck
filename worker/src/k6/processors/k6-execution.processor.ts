@@ -17,6 +17,14 @@ import {
 
 type K6Task = K6ExecutionTask;
 
+// Utility function to safely get error message
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
 class LocationMismatchError extends Error {
   constructor(message: string) {
     super(message);
@@ -226,6 +234,38 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         message,
         error instanceof Error ? error.stack : undefined,
       );
+
+      // Update run record to failed status before rethrowing to ensure UI and retries work correctly
+      try {
+        const durationSeconds = Math.round((Date.now() - processStartTime) / 1000);
+        let durationString: string;
+        if (durationSeconds <= 0) {
+          durationString = '<1s';
+        } else if (durationSeconds >= 60) {
+          const minutes = Math.floor(durationSeconds / 60);
+          const remainder = durationSeconds % 60;
+          durationString =
+            `${minutes}m${remainder ? ` ${remainder}s` : ''}`.trim();
+        } else {
+          durationString = `${durationSeconds}s`;
+        }
+
+        await this.dbService.db
+          .update(schema.runs)
+          .set({
+            status: 'failed',
+            completedAt: new Date(),
+            durationMs: Date.now() - processStartTime,
+            duration: durationString,
+            errorDetails: message,
+          })
+          .where(eq(schema.runs.id, runId));
+      } catch (dbError) {
+        this.logger.error(
+          `[${runId}] Failed to update run to failed status: ${getErrorMessage(dbError)}`,
+          dbError instanceof Error ? dbError.stack : undefined,
+        );
+      }
 
       if (taskData.jobId) {
         await this.jobNotificationService.handleJobNotifications({

@@ -88,6 +88,9 @@ export default function AdminDashboard() {
     total: 0,
   });
 
+  // Bull Dashboard iframe state
+  const [iframeLoaded, setIframeLoaded] = useState(false);
+
   useEffect(() => {
     fetchStats();
   }, []);
@@ -110,6 +113,9 @@ export default function AdminDashboard() {
       fetchUsers();
     } else if (value === "organizations" && organizations.length === 0) {
       fetchOrganizations();
+    } else if (value === "queues") {
+      // Reset iframe loading state when switching to queues tab
+      setIframeLoaded(false);
     }
   };
 
@@ -580,11 +586,24 @@ export default function AdminDashboard() {
                 </div>
               </div> */}
               <div className="rounded-lg border bg-background overflow-hidden">
+                {!iframeLoaded && (
+                  <div className="flex justify-center items-center" style={{ height: "calc(100vh - 250px)", minHeight: "600px" }}>
+                    <div className="flex flex-col items-center space-y-4">
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                      <span className="text-muted-foreground">Loading Queue Dashboard...</span>
+                    </div>
+                  </div>
+                )}
                 <iframe
                   src="/api/admin/queues/"
                   className="w-full"
-                  style={{ height: "calc(100vh - 250px)", minHeight: "600px" }}
+                  style={{
+                    height: "calc(100vh - 250px)",
+                    minHeight: "600px",
+                    display: iframeLoaded ? "block" : "none",
+                  }}
                   title="Queue Dashboard"
+                  onLoad={() => setIframeLoaded(true)}
                 />
               </div>
             </TabsContent>
