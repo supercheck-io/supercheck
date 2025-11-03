@@ -3,7 +3,12 @@ import { db } from "@/utils/db";
 import { jobs, runs } from "@/db/schema";
 import { JobTrigger } from "@/db/schema";
 import { eq, isNotNull, and } from "drizzle-orm";
-import { getQueues, JobExecutionTask, JOB_EXECUTION_QUEUE } from "./queue";
+import {
+  getQueues,
+  JobExecutionTask,
+  JOB_EXECUTION_QUEUE,
+  K6_JOB_EXECUTION_QUEUE,
+} from "./queue";
 import crypto from "crypto";
 import { getNextRunDate } from "@/lib/cron-utils";
 import {
@@ -30,7 +35,7 @@ export async function scheduleJob(options: ScheduleOptions): Promise<string> {
     // Setting up scheduled job
 
     // Get queues from central management
-    const { jobSchedulerQueue } = await getQueues();
+    const { jobSchedulerQueue, k6JobSchedulerQueue } = await getQueues();
 
     // Generate a unique name for this scheduled job
     const schedulerJobName = `scheduled-job-${options.jobId}`;
@@ -65,7 +70,9 @@ export async function scheduleJob(options: ScheduleOptions): Promise<string> {
     // Prepared test cases with variables resolved
 
     // Clean up any existing repeatable jobs for this job ID
-    const repeatableJobs = await jobSchedulerQueue.getRepeatableJobs();
+    const schedulerQueue = job.jobType === "k6" ? k6JobSchedulerQueue : jobSchedulerQueue;
+
+    const repeatableJobs = await schedulerQueue.getRepeatableJobs();
     const existingJob = repeatableJobs.find(
       (job) =>
         job.id === options.jobId ||
@@ -75,19 +82,23 @@ export async function scheduleJob(options: ScheduleOptions): Promise<string> {
 
     if (existingJob) {
       // Removing existing job
-      await jobSchedulerQueue.removeRepeatableByKey(existingJob.key);
+      await schedulerQueue.removeRepeatableByKey(existingJob.key);
     }
 
     // Create a repeatable job that follows the cron schedule
     // The worker for JOB_SCHEDULER_QUEUE will process this.
     // The data payload contains what's needed to create the *actual* execution job.
-    await jobSchedulerQueue.add(
+    const executionQueueName = job.jobType === "k6"
+      ? K6_JOB_EXECUTION_QUEUE
+      : JOB_EXECUTION_QUEUE;
+
+    await schedulerQueue.add(
       schedulerJobName,
       {
         jobId: options.jobId,
         name: options.name,
         testCases,
-        queue: JOB_EXECUTION_QUEUE, // Keep for handleScheduledJobTrigger
+        queue: executionQueueName, // Keep for handleScheduledJobTrigger
         retryLimit: options.retryLimit || 3,
         // Pass resolved variables and job info to worker
         variables: variableResolution.variables,
@@ -309,37 +320,35 @@ export async function deleteScheduledJob(
   try {
     // Removing job scheduler
 
-    const { jobSchedulerQueue } = await getQueues();
+    const { jobSchedulerQueue, k6JobSchedulerQueue } = await getQueues();
 
-    // Get all repeatable jobs
-    const repeatableJobs = await jobSchedulerQueue.getRepeatableJobs();
-
-    // The name of the job is deterministic
+    const schedulerQueues = [jobSchedulerQueue, k6JobSchedulerQueue];
     const schedulerJobName = `scheduled-job-${schedulerId}`;
 
-    // Find all jobs that match this scheduler - checking both key and name patterns
-    const jobsToRemove = repeatableJobs.filter(
-      (job) =>
-        job.id === schedulerId ||
-        job.key.includes(schedulerId) ||
-        job.name === schedulerJobName ||
-        job.key.includes(schedulerJobName)
-    );
+    let removed = false;
 
-    if (jobsToRemove.length > 0) {
-      // Remove all matching jobs
-      const removePromises = jobsToRemove.map(async (job) => {
-        // Removing repeatable job
-        return jobSchedulerQueue.removeRepeatableByKey(job.key);
-      });
+    for (const queue of schedulerQueues) {
+      const repeatableJobs = await queue.getRepeatableJobs();
+      const jobsToRemove = repeatableJobs.filter(
+        (job) =>
+          job.id === schedulerId ||
+          job.key.includes(schedulerId) ||
+          job.name === schedulerJobName ||
+          job.key.includes(schedulerJobName)
+      );
 
-      await Promise.all(removePromises);
-      // Removed repeatable jobs
-      return true;
-    } else {
-      // No repeatable jobs found
-      return false;
+      if (jobsToRemove.length === 0) {
+        continue;
+      }
+
+      await Promise.all(
+        jobsToRemove.map(async (job) => queue.removeRepeatableByKey(job.key))
+      );
+
+      removed = true;
     }
+
+    return removed;
   } catch (error) {
     console.error(`Failed to delete scheduled job:`, error);
     return false;
@@ -431,11 +440,15 @@ export async function cleanupJobScheduler() {
     // Clean up orphaned repeatable jobs in Redis
     try {
       // Cleaning up orphaned entries
-      const { jobSchedulerQueue } = await getQueues();
+      const { jobSchedulerQueue, k6JobSchedulerQueue } = await getQueues();
 
-      // Get all repeatable jobs
-      const repeatableJobs = await jobSchedulerQueue.getRepeatableJobs();
-      // Found repeatable jobs in Redis
+      const schedulerQueues = [jobSchedulerQueue, k6JobSchedulerQueue];
+      const repeatableJobsByQueue = await Promise.all(
+        schedulerQueues.map(async (queue) => ({
+          queue,
+          jobs: await queue.getRepeatableJobs(),
+        }))
+      );
 
       // Get all jobs with schedules from the database
       const jobsWithSchedules = await db
@@ -458,31 +471,23 @@ export async function cleanupJobScheduler() {
       );
 
       // Find orphaned jobs (jobs in Redis that don't have a valid jobId or schedulerId in the database)
-      const orphanedJobs = repeatableJobs.filter((job) => {
-        // Extract the job ID from the job name if it follows the pattern "scheduled-job-{jobId}"
-        const jobIdMatch = job.name?.match(/scheduled-job-([0-9a-f-]+)/);
-        const jobId = jobIdMatch ? jobIdMatch[1] : null;
+      await Promise.all(
+        repeatableJobsByQueue.flatMap(({ queue, jobs }) => {
+          const orphanedJobs = jobs.filter((job) => {
+            const jobIdMatch = job.name?.match(/scheduled-job-([0-9a-f-]+)/);
+            const jobId = jobIdMatch ? jobIdMatch[1] : null;
 
-        return (
-          (!jobId || !validJobIds.has(jobId)) &&
-          (!job.id || !validSchedulerIds.has(job.id as string))
-        );
-      });
+            return (
+              (!jobId || !validJobIds.has(jobId)) &&
+              (!job.id || !validSchedulerIds.has(job.id as string))
+            );
+          });
 
-      if (orphanedJobs.length > 0) {
-        // Found orphaned jobs to clean
-
-        // Remove all orphaned jobs
-        const removePromises = orphanedJobs.map(async (job) => {
-          // Removing orphaned job
-          return jobSchedulerQueue.removeRepeatableByKey(job.key);
-        });
-
-        await Promise.all(removePromises);
-        // Removed orphaned jobs
-      } else {
-        // No orphaned jobs found
-      }
+          return orphanedJobs.map((job) =>
+            queue.removeRepeatableByKey(job.key)
+          );
+        })
+      );
 
       // The queue is managed centrally, so we don't close it here.
       // await schedulerQueue.close();

@@ -18,6 +18,11 @@ export interface TestExecutionTask {
   code: string; // Pass code directly
   variables?: Record<string, string>; // Resolved variables for the test
   secrets?: Record<string, string>; // Resolved secrets for the test
+  runId?: string | null;
+  organizationId?: string;
+  projectId?: string;
+  location?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface JobExecutionTask {
@@ -53,6 +58,18 @@ export interface MonitorJobData {
   expectedLocations?: MonitoringLocation[];
 }
 
+export interface K6ExecutionTask {
+  runId: string;
+  testId: string;
+  organizationId: string;
+  projectId: string;
+  script: string;
+  jobId?: string | null;
+  tests: Array<{ id: string; script: string }>;
+  location?: string | null;
+  jobType?: string;
+}
+
 // Interface for Monitor Execution Result (mirroring type in runner)
 // This is the data that will be sent TO this queue BY the runner
 // export interface MonitorResultData { // REMOVING
@@ -69,9 +86,12 @@ export interface MonitorJobData {
 export const TEST_EXECUTION_QUEUE = "test-execution";
 export const JOB_EXECUTION_QUEUE = "job-execution";
 export const MONITOR_EXECUTION_QUEUE = "monitor-execution";
+export const K6_TEST_EXECUTION_QUEUE = "k6-test-execution";
+export const K6_JOB_EXECUTION_QUEUE = "k6-job-execution";
 
 // Scheduler-related queues
 export const JOB_SCHEDULER_QUEUE = "job-scheduler";
+export const K6_JOB_SCHEDULER_QUEUE = "k6-job-scheduler";
 export const MONITOR_SCHEDULER_QUEUE = "monitor-scheduler";
 
 // Redis capacity limit keys
@@ -90,7 +110,10 @@ let redisClient: Redis | null = null;
 let testQueue: Queue | null = null;
 let jobQueue: Queue | null = null;
 let monitorExecution: Queue | null = null;
+let k6TestExecutionQueue: Queue | null = null;
+let k6JobExecutionQueue: Queue | null = null;
 let jobSchedulerQueue: Queue | null = null;
+let k6JobSchedulerQueue: Queue | null = null;
 let monitorSchedulerQueue: Queue | null = null;
 
 let monitorExecutionEvents: QueueEvents | null = null;
@@ -200,7 +223,10 @@ async function getQueues(): Promise<{
   testQueue: Queue;
   jobQueue: Queue;
   monitorExecutionQueue: Queue;
+  k6TestQueue: Queue;
+  k6JobQueue: Queue;
   jobSchedulerQueue: Queue;
+  k6JobSchedulerQueue: Queue;
   monitorSchedulerQueue: Queue;
   redisConnection: Redis;
 }> {
@@ -238,9 +264,21 @@ async function getQueues(): Promise<{
         testQueue = new Queue(TEST_EXECUTION_QUEUE, queueSettings);
         jobQueue = new Queue(JOB_EXECUTION_QUEUE, queueSettings);
         monitorExecution = new Queue(MONITOR_EXECUTION_QUEUE, queueSettings);
+        k6TestExecutionQueue = new Queue(
+          K6_TEST_EXECUTION_QUEUE,
+          queueSettings
+        );
+        k6JobExecutionQueue = new Queue(
+          K6_JOB_EXECUTION_QUEUE,
+          queueSettings
+        );
 
         // Schedulers
         jobSchedulerQueue = new Queue(JOB_SCHEDULER_QUEUE, queueSettings);
+        k6JobSchedulerQueue = new Queue(
+          K6_JOB_SCHEDULER_QUEUE,
+          queueSettings
+        );
         monitorSchedulerQueue = new Queue(
           MONITOR_SCHEDULER_QUEUE,
           queueSettings
@@ -259,8 +297,17 @@ async function getQueues(): Promise<{
         monitorExecution.on("error", (error) =>
           console.error(`[Queue Client] Monitor Execution Queue Error:`, error)
         );
+        k6TestExecutionQueue.on("error", (error) =>
+          console.error(`[Queue Client] k6 Test Queue Error:`, error)
+        );
+        k6JobExecutionQueue.on("error", (error) =>
+          console.error(`[Queue Client] k6 Job Queue Error:`, error)
+        );
         jobSchedulerQueue.on("error", (error) =>
           console.error(`[Queue Client] Job Scheduler Queue Error:`, error)
+        );
+        k6JobSchedulerQueue.on("error", (error) =>
+          console.error(`[Queue Client] k6 Job Scheduler Queue Error:`, error)
         );
         monitorSchedulerQueue.on("error", (error) =>
           console.error(`[Queue Client] Monitor Scheduler Queue Error:`, error)
@@ -290,8 +337,11 @@ async function getQueues(): Promise<{
     !testQueue ||
     !jobQueue ||
     !monitorExecution ||
+    !k6TestExecutionQueue ||
+    !k6JobExecutionQueue ||
     !monitorExecutionEvents ||
     !jobSchedulerQueue ||
+    !k6JobSchedulerQueue ||
     !monitorSchedulerQueue ||
     !redisClient
   ) {
@@ -303,7 +353,10 @@ async function getQueues(): Promise<{
     testQueue,
     jobQueue,
     monitorExecutionQueue: monitorExecution,
+    k6TestQueue: k6TestExecutionQueue,
+    k6JobQueue: k6JobExecutionQueue,
     jobSchedulerQueue,
+    k6JobSchedulerQueue,
     monitorSchedulerQueue,
     redisConnection: redisClient,
   };
@@ -346,7 +399,10 @@ async function performQueueCleanup(connection: Redis): Promise<void> {
     { name: TEST_EXECUTION_QUEUE, queue: testQueue },
     { name: JOB_EXECUTION_QUEUE, queue: jobQueue },
     { name: MONITOR_EXECUTION_QUEUE, queue: monitorExecution },
+    { name: K6_TEST_EXECUTION_QUEUE, queue: k6TestExecutionQueue },
+    { name: K6_JOB_EXECUTION_QUEUE, queue: k6JobExecutionQueue },
     { name: JOB_SCHEDULER_QUEUE, queue: jobSchedulerQueue },
+    { name: K6_JOB_SCHEDULER_QUEUE, queue: k6JobSchedulerQueue },
     { name: MONITOR_SCHEDULER_QUEUE, queue: monitorSchedulerQueue },
   ];
 
@@ -441,23 +497,23 @@ async function cleanupOrphanedKeys(
 
 /**
  * Add a test execution task to the queue.
- * Note: Test executions skip parallel execution queue capacity checks (similar to monitors)
+ * Test executions participate in the shared parallel execution capacity.
  */
 export async function addTestToQueue(task: TestExecutionTask): Promise<string> {
   const { testQueue } = await getQueues();
-  const jobUuid = task.testId; // Use testId as the job ID for easier tracking
+  const jobUuid = task.runId ?? task.testId; // Prefer runId for unique tracking
   // Adding test to queue
 
   try {
-    // Skip capacity check for test executions (similar to monitor executions)
-    // Only job executions will use the parallel execution queue
+    // Enforce parallel execution limits before enqueueing
+    await verifyQueueCapacityOrThrow();
 
     const jobOptions = {
       jobId: jobUuid,
       // Timeout option would be: timeout: timeoutMs
       // But timeout/duration is managed by worker instead
     };
-    await testQueue.add(TEST_EXECUTION_QUEUE, task, jobOptions);
+    await testQueue.add(jobUuid, task, jobOptions);
     // Test added successfully
     return jobUuid;
   } catch (error) {
@@ -487,25 +543,80 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<string> {
 
     // Setting timeout
 
-    const jobOptions = {
+    await jobQueue.add(runId, task, {
       jobId: runId, // Use runId as BullMQ job ID for consistency
       attempts: 3,
       backoff: {
         type: "exponential" as const,
         delay: 5000,
       },
-      removeOnComplete: true,
-      removeOnFail: false,
-    };
-
-    // Use runId as the job name (first parameter) to match scheduled jobs
-    await jobQueue.add(runId, task, jobOptions);
+    });
     // Job added successfully
     return runId;
   } catch (error) {
     console.error(`[Queue Client] Error adding job ${runId} to queue:`, error);
     throw new Error(
       `Failed to add job execution job: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+}
+
+/**
+ * Add a k6 performance test execution task to the dedicated queue.
+ */
+export async function addK6TestToQueue(
+  task: K6ExecutionTask,
+  jobName = "k6-test-execution"
+): Promise<string> {
+  const { k6TestQueue } = await getQueues();
+
+  try {
+    await verifyQueueCapacityOrThrow();
+
+    await k6TestQueue.add(jobName, task, {
+      jobId: task.runId,
+      attempts: 1,
+    });
+    return task.runId;
+  } catch (error) {
+    console.error(
+      `[Queue Client] Error adding k6 test ${task.runId} to queue:`,
+      error
+    );
+    throw new Error(
+      `Failed to add k6 test execution job: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+}
+
+/**
+ * Add a k6 performance job execution task to the dedicated queue.
+ */
+export async function addK6JobToQueue(
+  task: K6ExecutionTask,
+  jobName = "k6-job-execution"
+): Promise<string> {
+  const { k6JobQueue } = await getQueues();
+
+  try {
+    await verifyQueueCapacityOrThrow();
+
+    await k6JobQueue.add(jobName, task, {
+      jobId: task.runId,
+      attempts: 1,
+    });
+    return task.runId;
+  } catch (error) {
+    console.error(
+      `[Queue Client] Error adding k6 job ${task.runId} to queue:`,
+      error
+    );
+    throw new Error(
+      `Failed to add k6 job execution: ${
         error instanceof Error ? error.message : String(error)
       }`
     );
@@ -572,7 +683,10 @@ export async function closeQueue(): Promise<void> {
   if (testQueue) promises.push(testQueue.close());
   if (jobQueue) promises.push(jobQueue.close());
   if (monitorExecution) promises.push(monitorExecution.close());
+  if (k6TestExecutionQueue) promises.push(k6TestExecutionQueue.close());
+  if (k6JobExecutionQueue) promises.push(k6JobExecutionQueue.close());
   if (jobSchedulerQueue) promises.push(jobSchedulerQueue.close());
+  if (k6JobSchedulerQueue) promises.push(k6JobSchedulerQueue.close());
   if (monitorSchedulerQueue) promises.push(monitorSchedulerQueue.close());
   if (redisClient) promises.push(redisClient.quit());
 
@@ -587,7 +701,10 @@ export async function closeQueue(): Promise<void> {
     testQueue = null;
     jobQueue = null;
     monitorExecution = null;
+    k6TestExecutionQueue = null;
+    k6JobExecutionQueue = null;
     jobSchedulerQueue = null;
+    k6JobSchedulerQueue = null;
     monitorSchedulerQueue = null;
     redisClient = null;
     initPromise = null;
@@ -664,8 +781,7 @@ export async function addMonitorExecutionJobToQueue(
             },
             {
               jobId: `${task.monitorId}:${executionGroupId}:${location}`,
-              removeOnComplete: true,
-              removeOnFail: { count: 10 },
+              // Use default retention policy; only override priority
               priority: 1,
             }
           )
@@ -680,8 +796,6 @@ export async function addMonitorExecutionJobToQueue(
       task,
       {
         jobId: task.monitorId, // Use monitorId as job ID to prevent duplicates if job already in queue
-        removeOnComplete: true, // Auto-remove successful monitor jobs
-        removeOnFail: { count: 10 }, // Keep last 10 failed jobs for debugging
         priority: 1, // Higher priority for immediate execution
       }
     );

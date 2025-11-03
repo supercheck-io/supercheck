@@ -4,11 +4,7 @@
  * Includes SSRF protection and command injection prevention
  */
 
-import {
-  SECURITY,
-  isInternalHost,
-  INTERNAL_IP_PATTERNS,
-} from '../constants';
+import { SECURITY, isInternalHost, INTERNAL_IP_PATTERNS } from '../constants';
 
 export interface ValidationResult {
   valid: boolean;
@@ -44,7 +40,8 @@ export function validateTargetUrl(
       ) {
         return {
           valid: false,
-          error: 'Internal/localhost targets are not allowed for security reasons',
+          error:
+            'Internal/localhost targets are not allowed for security reasons',
         };
       }
     }
@@ -101,7 +98,8 @@ export function validatePingTarget(target: string): ValidationResult {
     if (isInternalHost(target) && !process.env.ALLOW_INTERNAL_TARGETS) {
       return {
         valid: false,
-        error: 'Internal/localhost targets are not allowed for security reasons',
+        error:
+          'Internal/localhost targets are not allowed for security reasons',
       };
     }
 
@@ -138,7 +136,11 @@ export function validatePingTarget(target: string): ValidationResult {
  * Ensures port is within valid range (1-65535)
  */
 export function validatePort(port: number): ValidationResult {
-  if (!Number.isInteger(port) || port < SECURITY.MIN_PORT || port > SECURITY.MAX_PORT) {
+  if (
+    !Number.isInteger(port) ||
+    port < SECURITY.MIN_PORT ||
+    port > SECURITY.MAX_PORT
+  ) {
     return {
       valid: false,
       error: `Port must be an integer between ${SECURITY.MIN_PORT} and ${SECURITY.MAX_PORT}`,

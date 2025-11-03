@@ -174,8 +174,7 @@ export class JobExecutionProcessor extends WorkerHost {
           durationSeconds: elapsedSeconds,
           results: [{ success: false }],
           jobType: jobData.jobType ?? 'playwright',
-          errorMessage:
-            error instanceof Error ? error.message : String(error),
+          errorMessage: error instanceof Error ? error.message : String(error),
         });
       } catch (notificationError) {
         this.logger.error(

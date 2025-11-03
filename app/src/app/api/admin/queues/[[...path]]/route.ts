@@ -36,7 +36,10 @@ const ensureBullBoard = async (): Promise<NextBullBoardAdapterState> => {
     testQueue,
     jobQueue,
     monitorExecutionQueue,
+    k6TestQueue,
+    k6JobQueue,
     jobSchedulerQueue,
+    k6JobSchedulerQueue,
     monitorSchedulerQueue,
   } = await getQueues();
 
@@ -47,7 +50,12 @@ const ensureBullBoard = async (): Promise<NextBullBoardAdapterState> => {
       new BullMQAdapter(monitorExecutionQueue, {
         displayName: "Monitor Execution",
       }),
-      new BullMQAdapter(jobSchedulerQueue, { displayName: "Job Scheduler" }),
+        new BullMQAdapter(k6TestQueue, { displayName: "K6 Test Execution" }),
+        new BullMQAdapter(k6JobQueue, { displayName: "K6 Job Execution" }),
+        new BullMQAdapter(jobSchedulerQueue, { displayName: "Job Scheduler" }),
+        new BullMQAdapter(k6JobSchedulerQueue, {
+          displayName: "K6 Job Scheduler",
+        }),
       new BullMQAdapter(monitorSchedulerQueue, {
         displayName: "Monitor Scheduler",
       }),

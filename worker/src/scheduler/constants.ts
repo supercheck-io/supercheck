@@ -1,6 +1,8 @@
 export const JOB_SCHEDULER_QUEUE = 'job-scheduler';
 export const MONITOR_SCHEDULER_QUEUE = 'monitor-scheduler';
 export const JOB_EXECUTION_QUEUE = 'job-execution';
+export const K6_JOB_SCHEDULER_QUEUE = 'k6-job-scheduler';
+export const K6_JOB_EXECUTION_QUEUE = 'k6-job-execution';
 export const MONITOR_EXECUTION_QUEUE = 'monitor-execution';
 
 export const EXECUTE_MONITOR_JOB_NAME = 'executeMonitorJob';

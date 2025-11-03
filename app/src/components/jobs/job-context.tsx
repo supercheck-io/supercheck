@@ -11,6 +11,13 @@ import React, {
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { jobStatuses } from "./data";
+interface JobStatusSSEPayload {
+  status: string;
+  jobId?: string;
+  runId?: string;
+  queue?: string;
+  [key: string]: unknown;
+}
 
 interface JobRunState {
   runId: string;
@@ -84,8 +91,12 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
   const [jobStatuses, setJobStatuses] = useState<JobStatuses>({});
   const [activeRuns, setActiveRuns] = useState<ActiveRunsMap>({});
   const eventSourcesRef = useRef<Map<string, EventSource>>(new Map());
+  const activeRunsRef = useRef<ActiveRunsMap>({});
+  const globalEventSourceRef = useRef<EventSource | null>(null);
+  const runToJobMapRef = useRef<Map<string, { jobId: string; jobName?: string }>>(new Map());
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef(0);
   const router = useRouter();
-  const initializedRef = useRef(false);
 
   // Check if a specific job is running
   const isJobRunning = useCallback(
@@ -132,6 +143,10 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  useEffect(() => {
+    activeRunsRef.current = activeRuns;
+  }, [activeRuns]);
+
   // Define startJobRun as a useCallback before it's used in useEffect
   const startJobRun = useCallback(
     (runId: string, jobId: string, jobName: string) => {
@@ -146,10 +161,16 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
       setJobStatus(jobId, "running");
 
       // Add this run to the active runs map
-      setActiveRuns((prev) => ({
-        ...prev,
-        [jobId]: { runId, jobId, jobName },
-      }));
+      setActiveRuns((prev) => {
+        const updated = {
+          ...prev,
+          [jobId]: { runId, jobId, jobName },
+        };
+        activeRunsRef.current = updated;
+        return updated;
+      });
+
+      runToJobMapRef.current.set(runId, { jobId, jobName });
 
       // Close existing SSE connection for this job if any
       if (eventSourcesRef.current.has(jobId)) {
@@ -197,8 +218,11 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
             setActiveRuns((prev) => {
               const newRuns = { ...prev };
               delete newRuns[jobId];
+              activeRunsRef.current = newRuns;
               return newRuns;
             });
+
+            runToJobMapRef.current.delete(runId);
 
             // Remove from running jobs
             setRunningJobs((prev) => {
@@ -274,8 +298,11 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
           setActiveRuns((prev) => {
             const newRuns = { ...prev };
             delete newRuns[jobId];
+            activeRunsRef.current = newRuns;
             return newRuns;
           });
+
+          runToJobMapRef.current.delete(runId);
 
           // Show error toast
           toast.error(`Job execution error for ${jobName}`, {
@@ -294,16 +321,77 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
     [router, setJobStatus]
   );
 
-  // Check for running jobs on initial load
-  useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
+  const handleGlobalJobEvent = useCallback(
+    (payload: JobStatusSSEPayload) => {
+      const runId = typeof payload.runId === "string" ? payload.runId : undefined;
+      if (!runId || !payload?.status) {
+        return;
+      }
 
-    // Function to fetch running jobs from the server
-    const checkForRunningJobs = async () => {
+      const mapped = runToJobMapRef.current.get(runId);
+      const jobId = mapped?.jobId || (typeof payload.jobId === "string" ? payload.jobId : runId);
+      const status = String(payload.status).toLowerCase();
+
+      if (status === "running") {
+        const current = activeRunsRef.current[jobId];
+
+        if (current && current.runId === runId) {
+          setJobStatus(jobId, "running");
+          return;
+        }
+
+        const jobName =
+          mapped?.jobName ||
+          activeRunsRef.current[jobId]?.jobName ||
+          jobId;
+
+        startJobRun(runId, jobId, jobName);
+        return;
+      }
+
+      if (["completed", "passed", "failed", "error"].includes(status)) {
+        setJobStatus(jobId, payload.status);
+        if (activeRunsRef.current[jobId]?.runId === runId) {
+          setActiveRuns((prev) => {
+            const newRuns = { ...prev };
+            delete newRuns[jobId];
+            activeRunsRef.current = newRuns;
+            return newRuns;
+          });
+          setRunningJobs((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(jobId);
+            if (newSet.size === 0) {
+              setIsAnyJobRunning(false);
+            }
+            return newSet;
+          });
+          runToJobMapRef.current.delete(runId);
+        }
+      }
+    },
+    [setJobStatus, startJobRun]
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const cleanupGlobalEventSource = () => {
+      if (globalEventSourceRef.current) {
+        globalEventSourceRef.current.close();
+        globalEventSourceRef.current = null;
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+    };
+
+    const fetchRunningJobs = async () => {
       try {
-        // Fetch all currently running jobs via an API endpoint
-        const response = await fetch("/api/jobs/status/running");
+        const response = await fetch("/api/jobs/status/running", {
+          cache: "no-store",
+        });
 
         if (!response.ok) {
           console.error("[JobContext] Failed to fetch running jobs");
@@ -311,41 +399,88 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
         }
 
         const data = await response.json();
-        const runningJobsData = data.runningJobs || [];
+        const runningJobsData: Array<{
+          jobId: string;
+          runId: string;
+          name?: string;
+        }> = Array.isArray(data.runningJobs) ? data.runningJobs : [];
 
-        if (runningJobsData.length === 0) {
-          return; // No running jobs
+        if (!isMounted) {
+          return;
         }
 
-        // Update our running jobs tracking
-        const newRunningJobs = new Set<string>();
-        const newJobStatuses: JobStatuses = {};
-
-        // Update job statuses and running jobs set
-        runningJobsData.forEach(
-          (job: { jobId: string; runId: string; name: string }) => {
-            newRunningJobs.add(job.jobId);
-            newJobStatuses[job.jobId] = "running";
-
-            // Set up SSE for this job's run
-            startJobRun(job.runId, job.jobId, job.name);
+        runningJobsData.forEach((job) => {
+          if (!job?.jobId || !job?.runId) {
+            return;
           }
-        );
 
-        // Update state
-        if (newRunningJobs.size > 0) {
-          setRunningJobs(newRunningJobs);
-          setJobStatuses((prev) => ({ ...prev, ...newJobStatuses }));
-          setIsAnyJobRunning(true);
-        }
+          const current = activeRunsRef.current[job.jobId];
+
+          if (current && current.runId === job.runId) {
+            setJobStatus(job.jobId, "running");
+            return;
+          }
+
+          startJobRun(job.runId, job.jobId, job.name ?? job.jobId);
+        });
       } catch (error) {
-        console.error("[JobContext] Error checking for running jobs:", error);
+        if (isMounted) {
+          console.error("[JobContext] Error fetching running jobs:", error);
+        }
       }
     };
 
-    // Call the function to check for running jobs
-    checkForRunningJobs();
-  }, [startJobRun]);
+    const connectToGlobalEvents = () => {
+      cleanupGlobalEventSource();
+
+      const source = new EventSource("/api/job-status/events");
+      globalEventSourceRef.current = source;
+
+      source.onopen = () => {
+        reconnectAttemptsRef.current = 0;
+        void fetchRunningJobs();
+      };
+
+      source.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as JobStatusSSEPayload;
+          handleGlobalJobEvent(data);
+        } catch (parseError) {
+          console.error("[JobContext] Failed to parse job status event:", parseError);
+        }
+      };
+
+      source.onerror = () => {
+        source.close();
+        if (!isMounted) {
+          return;
+        }
+
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+        }
+
+        const attempt = reconnectAttemptsRef.current;
+        const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+        reconnectAttemptsRef.current = attempt + 1;
+
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (!isMounted) {
+            return;
+          }
+          connectToGlobalEvents();
+        }, delay);
+      };
+    };
+
+    void fetchRunningJobs();
+    connectToGlobalEvents();
+
+    return () => {
+      isMounted = false;
+      cleanupGlobalEventSource();
+    };
+  }, [handleGlobalJobEvent, setJobStatus, startJobRun]);
 
   // Clean up event sources on unmount
   useEffect(() => {
@@ -387,11 +522,18 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
         });
 
         // Remove the job from active runs
-        setActiveRuns((prev) => {
-          const newRuns = { ...prev };
-          delete newRuns[jobId];
-          return newRuns;
-        });
+          setActiveRuns((prev) => {
+            const newRuns = { ...prev };
+            delete newRuns[jobId];
+            activeRunsRef.current = newRuns;
+            return newRuns;
+          });
+
+          runToJobMapRef.current.forEach((meta, runKey) => {
+            if (meta.jobId === jobId) {
+              runToJobMapRef.current.delete(runKey);
+            }
+          });
 
         // Close the event source for this job
         if (eventSourcesRef.current.has(jobId)) {
@@ -405,6 +547,8 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
 
         // Reset all active runs
         setActiveRuns({});
+        activeRunsRef.current = {};
+        runToJobMapRef.current.clear();
 
         // Close all event sources
         eventSourcesRef.current.forEach((eventSource) => {
@@ -445,8 +589,11 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
     setActiveRuns((prev) => {
       const newRuns = { ...prev };
       delete newRuns[jobId];
+      activeRunsRef.current = newRuns;
       return newRuns;
     });
+
+    runToJobMapRef.current.delete(runId);
 
     // Show completion toast
     toast[success ? "success" : "error"](

@@ -680,14 +680,12 @@ export class ExecutionService implements OnModuleDestroy {
 
     if (task.jobType === 'k6') {
       throw new Error(
-        `Received performance job ${task.jobId} in Playwright execution pipeline. k6 jobs must be enqueued on the k6-execution queue.`,
+        `Received performance job ${task.jobId} in Playwright execution pipeline. k6 jobs must be enqueued on the k6-job-execution queue.`,
       );
     }
 
     // Check concurrency limits
-    if (
-      this.getActiveConcurrencyCount() >= this.maxConcurrentExecutions
-    ) {
+    if (this.getActiveConcurrencyCount() >= this.maxConcurrentExecutions) {
       throw new Error(
         `Maximum concurrent executions limit reached: ${this.maxConcurrentExecutions}`,
       );
@@ -839,9 +837,7 @@ export class ExecutionService implements OnModuleDestroy {
 
       if (uploadResult.success) {
         s3Url = uploadResult.reportUrl;
-        this.logger.log(
-          `[${runId}] Report uploaded successfully to: ${s3Url}`,
-        );
+        this.logger.log(`[${runId}] Report uploaded successfully to: ${s3Url}`);
       } else {
         this.logger.warn(
           `[${runId}] Report upload failed: ${uploadResult.error || 'Unknown error'}`,
