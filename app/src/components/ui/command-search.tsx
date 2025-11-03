@@ -22,6 +22,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
+import { K6Logo } from "@/components/logo/k6-logo";
 
 import {
   Command,
@@ -74,6 +75,7 @@ export function CommandSearch({ className }: CommandSearchProps) {
         "create-test-api": "/playground?scriptType=api",
         "create-test-custom": "/playground?scriptType=custom",
         "create-test-database": "/playground?scriptType=database",
+        "create-test-performance": "/playground?scriptType=performance",
         "create-job": "/jobs/create",
 
         // Quick Actions
@@ -206,6 +208,12 @@ export function CommandSearch({ className }: CommandSearchProps) {
                 >
                   <SquareFunction className="mr-2 h-4 w-4 !text-blue-600" />
                   <span>Custom Test</span>
+                </CommandItem>
+                <CommandItem
+                  onSelect={() => handleCommand("create-test-performance")}
+                >
+                  <K6Logo className="mr-2 h-4 w-4" />
+                  <span>Performance Test</span>
                 </CommandItem>
               </CommandGroup>
 

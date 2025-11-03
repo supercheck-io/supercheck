@@ -235,6 +235,13 @@ const Playground: React.FC<PlaygroundProps> = ({
     setPerformanceRunId(null);
   };
 
+  // Clear report state when test type changes
+  const resetReportState = () => {
+    setReportUrl(null);
+    setPerformanceRunId(null);
+    setActiveTab("editor");
+  };
+
   // Editor reference
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const searchParams = useSearchParams();
@@ -404,6 +411,13 @@ const Playground: React.FC<PlaygroundProps> = ({
           ? scriptTypeParam
           : defaultType;
 
+      // Reset report state when test type changes
+      if (typeToSet !== testCase.type) {
+        resetReportState();
+        resetValidationState();
+        resetTestExecutionState();
+      }
+
       setTestCase((prev) => ({
         ...prev,
         type: typeToSet,
@@ -435,7 +449,7 @@ const Playground: React.FC<PlaygroundProps> = ({
       };
       loadScriptForType();
     }
-  }, [searchParams, initialTestId, performanceLocation]);
+  }, [searchParams, initialTestId, performanceLocation, testCase.type]);
 
   // Handle initialTestData when provided from server-side
   useEffect(() => {
