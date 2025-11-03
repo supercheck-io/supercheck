@@ -268,6 +268,7 @@ export default function AdminDashboard() {
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="users">Users</TabsTrigger>
               <TabsTrigger value="organizations">Organizations</TabsTrigger>
+              <TabsTrigger value="queues">Queues</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-4">
@@ -567,6 +568,25 @@ export default function AdminDashboard() {
                   )}
                 </>
               )}
+            </TabsContent>
+
+            <TabsContent value="queues" className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold">Queue Dashboard</h3>
+                  <p className="text-muted-foreground text-sm">
+                    Monitor and manage BullMQ job queues
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-lg border bg-background overflow-hidden">
+                <iframe
+                  src="/api/admin/queues/"
+                  className="w-full"
+                  style={{ height: "calc(100vh - 300px)", minHeight: "600px" }}
+                  title="Queue Dashboard"
+                />
+              </div>
             </TabsContent>
           </Tabs>
         </CardContent>

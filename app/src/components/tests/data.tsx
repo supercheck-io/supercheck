@@ -7,7 +7,16 @@ import {
   ArrowLeftRight,
   SquareFunction,
 } from "lucide-react";
+import type { ComponentType } from "react";
 import { K6Logo } from "@/components/logo/k6-logo";
+
+interface TestTypeOption {
+  label: string;
+  value: string;
+  icon: ComponentType<Record<string, unknown>>;
+  color: string;
+  iconProps?: Record<string, unknown>;
+}
 
 export const priorities = [
   {
@@ -30,35 +39,38 @@ export const priorities = [
   },
 ];
 
-export const types = [
+export const types: TestTypeOption[] = [
   {
-    label: "Browser Test",
+    label: "Browser",
     value: "browser",
     icon: Chrome,
     color: "text-sky-600",
   },
   {
-    label: "API Test",
+    label: "API",
     value: "api",
     icon: ArrowLeftRight,
     color: "text-teal-600",
   },
   {
-    label: "Database Test",
+    label: "Database",
     value: "database",
     icon: Database,
     color: "text-cyan-600",
   },
   {
-    label: "Custom Test",
+    label: "Custom",
     value: "custom",
     icon: SquareFunction,
     color: "text-blue-600",
   },
   {
-    label: "Performance Test",
+    label: "Performance",
     value: "performance",
     icon: K6Logo,
     color: "text-purple-600",
+    iconProps: {
+      size: 16,
+    },
   },
 ];

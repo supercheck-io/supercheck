@@ -14,10 +14,12 @@ import {
 import { toast } from "sonner";
 import { Test } from "./schema";
 import { type AlertConfig } from "@/db/schema";
+import { useRouter } from "next/navigation";
 
 type JobAlertConfig = AlertConfig;
 
 export function JobCreationWizardK6() {
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState<"job" | "alerts">("job");
   const [selectedTest, setSelectedTest] = useState<Test | null>(null);
   const [formData, setFormData] = useState({
@@ -154,7 +156,7 @@ export function JobCreationWizardK6() {
         <CreateJob
           hideAlerts={true}
           onSave={handleJobNext}
-          onCancel={() => (window.location.href = "/jobs")}
+          onCancel={() => router.push("/jobs/create")}
           selectedTests={selectedTest ? [selectedTest] : []}
           setSelectedTests={(tests) => {
             // For k6 jobs, only allow single test

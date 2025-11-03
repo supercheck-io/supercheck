@@ -230,9 +230,17 @@ export const columns: ColumnDef<Test>[] = [
         return null;
       }
 
+      const Icon = type.icon;
+      const iconProps = type.iconProps ?? {};
+
       return (
         <div className="flex items-center w-[120px]">
-          {type.icon && <type.icon className={`mr-2 h-4 w-4 ${type.color}`} />}
+          {Icon && (
+            <Icon
+              className={`mr-2 h-4 w-4 ${type.color}`}
+              {...iconProps}
+            />
+          )}
           <span>{type.label}</span>
         </div>
       );
