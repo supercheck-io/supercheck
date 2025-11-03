@@ -1177,115 +1177,72 @@ export class MonitorService {
     let responseTimeMs: number | undefined;
 
     try {
-      const { spawn } = await import('child_process');
-      const isWindows = process.platform === 'win32';
+      // Use TCP connectivity check instead of system ping command
+      // This avoids EPERM errors from spawning the ping binary without CAP_NET_RAW
+      // We'll attempt to connect to common ports (443 first, then 80)
+      const { createConnection } = await import('net');
 
-      // Use appropriate ping command based on OS
-      const pingCommand = isWindows ? 'ping' : 'ping';
-      // Use shorter internal timeout to let our timeout handler manage the process
-      const pingTimeoutSeconds = Math.min(Math.ceil(timeout / 1000), 10);
-      const pingArgs = isWindows
-        ? ['-n', '1', '-w', (pingTimeoutSeconds * 1000).toString(), target] // Windows: -n count, -w timeout in ms
-        : ['-c', '1', '-W', pingTimeoutSeconds.toString(), target]; // Linux/Mac: -c count, -W timeout in seconds
+      const tcpPorts = [443, 80];
+      let connected = false;
+      let lastError: Error | null = null;
 
-      const pingResult = await new Promise<{
-        stdout: string;
-        stderr: string;
-        code: number;
-      }>((resolve, reject) => {
-        const childProcess = spawn(pingCommand, pingArgs, {
-          stdio: ['ignore', 'pipe', 'pipe'], // Don't pipe stdin, only stdout and stderr
-        });
+      for (const port of tcpPorts) {
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const socket = createConnection({
+              host: target,
+              port: port,
+              timeout: timeout,
+            });
 
-        let stdout = '';
-        let stderr = '';
-        let isResolved = false;
+            const timeoutHandle = setTimeout(() => {
+              socket.destroy();
+              reject(new Error(`Connection timeout on port ${port}`));
+            }, timeout);
 
-        // Improved timeout handling - kill process properly
-        const timeoutHandle = setTimeout(() => {
-          if (!isResolved) {
-            isResolved = true;
-            childProcess.kill('SIGTERM'); // Try graceful termination first
-            setTimeout(() => {
-              if (!childProcess.killed) {
-                childProcess.kill('SIGKILL'); // Force kill if needed
-              }
-            }, 1000);
-            reject(new Error('Ping timeout'));
-          }
-        }, timeout);
+            socket.on('connect', () => {
+              clearTimeout(timeoutHandle);
+              socket.destroy();
+              connected = true;
+              resolve();
+            });
 
-        // Handle process output
-        if (childProcess.stdout) {
-          childProcess.stdout.on('data', (data) => {
-            stdout += data.toString();
+            socket.on('error', (error) => {
+              clearTimeout(timeoutHandle);
+              reject(error);
+            });
           });
-        }
 
-        if (childProcess.stderr) {
-          childProcess.stderr.on('data', (data) => {
-            stderr += data.toString();
-          });
-        }
-
-        childProcess.on('close', (code) => {
-          if (!isResolved) {
-            isResolved = true;
-            clearTimeout(timeoutHandle);
-            resolve({ stdout, stderr, code: code || 0 });
+          // If connection successful, break out of loop
+          if (connected) {
+            break;
           }
-        });
-
-        childProcess.on('error', (error) => {
-          if (!isResolved) {
-            isResolved = true;
-            clearTimeout(timeoutHandle);
-            reject(error);
-          }
-        });
-      });
+        } catch (portError) {
+          lastError = portError as Error;
+          // Try next port
+          continue;
+        }
+      }
 
       const endTime = process.hrtime.bigint();
       responseTimeMs = Math.round(Number(endTime - startTime) / 1000000);
 
-      if (pingResult.code === 0) {
-        // Parse response time from ping output
-        const output = pingResult.stdout;
-        let parsedResponseTime: number | undefined;
-
-        if (isWindows) {
-          // Windows ping output: "time=XXXms" or "time<1ms"
-          const timeMatch = output.match(/time[<=](\d+)ms/i);
-          if (timeMatch) {
-            parsedResponseTime = parseInt(timeMatch[1]);
-          }
-        } else {
-          // Linux/Mac ping output: "time=XXX.XXX ms"
-          const timeMatch = output.match(/time=(\d+(?:\.\d+)?) ms/i);
-          if (timeMatch) {
-            parsedResponseTime = Math.round(parseFloat(timeMatch[1]));
-          }
-        }
-
+      if (connected) {
         status = 'up';
         isUp = true;
         details = {
-          responseTimeMs: parsedResponseTime || responseTimeMs,
-          packetsSent: 1,
-          packetsReceived: 1,
-          packetLoss: 0,
-          output: output.trim(),
+          responseTimeMs: responseTimeMs,
+          connectionMethod: 'tcp',
+          message: `Host is reachable via TCP on port 443 or 80`,
         };
-
-        // Use parsed response time if available, otherwise use our measured time
-        responseTimeMs = parsedResponseTime || responseTimeMs;
       } else {
         status = 'down';
         isUp = false;
         details = {
-          errorMessage: `Ping failed with exit code ${pingResult.code}`,
-          stderr: pingResult.stderr,
-          stdout: pingResult.stdout,
+          errorMessage: lastError
+            ? `Host unreachable: ${getErrorMessage(lastError)}`
+            : 'Host unreachable on common ports (443, 80)',
+          connectionMethod: 'tcp',
           responseTimeMs,
         };
       }
@@ -1297,7 +1254,7 @@ export class MonitorService {
 
       if (getErrorMessage(error).includes('timeout')) {
         status = 'timeout';
-        details.errorMessage = `Ping timeout after ${timeout}ms`;
+        details.errorMessage = `Host unreachable - timeout after ${timeout}ms`;
       } else {
         status = 'error';
         details.errorMessage = getErrorMessage(error);
