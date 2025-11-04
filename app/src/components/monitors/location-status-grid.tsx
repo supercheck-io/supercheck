@@ -63,7 +63,9 @@ export function LocationStatusGrid({
         setStats(data.data || []);
       } catch (err) {
         console.error("Error fetching location stats:", err);
-        setError(err instanceof Error ? err.message : "Failed to load statistics");
+        setError(
+          err instanceof Error ? err.message : "Failed to load statistics"
+        );
       } finally {
         setLoading(false);
       }
@@ -134,7 +136,9 @@ export function LocationStatusGrid({
             <Globe className="h-5 w-5" />
             Location Status
           </CardTitle>
-          <Badge variant="outline">{stats.length} Location{stats.length !== 1 ? "s" : ""}</Badge>
+          <Badge variant="outline">
+            {stats.length} Location{stats.length !== 1 ? "s" : ""}
+          </Badge>
         </div>
       </CardHeader>
       <CardContent>
@@ -212,18 +216,19 @@ export function LocationStatusGrid({
                 )}
 
                 {/* Min/Max Response Time */}
-                {stat.minResponseTime !== null && stat.maxResponseTime !== null && (
-                  <div className="flex items-center justify-between text-xs text-gray-500">
-                    <div className="flex items-center gap-1">
-                      <TrendingDown className="h-3 w-3 text-green-600" />
-                      <span>{Math.round(stat.minResponseTime)}ms</span>
+                {stat.minResponseTime !== null &&
+                  stat.maxResponseTime !== null && (
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <div className="flex items-center gap-1">
+                        <TrendingDown className="h-3 w-3 text-green-600" />
+                        <span>{Math.round(stat.minResponseTime)}ms</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <TrendingUp className="h-3 w-3 text-orange-600" />
+                        <span>{Math.round(stat.maxResponseTime)}ms</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <TrendingUp className="h-3 w-3 text-orange-600" />
-                      <span>{Math.round(stat.maxResponseTime)}ms</span>
-                    </div>
-                  </div>
-                )}
+                  )}
 
                 {/* Last Check */}
                 {stat.latest && (
