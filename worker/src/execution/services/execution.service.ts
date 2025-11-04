@@ -521,24 +521,28 @@ export class ExecutionService implements OnModuleDestroy {
         finalStatus = 'passed';
         // Removed success log - only log errors and completion summary
 
-        // Upload report using centralized service
-        const uploadResult = await this.reportUploadService.uploadReport({
-          runDir,
-          testId,
-          executionId,
-          s3ReportKeyPrefix,
-          entityType,
-          processReportFiles: true,
-        });
+        // For synthetic monitors: only upload reports on failure (not on success)
+        // For other entity types: always upload reports
+        if (!isMonitorExecution) {
+          const uploadResult = await this.reportUploadService.uploadReport({
+            runDir,
+            testId,
+            executionId,
+            s3ReportKeyPrefix,
+            entityType,
+            processReportFiles: true,
+          });
 
-        if (uploadResult.success) {
-          s3Url = uploadResult.reportUrl;
-        } else {
-          this.logger.warn(
-            `[${testId}] Report upload failed: ${uploadResult.error || 'Unknown error'}`,
-          );
-          s3Url = null;
+          if (uploadResult.success) {
+            s3Url = uploadResult.reportUrl;
+          } else {
+            this.logger.warn(
+              `[${testId}] Report upload failed: ${uploadResult.error || 'Unknown error'}`,
+            );
+            s3Url = null;
+          }
         }
+        // For synthetic monitors on success: s3Url remains null (no report saved)
 
         // Publish final status
         await this.dbService.storeReportMetadata({

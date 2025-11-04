@@ -192,7 +192,7 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
       // Update the global running state
       setIsAnyJobRunning(true);
     },
-    [router, setJobStatus]
+    [setJobStatus]
   );
 
   const handleGlobalJobEvent = useCallback(

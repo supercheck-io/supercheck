@@ -1273,7 +1273,7 @@ export function MonitorDetailClient({
                         scope="col"
                         className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-32"
                       >
-                        {monitor.type === "synthetic_test" ? "Report" : "Error"}
+                        Error
                       </th>
                     </tr>
                   </thead>
@@ -1307,13 +1307,18 @@ export function MonitorDetailClient({
                               result.location as MonitoringLocation
                             )
                           : null;
+                        // For synthetic tests: show report only if test failed, otherwise show N/A
+                        const syntheticTestHasFailed =
+                          monitor.type === "synthetic_test" && !result.isUp;
                         const syntheticReportAvailable =
-                          monitor.type === "synthetic_test" &&
+                          syntheticTestHasFailed &&
                           Boolean(
                             result.details?.reportUrl || result.testReportS3Url
                           );
+
+                        // Extract error message from synthetic test failure
                         const syntheticReportError =
-                          monitor.type === "synthetic_test"
+                          monitor.type === "synthetic_test" && syntheticTestHasFailed
                             ? (() => {
                                 const detail = result.details;
                                 if (!detail) return undefined;
@@ -1370,9 +1375,10 @@ export function MonitorDetailClient({
                                 ? result.responseTimeMs
                                 : "N/A"}
                             </td>
-                            {monitor.type === "synthetic_test" && (
-                              <td className="px-4 py-[11.5px] whitespace-nowrap text-sm">
-                                {syntheticReportAvailable ? (
+                            <td className="px-4 py-[11.5px] text-sm text-muted-foreground">
+                              {monitor.type === "synthetic_test" ? (
+                                // Synthetic test: show report on failure, N/A on success
+                                syntheticReportAvailable ? (
                                   <div
                                     className="cursor-pointer inline-flex items-center justify-center"
                                     onClick={() => {
@@ -1396,25 +1402,23 @@ export function MonitorDetailClient({
                                       }
                                     }}
                                   >
-                                    <PlaywrightLogo className="h-4 w-4  hover:opacity-80 transition-opacity" />{" "}
+                                    <PlaywrightLogo className="h-4 w-4 hover:opacity-80 transition-opacity" />
                                   </div>
                                 ) : syntheticReportError ? (
                                   <TruncatedTextWithTooltip
-                                    text={`Report unavailable: ${syntheticReportError}`}
+                                    text={syntheticReportError}
                                     className="text-muted-foreground text-xs"
-                                    maxWidth="90px"
-                                    maxLength={40}
+                                    maxWidth="150px"
+                                    maxLength={30}
                                   />
                                 ) : (
                                   <span className="text-muted-foreground text-xs">
                                     N/A
                                   </span>
-                                )}
-                              </td>
-                            )}
-                            {monitor.type !== "synthetic_test" && (
-                              <td className="px-4 py-[11.5px] text-sm text-muted-foreground">
-                                {result.isUp ? (
+                                )
+                              ) : (
+                                // Other monitor types: show error on failure, N/A on success
+                                result.isUp ? (
                                   <span className="text-muted-foreground text-xs">
                                     N/A
                                   </span>
@@ -1428,9 +1432,9 @@ export function MonitorDetailClient({
                                     maxWidth="150px"
                                     maxLength={30}
                                   />
-                                )}
-                              </td>
-                            )}
+                                )
+                              )}
+                            </td>
                           </tr>
                         );
                       })
