@@ -577,7 +577,7 @@ export async function addK6TestToQueue(
 
     await k6TestQueue.add(jobName, task, {
       jobId: task.runId,
-      attempts: 1,
+      attempts: 3,
     });
     return task.runId;
   } catch (error) {
@@ -607,7 +607,7 @@ export async function addK6JobToQueue(
 
     await k6JobQueue.add(jobName, task, {
       jobId: task.runId,
-      attempts: 1,
+      attempts: 3,
     });
     return task.runId;
   } catch (error) {

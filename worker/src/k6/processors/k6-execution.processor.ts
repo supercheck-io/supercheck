@@ -73,7 +73,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     }
   }
 
-  async handleProcess(job: Job<K6Task>): Promise<void> {
+  async handleProcess(job: Job<K6Task>): Promise<{ success: boolean }> {
     const processStartTime = Date.now();
     const requestedLocation = job.data.location || 'us-east';
     const normalizedJobLocation = requestedLocation.toLowerCase();
@@ -110,6 +110,9 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     if (shouldFilter) {
       const message = `[Job ${job.id}] Skipping - job location (${requestedLocation}) doesn't match worker location (${this.workerLocation})`;
       this.logger.debug(message);
+      // Use moveToFailed to allow BullMQ to retry this job instead of discarding it
+      // This ensures another worker in the correct region can pick it up
+      await job.moveToFailed(new LocationMismatchError(message), true);
       throw new LocationMismatchError(message);
     }
 
@@ -257,8 +260,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           location: taskData.location ?? null,
         });
       }
+
+      // Return the success status to BullMQ so queue events are correctly reported
+      return { success: result.success };
     } catch (error) {
       if (error instanceof LocationMismatchError) {
+        // Don't update run status for location mismatches since the job will be retried
         this.logger.warn(error.message);
         throw error;
       }
@@ -435,8 +442,8 @@ export class K6TestExecutionProcessor extends BaseK6ExecutionProcessor {
     );
   }
 
-  async process(job: Job<K6Task>): Promise<void> {
-    await this.handleProcess(job);
+  async process(job: Job<K6Task>): Promise<{ success: boolean }> {
+    return await this.handleProcess(job);
   }
 
   @OnWorkerEvent('completed')
@@ -480,8 +487,8 @@ export class K6JobExecutionProcessor extends BaseK6ExecutionProcessor {
     );
   }
 
-  async process(job: Job<K6Task>): Promise<void> {
-    await this.handleProcess(job);
+  async process(job: Job<K6Task>): Promise<{ success: boolean }> {
+    return await this.handleProcess(job);
   }
 
   @OnWorkerEvent('completed')
