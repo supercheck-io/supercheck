@@ -86,6 +86,16 @@ export const MonacoConsoleViewer = memo(
         if (!monaco.languages.getEncodedLanguageId("console-log")) {
           monaco.languages.register({ id: "console-log" });
         }
+
+        // Define custom warm light theme - same as playground editor
+        monaco.editor.defineTheme("warm-light", {
+          base: "vs",
+          inherit: true,
+          rules: [],
+          colors: {
+            "editor.background": "#FAF7F3",
+          },
+        });
       } catch (err) {
         console.error("Failed to initialize Monaco console viewer:", err);
       }
@@ -142,6 +152,18 @@ export const MonacoConsoleViewer = memo(
         return newDecorations;
       }, [content, resolvedTheme, monaco]);
 
+    // Update theme when it changes - use same logic as playground editor
+    useEffect(() => {
+      if (!monaco) return;
+
+      const editorTheme = resolvedTheme === "dark" ? "vs-dark" : "warm-light";
+      try {
+        monaco.editor.setTheme(editorTheme);
+      } catch {
+        // Theme might not be defined yet
+      }
+    }, [resolvedTheme, monaco]);
+
     // Apply color decorations based on line content
     useEffect(() => {
       if (!editorRef.current || !monaco) return;
@@ -172,7 +194,7 @@ export const MonacoConsoleViewer = memo(
         Promise.resolve().then(() => {
           if (editorRef.current && monaco) {
             const newDecorations = buildDecorations();
-            decorationsRef.current = editor.deltaDecorations(
+            decorationsRef.current = editorRef.current.deltaDecorations(
               decorationsRef.current,
               newDecorations
             );
