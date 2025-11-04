@@ -1,10 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { jobs, apikey, runs, JobTrigger } from "@/db/schema";
+import type { JobType, K6Location } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
-import { addJobToQueue, JobExecutionTask } from "@/lib/queue";
+import {
+  addJobToQueue,
+  addK6JobToQueue,
+  JobExecutionTask,
+  K6ExecutionTask,
+} from "@/lib/queue";
 import { prepareJobTestScripts } from "@/lib/job-execution-utils";
+import { validateK6Script } from "@/lib/k6-validator";
+
+const DEFAULT_K6_LOCATION: K6Location = "us-east";
+
+const normalizeK6Location = (value?: string): K6Location => {
+  if (value === "us-east" || value === "eu-central" || value === "asia-pacific") {
+    return value;
+  }
+  return DEFAULT_K6_LOCATION;
+};
 
 // POST /api/jobs/[id]/trigger - Trigger job remotely via API key
 export async function POST(
@@ -130,6 +146,7 @@ export async function POST(
         createdByUserId: jobs.createdByUserId,
         organizationId: jobs.organizationId,
         projectId: jobs.projectId,
+        jobType: jobs.jobType,
       })
       .from(jobs)
       .where(eq(jobs.id, jobId))
@@ -154,6 +171,15 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    const jobType = (job.jobType || "playwright") as JobType;
+    const isPerformanceJob = jobType === "k6";
+    const locationParam = isPerformanceJob
+      ? request.nextUrl.searchParams.get("location") ?? undefined
+      : undefined;
+    const resolvedLocation = isPerformanceJob
+      ? normalizeK6Location(locationParam)
+      : null;
 
     // Parse optional request body for additional parameters (currently not used but reserved for future features)
     try {
@@ -190,9 +216,18 @@ export async function POST(
       status: "running",
       startedAt: startTime,
       trigger: "remote" as JobTrigger,
+      location: resolvedLocation,
+      metadata: {
+        jobType,
+        source: "api-trigger",
+        ...(isPerformanceJob
+          ? { executionEngine: "k6", location: resolvedLocation }
+          : { executionEngine: "playwright" }),
+      },
     });
 
     console.log(`[${jobId}/${runId}] Created running test run record: ${runId}`);
+
 
     // Use unified test script preparation with proper variable resolution
     const { testScripts: processedTestScripts, variableResolution } = await prepareJobTestScripts(
@@ -202,21 +237,116 @@ export async function POST(
       `[${jobId}/${runId}]`
     );
 
-    // Create job execution task
-    const task: JobExecutionTask = {
-      jobId: jobId,
-      testScripts: processedTestScripts,
-      runId: runId,
-      originalJobId: jobId,
-      trigger: "remote",
-      organizationId: job.organizationId || '',
-      projectId: job.projectId || '',
-      variables: variableResolution.variables,
-      secrets: variableResolution.secrets
-    };
-
     try {
-      await addJobToQueue(task);
+      if (isPerformanceJob) {
+        const primaryScript = processedTestScripts[0]?.script ?? "";
+        const primaryTestId = processedTestScripts[0]?.id;
+        const primaryType = processedTestScripts[0]?.type;
+
+        if (!primaryTestId || !primaryScript) {
+          await db
+            .update(runs)
+            .set({
+              status: "failed",
+              completedAt: new Date(),
+              errorDetails: "Unable to prepare k6 script for execution",
+            })
+            .where(eq(runs.id, runId));
+
+          return NextResponse.json(
+            { error: "Unable to prepare k6 script for execution" },
+            { status: 400 }
+          );
+        }
+
+        if (primaryType && primaryType !== "performance") {
+          await db
+            .update(runs)
+            .set({
+              status: "failed",
+              completedAt: new Date(),
+              errorDetails: "k6 jobs require performance tests",
+            })
+            .where(eq(runs.id, runId));
+
+          return NextResponse.json(
+            { error: "k6 jobs require performance tests" },
+            { status: 400 }
+          );
+        }
+
+        try {
+          const validation = validateK6Script(primaryScript);
+          if (!validation.valid) {
+            await db
+              .update(runs)
+              .set({
+                status: "failed",
+                completedAt: new Date(),
+                errorDetails: validation.errors?.[0] || "Invalid k6 script",
+              })
+              .where(eq(runs.id, runId));
+
+            return NextResponse.json(
+              {
+                error: "Invalid k6 script",
+                details: validation.errors,
+                warnings: validation.warnings,
+              },
+              { status: 400 }
+            );
+          }
+        } catch (validationError) {
+          console.error(
+            `[${jobId}/${runId}] Failed to validate k6 script:`,
+            validationError
+          );
+          await db
+            .update(runs)
+            .set({
+              status: "failed",
+              completedAt: new Date(),
+              errorDetails: "Failed to validate k6 script",
+            })
+            .where(eq(runs.id, runId));
+
+          return NextResponse.json(
+            { error: "Failed to validate k6 script" },
+            { status: 400 }
+          );
+        }
+
+        const k6Task: K6ExecutionTask = {
+          runId,
+          jobId,
+          testId: primaryTestId,
+          script: primaryScript,
+          tests: processedTestScripts.map((script) => ({
+            id: script.id,
+            script: script.script,
+          })),
+          organizationId: job.organizationId ?? "",
+          projectId: job.projectId ?? "",
+          location: resolvedLocation ?? DEFAULT_K6_LOCATION,
+        };
+
+        await addK6JobToQueue(k6Task, "k6-job-execution");
+      } else {
+        const task: JobExecutionTask = {
+          jobId: jobId,
+          testScripts: processedTestScripts,
+          runId: runId,
+          originalJobId: jobId,
+          trigger: "remote",
+          organizationId: job.organizationId || "",
+          projectId: job.projectId || "",
+          variables: variableResolution.variables,
+          secrets: variableResolution.secrets,
+          jobType,
+        };
+
+        await addJobToQueue(task);
+      }
     } catch (error) {
       // Check if this is a queue capacity error
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -338,5 +468,3 @@ export async function GET(
     );
   }
 }
-
-

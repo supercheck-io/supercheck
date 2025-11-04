@@ -37,7 +37,7 @@ export function CreateCard({
   return (
     <Card
       className={cn(
-        "hover:border-primary hover:shadow-sm transition-all cursor-pointer h-auto",
+        "hover:border-primary/70 hover:shadow-md transition-all cursor-pointer h-full rounded-xl border border-border/60",
         className
       )}
       onClick={onClick}
@@ -46,10 +46,10 @@ export function CreateCard({
       onKeyDown={onClick ? handleKeyDown : undefined}
       {...props}
     >
-      <div className="p-4">
-        <div className="flex items-center gap-3">
+      <div className="h-full p-6">
+        <div className="flex items-start gap-4">
           <div className="text-primary shrink-0">{icon}</div>
-          <div className="font-medium text-sm flex-1">{title}</div>
+          <div className="font-semibold text-lg flex-1">{title}</div>
           {showExternalIcon && (
             <div className="text-muted-foreground shrink-0">
               <ExternalLink className="h-4 w-4" />
@@ -57,7 +57,9 @@ export function CreateCard({
           )}
         </div>
         {description && (
-          <div className="text-xs text-muted-foreground leading-relaxed mt-2">{description}</div>
+          <div className="text-sm text-muted-foreground leading-relaxed mt-3">
+            {description}
+          </div>
         )}
       </div>
     </Card>

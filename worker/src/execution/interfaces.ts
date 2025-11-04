@@ -5,6 +5,7 @@ import {
   ReportType,
   MonitorType,
   MonitoringLocation,
+  JobType,
 } from '../db/schema';
 
 // Result of a single test execution
@@ -55,6 +56,11 @@ export interface TestExecutionTask {
   // as the worker service doesn't share the filesystem
   code: string;
   // testPath: string; // Original field - needs adaptation
+  runId?: string | null;
+  organizationId?: string;
+  projectId?: string;
+  location?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 // Task data for the job execution queue
@@ -68,6 +74,7 @@ export interface JobExecutionTask {
   projectId: string; // Required for RBAC filtering
   variables?: Record<string, string>; // Resolved variables for job execution
   secrets?: Record<string, string>; // Resolved secrets for job execution
+  jobType?: JobType;
 }
 
 // Optional: Interface for database report metadata storage

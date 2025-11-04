@@ -60,10 +60,10 @@ export function RunStatusListener({
       }
     };
 
-    // Establish SSE connection
-    // Using runId instead of jobId for the SSE connection
+    // Establish SSE connection to global job status events
+    // This listens for status updates for this specific runId
 
-    const eventSource = new EventSource(`/api/job-status/events/${runId}`);
+    const eventSource = new EventSource(`/api/job-status/events`);
     eventSourceRef.current = eventSource;
 
     // Reset toast flag on new connection
@@ -72,6 +72,11 @@ export function RunStatusListener({
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+
+        // Filter: Only process events for this specific runId
+        if (data.runId !== runId) {
+          return;
+        }
 
         // Notify parent component of status updates - now with duration
         if (data.status && onStatusUpdate) {

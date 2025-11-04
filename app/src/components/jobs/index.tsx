@@ -54,6 +54,7 @@ function mapToTestType(type: string | undefined): Test["type"] {
     case "api":
     case "custom":
     case "database":
+    case "performance":
       return type; // Already valid
     default:
       return "browser"; // Default to api
@@ -139,13 +140,14 @@ export default function Jobs() {
         if (response.ok && data.success && data.jobs) {
           const typedJobs = data.jobs.map((job: Record<string, unknown>) => ({
             ...job,
+            jobType: (job.jobType || "playwright") as Job["jobType"],
             status: job.status as Job["status"],
             description: job.description || null,
             cronSchedule: job.cronSchedule || null,
             tests: Array.isArray(job.tests) 
               ? job.tests.map((test: Record<string, unknown>) => ({
                   ...test,
-                  type: test.type as Test["type"],
+                  type: mapToTestType(test.type as string | undefined),
                   description: test.description || null,
                   status: (test.status || "pending") as Test["status"],
                   lastRunAt: test.lastRunAt || null,

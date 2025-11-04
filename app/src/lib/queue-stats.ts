@@ -1,5 +1,10 @@
-import { Queue } from "bullmq";
-import { JOB_EXECUTION_QUEUE } from "@/lib/queue";
+import {
+  JOB_EXECUTION_QUEUE,
+  TEST_EXECUTION_QUEUE,
+  K6_JOB_EXECUTION_QUEUE,
+  K6_TEST_EXECUTION_QUEUE,
+  getQueues,
+} from "@/lib/queue";
 
 // Default capacity limits - enforced at both API and worker level
 export const RUNNING_CAPACITY = parseInt(process.env.RUNNING_CAPACITY || "5");
@@ -18,6 +23,14 @@ export interface QueueStats {
   queuedCapacity: number;
 }
 
+const COUNT_STATUSES = [
+  "active",
+  "waiting",
+  "prioritized",
+  "paused",
+  "delayed",
+] as const;
+
 /**
  * Check if a job should be processed based on current queue stats
  * This ensures workers only process jobs that are within the running capacity
@@ -32,42 +45,59 @@ export async function shouldProcessJob(): Promise<boolean> {
  * Fetch real queue statistics from Redis using BullMQ key patterns
  */
 export async function fetchQueueStats(): Promise<QueueStats> {
-  // Set up Redis connection
-  const host = process.env.REDIS_HOST || "localhost";
-  const port = parseInt(process.env.REDIS_PORT || "6379");
-  const password = process.env.REDIS_PASSWORD;
-
-  const queue = new Queue(JOB_EXECUTION_QUEUE, {
-    connection: {
-      host,
-      port,
-      password: password || undefined,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      connectTimeout: 3000,
-    },
-  });
-
   try {
-    const counts = await queue.getJobCounts(
-      "active",
-      "waiting",
-      "prioritized",
-      "paused",
-      "delayed"
+    const queues = await getQueues();
+    const executionQueues = [
+      { name: TEST_EXECUTION_QUEUE, queue: queues.testQueue },
+      { name: JOB_EXECUTION_QUEUE, queue: queues.jobQueue },
+      { name: K6_TEST_EXECUTION_QUEUE, queue: queues.k6TestQueue },
+      { name: K6_JOB_EXECUTION_QUEUE, queue: queues.k6JobQueue },
+    ];
+
+    const countsByQueue = await Promise.all(
+      executionQueues.map(async ({ name, queue }) => {
+        if (!queue) {
+          console.warn(
+            `[Queue Stats] Queue "${name}" is not initialized; counting as zero.`
+          );
+          return { name, counts: null };
+        }
+
+        try {
+          const counts = await queue.getJobCounts(...COUNT_STATUSES);
+          return { name, counts };
+        } catch (error) {
+          console.error(
+            `[Queue Stats] Failed to fetch counts for ${name}:`,
+            error instanceof Error ? error.message : String(error)
+          );
+          return { name, counts: null };
+        }
+      })
     );
 
-    const runningCount = Math.min(counts.active ?? 0, RUNNING_CAPACITY);
-    const queuedCount =
-      (counts.waiting ?? 0) +
-      (counts.prioritized ?? 0) +
-      (counts.paused ?? 0) +
-      (counts.delayed ?? 0);
+    const totals = countsByQueue.reduce(
+      (acc, { counts }) => {
+        if (!counts) {
+          return acc;
+        }
+
+        acc.running += counts.active ?? 0;
+        acc.queued +=
+          (counts.waiting ?? 0) +
+          (counts.prioritized ?? 0) +
+          (counts.paused ?? 0) +
+          (counts.delayed ?? 0);
+
+        return acc;
+      },
+      { running: 0, queued: 0 }
+    );
 
     return {
-      running: runningCount,
+      running: Math.min(totals.running, RUNNING_CAPACITY),
       runningCapacity: RUNNING_CAPACITY,
-      queued: queuedCount,
+      queued: totals.queued,
       queuedCapacity: QUEUED_CAPACITY,
     };
   } catch (error) {
@@ -76,10 +106,6 @@ export async function fetchQueueStats(): Promise<QueueStats> {
       error instanceof Error ? error.message : String(error)
     );
     throw error;
-  } finally {
-    await queue.close().catch(() => {
-      // Ignore errors during shutdown
-    });
   }
 }
 

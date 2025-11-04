@@ -20,6 +20,14 @@ import type {
 @Processor(MONITOR_SCHEDULER_QUEUE)
 export class MonitorSchedulerProcessor extends WorkerHost {
   private readonly logger = new Logger(MonitorSchedulerProcessor.name);
+  private static readonly COMPLETED_JOB_RETENTION = {
+    count: 500,
+    age: 24 * 3600,
+  };
+  private static readonly FAILED_JOB_RETENTION = {
+    count: 1000,
+    age: 7 * 24 * 3600,
+  };
 
   constructor(
     @InjectQueue(MONITOR_EXECUTION_QUEUE)
@@ -88,8 +96,9 @@ export class MonitorSchedulerProcessor extends WorkerHost {
               jobId: `${jobData.monitorId}:${executionGroupId}:${location}`,
               attempts: retryLimit,
               backoff: { type: 'exponential', delay: 5000 },
-              removeOnComplete: true,
-              removeOnFail: { count: 1000 },
+              removeOnComplete:
+                MonitorSchedulerProcessor.COMPLETED_JOB_RETENTION,
+              removeOnFail: MonitorSchedulerProcessor.FAILED_JOB_RETENTION,
               priority: 1,
             },
           ),
@@ -106,8 +115,8 @@ export class MonitorSchedulerProcessor extends WorkerHost {
       jobId: uniqueJobId,
       attempts: retryLimit,
       backoff: { type: 'exponential', delay: 5000 },
-      removeOnComplete: true,
-      removeOnFail: { count: 1000 },
+      removeOnComplete: MonitorSchedulerProcessor.COMPLETED_JOB_RETENTION,
+      removeOnFail: MonitorSchedulerProcessor.FAILED_JOB_RETENTION,
     });
   }
 

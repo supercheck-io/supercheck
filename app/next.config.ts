@@ -70,7 +70,15 @@ const createNextConfig = (phase: string): NextConfig => {
   const baseConfig: NextConfig = {
     /* config options here */
     output: "standalone",
-    serverExternalPackages: ["child_process", "fs", "path", "postgres"],
+    serverExternalPackages: [
+      "child_process",
+      "fs",
+      "path",
+      "postgres",
+      "bullmq",
+      "@bull-board/api",
+      "@bull-board/express",
+    ],
     images: {
       remotePatterns: [
         {

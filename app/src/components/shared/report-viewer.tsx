@@ -1,10 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { AlertCircle, Loader2Icon, FileText, Maximize2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { PlaywrightLogo } from "../logo/playwright-logo";
 import { TimeoutErrorPage } from "./timeout-error-page";
 import { TimeoutErrorInfo } from "@/lib/timeout-utils";
+import { useTheme } from "next-themes";
 
 interface ReportViewerProps {
   reportUrl: string | null;
@@ -17,6 +25,9 @@ interface ReportViewerProps {
   hideEmptyMessage?: boolean;
   hideFullscreenButton?: boolean;
   hideReloadButton?: boolean;
+  iframeDecorators?: Array<(iframe: HTMLIFrameElement) => void>;
+  fullscreenIframeDecorators?: Array<(iframe: HTMLIFrameElement) => void>;
+  fullscreenHeader?: ReactNode;
 }
 
 export function ReportViewer({
@@ -30,7 +41,12 @@ export function ReportViewer({
   hideEmptyMessage = false,
   hideFullscreenButton = false,
   hideReloadButton = false,
+  iframeDecorators,
+  fullscreenIframeDecorators,
+  fullscreenHeader,
 }: ReportViewerProps) {
+  const { resolvedTheme } = useTheme();
+  const isDarkMode = resolvedTheme === "dark";
   const [isReportLoading, setIsReportLoading] = useState(!!reportUrl);
   const [reportError, setReportError] = useState<string | null>(null);
   const [iframeError, setIframeError] = useState(false);
@@ -89,8 +105,15 @@ export function ReportViewer({
     if (iframe?.contentDocument) {
       try {
         // Simple CSS injection
-        const style = iframe.contentDocument.createElement("style");
-        style.textContent = `
+        const existingStyle =
+          iframe.contentDocument.getElementById(
+            "report-viewer-hide-external-controls"
+          ) ?? null;
+
+        if (!existingStyle) {
+          const style = iframe.contentDocument.createElement("style");
+          style.id = "report-viewer-hide-external-controls";
+          style.textContent = `
           button.toolbar-button.link-external,
           button[title="Open snapshot in a new tab"],
           .codicon.codicon-link-external,
@@ -127,41 +150,105 @@ export function ReportViewer({
           [aria-label*="configure"] {
             display: none !important;
           }
+
         `;
-        iframe.contentDocument.head.appendChild(style);
+          iframe.contentDocument.head.appendChild(style);
+        }
       } catch {
         // Ignore CORS errors
       }
     }
   };
 
+  const applyDecorators = useCallback(
+    (
+      iframe: HTMLIFrameElement | null,
+      decorators: Array<(iframe: HTMLIFrameElement) => void>
+    ) => {
+      if (!iframe) {
+        return;
+      }
+
+      removeExternalButtonFromIframe(iframe);
+
+      if (!decorators.length) {
+        return;
+      }
+
+      for (const decorate of decorators) {
+        try {
+          decorate(iframe);
+        } catch (error) {
+          console.error("ReportViewer: iframe decorator failed", error);
+        }
+      }
+    },
+    []
+  );
+
+  const resolvedIframeDecorators = useMemo(
+    () => iframeDecorators ?? [],
+    [iframeDecorators]
+  );
+  const resolvedFullscreenDecorators = useMemo(
+    () => fullscreenIframeDecorators ?? resolvedIframeDecorators,
+    [fullscreenIframeDecorators, resolvedIframeDecorators]
+  );
+
   // Remove external buttons from main iframe
   useEffect(() => {
-    if (currentReportUrl && !isReportLoading) {
-      const removeExternalButton = () =>
-        removeExternalButtonFromIframe(iframeRef.current);
-
-      // Remove immediately and keep checking
-      removeExternalButton();
-      const interval = setInterval(removeExternalButton, 100);
-
-      return () => clearInterval(interval);
+    if (!currentReportUrl || isReportLoading) {
+      return;
     }
-  }, [currentReportUrl, isReportLoading]);
+
+    let attempts = 0;
+    const run = () => {
+      attempts += 1;
+      applyDecorators(iframeRef.current, resolvedIframeDecorators);
+      if (attempts >= 12) {
+        clearInterval(interval);
+      }
+    };
+
+    run();
+    const interval = setInterval(run, 200);
+
+    return () => clearInterval(interval);
+  }, [
+    currentReportUrl,
+    isReportLoading,
+    applyDecorators,
+    resolvedIframeDecorators,
+  ]);
 
   // Remove external buttons from fullscreen iframe
   useEffect(() => {
-    if (showFullscreen && currentReportUrl) {
-      const removeExternalButton = () =>
-        removeExternalButtonFromIframe(fullscreenIframeRef.current);
-
-      // Remove immediately and keep checking
-      removeExternalButton();
-      const interval = setInterval(removeExternalButton, 100);
-
-      return () => clearInterval(interval);
+    if (!showFullscreen || !currentReportUrl) {
+      return;
     }
-  }, [showFullscreen, currentReportUrl]);
+
+    let attempts = 0;
+    const run = () => {
+      attempts += 1;
+      applyDecorators(
+        fullscreenIframeRef.current,
+        resolvedFullscreenDecorators
+      );
+      if (attempts >= 12) {
+        clearInterval(interval);
+      }
+    };
+
+    run();
+    const interval = setInterval(run, 200);
+
+    return () => clearInterval(interval);
+  }, [
+    showFullscreen,
+    currentReportUrl,
+    applyDecorators,
+    resolvedFullscreenDecorators,
+  ]);
 
   // Safety timeout to prevent loading state from getting stuck
   useEffect(() => {
@@ -312,17 +399,21 @@ export function ReportViewer({
       )}
 
       <div className="flex flex-col h-full w-full">
-        {!isRunning && currentReportUrl && !isReportLoading && !iframeError && !hideFullscreenButton && (
-          <div className="absolute top-2 right-2 z-10">
-            <Button
-              size="sm"
-              className="cursor-pointer flex items-center gap-1 bg-secondary hover:bg-secondary/90"
-              onClick={() => setShowFullscreen(true)}
-            >
-              <Maximize2 className="h-4 w-4 text-secondary-foreground" />
-            </Button>
-          </div>
-        )}
+        {!isRunning &&
+          currentReportUrl &&
+          !isReportLoading &&
+          !iframeError &&
+          !hideFullscreenButton && (
+            <div className="absolute top-2 right-2 z-10">
+              <Button
+                size="sm"
+                className="cursor-pointer flex items-center gap-1 bg-secondary hover:bg-secondary/90"
+                onClick={() => setShowFullscreen(true)}
+              >
+                <Maximize2 className="h-4 w-4 text-secondary-foreground" />
+              </Button>
+            </div>
+          )}
 
         {!isRunning && currentReportUrl && (
           <iframe
@@ -336,6 +427,9 @@ export function ReportViewer({
             style={{
               visibility: isReportLoading ? "hidden" : "visible",
               transition: "opacity 0.3s ease-in-out",
+              filter: isDarkMode
+                ? "brightness(0.90) invert(1) hue-rotate(180deg)"
+                : "none",
             }}
             title="Report"
             onLoad={(e) => {
@@ -469,8 +563,12 @@ export function ReportViewer({
           <div className="fixed inset-8 bg-card rounded-lg shadow-lg flex flex-col overflow-hidden border">
             <div className="p-4 border-b flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <PlaywrightLogo width={36} height={36} />
-                <h2 className="text-xl font-semibold">Report</h2>
+                {fullscreenHeader ?? (
+                  <>
+                    <PlaywrightLogo width={36} height={36} />
+                    <h2 className="text-xl font-semibold">Report</h2>
+                  </>
+                )}
               </div>
               <Button
                 className="cursor-pointer bg-secondary hover:bg-secondary/90"
@@ -487,6 +585,11 @@ export function ReportViewer({
                 className="w-full h-full border-0"
                 sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"
                 title="Fullscreen Report"
+                style={{
+                  filter: isDarkMode
+                    ? "brightness(0.90) invert(1) hue-rotate(180deg)"
+                    : "none",
+                }}
               />
             </div>
           </div>

@@ -6,9 +6,18 @@
 
 // Test types
 export type TestPriority = 'low' | 'medium' | 'high';
-export type TestType = 'browser' | 'api' | 'database' | 'custom';
+export type TestType =
+  | 'browser'
+  | 'api'
+  | 'database'
+  | 'custom'
+  | 'performance';
+
+// K6 Performance Testing types
+export type K6Location = 'us-east' | 'eu-central' | 'asia-pacific';
 
 // Job types
+export type JobType = 'playwright' | 'k6';
 export type JobStatus = 'pending' | 'running' | 'passed' | 'failed' | 'error';
 export type JobTrigger = 'manual' | 'remote' | 'schedule';
 export type JobConfig = {
@@ -29,7 +38,7 @@ export type ArtifactPaths = {
 };
 
 // Report types
-export type ReportType = 'test' | 'job' | 'monitor';
+export type ReportType = 'test' | 'job' | 'monitor' | 'k6_performance';
 
 // Monitor types
 export type MonitorType =
