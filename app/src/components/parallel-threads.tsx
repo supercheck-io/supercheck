@@ -135,9 +135,9 @@ export function ParallelThreads() {
   return (
     <div className="flex items-center mr-2">
       <div className="flex items-center text-[11px]">
-        <div className="font-bold text-gray-500 mr-2 text-[10px]">
+        <div className="font-medium text-gray-500 mr-2 text-[10px]">
           PARALLEL
-          <div className="font-bold text-gray-500 mr-2 text-[10px]">
+          <div className="font-medium text-gray-500 mr-2 text-[10px]">
             EXECUTIONS
           </div>
         </div>
@@ -197,9 +197,9 @@ function LoadingSkeleton() {
   return (
     <div className="flex items-center mr-2">
       <div className="flex items-center text-[11px]">
-        <div className="font-bold text-gray-500 mr-2 text-[10px]">
+        <div className="font-medium text-gray-500 mr-2 text-[10px]">
           PARALLEL
-          <div className="font-bold text-gray-500 mr-2 text-[10px]">
+          <div className="font-medium text-gray-500 mr-2 text-[10px]">
             EXECUTIONS
           </div>
         </div>

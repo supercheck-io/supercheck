@@ -9,38 +9,47 @@ import { cn } from "@/lib/utils";
 type LineStyle = "error" | "warn" | "success" | "info";
 
 const styleToColor: Record<LineStyle, string> = {
-  error: "#ef4444", // red-500
-  warn: "#f59e0b", // amber-500
-  success: "#10b981", // emerald-500
+  error: "#dc2626", // red-600
+  warn: "#ea580c", // orange-600
+  success: "#16a34a", // green-600
   info: "#64748b", // slate-600
 };
 
 const styleToDarkColor: Record<LineStyle, string> = {
   error: "#fca5a5", // red-300
-  warn: "#fbbf24", // amber-400
-  success: "#6ee7b7", // emerald-400
+  warn: "#fed7aa", // orange-200
+  success: "#86efac", // green-300
   info: "#cbd5e1", // slate-300
 };
 
-const classifyLine = (line: string): LineStyle => {
-  const normalized = line.toLowerCase();
-  if (
-    normalized.includes("error") ||
-    normalized.includes("panic") ||
-    normalized.includes("fatal")
-  ) {
-    return "error";
-  }
-  if (normalized.includes("warn")) {
-    return "warn";
-  }
-  if (
-    normalized.includes("threshold") &&
-    (normalized.includes("passed") || normalized.includes("satisfied"))
-  ) {
+const classifyLine = (line: string): LineStyle | null => {
+  const trimmedLine = line.trimStart();
+  const firstChar = trimmedLine.charAt(0);
+
+  // ONLY: Checkmark as first character = success (green)
+  if (firstChar === "✓" || firstChar === "✔") {
     return "success";
   }
-  return "info";
+
+  // ONLY: Cross as first character = error (red)
+  if (firstChar === "✗" || firstChar === "✘") {
+    return "error";
+  }
+
+  // Everything else = no formatting
+  return null;
+};
+
+const filterAndProcessLogs = (content: string): string => {
+  const lines = content.split(/\r?\n/);
+  const processedLines = lines.map((line) => {
+    // Replace dashboard URLs with NA
+    if (line.includes("web dashboard: http://127.0.0.1:")) {
+      return line.replace(/http:\/\/127\.0\.0\.1:\d+/g, "NA");
+    }
+    return line;
+  });
+  return processedLines.join("\n");
 };
 
 export interface MonacoConsoleViewerProps {
@@ -55,7 +64,7 @@ export const MonacoConsoleViewer = memo(
   ({
     content,
     className,
-    emptyMessage = "Console output will appear here once available.",
+    emptyMessage = "******** Logs will appear here soon ********",
     hideLineNumbers = false,
     readOnly = true,
   }: MonacoConsoleViewerProps) => {
@@ -93,39 +102,58 @@ export const MonacoConsoleViewer = memo(
       }
     }, [content]);
 
+    // Build decorations - extracted logic for reusability
+    const buildDecorations =
+      useCallback((): editorType.IModelDeltaDecoration[] => {
+        if (!monaco) return [];
+
+        // Use filtered content for decorations to match what's displayed
+        const filteredContent = filterAndProcessLogs(content);
+        const lines = filteredContent.split(/\r?\n/);
+        const newDecorations: editorType.IModelDeltaDecoration[] = [];
+        const isDark = resolvedTheme === "dark";
+
+        lines.forEach((line, index) => {
+          const lineStyle = classifyLine(line);
+
+          // Only apply formatting if line starts with check or cross mark or section header
+          if (lineStyle === null) return;
+
+          const color = isDark
+            ? styleToDarkColor[lineStyle]
+            : styleToColor[lineStyle];
+
+          const options: editorType.IModelDecorationOptions = {
+            isWholeLine: true,
+            minimap: { color, position: 2 },
+            overviewRuler: { color, position: 2 },
+          };
+
+          // Apply glyph margin icon and text color for all line styles
+          options.glyphMarginClassName = `console-glyph-${lineStyle}`;
+          options.inlineClassName = `console-line-${lineStyle}`;
+
+          newDecorations.push({
+            range: new monaco.Range(index + 1, 1, index + 1, 500),
+            options: options as editorType.IModelDecorationOptions,
+          });
+        });
+
+        return newDecorations;
+      }, [content, resolvedTheme, monaco]);
+
     // Apply color decorations based on line content
     useEffect(() => {
       if (!editorRef.current || !monaco) return;
 
-      const lines = content.split(/\r?\n/);
-      const newDecorations: editorType.IModelDeltaDecoration[] = [];
-      const isDark = resolvedTheme === "dark";
+      const newDecorations = buildDecorations();
 
-      lines.forEach((line, index) => {
-        if (!line.trim()) return;
-
-        const lineStyle = classifyLine(line);
-        const color = isDark
-          ? styleToDarkColor[lineStyle]
-          : styleToColor[lineStyle];
-
-        newDecorations.push({
-          range: new monaco.Range(index + 1, 1, index + 1, 1),
-          options: {
-            isWholeLine: true,
-            minimap: { color, position: 2 },
-            overviewRulerColor: color,
-            glyphMarginClassName: `console-glyph-${lineStyle}`,
-          } as editorType.IModelDecorationOptions,
-        });
-      });
-
-      // Apply decorations
+      // Clear old decorations and apply new ones
       decorationsRef.current = editorRef.current.deltaDecorations(
         decorationsRef.current,
         newDecorations
       );
-    }, [content, resolvedTheme, monaco]);
+    }, [content, resolvedTheme, monaco, buildDecorations]);
 
     const handleEditorDidMount = useCallback(
       (editor: editorType.IStandaloneCodeEditor) => {
@@ -139,16 +167,25 @@ export const MonacoConsoleViewer = memo(
           // Theme might not be defined yet
         }
 
+        // Reapply decorations after editor mounts (for tab switches)
+        const newDecorations = buildDecorations();
+        decorationsRef.current = editor.deltaDecorations(
+          decorationsRef.current,
+          newDecorations
+        );
+
         // Scroll to bottom
         const lineCount = editor.getModel()?.getLineCount() ?? 0;
         if (lineCount > 0) {
           editor.revealLine(lineCount, 0);
         }
       },
-      [monaco, resolvedTheme]
+      [monaco, resolvedTheme, buildDecorations]
     );
 
-    const displayContent = !content ? emptyMessage : content;
+    const displayContent = !content
+      ? emptyMessage
+      : filterAndProcessLogs(content);
 
     return (
       <div
@@ -167,7 +204,7 @@ export const MonacoConsoleViewer = memo(
             {
               readOnly,
               lineNumbers: hideLineNumbers ? "off" : "on",
-              glyphMargin: false,
+              glyphMargin: true,
               folding: false,
               minimap: { enabled: true },
               scrollBeyondLastLine: false,
