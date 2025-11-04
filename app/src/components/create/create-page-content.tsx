@@ -9,7 +9,7 @@ import { K6Logo } from "@/components/logo/k6-logo";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { notificationProviders } from "@/components/alerts/data";
 
-type ScriptType = "browser" | "api" | "custom" | "database" | "record";
+type ScriptType = "browser" | "api" | "custom" | "database" | "performance" | "record";
 
 export function CreatePageContent() {
   const router = useRouter();
@@ -18,7 +18,7 @@ export function CreatePageContent() {
     ...types.map((type) => ({
       icon: <type.icon size={20} className={type.color} />,
       title: type.label,
-      path: `/tests/create`,
+      path: `/playground?scriptType=${type.value}`,
       scriptType: type.value as ScriptType,
     })),
     {
@@ -87,7 +87,11 @@ export function CreatePageContent() {
             key={testType.scriptType || testType.title}
             icon={testType.icon}
             title={testType.title}
-            onClick={() => router.push("/tests/create")}
+            onClick={() =>
+              testType.title === "Record"
+                ? window.open(testType.path, "_blank")
+                : router.push(testType.path)
+            }
             className={testType.title === "Record" ? "border-dashed" : ""}
           />
         ))}
