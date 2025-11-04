@@ -182,7 +182,7 @@ export const createColumns = (
             </div>
           ) : (
             <JobStatus
-              jobId={row.getValue("jobId")}
+              runId={row.getValue("id")}
               initialStatus={mappedStatus}
             />
           )}
