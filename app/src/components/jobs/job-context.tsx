@@ -58,28 +58,35 @@ export function JobStatusDisplay({
   dbStatus: string;
 }) {
   const { isJobRunning, getJobStatus } = useJobContext();
-  const [effectiveStatus, setEffectiveStatus] = useState(dbStatus);
+  const [effectiveStatus, setEffectiveStatus] = useState<string | null>(null);
 
   // Determine status priority: running > context status > db status
+  // Ensure terminal statuses (passed/failed/error) persist from context
   useEffect(() => {
     if (isJobRunning(jobId)) {
       setEffectiveStatus("running");
     } else {
       const contextStatus = getJobStatus(jobId);
-      setEffectiveStatus(contextStatus || dbStatus);
+      // Use context status if available (especially for terminal statuses)
+      // Otherwise fall back to db status
+      const statusToUse = contextStatus || dbStatus;
+      setEffectiveStatus(statusToUse || "pending");
     }
   }, [jobId, dbStatus, isJobRunning, getJobStatus]);
 
-  const statusInfo =
-    jobStatuses.find((status) => status.value === effectiveStatus) ||
-    jobStatuses[0];
+  // Fallback to dbStatus if effectiveStatus hasn't been set yet
+  const displayStatus = effectiveStatus || dbStatus || "pending";
 
-  const StatusIcon = statusInfo.icon;
+  const statusInfo =
+    jobStatuses.find((status) => status.value === displayStatus) ||
+    jobStatuses.find((status) => status.value === "pending");
+
+  const StatusIcon = statusInfo?.icon || jobStatuses[0].icon;
 
   return (
     <div className="flex w-[120px] items-center">
-      <StatusIcon className={`mr-2 h-4 w-4 ${statusInfo.color}`} />
-      <span>{statusInfo.label}</span>
+      <StatusIcon className={`mr-2 h-4 w-4 ${statusInfo?.color || jobStatuses[0].color}`} />
+      <span>{statusInfo?.label || jobStatuses[0].label}</span>
     </div>
   );
 }
@@ -178,142 +185,9 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
         eventSourcesRef.current.delete(jobId);
       }
 
-      // Set up SSE to get real-time job status
-      const eventSource = new EventSource(`/api/job-status/events/${runId}`);
-      eventSourcesRef.current.set(jobId, eventSource);
-
-      // Flag to track if we've shown the final toast for this run
-      let hasShownFinalToastForRun = false;
-
-      eventSource.onmessage = (event) => {
-        try {
-          const statusData = JSON.parse(event.data);
-
-          // Handle terminal statuses with final toast
-          if (
-            (statusData.status === "completed" ||
-              statusData.status === "failed" ||
-              statusData.status === "passed" ||
-              statusData.status === "error") &&
-            !hasShownFinalToastForRun
-          ) {
-            // Only show the toast once for this run
-            hasShownFinalToastForRun = true;
-
-            // Update the job status
-            setJobStatus(jobId, statusData.status);
-
-            // Determine if job passed or failed
-            const passed =
-              statusData.status === "completed" ||
-              statusData.status === "passed";
-
-            // Clean up resources
-            if (eventSourcesRef.current.has(jobId)) {
-              eventSourcesRef.current.get(jobId)?.close();
-              eventSourcesRef.current.delete(jobId);
-            }
-
-            // Remove from active runs
-            setActiveRuns((prev) => {
-              const newRuns = { ...prev };
-              delete newRuns[jobId];
-              activeRunsRef.current = newRuns;
-              return newRuns;
-            });
-
-            runToJobMapRef.current.delete(runId);
-
-            // Remove from running jobs
-            setRunningJobs((prev) => {
-              const newSet = new Set(prev);
-              newSet.delete(jobId);
-              if (newSet.size === 0) {
-                setIsAnyJobRunning(false);
-              }
-              return newSet;
-            });
-
-            // Show completion toast
-            toast[passed ? "success" : "error"](
-              passed ? "Job execution passed" : "Job execution failed",
-              {
-                description: (
-                  <>
-                    {jobName}:{" "}
-                    {passed
-                      ? "All tests executed successfully."
-                      : "One or more tests did not complete successfully."}{" "}
-                    <a
-                      href={`/runs/${runId}`}
-                      className="underline font-medium"
-                    >
-                      View Run Report
-                    </a>
-                  </>
-                ),
-                duration: 10000,
-              }
-            );
-
-            // Refresh the page
-            router.refresh();
-          }
-        } catch (e) {
-          console.error("[JobContext] Error parsing SSE event:", e);
-        }
-      };
-
-      eventSource.onerror = (error) => {
-        console.error(
-          "[JobContext] SSE connection error for job",
-          jobId,
-          ":",
-          error
-        );
-
-        if (!hasShownFinalToastForRun) {
-          hasShownFinalToastForRun = true;
-
-          // Clean up resources
-          if (eventSourcesRef.current.has(jobId)) {
-            eventSourcesRef.current.get(jobId)?.close();
-            eventSourcesRef.current.delete(jobId);
-          }
-
-          // Set error status
-          setJobStatus(jobId, "error");
-
-          // Remove from running jobs
-          setRunningJobs((prev) => {
-            const newSet = new Set(prev);
-            newSet.delete(jobId);
-            if (newSet.size === 0) {
-              setIsAnyJobRunning(false);
-            }
-            return newSet;
-          });
-
-          // Remove from active runs
-          setActiveRuns((prev) => {
-            const newRuns = { ...prev };
-            delete newRuns[jobId];
-            activeRunsRef.current = newRuns;
-            return newRuns;
-          });
-
-          runToJobMapRef.current.delete(runId);
-
-          // Show error toast
-          toast.error(`Job execution error for ${jobName}`, {
-            description:
-              "Connection to job status updates was lost. Check job status in the runs page.",
-          });
-
-          // Refresh the page
-          router.refresh();
-        }
-      };
+      // Note: We rely on the global /api/job-status/events connection
+      // set up in the useEffect below, not a per-job connection
+      // Individual job events are filtered by runId in handleGlobalJobEvent
 
       // Update the global running state
       setIsAnyJobRunning(true);
@@ -352,12 +226,18 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
       if (["completed", "passed", "failed", "error"].includes(status)) {
         setJobStatus(jobId, payload.status);
         if (activeRunsRef.current[jobId]?.runId === runId) {
+          const jobName = activeRunsRef.current[jobId]?.jobName || jobId;
+          const passed = status === "completed" || status === "passed";
+
+          // Remove from active runs
           setActiveRuns((prev) => {
             const newRuns = { ...prev };
             delete newRuns[jobId];
             activeRunsRef.current = newRuns;
             return newRuns;
           });
+
+          // Remove from running jobs
           setRunningJobs((prev) => {
             const newSet = new Set(prev);
             newSet.delete(jobId);
@@ -366,11 +246,37 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
             }
             return newSet;
           });
+
           runToJobMapRef.current.delete(runId);
+
+          // Show completion toast
+          toast[passed ? "success" : "error"](
+            passed ? "Job execution passed" : "Job execution failed",
+            {
+              description: (
+                <>
+                  {jobName}:{" "}
+                  {passed
+                    ? "All tests executed successfully."
+                    : "One or more tests did not complete successfully."}{" "}
+                  <a
+                    href={`/runs/${runId}`}
+                    className="underline font-medium"
+                  >
+                    View Run Report
+                  </a>
+                </>
+              ),
+              duration: 10000,
+            }
+          );
+
+          // Refresh the page
+          router.refresh();
         }
       }
     },
-    [setJobStatus, startJobRun]
+    [setJobStatus, startJobRun, router]
   );
 
   useEffect(() => {
