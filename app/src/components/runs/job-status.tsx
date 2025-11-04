@@ -7,11 +7,11 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 interface JobStatusProps {
-  jobId: string;
+  runId: string;
   initialStatus: string;
 }
 
-export function JobStatus({ jobId, initialStatus }: JobStatusProps) {
+export function JobStatus({ runId, initialStatus }: JobStatusProps) {
   const [status, setStatus] = useState(initialStatus);
   const router = useRouter();
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -34,7 +34,7 @@ export function JobStatus({ jobId, initialStatus }: JobStatusProps) {
     };
 
     // Create new EventSource connection
-    const eventSource = new EventSource(`/api/job-status/events/${jobId}`);
+    const eventSource = new EventSource(`/api/job-status/events/${runId}`);
     eventSourceRef.current = eventSource;
 
     // Reset toast flag on new connection
@@ -102,7 +102,7 @@ export function JobStatus({ jobId, initialStatus }: JobStatusProps) {
 
     // Clean up on unmount
     return cleanupSSE;
-  }, [jobId, initialStatus, router]);
+  }, [runId, initialStatus, router]);
 
   // Find the status object based on current status
   const statusInfo =
