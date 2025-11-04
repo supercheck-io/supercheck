@@ -277,7 +277,7 @@ export class K6ExecutionService {
       }
 
       // 5. Read summary file (created by --summary-export)
-      let summary = null;
+      let summary: any = null;
       try {
         const summaryContent = await fs.readFile(summaryPath, 'utf8');
         summary = JSON.parse(summaryContent);
@@ -398,11 +398,17 @@ export class K6ExecutionService {
       const summaryUrl = `${baseUrl}/summary.json`;
       const consoleUrl = `${baseUrl}/console.log`;
 
-      // 7. Determine pass/fail (k6 exit code)
+      // 7. Determine pass/fail (k6 exit code AND check if any checks failed)
       const thresholdsPassed = execResult.exitCode === 0;
 
+      // Check if any validation checks failed
+      const checksFailed = summary?.metrics?.checks?.fails ? summary.metrics.checks.fails > 0 : false;
+
+      // Test passes only if BOTH thresholds pass AND all checks pass
+      const overallSuccess = thresholdsPassed && !checksFailed;
+
       finalResult = {
-        success: thresholdsPassed,
+        success: overallSuccess,
         runId,
         durationMs: Date.now() - startTime,
         summary,
