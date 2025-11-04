@@ -209,12 +209,48 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         .where(eq(schema.runs.id, runId));
 
       if (taskData.jobId) {
+        const finalStatus = result.success ? 'passed' : 'failed';
+
+        // Update job status based on all current run statuses
+        try {
+          const finalRunStatuses =
+            await this.dbService.getRunStatusesForJob(taskData.jobId);
+          const allTerminal = finalRunStatuses.every((s) =>
+            ['passed', 'failed', 'error'].includes(s),
+          );
+
+          // If only one run or all runs are terminal, set job status to match this run
+          if (finalRunStatuses.length === 1 || allTerminal) {
+            await this.dbService.updateJobStatus(taskData.jobId, [finalStatus]);
+          } else {
+            await this.dbService.updateJobStatus(
+              taskData.jobId,
+              finalRunStatuses,
+            );
+          }
+        } catch (err) {
+          this.logger.error(
+            `[${runId}] Failed to update job status: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+
+        // Update job's lastRunAt timestamp
+        await this.dbService.db
+          .update(schema.jobs)
+          .set({ lastRunAt: new Date() })
+          .where(eq(schema.jobs.id, taskData.jobId))
+          .catch((err: Error) => {
+            this.logger.warn(
+              `[${runId}] Failed to update job lastRunAt: ${err.message}`,
+            );
+          });
+
         await this.jobNotificationService.handleJobNotifications({
           jobId: taskData.jobId,
           organizationId: taskData.organizationId,
           projectId: taskData.projectId,
           runId,
-          finalStatus: result.success ? 'passed' : 'failed',
+          finalStatus,
           durationSeconds: Math.round((Date.now() - processStartTime) / 1000),
           results: [{ success: result.success }],
           jobType: taskData.jobType ?? 'k6',
@@ -268,6 +304,40 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       }
 
       if (taskData.jobId) {
+        // Update job status based on all current run statuses
+        try {
+          const finalRunStatuses =
+            await this.dbService.getRunStatusesForJob(taskData.jobId);
+          const allTerminal = finalRunStatuses.every((s) =>
+            ['passed', 'failed', 'error'].includes(s),
+          );
+
+          // If only one run or all runs are terminal, set job status to failed
+          if (finalRunStatuses.length === 1 || allTerminal) {
+            await this.dbService.updateJobStatus(taskData.jobId, ['failed']);
+          } else {
+            await this.dbService.updateJobStatus(
+              taskData.jobId,
+              finalRunStatuses,
+            );
+          }
+        } catch (err) {
+          this.logger.error(
+            `[${runId}] Failed to update job status on error: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+
+        // Update job's lastRunAt timestamp even on error
+        await this.dbService.db
+          .update(schema.jobs)
+          .set({ lastRunAt: new Date() })
+          .where(eq(schema.jobs.id, taskData.jobId))
+          .catch((err: Error) => {
+            this.logger.warn(
+              `[${runId}] Failed to update job lastRunAt on error: ${err.message}`,
+            );
+          });
+
         await this.jobNotificationService.handleJobNotifications({
           jobId: taskData.jobId,
           organizationId: taskData.organizationId,

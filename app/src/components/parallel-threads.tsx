@@ -145,7 +145,7 @@ export function ParallelThreads() {
         <div className="flex flex-col mr-4">
           <div className="flex items-center justify-between mb-0.5">
             <span
-              className={`font-bold ${
+              className={`font-medium ${
                 stats.running > 0
                   ? "text-blue-600 dark:text-blue-500"
                   : "text-gray-500"
@@ -168,7 +168,7 @@ export function ParallelThreads() {
         <div className="flex flex-col">
           <div className="flex items-center justify-between mb-0.5">
             <span
-              className={`font-bold ${
+              className={`font-medium ${
                 stats.queued > 0
                   ? "text-amber-600 dark:text-amber-500"
                   : "text-gray-500"
@@ -206,7 +206,7 @@ function LoadingSkeleton() {
 
         <div className="flex flex-col mr-4">
           <div className="flex items-center justify-between mb-0.5">
-            <span className="font-bold text-gray-500">RUNNING</span>
+            <span className="font-medium text-gray-500">RUNNING</span>
             <Skeleton className="h-3 w-8" />
           </div>
           <div className="w-28 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
@@ -219,7 +219,7 @@ function LoadingSkeleton() {
 
         <div className="flex flex-col">
           <div className="flex items-center justify-between mb-0.5">
-            <span className="font-bold text-gray-500">QUEUED</span>
+            <span className="font-medium text-gray-500">QUEUED</span>
             <Skeleton className="h-3 w-8" />
           </div>
           <div className="w-28 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
