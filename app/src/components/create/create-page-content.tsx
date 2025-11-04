@@ -2,27 +2,23 @@
 import React from "react";
 import { CreateCard } from "./create-card";
 import { useRouter } from "next/navigation";
-import { Video, Variable, Shield, Bell, Tally4 } from "lucide-react";
+import { Video, Variable, Shield, Tally4 } from "lucide-react";
 import { monitorTypes } from "@/components/monitors/data";
 import { types } from "@/components/tests/data";
 import { K6Logo } from "@/components/logo/k6-logo";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
+import { notificationProviders } from "@/components/alerts/data";
 
-type ScriptType = "browser" | "api" | "custom" | "database" | "record";
+type ScriptType = "browser" | "api" | "custom" | "database" | "performance" | "record";
 
 export function CreatePageContent() {
   const router = useRouter();
-
-  const handleScriptSelection = (scriptType: ScriptType) => {
-    // Navigate to the playground page with the script type as a query parameter
-    router.push(`/playground?scriptType=${scriptType}`);
-  };
 
   const testTypes = [
     ...types.map((type) => ({
       icon: <type.icon size={20} className={type.color} />,
       title: type.label,
-      path: `/create/${type.value}`,
+      path: `/playground?scriptType=${type.value}`,
       scriptType: type.value as ScriptType,
     })),
     {
@@ -67,19 +63,20 @@ export function CreatePageContent() {
     },
   ];
 
-  const notificationTypes = [
-    {
-      icon: <Bell size={20} className="text-orange-500" />,
-      title: "Notification Channel",
+  const notificationTypes = notificationProviders.map((provider) => {
+    const IconComponent = provider.icon;
+    return {
+      icon: <IconComponent size={20} className={provider.color} />,
+      title: provider.label,
       onClick: () => router.push("/alerts"),
-    },
-  ];
+    };
+  });
 
   return (
     <div className="mx-auto p-4 mt-3">
-      <div className="mb-2 pl-1">
-        <h2 className="text-base font-semibold">Create New Test</h2>
-        <p className="text-muted-foreground text-xs mt-1">
+      <div className="mb-3 pl-1">
+        <h2 className="text-md font-semibold">Create New Test</h2>
+        <p className="text-muted-foreground text-sm mt-0.5">
           Select the type of test you want to create
         </p>
       </div>
@@ -93,18 +90,16 @@ export function CreatePageContent() {
             onClick={() =>
               testType.title === "Record"
                 ? window.open(testType.path, "_blank")
-                : testType.scriptType
-                ? handleScriptSelection(testType.scriptType as ScriptType)
-                : undefined
+                : router.push(testType.path)
             }
             className={testType.title === "Record" ? "border-dashed" : ""}
           />
         ))}
       </div>
 
-      <div className="mt-5 mb-2 pl-1">
-        <h2 className="text-base font-semibold">Create New Job</h2>
-        <p className="text-muted-foreground text-xs mt-1">
+      <div className="mt-6 mb-3 pl-1">
+        <h2 className="text-md font-semibold">Create New Job</h2>
+        <p className="text-muted-foreground text-sm mt-0.5">
           Configure a new automated or manual job
         </p>
       </div>
@@ -120,9 +115,9 @@ export function CreatePageContent() {
         ))}
       </div>
 
-      <div className="mt-5 mb-2 pl-1">
-        <h2 className="text-base font-semibold">Create New Monitor</h2>
-        <p className="text-muted-foreground text-xs mt-1">
+      <div className="mt-6 mb-3 pl-1">
+        <h2 className="text-md font-semibold">Create New Monitor</h2>
+        <p className="text-muted-foreground text-sm mt-0.5">
           Select the type of uptime monitor you want to create
         </p>
       </div>
@@ -143,9 +138,9 @@ export function CreatePageContent() {
         })}
       </div>
 
-      <div className="mt-5 mb-2 pl-1">
-        <h2 className="text-base font-semibold">Create Status Page</h2>
-        <p className="text-muted-foreground text-xs mt-1">
+      <div className="mt-6 mb-3 pl-1">
+        <h2 className="text-md font-semibold">Create Status Page</h2>
+        <p className="text-muted-foreground text-sm mt-0.5">
           Create and manage public status pages for your services
         </p>
       </div>
@@ -161,9 +156,9 @@ export function CreatePageContent() {
         ))}
       </div>
 
-      <div className="mt-5 mb-2 pl-1">
-        <h2 className="text-base font-semibold">Create Variables & Secrets</h2>
-        <p className="text-muted-foreground text-xs mt-1">
+      <div className="mt-6 mb-3 pl-1">
+        <h2 className="text-md font-semibold">Create Variables & Secrets</h2>
+        <p className="text-muted-foreground text-sm mt-0.5">
           Configure environment variables and secure secrets
         </p>
       </div>
@@ -179,11 +174,9 @@ export function CreatePageContent() {
         ))}
       </div>
 
-      <div className="mt-5 mb-2 pl-1">
-        <h2 className="text-base font-semibold">
-          Create Notification Provider
-        </h2>
-        <p className="text-muted-foreground text-xs mt-1">
+      <div className="mt-6 mb-3 pl-1">
+        <h2 className="text-md font-semibold">Create Notification Provider</h2>
+        <p className="text-muted-foreground text-sm mt-0.5">
           Configure alert notifications and view delivery history
         </p>
       </div>

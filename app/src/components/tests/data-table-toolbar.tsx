@@ -77,7 +77,7 @@ export function DataTableToolbar<TData>({
         )}
         <DataTableViewOptions table={table} />
         <Button
-          onClick={() => router.push("/playground?scriptType=browser")}
+          onClick={() => router.push("/tests/create")}
           disabled={!canCreateTest}
         >
           <PlusIcon className="h-4 w-4 mr-2" />

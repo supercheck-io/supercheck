@@ -28,6 +28,7 @@ interface ReportViewerProps {
   iframeDecorators?: Array<(iframe: HTMLIFrameElement) => void>;
   fullscreenIframeDecorators?: Array<(iframe: HTMLIFrameElement) => void>;
   fullscreenHeader?: ReactNode;
+  isK6Report?: boolean;
 }
 
 export function ReportViewer({
@@ -44,6 +45,7 @@ export function ReportViewer({
   iframeDecorators,
   fullscreenIframeDecorators,
   fullscreenHeader,
+  isK6Report = false,
 }: ReportViewerProps) {
   const { resolvedTheme } = useTheme();
   const isDarkMode = resolvedTheme === "dark";
@@ -422,14 +424,15 @@ export function ReportViewer({
             src={currentReportUrl}
             className={`${iframeClassName} ${
               isReportLoading ? "opacity-0 pointer-events-none" : "opacity-100"
-            } ${isValidationError ? "h-4/5 flex-grow" : "h-full"} bg-card`}
+            } ${isValidationError ? "h-4/5 flex-grow" : "h-full"} ${!isK6Report ? "bg-card" : ""}`}
             sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"
             style={{
               visibility: isReportLoading ? "hidden" : "visible",
               transition: "opacity 0.3s ease-in-out",
-              filter: isDarkMode
-                ? "brightness(0.90) invert(1) hue-rotate(180deg)"
-                : "none",
+              filter:
+                isK6Report && isDarkMode
+                  ? "brightness(0.90) invert(1) hue-rotate(180deg)"
+                  : "none",
             }}
             title="Report"
             onLoad={(e) => {
@@ -586,9 +589,10 @@ export function ReportViewer({
                 sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"
                 title="Fullscreen Report"
                 style={{
-                  filter: isDarkMode
-                    ? "brightness(0.90) invert(1) hue-rotate(180deg)"
-                    : "none",
+                  filter:
+                    isK6Report && isDarkMode
+                      ? "brightness(0.90) invert(1) hue-rotate(180deg)"
+                      : "none",
                 }}
               />
             </div>
