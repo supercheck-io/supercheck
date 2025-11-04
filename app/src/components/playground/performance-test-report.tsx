@@ -350,9 +350,9 @@ export function PerformanceTestReport({
             {/* Console Output - Full Height */}
             <MonacoConsoleViewer
               content={
-                runDetails?.consoleOutput && status !== "running"
-                  ? runDetails.consoleOutput
-                  : consoleBuffer
+                status === "running"
+                  ? consoleBuffer
+                  : runDetails?.consoleOutput || consoleBuffer
               }
               className="rounded-none border-0"
             />

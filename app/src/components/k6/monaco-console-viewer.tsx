@@ -167,12 +167,17 @@ export const MonacoConsoleViewer = memo(
           // Theme might not be defined yet
         }
 
-        // Reapply decorations after editor mounts (for tab switches)
-        const newDecorations = buildDecorations();
-        decorationsRef.current = editor.deltaDecorations(
-          decorationsRef.current,
-          newDecorations
-        );
+        // Schedule decoration application after editor has been fully rendered
+        // Use microtask to ensure editor model is ready and value has been set
+        Promise.resolve().then(() => {
+          if (editorRef.current && monaco) {
+            const newDecorations = buildDecorations();
+            decorationsRef.current = editor.deltaDecorations(
+              decorationsRef.current,
+              newDecorations
+            );
+          }
+        });
 
         // Scroll to bottom
         const lineCount = editor.getModel()?.getLineCount() ?? 0;
