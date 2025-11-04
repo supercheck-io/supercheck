@@ -369,6 +369,7 @@ export function PerformanceTestReport({
               hideEmptyMessage
               hideReloadButton
               fullscreenHeader={fullscreenHeader}
+              isK6Report={true}
             />
           </TabsContent>
         )}

@@ -46,18 +46,18 @@ export function CreateCard({
       onKeyDown={onClick ? handleKeyDown : undefined}
       {...props}
     >
-      <div className="h-full p-6">
-        <div className="flex items-start gap-4">
+      <div className="h-full p-4">
+        <div className="flex items-start gap-3">
           <div className="text-primary shrink-0">{icon}</div>
-          <div className="font-semibold text-lg flex-1">{title}</div>
+          <div className="font-medium text-sm flex-1 leading-tight">{title}</div>
           {showExternalIcon && (
             <div className="text-muted-foreground shrink-0">
-              <ExternalLink className="h-4 w-4" />
+              <ExternalLink className="h-3 w-3" />
             </div>
           )}
         </div>
         {description && (
-          <div className="text-sm text-muted-foreground leading-relaxed mt-3">
+          <div className="text-xs text-muted-foreground leading-relaxed mt-2">
             {description}
           </div>
         )}
