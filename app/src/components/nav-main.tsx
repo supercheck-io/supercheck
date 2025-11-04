@@ -23,24 +23,28 @@ import React from "react";
 // Type for icon that accepts both LucideIcon and custom React components
 type IconComponent = LucideIcon | React.ComponentType<{ className?: string }>;
 
+export type SubItem = {
+  title: string;
+  url: string;
+  icon?: IconComponent;
+  color?: string;
+};
+
+export type MenuItem = {
+  title: string;
+  url: string;
+  icon?: IconComponent;
+  isActive?: boolean;
+  badge?: string;
+  items?: (SubItem | { groupLabel?: string; items?: SubItem[] })[];
+};
+
 export function NavMain({
   groupLabel,
   items,
 }: {
   groupLabel: string;
-  items: {
-    title: string;
-    url: string;
-    icon?: IconComponent;
-    isActive?: boolean;
-    badge?: string;
-    items?: {
-      title: string;
-      url: string;
-      icon?: IconComponent;
-      color?: string;
-    }[];
-  }[];
+  items: MenuItem[];
 }) {
   return (
     <SidebarGroup>
@@ -67,12 +71,18 @@ export function NavMain({
               )}
               {!item.items && (
                 <SidebarMenuButton tooltip={item.title} asChild>
-                  {item.url.startsWith('http') ? (
-                    <a href={item.url} target="_blank" rel="noopener noreferrer">
+                  {item.url.startsWith("http") ? (
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       {item.icon && <item.icon />}
                       <span>{item.title}</span>
                       {item.badge && (
-                        <span className="ml-auto text-xs text-muted-foreground">{item.badge}</span>
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          {item.badge}
+                        </span>
                       )}
                     </a>
                   ) : (
@@ -80,7 +90,9 @@ export function NavMain({
                       {item.icon && <item.icon />}
                       <span>{item.title}</span>
                       {item.badge && (
-                        <span className="ml-auto text-xs text-muted-foreground">{item.badge}</span>
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          {item.badge}
+                        </span>
                       )}
                     </Link>
                   )}
@@ -89,16 +101,64 @@ export function NavMain({
 
               <CollapsibleContent>
                 <SidebarMenuSub>
-                  {item.items?.map((subItem) => (
-                    <SidebarMenuSubItem key={subItem.title}>
-                      <SidebarMenuSubButton asChild>
-                        <Link href={subItem.url}>
-                          {subItem.icon && <subItem.icon className={`h-4 w-4 ${subItem.color || ''}`} />}
-                          <span>{subItem.title}</span>
-                        </Link>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                  ))}
+                  {item.items?.map((subItem, idx) => {
+                    // Check if this is a group label item
+                    if ("groupLabel" in subItem && !("title" in subItem)) {
+                      return (
+                        <div
+                          key={`group-${idx}`}
+                          className="text-sidebar-foreground/70 flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium"
+                        >
+                          {subItem.groupLabel}
+                        </div>
+                      );
+                    }
+
+                    // Handle group items
+                    if ("items" in subItem && !("url" in subItem)) {
+                      return (
+                        <React.Fragment key={`group-items-${idx}`}>
+                          {subItem.items?.map((item) => {
+                            const ItemIcon = item.icon;
+                            return (
+                              <SidebarMenuSubItem key={item.title}>
+                                <SidebarMenuSubButton asChild>
+                                  <Link href={item.url}>
+                                    {ItemIcon && (
+                                      <ItemIcon
+                                        className={`h-4 w-4 ${
+                                          item.color || ""
+                                        }`}
+                                      />
+                                    )}
+                                    <span>{item.title}</span>
+                                  </Link>
+                                </SidebarMenuSubButton>
+                              </SidebarMenuSubItem>
+                            );
+                          })}
+                        </React.Fragment>
+                      );
+                    }
+
+                    // Regular sub item
+                    const regularItem = subItem as SubItem;
+                    const IconComponent = regularItem.icon;
+                    return (
+                      <SidebarMenuSubItem key={regularItem.title}>
+                        <SidebarMenuSubButton asChild>
+                          <Link href={regularItem.url}>
+                            {IconComponent && (
+                              <IconComponent
+                                className={`h-4 w-4 ${regularItem.color || ""}`}
+                              />
+                            )}
+                            <span>{regularItem.title}</span>
+                          </Link>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    );
+                  })}
                 </SidebarMenuSub>
               </CollapsibleContent>
             </SidebarMenuItem>

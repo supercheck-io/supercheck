@@ -26,20 +26,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import TestSelector from "@/components/jobs/test-selector";
+import { Test } from "@/components/jobs/schema";
 import { monitorTypes } from "./data";
 import {
   Loader2,
@@ -48,14 +36,14 @@ import {
   ChevronRight,
   Shield,
   BellIcon,
-  Check,
-  ChevronsUpDown,
-  Chrome,
-  ArrowLeftRight,
-  Database,
-  SquareFunction,
   MapPin,
+  Info,
 } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { AlertSettings } from "@/components/alerts/alert-settings";
 import { MonitorTypesPopover } from "./monitor-types-popover";
 import { LocationConfigSection } from "./location-config-section";
@@ -87,22 +75,6 @@ const statusCodePresets = [
   { label: "Any 5xx (Server Error)", value: "500-599" },
   { label: "Specific Code", value: "custom" }, // User can input custom code
 ];
-
-// Get icon component for test type - using same icons as in app-sidebar.tsx
-const getTestTypeIcon = (type: string) => {
-  switch (type) {
-    case "browser":
-      return <Chrome className="h-4 w-4 text-sky-600" />;
-    case "api":
-      return <ArrowLeftRight className="h-4 w-4 text-teal-600" />;
-    case "database":
-      return <Database className="h-4 w-4 text-cyan-600" />;
-    case "custom":
-      return <SquareFunction className="h-4 w-4 text-blue-600" />;
-    default:
-      return <Chrome className="h-4 w-4 text-sky-600" />;
-  }
-};
 
 // Interval options for non-synthetic monitors (can start from 1 minute)
 const standardCheckIntervalOptions = [
@@ -413,7 +385,6 @@ export function MonitorForm({
   const { currentProject } = useProjectContext();
   const normalizedRole = normalizeRole(currentProject?.userRole);
   const canCreate = canCreateMonitors(normalizedRole);
-  const [formChanged, setFormChanged] = useState(false);
   const [isAuthSectionOpen, setIsAuthSectionOpen] = useState(false);
   const [isKeywordSectionOpen, setIsKeywordSectionOpen] = useState(false);
   const [isCustomStatusCode, setIsCustomStatusCode] = useState(false);
@@ -435,30 +406,21 @@ export function MonitorForm({
   const [showLocationSettings, setShowLocationSettings] = useState(false);
 
   // Store initial configs for change detection
-  const initialLocationConfig = (initialConfig?.locationConfig as LocationConfig) || DEFAULT_LOCATION_CONFIG;
-  const [locationConfig, setLocationConfig] = useState<LocationConfig>(initialLocationConfig);
-  const [tests, setTests] = useState<
-    Array<{ id: string; title: string; type: string }>
-  >([]);
-  const [isLoadingTests, setIsLoadingTests] = useState(false);
-  const [selectedTest, setSelectedTest] = useState<{
-    id: string;
-    title: string;
-    type: string;
-  } | null>(null);
-  const [testSelectorOpen, setTestSelectorOpen] = useState(false);
-
-  // Helper functions to detect changes
-  const hasLocationConfigChanged = (): boolean => {
-    return JSON.stringify(locationConfig) !== JSON.stringify(initialLocationConfig);
-  };
-
-  const hasAlertConfigChanged = (): boolean => {
-    return JSON.stringify(alertConfig) !== JSON.stringify(initialAlertConfigValue);
-  };
+  const initialLocationConfig =
+    (initialConfig?.locationConfig as LocationConfig) ||
+    DEFAULT_LOCATION_CONFIG;
+  const [locationConfig, setLocationConfig] = useState<LocationConfig>(
+    initialLocationConfig
+  );
+  const [selectedTests, setSelectedTests] = useState<Test[]>([]);
 
   const hasAnyConfigChanged = (): boolean => {
-    return formChanged || hasLocationConfigChanged() || hasAlertConfigChanged();
+    const formDirty = form.formState.isDirty;
+    const locationChanged =
+      JSON.stringify(locationConfig) !== JSON.stringify(initialLocationConfig);
+    const alertChanged =
+      JSON.stringify(alertConfig) !== JSON.stringify(initialAlertConfigValue);
+    return formDirty || locationChanged || alertChanged;
   };
 
   // Get current monitor type from URL params if not provided as prop
@@ -475,33 +437,6 @@ export function MonitorForm({
       setShowAlerts(alertConfig.enabled);
     }
   }, [alertConfig, editMode]);
-
-  // Fetch tests when monitor type is synthetic_test
-  useEffect(() => {
-    const fetchTests = async () => {
-      if (currentMonitorType !== "synthetic_test") {
-        setTests([]);
-        return;
-      }
-
-      setIsLoadingTests(true);
-      try {
-        const response = await fetch("/api/tests");
-        if (!response.ok) {
-          throw new Error("Failed to fetch tests");
-        }
-        const data = await response.json();
-        setTests(data);
-      } catch (error) {
-        console.error("Error fetching tests:", error);
-        toast.error("Failed to load tests");
-      } finally {
-        setIsLoadingTests(false);
-      }
-    };
-
-    void fetchTests();
-  }, [currentMonitorType]);
 
   // Create default values based on monitor type if provided
   const getDefaultValues = useCallback((): FormValues => {
@@ -547,48 +482,10 @@ export function MonitorForm({
     },
   });
 
-
   const type = form.watch("type");
-  const syntheticTestId = form.watch("syntheticConfig_testId");
   const httpMethod = form.watch("httpConfig_method");
   const authType = form.watch("httpConfig_authType");
   const expectedStatusCodes = form.watch("httpConfig_expectedStatusCodes");
-
-  // Keep selectedTest in sync when syntheticTestId changes or tests load
-  useEffect(() => {
-    if (type !== "synthetic_test") {
-      setSelectedTest(null);
-      return;
-    }
-
-    // If tests are still loading or not available, exit early
-    if (isLoadingTests || tests.length === 0) {
-      return;
-    }
-
-    // Get testId from form (prefer watch value, fallback to direct read for reliability)
-    const testId = syntheticTestId || form.getValues("syntheticConfig_testId");
-
-    // If testId was cleared, clear selectedTest
-    if (!testId) {
-      setSelectedTest(null);
-      return;
-    }
-
-    // Sync selectedTest when testId changes
-    if (selectedTest?.id !== testId) {
-      const matchedTest = tests.find((test) => test.id === testId);
-      if (matchedTest) {
-        setSelectedTest(matchedTest);
-      } else {
-        // Test not found in list, but we have a testId - this shouldn't happen
-        // but let's be defensive and not clear selectedTest if we already have one
-        console.warn(`Test with ID ${testId} not found in available tests`);
-      }
-    }
-    // NOTE: Intentionally not including selectedTest in dependencies to avoid loops
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, syntheticTestId, isLoadingTests, tests]);
 
   // Auto-adjust interval when switching to synthetic monitor
   useEffect(() => {
@@ -623,7 +520,6 @@ export function MonitorForm({
 
       // Reset form completely
       form.reset(newDefaults);
-      setFormChanged(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlType, type, editMode, initialData]);
@@ -644,17 +540,53 @@ export function MonitorForm({
   useEffect(() => {
     if (editMode && initialData) {
       form.reset(initialData);
-
-      // For synthetic monitors, also sync selectedTest after form reset
-      if (initialData.type === "synthetic_test" && initialData.syntheticConfig_testId && tests.length > 0) {
-        const matchedTest = tests.find((test) => test.id === initialData.syntheticConfig_testId);
-        if (matchedTest) {
-          setSelectedTest(matchedTest);
-        }
-      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editMode, initialData, tests]);
+  }, [editMode, initialData]);
+
+  // Initialize selectedTests when editing a synthetic monitor
+  useEffect(() => {
+    if (
+      editMode &&
+      initialData?.type === "synthetic_test" &&
+      initialData?.syntheticConfig_testId
+    ) {
+      const fetchTest = async () => {
+        try {
+          const response = await fetch(
+            `/api/tests/${initialData.syntheticConfig_testId}`
+          );
+          if (response.ok) {
+            const testData = await response.json();
+            // Map API response to Test type
+            const validTestType: Test["type"] = (
+              ["browser", "api", "custom", "database", "performance"].includes(
+                testData.type
+              )
+                ? testData.type
+                : "browser"
+            ) as Test["type"];
+
+            const mappedTest: Test = {
+              id: testData.id,
+              name: testData.title,
+              description: testData.description || null,
+              type: validTestType,
+              status: "running" as const,
+              lastRunAt: testData.updatedAt,
+              duration: null,
+              tags: testData.tags || [],
+            };
+            setSelectedTests([mappedTest]);
+          }
+        } catch (error) {
+          console.error("Error fetching test for edit mode:", error);
+        }
+      };
+      void fetchTest();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editMode, initialData?.syntheticConfig_testId]);
 
   const targetPlaceholders: Record<FormValues["type"], string> = {
     http_request: "e.g., https://example.com or https://api.example.com/health",
@@ -663,11 +595,6 @@ export function MonitorForm({
     port_check: "e.g., example.com or 192.168.1.1 (hostname or IP address)",
     synthetic_test: "Select a test to monitor",
   };
-
-  // Track form changes using react-hook-form's built-in dirty state
-  useEffect(() => {
-    setFormChanged(form.formState.isDirty);
-  }, [form.formState.isDirty]);
 
   async function onSubmit(data: FormValues) {
     setIsSubmitting(true);
@@ -820,10 +747,16 @@ export function MonitorForm({
         throw new Error("Please select a test to monitor");
       }
 
+      // Get the selected test details from selectedTests array
+      const selectedTest = selectedTests[0];
+      if (!selectedTest) {
+        throw new Error("Selected test details not available");
+      }
+
       apiData.target = data.syntheticConfig_testId; // Use testId as target
       apiData.config = {
         testId: data.syntheticConfig_testId,
-        testTitle: selectedTest?.title || "Test",
+        testTitle: selectedTest.name || "Test",
         playwrightOptions: {
           headless: true,
           timeout: 120000, // 2 minutes default
@@ -1149,206 +1082,171 @@ export function MonitorForm({
         <CardContent className="space-y-4">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              {/* Monitor Name and Check Interval - aligned on same line */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Left column */}
-                <div className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Monitor Name</FormLabel>
-                        <FormControl>
-                          <Input placeholder="My Website" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                {/* Left column - Monitor Name */}
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem className="space-y-2">
+                      <FormLabel>Monitor Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="My Website" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-                  {/* Target field or Test Selector based on monitor type */}
-                  {type === "synthetic_test" ? (
-                    <FormField
-                      control={form.control}
-                      name="syntheticConfig_testId"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-col">
-                          <FormLabel>Select Test</FormLabel>
-                          <Popover
-                            open={testSelectorOpen}
-                            onOpenChange={setTestSelectorOpen}
-                          >
+                {/* Right column - Check Interval with Info Icon */}
+                <FormField
+                  control={form.control}
+                  name="interval"
+                  render={({ field }) => {
+                    // Use different interval options based on monitor type
+                    const checkIntervalOptions =
+                      type === "synthetic_test"
+                        ? syntheticCheckIntervalOptions
+                        : standardCheckIntervalOptions;
+
+                    return (
+                      <FormItem className="space-y-2">
+                        <div className="flex items-center gap-2 mb-0">
+                          <FormLabel>Check Interval</FormLabel>
+                          <Popover>
                             <PopoverTrigger asChild>
-                              <FormControl>
-                                <Button
-                                  variant="outline"
-                                  role="combobox"
-                                  aria-expanded={testSelectorOpen}
-                                  className={cn(
-                                    "w-full justify-between",
-                                    !field.value && "text-muted-foreground"
-                                  )}
-                                  disabled={isLoadingTests}
-                                >
-                                  {isLoadingTests ? (
-                                    "Loading tests..."
-                                  ) : field.value ? (
-                                    selectedTest ? (
-                                      <div className="flex items-center gap-2">
-                                        {getTestTypeIcon(selectedTest.type)}
-                                        <span className="truncate">
-                                          {selectedTest.title.substring(0, 84)}
-                                          {selectedTest.title.length > 84 && (
-                                            <span>...</span>
-                                          )}
-                                        </span>
-                                      </div>
-                                    ) : (
-                                      <span className="truncate text-left">
-                                        {`Test ID: ${field.value.substring(0, 50)}`}
-                                        {field.value.length > 50 && (
-                                          <span>...</span>
-                                        )}
-                                      </span>
-                                    )
-                                  ) : (
-                                    "Choose a test to monitor"
-                                  )}
-                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                </Button>
-                              </FormControl>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                aria-label="Check interval tips"
+                              >
+                                <Info className="h-4 w-4 text-muted-foreground" />
+                              </Button>
                             </PopoverTrigger>
                             <PopoverContent
-                              className="w-[--radix-popover-trigger-width] p-0"
+                              className="w-56 text-xs"
+                              side="right"
                               align="start"
                             >
-                              <Command>
-                                <CommandInput placeholder="Search tests..." />
-                                <CommandList>
-                                  <CommandEmpty>No test found.</CommandEmpty>
-                                  <CommandGroup>
-                                    {tests.map((test) => (
-                                      <CommandItem
-                                        key={test.id}
-                                        value={`${test.title} ${test.type}`}
-                                        onSelect={() => {
-                                          field.onChange(test.id);
-                                          setSelectedTest(test);
-                                          setTestSelectorOpen(false);
-                                          // Auto-update monitor name if empty
-                                          const currentName =
-                                            form.getValues("name");
-                                          if (!currentName) {
-                                            form.setValue("name", test.title);
-                                          }
-                                        }}
-                                      >
-                                        <Check
-                                          className={cn(
-                                            "mr-2 h-4 w-4",
-                                            field.value === test.id
-                                              ? "opacity-100"
-                                              : "opacity-0"
-                                          )}
-                                        />
-                                        <div className="flex items-center gap-2 flex-1">
-                                          {getTestTypeIcon(test.type)}
-                                          <div className="flex flex-col">
-                                            <span className="font-medium">
-                                              {test.title.substring(0, 84)}
-                                              {test.title.length > 84 && "..."}
-                                            </span>
-                                            <span className="text-xs text-muted-foreground">
-                                              {test.type} test
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </CommandItem>
-                                    ))}
-                                  </CommandGroup>
-                                </CommandList>
-                              </Command>
+                              <div className="space-y-2">
+                                <p className="font-semibold text-foreground">
+                                  Recommended intervals:
+                                </p>
+                                <ul className="space-y-1.5 text-muted-foreground">
+                                  <li className="flex items-start gap-2">
+                                    <span className="text-foreground font-medium">
+                                      Critical:
+                                    </span>
+                                    <span>5-10 min</span>
+                                  </li>
+                                  <li className="flex items-start gap-2">
+                                    <span className="text-foreground font-medium">
+                                      Standard:
+                                    </span>
+                                    <span>15-30 min</span>
+                                  </li>
+                                  <li className="flex items-start gap-2">
+                                    <span className="text-foreground font-medium">
+                                      Low-priority:
+                                    </span>
+                                    <span>1+ hour</span>
+                                  </li>
+                                </ul>
+                              </div>
                             </PopoverContent>
                           </Popover>
-                          <FormDescription>
-                            Run this Playwright test on a schedule
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  ) : (
-                    <FormField
-                      control={form.control}
-                      name="target"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Target</FormLabel>
+                        </div>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value}
+                        >
                           <FormControl>
-                            <Input
-                              placeholder={
-                                type
-                                  ? targetPlaceholders[type]
-                                  : "Select Check Type for target hint"
-                              }
-                              {...field}
-                            />
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select interval" />
+                            </SelectTrigger>
                           </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  )}
-                </div>
-
-                {/* Right column */}
-                <div className="space-y-4">
-                  {/* Interval field */}
-                  <FormField
-                    control={form.control}
-                    name="interval"
-                    render={({ field }) => {
-                      // Use different interval options based on monitor type
-                      const checkIntervalOptions =
-                        type === "synthetic_test"
-                          ? syntheticCheckIntervalOptions
-                          : standardCheckIntervalOptions;
-
-                      return (
-                        <FormItem>
-                          <FormLabel>Check Interval</FormLabel>
-                          <div className="md:w-40">
-                            <Select
-                              onValueChange={field.onChange}
-                              value={field.value}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select interval" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {checkIntervalOptions.map((option) => (
-                                  <SelectItem
-                                    key={option.value}
-                                    value={option.value}
-                                  >
-                                    {option.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <FormDescription>
-                            How often to run the check
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      );
-                    }}
-                  />
-                </div>
+                          <SelectContent>
+                            {checkIntervalOptions.map((option) => (
+                              <SelectItem
+                                key={option.value}
+                                value={option.value}
+                              >
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
+                />
               </div>
+
+              {/* Test Selector for synthetic monitors - full width */}
+              {type === "synthetic_test" && (
+                <TestSelector
+                  selectedTests={selectedTests}
+                  onTestsSelected={(tests) => {
+                    setSelectedTests(tests);
+                    // Update form field with first test ID
+                    if (tests.length > 0) {
+                      form.setValue("syntheticConfig_testId", tests[0].id, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                      void form.trigger("syntheticConfig_testId");
+                      // Auto-update monitor name if empty
+                      const currentName = form.getValues("name");
+                      if (!currentName) {
+                        form.setValue("name", tests[0].name);
+                      }
+                    } else {
+                      form.setValue("syntheticConfig_testId", "", {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      });
+                      void form.trigger("syntheticConfig_testId");
+                    }
+                  }}
+                  buttonLabel="Select Test"
+                  emptyStateMessage="No test selected"
+                  required={true}
+                  hideButton={selectedTests.length > 0}
+                  singleSelection
+                  excludeTypes={["performance"]}
+                  dialogTitle="Select Test"
+                  dialogDescription="Choose a test to monitor"
+                  maxSelectionLabel="Select 1 playwright test"
+                />
+              )}
+
+              {/* Target field for non-synthetic monitors */}
+              {type !== "synthetic_test" && (
+                <FormField
+                  control={form.control}
+                  name="target"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Target</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder={
+                            type
+                              ? targetPlaceholders[type]
+                              : "Select Check Type for target hint"
+                          }
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               {/* Conditional fields based on type (formerly method) */}
               {type === "http_request" && (
@@ -2249,7 +2147,7 @@ export function MonitorForm({
                   type="submit"
                   disabled={
                     isSubmitting ||
-                    (editMode && !formChanged) ||
+                    (editMode && !hasAnyConfigChanged()) ||
                     (!editMode && !canCreate)
                   }
                   className="flex items-center"

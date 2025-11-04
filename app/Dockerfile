@@ -91,8 +91,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
 # Make scripts executable
 RUN chmod +x ./scripts/start.sh ./scripts/db-migrate.js
 
-# Verify scripts are copied correctly
-RUN ls -la ./scripts/ && echo "Scripts directory contents:" && cat ./scripts/start.sh | head -10
+# Verify critical files are copied correctly
+RUN echo "=== Verifying Scripts ===" && ls -la ./scripts/ && \
+    echo "=== Verifying DB Migrations ===" && ls -la ./src/db/migrations/ && \
+    echo "=== Verifying DB Files ===" && ls -la ./src/db/ && \
+    echo "=== Verification Complete ==="
 
 # Set npm to not use cache and set proper environment
 RUN mkdir -p /tmp/.npm && \

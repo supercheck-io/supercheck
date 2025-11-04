@@ -58,10 +58,12 @@ export function isInternalHost(hostname: string): boolean {
   const lower = hostname.toLowerCase();
 
   // Check exact matches
-  if (INTERNAL_HOSTNAMES.some(h => h === lower)) {
+  if (INTERNAL_HOSTNAMES.some((h) => h === lower)) {
     return true;
   }
 
   // Check IP patterns
-  return Object.values(INTERNAL_IP_PATTERNS).some(pattern => pattern.test(hostname));
+  return Object.values(INTERNAL_IP_PATTERNS).some((pattern) =>
+    pattern.test(hostname),
+  );
 }

@@ -6,6 +6,21 @@ const ALLOWED_MODULES = new Set([
   // Testing & Automation
   "@playwright/test", // UI & E2E testing framework
 
+  // k6 Performance Testing (all k6 core modules)
+  "k6", // k6 core module
+  "k6/http", // HTTP client for load testing
+  "k6/metrics", // Custom metrics
+  "k6/crypto", // Cryptographic functions
+  "k6/data", // Data handling utilities
+  "k6/encoding", // Encoding/decoding utilities
+  "k6/html", // HTML parsing
+  "k6/ws", // WebSocket support
+  "k6/grpc", // gRPC support
+  "k6/net/grpc", // gRPC networking
+  "k6/browser", // Browser automation (experimental)
+  "k6/experimental/redis", // Redis client
+  "k6/experimental/tracing", // Distributed tracing
+
   // Database Clients
   "mssql", // MSSQL database client
   "mysql2", // Improved MySQL client
@@ -113,7 +128,7 @@ const ALLOWED_BROWSER_APIS = new Set([
   "Buffer", // Allow Buffer objects returned by Playwright APIs
   "btoa",
   "atob", // Base64 encoding/decoding for auth
-  "crypto", // For generating UUIDs and secure random values
+  "crypto", // For generating UUIDs and secure random values (also k6/crypto)
   "TextEncoder",
   "TextDecoder", // Text encoding utilities
   "parseInt",
@@ -121,6 +136,45 @@ const ALLOWED_BROWSER_APIS = new Set([
   "isNaN",
   "isFinite", // Number parsing
   "Boolean", // Boolean constructor for type conversion
+]);
+
+// Allow k6-specific identifiers (commonly used in k6 performance tests)
+const K6_ALLOWED_IDENTIFIERS = new Set([
+  // k6 core functions
+  "check",
+  "sleep",
+  "group",
+  "fail",
+  "open",
+
+  // k6 modules (imported as identifiers)
+  "http",
+  "https", // k6/http exports both http and https
+  "ws",
+  "grpc",
+  "html",
+  "encoding",
+  "data",
+  "browser",
+  "metrics",
+
+  // k6/metrics types
+  "Trend",
+  "Counter",
+  "Gauge",
+  "Rate",
+
+  // k6 options and configuration
+  "options",
+  "setup",
+  "teardown",
+  "handleSummary",
+  "default", // export default function
+
+  // k6 execution context
+  "__VU",
+  "__ITER",
+  "__ENV",
 ]);
 
 // Security constants
@@ -476,7 +530,9 @@ export class ValidationService {
             const moduleName = arg.value as string;
             if (
               !ALLOWED_MODULES.has(moduleName) &&
-              !moduleName.startsWith("@playwright/")
+              !moduleName.startsWith("@playwright/") &&
+              !moduleName.startsWith("k6/") &&
+              moduleName !== "k6"
             ) {
               throw new Error(
                 `Module '${moduleName}' is not allowed. Please review and remove the restricted module import to proceed.`
@@ -489,7 +545,9 @@ export class ValidationService {
             const obj = (callee as acorn.MemberExpression).object as acorn.Node;
             if (
               obj.type === "Identifier" &&
-              BLOCKED_IDENTIFIERS.has((obj as acorn.Identifier).name)
+              BLOCKED_IDENTIFIERS.has((obj as acorn.Identifier).name) &&
+              !ALLOWED_BROWSER_APIS.has((obj as acorn.Identifier).name) &&
+              !K6_ALLOWED_IDENTIFIERS.has((obj as acorn.Identifier).name)
             ) {
               throw new Error(
                 `Access to '${
@@ -509,7 +567,9 @@ export class ValidationService {
             const moduleName = node.source.value as string;
             if (
               !ALLOWED_MODULES.has(moduleName) &&
-              !moduleName.startsWith("@playwright/")
+              !moduleName.startsWith("@playwright/") &&
+              !moduleName.startsWith("k6/") &&
+              moduleName !== "k6"
             ) {
               // Special case for common @playwright mistake
               if (moduleName === "@playwright") {
@@ -528,7 +588,8 @@ export class ValidationService {
           // More nuanced identifier checking
           if (
             BLOCKED_IDENTIFIERS.has(node.name) &&
-            !ALLOWED_BROWSER_APIS.has(node.name)
+            !ALLOWED_BROWSER_APIS.has(node.name) &&
+            !K6_ALLOWED_IDENTIFIERS.has(node.name)
           ) {
             // Special case for require - suggest ES6 imports
             if (node.name === "require") {
@@ -595,7 +656,10 @@ export class ValidationService {
   // Helper method to check if a module is allowed
   isModuleAllowed(moduleName: string): boolean {
     return (
-      ALLOWED_MODULES.has(moduleName) || moduleName.startsWith("@playwright/")
+      ALLOWED_MODULES.has(moduleName) ||
+      moduleName.startsWith("@playwright/") ||
+      moduleName.startsWith("k6/") ||
+      moduleName === "k6"
     );
   }
 }

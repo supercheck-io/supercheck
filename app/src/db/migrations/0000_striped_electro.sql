@@ -182,6 +182,7 @@ CREATE TABLE "jobs" (
 	"created_by_user_id" uuid,
 	"name" varchar(255) NOT NULL,
 	"description" text,
+	"job_type" varchar(20) DEFAULT 'playwright' NOT NULL,
 	"cron_schedule" varchar(100),
 	"status" varchar(50) DEFAULT 'pending' NOT NULL,
 	"alert_config" jsonb,
@@ -194,16 +195,52 @@ CREATE TABLE "jobs" (
 --> statement-breakpoint
 CREATE TABLE "runs" (
 	"id" uuid PRIMARY KEY NOT NULL,
-	"job_id" uuid NOT NULL,
+	"job_id" uuid,
 	"project_id" uuid,
 	"status" varchar(50) DEFAULT 'running' NOT NULL,
 	"duration" varchar(100),
+	"duration_ms" integer,
 	"started_at" timestamp,
 	"completed_at" timestamp,
+	"report_s3_url" text,
+	"logs_s3_url" text,
+	"video_s3_url" text,
+	"screenshots_s3_path" text,
 	"artifact_paths" jsonb,
 	"logs" text,
+	"location" varchar(50),
+	"metadata" jsonb DEFAULT '{}'::jsonb,
 	"error_details" text,
 	"trigger" varchar(50) DEFAULT 'manual' NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
+CREATE TABLE "k6_performance_runs" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"test_id" uuid,
+	"job_id" uuid,
+	"run_id" uuid NOT NULL,
+	"organization_id" uuid NOT NULL,
+	"project_id" uuid NOT NULL,
+	"location" varchar(50) DEFAULT 'us-east',
+	"status" varchar(20) NOT NULL,
+	"started_at" timestamp DEFAULT now(),
+	"completed_at" timestamp,
+	"duration_ms" integer,
+	"summary_json" jsonb,
+	"thresholds_passed" boolean,
+	"total_requests" integer,
+	"failed_requests" integer,
+	"request_rate" integer,
+	"avg_response_time_ms" integer,
+	"p95_response_time_ms" integer,
+	"p99_response_time_ms" integer,
+	"report_s3_url" text,
+	"summary_s3_url" text,
+	"console_s3_url" text,
+	"error_details" text,
+	"console_output" text,
 	"created_at" timestamp DEFAULT now(),
 	"updated_at" timestamp DEFAULT now()
 );
@@ -580,6 +617,10 @@ ALTER TABLE "jobs" ADD CONSTRAINT "jobs_project_id_projects_id_fk" FOREIGN KEY (
 ALTER TABLE "jobs" ADD CONSTRAINT "jobs_created_by_user_id_user_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "runs" ADD CONSTRAINT "runs_job_id_jobs_id_fk" FOREIGN KEY ("job_id") REFERENCES "public"."jobs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "runs" ADD CONSTRAINT "runs_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "k6_performance_runs" ADD CONSTRAINT "k6_performance_runs_job_id_jobs_id_fk" FOREIGN KEY ("job_id") REFERENCES "public"."jobs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "k6_performance_runs" ADD CONSTRAINT "k6_performance_runs_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."runs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "k6_performance_runs" ADD CONSTRAINT "k6_performance_runs_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "k6_performance_runs" ADD CONSTRAINT "k6_performance_runs_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "monitor_results" ADD CONSTRAINT "monitor_results_monitor_id_monitors_id_fk" FOREIGN KEY ("monitor_id") REFERENCES "public"."monitors"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "monitors" ADD CONSTRAINT "monitors_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "monitors" ADD CONSTRAINT "monitors_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

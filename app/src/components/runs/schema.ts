@@ -5,6 +5,7 @@ export const runSchema = z.object({
   id: z.string(),
   jobId: z.string(),
   jobName: z.string().optional(),
+  jobType: z.enum(["playwright", "k6"]).optional(),
   status: z.enum(["pending", "running", "passed", "failed", "skipped", "error"]),
   duration: z.string().nullable().optional(),
   startedAt: z.string().nullable().optional(),
@@ -17,6 +18,7 @@ export const runSchema = z.object({
   timestamp: z.string().optional(),
   testCount: z.number().optional(),
   trigger: z.enum(["manual", "remote", "schedule"]).optional(),
+  location: z.string().nullable().optional(),
 });
 
 export type TestRun = z.infer<typeof runSchema>;

@@ -25,11 +25,13 @@ import { organization, projects } from './organization';
 import { user } from './auth';
 import { tests } from './test';
 import type {
+  JobType,
   JobStatus,
   JobTrigger,
   TestRunStatus,
   ArtifactPaths,
   AlertConfig,
+  K6Location,
 } from './types';
 
 /**
@@ -50,6 +52,10 @@ export const jobs = pgTable('jobs', {
   }),
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
+  jobType: varchar('job_type', { length: 20 })
+    .$type<JobType>()
+    .notNull()
+    .default('playwright'),
   cronSchedule: varchar('cron_schedule', { length: 100 }),
   status: varchar('status', { length: 50 })
     .$type<JobStatus>()
@@ -92,9 +98,7 @@ export const runs = pgTable('runs', {
   id: uuid('id')
     .primaryKey()
     .$defaultFn(() => sql`uuidv7()`),
-  jobId: uuid('job_id')
-    .notNull()
-    .references(() => jobs.id),
+  jobId: uuid('job_id').references(() => jobs.id),
   projectId: uuid('project_id').references(() => projects.id, {
     onDelete: 'cascade',
   }),
@@ -103,10 +107,26 @@ export const runs = pgTable('runs', {
     .notNull()
     .default('running'),
   duration: varchar('duration', { length: 100 }),
+  durationMs: integer('duration_ms'),
   startedAt: timestamp('started_at'),
   completedAt: timestamp('completed_at'),
+
+  // Artifact URLs (S3 references)
+  reportS3Url: text('report_s3_url'),
+  logsS3Url: text('logs_s3_url'),
+  videoS3Url: text('video_s3_url'),
+  screenshotsS3Path: text('screenshots_s3_path'),
+
+  // Legacy artifact paths (for backward compatibility)
   artifactPaths: jsonb('artifact_paths').$type<ArtifactPaths>(),
   logs: text('logs'),
+
+  // Location for k6 tests
+  location: varchar('location', { length: 50 }).$type<K6Location>(),
+
+  // Metadata for additional context
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
+
   errorDetails: text('error_details'),
   trigger: varchar('trigger', { length: 50 })
     .$type<JobTrigger>()

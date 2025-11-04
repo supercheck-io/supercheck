@@ -21,6 +21,7 @@ const createJobSchema = z.object({
       id: z.string().uuid(),
     })
   ),
+  jobType: z.enum(["playwright", "k6"]).optional().default("playwright"),
 });
 
 export type CreateJobData = z.infer<typeof createJobSchema>;
@@ -78,6 +79,7 @@ export async function createJob(data: CreateJobData) {
         createdByUserId: userId,
         createdAt: new Date(),
         updatedAt: new Date(),
+        jobType: validatedData.jobType,
       });
 
       // Create job-test relationships, tracking the order of the tests
@@ -136,6 +138,7 @@ export async function createJob(data: CreateJobData) {
           testsCount: validatedData.tests.length,
           hasCronSchedule: !!validatedData.cronSchedule,
           cronSchedule: validatedData.cronSchedule,
+          jobType: validatedData.jobType,
         },
         success: true,
       });
@@ -155,6 +158,7 @@ export async function createJob(data: CreateJobData) {
           scheduledJobId,
           testCount: validatedData.tests.length,
           createdByUserId: userId,
+          jobType: validatedData.jobType,
         },
       };
     } catch (dbError) {

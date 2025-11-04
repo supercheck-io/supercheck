@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { runStatuses, triggerTypes } from "./data";
 import { toast } from "sonner";
 import { ReportViewer } from "@/components/shared/report-viewer";
@@ -14,6 +14,7 @@ import {
   Code,
   CalendarDays,
   FolderOpen,
+  MapPin,
 } from "lucide-react";
 import { canManageRuns } from "@/lib/rbac/client-permissions";
 import { Role } from "@/lib/rbac/permissions";
@@ -35,14 +36,19 @@ import {
 } from "@/components/ui/alert-dialog";
 import { NavUser } from "@/components/nav-user";
 import { CheckIcon } from "@/components/logo/supercheck-logo";
+import { K6Logo } from "@/components/logo/k6-logo";
+import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { Home } from "lucide-react";
+import { PerformanceTestReport } from "@/components/playground/performance-test-report";
+import type { K6RunStatus } from "@/lib/k6-runs";
 
 // Type based on the actual API response from /api/runs/[runId]
 type RunResponse = {
   id: string;
-  jobId: string;
+  jobId: string | null;
   jobName?: string;
   projectName?: string;
+  jobType?: string;
   status: string;
   duration?: string | null;
   startedAt?: string | null;
@@ -53,6 +59,7 @@ type RunResponse = {
   timestamp?: string;
   testCount?: number;
   trigger?: string;
+  location?: string | null;
 };
 
 export function RunDetails({
@@ -71,6 +78,10 @@ export function RunDetails({
   const [isDeleting, setIsDeleting] = useState(false);
   const [userRole, setUserRole] = useState<Role | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(true);
+  const isPerformanceRun = run.jobType === "k6";
+  const [headerLocation, setHeaderLocation] = useState<string | null>(
+    run.location ?? null
+  );
 
   // Helper to validate status is one of the allowed values
   const mapStatusForDisplay = (status: string): TestRunStatus => {
@@ -175,29 +186,32 @@ export function RunDetails({
     return durationStr;
   };
 
-  // Handle status updates from SSE
-  const handleStatusUpdate = (
-    status: string,
-    newReportUrl?: string,
-    newDuration?: string
-  ) => {
-    if (status !== currentStatus) {
-      setCurrentStatus(mapStatusForDisplay(status as TestRunStatus));
-    }
+  // Handle status updates from SSE - memoized to prevent unnecessary re-renders
+  const handleStatusUpdate = useCallback(
+    (
+      status: string,
+      newReportUrl?: string,
+      newDuration?: string
+    ) => {
+      if (status !== currentStatus) {
+        setCurrentStatus(mapStatusForDisplay(status as TestRunStatus));
+      }
 
-    if (newReportUrl) {
-      // Regardless of the reportUrl from SSE, use our API proxy with direct UUID
-      const apiUrl = `/api/test-results/${
-        run.id
-      }/report/index.html?t=${Date.now()}`;
-      setReportUrl(apiUrl);
-    }
+      if (newReportUrl) {
+        // Regardless of the reportUrl from SSE, use our API proxy with direct UUID
+        const apiUrl = `/api/test-results/${
+          run.id
+        }/report/index.html?t=${Date.now()}`;
+        setReportUrl(apiUrl);
+      }
 
-    // Update duration if it changed
-    if (newDuration && newDuration !== duration) {
-      setDuration(newDuration);
-    }
-  };
+      // Update duration if it changed
+      if (newDuration && newDuration !== duration) {
+        setDuration(newDuration);
+      }
+    },
+    [currentStatus, run.id, duration]
+  );
 
   const statusInfo = runStatuses.find((s) => s.value === currentStatus);
 
@@ -287,11 +301,20 @@ export function RunDetails({
               </Button>
             )}
             <div>
-              <h1 className="text-2xl font-semibold flex items-center gap-2">
-                {run.jobName && run.jobName.length > 40
-                  ? run.jobName.slice(0, 40) + "..."
-                  : run.jobName || "Unknown Job"}
-              </h1>
+              <div className="flex flex-wrap items-center gap-2">
+                {run.jobType ? (
+                  run.jobType === "k6" ? (
+                    <K6Logo width={28} height={28} />
+                  ) : (
+                    <PlaywrightLogo width={28} height={28} />
+                  )
+                ) : null}
+                <h1 className="text-2xl font-semibold">
+                  {run.jobName && run.jobName.length > 40
+                    ? run.jobName.slice(0, 40) + "..."
+                    : run.jobName || "Unknown Job"}
+                </h1>
+              </div>
             </div>
           </div>
           {!isNotificationView && (
@@ -374,17 +397,31 @@ export function RunDetails({
             })()}
           </div>
 
-          <div className="bg-muted/30 rounded-lg p-2 border flex items-center overflow-hidden">
-            <Code className="h-6 w-6 min-w-6 mr-2 text-blue-500" />
-            <div className="min-w-0 w-full">
-              <div className="text-xs font-medium text-muted-foreground">
-                Tests Executed
-              </div>
-              <div className="text-sm font-semibold truncate">
-                {run.testCount}
+          {isPerformanceRun ? (
+            <div className="bg-muted/30 rounded-lg p-2 border flex items-center overflow-hidden">
+              <MapPin className="h-6 w-6 min-w-6 mr-2 text-amber-500" />
+              <div className="min-w-0 w-full">
+                <div className="text-xs font-medium text-muted-foreground">
+                  Location
+                </div>
+                <div className="text-sm font-semibold truncate">
+                  {headerLocation || "Not specified"}
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-muted/30 rounded-lg p-2 border flex items-center overflow-hidden">
+              <Code className="h-6 w-6 min-w-6 mr-2 text-blue-500" />
+              <div className="min-w-0 w-full">
+                <div className="text-xs font-medium text-muted-foreground">
+                  Tests Executed
+                </div>
+                <div className="text-sm font-semibold truncate">
+                  {run.testCount}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="bg-muted/30 rounded-lg p-2 border flex items-center overflow-hidden">
             <ClockIcon className="h-6 w-6 min-w-6 mr-2 text-orange-400" />
@@ -435,38 +472,57 @@ export function RunDetails({
                 <div className="text-xs font-medium text-muted-foreground">
                   Job ID
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5 p-0 ml-1"
-                  onClick={() => {
-                    navigator.clipboard.writeText(run.jobId);
-                    toast.success("Job ID copied");
-                  }}
-                >
-                  <Copy className="h-3 w-3" />
-                </Button>
+                {run.jobId ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 p-0 ml-1"
+                    onClick={() => {
+                      navigator.clipboard.writeText(run.jobId ?? "");
+                      toast.success("Job ID copied");
+                    }}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                ) : null}
               </div>
-              <div className="text-sm font-semibold truncate">{run.jobId}</div>
+              <div className="text-sm font-semibold truncate">
+                {run.jobId ?? "No Job"}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Report viewer */}
-      <div className="bg-card rounded-lg border overflow-hidden">
-        <div className="w-full h-full">
-          <ReportViewer
-            reportUrl={reportUrl}
-            isRunning={currentStatus === "running"}
-            backToLabel="Back to Runs"
-            backToUrl="/runs"
-            containerClassName="w-full h-[calc(100vh-270px)] relative"
-            iframeClassName="w-full h-full border-0 rounded-lg"
-            hideEmptyMessage={true}
-          />
+      {isPerformanceRun ? (
+        <div className="bg-card rounded-lg border overflow-hidden">
+          <div className="h-[calc(100vh-280px)]">
+            <PerformanceTestReport
+              runId={run.id}
+              onStatusChange={(status: K6RunStatus, payload) => {
+                handleStatusUpdate(status, payload?.reportUrl, payload?.duration);
+                if (payload?.location && payload.location !== headerLocation) {
+                  setHeaderLocation(payload.location);
+                }
+              }}
+            />
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-card rounded-lg border overflow-hidden">
+          <div className="w-full h-full">
+            <ReportViewer
+              reportUrl={reportUrl}
+              isRunning={currentStatus === "running"}
+              backToLabel="Back to Runs"
+              backToUrl="/runs"
+              containerClassName="w-full h-[calc(100vh-270px)] relative"
+              iframeClassName="w-full h-full border-0 rounded-lg"
+              hideEmptyMessage={true}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Delete confirmation dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
