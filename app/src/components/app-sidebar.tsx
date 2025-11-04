@@ -27,6 +27,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
+import { K6Logo } from "@/components/logo/k6-logo";
 
 import { NavMain } from "@/components/nav-main";
 import { ProjectSwitcher } from "@/components/project-switcher";
@@ -75,28 +76,48 @@ const data = {
 
       items: [
         {
-          title: "Browser Test",
-          url: "/playground?scriptType=browser",
-          icon: Chrome,
-          color: "!text-sky-600",
+          groupLabel: "Functional",
         },
         {
-          title: "API Test",
-          url: "/playground?scriptType=api",
-          icon: ArrowLeftRight,
-          color: "!text-teal-600",
+          items: [
+            {
+              title: "Browser Test",
+              url: "/playground?scriptType=browser",
+              icon: Chrome,
+              color: "!text-sky-600",
+            },
+            {
+              title: "API Test",
+              url: "/playground?scriptType=api",
+              icon: ArrowLeftRight,
+              color: "!text-teal-600",
+            },
+            {
+              title: "Database Test",
+              url: "/playground?scriptType=database",
+              icon: Database,
+              color: "!text-cyan-600",
+            },
+            {
+              title: "Custom Test",
+              url: "/playground?scriptType=custom",
+              icon: SquareFunction,
+              color: "!text-blue-600",
+            },
+          ],
         },
         {
-          title: "Database Test",
-          url: "/playground?scriptType=database",
-          icon: Database,
-          color: "!text-cyan-600",
+          groupLabel: "Non-Functional",
         },
         {
-          title: "Custom Test",
-          url: "/playground?scriptType=custom",
-          icon: SquareFunction,
-          color: "!text-blue-600",
+          items: [
+            {
+              title: "Performance Test",
+              url: "/playground?scriptType=performance",
+              icon: K6Logo,
+              color: "!text-purple-600",
+            },
+          ],
         },
       ],
     },
@@ -187,7 +208,7 @@ const data = {
       title: "Docs",
       url: "https://github.com/supercheck-io/supercheck",
       icon: BookOpenText,
-      badge: "v1.1.6-beta.4",
+      badge: "v1.1.6-beta.12",
     },
     // {
     //   title: "Changelog",

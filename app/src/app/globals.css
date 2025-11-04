@@ -177,3 +177,67 @@
 ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(156, 163, 175, 0.7);
 }
+
+/* K6 Console Output Color-Coding Styles */
+/* Light theme colors */
+.console-line-error {
+  color: #dc2626 !important; /* red-600 */
+  font-weight: 500;
+}
+
+.console-line-warn {
+  color: #ea580c !important; /* orange-600 */
+  font-weight: 500;
+}
+
+.console-line-success {
+  color: #16a34a !important; /* green-600 */
+  font-weight: 500;
+}
+
+.console-line-info {
+  color: #64748b !important; /* slate-600 */
+}
+
+/* Dark theme colors */
+.dark .console-line-error {
+  color: #fca5a5 !important; /* red-300 */
+  font-weight: 500;
+}
+
+.dark .console-line-warn {
+  color: #fed7aa !important; /* orange-200 */
+  font-weight: 500;
+}
+
+.dark .console-line-success {
+  color: #86efac !important; /* green-300 */
+  font-weight: 500;
+}
+
+.dark .console-line-info {
+  color: #cbd5e1 !important; /* slate-300 */
+}
+
+/* Glyph margin icons for console - only for pass/fail lines */
+.console-glyph-error::before {
+  content: "✗";
+  color: #dc2626;
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.console-glyph-success::before {
+  content: "✓";
+  color: #16a34a;
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.dark .console-glyph-error::before {
+  color: #fca5a5;
+}
+
+.dark .console-glyph-success::before {
+  color: #86efac;
+}

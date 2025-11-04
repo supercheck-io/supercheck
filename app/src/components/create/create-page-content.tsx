@@ -2,17 +2,11 @@
 import React from "react";
 import { CreateCard } from "./create-card";
 import { useRouter } from "next/navigation";
-import {
-  Video,
-  Clock,
-  Zap,
-  Variable,
-  Shield,
-  Bell,
-  Tally4,
-} from "lucide-react";
+import { Video, Variable, Shield, Bell, Tally4 } from "lucide-react";
 import { monitorTypes } from "@/components/monitors/data";
 import { types } from "@/components/tests/data";
+import { K6Logo } from "@/components/logo/k6-logo";
+import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 
 type ScriptType = "browser" | "api" | "custom" | "database" | "record";
 
@@ -41,14 +35,14 @@ export function CreatePageContent() {
 
   const jobTypes = [
     {
-      icon: <Clock size={20} className="text-blue-500" />,
-      title: "Scheduled Job",
-      onClick: () => router.push("/jobs/create"),
+      icon: <PlaywrightLogo width={20} height={20} />,
+      title: "Playwright Job",
+      onClick: () => router.push("/jobs/create/playwright"),
     },
     {
-      icon: <Zap size={20} className="text-amber-500" />,
-      title: "Immediate Job",
-      onClick: () => router.push("/jobs/create"),
+      icon: <K6Logo width={20} height={20} />,
+      title: "k6 Performance Job",
+      onClick: () => router.push("/jobs/create/k6"),
     },
   ];
 

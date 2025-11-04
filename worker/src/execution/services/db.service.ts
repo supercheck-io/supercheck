@@ -1,7 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { Redis } from 'ioredis';
 import * as schema from '../../db/schema'; // Import the schema we copied
 import {
   reports,
@@ -24,7 +23,6 @@ export const DB_PROVIDER_TOKEN = 'DB_DRIZZLE';
 @Injectable()
 export class DbService implements OnModuleInit {
   private readonly logger = new Logger(DbService.name);
-  private redisClient: Redis;
 
   constructor(
     @Inject(DB_PROVIDER_TOKEN)
@@ -32,24 +30,6 @@ export class DbService implements OnModuleInit {
     private configService: ConfigService,
   ) {
     this.logger.log('Drizzle ORM initialized.');
-
-    // Initialize Redis client
-    const host = this.configService.get<string>('REDIS_HOST', 'localhost');
-    const port = this.configService.get<number>('REDIS_PORT', 6379);
-    const password = this.configService.get<string>('REDIS_PASSWORD');
-
-    this.redisClient = new Redis({
-      host,
-      port,
-      password: password || undefined,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-    });
-
-    this.redisClient.on('error', (err) =>
-      this.logger.error('Redis Error:', err),
-    );
-    this.redisClient.on('connect', () => this.logger.log('Redis Connected'));
   }
 
   onModuleInit() {
@@ -66,22 +46,6 @@ export class DbService implements OnModuleInit {
 
   get db(): PostgresJsDatabase<typeof schema> {
     return this.dbInstance;
-  }
-
-  /**
-   * Publishes status updates to Redis channels for SSE
-   */
-  private async publishStatusUpdate(channel: string, data: any): Promise<void> {
-    try {
-      await this.redisClient.publish(channel, JSON.stringify(data));
-      this.logger.debug(
-        `Published to Redis channel ${channel}: ${JSON.stringify(data)}`,
-      );
-    } catch (error) {
-      this.logger.error(
-        `Failed to publish to Redis channel ${channel}: ${(error as Error).message}`,
-      );
-    }
   }
 
   /**
@@ -145,28 +109,6 @@ export class DbService implements OnModuleInit {
       this.logger.log(
         `Successfully stored report metadata for ${entityType}/${entityId}`,
       );
-
-      // Publish test status update to Redis for SSE
-      if (entityType === 'test') {
-        const statusData = {
-          status,
-          testId: entityId,
-          reportPath,
-          s3Url,
-          error: undefined,
-        };
-
-        // Publish to status channel
-        await this.publishStatusUpdate(`test:${entityId}:status`, statusData);
-
-        // If terminal status, publish to complete channel
-        if (['completed', 'failed'].includes(status)) {
-          await this.publishStatusUpdate(
-            `test:${entityId}:complete`,
-            statusData,
-          );
-        }
-      }
     } catch (error) {
       this.logger.error(
         `Error storing report metadata for ${entityType}/${entityId}: ${(error as Error).message}`,
@@ -279,33 +221,6 @@ export class DbService implements OnModuleInit {
       this.logger.log(
         `Successfully updated run ${runId} with status ${status}`,
       );
-
-      // Publish status update to Redis for SSE
-      const statusData: {
-        status: string;
-        runId: string;
-        duration?: string;
-        startedAt?: Date;
-        completedAt?: Date;
-        errorDetails?: string;
-        artifactPaths?: any;
-      } = {
-        status,
-        runId,
-        duration: updateData.duration,
-        startedAt: updateData.startedAt,
-        completedAt: updateData.completedAt,
-        errorDetails: updateData.errorDetails,
-        artifactPaths: updateData.artifactPaths,
-      };
-
-      // Publish to status channel
-      await this.publishStatusUpdate(`job:${runId}:status`, statusData);
-
-      // If terminal status, publish to complete channel
-      if (['completed', 'failed', 'passed', 'error'].includes(status)) {
-        await this.publishStatusUpdate(`job:${runId}:complete`, statusData);
-      }
     } catch (error) {
       this.logger.error(
         `Failed to update run status: ${(error as Error).message}`,

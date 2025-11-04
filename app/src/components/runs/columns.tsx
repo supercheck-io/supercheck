@@ -16,27 +16,27 @@ import {
 } from "@/components/ui/popover";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { PlaywrightLogo } from "@/components/logo/playwright-logo";
+import { K6Logo } from "@/components/logo/k6-logo";
 
 // Separate component for job name with popover
 function JobNameWithPopover({ jobName }: { jobName: string | undefined }) {
   const [isOpen, setIsOpen] = useState(false);
   const displayName = jobName || "Unknown Job";
-  
+
   // Check if text is likely to be truncated
   const isTruncated = displayName.length > 40;
-  
+
   if (!isTruncated) {
     return (
-      <div className="font-medium max-w-[250px] truncate">
-        {displayName}
-      </div>
+      <div className="font-medium max-w-[250px] truncate">{displayName}</div>
     );
   }
-  
+
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
-        <div 
+        <div
           className="font-medium max-w-[250px] truncate cursor-pointer"
           onMouseEnter={() => setIsOpen(true)}
           onMouseLeave={() => setIsOpen(false)}
@@ -46,9 +46,7 @@ function JobNameWithPopover({ jobName }: { jobName: string | undefined }) {
       </PopoverTrigger>
       <PopoverContent className="flex justify-center items-center w-auto max-w-[500px]">
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">
-            {displayName}
-          </p>
+          <p className="text-xs text-muted-foreground">{displayName}</p>
         </div>
       </PopoverContent>
     </Popover>
@@ -56,20 +54,23 @@ function JobNameWithPopover({ jobName }: { jobName: string | undefined }) {
 }
 
 // Create a function that returns the columns with the onDelete prop and permissions
-export const createColumns = (onDelete?: () => void, canDelete?: boolean): ColumnDef<TestRun>[] => [
+export const createColumns = (
+  onDelete?: () => void,
+  canDelete?: boolean
+): ColumnDef<TestRun>[] => [
   {
     accessorKey: "id",
     header: ({ column }) => (
-      <DataTableColumnHeader className="ml-2" column={column} title ="Run ID" />
+      <DataTableColumnHeader className="ml-2" column={column} title="Run ID" />
     ),
     cell: ({ row }) => {
       const id = row.getValue("id") as string;
-      
+
       return (
         <div className="w-[90px]">
           <UUIDField
-            value={id} 
-            maxLength={24} 
+            value={id}
+            maxLength={24}
             onCopy={() => toast.success("Run ID copied to clipboard")}
           />
         </div>
@@ -77,27 +78,27 @@ export const createColumns = (onDelete?: () => void, canDelete?: boolean): Colum
     },
     enableSorting: false,
   },
-  {
-    accessorKey: "jobId",
-    header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Job ID" />
-    ),
-    cell: ({ row }) => {
-      const jobId = row.getValue("jobId") as string;
+  // {
+  //   accessorKey: "jobId",
+  //   header: ({ column }) => (
+  //     <DataTableColumnHeader column={column} title="Job ID" />
+  //   ),
+  //   cell: ({ row }) => {
+  //     const jobId = row.getValue("jobId") as string;
 
-      return (
-        <div className="w-[90px]">
-          <UUIDField
-            value={jobId}
-            maxLength={24}
-            className="w-[90px]"
-            onCopy={() => toast.success("Job ID copied to clipboard")}
-          />
-        </div>
-      );
-    },
-    enableSorting: false,
-  },
+  //     return (
+  //       <div className="w-[90px]">
+  //         <UUIDField
+  //           value={jobId}
+  //           maxLength={24}
+  //           className="w-[90px]"
+  //           onCopy={() => toast.success("Job ID copied to clipboard")}
+  //         />
+  //       </div>
+  //     );
+  //   },
+  //   enableSorting: false,
+  // },
   {
     accessorKey: "jobName",
     header: ({ column }) => (
@@ -105,13 +106,29 @@ export const createColumns = (onDelete?: () => void, canDelete?: boolean): Colum
     ),
     cell: ({ row }) => {
       const jobName = row.getValue("jobName") as string | undefined;
-      
+
+      return <JobNameWithPopover jobName={jobName} />;
+    },
+  },
+  {
+    accessorKey: "jobType",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Type" />
+    ),
+    cell: ({ row }) => {
+      const jobType = row.getValue("jobType") as string | undefined;
+      const isK6 = jobType === "k6";
+      const LabelIcon = isK6 ? K6Logo : PlaywrightLogo;
+      const label = isK6 ? "k6" : "Playwright";
+
       return (
-
-          <JobNameWithPopover jobName={jobName} />
-
+        <div className="flex items-center gap-2 w-[100px]">
+          <LabelIcon width={20} height={20} />
+          <span>{label}</span>
+        </div>
       );
     },
+    enableSorting: true,
   },
   {
     accessorKey: "trigger",
@@ -147,22 +164,27 @@ export const createColumns = (onDelete?: () => void, canDelete?: boolean): Colum
     ),
     cell: ({ row }) => {
       const status = row.getValue("status") as string;
-      
+
       // Map the status to a valid status for display
       const mappedStatus = mapDbStatusToDisplayStatus(status);
-      const statusInfo = runStatuses.find(s => s.value === mappedStatus);
-      
+      const statusInfo = runStatuses.find((s) => s.value === mappedStatus);
+
       return (
         <div className="flex items-center w-[100px]">
           {statusInfo ? (
             <div className="flex items-center">
               {statusInfo.icon && (
-                <statusInfo.icon className={`h-4 w-4 mr-2 ${statusInfo.color}`} />
+                <statusInfo.icon
+                  className={`h-4 w-4 mr-2 ${statusInfo.color}`}
+                />
               )}
               <span>{statusInfo.label}</span>
             </div>
           ) : (
-            <JobStatus jobId={row.getValue("jobId")} initialStatus={mappedStatus} />
+            <JobStatus
+              runId={row.getValue("id")}
+              initialStatus={mappedStatus}
+            />
           )}
         </div>
       );
@@ -179,7 +201,7 @@ export const createColumns = (onDelete?: () => void, canDelete?: boolean): Colum
     ),
     cell: ({ row }) => {
       const duration = row.getValue("duration") as string | number | undefined;
-      
+
       if (!duration) {
         return (
           <div className="flex items-center gap-1 w-[100px]">
@@ -188,34 +210,36 @@ export const createColumns = (onDelete?: () => void, canDelete?: boolean): Colum
           </div>
         );
       }
-      
+
       // Format the duration when it's a number (seconds)
       let formattedDuration = duration;
-      
-      if (typeof duration === 'string') {
+
+      if (typeof duration === "string") {
         // Check if the string contains only a number (legacy format)
         const numericDuration = parseInt(duration, 10);
         if (!isNaN(numericDuration)) {
           const seconds = numericDuration;
           const minutes = Math.floor(seconds / 60);
           const remainingSeconds = seconds % 60;
-          
-          formattedDuration = minutes > 0 
-            ? `${minutes}m ${remainingSeconds}s` 
-            : `${remainingSeconds}s`;
+
+          formattedDuration =
+            minutes > 0
+              ? `${minutes}m ${remainingSeconds}s`
+              : `${remainingSeconds}s`;
         }
         // If the duration is already formatted (like "3s" or "2m 5s"), use it as is
-      } else if (typeof duration === 'number') {
+      } else if (typeof duration === "number") {
         // Convert seconds to a readable format (not milliseconds)
         const seconds = duration;
         const minutes = Math.floor(seconds / 60);
         const remainingSeconds = seconds % 60;
-        
-        formattedDuration = minutes > 0 
-          ? `${minutes}m ${remainingSeconds}s` 
-          : `${remainingSeconds}s`;
+
+        formattedDuration =
+          minutes > 0
+            ? `${minutes}m ${remainingSeconds}s`
+            : `${remainingSeconds}s`;
       }
-      
+
       return (
         <div className="flex items-center gap-1 w-[100px]">
           <ClockIcon className="h-4 w-4 text-muted-foreground mr-1" />
@@ -224,7 +248,7 @@ export const createColumns = (onDelete?: () => void, canDelete?: boolean): Colum
       );
     },
   },
- 
+
   {
     accessorKey: "startedAt",
     header: ({ column }) => (
@@ -245,10 +269,16 @@ export const createColumns = (onDelete?: () => void, canDelete?: boolean): Colum
       );
     },
   },
-  
+
   {
     id: "actions",
-    cell: ({ row }) => <DataTableRowActions row={row} onDelete={onDelete} canDelete={canDelete} />,
+    cell: ({ row }) => (
+      <DataTableRowActions
+        row={row}
+        onDelete={onDelete}
+        canDelete={canDelete}
+      />
+    ),
   },
 ];
 
@@ -258,20 +288,20 @@ export const columns = createColumns();
 // Helper to validate status is one of the allowed values
 function mapDbStatusToDisplayStatus(dbStatus: string): string {
   // Convert the dbStatus to lowercase for case-insensitive comparison
-  const status = typeof dbStatus === 'string' ? dbStatus.toLowerCase() : '';
-  
+  const status = typeof dbStatus === "string" ? dbStatus.toLowerCase() : "";
+
   // Only return one of the allowed status values
   switch (status) {
-    case 'running':
-      return 'running';
-    case 'passed':
-      return 'passed';
-    case 'failed':
-      return 'failed';
-    case 'error':
-      return 'error';
+    case "running":
+      return "running";
+    case "passed":
+      return "passed";
+    case "failed":
+      return "failed";
+    case "error":
+      return "error";
     default:
       console.warn(`Unknown status: ${dbStatus}, defaulting to running`);
-      return 'running';
+      return "running";
   }
 }

@@ -1,44 +1,57 @@
-import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
+import {
+  Processor,
+  WorkerHost,
+  OnWorkerEvent,
+  InjectQueue,
+} from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import {
   JOB_SCHEDULER_QUEUE,
   JOB_EXECUTION_QUEUE,
+  K6_JOB_EXECUTION_QUEUE,
+  K6_JOB_SCHEDULER_QUEUE,
   JobExecutionTask,
 } from '../constants';
 import { DbService } from '../../db/db.service';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import * as crypto from 'crypto';
 import { getNextRunDate } from '../utils/cron-utils';
 import { jobs, runs } from '../../db/schema';
 import { eq, and } from 'drizzle-orm';
+import { Queue } from 'bullmq';
 
-@Processor(JOB_SCHEDULER_QUEUE)
-export class JobSchedulerProcessor extends WorkerHost {
-  private readonly logger = new Logger(JobSchedulerProcessor.name);
+const DEFAULT_K6_LOCATION = 'us-east';
 
-  constructor(
-    private readonly dbService: DbService,
-    @InjectQueue(JOB_EXECUTION_QUEUE) private jobExecutionQueue: Queue,
+abstract class BaseJobSchedulerProcessor extends WorkerHost {
+  protected readonly logger: Logger;
+
+  protected constructor(
+    processorName: string,
+    protected readonly dbService: DbService,
+    @InjectQueue(JOB_EXECUTION_QUEUE)
+    protected readonly jobExecutionQueue: Queue,
+    @InjectQueue(K6_JOB_EXECUTION_QUEUE)
+    protected readonly k6JobExecutionQueue: Queue,
   ) {
     super();
+    this.logger = new Logger(processorName);
   }
 
-  async process(
-    job: Job<
-      {
-        jobId: string;
-        testCases: Array<{ id: string; script: string; title: string }>;
-        retryLimit?: number;
-        variables: Record<string, string>;
-        secrets: Record<string, string>;
-        projectId: string;
-        organizationId: string;
-      },
-      any,
-      string
-    >,
+  async handleProcess(
+    job: Job<{
+      jobId: string;
+      testCases: Array<{
+        id: string;
+        script: string;
+        title: string;
+        type?: string;
+      }>;
+      retryLimit?: number;
+      variables: Record<string, string>;
+      secrets: Record<string, string>;
+      projectId: string;
+      organizationId: string;
+    }>,
   ): Promise<{ success: boolean }> {
     this.logger.log(
       `Processing scheduled job trigger: ${job.name} (${job.id})`,
@@ -47,10 +60,15 @@ export class JobSchedulerProcessor extends WorkerHost {
     return { success: true };
   }
 
-  private async handleScheduledJobTrigger(
+  protected async handleScheduledJobTrigger(
     job: Job<{
       jobId: string;
-      testCases: Array<{ id: string; script: string; title: string }>;
+      testCases: Array<{
+        id: string;
+        script: string;
+        title: string;
+        type?: string;
+      }>;
       retryLimit?: number;
       variables: Record<string, string>;
       secrets: Record<string, string>;
@@ -99,7 +117,12 @@ export class JobSchedulerProcessor extends WorkerHost {
         name: jobRecord.name,
         projectId: jobRecord.projectId,
         organizationId: jobRecord.organizationId,
+        jobType: jobRecord.jobType,
       });
+
+      const jobType = jobRecord.jobType ?? 'playwright';
+      const isK6Job = jobType === 'k6';
+      const resolvedLocation = isK6Job ? DEFAULT_K6_LOCATION : null;
 
       const runId = crypto.randomUUID();
 
@@ -111,8 +134,14 @@ export class JobSchedulerProcessor extends WorkerHost {
         jobId: jobId,
         status: 'running',
         startedAt: new Date(),
-        trigger: 'schedule', // Set trigger to 'schedule'
-        projectId: projectId, // Add projectId for proper filtering
+        trigger: 'schedule',
+        projectId: projectId,
+        location: resolvedLocation,
+        metadata: {
+          jobType,
+          executionEngine: isK6Job ? 'k6' : 'playwright',
+          ...(isK6Job ? { location: resolvedLocation } : {}),
+        },
       });
 
       this.logger.log(`Created run record ${runId} for scheduled job ${jobId}`);
@@ -145,17 +174,21 @@ export class JobSchedulerProcessor extends WorkerHost {
         .set(updatePayload)
         .where(eq(jobs.id, jobId));
 
-      // Use pre-resolved variables and test scripts from app side
-      // All scheduled jobs should have variables resolved on app side for consistency
       this.logger.log(
         `[${jobId}/${runId}] Using pre-resolved variables: ${Object.keys(data.variables).length} variables, ${Object.keys(data.secrets).length} secrets`,
       );
 
       const processedTestScripts = data.testCases.map(
-        (test: { id: string; script: string; title: string }) => ({
+        (test: {
+          id: string;
+          script: string;
+          title: string;
+          type?: string;
+        }) => ({
           id: test.id,
-          script: test.script, // Script is already decoded and has variables resolved
+          script: test.script,
           name: test.title,
+          type: test.type,
         }),
       );
 
@@ -164,7 +197,6 @@ export class JobSchedulerProcessor extends WorkerHost {
         secrets: data.secrets,
       };
 
-      // Use pre-resolved organization info
       const organizationId = data.organizationId;
 
       const task: JobExecutionTask = {
@@ -176,6 +208,7 @@ export class JobSchedulerProcessor extends WorkerHost {
         projectId: projectId,
         variables: variableResolution.variables,
         secrets: variableResolution.secrets,
+        jobType: jobType,
       };
 
       const jobOptions = {
@@ -189,10 +222,68 @@ export class JobSchedulerProcessor extends WorkerHost {
         removeOnFail: false,
       };
 
-      await this.jobExecutionQueue.add(runId, task, jobOptions);
-      this.logger.log(
-        `Created execution task for scheduled job ${jobId}, run ${runId}`,
-      );
+      if (isK6Job) {
+        const primaryScript = processedTestScripts[0]?.script ?? '';
+        const primaryTestId = processedTestScripts[0]?.id;
+        const primaryType = processedTestScripts[0]?.type;
+
+        if (!primaryTestId || !primaryScript) {
+          this.logger.error(
+            `[${jobId}/${runId}] Unable to prepare k6 script for scheduled job execution`,
+          );
+          await this.dbService.db
+            .update(runs)
+            .set({
+              status: 'failed',
+              completedAt: new Date(),
+              errorDetails: 'Unable to prepare k6 script for execution',
+            })
+            .where(eq(runs.id, runId));
+          return;
+        }
+
+        if (primaryType && primaryType !== 'performance') {
+          this.logger.error(
+            `[${jobId}/${runId}] Scheduled k6 job references non-performance test ${primaryTestId}`,
+          );
+          await this.dbService.db
+            .update(runs)
+            .set({
+              status: 'failed',
+              completedAt: new Date(),
+              errorDetails: 'k6 jobs require performance tests',
+            })
+            .where(eq(runs.id, runId));
+          return;
+        }
+
+        await this.k6JobExecutionQueue.add(
+          'k6-job-execution',
+          {
+            runId,
+            jobId,
+            testId: primaryTestId,
+            script: primaryScript,
+            tests: processedTestScripts.map((script) => ({
+              id: script.id,
+              script: script.script,
+            })),
+            organizationId,
+            projectId,
+            location: resolvedLocation ?? DEFAULT_K6_LOCATION,
+          },
+          jobOptions,
+        );
+
+        this.logger.log(
+          `Enqueued k6 execution task for scheduled job ${jobId}, run ${runId}`,
+        );
+      } else {
+        await this.jobExecutionQueue.add(runId, task, jobOptions);
+        this.logger.log(
+          `Created execution task for scheduled job ${jobId}, run ${runId}`,
+        );
+      }
     } catch (error) {
       this.logger.error(
         `Failed to process scheduled job trigger for job ${jobId}:`,
@@ -202,7 +293,7 @@ export class JobSchedulerProcessor extends WorkerHost {
     }
   }
 
-  private async handleError(jobId: string | undefined, error: unknown) {
+  protected async handleError(jobId: string | undefined, error: unknown) {
     if (!jobId) {
       this.logger.error('Cannot handle error for undefined jobId:', error);
       return;
@@ -231,6 +322,26 @@ export class JobSchedulerProcessor extends WorkerHost {
       );
     }
   }
+}
+
+@Processor(JOB_SCHEDULER_QUEUE)
+export class PlaywrightJobSchedulerProcessor extends BaseJobSchedulerProcessor {
+  constructor(
+    dbService: DbService,
+    @InjectQueue(JOB_EXECUTION_QUEUE) jobExecutionQueue: Queue,
+    @InjectQueue(K6_JOB_EXECUTION_QUEUE) k6JobExecutionQueue: Queue,
+  ) {
+    super(
+      PlaywrightJobSchedulerProcessor.name,
+      dbService,
+      jobExecutionQueue,
+      k6JobExecutionQueue,
+    );
+  }
+
+  async process(job: Job<any>): Promise<{ success: boolean }> {
+    return this.handleProcess(job);
+  }
 
   @OnWorkerEvent('completed')
   onCompleted(job: Job) {
@@ -240,5 +351,35 @@ export class JobSchedulerProcessor extends WorkerHost {
   @OnWorkerEvent('failed')
   onFailed(job: Job, error: unknown) {
     this.logger.error(`Scheduled job failed: ${job?.name}`, error);
+  }
+}
+
+@Processor(K6_JOB_SCHEDULER_QUEUE)
+export class K6JobSchedulerProcessor extends BaseJobSchedulerProcessor {
+  constructor(
+    dbService: DbService,
+    @InjectQueue(JOB_EXECUTION_QUEUE) jobExecutionQueue: Queue,
+    @InjectQueue(K6_JOB_EXECUTION_QUEUE) k6JobExecutionQueue: Queue,
+  ) {
+    super(
+      K6JobSchedulerProcessor.name,
+      dbService,
+      jobExecutionQueue,
+      k6JobExecutionQueue,
+    );
+  }
+
+  async process(job: Job<any>): Promise<{ success: boolean }> {
+    return this.handleProcess(job);
+  }
+
+  @OnWorkerEvent('completed')
+  onCompleted(job: Job) {
+    this.logger.log(`Scheduled k6 job completed: ${job.name}`);
+  }
+
+  @OnWorkerEvent('failed')
+  onFailed(job: Job, error: unknown) {
+    this.logger.error(`Scheduled k6 job failed: ${job?.name}`, error);
   }
 }

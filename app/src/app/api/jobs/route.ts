@@ -11,6 +11,7 @@ import {
   TestRunStatus,
   jobNotificationSettings,
   JobTrigger,
+  JobType,
 } from "@/db/schema";
 import { desc, eq, inArray, and } from "drizzle-orm";
 import { hasPermission } from '@/lib/rbac/middleware';
@@ -77,6 +78,7 @@ interface JobData {
   retryCount: number;
   config: Record<string, unknown>;
   tests: Test[];
+  jobType?: JobType;
   alertConfig?: {
     enabled: boolean;
     notificationProviders: string[];
@@ -136,6 +138,7 @@ export async function GET() {
         createdByUserId: jobs.createdByUserId,
         lastRunAt: jobs.lastRunAt,
         nextRunAt: jobs.nextRunAt,
+        jobType: jobs.jobType,
       })
       .from(jobs)
       .where(and(
@@ -303,6 +306,7 @@ export async function POST(request: NextRequest) {
       organizationId: organizationId,
       projectId: targetProjectId,
       createdByUserId: userId, // Use authenticated user ID
+      jobType: jobData.jobType === "k6" ? "k6" : "playwright",
     }).returning();
 
     // Validate alert configuration if enabled
@@ -368,6 +372,7 @@ export async function POST(request: NextRequest) {
         name: jobData.name,
         description: jobData.description || "",
         cronSchedule: jobData.cronSchedule,
+        jobType: jobData.jobType === "k6" ? "k6" : "playwright",
       },
     });
   } catch (error) {
