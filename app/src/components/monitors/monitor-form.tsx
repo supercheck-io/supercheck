@@ -1082,14 +1082,14 @@ export function MonitorForm({
         <CardContent className="space-y-4">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              {/* Monitor Name and Check Interval - 50/50 layout */}
+              {/* Monitor Name and Check Interval - aligned on same line */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Left column - Monitor Name */}
                 <FormField
                   control={form.control}
                   name="name"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className="space-y-2">
                       <FormLabel>Monitor Name</FormLabel>
                       <FormControl>
                         <Input placeholder="My Website" {...field} />
@@ -1111,8 +1111,8 @@ export function MonitorForm({
                         : standardCheckIntervalOptions;
 
                     return (
-                      <FormItem>
-                        <div className="flex items-center gap-2">
+                      <FormItem className="space-y-2">
+                        <div className="flex items-center gap-2 mb-0">
                           <FormLabel>Check Interval</FormLabel>
                           <Popover>
                             <PopoverTrigger asChild>

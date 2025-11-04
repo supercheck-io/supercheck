@@ -1,10 +1,18 @@
-import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { AlertCircle, Loader2Icon, FileText, Maximize2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { PlaywrightLogo } from "../logo/playwright-logo";
 import { TimeoutErrorPage } from "./timeout-error-page";
 import { TimeoutErrorInfo } from "@/lib/timeout-utils";
+import { useTheme } from "next-themes";
 
 interface ReportViewerProps {
   reportUrl: string | null;
@@ -37,6 +45,8 @@ export function ReportViewer({
   fullscreenIframeDecorators,
   fullscreenHeader,
 }: ReportViewerProps) {
+  const { resolvedTheme } = useTheme();
+  const isDarkMode = resolvedTheme === "dark";
   const [isReportLoading, setIsReportLoading] = useState(!!reportUrl);
   const [reportError, setReportError] = useState<string | null>(null);
   const [iframeError, setIframeError] = useState(false);
@@ -151,7 +161,10 @@ export function ReportViewer({
   };
 
   const applyDecorators = useCallback(
-    (iframe: HTMLIFrameElement | null, decorators: Array<(iframe: HTMLIFrameElement) => void>) => {
+    (
+      iframe: HTMLIFrameElement | null,
+      decorators: Array<(iframe: HTMLIFrameElement) => void>
+    ) => {
       if (!iframe) {
         return;
       }
@@ -217,7 +230,10 @@ export function ReportViewer({
     let attempts = 0;
     const run = () => {
       attempts += 1;
-      applyDecorators(fullscreenIframeRef.current, resolvedFullscreenDecorators);
+      applyDecorators(
+        fullscreenIframeRef.current,
+        resolvedFullscreenDecorators
+      );
       if (attempts >= 12) {
         clearInterval(interval);
       }
@@ -383,17 +399,21 @@ export function ReportViewer({
       )}
 
       <div className="flex flex-col h-full w-full">
-        {!isRunning && currentReportUrl && !isReportLoading && !iframeError && !hideFullscreenButton && (
-          <div className="absolute top-2 right-2 z-10">
-            <Button
-              size="sm"
-              className="cursor-pointer flex items-center gap-1 bg-secondary hover:bg-secondary/90"
-              onClick={() => setShowFullscreen(true)}
-            >
-              <Maximize2 className="h-4 w-4 text-secondary-foreground" />
-            </Button>
-          </div>
-        )}
+        {!isRunning &&
+          currentReportUrl &&
+          !isReportLoading &&
+          !iframeError &&
+          !hideFullscreenButton && (
+            <div className="absolute top-2 right-2 z-10">
+              <Button
+                size="sm"
+                className="cursor-pointer flex items-center gap-1 bg-secondary hover:bg-secondary/90"
+                onClick={() => setShowFullscreen(true)}
+              >
+                <Maximize2 className="h-4 w-4 text-secondary-foreground" />
+              </Button>
+            </div>
+          )}
 
         {!isRunning && currentReportUrl && (
           <iframe
@@ -407,6 +427,9 @@ export function ReportViewer({
             style={{
               visibility: isReportLoading ? "hidden" : "visible",
               transition: "opacity 0.3s ease-in-out",
+              filter: isDarkMode
+                ? "brightness(0.90) invert(1) hue-rotate(180deg)"
+                : "none",
             }}
             title="Report"
             onLoad={(e) => {
@@ -562,6 +585,11 @@ export function ReportViewer({
                 className="w-full h-full border-0"
                 sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"
                 title="Fullscreen Report"
+                style={{
+                  filter: isDarkMode
+                    ? "brightness(0.90) invert(1) hue-rotate(180deg)"
+                    : "none",
+                }}
               />
             </div>
           </div>
