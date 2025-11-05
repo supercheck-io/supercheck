@@ -15,7 +15,7 @@ import { TestForm } from "./test-form";
 import { LoadingOverlay } from "./loading-overlay";
 import { ValidationError } from "./validation-error";
 import { TestPriority, TestType } from "@/db/schema";
-import { Loader2Icon, ZapIcon, Text } from "lucide-react";
+import { Loader2Icon, ZapIcon, Text, FileCode } from "lucide-react";
 import * as z from "zod";
 import type { editor } from "monaco-editor";
 import type { ScriptType } from "@/lib/script-service";
@@ -34,6 +34,7 @@ import {
   LocationSelectionDialog,
   PerformanceLocation,
 } from "./location-selection-dialog";
+import { TemplateDialog } from "./template-dialog";
 
 const VALID_TEST_TYPES: TestType[] = [
   "browser",
@@ -133,6 +134,7 @@ const Playground: React.FC<PlaygroundProps> = ({
       initialPerformanceLocation ?? "us-east"
     );
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   // Only set testId from initialTestId if we're on a specific test page
   // Always ensure testId is null when on the main playground page
   const [testId, setTestId] = useState<string | null>(initialTestId || null);
@@ -968,7 +970,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                   <div className="flex items-center gap-8">
                     {/* Playground */}
                     <Tabs value={activeTab} onValueChange={setActiveTab}>
-                      <TabsList className="grid w-[400px] grid-cols-2">
+                      <TabsList className="grid w-[500px] grid-cols-3">
                         <TabsTrigger
                           value="editor"
                           className="flex items-center justify-center gap-2"
@@ -989,6 +991,17 @@ const Playground: React.FC<PlaygroundProps> = ({
                             ></path>
                           </svg>
                           <span>Editor</span>
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="templates"
+                          className="flex items-center justify-center gap-2"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setTemplateDialogOpen(true);
+                          }}
+                        >
+                          <FileCode className="h-5 w-5 flex-shrink-0" />
+                          <span>Templates</span>
                         </TabsTrigger>
                         <TabsTrigger
                           value="report"
@@ -1208,6 +1221,23 @@ const Playground: React.FC<PlaygroundProps> = ({
         }}
         onSelect={handleLocationSelect}
         defaultLocation={performanceLocation}
+      />
+
+      <TemplateDialog
+        open={templateDialogOpen}
+        onOpenChange={setTemplateDialogOpen}
+        testType={testCase.type}
+        onApply={(code) => {
+          setEditorContent(code);
+          // Clear validation and test execution state when new template is applied
+          if (hasValidated) {
+            resetValidationState();
+          }
+          if (testExecutionStatus !== "none") {
+            resetTestExecutionState();
+          }
+          toast.success("Template applied successfully");
+        }}
       />
 
       {/* AI Diff Viewer Modal */}
