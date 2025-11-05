@@ -15,7 +15,7 @@ import { TestForm } from "./test-form";
 import { LoadingOverlay } from "./loading-overlay";
 import { ValidationError } from "./validation-error";
 import { TestPriority, TestType } from "@/db/schema";
-import { Loader2Icon, ZapIcon, Text, LayoutTemplate } from "lucide-react";
+import { Loader2Icon, ZapIcon, Text, SquareCode } from "lucide-react";
 import * as z from "zod";
 import type { editor } from "monaco-editor";
 import type { ScriptType } from "@/lib/script-service";
@@ -1019,7 +1019,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                       size="sm"
                       className="gap-2"
                     >
-                      <LayoutTemplate className="h-4 w-4" />
+                      <SquareCode className="h-4 w-4" />
                       <span>Templates</span>
                     </Button>
 
