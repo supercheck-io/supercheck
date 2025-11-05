@@ -293,12 +293,12 @@ test('form interaction test', async ({ page }) => {
 });`,
   },
   {
-    id: "pw-api-test",
-    name: "API Test",
-    description: "Test REST API endpoints",
+    id: "pw-api-get",
+    name: "API GET Request",
+    description: "Test GET endpoint with assertions",
     category: "API Testing",
     testType: "api",
-    tags: ["playwright", "api", "rest"],
+    tags: ["playwright", "api", "get"],
     code: `import { test, expect } from '@playwright/test';
 
 test('API GET request', async ({ request }) => {
@@ -311,7 +311,17 @@ test('API GET request', async ({ request }) => {
   expect(data).toHaveProperty('id', 1);
   expect(data).toHaveProperty('title');
   expect(data).toHaveProperty('body');
-});
+  expect(data).toHaveProperty('userId');
+});`,
+  },
+  {
+    id: "pw-api-post",
+    name: "API POST Request",
+    description: "Test POST endpoint with data",
+    category: "API Testing",
+    testType: "api",
+    tags: ["playwright", "api", "post"],
+    code: `import { test, expect } from '@playwright/test';
 
 test('API POST request', async ({ request }) => {
   const response = await request.post('https://jsonplaceholder.typicode.com/posts', {
@@ -328,6 +338,107 @@ test('API POST request', async ({ request }) => {
   const data = await response.json();
   expect(data).toHaveProperty('id');
   expect(data.title).toBe('Test Post');
+  expect(data.body).toBe('This is a test post');
+});`,
+  },
+  {
+    id: "pw-api-put",
+    name: "API PUT Request",
+    description: "Test PUT endpoint for updates",
+    category: "API Testing",
+    testType: "api",
+    tags: ["playwright", "api", "put"],
+    code: `import { test, expect } from '@playwright/test';
+
+test('API PUT request', async ({ request }) => {
+  const response = await request.put('https://jsonplaceholder.typicode.com/posts/1', {
+    data: {
+      id: 1,
+      title: 'Updated Title',
+      body: 'Updated body content',
+      userId: 1,
+    },
+  });
+
+  expect(response.ok()).toBeTruthy();
+  expect(response.status()).toBe(200);
+
+  const data = await response.json();
+  expect(data.title).toBe('Updated Title');
+  expect(data.body).toBe('Updated body content');
+});`,
+  },
+  {
+    id: "pw-api-delete",
+    name: "API DELETE Request",
+    description: "Test DELETE endpoint",
+    category: "API Testing",
+    testType: "api",
+    tags: ["playwright", "api", "delete"],
+    code: `import { test, expect } from '@playwright/test';
+
+test('API DELETE request', async ({ request }) => {
+  const response = await request.delete('https://jsonplaceholder.typicode.com/posts/1');
+
+  expect(response.ok()).toBeTruthy();
+  expect(response.status()).toBe(200);
+});`,
+  },
+  {
+    id: "pw-api-auth",
+    name: "API Authentication",
+    description: "Test API with authentication headers",
+    category: "API Testing",
+    testType: "api",
+    tags: ["playwright", "api", "auth"],
+    code: `import { test, expect } from '@playwright/test';
+
+test('API request with authentication', async ({ request }) => {
+  const response = await request.get('https://api.example.com/user/profile', {
+    headers: {
+      'Authorization': 'Bearer YOUR_TOKEN_HERE',
+      'Content-Type': 'application/json',
+    },
+  });
+
+  expect(response.ok()).toBeTruthy();
+  expect(response.status()).toBe(200);
+
+  const data = await response.json();
+  expect(data).toHaveProperty('email');
+  expect(data).toHaveProperty('name');
+});`,
+  },
+  {
+    id: "pw-api-validation",
+    name: "API Response Validation",
+    description: "Comprehensive API response validation",
+    category: "API Testing",
+    testType: "api",
+    tags: ["playwright", "api", "validation"],
+    code: `import { test, expect } from '@playwright/test';
+
+test('comprehensive API validation', async ({ request }) => {
+  const response = await request.get('https://jsonplaceholder.typicode.com/users/1');
+
+  // Status validation
+  expect(response.ok()).toBeTruthy();
+  expect(response.status()).toBe(200);
+
+  // Headers validation
+  expect(response.headers()['content-type']).toContain('application/json');
+
+  // Response body validation
+  const data = await response.json();
+  expect(data).toHaveProperty('id', 1);
+  expect(data).toHaveProperty('name');
+  expect(data).toHaveProperty('email');
+  expect(data.email).toMatch(/^[^\s@]+@[^\s@]+\.[^\s@]+$/);
+
+  // Nested object validation
+  expect(data).toHaveProperty('address');
+  expect(data.address).toHaveProperty('city');
+  expect(data.address).toHaveProperty('zipcode');
 });`,
   },
   {
@@ -360,12 +471,12 @@ test('user login test', async ({ page }) => {
 });`,
   },
   {
-    id: "pw-database-test",
-    name: "Database Query Test",
-    description: "Test database operations",
+    id: "pw-database-select",
+    name: "Database SELECT Query",
+    description: "Test database SELECT operations",
     category: "Database Testing",
     testType: "database",
-    tags: ["playwright", "database", "sql"],
+    tags: ["playwright", "database", "select"],
     code: `import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
@@ -377,27 +488,180 @@ const pool = new Pool({
   password: 'testpass',
 });
 
-test('database query test', async () => {
+test('database SELECT query', async () => {
   // Test SELECT query
   const result = await pool.query('SELECT * FROM users WHERE id = $1', [1]);
 
   expect(result.rows).toHaveLength(1);
+  expect(result.rows[0]).toHaveProperty('id', 1);
   expect(result.rows[0]).toHaveProperty('email');
+  expect(result.rows[0]).toHaveProperty('name');
+});
 
+test.afterAll(async () => {
+  await pool.end();
+});`,
+  },
+  {
+    id: "pw-database-insert",
+    name: "Database INSERT Operation",
+    description: "Test database INSERT operations",
+    category: "Database Testing",
+    testType: "database",
+    tags: ["playwright", "database", "insert"],
+    code: `import { test, expect } from '@playwright/test';
+import { Pool } from 'pg';
+
+const pool = new Pool({
+  host: 'localhost',
+  port: 5432,
+  database: 'testdb',
+  user: 'testuser',
+  password: 'testpass',
+});
+
+test('database INSERT operation', async () => {
   // Test INSERT
-  await pool.query(
-    'INSERT INTO users (name, email) VALUES ($1, $2)',
+  const result = await pool.query(
+    'INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *',
     ['Test User', 'test@example.com']
   );
 
-  // Verify insert
-  const verifyResult = await pool.query(
-    'SELECT * FROM users WHERE email = $1',
-    ['test@example.com']
+  expect(result.rows).toHaveLength(1);
+  expect(result.rows[0].name).toBe('Test User');
+  expect(result.rows[0].email).toBe('test@example.com');
+  expect(result.rows[0]).toHaveProperty('id');
+});
+
+test.afterAll(async () => {
+  await pool.end();
+});`,
+  },
+  {
+    id: "pw-database-update",
+    name: "Database UPDATE Operation",
+    description: "Test database UPDATE operations",
+    category: "Database Testing",
+    testType: "database",
+    tags: ["playwright", "database", "update"],
+    code: `import { test, expect } from '@playwright/test';
+import { Pool } from 'pg';
+
+const pool = new Pool({
+  host: 'localhost',
+  port: 5432,
+  database: 'testdb',
+  user: 'testuser',
+  password: 'testpass',
+});
+
+test('database UPDATE operation', async () => {
+  // Test UPDATE
+  const result = await pool.query(
+    'UPDATE users SET name = $1 WHERE id = $2 RETURNING *',
+    ['Updated Name', 1]
   );
 
-  expect(verifyResult.rows).toHaveLength(1);
-  expect(verifyResult.rows[0].name).toBe('Test User');
+  expect(result.rows).toHaveLength(1);
+  expect(result.rows[0].id).toBe(1);
+  expect(result.rows[0].name).toBe('Updated Name');
+});
+
+test.afterAll(async () => {
+  await pool.end();
+});`,
+  },
+  {
+    id: "pw-database-delete",
+    name: "Database DELETE Operation",
+    description: "Test database DELETE operations",
+    category: "Database Testing",
+    testType: "database",
+    tags: ["playwright", "database", "delete"],
+    code: `import { test, expect } from '@playwright/test';
+import { Pool } from 'pg';
+
+const pool = new Pool({
+  host: 'localhost',
+  port: 5432,
+  database: 'testdb',
+  user: 'testuser',
+  password: 'testpass',
+});
+
+test('database DELETE operation', async () => {
+  // Test DELETE
+  const result = await pool.query(
+    'DELETE FROM users WHERE id = $1 RETURNING *',
+    [1]
+  );
+
+  expect(result.rows).toHaveLength(1);
+  expect(result.rows[0].id).toBe(1);
+
+  // Verify deletion
+  const verifyResult = await pool.query(
+    'SELECT * FROM users WHERE id = $1',
+    [1]
+  );
+
+  expect(verifyResult.rows).toHaveLength(0);
+});
+
+test.afterAll(async () => {
+  await pool.end();
+});`,
+  },
+  {
+    id: "pw-database-transaction",
+    name: "Database Transaction",
+    description: "Test database transactions with rollback",
+    category: "Database Testing",
+    testType: "database",
+    tags: ["playwright", "database", "transaction"],
+    code: `import { test, expect } from '@playwright/test';
+import { Pool } from 'pg';
+
+const pool = new Pool({
+  host: 'localhost',
+  port: 5432,
+  database: 'testdb',
+  user: 'testuser',
+  password: 'testpass',
+});
+
+test('database transaction with rollback', async () => {
+  const client = await pool.connect();
+
+  try {
+    // Begin transaction
+    await client.query('BEGIN');
+
+    // Insert data
+    await client.query(
+      'INSERT INTO users (name, email) VALUES ($1, $2)',
+      ['Transaction User', 'transaction@example.com']
+    );
+
+    // Verify insert within transaction
+    const result = await client.query(
+      'SELECT * FROM users WHERE email = $1',
+      ['transaction@example.com']
+    );
+    expect(result.rows).toHaveLength(1);
+
+    // Rollback transaction
+    await client.query('ROLLBACK');
+
+    // Verify rollback
+    const verifyResult = await pool.query(
+      'SELECT * FROM users WHERE email = $1',
+      ['transaction@example.com']
+    );
+    expect(verifyResult.rows).toHaveLength(0);
+  } finally {
+    client.release();
+  }
 });
 
 test.afterAll(async () => {
@@ -521,8 +785,13 @@ export function getTemplatesByType(testType: TestType): CodeTemplate[] {
     return codeTemplates.filter((t) => t.testType === "performance");
   }
 
-  // For all other types, return Playwright templates
-  return codeTemplates.filter((t) => t.testType !== "performance");
+  // For custom type, return all Playwright templates
+  if (testType === "custom") {
+    return codeTemplates.filter((t) => t.testType !== "performance");
+  }
+
+  // For specific Playwright test types, return only matching templates
+  return codeTemplates.filter((t) => t.testType === testType);
 }
 
 // Helper function to get template categories by test type

@@ -15,7 +15,7 @@ import { TestForm } from "./test-form";
 import { LoadingOverlay } from "./loading-overlay";
 import { ValidationError } from "./validation-error";
 import { TestPriority, TestType } from "@/db/schema";
-import { Loader2Icon, ZapIcon, Text, FileCode } from "lucide-react";
+import { Loader2Icon, ZapIcon, Text, LayoutTemplate } from "lucide-react";
 import * as z from "zod";
 import type { editor } from "monaco-editor";
 import type { ScriptType } from "@/lib/script-service";
@@ -970,7 +970,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                   <div className="flex items-center gap-8">
                     {/* Playground */}
                     <Tabs value={activeTab} onValueChange={setActiveTab}>
-                      <TabsList className="grid w-[500px] grid-cols-3">
+                      <TabsList className="grid w-[400px] grid-cols-2">
                         <TabsTrigger
                           value="editor"
                           className="flex items-center justify-center gap-2"
@@ -993,17 +993,6 @@ const Playground: React.FC<PlaygroundProps> = ({
                           <span>Editor</span>
                         </TabsTrigger>
                         <TabsTrigger
-                          value="templates"
-                          className="flex items-center justify-center gap-2"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            setTemplateDialogOpen(true);
-                          }}
-                        >
-                          <FileCode className="h-5 w-5 flex-shrink-0" />
-                          <span>Templates</span>
-                        </TabsTrigger>
-                        <TabsTrigger
                           value="report"
                           className="flex items-center gap-2"
                         >
@@ -1023,6 +1012,17 @@ const Playground: React.FC<PlaygroundProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {/* Templates Button */}
+                    <Button
+                      onClick={() => setTemplateDialogOpen(true)}
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                    >
+                      <LayoutTemplate className="h-4 w-4" />
+                      <span>Templates</span>
+                    </Button>
+
                     {/* AI Fix Button - reserved space to prevent layout shift */}
                     <div className="min-w-[80px]">
                       <AIFixButton
