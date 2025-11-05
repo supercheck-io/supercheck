@@ -78,11 +78,15 @@ export function validateK6Script(script: string): K6ValidationResult {
     );
   }
 
-  // Error: Check for async/await in default function (k6 doesn't support it)
+  // Error: Check for async/await in default function (k6 doesn't support it UNLESS using browser module)
+  // Allow async when using k6/browser or k6/experimental/browser
   if (/export\s+default\s+async\s+function/.test(script)) {
-    errors.push(
-      'k6 does not support async/await in the default export function'
-    );
+    const hasBrowserImport = /import\s+.*\s+from\s+['"]k6\/(experimental\/)?browser['"]/.test(script);
+    if (!hasBrowserImport) {
+      errors.push(
+        'k6 does not support async/await in the default export function (unless using k6/browser or k6/experimental/browser)'
+      );
+    }
   }
 
   return {

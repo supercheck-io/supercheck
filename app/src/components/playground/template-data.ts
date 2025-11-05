@@ -22,19 +22,24 @@ export const codeTemplates: CodeTemplate[] = [
     code: `import http from 'k6/http';
 import { sleep, check } from 'k6';
 
+// Test configuration
 export const options = {
-  vus: 10,
-  duration: '30s',
+  vus: 10,         // Number of virtual users
+  duration: '30s', // Test duration
 };
 
+// Main test function - runs for each virtual user
 export default function() {
+  // Make HTTP request
   const res = http.get('https://test-api.k6.io/public/crocodiles/');
 
+  // Validate response
   check(res, {
     'status is 200': (r) => r.status === 200,
     'response time < 500ms': (r) => r.timings.duration < 500,
   });
 
+  // Think time between requests
   sleep(1);
 }`,
   },
@@ -48,6 +53,7 @@ export default function() {
     code: `import http from 'k6/http';
 import { sleep, check } from 'k6';
 
+// Test configuration with spike pattern
 export const options = {
   stages: [
     { duration: '10s', target: 100 }, // Fast ramp-up to high load
@@ -56,13 +62,17 @@ export const options = {
   ],
 };
 
+// Main test function
 export default function() {
+  // Make HTTP request
   const res = http.get('https://test-api.k6.io/public/crocodiles/');
 
+  // Validate response
   check(res, {
     'status is 200': (r) => r.status === 200,
   });
 
+  // Think time
   sleep(1);
 }`,
   },
@@ -76,6 +86,7 @@ export default function() {
     code: `import http from 'k6/http';
 import { sleep, check } from 'k6';
 
+// Test configuration with gradual load increase
 export const options = {
   stages: [
     { duration: '2m', target: 10 },   // Ramp up to 10 users
@@ -86,19 +97,24 @@ export const options = {
     { duration: '5m', target: 100 },  // Stay at 100 users
     { duration: '10m', target: 0 },   // Ramp down
   ],
+  // Performance thresholds
   thresholds: {
     http_req_duration: ['p(95)<500'], // 95% of requests should be below 500ms
     http_req_failed: ['rate<0.01'],   // Error rate should be below 1%
   },
 };
 
+// Main test function
 export default function() {
+  // Make HTTP request
   const res = http.get('https://test-api.k6.io/public/crocodiles/');
 
+  // Validate response
   check(res, {
     'status is 200': (r) => r.status === 200,
   });
 
+  // Think time
   sleep(1);
 }`,
   },
@@ -112,25 +128,31 @@ export default function() {
     code: `import http from 'k6/http';
 import { sleep, check } from 'k6';
 
+// Test configuration for endurance testing
 export const options = {
   stages: [
     { duration: '5m', target: 50 },  // Ramp up
     { duration: '2h', target: 50 },  // Stay at load for 2 hours
     { duration: '5m', target: 0 },   // Ramp down
   ],
+  // Performance thresholds
   thresholds: {
     http_req_duration: ['p(95)<500'],
     http_req_failed: ['rate<0.01'],
   },
 };
 
+// Main test function
 export default function() {
+  // Make HTTP request
   const res = http.get('https://test-api.k6.io/public/crocodiles/');
 
+  // Validate response
   check(res, {
     'status is 200': (r) => r.status === 200,
   });
 
+  // Think time
   sleep(1);
 }`,
   },
@@ -144,20 +166,24 @@ export default function() {
     code: `import http from 'k6/http';
 import { check, group } from 'k6';
 
+// Test configuration
 export const options = {
   vus: 20,
   duration: '1m',
+  // Performance thresholds
   thresholds: {
     http_req_duration: ['p(95)<300'],
     http_req_failed: ['rate<0.05'],
   },
 };
 
+// Main test function
 export default function() {
   const baseUrl = 'https://test-api.k6.io';
 
+  // Group related tests
   group('API Tests', function() {
-    // GET request
+    // GET request test
     group('GET /crocodiles', function() {
       const res = http.get(\`\${baseUrl}/public/crocodiles/\`);
       check(res, {
@@ -166,20 +192,23 @@ export default function() {
       });
     });
 
-    // POST request
+    // POST request test
     group('POST /crocodile', function() {
+      // Prepare request payload
       const payload = JSON.stringify({
         name: 'Test Croc',
         sex: 'M',
         date_of_birth: '2020-01-01',
       });
 
+      // Set request headers
       const params = {
         headers: {
           'Content-Type': 'application/json',
         },
       };
 
+      // Make POST request
       const res = http.post(\`\${baseUrl}/public/crocodiles/\`, payload, params);
       check(res, {
         'POST status is 201': (r) => r.status === 201,
@@ -198,6 +227,7 @@ export default function() {
     code: `import { browser } from 'k6/experimental/browser';
 import { check } from 'k6';
 
+// Test configuration for browser testing
 export const options = {
   scenarios: {
     ui: {
@@ -211,17 +241,22 @@ export const options = {
       },
     },
   },
+  // Performance thresholds
   thresholds: {
     checks: ['rate==1.0'],
   },
 };
 
+// Main test function - async is required for browser testing
 export default async function() {
+  // Create new browser page
   const page = browser.newPage();
 
   try {
+    // Navigate to the page
     await page.goto('https://test.k6.io/');
 
+    // Validate page loaded
     check(page, {
       'page loaded': page.locator('h1').textContent() !== '',
     });
@@ -233,6 +268,7 @@ export default async function() {
 
     console.log('Performance timing:', performanceTiming);
   } finally {
+    // Close the page
     page.close();
   }
 }`,
@@ -272,6 +308,7 @@ test('basic navigation test', async ({ page }) => {
     code: `import { test, expect } from '@playwright/test';
 
 test('form interaction test', async ({ page }) => {
+  // Navigate to form page
   await page.goto('https://example.com/form');
 
   // Fill in form fields
@@ -302,11 +339,14 @@ test('form interaction test', async ({ page }) => {
     code: `import { test, expect } from '@playwright/test';
 
 test('API GET request', async ({ request }) => {
+  // Make GET request
   const response = await request.get('https://jsonplaceholder.typicode.com/posts/1');
 
+  // Verify response status
   expect(response.ok()).toBeTruthy();
   expect(response.status()).toBe(200);
 
+  // Parse and validate response data
   const data = await response.json();
   expect(data).toHaveProperty('id', 1);
   expect(data).toHaveProperty('title');
@@ -324,6 +364,7 @@ test('API GET request', async ({ request }) => {
     code: `import { test, expect } from '@playwright/test';
 
 test('API POST request', async ({ request }) => {
+  // Make POST request with data
   const response = await request.post('https://jsonplaceholder.typicode.com/posts', {
     data: {
       title: 'Test Post',
@@ -332,9 +373,11 @@ test('API POST request', async ({ request }) => {
     },
   });
 
+  // Verify response status
   expect(response.ok()).toBeTruthy();
   expect(response.status()).toBe(201);
 
+  // Validate response data
   const data = await response.json();
   expect(data).toHaveProperty('id');
   expect(data.title).toBe('Test Post');
@@ -351,6 +394,7 @@ test('API POST request', async ({ request }) => {
     code: `import { test, expect } from '@playwright/test';
 
 test('API PUT request', async ({ request }) => {
+  // Make PUT request to update resource
   const response = await request.put('https://jsonplaceholder.typicode.com/posts/1', {
     data: {
       id: 1,
@@ -360,9 +404,11 @@ test('API PUT request', async ({ request }) => {
     },
   });
 
+  // Verify response status
   expect(response.ok()).toBeTruthy();
   expect(response.status()).toBe(200);
 
+  // Validate updated data
   const data = await response.json();
   expect(data.title).toBe('Updated Title');
   expect(data.body).toBe('Updated body content');
@@ -378,8 +424,10 @@ test('API PUT request', async ({ request }) => {
     code: `import { test, expect } from '@playwright/test';
 
 test('API DELETE request', async ({ request }) => {
+  // Make DELETE request
   const response = await request.delete('https://jsonplaceholder.typicode.com/posts/1');
 
+  // Verify response status
   expect(response.ok()).toBeTruthy();
   expect(response.status()).toBe(200);
 });`,
@@ -394,6 +442,7 @@ test('API DELETE request', async ({ request }) => {
     code: `import { test, expect } from '@playwright/test';
 
 test('API request with authentication', async ({ request }) => {
+  // Make request with authentication header
   const response = await request.get('https://api.example.com/user/profile', {
     headers: {
       'Authorization': 'Bearer YOUR_TOKEN_HERE',
@@ -401,9 +450,11 @@ test('API request with authentication', async ({ request }) => {
     },
   });
 
+  // Verify response status
   expect(response.ok()).toBeTruthy();
   expect(response.status()).toBe(200);
 
+  // Validate response data
   const data = await response.json();
   expect(data).toHaveProperty('email');
   expect(data).toHaveProperty('name');
@@ -419,6 +470,7 @@ test('API request with authentication', async ({ request }) => {
     code: `import { test, expect } from '@playwright/test';
 
 test('comprehensive API validation', async ({ request }) => {
+  // Make GET request
   const response = await request.get('https://jsonplaceholder.typicode.com/users/1');
 
   // Status validation
@@ -433,6 +485,7 @@ test('comprehensive API validation', async ({ request }) => {
   expect(data).toHaveProperty('id', 1);
   expect(data).toHaveProperty('name');
   expect(data).toHaveProperty('email');
+  // Validate email format
   expect(data.email).toMatch(/^[^\s@]+@[^\s@]+\.[^\s@]+$/);
 
   // Nested object validation
@@ -451,6 +504,7 @@ test('comprehensive API validation', async ({ request }) => {
     code: `import { test, expect } from '@playwright/test';
 
 test('user login test', async ({ page }) => {
+  // Navigate to login page
   await page.goto('https://example.com/login');
 
   // Fill in login credentials
@@ -460,7 +514,7 @@ test('user login test', async ({ page }) => {
   // Click login button
   await page.getByRole('button', { name: 'Login' }).click();
 
-  // Wait for navigation
+  // Wait for navigation to dashboard
   await page.waitForURL('**/dashboard');
 
   // Verify user is logged in
@@ -480,6 +534,7 @@ test('user login test', async ({ page }) => {
     code: `import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
+// Database connection configuration
 const pool = new Pool({
   host: 'localhost',
   port: 5432,
@@ -489,15 +544,17 @@ const pool = new Pool({
 });
 
 test('database SELECT query', async () => {
-  // Test SELECT query
+  // Execute SELECT query
   const result = await pool.query('SELECT * FROM users WHERE id = $1', [1]);
 
+  // Verify query results
   expect(result.rows).toHaveLength(1);
   expect(result.rows[0]).toHaveProperty('id', 1);
   expect(result.rows[0]).toHaveProperty('email');
   expect(result.rows[0]).toHaveProperty('name');
 });
 
+// Cleanup after all tests
 test.afterAll(async () => {
   await pool.end();
 });`,
@@ -512,6 +569,7 @@ test.afterAll(async () => {
     code: `import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
+// Database connection configuration
 const pool = new Pool({
   host: 'localhost',
   port: 5432,
@@ -521,18 +579,20 @@ const pool = new Pool({
 });
 
 test('database INSERT operation', async () => {
-  // Test INSERT
+  // Execute INSERT with RETURNING clause
   const result = await pool.query(
     'INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *',
     ['Test User', 'test@example.com']
   );
 
+  // Verify insert succeeded
   expect(result.rows).toHaveLength(1);
   expect(result.rows[0].name).toBe('Test User');
   expect(result.rows[0].email).toBe('test@example.com');
   expect(result.rows[0]).toHaveProperty('id');
 });
 
+// Cleanup after all tests
 test.afterAll(async () => {
   await pool.end();
 });`,
@@ -547,6 +607,7 @@ test.afterAll(async () => {
     code: `import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
+// Database connection configuration
 const pool = new Pool({
   host: 'localhost',
   port: 5432,
@@ -556,17 +617,19 @@ const pool = new Pool({
 });
 
 test('database UPDATE operation', async () => {
-  // Test UPDATE
+  // Execute UPDATE with RETURNING clause
   const result = await pool.query(
     'UPDATE users SET name = $1 WHERE id = $2 RETURNING *',
     ['Updated Name', 1]
   );
 
+  // Verify update succeeded
   expect(result.rows).toHaveLength(1);
   expect(result.rows[0].id).toBe(1);
   expect(result.rows[0].name).toBe('Updated Name');
 });
 
+// Cleanup after all tests
 test.afterAll(async () => {
   await pool.end();
 });`,
@@ -581,6 +644,7 @@ test.afterAll(async () => {
     code: `import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
+// Database connection configuration
 const pool = new Pool({
   host: 'localhost',
   port: 5432,
@@ -590,16 +654,17 @@ const pool = new Pool({
 });
 
 test('database DELETE operation', async () => {
-  // Test DELETE
+  // Execute DELETE with RETURNING clause
   const result = await pool.query(
     'DELETE FROM users WHERE id = $1 RETURNING *',
     [1]
   );
 
+  // Verify deletion succeeded
   expect(result.rows).toHaveLength(1);
   expect(result.rows[0].id).toBe(1);
 
-  // Verify deletion
+  // Verify record no longer exists
   const verifyResult = await pool.query(
     'SELECT * FROM users WHERE id = $1',
     [1]
@@ -608,6 +673,7 @@ test('database DELETE operation', async () => {
   expect(verifyResult.rows).toHaveLength(0);
 });
 
+// Cleanup after all tests
 test.afterAll(async () => {
   await pool.end();
 });`,
@@ -622,6 +688,7 @@ test.afterAll(async () => {
     code: `import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
+// Database connection configuration
 const pool = new Pool({
   host: 'localhost',
   port: 5432,
@@ -631,13 +698,14 @@ const pool = new Pool({
 });
 
 test('database transaction with rollback', async () => {
+  // Get a client from the pool
   const client = await pool.connect();
 
   try {
     // Begin transaction
     await client.query('BEGIN');
 
-    // Insert data
+    // Insert data within transaction
     await client.query(
       'INSERT INTO users (name, email) VALUES ($1, $2)',
       ['Transaction User', 'transaction@example.com']
@@ -653,17 +721,19 @@ test('database transaction with rollback', async () => {
     // Rollback transaction
     await client.query('ROLLBACK');
 
-    // Verify rollback
+    // Verify rollback - record should not exist
     const verifyResult = await pool.query(
       'SELECT * FROM users WHERE email = $1',
       ['transaction@example.com']
     );
     expect(verifyResult.rows).toHaveLength(0);
   } finally {
+    // Release client back to pool
     client.release();
   }
 });
 
+// Cleanup after all tests
 test.afterAll(async () => {
   await pool.end();
 });`,
@@ -677,11 +747,13 @@ test.afterAll(async () => {
     tags: ["playwright", "mobile", "responsive"],
     code: `import { test, expect, devices } from '@playwright/test';
 
+// Configure test to use iPhone 13 viewport
 test.use({
   ...devices['iPhone 13'],
 });
 
 test('mobile responsive test', async ({ page }) => {
+  // Navigate to the page
   await page.goto('https://example.com');
 
   // Verify mobile menu is visible
@@ -709,12 +781,13 @@ test('mobile responsive test', async ({ page }) => {
     code: `import { test, expect } from '@playwright/test';
 
 test('visual regression test', async ({ page }) => {
+  // Navigate to the page
   await page.goto('https://example.com');
 
   // Wait for page to be fully loaded
   await page.waitForLoadState('networkidle');
 
-  // Take full page screenshot
+  // Take full page screenshot and compare
   await expect(page).toHaveScreenshot('homepage.png', {
     fullPage: true,
   });
@@ -741,6 +814,7 @@ test('visual regression test', async ({ page }) => {
 import path from 'path';
 
 test('file upload test', async ({ page }) => {
+  // Navigate to upload page
   await page.goto('https://example.com/upload');
 
   // Prepare file path
@@ -770,10 +844,10 @@ test('file upload test', async ({ page }) => {
     code: `import { test, expect } from '@playwright/test';
 
 test('custom test', async ({ page }) => {
-  // Your custom test logic here
+  // Navigate to your application
   await page.goto('https://example.com');
 
-  // Add your test steps
+  // Add your custom test steps here
 
 });`,
   },
