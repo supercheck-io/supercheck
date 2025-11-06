@@ -59,9 +59,6 @@ async function processEmailTemplateJob(
           jobName: data.jobName || "Unknown Job",
           duration: data.duration || 0,
           errorMessage: data.errorMessage,
-          totalTests: data.totalTests,
-          passedTests: data.passedTests,
-          failedTests: data.failedTests,
           runId: data.runId,
           dashboardUrl: data.dashboardUrl,
         });
@@ -71,9 +68,6 @@ async function processEmailTemplateJob(
         result = await renderJobSuccessEmail({
           jobName: data.jobName || "Unknown Job",
           duration: data.duration || 0,
-          totalTests: data.totalTests,
-          passedTests: data.passedTests,
-          failedTests: data.failedTests,
           runId: data.runId,
           dashboardUrl: data.dashboardUrl,
         });
@@ -159,15 +153,12 @@ async function processEmailTemplateJob(
 
 /**
  * Render job failure email template
- * This is a specialized template for job failure notifications
+ * Generic template without test statistics (users can view full details in dashboard)
  */
 async function renderJobFailureEmail(params: {
   jobName: string;
   duration: number;
   errorMessage?: string;
-  totalTests?: number;
-  passedTests?: number;
-  failedTests?: number;
   runId?: string;
   dashboardUrl?: string;
 }): Promise<RenderedEmailResult> {
@@ -179,18 +170,6 @@ async function renderJobFailureEmail(params: {
 
   if (params.errorMessage) {
     fields.push({ title: "Error", value: params.errorMessage });
-  }
-
-  if (params.totalTests !== undefined) {
-    fields.push({ title: "Total Tests", value: params.totalTests.toString() });
-  }
-
-  if (params.passedTests !== undefined) {
-    fields.push({ title: "Passed Tests", value: params.passedTests.toString() });
-  }
-
-  if (params.failedTests !== undefined) {
-    fields.push({ title: "Failed Tests", value: params.failedTests.toString() });
   }
 
   if (params.runId) {
@@ -211,13 +190,11 @@ async function renderJobFailureEmail(params: {
 
 /**
  * Render job success email template
+ * Generic template without test statistics (users can view full details in dashboard)
  */
 async function renderJobSuccessEmail(params: {
   jobName: string;
   duration: number;
-  totalTests?: number;
-  passedTests?: number;
-  failedTests?: number;
   runId?: string;
   dashboardUrl?: string;
 }): Promise<RenderedEmailResult> {
@@ -226,18 +203,6 @@ async function renderJobSuccessEmail(params: {
     { title: "Status", value: "Success" },
     { title: "Duration", value: `${params.duration} seconds` },
   ];
-
-  if (params.totalTests !== undefined) {
-    fields.push({ title: "Total Tests", value: params.totalTests.toString() });
-  }
-
-  if (params.passedTests !== undefined) {
-    fields.push({ title: "Passed Tests", value: params.passedTests.toString() });
-  }
-
-  if (params.failedTests !== undefined && params.failedTests > 0) {
-    fields.push({ title: "Failed Tests", value: params.failedTests.toString() });
-  }
 
   if (params.runId) {
     fields.push({ title: "Run ID", value: params.runId });

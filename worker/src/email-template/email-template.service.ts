@@ -120,15 +120,12 @@ export class EmailTemplateService {
   }
 
   /**
-   * Render a job failure email template
+   * Render a job failure email template (generic, no test stats)
    */
   async renderJobFailureEmail(params: {
     jobName: string;
     duration: number;
     errorMessage?: string;
-    totalTests?: number;
-    passedTests?: number;
-    failedTests?: number;
     runId?: string;
     dashboardUrl?: string;
   }): Promise<RenderedEmail> {
@@ -136,14 +133,11 @@ export class EmailTemplateService {
   }
 
   /**
-   * Render a job success email template
+   * Render a job success email template (generic, no test stats)
    */
   async renderJobSuccessEmail(params: {
     jobName: string;
     duration: number;
-    totalTests?: number;
-    passedTests?: number;
-    failedTests?: number;
     runId?: string;
     dashboardUrl?: string;
   }): Promise<RenderedEmail> {
