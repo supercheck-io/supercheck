@@ -12,6 +12,7 @@ import {
   uuid,
   boolean,
   unique,
+  index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema, createUpdateSchema } from "drizzle-zod";
@@ -57,44 +58,78 @@ export const member = pgTable(
 /**
  * Stores pending invitations for users to join an organization.
  */
-export const invitation = pgTable("invitation", {
-  id: uuid("id")
-    .primaryKey()
-    .$defaultFn(() => sql`uuidv7()`),
-  organizationId: uuid("organization_id")
-    .notNull()
-    .references(() => organization.id, { onDelete: "cascade" }),
-  email: text("email").notNull(),
-  role: text("role"),
-  status: text("status").default("pending").notNull(),
-  expiresAt: timestamp("expires_at").notNull(),
-  inviterId: uuid("inviter_id")
-    .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
-  selectedProjects: text("selected_projects"), // JSON array of project IDs
-});
+export const invitation = pgTable(
+  "invitation",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => sql`uuidv7()`),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: text("role"),
+    status: text("status").default("pending").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    inviterId: uuid("inviter_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    selectedProjects: text("selected_projects"), // JSON array of project IDs
+  },
+  (table) => ({
+    // Index on organization_id for listing invitations
+    organizationIdIdx: index("invitation_organization_id_idx").on(
+      table.organizationId
+    ),
+    // Index on email for checking pending invitations
+    emailIdx: index("invitation_email_idx").on(table.email),
+    // Composite index on email and status for pending invitation lookups
+    emailStatusIdx: index("invitation_email_status_idx").on(
+      table.email,
+      table.status
+    ),
+    // Index on expires_at for cleanup queries
+    expiresAtIdx: index("invitation_expires_at_idx").on(table.expiresAt),
+  })
+);
 
 /**
  * Represents a project within an organization.
  */
-export const projects = pgTable("projects", {
-  id: uuid("id")
-    .primaryKey()
-    .$defaultFn(() => sql`uuidv7()`),
-  organizationId: uuid("organization_id")
-    .notNull()
-    .references(() => organization.id),
-  name: varchar("name", { length: 255 }).notNull(),
-  slug: varchar("slug", { length: 255 }).unique(),
-  description: text("description"),
-  isDefault: boolean("is_default").default(false).notNull(),
-  status: varchar("status", { length: 50 })
-    .$type<"active" | "archived" | "deleted">()
-    .notNull()
-    .default("active"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+export const projects = pgTable(
+  "projects",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => sql`uuidv7()`),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organization.id),
+    name: varchar("name", { length: 255 }).notNull(),
+    slug: varchar("slug", { length: 255 }).unique(),
+    description: text("description"),
+    isDefault: boolean("is_default").default(false).notNull(),
+    status: varchar("status", { length: 50 })
+      .$type<"active" | "archived" | "deleted">()
+      .notNull()
+      .default("active"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    // Index on organization_id for listing organization projects
+    organizationIdIdx: index("projects_organization_id_idx").on(
+      table.organizationId
+    ),
+    // Composite index on organization_id and status for filtered queries
+    orgStatusIdx: index("projects_org_status_idx").on(
+      table.organizationId,
+      table.status
+    ),
+    // Index on is_default for finding default projects
+    isDefaultIdx: index("projects_is_default_idx").on(table.isDefault),
+  })
+);
 
 /**
  * Maps users to projects, defining their roles within a project.
