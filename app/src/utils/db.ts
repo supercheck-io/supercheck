@@ -20,9 +20,11 @@ const client = postgres(connectionString, {
   max_lifetime: parseInt(process.env.DB_MAX_LIFETIME || "1800", 10), // Default: 30 minutes (in seconds)
 });
 
-// Use custom Pino logger for Drizzle queries (disabled by default, enable with LOG_DB_QUERIES=true)
+// Use custom Pino logger for Drizzle queries
+// In development: use Pino logger (controlled by LOG_DB_QUERIES env var)
+// In production: disable query logging for performance
 const isDevelopment = process.env.NODE_ENV === "development";
 export const db = drizzle(client, {
   schema,
-  logger: isDevelopment ? drizzleLogger : undefined
+  logger: isDevelopment ? drizzleLogger : false
 });
