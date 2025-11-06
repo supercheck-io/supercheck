@@ -75,7 +75,37 @@ export default function() {
     category: "Load Testing",
     testType: "performance",
     tags: ["k6", "spike", "stress"],
-    code: `import http from 'k6/http';
+    code: `/**
+ * k6 Spike Test Script
+ *
+ * This script tests system behavior under sudden traffic spikes.
+ * Spike testing validates how your system handles sudden, dramatic
+ * increases in load and how quickly it recovers when load decreases.
+ *
+ * Test Coverage:
+ * - Sudden load increase (spike) simulation
+ * - System stability under rapid load changes
+ * - Recovery time measurement
+ * - Error rate during spikes
+ * - Response time degradation
+ *
+ * Configuration:
+ * - Ramp up from 0 to 100 users in 10 seconds
+ * - Sustain 100 users for 1 minute
+ * - Rapid ramp down to 0 in 10 seconds
+ *
+ * Use Cases:
+ * - Testing system behavior during viral events
+ * - Validating auto-scaling response
+ * - Finding breaking points
+ *
+ * Target API: test-api.k6.io
+ * Documentation: https://k6.io/docs/test-types/spike-testing/
+ *
+ * @requires k6 binary
+ */
+
+import http from 'k6/http';
 import { sleep, check } from 'k6';
 
 // Test configuration with spike pattern
