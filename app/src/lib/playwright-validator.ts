@@ -1,5 +1,7 @@
 import * as acorn from "acorn";
 import * as walk from "acorn-walk";
+import type { TestType } from "@/db/schema/types";
+import { isK6Script } from "./k6-validator";
 
 // Strictly allowed modules with expanded safe libraries
 const ALLOWED_MODULES = new Set([
@@ -183,11 +185,18 @@ export interface ValidationResult {
   error?: string;
   line?: number;
   column?: number;
-  errorType?: "syntax" | "security" | "complexity" | "length" | "pattern";
+  errorType?: "syntax" | "security" | "complexity" | "length" | "pattern" | "type";
 }
 
-export class ValidationService {
-  validateCode(code: string): ValidationResult {
+interface PlaywrightValidationOptions {
+  selectedTestType?: TestType;
+}
+
+export class PlaywrightValidationService {
+  validateCode(
+    code: string,
+    options: PlaywrightValidationOptions = {}
+  ): ValidationResult {
     console.log("Validating code snippet with enhanced security checks...");
 
     // 1. Basic length and content validation
@@ -204,6 +213,29 @@ export class ValidationService {
         valid: false,
         error: `Script too long (${code.length} chars). Maximum allowed: ${MAX_SCRIPT_LENGTH} characters. Please reduce the script size to proceed.`,
         errorType: "length",
+      };
+    }
+
+    const scriptLooksLikeK6 = isK6Script(code);
+    const selectedType = options.selectedTestType;
+    const expectsPerformance =
+      selectedType === "performance" || (selectedType as string) === "k6";
+
+    if (scriptLooksLikeK6) {
+      return {
+        valid: false,
+        error:
+          "Detected k6 performance script. Switch the test type to Performance to run k6 scripts, or provide a Playwright test script.",
+        errorType: "type",
+      };
+    }
+
+    if (expectsPerformance) {
+      return {
+        valid: false,
+        error:
+          "Performance tests must use k6 scripts. Update the script or choose a Playwright-based test type.",
+        errorType: "type",
       };
     }
 
@@ -662,9 +694,11 @@ export class ValidationService {
 }
 
 // Export a singleton instance
-export const validationService = new ValidationService();
+export const playwrightValidationService =
+  new PlaywrightValidationService();
 
 // Export the allowed modules list for UI components
-export const getAllowedModules = () => validationService.getAllowedModules();
+export const getAllowedModules = () =>
+  playwrightValidationService.getAllowedModules();
 export const isModuleAllowed = (moduleName: string) =>
-  validationService.isModuleAllowed(moduleName);
+  playwrightValidationService.isModuleAllowed(moduleName);
