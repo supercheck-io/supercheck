@@ -16,6 +16,13 @@ export interface K6ValidationOptions {
 
 const k6ImportPattern = /import\s+.*\s+from\s+['"]k6(?:\/[^'"]*)?['"]/;
 
+const PLAYWRIGHT_IMPORT_PATTERNS = [
+  /import\s+.*\s+from\s+['"]@playwright\/test['"]/,
+  /import\s+.*\s+from\s+['"]playwright\/?(?:test)?['"]/,
+  /require\s*\(\s*['"]@playwright\/test['"]\s*\)/,
+  /require\s*\(\s*['"]playwright\/?(?:test)?['"]\s*\)/,
+];
+
 /**
  * Detects whether a script imports any k6 modules.
  */
@@ -95,6 +102,12 @@ export function validateK6Script(
       );
     }
   });
+
+  if (PLAYWRIGHT_IMPORT_PATTERNS.some((pattern) => pattern.test(script))) {
+    errors.push(
+      "Playwright modules are not supported in k6 performance scripts. Split Playwright tests into a Browser test."
+    );
+  }
 
   // Warning: Check for console.log usage (recommend using check() instead)
   if (/console\.log/.test(script)) {

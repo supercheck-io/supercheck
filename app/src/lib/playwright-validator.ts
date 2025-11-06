@@ -1,7 +1,7 @@
 import * as acorn from "acorn";
 import * as walk from "acorn-walk";
 import type { TestType } from "@/db/schema/types";
-import { isK6Script } from "./k6-validator";
+import { isK6Script, validateK6Script } from "./k6-validator";
 
 // Strictly allowed modules with expanded safe libraries
 const ALLOWED_MODULES = new Set([
@@ -218,16 +218,38 @@ export class PlaywrightValidationService {
 
     const scriptLooksLikeK6 = isK6Script(code);
     const selectedType = options.selectedTestType;
+    const normalizedSelectedType =
+      typeof selectedType === "string"
+        ? selectedType.toLowerCase()
+        : selectedType;
     const expectsPerformance =
-      selectedType === "performance" || (selectedType as string) === "k6";
+      normalizedSelectedType === "performance" ||
+      normalizedSelectedType === "k6";
 
     if (scriptLooksLikeK6) {
-      return {
-        valid: false,
-        error:
-          "Detected k6 performance script. Switch the test type to Performance to run k6 scripts, or provide a Playwright test script.",
-        errorType: "type",
-      };
+      if (!expectsPerformance) {
+        return {
+          valid: false,
+          error:
+            "Detected k6 performance script. Switch the test type to Performance to run k6 scripts, or provide a Playwright test script.",
+          errorType: "type",
+        };
+      }
+
+      const performanceValidation = validateK6Script(code, {
+        selectedTestType: selectedType,
+      });
+
+      if (!performanceValidation.valid) {
+        return {
+          valid: false,
+          error: performanceValidation.errors.join(", "),
+          errorType: "type",
+        };
+      }
+
+      // Validated successfully as a k6 performance script
+      return { valid: true };
     }
 
     if (expectsPerformance) {
