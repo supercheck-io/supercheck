@@ -124,8 +124,8 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
 
 # Install browsers if not copied from builder (fallback)
 RUN if [ ! -d "/app/playwright-browsers/ms-playwright" ]; then \
-        echo "Installing Playwright browsers as fallback..." && \
-        npx playwright install --with-deps; \
+    echo "Installing Playwright browsers as fallback..." && \
+    npx playwright install --with-deps; \
     fi
 
 # Add health check
