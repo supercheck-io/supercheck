@@ -22,13 +22,6 @@ export const PasswordResetEmail = ({
       preview="Reset your Supercheck password"
       title="Password Reset Request"
     >
-      {/* Icon */}
-      <Section style={iconSection}>
-        <div style={iconCircle}>
-          <span style={iconEmoji}>🔐</span>
-        </div>
-      </Section>
-
       {/* Main Content */}
       <Text style={heading}>Reset Your Password</Text>
 
@@ -63,7 +56,7 @@ export const PasswordResetEmail = ({
 
       {/* Security Notice */}
       <Section style={warningBox}>
-        <Text style={warningTitle}>⏱️ Security Notice</Text>
+        <Text style={warningTitle}>Security Notice</Text>
         <Text style={warningText}>
           This link will expire in <strong>1 hour</strong> for security reasons.
         </Text>
@@ -74,31 +67,6 @@ export const PasswordResetEmail = ({
       </Section>
     </BaseLayout>
   );
-};
-
-// ============================================================================
-// ICON STYLES
-// ============================================================================
-
-const iconSection = {
-  textAlign: "center" as const,
-  marginBottom: "24px",
-};
-
-const iconCircle = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: "80px",
-  height: "80px",
-  borderRadius: "50%",
-  backgroundColor: "#ede9fe",
-  margin: "0 auto",
-};
-
-const iconEmoji = {
-  fontSize: "40px",
-  lineHeight: "1",
 };
 
 // ============================================================================
@@ -143,16 +111,15 @@ const buttonContainer = {
 };
 
 const button = {
-  backgroundColor: "#667eea",
-  borderRadius: "8px",
+  backgroundColor: "#1f2937",
+  borderRadius: "6px",
   color: "#ffffff",
-  fontSize: "16px",
+  fontSize: "15px",
   fontWeight: "600" as const,
   textDecoration: "none",
   textAlign: "center" as const,
   display: "inline-block",
-  padding: "16px 40px",
-  boxShadow: "0 4px 6px rgba(102, 126, 234, 0.25)",
+  padding: "14px 36px",
 };
 
 // ============================================================================
@@ -173,8 +140,8 @@ const urlText = {
 };
 
 const link = {
-  color: "#667eea",
-  textDecoration: "none",
+  color: "#1f2937",
+  textDecoration: "underline",
   wordBreak: "break-all" as const,
   fontSize: "13px",
 };
