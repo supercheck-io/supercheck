@@ -5,7 +5,7 @@
  * Features:
  * - Environment-aware log levels
  * - Structured JSON logging in production
- * - Pretty printing in development
+ * - Simple console output in development (no worker threads)
  * - Request ID tracking
  * - Performance metrics
  * - Error serialization
@@ -32,37 +32,16 @@ const getLogLevel = (): string => {
 };
 
 /**
- * Create transport configuration
- * In production: JSON output
- * In development: Pretty printed colorized output
- */
-const getTransport = () => {
-  if (process.env.NODE_ENV === 'production') {
-    // Production: structured JSON logs
-    return undefined;
-  }
-
-  // Development: pretty printed logs
-  return {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-      translateTime: 'HH:MM:ss.l',
-      ignore: 'pid,hostname',
-      singleLine: false,
-      messageFormat: '{levelLabel} - {if req.method}[{req.method} {req.url}]{end} {msg}',
-    },
-  };
-};
-
-/**
  * Base Pino configuration
+ * No worker threads - compatible with Next.js and Turbopack
  */
 export const pinoConfig = {
   level: getLogLevel(),
 
-  // Format timestamp
-  timestamp: () => `,"time":"${new Date().toISOString()}"`,
+  // Browser-compatible check
+  browser: {
+    asObject: true,
+  },
 
   // Serialize errors properly
   serializers: {
@@ -78,19 +57,20 @@ export const pinoConfig = {
     service: 'supercheck-app',
   },
 
+  // Format timestamp
+  timestamp: pino.stdTimeFunctions.isoTime,
+
   // Format log levels
   formatters: {
     level: (label: string) => {
       return { level: label };
     },
   },
-
-  // Transport configuration
-  transport: getTransport(),
 };
 
 /**
  * Create a root logger instance
+ * Using stdout directly (no worker threads for Next.js compatibility)
  */
 export const logger: PinoLogger = pino(pinoConfig);
 
