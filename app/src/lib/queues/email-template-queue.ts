@@ -1,5 +1,5 @@
 import { Queue, QueueEvents } from "bullmq";
-import { getRedisConnection } from "../queue";
+import { getQueues, EMAIL_TEMPLATE_QUEUE } from "../queue";
 
 /**
  * Email Template Rendering Queue
@@ -13,9 +13,12 @@ import { getRedisConnection } from "../queue";
  * 2. App processor picks up job and renders template
  * 3. Job returns rendered email (HTML + text + subject)
  * 4. Worker receives result and sends email
+ *
+ * NOTE: This module now uses the centralized queue from queue.ts to ensure
+ * the queue appears in the Bull Dashboard and shares the same Redis connection.
  */
 
-export const EMAIL_TEMPLATE_QUEUE_NAME = "email-template-render";
+export const EMAIL_TEMPLATE_QUEUE_NAME = EMAIL_TEMPLATE_QUEUE;
 
 export interface EmailTemplateJob {
   template: EmailTemplateType;
@@ -89,51 +92,16 @@ export interface RenderedEmailResult {
   text: string;
 }
 
-let emailTemplateQueue: Queue<EmailTemplateJob, RenderedEmailResult> | null =
-  null;
 let emailTemplateQueueEvents: QueueEvents | null = null;
 
 /**
- * Get or create the email template queue instance
+ * Get the email template queue instance from the centralized queue system
  */
 export async function getEmailTemplateQueue(): Promise<
   Queue<EmailTemplateJob, RenderedEmailResult>
 > {
-  if (emailTemplateQueue) {
-    return emailTemplateQueue;
-  }
-
-  const connection = await getRedisConnection();
-
-  emailTemplateQueue = new Queue<EmailTemplateJob, RenderedEmailResult>(
-    EMAIL_TEMPLATE_QUEUE_NAME,
-    {
-      connection,
-      defaultJobOptions: {
-        attempts: 3,
-        backoff: {
-          type: "exponential",
-          delay: 1000,
-        },
-        removeOnComplete: {
-          age: 3600, // Keep completed jobs for 1 hour
-          count: 100, // Keep last 100 completed jobs
-        },
-        removeOnFail: {
-          age: 86400, // Keep failed jobs for 24 hours
-          count: 50, // Keep last 50 failed jobs
-        },
-      },
-    }
-  );
-
-  emailTemplateQueue.on("error", (error) => {
-    console.error("[Email Template Queue] Error:", error);
-  });
-
-  console.log("[Email Template Queue] Initialized");
-
-  return emailTemplateQueue;
+  const { emailTemplateQueue } = await getQueues();
+  return emailTemplateQueue as Queue<EmailTemplateJob, RenderedEmailResult>;
 }
 
 /**
@@ -144,10 +112,10 @@ export async function getEmailTemplateQueueEvents(): Promise<QueueEvents> {
     return emailTemplateQueueEvents;
   }
 
-  const connection = await getRedisConnection();
+  const { redisConnection } = await getQueues();
 
   emailTemplateQueueEvents = new QueueEvents(EMAIL_TEMPLATE_QUEUE_NAME, {
-    connection,
+    connection: redisConnection.duplicate(),
   });
 
   emailTemplateQueueEvents.on("completed", ({ jobId }) => {
@@ -224,18 +192,16 @@ export async function waitForEmailTemplateResult(
 }
 
 /**
- * Gracefully close queue connections
+ * Gracefully close queue events
+ *
+ * NOTE: The queue itself is managed by the centralized queue system (queue.ts)
+ * and will be closed via closeQueue(). This function only closes the QueueEvents.
  */
 export async function closeEmailTemplateQueue(): Promise<void> {
-  if (emailTemplateQueue) {
-    await emailTemplateQueue.close();
-    emailTemplateQueue = null;
-  }
-
   if (emailTemplateQueueEvents) {
     await emailTemplateQueueEvents.close();
     emailTemplateQueueEvents = null;
   }
 
-  console.log("[Email Template Queue] Closed");
+  console.log("[Email Template Queue Events] Closed");
 }
