@@ -78,10 +78,11 @@ export function validateK6Script(script: string): K6ValidationResult {
     );
   }
 
-  // Error: Check for async/await in default function (k6 doesn't support it)
+  // Error: k6 does not support async/await in default function
+  // Use Playwright for browser automation tests instead
   if (/export\s+default\s+async\s+function/.test(script)) {
     errors.push(
-      'k6 does not support async/await in the default export function'
+      'k6 does not support async/await. For browser testing, use Playwright test type instead.'
     );
   }
 
