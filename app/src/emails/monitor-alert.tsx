@@ -37,7 +37,7 @@ const getStatusColor = (type: string): string => {
  */
 const getStatusBadge = (type: string, color: string): React.ReactNode => {
   const badgeText =
-    type === "failure" ? "ALERT" : type === "success" ? "RESOLVED" : "WARNING";
+    type === "failure" ? "ALERT" : type === "success" ? "SUCCESS" : "WARNING";
 
   return (
     <div style={badgeContainer}>

@@ -13,14 +13,11 @@ export const TestEmail = ({
     <BaseLayout
       preview="Test Email from Supercheck"
       title="Email Configuration Test"
-      headerColor="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
     >
-      <Section style={{ textAlign: "center", marginBottom: "24px" }}>
-        <Text style={{ fontSize: "48px", margin: "0" }}>✉️</Text>
-      </Section>
+      <Text style={heading}>Email Test Successful</Text>
 
       <Text style={paragraph}>
-        <strong>Success!</strong> Your email configuration is working properly.
+        Your email configuration is working properly.
       </Text>
 
       <Text style={paragraph}>{testMessage}</Text>
@@ -45,30 +42,39 @@ export const TestEmail = ({
   );
 };
 
+const heading = {
+  color: "#111827",
+  fontSize: "22px",
+  fontWeight: "600" as const,
+  margin: "0 0 20px",
+  textAlign: "center" as const,
+};
+
 const paragraph = {
-  color: "#374151",
-  fontSize: "16px",
-  lineHeight: "1.5",
+  color: "#4b5563",
+  fontSize: "15px",
+  lineHeight: "1.6",
   margin: "0 0 24px",
+  textAlign: "center" as const,
 };
 
 const infoBox = {
-  backgroundColor: "#f0f9ff",
-  borderLeft: "4px solid #0284c7",
-  borderRadius: "4px",
-  padding: "16px",
+  backgroundColor: "#f9fafb",
+  border: "1px solid #e5e7eb",
+  borderRadius: "6px",
+  padding: "20px",
   margin: "24px 0",
 };
 
 const infoTitle = {
-  color: "#075985",
+  color: "#1f2937",
   fontSize: "14px",
-  fontWeight: "600",
+  fontWeight: "600" as const,
   margin: "0 0 12px",
 };
 
 const infoText = {
-  color: "#0c4a6e",
+  color: "#4b5563",
   fontSize: "14px",
   lineHeight: "1.6",
   margin: "0",
