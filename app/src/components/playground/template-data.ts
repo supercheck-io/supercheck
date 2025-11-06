@@ -423,13 +423,48 @@ test('basic navigation test', async ({ page }) => {
     category: "Browser Testing",
     testType: "browser",
     tags: ["playwright", "forms", "interaction"],
-    code: `import { test, expect } from '@playwright/test';
+    code: `/**
+ * Playwright Form Interaction Test
+ *
+ * This test demonstrates comprehensive form automation including text inputs,
+ * dropdowns, checkboxes, radio buttons, and form submission validation.
+ *
+ * Test Coverage:
+ * - Text input field interaction (fill, clear, type)
+ * - Dropdown/select element selection
+ * - Checkbox and radio button toggling
+ * - Form submission and validation
+ * - Success/error message verification
+ *
+ * Key Features:
+ * - Label-based element selection (accessibility best practice)
+ * - Role-based button interaction
+ * - Form state validation
+ * - Wait for response after submission
+ *
+ * Use Cases:
+ * - Contact form testing
+ * - Registration flow validation
+ * - Data entry verification
+ * - Form validation testing
+ *
+ * Best Practices:
+ * - Use getByLabel() for accessible form testing
+ * - Verify element states before interaction
+ * - Wait for server responses after submission
+ *
+ * Documentation: https://playwright.dev/docs/input
+ *
+ * @requires @playwright/test
+ */
+
+import { test, expect } from '@playwright/test';
 
 test('form interaction test', async ({ page }) => {
   // Navigate to form page
   await page.goto('https://example.com/form');
 
-  // Fill in form fields
+  // Fill in text fields
   await page.getByLabel('Name').fill('John Doe');
   await page.getByLabel('Email').fill('john@example.com');
   await page.getByLabel('Message').fill('This is a test message');
@@ -440,8 +475,17 @@ test('form interaction test', async ({ page }) => {
   // Check checkbox
   await page.getByLabel('I agree to terms').check();
 
+  // Verify checkbox is checked
+  await expect(page.getByLabel('I agree to terms')).toBeChecked();
+
+  // Select radio button
+  await page.getByLabel('Subscribe to newsletter').check();
+
   // Click submit button
   await page.getByRole('button', { name: 'Submit' }).click();
+
+  // Wait for navigation or response
+  await page.waitForLoadState('networkidle');
 
   // Verify success message
   await expect(page.getByText('Form submitted successfully')).toBeVisible();
@@ -454,15 +498,54 @@ test('form interaction test', async ({ page }) => {
     category: "API Testing",
     testType: "api",
     tags: ["playwright", "api", "get"],
-    code: `import { test, expect } from '@playwright/test';
+    code: `/**
+ * Playwright API GET Request Test
+ *
+ * This test demonstrates HTTP GET request testing using Playwright's
+ * built-in request context. It validates API endpoints without browser overhead.
+ *
+ * Test Coverage:
+ * - HTTP GET request execution
+ * - Response status code validation
+ * - JSON response parsing
+ * - Response schema validation
+ * - Response property existence checks
+ *
+ * Key Features:
+ * - No browser required (faster than browser-based tests)
+ * - Built-in request retries and timeouts
+ * - Automatic JSON parsing
+ * - Response header validation
+ *
+ * Use Cases:
+ * - REST API endpoint testing
+ * - API health checks
+ * - Backend service validation
+ * - Integration testing
+ *
+ * Best Practices:
+ * - Validate both status code and response body
+ * - Check for required properties in response
+ * - Use response.ok() for 2xx status range
+ *
+ * Target API: JSONPlaceholder (free fake API)
+ * Documentation: https://playwright.dev/docs/api-testing
+ *
+ * @requires @playwright/test
+ */
+
+import { test, expect } from '@playwright/test';
 
 test('API GET request', async ({ request }) => {
   // Make GET request
   const response = await request.get('https://jsonplaceholder.typicode.com/posts/1');
 
-  // Verify response status
+  // Verify response status (2xx range)
   expect(response.ok()).toBeTruthy();
   expect(response.status()).toBe(200);
+
+  // Verify response headers
+  expect(response.headers()['content-type']).toContain('application/json');
 
   // Parse and validate response data
   const data = await response.json();
@@ -470,6 +553,11 @@ test('API GET request', async ({ request }) => {
   expect(data).toHaveProperty('title');
   expect(data).toHaveProperty('body');
   expect(data).toHaveProperty('userId');
+
+  // Validate data types
+  expect(typeof data.id).toBe('number');
+  expect(typeof data.title).toBe('string');
+  expect(data.title.length).toBeGreaterThan(0);
 });`,
   },
   {
@@ -479,27 +567,74 @@ test('API GET request', async ({ request }) => {
     category: "API Testing",
     testType: "api",
     tags: ["playwright", "api", "post"],
-    code: `import { test, expect } from '@playwright/test';
+    code: `/**
+ * Playwright API POST Request Test
+ *
+ * This test demonstrates creating new resources via HTTP POST requests
+ * with JSON payloads. It validates request handling and response data.
+ *
+ * Test Coverage:
+ * - HTTP POST request with JSON payload
+ * - Request header configuration (Content-Type)
+ * - Response status validation (201 Created)
+ * - Response body validation
+ * - Resource creation verification
+ *
+ * Key Features:
+ * - JSON payload serialization
+ * - Custom request headers
+ * - Created resource ID validation
+ * - Response data matching request data
+ *
+ * Use Cases:
+ * - Create new resources via API
+ * - Test form submission backends
+ * - Validate data persistence
+ * - Integration testing for CRUD operations
+ *
+ * Best Practices:
+ * - Always set Content-Type for JSON requests
+ * - Validate response includes created resource ID
+ * - Verify request data persists in response
+ *
+ * Target API: JSONPlaceholder
+ * Documentation: https://playwright.dev/docs/api-testing
+ *
+ * @requires @playwright/test
+ */
+
+import { test, expect } from '@playwright/test';
 
 test('API POST request', async ({ request }) => {
+  // Prepare request payload
+  const payload = {
+    title: 'Test Post',
+    body: 'This is a test post',
+    userId: 1,
+  };
+
   // Make POST request with data
   const response = await request.post('https://jsonplaceholder.typicode.com/posts', {
-    data: {
-      title: 'Test Post',
-      body: 'This is a test post',
-      userId: 1,
+    data: payload,
+    headers: {
+      'Content-Type': 'application/json',
     },
   });
 
-  // Verify response status
+  // Verify response status (201 Created)
   expect(response.ok()).toBeTruthy();
   expect(response.status()).toBe(201);
 
   // Validate response data
   const data = await response.json();
   expect(data).toHaveProperty('id');
-  expect(data.title).toBe('Test Post');
-  expect(data.body).toBe('This is a test post');
+  expect(data.title).toBe(payload.title);
+  expect(data.body).toBe(payload.body);
+  expect(data.userId).toBe(payload.userId);
+
+  // Verify created resource has ID
+  expect(typeof data.id).toBe('number');
+  expect(data.id).toBeGreaterThan(0);
 });`,
   },
   {
