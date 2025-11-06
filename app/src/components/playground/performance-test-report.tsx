@@ -205,45 +205,156 @@ export function PerformanceTestReport({
       return;
     }
 
-    const source = new EventSource(
-      `/api/runs/${encodeURIComponent(runId)}/stream`
-    );
+    let isActive = true;
+    let reconnectAttempts = 0;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    let currentCleanup: (() => void) | null = null;
 
-    const onConsole = (event: MessageEvent) => {
+    const clearReconnectTimeout = () => {
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
+      }
+    };
+
+    const cleanupSource = () => {
+      if (currentCleanup) {
+        currentCleanup();
+        currentCleanup = null;
+      }
+    };
+
+    const pollRunStatus = async () => {
       try {
-        const payload = JSON.parse(event.data);
-        if (payload?.line) {
-          setConsoleBuffer((prev) => prev + payload.line);
+        const details = await fetchK6RunDetails(runId);
+        if (!details) {
+          return;
+        }
+
+        const derivedStatus = toDisplayStatus(
+          details.runStatus ?? details.status
+        );
+
+        if (derivedStatus !== "running") {
+          // We reached a terminal state while the stream was down.
+          isActive = false;
+          clearReconnectTimeout();
+          cleanupSource();
+          setStreamError(null);
+          await handleCompletion(
+            details.runStatus ?? details.status ?? derivedStatus
+          );
         }
       } catch (err) {
-        console.error("Failed to parse console payload", err);
+        console.error("Failed to poll run status after stream error", err);
       }
     };
 
-    const onComplete = (event: MessageEvent) => {
-      try {
-        const payload = JSON.parse(event.data);
-        handleCompletion(payload?.status ?? "completed");
-      } catch (err) {
-        console.error("Failed to parse completion payload", err);
-        handleCompletion("error");
-      } finally {
+    const scheduleReconnect = () => {
+      if (!isActive) {
+        return;
+      }
+
+      reconnectAttempts += 1;
+      const delay = Math.min(1000 * 2 ** (reconnectAttempts - 1), 15000);
+
+      setStreamError(
+        reconnectAttempts === 1
+          ? "Connection lost. Attempting to reconnect…"
+          : `Connection lost. Retrying (attempt ${reconnectAttempts})…`
+      );
+
+      clearReconnectTimeout();
+      reconnectTimeout = setTimeout(() => {
+        reconnectTimeout = null;
+        connect();
+      }, delay);
+
+      if (reconnectAttempts % 3 === 0) {
+        // Periodically poll run status so we still surface completion state
+        void pollRunStatus();
+      }
+    };
+
+    const connect = () => {
+      if (!isActive) {
+        return;
+      }
+
+      cleanupSource();
+
+      const source = new EventSource(
+        `/api/runs/${encodeURIComponent(runId)}/stream`
+      );
+
+      const onOpen = () => {
+        reconnectAttempts = 0;
+        setStreamError(null);
+      };
+
+      const onConsole = (event: MessageEvent) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.line) {
+            setStreamError(null);
+            setConsoleBuffer((prev) => prev + payload.line);
+          }
+        } catch (err) {
+          console.error("Failed to parse console payload", err);
+        }
+      };
+
+      const onComplete = (event: MessageEvent) => {
+        try {
+          const payload = JSON.parse(event.data);
+          isActive = false;
+          clearReconnectTimeout();
+          cleanupSource();
+          void handleCompletion(payload?.status ?? "completed");
+        } catch (err) {
+          console.error("Failed to parse completion payload", err);
+          isActive = false;
+          clearReconnectTimeout();
+          cleanupSource();
+          void handleCompletion("error");
+        }
+      };
+
+      const onError = () => {
+        if (!isActive) {
+          return;
+        }
+
+        // If the browser is still trying to reconnect we do not want to close the source.
+        if (source.readyState === EventSource.CONNECTING) {
+          setStreamError("Connection interrupted. Reconnecting…");
+          return;
+        }
+
+        cleanupSource();
+        scheduleReconnect();
+      };
+
+      source.addEventListener("open", onOpen);
+      source.addEventListener("console", onConsole as EventListener);
+      source.addEventListener("complete", onComplete as EventListener);
+      source.addEventListener("error", onError as EventListener);
+
+      currentCleanup = () => {
+        source.removeEventListener("open", onOpen);
+        source.removeEventListener("console", onConsole as EventListener);
+        source.removeEventListener("complete", onComplete as EventListener);
+        source.removeEventListener("error", onError as EventListener);
         source.close();
-      }
+      };
     };
 
-    source.addEventListener("console", onConsole);
-    source.addEventListener("complete", onComplete);
-    source.onerror = () => {
-      setStreamError("Connection lost. Attempting to finalize results…");
-      source.close();
-      handleCompletion("error");
-    };
+    connect();
 
     return () => {
-      source.removeEventListener("console", onConsole);
-      source.removeEventListener("complete", onComplete);
-      source.close();
+      isActive = false;
+      clearReconnectTimeout();
+      cleanupSource();
     };
   }, [handleCompletion, runId, shouldStream, isInitializing]);
 
