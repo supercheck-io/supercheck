@@ -90,8 +90,7 @@ export const IncidentNotificationEmail = ({
       }
     >
       <Section style={{ textAlign: "center", marginBottom: "16px" }}>
-        <Text style={{ fontSize: "32px", margin: "0" }}>⚠️</Text>
-        <Text style={{ color: "#6b7280", fontSize: "14px", margin: "8px 0 0" }}>
+        <Text style={{ color: "#6b7280", fontSize: "14px", margin: "0" }}>
           Incident Notification
         </Text>
       </Section>
@@ -249,7 +248,7 @@ const buttonContainer = {
 };
 
 const button = {
-  backgroundColor: "#667eea",
+  backgroundColor: "#1f2937",
   borderRadius: "6px",
   color: "#fff",
   fontSize: "16px",
@@ -268,7 +267,7 @@ const linkText = {
 };
 
 const link = {
-  color: "#667eea",
+  color: "#1f2937",
   textDecoration: "none",
 };
 
