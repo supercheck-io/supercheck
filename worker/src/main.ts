@@ -1,21 +1,22 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { Logger, LogLevel } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
 
 async function bootstrap() {
-  // Only show warnings and errors in production, include logs in development
-  const logLevels: LogLevel[] =
-    process.env.NODE_ENV === 'production'
-      ? ['error', 'warn', 'log']
-      : ['error', 'warn', 'log', 'debug', 'verbose'];
-
+  // Create the application with buffer logs until logger is ready
   const app = await NestFactory.create(AppModule, {
-    logger: logLevels,
+    bufferLogs: true,
   });
 
-  await app.listen(process.env.PORT ?? 8000);
+  // Use Pino logger for the entire application
+  app.useLogger(app.get(Logger));
 
-  const logger = new Logger('Bootstrap');
-  logger.log(`Worker service running on port ${process.env.PORT ?? 8000}`);
+  // Start the server
+  const port = process.env.PORT ?? 8000;
+  await app.listen(port);
+
+  // Log startup message using Pino
+  const logger = app.get(Logger);
+  logger.log(`Worker service running on port ${port}`, 'Bootstrap');
 }
 void bootstrap();

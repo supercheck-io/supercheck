@@ -1,47 +1,82 @@
+/**
+ * Logger Class - Pino-backed implementation
+ *
+ * This maintains the existing Logger interface for backward compatibility
+ * while using Pino under the hood for robust logging.
+ */
+
+import { createLogger as createPinoLogger } from './logger/index';
+import { createClientLogger } from './logger/client-logger';
+
+// Check if we're in a browser environment
+const isBrowser = typeof window !== 'undefined';
+
 export class Logger {
   private prefix: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private pinoLogger: any;
 
   constructor(prefix: string = "[App]") {
     this.prefix = prefix;
-  }
 
-  private getCurrentTimestamp(): string {
-    return new Date().toISOString();
-  }
-
-  private formatMessage(
-    level: string,
-    message: string,
-    ...optionalParams: unknown[]
-  ): string {
-    const paramsString =
-      optionalParams.length > 0
-        ? ` ${optionalParams.map((p) => JSON.stringify(p)).join(" ")}`
-        : "";
-    return `${this.getCurrentTimestamp()} ${
-      this.prefix
-    } [${level.toUpperCase()}] ${message}${paramsString}`;
+    // Create a child logger with the prefix as context
+    if (!isBrowser) {
+      // Server-side: use full Pino features
+      this.pinoLogger = createPinoLogger({
+        component: this.prefix.replace(/[\[\]]/g, ''),
+      });
+    } else {
+      // Client-side: use browser-safe logger
+      this.pinoLogger = createClientLogger({
+        component: this.prefix.replace(/[\[\]]/g, ''),
+      });
+    }
   }
 
   log(message: string, ...optionalParams: unknown[]): void {
-    console.log(this.formatMessage("log", message, ...optionalParams));
+    if (optionalParams.length > 0) {
+      this.pinoLogger.info({ data: optionalParams }, message);
+    } else {
+      this.pinoLogger.info(message);
+    }
   }
 
   info(message: string, ...optionalParams: unknown[]): void {
-    console.info(this.formatMessage("info", message, ...optionalParams));
+    if (optionalParams.length > 0) {
+      this.pinoLogger.info({ data: optionalParams }, message);
+    } else {
+      this.pinoLogger.info(message);
+    }
   }
 
   warn(message: string, ...optionalParams: unknown[]): void {
-    console.warn(this.formatMessage("warn", message, ...optionalParams));
+    if (optionalParams.length > 0) {
+      this.pinoLogger.warn({ data: optionalParams }, message);
+    } else {
+      this.pinoLogger.warn(message);
+    }
   }
 
   error(message: string, ...optionalParams: unknown[]): void {
-    console.error(this.formatMessage("error", message, ...optionalParams));
+    if (optionalParams.length > 0) {
+      // Check if first param is an Error object
+      const firstParam = optionalParams[0];
+      if (firstParam instanceof Error) {
+        this.pinoLogger.error({ err: firstParam, data: optionalParams.slice(1) }, message);
+      } else {
+        this.pinoLogger.error({ data: optionalParams }, message);
+      }
+    } else {
+      this.pinoLogger.error(message);
+    }
   }
 
   debug(message: string, ...optionalParams: unknown[]): void {
-    // console.debug is not standard on all Node versions, so using log
-    console.log(this.formatMessage("debug", message, ...optionalParams));
+    if (optionalParams.length > 0) {
+      this.pinoLogger.debug({ data: optionalParams }, message);
+    } else {
+      this.pinoLogger.debug(message);
+    }
   }
 }
 

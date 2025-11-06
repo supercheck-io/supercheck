@@ -5,6 +5,15 @@ import { eq } from 'drizzle-orm';
 import { requireProjectContext } from '@/lib/project-context';
 import { hasPermission } from '@/lib/rbac/middleware';
 import { Redis } from 'ioredis';
+import { createLogger } from '@/lib/logger/index';
+
+// Create SSE stream logger
+const sseLogger = createLogger({ module: 'sse-stream' }) as {
+  debug: (data: unknown, msg?: string) => void;
+  info: (data: unknown, msg?: string) => void;
+  warn: (data: unknown, msg?: string) => void;
+  error: (data: unknown, msg?: string) => void;
+};
 
 /**
  * GET /api/runs/[runId]/stream
@@ -73,25 +82,25 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
           try {
             await subscriber.unsubscribe();
           } catch (error) {
-            console.error('SSE unsubscribe error:', error);
+            sseLogger.error({ err: error }, 'SSE unsubscribe error');
           }
 
           try {
             await subscriber.quit();
           } catch (error) {
-            console.error('SSE subscriber quit error:', error);
+            sseLogger.error({ err: error }, 'SSE subscriber quit error');
           }
 
           try {
             await redis.quit();
           } catch (error) {
-            console.error('SSE redis quit error:', error);
+            sseLogger.error({ err: error }, 'SSE redis quit error');
           }
 
           try {
             controller.close();
           } catch (error) {
-            console.error('SSE controller close error:', error);
+            sseLogger.error({ err: error }, 'SSE controller close error');
           }
         };
 
@@ -100,7 +109,7 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
           try {
             controller.enqueue(encoder.encode(payload));
           } catch (error) {
-            console.error('SSE enqueue failed:', error);
+            sseLogger.error({ err: error }, 'SSE enqueue failed');
             void shutdown();
           }
         };
@@ -108,7 +117,7 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
         // Subscribe to console output channel
         await subscriber.subscribe(`k6:run:${runId}:console`, (err) => {
           if (err) {
-            console.error('Redis subscription error:', err);
+            sseLogger.error({ err }, 'Redis subscription error');
             controller.error(err);
             void shutdown();
             return;
@@ -145,7 +154,7 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
               await shutdown();
             }
           } catch (error) {
-            console.error('Error checking run status:', error);
+            sseLogger.error({ err: error }, 'Error checking run status');
           }
         }, 2000);
 
@@ -166,7 +175,7 @@ export async function GET(request: NextRequest, context: RunStreamContext) {
       },
     });
   } catch (error) {
-    console.error('Error setting up SSE stream:', error);
+    sseLogger.error({ err: error }, 'Error setting up SSE stream');
     return new Response('Internal server error', { status: 500 });
   }
 }

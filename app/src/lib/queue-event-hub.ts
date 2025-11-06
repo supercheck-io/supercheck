@@ -10,6 +10,15 @@ import {
 } from "@/lib/queue";
 import { db } from "@/utils/db";
 import { runs } from "@/db/schema";
+import { createLogger } from "./logger/index";
+
+// Create queue event hub logger
+const eventHubLogger = createLogger({ module: 'queue-event-hub' }) as {
+  debug: (data: unknown, msg?: string) => void;
+  info: (data: unknown, msg?: string) => void;
+  warn: (data: unknown, msg?: string) => void;
+  error: (data: unknown, msg?: string) => void;
+};
 
 type QueueCategory = "job" | "test";
 
@@ -45,10 +54,7 @@ class QueueEventHub extends EventEmitter {
     super();
     this.setMaxListeners(0);
     this.readyPromise = this.initialize().catch((error) => {
-      console.error(
-        "[QueueEventHub] Fatal error during initialization:",
-        error instanceof Error ? error.message : String(error)
-      );
+      eventHubLogger.error({ err: error }, "Fatal error during initialization");
       throw error;
     });
     process.once("exit", () => {
@@ -84,20 +90,15 @@ class QueueEventHub extends EventEmitter {
 
       await Promise.all(
         sources.map((source) => this.attachQueueEvents(source).catch((error) => {
-          console.error(
-            `[QueueEventHub] Failed to attach QueueEvents for ${source.queueName}:`,
-            error instanceof Error ? error.message : String(error)
-          );
+          eventHubLogger.error({ err: error },
+            `Failed to attach QueueEvents for ${source.queueName}`);
           // Don't throw - allow other queues to initialize
         }))
       );
 
-      console.log("[QueueEventHub] Successfully initialized with BullMQ event listeners");
+      eventHubLogger.info("Successfully initialized with BullMQ event listeners");
     } catch (error) {
-      console.error(
-        "[QueueEventHub] Failed to initialize:",
-        error instanceof Error ? error.message : String(error)
-      );
+      eventHubLogger.error({ err: error }, "Failed to initialize");
       throw error;
     }
   }
@@ -118,19 +119,16 @@ class QueueEventHub extends EventEmitter {
 
     // Log connection errors for debugging
     connection.on('error', (error) => {
-      console.error(
-        `[QueueEventHub] Redis connection error for ${source.queueName}:`,
-        error instanceof Error ? error.message : String(error)
-      );
+      eventHubLogger.error({ err: error },
+        `Redis connection error for ${source.queueName}`);
     });
 
     const events = new QueueEvents(source.queueName, { connection });
     this.queueEvents.push(events);
 
     events.on("error", (error) => {
-      console.error(
-        `[QueueEventHub] QueueEvents error for ${source.queueName}:`,
-        error instanceof Error ? error.message : String(error)
+      eventHubLogger.error({ err: error }, 
+        `QueueEvents error for ${source.queueName}:`,
       );
     });
 
@@ -169,9 +167,8 @@ class QueueEventHub extends EventEmitter {
         try {
           await events.close();
         } catch (error) {
-          console.error(
-            "[QueueEventHub] Failed to close QueueEvents:",
-            error instanceof Error ? error.message : String(error)
+          eventHubLogger.error({ err: error }, 
+            "Failed to close QueueEvents:",
           );
         }
       })
@@ -226,10 +223,8 @@ class QueueEventHub extends EventEmitter {
           this.runMetaCache.set(queueJobId, { entityId, trigger });
         }
       } catch (error) {
-        console.warn(
-          `[QueueEventHub] Failed to load run metadata for ${queueJobId}:`,
-          error instanceof Error ? error.message : String(error)
-        );
+        eventHubLogger.warn({ err: error },
+          `Failed to load run metadata for ${queueJobId}`);
       }
     }
 
