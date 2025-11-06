@@ -25,22 +25,30 @@ This directory contains all email templates for Supercheck, built using [react-e
 │  └────────────────────────────────────────────────┘     │
 │                          ↓                               │
 │  ┌────────────────────────────────────────────────┐     │
-│  │  API: /api/emails/render                       │     │
-│  │  - Renders templates for external services     │     │
+│  │  Email Template Processor                      │     │
+│  │  (/src/lib/processors/email-template-processor)│     │
+│  │  - BullMQ worker for template rendering        │     │
+│  │  - Processes jobs from email-template queue    │     │
 │  │  - Returns HTML + Text + Subject               │     │
-│  │  - Protected with API key                      │     │
-│  │  - Response caching (5 min TTL)                │     │
+│  │  - Handles all template types                  │     │
 │  └────────────────────────────────────────────────┘     │
-└─────────────────────────────────────────────────────────┘
-                          ↓ HTTP Request (with API key)
-┌─────────────────────────────────────────────────────────┐
-│                    Worker (NestJS)                       │
+│                          ↑                               │
+└──────────────────────────┼───────────────────────────────┘
+                           │
+                    ┌──────┴──────┐
+                    │    Redis     │
+                    │   (BullMQ)   │
+                    └──────┬──────┘
+                           │
+┌──────────────────────────┼───────────────────────────────┐
+│                          ↓                                │
+│                    Worker (NestJS)                        │
 │  ┌────────────────────────────────────────────────┐     │
 │  │  EmailTemplateService                          │     │
-│  │  - Fetches rendered templates from Next.js    │     │
-│  │  - Retry logic (3 attempts with backoff)      │     │
+│  │  - Adds jobs to email-template-render queue   │     │
+│  │  - Waits for rendered results (10s timeout)   │     │
 │  │  - In-memory caching (5 min TTL)              │     │
-│  │  - Fallback to basic HTML if API unavailable  │     │
+│  │  - Fallback to basic HTML if queue fails      │     │
 │  └────────────────────────────────────────────────┘     │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -135,14 +143,15 @@ await emailService.sendEmail({
 
 ### From Worker (NestJS)
 
-The worker uses the centralized API:
+The worker uses BullMQ to request templates from the app:
 
 ```typescript
 import { EmailTemplateService } from './email-template/email-template.service';
 
 constructor(private emailTemplateService: EmailTemplateService) {}
 
-async sendAlert() {
+async sendMonitorAlert() {
+  // For monitor alerts
   const emailContent = await this.emailTemplateService.renderMonitorAlertEmail({
     title: 'Monitor Failed',
     message: 'Your monitor has detected an issue',
@@ -157,54 +166,55 @@ async sendAlert() {
 
   // Send email using emailContent.html, emailContent.text, emailContent.subject
 }
-```
 
-## API Endpoint
+async sendJobAlert() {
+  // For job failures
+  const emailContent = await this.emailTemplateService.renderJobFailureEmail({
+    jobName: 'Nightly Test Suite',
+    duration: 45000,
+    errorMessage: 'Test timeout exceeded',
+    totalTests: 100,
+    passedTests: 85,
+    failedTests: 15,
+    runId: 'run-123',
+    dashboardUrl: 'https://app.supercheck.io/jobs/run-123',
+  });
 
-**Endpoint:** `POST /api/emails/render`
-
-**Authentication:** Requires `x-api-key` header
-
-**Request:**
-```json
-{
-  "template": "monitor-alert",
-  "data": {
-    "title": "Monitor Alert",
-    "message": "Your monitor has failed",
-    "fields": [
-      { "title": "Monitor", "value": "Example Monitor" }
-    ],
-    "type": "failure",
-    "color": "#dc2626"
-  }
+  // Send email using emailContent
 }
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "html": "<html>...</html>",
-  "text": "Plain text version...",
-  "subject": "Monitor Alert"
-}
-```
+## BullMQ Queue Communication
 
-**Health Check:** `GET /api/emails/render`
+The worker and app communicate via a dedicated BullMQ queue:
 
-Returns list of available templates and service status.
+**Queue Name:** `email-template-render`
+
+**Flow:**
+1. Worker adds a rendering job to the queue
+2. App's email template processor picks up the job
+3. Template is rendered using react-email
+4. Result is returned to worker
+5. Worker sends email via SMTP
+
+**Reliability:**
+- 10-second timeout for queue operations
+- 5-minute cache to reduce queue load
+- Automatic fallback to basic HTML if queue fails
 
 ## Configuration
 
 ### Environment Variables
 
-**App (.env):**
+**Both App and Worker (.env):**
 ```bash
-# Email Template API Key (for worker-to-app communication)
-EMAIL_API_KEY=your-secret-key-here
+# Redis Configuration (required for BullMQ)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=your-redis-password
+REDIS_TLS_ENABLED=false
 
-# SMTP Configuration
+# SMTP Configuration (for sending emails)
 SMTP_HOST=smtp.resend.com
 SMTP_PORT=587
 SMTP_USER=resend
@@ -213,62 +223,55 @@ SMTP_SECURE=false
 SMTP_FROM_EMAIL=notifications@supercheck.io
 ```
 
-**Worker (.env):**
+**Worker only (.env):**
 ```bash
-# App URL for email template API
+# App URL (used for dashboard links in emails)
 APP_URL=http://localhost:3000
-
-# Must match the app's EMAIL_API_KEY
-EMAIL_API_KEY=your-secret-key-here
 ```
 
 ### Security Recommendations
 
-1. **Generate Strong API Key:**
-   ```bash
-   openssl rand -hex 32
-   ```
+1. **Redis Security:**
+   - Use strong Redis password
+   - Enable Redis TLS in production
+   - Use private network/VPC for Redis connection
+   - Restrict Redis access with firewall rules
 
-2. **Production Security Options:**
-   - Use internal network/VPC for worker-to-app communication
-   - Implement IP whitelisting
-   - Use HTTPS for all communications
-   - Rotate API keys regularly
+2. **Production Best Practices:**
+   - Use internal network/VPC for all services
+   - Enable Redis authentication
+   - Use TLS for Redis connections
+   - Monitor queue health and performance
 
 ## Reliability Features
 
 ### Caching
-- **App API:** 5-minute TTL cache for rendered templates
-- **Worker Client:** 5-minute TTL cache for fetched templates
+- **Worker Client:** 5-minute TTL in-memory cache for rendered templates
 - Automatic cache size limits (100 entries max)
+- Cache key based on template type and parameters
 
-### Retry Logic
-- Worker retries failed API calls 3 times
-- Exponential backoff: 1s, 2s, 3s
-- Detailed logging of retry attempts
+### Queue Timeout
+- 10-second timeout for template rendering jobs
+- Prevents indefinite blocking on worker side
+- Logs detailed timeout information
 
 ### Fallback Mechanism
-- If API is unavailable, worker generates basic HTML email
+- If queue is unavailable, worker generates basic HTML email
+- If template rendering fails, worker falls back to simple format
 - Ensures notifications are always delivered
 - Logs warnings when using fallback
 
 ### Error Handling
-- Comprehensive error logging
-- Graceful degradation
+- Comprehensive error logging on both app and worker
+- Graceful degradation at every layer
 - No silent failures
+- Queue connection retries with exponential backoff
 
 ## Development
 
 ### Testing Templates Locally
 
-1. **Preview in Development:**
-   ```bash
-   cd app
-   npm run dev
-   # Visit http://localhost:3000/api/emails/render (GET)
-   ```
-
-2. **Test Email Rendering:**
+1. **Test Email Rendering (App):**
    ```typescript
    // In any Next.js server component or API route
    import { renderTestEmail } from '@/lib/email-renderer';
@@ -280,17 +283,18 @@ EMAIL_API_KEY=your-secret-key-here
    console.log(email.html);
    ```
 
-3. **Test API Endpoint:**
-   ```bash
-   curl -X POST http://localhost:3000/api/emails/render \
-     -H "Content-Type: application/json" \
-     -H "x-api-key: internal-email-service-key" \
-     -d '{
-       "template": "test-email",
-       "data": {
-         "testMessage": "Hello from API"
-       }
-     }'
+2. **Test Queue-Based Rendering (Worker):**
+   - Ensure Redis is running
+   - Start the Next.js app (initializes the email template processor)
+   - Start the worker
+   - Trigger a notification (e.g., create a monitor alert)
+   - Check worker logs for template rendering success
+
+3. **Monitor Queue Health:**
+   ```typescript
+   // Check email template service health from worker
+   const health = await emailTemplateService.healthCheck();
+   console.log(health); // { healthy: true/false, message: '...' }
    ```
 
 ### Adding New Templates
@@ -338,15 +342,28 @@ EMAIL_API_KEY=your-secret-key-here
    }
    ```
 
-4. **Add to API endpoint:**
+4. **Add to email template processor:**
    ```typescript
-   // src/app/api/emails/render/route.ts
+   // src/lib/processors/email-template-processor.ts
+   // Add to EmailTemplateType union
+   export type EmailTemplateType =
+     | "monitor-alert"
+     | "job-failure"
+     | "my-new-template"; // Add new type
+
+   // Add to processEmailTemplateJob switch statement
    case "my-new-template":
-     emailComponent = MyNewTemplate({
-       userName: data.userName,
-     });
-     subject = "Welcome!";
-     break;
+     return await renderMyNewTemplate(data as { userName: string });
+   ```
+
+5. **Add to worker EmailTemplateService:**
+   ```typescript
+   // worker/src/email-template/email-template.service.ts
+   async renderMyNewTemplate(params: {
+     userName: string;
+   }): Promise<RenderedEmail> {
+     return this.fetchTemplate('my-new-template', params);
+   }
    ```
 
 ## Best Practices
@@ -360,15 +377,17 @@ EMAIL_API_KEY=your-secret-key-here
 
 ## Troubleshooting
 
-### Worker Can't Fetch Templates
+### Worker Can't Render Templates
 
-**Symptoms:** Worker logs show "Failed to fetch template" errors
+**Symptoms:** Worker logs show "Failed to fetch template from queue" errors
 
 **Solutions:**
-1. Check `APP_URL` in worker's .env points to Next.js app
-2. Verify `EMAIL_API_KEY` matches in both app and worker
-3. Ensure Next.js app is running and accessible from worker
-4. Check firewall/network rules
+1. Verify Redis is running and accessible from both app and worker
+2. Check Redis connection settings (REDIS_HOST, REDIS_PORT, REDIS_PASSWORD)
+3. Ensure Next.js app is running (it initializes the email template processor)
+4. Check BullMQ queue health using the healthCheck() method
+5. Verify network connectivity between services and Redis
+6. Check Redis logs for connection errors
 
 ### Templates Not Rendering
 
@@ -385,10 +404,11 @@ EMAIL_API_KEY=your-secret-key-here
 **Symptoms:** Slow email generation
 
 **Solutions:**
-1. Verify caching is working (check logs)
-2. Reduce template complexity
-3. Consider pre-rendering common templates
-4. Check network latency between worker and app
+1. Verify caching is working (check worker logs for cache hits)
+2. Check Redis performance and network latency
+3. Monitor BullMQ queue length and processing time
+4. Reduce template complexity if rendering takes > 1 second
+5. Consider increasing queue timeout if templates are complex
 
 ## Migration Notes
 
