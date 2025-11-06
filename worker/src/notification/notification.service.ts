@@ -478,25 +478,19 @@ export class NotificationService {
         let rendered: { html: string; text: string; subject: string };
 
         if (payload.type === 'job_failed') {
-          // Use job failure template
+          // Use job failure template (generic, no test stats)
           rendered = await this.emailTemplateService.renderJobFailureEmail({
             jobName: payload.targetName,
             duration: payload.metadata?.duration || 0,
             errorMessage: payload.metadata?.errorMessage,
-            totalTests: payload.metadata?.totalTests,
-            passedTests: payload.metadata?.passedTests,
-            failedTests: payload.metadata?.failedTests,
             runId: payload.metadata?.runId,
             dashboardUrl: payload.metadata?.dashboardUrl,
           });
         } else if (payload.type === 'job_success') {
-          // Use job success template
+          // Use job success template (generic, no test stats)
           rendered = await this.emailTemplateService.renderJobSuccessEmail({
             jobName: payload.targetName,
             duration: payload.metadata?.duration || 0,
-            totalTests: payload.metadata?.totalTests,
-            passedTests: payload.metadata?.passedTests,
-            failedTests: payload.metadata?.failedTests,
             runId: payload.metadata?.runId,
             dashboardUrl: payload.metadata?.dashboardUrl,
           });

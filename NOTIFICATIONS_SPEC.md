@@ -416,9 +416,10 @@ sequenceDiagram
 
         alt Notification Enabled
             T->>N: Send success notification
-            Note right of T: payload: {<br/>  type: 'job_success',<br/>  targetName: 'Job Name',<br/>  severity: 'success',<br/>  metadata: {<br/>    duration: 45000,<br/>    totalTests: 100,<br/>    passedTests: 100,<br/>    failedTests: 0,<br/>    runId: 'run-123',<br/>    dashboardUrl: '...'<br/>  }<br/>}
+            Note right of T: payload: {<br/>  type: 'job_success',<br/>  targetName: 'Job Name',<br/>  severity: 'success',<br/>  metadata: {<br/>    duration: 45000,<br/>    runId: 'run-123',<br/>    dashboardUrl: '...'<br/>  }<br/>}<br/>(No test stats in email)
 
             N->>E: renderJobSuccessEmail()
+            Note right of N: Generic template<br/>without test statistics
             E->>E: Fetch from template queue
             E-->>N: {html, text, subject}
 
@@ -435,9 +436,10 @@ sequenceDiagram
         T->>T: Capture error logs
 
         T->>N: Send failure notification
-        Note right of T: payload: {<br/>  type: 'job_failed',<br/>  targetName: 'Job Name',<br/>  severity: 'error',<br/>  metadata: {<br/>    duration: 30000,<br/>    errorMessage: 'Test timeout',<br/>    totalTests: 100,<br/>    passedTests: 85,<br/>    failedTests: 15,<br/>    runId: 'run-123',<br/>    dashboardUrl: '...'<br/>  }<br/>}
+        Note right of T: payload: {<br/>  type: 'job_failed',<br/>  targetName: 'Job Name',<br/>  severity: 'error',<br/>  metadata: {<br/>    duration: 30000,<br/>    errorMessage: 'Test timeout',<br/>    runId: 'run-123',<br/>    dashboardUrl: '...'<br/>  }<br/>}<br/>(No test stats in email)
 
         N->>E: renderJobFailureEmail()
+        Note right of N: Generic template<br/>without test statistics
         E->>E: Fetch from template queue
         E-->>N: {html, text, subject}
 
@@ -473,14 +475,16 @@ sequenceDiagram
 1. **Job Success** (`job_success`)
    - Triggered when all tests pass
    - Green color theme (#22c55e)
-   - Includes test statistics, duration, dashboard link
+   - Generic template (no test statistics in email)
+   - Includes job name, status, duration, dashboard link
    - Optional: Only send for scheduled runs, not manual
 
 2. **Job Failure** (`job_failed`)
    - Triggered when one or more tests fail
    - Red color theme (#dc2626)
-   - Includes error message, test statistics, failed test count
-   - Dashboard link to detailed results and artifacts
+   - Generic template (no test statistics in email)
+   - Includes job name, status, duration, error message, dashboard link
+   - Users can view full test results on dashboard
 
 3. **Job Timeout** (`job_timeout`)
    - Triggered when job exceeds maximum execution time
@@ -491,15 +495,14 @@ sequenceDiagram
 **Notification Fields:**
 - Job name
 - Project name
-- Execution status
-- Duration (in milliseconds, formatted as minutes:seconds)
-- Total tests
-- Passed tests
-- Failed tests
+- Execution status (Success/Failed/Timeout)
+- Duration (in seconds)
 - Run ID (unique identifier)
-- Dashboard URL (direct link to run details)
+- Dashboard URL (direct link to full results and test statistics)
 - Trigger type (scheduled/manual)
-- Error message (for failures)
+- Error message (for failures only)
+
+**Note:** Test statistics (total tests, passed, failed) are NOT included in email notifications. Users can view detailed test results and statistics on the dashboard by clicking the provided link.
 
 **Conditional Notifications:**
 - Users can configure to receive notifications only on failure
