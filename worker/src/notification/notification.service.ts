@@ -474,24 +474,64 @@ export class NotificationService {
       // Render email using centralized template service
       let emailContent: { html: string; text: string; subject?: string };
       try {
-        const rendered = await this.emailTemplateService.renderMonitorAlertEmail({
-          title: formatted.title,
-          message: formatted.message,
-          fields: formatted.fields,
-          footer: formatted.footer,
-          type: this.mapSeverityToType(payload.severity),
-          color: formatted.color,
-        });
+        // Use appropriate template based on alert type
+        let rendered: { html: string; text: string; subject: string };
+
+        if (payload.type === 'job_failed') {
+          // Use job failure template
+          rendered = await this.emailTemplateService.renderJobFailureEmail({
+            jobName: payload.targetName,
+            duration: payload.metadata?.duration || 0,
+            errorMessage: payload.metadata?.errorMessage,
+            totalTests: payload.metadata?.totalTests,
+            passedTests: payload.metadata?.passedTests,
+            failedTests: payload.metadata?.failedTests,
+            runId: payload.metadata?.runId,
+            dashboardUrl: payload.metadata?.dashboardUrl,
+          });
+        } else if (payload.type === 'job_success') {
+          // Use job success template
+          rendered = await this.emailTemplateService.renderJobSuccessEmail({
+            jobName: payload.targetName,
+            duration: payload.metadata?.duration || 0,
+            totalTests: payload.metadata?.totalTests,
+            passedTests: payload.metadata?.passedTests,
+            failedTests: payload.metadata?.failedTests,
+            runId: payload.metadata?.runId,
+            dashboardUrl: payload.metadata?.dashboardUrl,
+          });
+        } else if (payload.type === 'job_timeout') {
+          // Use job timeout template
+          rendered = await this.emailTemplateService.renderJobTimeoutEmail({
+            jobName: payload.targetName,
+            duration: payload.metadata?.duration || 0,
+            runId: payload.metadata?.runId,
+            dashboardUrl: payload.metadata?.dashboardUrl,
+          });
+        } else {
+          // Use monitor alert template for all other types
+          rendered = await this.emailTemplateService.renderMonitorAlertEmail({
+            title: formatted.title,
+            message: formatted.message,
+            fields: formatted.fields,
+            footer: formatted.footer,
+            type: this.mapSeverityToType(payload.severity),
+            color: formatted.color,
+          });
+        }
+
         emailContent = {
           html: rendered.html,
           text: rendered.text,
           subject: rendered.subject,
         };
-        this.logger.debug('Email template rendered successfully from API');
+        this.logger.debug(
+          `Email template rendered successfully for ${payload.type}`,
+        );
       } catch (templateError) {
         // Fallback to old inline formatting if template service fails
         this.logger.warn(
-          `Failed to fetch template from API, using fallback: ${getErrorMessage(templateError)}`,
+          `Failed to fetch template from queue, using fallback: ${getErrorMessage(templateError)}`,
         );
         emailContent = this.formatEmailContent(formatted, payload);
       }
