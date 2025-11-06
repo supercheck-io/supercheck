@@ -9,6 +9,7 @@ import { MonitorModule } from './monitor/monitor.module';
 import { NotificationModule } from './notification/notification.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { HealthModule } from './health/health.module';
+import { EmailTemplateModule } from './email-template/email-template.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { HealthModule } from './health/health.module';
     NotificationModule,
     SchedulerModule,
     HealthModule,
+    EmailTemplateModule,
   ],
   controllers: [AppController],
   providers: [AppService],

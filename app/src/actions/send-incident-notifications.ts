@@ -9,7 +9,7 @@ import {
 } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { EmailService } from "@/lib/email-service";
-import { getIncidentNotificationEmailTemplate } from "@/lib/email-templates/status-page-emails";
+import { renderIncidentNotificationEmail } from "@/lib/email-renderer";
 import { format } from "date-fns";
 
 /**
@@ -151,14 +151,14 @@ export async function sendIncidentNotifications(
           unsubscribeUrl,
         };
 
-        const { subject, text, html } =
-          getIncidentNotificationEmailTemplate(emailParams);
+        // Render email using react-email template
+        const emailContent = await renderIncidentNotificationEmail(emailParams);
 
         const result = await emailService.sendEmail({
           to: subscriber.email,
-          subject,
-          text,
-          html,
+          subject: emailContent.subject,
+          text: emailContent.text,
+          html: emailContent.html,
         });
 
         if (result.success) {
