@@ -138,7 +138,37 @@ export default function() {
     category: "Load Testing",
     testType: "performance",
     tags: ["k6", "stress", "capacity"],
-    code: `import http from 'k6/http';
+    code: `/**
+ * k6 Stress Test Script
+ *
+ * This script gradually increases load to find system limits and breaking points.
+ * Stress testing helps identify the maximum capacity your system can handle
+ * before performance degrades or failures occur.
+ *
+ * Test Coverage:
+ * - Gradual load increase (stress ramp)
+ * - System capacity limits identification
+ * - Performance degradation points
+ * - Resource exhaustion detection
+ * - Recovery behavior validation
+ *
+ * Configuration:
+ * - Gradual ramp: 10 → 50 → 100 users
+ * - Multiple stages with sustained load
+ * - Thresholds: p95 < 500ms, error rate < 1%
+ * - Total duration: ~25 minutes
+ *
+ * Success Criteria:
+ * - 95% of requests complete under 500ms
+ * - Error rate stays below 1%
+ *
+ * Target API: test-api.k6.io
+ * Documentation: https://k6.io/docs/test-types/stress-testing/
+ *
+ * @requires k6 binary
+ */
+
+import http from 'k6/http';
 import { sleep, check } from 'k6';
 
 // Test configuration with gradual load increase
@@ -180,7 +210,38 @@ export default function() {
     category: "Load Testing",
     testType: "performance",
     tags: ["k6", "soak", "endurance"],
-    code: `import http from 'k6/http';
+    code: `/**
+ * k6 Soak Test Script (Endurance Testing)
+ *
+ * This script tests system stability and reliability over extended periods.
+ * Soak testing helps identify memory leaks, resource exhaustion, and
+ * performance degradation that only appears after prolonged operation.
+ *
+ * Test Coverage:
+ * - Extended duration load testing (2+ hours)
+ * - Memory leak detection
+ * - Resource exhaustion monitoring
+ * - Performance consistency over time
+ * - Database connection pool stability
+ *
+ * Configuration:
+ * - 50 virtual users sustained for 2 hours
+ * - Gradual 5-minute ramp up/down
+ * - Thresholds: p95 < 500ms, error rate < 1%
+ *
+ * Monitoring Focus:
+ * - Memory usage trends
+ * - Response time consistency
+ * - Error rate stability
+ * - Resource utilization
+ *
+ * Target API: test-api.k6.io
+ * Documentation: https://k6.io/docs/test-types/soak-testing/
+ *
+ * @requires k6 binary
+ */
+
+import http from 'k6/http';
 import { sleep, check } from 'k6';
 
 // Test configuration for endurance testing
@@ -218,7 +279,41 @@ export default function() {
     category: "API Testing",
     testType: "performance",
     tags: ["k6", "api", "rest"],
-    code: `import http from 'k6/http';
+    code: `/**
+ * k6 API Performance Test Script
+ *
+ * This script tests REST API performance with multiple HTTP methods.
+ * Comprehensive API testing validates GET, POST, and other operations
+ * under load to ensure API reliability and performance.
+ *
+ * Test Coverage:
+ * - GET request performance
+ * - POST request performance
+ * - Request grouping and organization
+ * - JSON payload handling
+ * - Response validation
+ *
+ * Configuration:
+ * - 20 virtual users
+ * - 1 minute duration
+ * - Thresholds: p95 < 300ms, error rate < 5%
+ *
+ * HTTP Methods Tested:
+ * - GET: List retrieval
+ * - POST: Resource creation with JSON payload
+ *
+ * Features:
+ * - Grouped test organization
+ * - JSON request/response handling
+ * - Per-operation validation
+ *
+ * Target API: test-api.k6.io
+ * Documentation: https://k6.io/docs/examples/api-crud-operations/
+ *
+ * @requires k6 binary
+ */
+
+import http from 'k6/http';
 import { check, group } from 'k6';
 
 // Test configuration
@@ -370,7 +465,31 @@ export default async function() {
     category: "Browser Testing",
     testType: "browser",
     tags: ["playwright", "browser", "navigation"],
-    code: `import { test, expect } from '@playwright/test';
+    code: `/**
+ * Playwright Basic Navigation Test
+ *
+ * This test demonstrates basic browser automation and page navigation using Playwright.
+ * It covers fundamental operations like navigation, title verification, and element visibility checks.
+ *
+ * Test Coverage:
+ * - Page navigation and loading
+ * - Page title validation
+ * - Heading element visibility
+ * - Text content verification
+ * - CSS selector usage
+ *
+ * Use Cases:
+ * - Smoke testing page availability
+ * - Verifying basic page structure
+ * - Validating content presence
+ *
+ * Target: example.com
+ * Documentation: https://playwright.dev/docs/writing-tests
+ *
+ * @requires @playwright/test
+ */
+
+import { test, expect } from '@playwright/test';
 
 test('basic navigation test', async ({ page }) => {
   // Navigate to the page
