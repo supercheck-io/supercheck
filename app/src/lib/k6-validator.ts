@@ -24,8 +24,8 @@ export function validateK6Script(script: string): K6ValidationResult {
     );
   }
 
-  // Required: Must have default export function
-  if (!/export\s+default\s+function/.test(script)) {
+  // Required: Must have default export function (allow optional async keyword)
+  if (!/export\s+default\s+(async\s+)?function/.test(script)) {
     errors.push('Script must export a default function');
   }
 
