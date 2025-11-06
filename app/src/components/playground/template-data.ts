@@ -1023,20 +1023,59 @@ test('user login test', async ({ page }) => {
     category: "Database Testing",
     testType: "database",
     tags: ["playwright", "database", "select"],
-    code: `import { test, expect } from '@playwright/test';
+    code: `/**
+ * Playwright Database SELECT Query Test
+ *
+ * This test demonstrates database query execution and result validation
+ * using PostgreSQL client library integrated with Playwright tests.
+ *
+ * Test Coverage:
+ * - Database connection establishment
+ * - SELECT query execution
+ * - Query result validation
+ * - Result set row counting
+ * - Column value verification
+ * - Data type checking
+ *
+ * Key Features:
+ * - Parameterized queries (SQL injection prevention)
+ * - Connection pooling
+ * - Result set validation
+ * - Proper resource cleanup
+ *
+ * Use Cases:
+ * - Verify data persistence after operations
+ * - Validate database state
+ * - Integration testing with database
+ * - Data integrity verification
+ *
+ * Best Practices:
+ * - Always use parameterized queries ($1, $2, etc.)
+ * - Close connections in afterAll hook
+ * - Validate both row count and content
+ * - Use connection pooling for performance
+ * - Store credentials in environment variables
+ *
+ * Database: PostgreSQL (pg library)
+ * Documentation: https://node-postgres.com/
+ *
+ * @requires @playwright/test, pg
+ */
+
+import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
 // Database connection configuration
 const pool = new Pool({
-  host: 'localhost',
-  port: 5432,
-  database: 'testdb',
-  user: 'testuser',
-  password: 'testpass',
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432'),
+  database: process.env.DB_NAME || 'testdb',
+  user: process.env.DB_USER || 'testuser',
+  password: process.env.DB_PASSWORD || 'testpass',
 });
 
 test('database SELECT query', async () => {
-  // Execute SELECT query
+  // Execute SELECT query with parameter
   const result = await pool.query('SELECT * FROM users WHERE id = $1', [1]);
 
   // Verify query results
@@ -1044,6 +1083,11 @@ test('database SELECT query', async () => {
   expect(result.rows[0]).toHaveProperty('id', 1);
   expect(result.rows[0]).toHaveProperty('email');
   expect(result.rows[0]).toHaveProperty('name');
+
+  // Validate data types
+  expect(typeof result.rows[0].id).toBe('number');
+  expect(typeof result.rows[0].name).toBe('string');
+  expect(typeof result.rows[0].email).toBe('string');
 });
 
 // Cleanup after all tests
