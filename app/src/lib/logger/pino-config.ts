@@ -5,13 +5,14 @@
  * Features:
  * - Environment-aware log levels
  * - Structured JSON logging in production
- * - Simple console output in development (no worker threads)
+ * - Human-readable console output in development
  * - Request ID tracking
  * - Performance metrics
  * - Error serialization
  */
 
 import pino, { type Logger as PinoLogger } from 'pino';
+import pinoPretty from 'pino-pretty';
 
 /**
  * Determine log level based on environment
@@ -32,16 +33,30 @@ const getLogLevel = (): string => {
 };
 
 /**
+ * Custom pretty printer for development
+ */
+const prettyPrint = (isDevelopment: boolean) => {
+  if (!isDevelopment) {
+    return undefined;
+  }
+
+  // Use pino-pretty's formatting but synchronously
+  return pinoPretty({
+    colorize: true,
+    translateTime: 'HH:MM:ss.l',
+    ignore: 'pid,hostname',
+    singleLine: false,
+    levelFirst: true,
+    messageFormat: '{if module}[{module}]{end} {msg}',
+    customColors: 'info:blue,warn:yellow,error:red',
+  });
+};
+
+/**
  * Base Pino configuration
- * No worker threads - compatible with Next.js and Turbopack
  */
 export const pinoConfig = {
   level: getLogLevel(),
-
-  // Browser-compatible check
-  browser: {
-    asObject: true,
-  },
 
   // Serialize errors properly
   serializers: {
@@ -69,10 +84,13 @@ export const pinoConfig = {
 };
 
 /**
- * Create a root logger instance
- * Using stdout directly (no worker threads for Next.js compatibility)
+ * Create a root logger instance with pretty printing in development
  */
-export const logger: PinoLogger = pino(pinoConfig);
+const isDevelopment = process.env.NODE_ENV !== 'production';
+export const logger: PinoLogger = pino(
+  pinoConfig,
+  isDevelopment ? prettyPrint(true) : undefined
+);
 
 /**
  * Create a child logger with additional context

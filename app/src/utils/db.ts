@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "@/db/schema";
+import { drizzleLogger } from "@/lib/logger/drizzle-logger";
 
 const connectionString =
   process.env.DATABASE_URL ||
@@ -19,6 +20,9 @@ const client = postgres(connectionString, {
   max_lifetime: parseInt(process.env.DB_MAX_LIFETIME || "1800", 10), // Default: 30 minutes (in seconds)
 });
 
-// Only enable query logging in development
+// Use custom Pino logger for Drizzle queries (disabled by default, enable with LOG_DB_QUERIES=true)
 const isDevelopment = process.env.NODE_ENV === "development";
-export const db = drizzle(client, { schema, logger: isDevelopment });
+export const db = drizzle(client, {
+  schema,
+  logger: isDevelopment ? drizzleLogger : undefined
+});
