@@ -23,12 +23,7 @@ interface RuntimeInfo {
   footer: string;
 }
 
-const PLAYWRIGHT_TYPES: TestType[] = [
-  "browser",
-  "api",
-  "database",
-  "custom",
-];
+const PLAYWRIGHT_TYPES: TestType[] = ["browser", "api", "database", "custom"];
 
 const PLAYWRIGHT_LIBRARIES: AllowedLibrary[] = [
   {
@@ -57,15 +52,6 @@ const PERFORMANCE_LIBRARIES: AllowedLibrary[] = [
   { name: "k6/ws", description: "WebSocket support" },
   { name: "k6/grpc", description: "gRPC client support" },
   { name: "k6/net/grpc", description: "Low-level gRPC networking" },
-  { name: "k6/browser", description: "Experimental browser automation" },
-  {
-    name: "k6/experimental/redis",
-    description: "k6 Redis client (experimental)",
-  },
-  {
-    name: "k6/experimental/tracing",
-    description: "Distributed tracing instrumentation",
-  },
 ];
 
 const PLAYWRIGHT_RUNTIME: RuntimeInfo = {

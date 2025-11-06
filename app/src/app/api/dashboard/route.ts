@@ -169,6 +169,7 @@ export async function GET() {
       // Total execution time (last 30 days) 
       dbInstance.select({
         duration: runs.duration,
+        durationMs: runs.durationMs,
         status: runs.status,
         startedAt: runs.startedAt,
         completedAt: runs.completedAt
@@ -331,35 +332,59 @@ export async function GET() {
 
       for (const run of executionTimeData) {
         try {
-          // Skip runs without duration (incomplete or failed early)
-          if (!run.duration) {
+          let durationMs: number | null = null;
+
+          // Prefer explicit millisecond duration when available
+          if (run.durationMs !== null && run.durationMs !== undefined) {
+            const numericDuration = Number(run.durationMs);
+            if (!Number.isFinite(numericDuration)) {
+              errors.push(`DurationMs not numeric: ${run.durationMs}`);
+              jobAggregate.skipped++;
+              continue;
+            }
+            durationMs = numericDuration;
+          } else if (run.duration) {
+            // Parse duration string - handle different formats robustly
+            const durationStr = run.duration.toString().trim();
+
+            if (durationStr.endsWith("ms")) {
+              durationMs = parseInt(durationStr.replace("ms", ""), 10);
+            } else if (durationStr.endsWith("s")) {
+              const seconds = parseInt(durationStr.replace("s", ""), 10);
+              durationMs = Number.isNaN(seconds) ? null : seconds * 1000;
+            } else if (/^\d+$/.test(durationStr)) {
+              const seconds = parseInt(durationStr, 10);
+              durationMs = Number.isNaN(seconds) ? null : seconds * 1000;
+            } else {
+              const parsed = parseInt(durationStr, 10);
+              durationMs = Number.isNaN(parsed) ? null : parsed;
+            }
+          } else if (run.startedAt && run.completedAt) {
+            // Fallback to timestamps when provided
+            const startedAt =
+              run.startedAt instanceof Date ? run.startedAt : new Date(run.startedAt);
+            const completedAt =
+              run.completedAt instanceof Date ? run.completedAt : new Date(run.completedAt);
+
+            if (!Number.isNaN(startedAt.getTime()) && !Number.isNaN(completedAt.getTime())) {
+              durationMs = completedAt.getTime() - startedAt.getTime();
+            }
+          }
+
+          if (durationMs === null) {
+            errors.push(
+              `Unable to determine duration for run starting ${run.startedAt?.toString() ?? "unknown"}`
+            );
             jobAggregate.skipped++;
             continue;
           }
 
-          // Parse duration - handle different formats robustly
-          let durationMs = 0;
-          const durationStr = run.duration.toString().trim();
-          
-          if (durationStr.includes('ms')) {
-            // Format: "1234ms"
-            durationMs = parseInt(durationStr.replace('ms', ''), 10);
-          } else if (durationStr.includes('s')) {
-            // Format: "123s" 
-            const seconds = parseInt(durationStr.replace('s', ''), 10);
-            durationMs = seconds * 1000;
-          } else if (/^\d+$/.test(durationStr)) {
-            // Format: "123" (assuming seconds based on worker code)
-            const seconds = parseInt(durationStr, 10);
-            durationMs = seconds * 1000;
-          } else {
-            // Try parsing as direct milliseconds
-            durationMs = parseInt(durationStr, 10);
-            if (isNaN(durationMs)) {
-              errors.push(`Invalid duration format: ${durationStr}`);
-              jobAggregate.skipped++;
-              continue;
-            }
+          if (!Number.isFinite(durationMs)) {
+            errors.push(
+              `Duration not finite for run starting ${run.startedAt?.toString() ?? "unknown"}`
+            );
+            jobAggregate.skipped++;
+            continue;
           }
 
           // Validate duration is reasonable (0ms to 24 hours max)
