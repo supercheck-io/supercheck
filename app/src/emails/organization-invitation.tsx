@@ -23,20 +23,32 @@ export const OrganizationInvitationEmail = ({
   return (
     <BaseLayout
       preview={`You're invited to join ${organizationName} on Supercheck`}
-      title="You're Invited!"
+      title="Team Invitation"
       headerColor="linear-gradient(135deg, #10b981 0%, #059669 100%)"
     >
+      {/* Icon */}
+      <Section style={iconSection}>
+        <div style={iconCircle}>
+          <span style={iconEmoji}>👋</span>
+        </div>
+      </Section>
+
+      {/* Main Content */}
+      <Text style={heading}>You&apos;re Invited!</Text>
+
       <Text style={paragraph}>
         You&apos;ve been invited to join{" "}
-        <strong style={{ color: "#1f2937" }}>{organizationName}</strong> as a{" "}
-        <strong style={{ color: "#1f2937" }}>{role}</strong> on Supercheck.
+        <strong style={orgName}>{organizationName}</strong> on Supercheck.
       </Text>
+
+      <Section style={roleBox}>
+        <Text style={roleLabel}>Your Role</Text>
+        <Text style={roleValue}>{role.toUpperCase()}</Text>
+      </Section>
 
       {projectInfo && (
         <Section style={infoBox}>
-          <Text style={infoText}>
-            <strong>Project Access:</strong>
-          </Text>
+          <Text style={infoTitle}>📋 Project Access</Text>
           <Text style={infoText} dangerouslySetInnerHTML={{ __html: projectInfo }} />
         </Section>
       )}
@@ -45,6 +57,7 @@ export const OrganizationInvitationEmail = ({
         Click the button below to accept your invitation and get started:
       </Text>
 
+      {/* CTA Button */}
       <Section style={buttonContainer}>
         <Button style={button} href={inviteUrl}>
           Accept Invitation
@@ -53,38 +66,127 @@ export const OrganizationInvitationEmail = ({
 
       <Hr style={hr} />
 
-      <Text style={smallText}>
-        <strong>Note:</strong> This invitation expires in 7 days.
-      </Text>
-
-      <Text style={smallText}>
-        If you didn&apos;t expect this invitation, you can safely ignore this email.
-      </Text>
+      {/* Expiry Notice */}
+      <Section style={noticeBox}>
+        <Text style={noticeText}>
+          ⏱️ This invitation expires in <strong>7 days</strong>.
+        </Text>
+        <Text style={noticeText}>
+          If you didn&apos;t expect this invitation, you can safely ignore this email.
+        </Text>
+      </Section>
     </BaseLayout>
   );
 };
 
+// ============================================================================
+// ICON STYLES
+// ============================================================================
+
+const iconSection = {
+  textAlign: "center" as const,
+  marginBottom: "24px",
+};
+
+const iconCircle = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "80px",
+  height: "80px",
+  borderRadius: "50%",
+  backgroundColor: "#d1fae5",
+  margin: "0 auto",
+};
+
+const iconEmoji = {
+  fontSize: "40px",
+  lineHeight: "1",
+};
+
+// ============================================================================
+// TEXT STYLES
+// ============================================================================
+
+const heading = {
+  color: "#111827",
+  fontSize: "24px",
+  fontWeight: "700" as const,
+  lineHeight: "1.3",
+  margin: "0 0 24px",
+  textAlign: "center" as const,
+};
+
 const paragraph = {
-  color: "#374151",
-  fontSize: "16px",
-  lineHeight: "1.5",
+  color: "#4b5563",
+  fontSize: "15px",
+  lineHeight: "1.6",
+  margin: "0 0 24px",
+  textAlign: "center" as const,
+};
+
+const orgName = {
+  color: "#10b981",
+  fontWeight: "600" as const,
+};
+
+// ============================================================================
+// ROLE BOX STYLES
+// ============================================================================
+
+const roleBox = {
+  backgroundColor: "#f0fdf4",
+  borderRadius: "8px",
+  padding: "16px",
+  margin: "0 0 24px",
+  textAlign: "center" as const,
+};
+
+const roleLabel = {
+  color: "#065f46",
+  fontSize: "12px",
+  fontWeight: "700" as const,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.5px",
+  margin: "0 0 4px",
+};
+
+const roleValue = {
+  color: "#047857",
+  fontSize: "18px",
+  fontWeight: "700" as const,
+  margin: "0",
+};
+
+// ============================================================================
+// INFO BOX STYLES
+// ============================================================================
+
+const infoBox = {
+  backgroundColor: "#f8fafc",
+  border: "1px solid #e2e8f0",
+  borderRadius: "8px",
+  padding: "20px",
   margin: "0 0 24px",
 };
 
-const infoBox = {
-  backgroundColor: "#f0fdf4",
-  borderLeft: "4px solid #10b981",
-  borderRadius: "4px",
-  padding: "16px",
-  margin: "24px 0",
+const infoTitle = {
+  color: "#1e293b",
+  fontSize: "14px",
+  fontWeight: "700" as const,
+  margin: "0 0 12px",
 };
 
 const infoText = {
-  color: "#166534",
+  color: "#475569",
   fontSize: "14px",
   lineHeight: "1.6",
-  margin: "0 0 8px",
+  margin: "0",
 };
+
+// ============================================================================
+// BUTTON STYLES
+// ============================================================================
 
 const buttonContainer = {
   textAlign: "center" as const,
@@ -93,26 +195,39 @@ const buttonContainer = {
 
 const button = {
   backgroundColor: "#10b981",
-  borderRadius: "6px",
-  color: "#fff",
+  borderRadius: "8px",
+  color: "#ffffff",
   fontSize: "16px",
-  fontWeight: "600",
+  fontWeight: "600" as const,
   textDecoration: "none",
   textAlign: "center" as const,
   display: "inline-block",
-  padding: "14px 32px",
+  padding: "16px 40px",
+  boxShadow: "0 4px 6px rgba(16, 185, 129, 0.25)",
 };
 
 const hr = {
   borderColor: "#e5e7eb",
-  margin: "32px 0 24px",
+  margin: "32px 0",
 };
 
-const smallText = {
-  color: "#6b7280",
+// ============================================================================
+// NOTICE BOX STYLES
+// ============================================================================
+
+const noticeBox = {
+  backgroundColor: "#f0f9ff",
+  borderLeft: "4px solid #3b82f6",
+  borderRadius: "8px",
+  padding: "16px 20px",
+  margin: "0",
+};
+
+const noticeText = {
+  color: "#1e40af",
   fontSize: "14px",
-  lineHeight: "1.5",
-  margin: "0 0 12px",
+  lineHeight: "1.6",
+  margin: "0 0 8px",
 };
 
 export default OrganizationInvitationEmail;

@@ -1,4 +1,4 @@
-import { Section, Text } from "@react-email/components";
+import { Button, Section, Text } from "@react-email/components";
 import * as React from "react";
 import { BaseLayout } from "./base-layout";
 
@@ -16,37 +16,35 @@ interface MonitorAlertEmailProps {
   color: string;
 }
 
+/**
+ * Get status icon with better visual indicators
+ */
 const getStatusIcon = (type: string): string => {
   switch (type) {
     case "failure":
-      return "🔴";
+      return "⚠️";
     case "success":
       return "✅";
     case "warning":
-      return "⚠️";
+      return "⚡";
     default:
       return "ℹ️";
   }
 };
 
+/**
+ * Get status badge with professional styling
+ */
 const getStatusBadge = (type: string, color: string): React.ReactNode => {
-  const badgeText = type === "failure" ? "ALERT" : type === "success" ? "RESOLVED" : "WARNING";
+  const badgeText =
+    type === "failure" ? "ALERT" : type === "success" ? "RESOLVED" : "WARNING";
+
   return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "8px 16px",
-        backgroundColor: color,
-        color: "#ffffff",
-        borderRadius: "4px",
-        fontSize: "13px",
-        fontWeight: "600",
-        textTransform: "uppercase",
-        letterSpacing: "0.5px",
-      }}
-    >
-      {badgeText}
-    </span>
+    <div style={badgeContainer}>
+      <span style={{ ...badge, backgroundColor: color }}>
+        {badgeText}
+      </span>
+    </div>
   );
 };
 
@@ -64,77 +62,131 @@ export const MonitorAlertEmail = ({
   const statusIcon = getStatusIcon(type);
   const statusBadge = getStatusBadge(type, color);
 
+  // Extract dashboard URL from fields if present
+  const dashboardField = fields.find((f) =>
+    f.title.toLowerCase().includes("dashboard")
+  );
+
   return (
     <BaseLayout
       preview={title}
-      title="Supercheck Monitoring Alert"
-      headerColor="#667eea"
+      title="System Notification"
       footer={
         <>
           <Text style={footerText}>{footer}</Text>
-          <Text style={footerSmall}>This is an automated notification from your monitoring system.</Text>
+          <Text style={footerSmall}>
+            This is an automated notification from Supercheck monitoring system.
+          </Text>
         </>
       }
     >
-      <Section style={{ textAlign: "center", marginBottom: "16px" }}>
-        <div
-          style={{
-            background: "rgba(102, 126, 234, 0.1)",
-            display: "inline-block",
-            padding: "12px",
-            borderRadius: "50%",
-            fontSize: "32px",
-          }}
-        >
-          {statusIcon}
+      {/* Status Icon */}
+      <Section style={iconSection}>
+        <div style={{ ...iconCircle, backgroundColor: `${color}15` }}>
+          <span style={iconEmoji}>{statusIcon}</span>
         </div>
-        <Text style={{ color: "#6b7280", fontSize: "16px", margin: "8px 0 0", opacity: 0.9 }}>
-          System Status Notification
-        </Text>
       </Section>
 
-      <Section style={{ marginBottom: "16px" }}>{statusBadge}</Section>
+      {/* Status Badge */}
+      {statusBadge}
 
+      {/* Alert Title */}
       <Text style={alertTitle}>{title}</Text>
 
-      <Section
-        style={{
-          ...messageBox,
-          borderLeftColor: color,
-        }}
-      >
-        <Text style={messageText}>{message.replace(/\n/g, "\n")}</Text>
+      {/* Alert Message */}
+      <Section style={{ ...messageBox, borderLeftColor: color }}>
+        <Text style={messageText}>{message}</Text>
       </Section>
 
-      <Text style={detailsTitle}>ALERT DETAILS</Text>
+      {/* Details Table */}
+      <Section style={detailsSection}>
+        <Text style={detailsTitle}>Alert Details</Text>
+        <table style={detailsTable}>
+          <tbody>
+            {fields
+              .filter((f) => !f.title.toLowerCase().includes("dashboard"))
+              .map((field, index) => (
+                <tr key={index}>
+                  <td style={detailsLabelCell}>{field.title}</td>
+                  <td style={detailsValueCell}>{field.value}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </Section>
 
-      <table style={detailsTable}>
-        <tbody>
-          {fields.map((field, index) => (
-            <tr key={index}>
-              <td style={detailsLabelCell}>{field.title}:</td>
-              <td style={detailsValueCell}>{field.value}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* Call to Action */}
+      {dashboardField && (
+        <Section style={ctaSection}>
+          <Button style={ctaButton} href={dashboardField.value}>
+            View Full Details
+          </Button>
+        </Section>
+      )}
     </BaseLayout>
   );
 };
 
+// ============================================================================
+// ICON & BADGE STYLES
+// ============================================================================
+
+const iconSection = {
+  textAlign: "center" as const,
+  marginBottom: "20px",
+};
+
+const iconCircle = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "80px",
+  height: "80px",
+  borderRadius: "50%",
+  margin: "0 auto",
+};
+
+const iconEmoji = {
+  fontSize: "40px",
+  lineHeight: "1",
+};
+
+const badgeContainer = {
+  textAlign: "center" as const,
+  marginBottom: "24px",
+};
+
+const badge = {
+  display: "inline-block",
+  padding: "10px 20px",
+  color: "#ffffff",
+  borderRadius: "6px",
+  fontSize: "12px",
+  fontWeight: "700" as const,
+  textTransform: "uppercase" as const,
+  letterSpacing: "1px",
+  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+};
+
+// ============================================================================
+// TITLE & MESSAGE STYLES
+// ============================================================================
+
 const alertTitle = {
-  color: "#1e293b",
-  fontSize: "20px",
-  fontWeight: "bold",
-  margin: "0 0 8px",
+  color: "#111827",
+  fontSize: "24px",
+  fontWeight: "700" as const,
+  margin: "0 0 20px",
+  lineHeight: "1.3",
+  textAlign: "center" as const,
 };
 
 const messageBox = {
   backgroundColor: "#f8fafc",
   borderLeft: "4px solid",
-  padding: "16px 20px",
-  margin: "16px 0 24px",
-  borderRadius: "4px",
+  padding: "20px 24px",
+  margin: "0 0 32px",
+  borderRadius: "8px",
 };
 
 const messageText = {
@@ -145,49 +197,91 @@ const messageText = {
   whiteSpace: "pre-wrap" as const,
 };
 
+// ============================================================================
+// DETAILS TABLE STYLES
+// ============================================================================
+
+const detailsSection = {
+  marginTop: "32px",
+};
+
 const detailsTitle = {
-  color: "#1e293b",
-  fontSize: "16px",
-  fontWeight: "bold",
+  color: "#374151",
+  fontSize: "14px",
+  fontWeight: "700" as const,
   textTransform: "uppercase" as const,
+  letterSpacing: "0.5px",
   margin: "0 0 16px",
 };
 
 const detailsTable = {
   width: "100%",
   backgroundColor: "#ffffff",
-  border: "1px solid #e2e8f0",
-  borderCollapse: "collapse" as const,
+  border: "1px solid #e5e7eb",
+  borderRadius: "8px",
+  borderCollapse: "separate" as const,
+  borderSpacing: "0",
+  overflow: "hidden",
 };
 
 const detailsLabelCell = {
-  padding: "12px 16px",
-  fontWeight: "600",
-  verticalAlign: "top",
-  borderBottom: "1px solid #f1f5f9",
-  color: "#475569",
-  fontSize: "14px",
-  width: "140px",
+  padding: "14px 16px",
+  fontWeight: "600" as const,
+  verticalAlign: "top" as const,
+  borderBottom: "1px solid #f3f4f6",
+  color: "#6b7280",
+  fontSize: "13px",
+  width: "160px",
+  backgroundColor: "#fafafa",
 };
 
 const detailsValueCell = {
-  padding: "12px 16px",
-  verticalAlign: "top",
-  borderBottom: "1px solid #f1f5f9",
-  color: "#334155",
+  padding: "14px 16px",
+  verticalAlign: "top" as const,
+  borderBottom: "1px solid #f3f4f6",
+  color: "#111827",
   fontSize: "14px",
+  fontWeight: "500" as const,
 };
 
+// ============================================================================
+// CTA STYLES
+// ============================================================================
+
+const ctaSection = {
+  textAlign: "center" as const,
+  marginTop: "40px",
+};
+
+const ctaButton = {
+  backgroundColor: "#667eea",
+  borderRadius: "8px",
+  color: "#ffffff",
+  fontSize: "15px",
+  fontWeight: "600" as const,
+  textDecoration: "none",
+  textAlign: "center" as const,
+  display: "inline-block",
+  padding: "14px 32px",
+  boxShadow: "0 4px 6px rgba(102, 126, 234, 0.25)",
+};
+
+// ============================================================================
+// FOOTER STYLES
+// ============================================================================
+
 const footerText = {
-  color: "#64748b",
-  fontSize: "13px",
-  margin: "0 0 8px",
+  color: "#6b7280",
+  fontSize: "14px",
+  margin: "0 0 4px",
+  fontWeight: "500" as const,
 };
 
 const footerSmall = {
-  color: "#94a3b8",
+  color: "#9ca3af",
   fontSize: "12px",
-  margin: "0",
+  margin: "4px 0 0 0",
+  lineHeight: "1.5",
 };
 
 export default MonitorAlertEmail;
