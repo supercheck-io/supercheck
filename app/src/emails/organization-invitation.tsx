@@ -24,21 +24,13 @@ export const OrganizationInvitationEmail = ({
     <BaseLayout
       preview={`You're invited to join ${organizationName} on Supercheck`}
       title="Team Invitation"
-      headerColor="linear-gradient(135deg, #10b981 0%, #059669 100%)"
     >
-      {/* Icon */}
-      <Section style={iconSection}>
-        <div style={iconCircle}>
-          <span style={iconEmoji}>👋</span>
-        </div>
-      </Section>
-
       {/* Main Content */}
       <Text style={heading}>You&apos;re Invited!</Text>
 
       <Text style={paragraph}>
-        You&apos;ve been invited to join{" "}
-        <strong style={orgName}>{organizationName}</strong> on Supercheck.
+        You&apos;ve been invited to join <strong>{organizationName}</strong> on
+        Supercheck.
       </Text>
 
       <Section style={roleBox}>
@@ -48,8 +40,11 @@ export const OrganizationInvitationEmail = ({
 
       {projectInfo && (
         <Section style={infoBox}>
-          <Text style={infoTitle}>📋 Project Access</Text>
-          <Text style={infoText} dangerouslySetInnerHTML={{ __html: projectInfo }} />
+          <Text style={infoTitle}>Project Access</Text>
+          <Text
+            style={infoText}
+            dangerouslySetInnerHTML={{ __html: projectInfo }}
+          />
         </Section>
       )}
 
@@ -69,39 +64,15 @@ export const OrganizationInvitationEmail = ({
       {/* Expiry Notice */}
       <Section style={noticeBox}>
         <Text style={noticeText}>
-          ⏱️ This invitation expires in <strong>7 days</strong>.
+          This invitation expires in <strong>7 days</strong>.
         </Text>
         <Text style={noticeText}>
-          If you didn&apos;t expect this invitation, you can safely ignore this email.
+          If you didn&apos;t expect this invitation, you can safely ignore this
+          email.
         </Text>
       </Section>
     </BaseLayout>
   );
-};
-
-// ============================================================================
-// ICON STYLES
-// ============================================================================
-
-const iconSection = {
-  textAlign: "center" as const,
-  marginBottom: "24px",
-};
-
-const iconCircle = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: "80px",
-  height: "80px",
-  borderRadius: "50%",
-  backgroundColor: "#d1fae5",
-  margin: "0 auto",
-};
-
-const iconEmoji = {
-  fontSize: "40px",
-  lineHeight: "1",
 };
 
 // ============================================================================
@@ -125,36 +96,32 @@ const paragraph = {
   textAlign: "center" as const,
 };
 
-const orgName = {
-  color: "#10b981",
-  fontWeight: "600" as const,
-};
-
 // ============================================================================
 // ROLE BOX STYLES
 // ============================================================================
 
 const roleBox = {
-  backgroundColor: "#f0fdf4",
-  borderRadius: "8px",
+  backgroundColor: "#f9fafb",
+  border: "1px solid #e5e7eb",
+  borderRadius: "6px",
   padding: "16px",
   margin: "0 0 24px",
   textAlign: "center" as const,
 };
 
 const roleLabel = {
-  color: "#065f46",
-  fontSize: "12px",
+  color: "#6b7280",
+  fontSize: "11px",
   fontWeight: "700" as const,
   textTransform: "uppercase" as const,
   letterSpacing: "0.5px",
-  margin: "0 0 4px",
+  margin: "0 0 6px",
 };
 
 const roleValue = {
-  color: "#047857",
-  fontSize: "18px",
-  fontWeight: "700" as const,
+  color: "#111827",
+  fontSize: "16px",
+  fontWeight: "600" as const,
   margin: "0",
 };
 
@@ -165,7 +132,7 @@ const roleValue = {
 const infoBox = {
   backgroundColor: "#f8fafc",
   border: "1px solid #e2e8f0",
-  borderRadius: "8px",
+  borderRadius: "6px",
   padding: "20px",
   margin: "0 0 24px",
 };
@@ -194,16 +161,15 @@ const buttonContainer = {
 };
 
 const button = {
-  backgroundColor: "#10b981",
-  borderRadius: "8px",
+  backgroundColor: "#16a34a",
+  borderRadius: "6px",
   color: "#ffffff",
-  fontSize: "16px",
+  fontSize: "15px",
   fontWeight: "600" as const,
   textDecoration: "none",
   textAlign: "center" as const,
   display: "inline-block",
-  padding: "16px 40px",
-  boxShadow: "0 4px 6px rgba(16, 185, 129, 0.25)",
+  padding: "14px 36px",
 };
 
 const hr = {
@@ -216,18 +182,18 @@ const hr = {
 // ============================================================================
 
 const noticeBox = {
-  backgroundColor: "#f0f9ff",
-  borderLeft: "4px solid #3b82f6",
-  borderRadius: "8px",
+  backgroundColor: "#fef3c7",
+  border: "1px solid #fbbf24",
+  borderRadius: "6px",
   padding: "16px 20px",
   margin: "0",
 };
 
 const noticeText = {
-  color: "#1e40af",
-  fontSize: "14px",
+  color: "#92400e",
+  fontSize: "13px",
   lineHeight: "1.6",
-  margin: "0 0 8px",
+  margin: "0 0 6px",
 };
 
 export default OrganizationInvitationEmail;

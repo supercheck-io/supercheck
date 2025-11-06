@@ -632,10 +632,6 @@ export class NotificationService {
         process.env.SMTP_USER ||
         smtpConfig.auth.user;
 
-      this.logger.log(
-        `Sending email to: ${emailAddresses.join(', ')} | From: ${fromEmail} | Subject: ${formatted.title}`,
-      );
-
       const sendPromises = emailAddresses.map((email) =>
         transporter.sendMail({
           from: fromEmail,
@@ -646,15 +642,7 @@ export class NotificationService {
         }),
       );
 
-      const results = await Promise.all(sendPromises);
-
-      // Log SMTP response for debugging
-      results.forEach((result, index) => {
-        this.logger.debug(
-          `SMTP Response for ${emailAddresses[index]}: messageId=${result.messageId}, response=${result.response}`,
-        );
-      });
-
+      await Promise.all(sendPromises);
       return true;
     } catch (error) {
       const errorMessage =
