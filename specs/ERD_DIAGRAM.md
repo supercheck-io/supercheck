@@ -4,7 +4,16 @@
 
 This diagram represents the complete database schema for the Supercheck application, based on the main app schema.
 
-> **Updated:** October 2025 - Status page tables added with complete relationships
+> **Last Updated:** November 6, 2025 - Comprehensive indexing strategy implemented
+>
+> **Recent Changes:**
+> - ✅ Added 60+ strategic indexes for optimal query performance
+> - ✅ Foreign key indexes on all relationship columns
+> - ✅ Composite indexes for common query patterns
+> - ✅ Status and timestamp indexes for filtering and sorting
+> - ✅ Schemas synchronized between app and worker folders
+>
+> See [DATABASE_OPTIMIZATION_REPORT.md](./DATABASE_OPTIMIZATION_REPORT.md) for detailed information.
 
 ```mermaid
 erDiagram
