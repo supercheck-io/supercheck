@@ -72,14 +72,15 @@ export function TemplateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] h-[90vh] p-0 gap-0">
+      <DialogContent className="max-w-[95vw] h-[85vh] p-0 gap-0 min-w-[1300px]">
         <DialogHeader className="px-6 pt-6 pb-4 border-b">
           <div className="flex items-center gap-2">
             <SquareCode className="h-5 w-5 text-primary" />
             <DialogTitle className="text-2xl">Code Templates</DialogTitle>
           </div>
           <DialogDescription className="text-base">
-            Select a template to quickly get started with {isPerformance ? "k6 performance" : "Playwright"} testing
+            Select a template to quickly get started with{" "}
+            {isPerformance ? "k6 performance" : "Playwright"} testing
           </DialogDescription>
         </DialogHeader>
 
@@ -92,39 +93,42 @@ export function TemplateDialog({
                 onValueChange={setSelectedTemplateId}
                 className="space-y-6"
               >
-                {Object.entries(templatesByCategory).map(([category, categoryTemplates]) => (
-                  <div key={category}>
-                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                      {category}
-                    </h3>
-                    <div className="space-y-2">
-                      {categoryTemplates.map((template) => (
-                        <Label
-                          key={template.id}
-                          htmlFor={`template-${template.id}`}
-                          className={cn(
-                            "flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/60 px-4 py-3 transition hover:border-primary/60 hover:bg-card/80",
-                            selectedTemplateId === template.id && "border-primary bg-primary/5"
-                          )}
-                        >
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm leading-tight mb-1">
-                              {template.name}
-                            </p>
-                            <p className="text-xs text-muted-foreground line-clamp-2">
-                              {template.description}
-                            </p>
-                          </div>
-                          <RadioGroupItem
-                            id={`template-${template.id}`}
-                            value={template.id}
-                            className="h-4 w-4 flex-shrink-0"
-                          />
-                        </Label>
-                      ))}
+                {Object.entries(templatesByCategory).map(
+                  ([category, categoryTemplates]) => (
+                    <div key={category}>
+                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                        {category}
+                      </h3>
+                      <div className="space-y-2">
+                        {categoryTemplates.map((template) => (
+                          <Label
+                            key={template.id}
+                            htmlFor={`template-${template.id}`}
+                            className={cn(
+                              "flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/60 px-4 py-3 transition hover:border-primary/60 hover:bg-card/80",
+                              selectedTemplateId === template.id &&
+                                "border-primary bg-primary/5"
+                            )}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-sm leading-tight mb-1">
+                                {template.name}
+                              </p>
+                              <p className="text-xs text-muted-foreground line-clamp-2">
+                                {template.description}
+                              </p>
+                            </div>
+                            <RadioGroupItem
+                              id={`template-${template.id}`}
+                              value={template.id}
+                              className="h-4 w-4 flex-shrink-0"
+                            />
+                          </Label>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                )}
               </RadioGroup>
             </div>
           </div>
@@ -149,7 +153,9 @@ export function TemplateDialog({
                 <div className="flex-1 overflow-hidden">
                   <Editor
                     height="100%"
-                    defaultLanguage={isPerformance ? "javascript" : "typescript"}
+                    defaultLanguage={
+                      isPerformance ? "javascript" : "typescript"
+                    }
                     value={selectedTemplate.code}
                     theme={resolvedTheme === "dark" ? "vs-dark" : "warm-light"}
                     options={{
@@ -184,13 +190,11 @@ export function TemplateDialog({
         <DialogFooter className="border-t px-6 py-4 bg-muted/30">
           <div className="flex items-center justify-between w-full">
             <div className="text-sm text-muted-foreground">
-              {templates.length} template{templates.length !== 1 ? "s" : ""} available
+              {templates.length} template{templates.length !== 1 ? "s" : ""}{" "}
+              available
             </div>
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
               <Button

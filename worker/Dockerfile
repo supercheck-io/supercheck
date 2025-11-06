@@ -1,26 +1,4 @@
-# =============================================================================
-# Stage 1: k6 Builder - Build k6 with web-dashboard extension using xk6
-# =============================================================================
-FROM golang:1.23-alpine AS k6-builder
-
-# Install build dependencies
-RUN apk add --no-cache git ca-certificates
-
-# Install xk6 (k6 extension builder)
-RUN go install go.k6.io/xk6/cmd/xk6@latest
-
-# Build k6 with web-dashboard extension
-# Version pinning for reproducible builds
-RUN xk6 build v0.54.0 \
-    --with github.com/grafana/xk6-dashboard@latest \
-    --output /tmp/k6
-
-# Verify the built k6 binary works
-RUN /tmp/k6 version
-
-# =============================================================================
-# Stage 2: Base - Node.js runtime with system dependencies
-# =============================================================================
+# Use platform-agnostic base image with LTS version for better availability
 FROM node:20-slim AS base
 
 # Install base system dependencies for Playwright browsers and k6
@@ -58,15 +36,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Copy k6 binary with web-dashboard extension from builder stage
-COPY --from=k6-builder /tmp/k6 /usr/local/bin/k6
-RUN chmod +x /usr/local/bin/k6
+# Install k6 (v1.3.0 - latest stable release)
+RUN curl -L https://github.com/grafana/k6/releases/download/v1.3.0/k6-v1.3.0-linux-amd64.tar.gz | tar -xz && \
+    mv k6-v1.3.0-linux-amd64/k6 /usr/local/bin/ && \
+    rm -rf k6-v1.3.0-linux-amd64 && \
+    chmod +x /usr/local/bin/k6
 
-# Verify k6 installation and web-dashboard extension
-RUN k6 version && \
-    echo "Verifying web-dashboard extension..." && \
-    k6 run --help | grep -q "web-dashboard" || \
-    (echo "ERROR: web-dashboard extension not found" && exit 1)
+# Verify k6 installation
+RUN k6 version
 
 # Set k6 binary path environment variable
 ENV K6_BIN_PATH=/usr/local/bin/k6
@@ -147,8 +124,8 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
 
 # Install browsers if not copied from builder (fallback)
 RUN if [ ! -d "/app/playwright-browsers/ms-playwright" ]; then \
-        echo "Installing Playwright browsers as fallback..." && \
-        npx playwright install --with-deps; \
+    echo "Installing Playwright browsers as fallback..." && \
+    npx playwright install --with-deps; \
     fi
 
 # Add health check
