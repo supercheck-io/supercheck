@@ -14,6 +14,7 @@ import { Role } from "@/lib/rbac/permissions";
 import { EmailService } from "@/lib/email-service";
 import { inviteMemberSchema } from "@/lib/validations/member";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { renderOrganizationInvitationEmail } from "@/lib/email-renderer";
 
 // Simple rate limiting - max 10 invites per hour per user
 const inviteRateLimit = new Map<string, { count: number; resetTime: number }>();
@@ -210,40 +211,27 @@ export async function POST(request: NextRequest) {
     if (selectedProjectDetails.length > 0) {
       const projectNames = selectedProjectDetails.map((p) => p.name);
       if (projectNames.length === 1) {
-        projectInfo = ` You'll have access to the <strong>${projectNames[0]}</strong> project.`;
+        projectInfo = `You'll have access to the <strong>${projectNames[0]}</strong> project.`;
       } else {
-        projectInfo = ` You'll have access to the following projects: <strong>${projectNames.join(
+        projectInfo = `You'll have access to the following projects: <strong>${projectNames.join(
           ", "
         )}</strong>.`;
       }
     }
 
+    // Render email using react-email template
+    const emailContent = await renderOrganizationInvitationEmail({
+      inviteUrl,
+      organizationName: activeOrg.name,
+      role,
+      projectInfo,
+    });
+
     const emailResult = await emailService.sendEmail({
       to: email,
-      subject: `You're invited to join ${activeOrg.name} on Supercheck`,
-      text: `You've been invited to join ${activeOrg.name} as a ${role}.${projectInfo}\n\nClick here to accept: ${inviteUrl}\n\nThis invitation expires in 7 days.`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
-          <div style="background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <h1 style="color: #333; margin-bottom: 20px;">You're invited to join ${activeOrg.name}</h1>
-            <p style="color: #666; font-size: 16px; line-height: 1.5;">
-              You've been invited to join <strong>${activeOrg.name}</strong> as a <strong>${role}</strong> on Supercheck.${projectInfo}
-            </p>
-            <div style="margin: 30px 0;">
-              <a href="${inviteUrl}" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block; font-weight: bold;">
-                Accept Invitation
-              </a>
-            </div>
-            <p style="color: #999; font-size: 14px;">
-              This invitation expires in 7 days. If you didn't expect this invitation, you can safely ignore this email.
-            </p>
-            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-            <p style="color: #999; font-size: 12px;">
-              This email was sent by Supercheck. If you have any questions, please contact the person who invited you.
-            </p>
-          </div>
-        </div>
-      `,
+      subject: emailContent.subject,
+      text: emailContent.text,
+      html: emailContent.html,
     });
 
     if (!emailResult.success) {

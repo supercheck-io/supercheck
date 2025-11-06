@@ -7,7 +7,7 @@ import { z } from "zod";
 import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { EmailService } from "@/lib/email-service";
-import { getVerificationEmailTemplate } from "@/lib/email-templates/status-page-emails";
+import { renderStatusPageVerificationEmail } from "@/lib/email-renderer";
 import { generateWebhookSecret } from "@/lib/webhook-utils";
 
 const subscribeSchema = z.union([
@@ -46,17 +46,17 @@ async function sendVerificationEmail(params: {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const verificationUrl = `${baseUrl}/status/verify/${params.verificationToken}`;
 
-    const emailTemplate = getVerificationEmailTemplate({
-      email: params.email,
-      statusPageName: params.statusPageName,
+    // Render email using react-email template
+    const emailContent = await renderStatusPageVerificationEmail({
       verificationUrl,
+      statusPageName: params.statusPageName,
     });
 
     const result = await emailService.sendEmail({
       to: params.email,
-      subject: emailTemplate.subject,
-      text: emailTemplate.text,
-      html: emailTemplate.html,
+      subject: emailContent.subject,
+      text: emailContent.text,
+      html: emailContent.html,
     });
 
     if (!result.success) {

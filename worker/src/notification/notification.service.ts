@@ -5,6 +5,7 @@ import {
   NotificationProviderType,
   PlainNotificationProviderConfig,
 } from '../db/schema';
+import { EmailTemplateService } from '../email-template/email-template.service';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -105,7 +106,7 @@ interface FormattedNotification {
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
 
-  constructor() {
+  constructor(private readonly emailTemplateService: EmailTemplateService) {
     this.logger.log('NotificationService initialized');
   }
 
@@ -470,7 +471,30 @@ export class NotificationService {
         throw new Error('No valid email addresses found');
       }
 
-      const emailContent = this.formatEmailContent(formatted, payload);
+      // Render email using centralized template service
+      let emailContent: { html: string; text: string; subject?: string };
+      try {
+        const rendered = await this.emailTemplateService.renderMonitorAlertEmail({
+          title: formatted.title,
+          message: formatted.message,
+          fields: formatted.fields,
+          footer: formatted.footer,
+          type: this.mapSeverityToType(payload.severity),
+          color: formatted.color,
+        });
+        emailContent = {
+          html: rendered.html,
+          text: rendered.text,
+          subject: rendered.subject,
+        };
+        this.logger.debug('Email template rendered successfully from API');
+      } catch (templateError) {
+        // Fallback to old inline formatting if template service fails
+        this.logger.warn(
+          `Failed to fetch template from API, using fallback: ${getErrorMessage(templateError)}`,
+        );
+        emailContent = this.formatEmailContent(formatted, payload);
+      }
 
       // Send via SMTP
       const smtpSuccess = await this.trySMTPDelivery(
@@ -490,10 +514,28 @@ export class NotificationService {
       return false;
     } catch (error) {
       this.logger.error(
-        `Failed to send email notification: ${error.message}`,
-        error.stack,
+        `Failed to send email notification: ${getErrorMessage(error)}`,
+        getErrorStack(error),
       );
       return false;
+    }
+  }
+
+  /**
+   * Map severity to email template type
+   */
+  private mapSeverityToType(
+    severity: 'info' | 'warning' | 'error' | 'success',
+  ): 'failure' | 'success' | 'warning' {
+    switch (severity) {
+      case 'error':
+        return 'failure';
+      case 'success':
+        return 'success';
+      case 'warning':
+        return 'warning';
+      default:
+        return 'warning';
     }
   }
 
