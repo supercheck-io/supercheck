@@ -10,22 +10,57 @@ export interface K6ValidationResult {
   warnings: string[];
 }
 
+export interface K6ValidationOptions {
+  selectedTestType?: string;
+}
+
+const k6ImportPattern = /import\s+.*\s+from\s+['"]k6(?:\/[^'"]*)?['"]/;
+
+/**
+ * Detects whether a script imports any k6 modules.
+ */
+export const isK6Script = (script: string): boolean => k6ImportPattern.test(script);
+
 /**
  * Validates a k6 script for common issues and best practices
  */
-export function validateK6Script(script: string): K6ValidationResult {
+export function validateK6Script(
+  script: string,
+  options: K6ValidationOptions = {}
+): K6ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
+  const normalizedType = options.selectedTestType?.toLowerCase();
+  const scriptLooksLikeK6 = isK6Script(script);
+  const isPerformanceType =
+    normalizedType === "performance" || normalizedType === "k6";
+
+  if (normalizedType && !isPerformanceType) {
+    errors.push(
+      `k6 scripts can only run when the test type is set to Performance. Current type: "${options.selectedTestType}".`
+    );
+  }
+
+  if (!scriptLooksLikeK6) {
+    errors.push(
+      "This script does not import any k6 modules. Switch to a Playwright-based test type to run browser or API scripts."
+    );
+    return {
+      valid: false,
+      errors,
+      warnings,
+    };
+  }
 
   // Required: Must have k6 imports
-  if (!/import\s+.*\s+from\s+['"]k6/.test(script)) {
+  if (!k6ImportPattern.test(script)) {
     errors.push(
       'Script must import from k6 modules (e.g., import http from "k6/http")'
     );
   }
 
   // Required: Must have default export function
-  if (!/export\s+default\s+function/.test(script)) {
+  if (!/export\s+default\s+(?:async\s+)?function/.test(script)) {
     errors.push('Script must export a default function');
   }
 
@@ -83,6 +118,13 @@ export function validateK6Script(script: string): K6ValidationResult {
   if (/export\s+default\s+async\s+function/.test(script)) {
     errors.push(
       'k6 does not support async/await. For browser testing, use Playwright test type instead.'
+    );
+  }
+
+  // Error: Block experimental browser module which is unsupported in our runtime
+  if (/import\s+[\s\S]*?from\s+['"]k6\/browser['"]/.test(script)) {
+    errors.push(
+      'The k6/browser module is not supported. Use Playwright tests for browser automation.'
     );
   }
 

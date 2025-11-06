@@ -6,7 +6,7 @@ import {
   K6ExecutionTask,
   TestExecutionTask,
 } from "@/lib/queue";
-import { validationService } from "@/lib/validation-service";
+import { playwrightValidationService } from "@/lib/playwright-validator";
 import { requireProjectContext } from "@/lib/project-context";
 import { hasPermission } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
@@ -54,7 +54,9 @@ export async function POST(request: NextRequest) {
     // Validate the script first - only queue if validation passes
     console.log("Validating script before queuing...");
     try {
-      const validationResult = validationService.validateCode(code);
+      const validationResult = playwrightValidationService.validateCode(code, {
+        selectedTestType: data.testType,
+      });
       
       if (!validationResult.valid) {
         console.warn("Script validation failed:", validationResult.error);
@@ -100,7 +102,9 @@ export async function POST(request: NextRequest) {
 
     // Validate k6 script if it's a performance test
     if (isPerformanceTest) {
-      const k6Validation = validateK6Script(code);
+        const k6Validation = validateK6Script(code, {
+          selectedTestType: data.testType,
+        });
       if (!k6Validation.valid) {
         return NextResponse.json({
           error: "k6 script validation failed",
