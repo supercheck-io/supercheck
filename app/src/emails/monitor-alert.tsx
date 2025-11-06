@@ -13,7 +13,7 @@ interface MonitorAlertEmailProps {
   fields: AlertField[];
   footer: string;
   type: "failure" | "success" | "warning";
-  color: string;
+  color?: string;
 }
 
 /**
@@ -57,9 +57,9 @@ export const MonitorAlertEmail = ({
   ],
   footer = "Supercheck Monitoring System",
   type = "failure",
-  color = "#dc2626",
+  color,
 }: MonitorAlertEmailProps) => {
-  const statusColor = getStatusColor(type);
+  const statusColor = color ?? getStatusColor(type);
   const statusBadge = getStatusBadge(type, statusColor);
 
   // Extract dashboard URL from fields if present
