@@ -193,8 +193,14 @@ export class EmailTemplateService {
         { template, data },
         {
           jobId: `worker-${template}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-          removeOnComplete: true,
-          removeOnFail: true,
+          removeOnComplete: {
+            age: 3600, // Keep completed jobs for 1 hour for Bull Dashboard visibility
+            count: 100, // Keep last 100 completed jobs
+          },
+          removeOnFail: {
+            age: 86400, // Keep failed jobs for 24 hours for debugging
+            count: 50, // Keep last 50 failed jobs
+          },
         },
       );
 

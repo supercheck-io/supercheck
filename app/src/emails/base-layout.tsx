@@ -23,31 +23,12 @@ interface BaseLayoutProps {
 
 /**
  * Supercheck Logo Component
- * Using the official green checkmark logo
+ * Using text-based logo for Gmail compatibility (Gmail doesn't support SVG)
+ * Green checkmark using Unicode character
  */
 const SupercheckLogo = () => (
   <div style={logoContainer}>
-    <svg
-      height="40px"
-      width="40px"
-      version="1.1"
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 32 32"
-      style={{ display: "block", marginRight: "12px" }}
-    >
-      <g>
-        <g id="check_x5F_alt">
-          <path
-            style={{ fill: "#50b748" }}
-            d="M16,0C7.164,0,0,7.164,0,16s7.164,16,16,16s16-7.164,16-16S24.836,0,16,0z"
-          />
-          <path
-            style={{ fill: "#FFFFFF" }}
-            d="M13.52,23.383 L6.158,16.02l2.828-2.828l4.533,4.535l9.617-9.617l2.828,2.828L13.52,23.383z"
-          />
-        </g>
-      </g>
-    </svg>
+    <span style={logoCheckmark}>✓</span>
     <span style={logoText}>Supercheck</span>
   </div>
 );
@@ -57,7 +38,7 @@ export const BaseLayout = ({
   title,
   children,
   footer,
-  headerColor = "#1f2937",
+  headerColor = "#4a5568",
   showLogo = true,
 }: BaseLayoutProps) => {
   return (
@@ -146,6 +127,15 @@ const logoContainer = {
   alignItems: "center",
   justifyContent: "center",
   marginBottom: "12px",
+};
+
+const logoCheckmark = {
+  color: "#50b748",
+  fontSize: "28px",
+  fontWeight: "700",
+  marginRight: "8px",
+  lineHeight: "1",
+  display: "inline-block",
 };
 
 const logoText = {
