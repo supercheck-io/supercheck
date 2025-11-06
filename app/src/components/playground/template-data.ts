@@ -1102,33 +1102,38 @@ test.afterAll(async () => {
     category: "Database Testing",
     testType: "database",
     tags: ["playwright", "database", "insert"],
-    code: `import { test, expect } from '@playwright/test';
+    code: `/**
+ * Database INSERT Test
+ *
+ * Tests creating new database records with parameterized queries
+ * and RETURNING clause for immediate validation.
+ *
+ * @requires @playwright/test, pg
+ */
+
+import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
-// Database connection configuration
 const pool = new Pool({
-  host: 'localhost',
-  port: 5432,
-  database: 'testdb',
-  user: 'testuser',
-  password: 'testpass',
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432'),
+  database: process.env.DB_NAME || 'testdb',
+  user: process.env.DB_USER || 'testuser',
+  password: process.env.DB_PASSWORD || 'testpass',
 });
 
 test('database INSERT operation', async () => {
-  // Execute INSERT with RETURNING clause
   const result = await pool.query(
     'INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *',
     ['Test User', 'test@example.com']
   );
 
-  // Verify insert succeeded
   expect(result.rows).toHaveLength(1);
   expect(result.rows[0].name).toBe('Test User');
   expect(result.rows[0].email).toBe('test@example.com');
   expect(result.rows[0]).toHaveProperty('id');
 });
 
-// Cleanup after all tests
 test.afterAll(async () => {
   await pool.end();
 });`,
@@ -1140,32 +1145,37 @@ test.afterAll(async () => {
     category: "Database Testing",
     testType: "database",
     tags: ["playwright", "database", "update"],
-    code: `import { test, expect } from '@playwright/test';
+    code: `/**
+ * Database UPDATE Test
+ *
+ * Tests updating existing records with WHERE clause and RETURNING
+ * for verification. Always use parameterized queries.
+ *
+ * @requires @playwright/test, pg
+ */
+
+import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
-// Database connection configuration
 const pool = new Pool({
-  host: 'localhost',
-  port: 5432,
-  database: 'testdb',
-  user: 'testuser',
-  password: 'testpass',
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432'),
+  database: process.env.DB_NAME || 'testdb',
+  user: process.env.DB_USER || 'testuser',
+  password: process.env.DB_PASSWORD || 'testpass',
 });
 
 test('database UPDATE operation', async () => {
-  // Execute UPDATE with RETURNING clause
   const result = await pool.query(
     'UPDATE users SET name = $1 WHERE id = $2 RETURNING *',
     ['Updated Name', 1]
   );
 
-  // Verify update succeeded
   expect(result.rows).toHaveLength(1);
   expect(result.rows[0].id).toBe(1);
   expect(result.rows[0].name).toBe('Updated Name');
 });
 
-// Cleanup after all tests
 test.afterAll(async () => {
   await pool.end();
 });`,
@@ -1177,39 +1187,43 @@ test.afterAll(async () => {
     category: "Database Testing",
     testType: "database",
     tags: ["playwright", "database", "delete"],
-    code: `import { test, expect } from '@playwright/test';
+    code: `/**
+ * Database DELETE Test
+ *
+ * Tests deleting records with WHERE clause and verifying removal.
+ * Always include WHERE to avoid mass deletion.
+ *
+ * @requires @playwright/test, pg
+ */
+
+import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
-// Database connection configuration
 const pool = new Pool({
-  host: 'localhost',
-  port: 5432,
-  database: 'testdb',
-  user: 'testuser',
-  password: 'testpass',
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432'),
+  database: process.env.DB_NAME || 'testdb',
+  user: process.env.DB_USER || 'testuser',
+  password: process.env.DB_PASSWORD || 'testpass',
 });
 
 test('database DELETE operation', async () => {
-  // Execute DELETE with RETURNING clause
   const result = await pool.query(
     'DELETE FROM users WHERE id = $1 RETURNING *',
     [1]
   );
 
-  // Verify deletion succeeded
   expect(result.rows).toHaveLength(1);
   expect(result.rows[0].id).toBe(1);
 
-  // Verify record no longer exists
+  // Verify deletion
   const verifyResult = await pool.query(
     'SELECT * FROM users WHERE id = $1',
     [1]
   );
-
   expect(verifyResult.rows).toHaveLength(0);
 });
 
-// Cleanup after all tests
 test.afterAll(async () => {
   await pool.end();
 });`,
@@ -1221,55 +1235,55 @@ test.afterAll(async () => {
     category: "Database Testing",
     testType: "database",
     tags: ["playwright", "database", "transaction"],
-    code: `import { test, expect } from '@playwright/test';
+    code: `/**
+ * Database Transaction Test
+ *
+ * Tests BEGIN/COMMIT/ROLLBACK for atomic operations.
+ * Validates ACID properties and data consistency.
+ *
+ * @requires @playwright/test, pg
+ */
+
+import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
-// Database connection configuration
 const pool = new Pool({
-  host: 'localhost',
-  port: 5432,
-  database: 'testdb',
-  user: 'testuser',
-  password: 'testpass',
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432'),
+  database: process.env.DB_NAME || 'testdb',
+  user: process.env.DB_USER || 'testuser',
+  password: process.env.DB_PASSWORD || 'testpass',
 });
 
 test('database transaction with rollback', async () => {
-  // Get a client from the pool
   const client = await pool.connect();
 
   try {
-    // Begin transaction
     await client.query('BEGIN');
 
-    // Insert data within transaction
     await client.query(
       'INSERT INTO users (name, email) VALUES ($1, $2)',
       ['Transaction User', 'transaction@example.com']
     );
 
-    // Verify insert within transaction
     const result = await client.query(
       'SELECT * FROM users WHERE email = $1',
       ['transaction@example.com']
     );
     expect(result.rows).toHaveLength(1);
 
-    // Rollback transaction
     await client.query('ROLLBACK');
 
-    // Verify rollback - record should not exist
     const verifyResult = await pool.query(
       'SELECT * FROM users WHERE email = $1',
       ['transaction@example.com']
     );
     expect(verifyResult.rows).toHaveLength(0);
   } finally {
-    // Release client back to pool
     client.release();
   }
 });
 
-// Cleanup after all tests
 test.afterAll(async () => {
   await pool.end();
 });`,
@@ -1281,62 +1295,33 @@ test.afterAll(async () => {
     category: "Mobile Testing",
     testType: "browser",
     tags: ["playwright", "mobile", "responsive"],
-    code: `import { test, expect, devices } from '@playwright/test';
+    code: `/**
+ * Mobile Device Emulation Test
+ *
+ * Tests responsive design using Playwright's device emulation.
+ * Validates mobile-specific UI elements and viewport dimensions.
+ *
+ * @requires @playwright/test
+ */
 
-// Configure test to use iPhone 13 viewport
+import { test, expect, devices } from '@playwright/test';
+
 test.use({
   ...devices['iPhone 13'],
 });
 
 test('mobile responsive test', async ({ page }) => {
-  // Navigate to the page
   await page.goto('https://example.com');
 
-  // Verify mobile menu is visible
+  // Verify mobile menu
   await expect(page.getByRole('button', { name: 'Menu' })).toBeVisible();
-
-  // Click hamburger menu
   await page.getByRole('button', { name: 'Menu' }).click();
-
-  // Verify navigation menu appears
   await expect(page.getByRole('navigation')).toBeVisible();
 
-  // Test viewport dimensions
+  // Verify viewport
   const viewport = page.viewportSize();
   expect(viewport?.width).toBe(390);
   expect(viewport?.height).toBe(844);
-});`,
-  },
-  {
-    id: "pw-screenshot-test",
-    name: "Visual Regression Test",
-    description: "Capture and compare screenshots",
-    category: "Visual Testing",
-    testType: "browser",
-    tags: ["playwright", "visual", "screenshot"],
-    code: `import { test, expect } from '@playwright/test';
-
-test('visual regression test', async ({ page }) => {
-  // Navigate to the page
-  await page.goto('https://example.com');
-
-  // Wait for page to be fully loaded
-  await page.waitForLoadState('networkidle');
-
-  // Take full page screenshot and compare
-  await expect(page).toHaveScreenshot('homepage.png', {
-    fullPage: true,
-  });
-
-  // Take screenshot of specific element
-  const header = page.locator('header');
-  await expect(header).toHaveScreenshot('header.png');
-
-  // Screenshot with custom options
-  await page.screenshot({
-    path: 'page-with-scroll.png',
-    fullPage: true,
-  });
 });`,
   },
   {
@@ -1346,45 +1331,95 @@ test('visual regression test', async ({ page }) => {
     category: "File Operations",
     testType: "browser",
     tags: ["playwright", "upload", "files"],
-    code: `import { test, expect } from '@playwright/test';
+    code: `/**
+ * File Upload Test
+ *
+ * Tests file input interaction and upload validation.
+ * Use setInputFiles() for file selection.
+ *
+ * @requires @playwright/test
+ */
+
+import { test, expect } from '@playwright/test';
 import path from 'path';
 
 test('file upload test', async ({ page }) => {
-  // Navigate to upload page
   await page.goto('https://example.com/upload');
 
-  // Prepare file path
   const filePath = path.join(__dirname, 'test-file.txt');
-
-  // Upload file using file input
   const fileInput = page.locator('input[type="file"]');
   await fileInput.setInputFiles(filePath);
 
-  // Verify file name is displayed
   await expect(page.getByText('test-file.txt')).toBeVisible();
-
-  // Click upload button
   await page.getByRole('button', { name: 'Upload' }).click();
-
-  // Verify upload success
   await expect(page.getByText('File uploaded successfully')).toBeVisible();
 });`,
   },
   {
     id: "pw-custom-script",
-    name: "Custom Test Script",
-    description: "Blank template for custom test logic",
+    name: "Combined DB + API + UI Test",
+    description: "Test combining database, API, and browser interactions",
     category: "Custom",
     testType: "custom",
-    tags: ["playwright", "custom"],
-    code: `import { test, expect } from '@playwright/test';
+    tags: ["playwright", "custom", "combined"],
+    code: `/**
+ * Combined Test: DB + API + UI
+ *
+ * Shows how to combine database queries, API calls, and browser
+ * interactions in a single test for end-to-end validation.
+ *
+ * Flow: Query DB → Use data in API → Verify in UI
+ *
+ * @requires @playwright/test, pg
+ */
 
-test('custom test', async ({ page }) => {
-  // Navigate to your application
-  await page.goto('https://example.com');
+import { test, expect } from '@playwright/test';
+import { Pool } from 'pg';
 
-  // Add your custom test steps here
+const pool = new Pool({
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432'),
+  database: process.env.DB_NAME || 'testdb',
+  user: process.env.DB_USER || 'testuser',
+  password: process.env.DB_PASSWORD || 'testpass',
+});
 
+test('combined DB + API + UI test', async ({ page, request }) => {
+  // 1. Query database to get user data
+  const dbResult = await pool.query(
+    'SELECT * FROM users WHERE id = $1',
+    [1]
+  );
+  const user = dbResult.rows[0];
+  expect(user).toHaveProperty('email');
+
+  // 2. Use database data in API call
+  const apiResponse = await request.get('https://api.example.com/user/profile', {
+    headers: {
+      'Authorization': \`Bearer \${user.api_token}\`,
+    },
+  });
+  expect(apiResponse.ok()).toBeTruthy();
+  const apiData = await apiResponse.json();
+
+  // 3. Verify data in browser UI
+  await page.goto('https://example.com/profile');
+  await expect(page.getByText(user.email)).toBeVisible();
+  await expect(page.getByText(apiData.name)).toBeVisible();
+
+  // 4. Update via UI and verify in database
+  await page.getByLabel('Name').fill('Updated Name');
+  await page.getByRole('button', { name: 'Save' }).click();
+
+  const updatedResult = await pool.query(
+    'SELECT name FROM users WHERE id = $1',
+    [1]
+  );
+  expect(updatedResult.rows[0].name).toBe('Updated Name');
+});
+
+test.afterAll(async () => {
+  await pool.end();
 });`,
   },
 ];
