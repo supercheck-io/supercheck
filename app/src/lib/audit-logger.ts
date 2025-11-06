@@ -3,6 +3,8 @@
  *
  * This module provides comprehensive audit logging for security events,
  * permission checks, and administrative actions.
+ *
+ * Uses Pino for structured logging alongside database persistence.
  */
 
 import { db } from "@/utils/db";
@@ -17,6 +19,7 @@ import {
 } from "@/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { headers } from "next/headers";
+import { createLogger } from "./logger/index";
 
 export interface AuditEvent {
   userId?: string;
@@ -31,8 +34,15 @@ export interface AuditEvent {
   sessionId?: string;
 }
 
+// Create dedicated audit logger with proper context
+const auditLogger = createLogger({ module: 'audit' }) as {
+  info: (data: unknown, msg?: string) => void;
+  warn: (data: unknown, msg?: string) => void;
+  error: (data: unknown, msg?: string) => void;
+};
+
 /**
- * Log an audit event to the database
+ * Log an audit event to the database and structured logs
  */
 export async function logAuditEvent(event: AuditEvent): Promise<void> {
   try {
@@ -76,22 +86,36 @@ export async function logAuditEvent(event: AuditEvent): Promise<void> {
     // Insert into database
     await db.insert(audit_log).values(auditEntry);
 
-    // Also log to console for immediate visibility in development
-    if (process.env.NODE_ENV === "development") {
-      console.log(
-        `[AUDIT] ${event.success ? "✓" : "✗"} ${event.action} on ${
-          event.resource
-        }`,
-        {
-          userId: event.userId,
-          success: event.success,
-          metadata: event.metadata,
-        }
+    // Log to Pino with structured data
+    const logData = {
+      userId: event.userId,
+      organizationId: event.organizationId,
+      action: event.action,
+      resource: event.resource,
+      resourceId: event.resourceId,
+      success: event.success,
+      ipAddress: event.ipAddress || ipAddress,
+      userAgent: event.userAgent || userAgent,
+      metadata: event.metadata,
+    };
+
+    if (event.success) {
+      auditLogger.info(
+        logData,
+        `Audit: ${event.action} on ${event.resource}`
+      );
+    } else {
+      auditLogger.warn(
+        logData,
+        `Audit Failed: ${event.action} on ${event.resource}`
       );
     }
   } catch (error) {
     // Never fail the request due to audit logging errors
-    console.error("Failed to log audit event:", error);
+    auditLogger.error(
+      { err: error, event },
+      'Failed to log audit event'
+    );
   }
 }
 
@@ -271,7 +295,7 @@ export async function getUserAuditLogs(
 
     return logs;
   } catch (error) {
-    console.error("Failed to get user audit logs:", error);
+    auditLogger.error({ err: error, userId }, "Failed to get user audit logs");
     return [];
   }
 }
@@ -309,7 +333,7 @@ export async function getResourceAuditLogs(
 
     return logs;
   } catch (error) {
-    console.error("Failed to get resource audit logs:", error);
+    auditLogger.error({ err: error, resourceType, resourceId }, "Failed to get resource audit logs");
     return [];
   }
 }
@@ -342,7 +366,7 @@ export async function getSecurityEvents(
 
     return logs;
   } catch (error) {
-    console.error("Failed to get security events:", error);
+    auditLogger.error({ err: error }, "Failed to get security events");
     return [];
   }
 }
@@ -376,7 +400,7 @@ export async function getAdminActivityLogs(
 
     return logs;
   } catch (error) {
-    console.error("Failed to get admin activity logs:", error);
+    auditLogger.error({ err: error }, "Failed to get admin activity logs");
     return [];
   }
 }
@@ -395,9 +419,10 @@ export async function cleanupOldAuditLogs(
       .delete(audit_log)
       .where(sql`${audit_log.createdAt} < ${cutoffDate}`);
 
+    auditLogger.info({ daysToKeep, cutoffDate }, "Cleaned up old audit logs");
     return 0; // Simplified return for now
   } catch (error) {
-    console.error("Failed to cleanup old audit logs:", error);
+    auditLogger.error({ err: error, daysToKeep }, "Failed to cleanup old audit logs");
     return 0;
   }
 }
@@ -423,7 +448,7 @@ export async function getAuditStatistics(): Promise<{
       dataAccess: 0,
     };
   } catch (error) {
-    console.error("Failed to get audit statistics:", error);
+    auditLogger.error({ err: error }, "Failed to get audit statistics");
     return {
       totalEvents: 0,
       failedLogins: 0,
