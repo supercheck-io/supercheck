@@ -19,13 +19,38 @@ export const codeTemplates: CodeTemplate[] = [
     category: "Load Testing",
     testType: "performance",
     tags: ["k6", "load", "basic"],
-    code: `import http from 'k6/http';
+    code: `/**
+ * Sample k6 Performance Test Script
+ *
+ * This script demonstrates k6 performance and load testing capabilities.
+ * k6 is a modern load testing tool for testing the performance of APIs,
+ * microservices, and websites. It uses JavaScript ES6 for test scripting.
+ *
+ * Test Coverage:
+ * - HTTP GET request performance testing
+ * - Virtual users (VUs) simulation
+ * - Response time analysis (avg, p95, p99)
+ * - Pass/fail thresholds validation
+ * - Error rate monitoring
+ *
+ * Configuration:
+ * - 10 virtual users
+ * - 30 second test duration
+ * - Success criteria: 95% of requests < 500ms, error rate < 10%
+ *
+ * Target API: test-api.k6.io - k6's official test API
+ * Documentation: https://k6.io/docs/
+ *
+ * @requires k6 binary
+ */
+
+import http from 'k6/http';
 import { sleep, check } from 'k6';
 
-// Test configuration
+// Test configuration - all settings in script
 export const options = {
-  vus: 10,         // Number of virtual users
-  duration: '30s', // Test duration
+  vus: 10,              // 10 virtual users
+  duration: '30s',      // Run for 30 seconds
 };
 
 // Main test function - runs for each virtual user
@@ -224,7 +249,40 @@ export default function() {
     category: "Browser Testing",
     testType: "performance",
     tags: ["k6", "browser", "web"],
-    code: `import { browser } from 'k6/experimental/browser';
+    code: `/**
+ * k6 Browser Performance Test
+ *
+ * This script tests web application performance using k6's browser module.
+ * The browser module enables real browser automation for performance testing,
+ * combining load testing with actual browser rendering and JavaScript execution.
+ *
+ * Test Coverage:
+ * - Browser-based performance testing
+ * - Page load time measurement
+ * - Element visibility validation
+ * - Performance timing metrics
+ * - Chromium browser automation
+ *
+ * Configuration:
+ * - 1 virtual user
+ * - 10 iterations
+ * - Shared iterations executor
+ * - Chromium browser engine
+ *
+ * Key Features:
+ * - Async/await support (required for browser module)
+ * - Real browser context with full JavaScript support
+ * - Performance.timing API access
+ * - Element locators and checks
+ *
+ * Target: test.k6.io - k6's official test site
+ * Documentation: https://k6.io/docs/using-k6-browser/
+ *
+ * @requires k6 binary with browser support
+ * @requires Chromium browser
+ */
+
+import { browser } from 'k6/experimental/browser';
 import { check } from 'k6';
 
 // Test configuration for browser testing
