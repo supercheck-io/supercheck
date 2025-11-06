@@ -168,19 +168,18 @@ async sendMonitorAlert() {
 }
 
 async sendJobAlert() {
-  // For job failures
+  // For job failures (generic template, no test stats)
   const emailContent = await this.emailTemplateService.renderJobFailureEmail({
     jobName: 'Nightly Test Suite',
     duration: 45000,
     errorMessage: 'Test timeout exceeded',
-    totalTests: 100,
-    passedTests: 85,
-    failedTests: 15,
     runId: 'run-123',
     dashboardUrl: 'https://app.supercheck.io/jobs/run-123',
   });
 
   // Send email using emailContent
+  // Note: Test statistics are NOT included in email
+  // Users view full results on the dashboard
 }
 ```
 
