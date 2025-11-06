@@ -15,7 +15,7 @@ import { TestForm } from "./test-form";
 import { LoadingOverlay } from "./loading-overlay";
 import { ValidationError } from "./validation-error";
 import { TestPriority, TestType } from "@/db/schema";
-import { Loader2Icon, ZapIcon, Text } from "lucide-react";
+import { Loader2Icon, ZapIcon, Text, SquareCode } from "lucide-react";
 import * as z from "zod";
 import type { editor } from "monaco-editor";
 import type { ScriptType } from "@/lib/script-service";
@@ -34,6 +34,7 @@ import {
   LocationSelectionDialog,
   PerformanceLocation,
 } from "./location-selection-dialog";
+import { TemplateDialog } from "./template-dialog";
 
 const VALID_TEST_TYPES: TestType[] = [
   "browser",
@@ -133,6 +134,7 @@ const Playground: React.FC<PlaygroundProps> = ({
       initialPerformanceLocation ?? "us-east"
     );
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   // Only set testId from initialTestId if we're on a specific test page
   // Always ensure testId is null when on the main playground page
   const [testId, setTestId] = useState<string | null>(initialTestId || null);
@@ -1004,6 +1006,19 @@ const Playground: React.FC<PlaygroundProps> = ({
                       </TabsList>
                     </Tabs>
 
+                    {/* Templates Button - next to Report tab but outside tabs */}
+                    <div className="-ml-6">
+                      <Button
+                        onClick={() => setTemplateDialogOpen(true)}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                      >
+                        <SquareCode className="h-4 w-4" />
+                        <span>Templates</span>
+                      </Button>
+                    </div>
+
                     {/* Runtime Libraries Info */}
                     <div className="-ml-4">
                       <RuntimeInfoPopover testType={testCase.type} />
@@ -1208,6 +1223,23 @@ const Playground: React.FC<PlaygroundProps> = ({
         }}
         onSelect={handleLocationSelect}
         defaultLocation={performanceLocation}
+      />
+
+      <TemplateDialog
+        open={templateDialogOpen}
+        onOpenChange={setTemplateDialogOpen}
+        testType={testCase.type}
+        onApply={(code) => {
+          setEditorContent(code);
+          // Clear validation and test execution state when new template is applied
+          if (hasValidated) {
+            resetValidationState();
+          }
+          if (testExecutionStatus !== "none") {
+            resetTestExecutionState();
+          }
+          toast.success("Template applied successfully");
+        }}
       />
 
       {/* AI Diff Viewer Modal */}

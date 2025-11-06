@@ -564,7 +564,7 @@ export function ReportViewer({
       {showFullscreen && currentReportUrl && (
         <div
           className={`fixed inset-0 z-50 backdrop-blur-sm ${
-            isK6Report && !isDarkMode ? "" : "bg-card/80"
+            isK6Report && !isDarkMode ? "" : "bg-card/80" 
           }`}
         >
           <div

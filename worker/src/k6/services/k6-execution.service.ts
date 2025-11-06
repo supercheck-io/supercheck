@@ -137,6 +137,8 @@ export class K6ExecutionService {
     childProcess.on('close', (code) => {
       if (code === 0 && versionOutput) {
         this.logger.log(`K6 is installed: ${versionOutput.trim()}`);
+        // Verify web-dashboard extension is available
+        this.verifyWebDashboardExtension();
       } else {
         this.logger.warn(
           `K6 verification failed. Code: ${code}, Output: ${versionOutput}, Error: ${versionError}`,
@@ -147,6 +149,57 @@ export class K6ExecutionService {
     childProcess.on('error', (error) => {
       this.logger.error(
         `K6 verification error: ${getErrorMessage(error)}. Make sure k6 is installed at ${this.k6BinaryPath}`,
+      );
+    });
+  }
+
+  /**
+   * Verify k6 web-dashboard extension is available
+   */
+  private verifyWebDashboardExtension(): void {
+    const childProcess = spawn(this.k6BinaryPath, ['version'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    let versionOutput = '';
+
+    childProcess.stdout?.on('data', (data) => {
+      versionOutput += data.toString();
+    });
+
+    childProcess.on('close', (code) => {
+      if (code === 0) {
+        // Check if version output includes the dashboard extension
+        if (versionOutput.includes('xk6-dashboard') || versionOutput.includes('dashboard [output]')) {
+          this.logger.log(
+            '✓ K6 web-dashboard extension is available',
+          );
+        } else {
+          this.logger.error(
+            '❌ CRITICAL: K6 web-dashboard extension NOT FOUND!',
+          );
+          this.logger.error(
+            'The k6 binary does not include the xk6-dashboard extension.',
+          );
+          this.logger.error(
+            'HTML report generation will fail. Please install k6 with web-dashboard:',
+          );
+          this.logger.error(
+            '  1. go install go.k6.io/xk6/cmd/xk6@latest',
+          );
+          this.logger.error(
+            '  2. xk6 build --with github.com/grafana/xk6-dashboard@latest',
+          );
+          this.logger.error(
+            `  3. sudo mv k6 ${this.k6BinaryPath}`,
+          );
+        }
+      }
+    });
+
+    childProcess.on('error', (error) => {
+      this.logger.warn(
+        `Could not verify web-dashboard extension: ${getErrorMessage(error)}`,
       );
     });
   }
@@ -587,6 +640,9 @@ export class K6ExecutionService {
   }> {
     return new Promise((resolve, reject) => {
       this.logger.log(`[${runId}] Executing: k6 ${args.join(' ')}`);
+      this.logger.debug(
+        `[${runId}] k6 environment variables: ${JSON.stringify(overrideEnv, null, 2)}`,
+      );
 
       const childProcess = spawn(this.k6BinaryPath, args, {
         cwd,
@@ -645,16 +701,20 @@ export class K6ExecutionService {
           this.logger.log(`[${runId}] k6 ${exitDescription}`);
         }
 
-        // Log stderr if there was an error
-        if (stderr && exitCode !== 0) {
-          this.logger.error(`[${runId}] k6 stderr output:\n${stderr}`);
+        // Log stderr if present
+        if (stderr) {
+          if (exitCode !== 0) {
+            this.logger.error(`[${runId}] k6 stderr output:\n${stderr}`);
+          } else {
+            this.logger.debug(`[${runId}] k6 stderr output:\n${stderr}`);
+          }
         }
 
-        // Log stdout for debugging even on success (first 1000 chars)
-        if (stdout && exitCode !== 0) {
+        // Log stdout for debugging (first 2000 chars)
+        if (stdout) {
           const truncatedStdout =
-            stdout.length > 1000
-              ? stdout.substring(0, 1000) + '\n... (truncated)'
+            stdout.length > 2000
+              ? stdout.substring(0, 2000) + '\n... (truncated)'
               : stdout;
           this.logger.debug(`[${runId}] k6 stdout:\n${truncatedStdout}`);
         }
