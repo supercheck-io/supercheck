@@ -562,8 +562,16 @@ export function ReportViewer({
 
       {/* Manual fullscreen implementation */}
       {showFullscreen && currentReportUrl && (
-        <div className="fixed inset-0 z-50 bg-card/80 backdrop-blur-sm">
-          <div className="fixed inset-8 bg-card rounded-lg shadow-lg flex flex-col overflow-hidden border">
+        <div
+          className={`fixed inset-0 z-50 backdrop-blur-sm ${
+            isK6Report && !isDarkMode ? "" : "bg-card/80"
+          }`}
+        >
+          <div
+            className={`fixed inset-8 rounded-lg shadow-lg flex flex-col overflow-hidden border ${
+              isK6Report && !isDarkMode ? "bg-white" : "bg-card"
+            }`}
+          >
             <div className="p-4 border-b flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {fullscreenHeader ?? (
