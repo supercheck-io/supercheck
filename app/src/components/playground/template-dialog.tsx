@@ -16,7 +16,7 @@ import { Editor } from "@monaco-editor/react";
 import { useTheme } from "next-themes";
 import { TestType } from "@/db/schema/types";
 import { CodeTemplate, getTemplatesByType } from "./template-data";
-import { Code2, Check, SquareCode } from "lucide-react";
+import { Code2, SquareCode, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TemplateDialogProps {
@@ -103,19 +103,14 @@ export function TemplateDialog({
                           key={template.id}
                           htmlFor={`template-${template.id}`}
                           className={cn(
-                            "flex cursor-pointer items-start justify-between gap-3 rounded-lg border border-border/60 bg-card/60 px-4 py-3 transition hover:border-primary/60 hover:bg-card/80",
+                            "flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/60 px-4 py-3 transition hover:border-primary/60 hover:bg-card/80",
                             selectedTemplateId === template.id && "border-primary bg-primary/5"
                           )}
                         >
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-start gap-2 mb-1">
-                              <p className="font-semibold text-sm leading-tight">
-                                {template.name}
-                              </p>
-                              {selectedTemplateId === template.id && (
-                                <Check className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-                              )}
-                            </div>
+                            <p className="font-semibold text-sm leading-tight mb-1">
+                              {template.name}
+                            </p>
                             <p className="text-xs text-muted-foreground line-clamp-2">
                               {template.description}
                             </p>
@@ -123,7 +118,7 @@ export function TemplateDialog({
                           <RadioGroupItem
                             id={`template-${template.id}`}
                             value={template.id}
-                            className="h-4 w-4 mt-0.5 flex-shrink-0"
+                            className="h-4 w-4 flex-shrink-0"
                           />
                         </Label>
                       ))}

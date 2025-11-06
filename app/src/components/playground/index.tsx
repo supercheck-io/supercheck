@@ -1006,23 +1006,25 @@ const Playground: React.FC<PlaygroundProps> = ({
                       </TabsList>
                     </Tabs>
 
+                    {/* Templates Button - next to Report tab but outside tabs */}
+                    <div className="-ml-6">
+                      <Button
+                        onClick={() => setTemplateDialogOpen(true)}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                      >
+                        <SquareCode className="h-4 w-4" />
+                        <span>Templates</span>
+                      </Button>
+                    </div>
+
                     {/* Runtime Libraries Info */}
                     <div className="-ml-4">
                       <RuntimeInfoPopover testType={testCase.type} />
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {/* Templates Button */}
-                    <Button
-                      onClick={() => setTemplateDialogOpen(true)}
-                      variant="outline"
-                      size="sm"
-                      className="gap-2"
-                    >
-                      <SquareCode className="h-4 w-4" />
-                      <span>Templates</span>
-                    </Button>
-
                     {/* AI Fix Button - reserved space to prevent layout shift */}
                     <div className="min-w-[80px]">
                       <AIFixButton
