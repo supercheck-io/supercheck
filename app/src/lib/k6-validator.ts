@@ -24,8 +24,8 @@ export function validateK6Script(script: string): K6ValidationResult {
     );
   }
 
-  // Required: Must have default export function (allow optional async keyword)
-  if (!/export\s+default\s+(async\s+)?function/.test(script)) {
+  // Required: Must have default export function
+  if (!/export\s+default\s+function/.test(script)) {
     errors.push('Script must export a default function');
   }
 
@@ -78,15 +78,12 @@ export function validateK6Script(script: string): K6ValidationResult {
     );
   }
 
-  // Error: Check for async/await in default function (k6 doesn't support it UNLESS using browser module)
-  // Allow async when using k6/browser
+  // Error: k6 does not support async/await in default function
+  // Use Playwright for browser automation tests instead
   if (/export\s+default\s+async\s+function/.test(script)) {
-    const hasBrowserImport = /import\s+.*\s+from\s+['"]k6\/browser['"]/.test(script);
-    if (!hasBrowserImport) {
-      errors.push(
-        'k6 does not support async/await in the default export function (unless using k6/browser)'
-      );
-    }
+    errors.push(
+      'k6 does not support async/await. For browser testing, use Playwright test type instead.'
+    );
   }
 
   return {
