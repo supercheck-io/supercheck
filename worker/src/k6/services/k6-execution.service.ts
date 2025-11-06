@@ -157,21 +157,22 @@ export class K6ExecutionService {
    * Verify k6 web-dashboard extension is available
    */
   private verifyWebDashboardExtension(): void {
-    const childProcess = spawn(this.k6BinaryPath, ['run', '--help'], {
+    const childProcess = spawn(this.k6BinaryPath, ['version'], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    let helpOutput = '';
+    let versionOutput = '';
 
     childProcess.stdout?.on('data', (data) => {
-      helpOutput += data.toString();
+      versionOutput += data.toString();
     });
 
     childProcess.on('close', (code) => {
       if (code === 0) {
-        if (helpOutput.includes('web-dashboard')) {
+        // Check if version output includes the dashboard extension
+        if (versionOutput.includes('xk6-dashboard') || versionOutput.includes('dashboard [output]')) {
           this.logger.log(
-            'K6 web-dashboard extension is available ✓',
+            '✓ K6 web-dashboard extension is available',
           );
         } else {
           this.logger.error(
