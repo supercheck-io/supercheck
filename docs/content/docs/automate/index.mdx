@@ -16,7 +16,7 @@ Automate your testing workflow with powerful test creation, scheduling, and exec
 
 Supercheck's automation features provide:
 
-- **Multiple Test Types**: Browser, API, Database, and Custom tests
+- **Multiple Test Types**: Browser, API, Database, Custom, and Performance (k6) tests
 - **Flexible Scheduling**: Cron-based job scheduling with timezone support
 - **Variable Management**: Secure storage for API keys, URLs, and configuration
 - **Execution History**: Detailed run logs with screenshots and traces
@@ -47,6 +47,10 @@ Supercheck's automation features provide:
     href="./custom-test"
   />
 </Cards>
+
+<Callout type="warning">
+  Performance tests run <code>k6</code> scripts. If your script imports from <code>k6/*</code>, choose the **Performance** test type; Playwright-based test types only accept Playwright scripts. Avoid mixing Playwright and k6 modules in the same script—split them into separate tests.
+</Callout>
 
 ## Core Concepts
 
