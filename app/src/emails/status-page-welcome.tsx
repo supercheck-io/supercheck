@@ -21,8 +21,8 @@ export const StatusPageWelcomeEmail = ({
   return (
     <BaseLayout
       preview={`You're now subscribed to ${statusPageName}`}
-      title="You're All Set! ✓"
-      headerColor="linear-gradient(135deg, #10b981 0%, #059669 100%)"
+      title="You're All Set!"
+      headerColor="#16a34a"
       footer={
         <>
           <Text style={footerText}>

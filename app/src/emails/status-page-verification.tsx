@@ -21,7 +21,7 @@ export const StatusPageVerificationEmail = ({
     <BaseLayout
       preview={`Verify your subscription to ${statusPageName}`}
       title="Verify Your Subscription"
-      headerColor="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+      headerColor="#1f2937"
       footer={
         <>
           <Text style={footerText}>
@@ -87,7 +87,7 @@ const buttonContainer = {
 };
 
 const button = {
-  backgroundColor: "#667eea",
+  backgroundColor: "#1f2937",
   borderRadius: "6px",
   color: "#fff",
   fontSize: "16px",
@@ -106,7 +106,7 @@ const smallText = {
 };
 
 const link = {
-  color: "#667eea",
+  color: "#1f2937",
   textDecoration: "none",
   wordBreak: "break-all" as const,
 };
@@ -137,7 +137,7 @@ const footerSmall = {
 };
 
 const footerLink = {
-  color: "#667eea",
+  color: "#1f2937",
   textDecoration: "none",
 };
 
