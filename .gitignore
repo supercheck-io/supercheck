@@ -17,6 +17,10 @@ Thumbs.db
 .claude/
 .kilocode/
 .tasks/
+.windsurf/
+CLAUDE.md
+AGENTS.md
+AI_RULES.md
 
 ## IDE - VSCode
 .vscode/*
