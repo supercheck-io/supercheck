@@ -11,6 +11,15 @@ import {
   getEffectiveLocations,
   isMonitoringLocation,
 } from "./location-service";
+import { createLogger } from "./logger/index";
+
+// Create queue logger
+const queueLogger = createLogger({ module: 'queue-client' }) as {
+  debug: (data: unknown, msg?: string) => void;
+  info: (data: unknown, msg?: string) => void;
+  warn: (data: unknown, msg?: string) => void;
+  error: (data: unknown, msg?: string) => void;
+};
 
 // Interfaces matching those in the worker service
 export interface TestExecutionTask {
@@ -143,7 +152,7 @@ export async function getRedisConnection(): Promise<Redis> {
     try {
       await redisClient.quit();
     } catch (e) {
-      console.error("Error quitting old Redis client", e);
+      queueLogger.error({ err: e }, "Error quitting old Redis client");
     }
     redisClient = null;
   }
@@ -163,8 +172,9 @@ export async function getRedisConnection(): Promise<Redis> {
     enableReadyCheck: false, // Avoid ready check for client connection
     retryStrategy: (times: number) => {
       const delay = Math.min(times * 100, 3000); // Exponential backoff capped at 3s
-      console.warn(
-        `[Queue Client] Redis connection retry ${times}, delaying ${delay}ms`
+      queueLogger.warn(
+        { times, delay },
+        `Redis connection retry ${times}, delaying ${delay}ms`
       );
       return delay;
     },
@@ -173,7 +183,7 @@ export async function getRedisConnection(): Promise<Redis> {
   redisClient = new Redis(connectionOpts);
 
   redisClient.on("error", (err) =>
-    console.error("[Queue Client] Redis Error:", err)
+    queueLogger.error({ err: err }, "[Queue Client] Redis Error:")
   );
   redisClient.on("connect", () => {});
   redisClient.on("ready", async () => {
@@ -186,12 +196,13 @@ export async function getRedisConnection(): Promise<Redis> {
           .find((line) => line.startsWith("maxmemory_policy:"))
           ?.split(":")[1]
           ?.trim();
-        console.log(
-          `[Queue Client] Redis maxmemory_policy: ${maxmemoryPolicy}`
+        queueLogger.info(
+          { maxmemoryPolicy },
+          `Redis maxmemory_policy: ${maxmemoryPolicy}`
         );
       }
     } catch (err) {
-      console.warn("[Queue Client] Failed to check Redis memory policy:", err);
+      queueLogger.warn({ err }, "Failed to check Redis memory policy");
     }
   });
   redisClient.on("close", () => {});
@@ -213,7 +224,7 @@ export async function getRedisConnection(): Promise<Redis> {
       });
     });
   } catch (err) {
-    console.error("[Queue Client] Failed initial Redis connection:", err);
+    queueLogger.error({ err: err }, "[Queue Client] Failed initial Redis connection:");
     // Allow proceeding, BullMQ might handle reconnection attempts
   }
 
@@ -297,36 +308,36 @@ async function getQueues(): Promise<{
         });
 
         testQueue.on("error", (error) =>
-          console.error(`[Queue Client] Test Queue Error:`, error)
+          queueLogger.error({ err: error }, "Test Queue Error")
         );
         jobQueue.on("error", (error) =>
-          console.error(`[Queue Client] Job Queue Error:`, error)
+          queueLogger.error({ err: error }, "Job Queue Error")
         );
         monitorExecution.on("error", (error) =>
-          console.error(`[Queue Client] Monitor Execution Queue Error:`, error)
+          queueLogger.error({ err: error }, "Monitor Execution Queue Error")
         );
         k6TestExecutionQueue.on("error", (error) =>
-          console.error(`[Queue Client] k6 Test Queue Error:`, error)
+          queueLogger.error({ err: error }, "k6 Test Queue Error")
         );
         k6JobExecutionQueue.on("error", (error) =>
-          console.error(`[Queue Client] k6 Job Queue Error:`, error)
+          queueLogger.error({ err: error }, "k6 Job Queue Error")
         );
         jobSchedulerQueue.on("error", (error) =>
-          console.error(`[Queue Client] Job Scheduler Queue Error:`, error)
+          queueLogger.error({ err: error }, "Job Scheduler Queue Error")
         );
         k6JobSchedulerQueue.on("error", (error) =>
-          console.error(`[Queue Client] k6 Job Scheduler Queue Error:`, error)
+          queueLogger.error({ err: error }, "k6 Job Scheduler Queue Error")
         );
         monitorSchedulerQueue.on("error", (error) =>
-          console.error(`[Queue Client] Monitor Scheduler Queue Error:`, error)
+          queueLogger.error({ err: error }, "Monitor Scheduler Queue Error")
         );
         emailTemplateQueue.on("error", (error) =>
-          console.error(`[Queue Client] Email Template Queue Error:`, error)
+          queueLogger.error({ err: error }, "Email Template Queue Error")
         );
         monitorExecutionEvents.on("error", (error) =>
-          console.error(
-            `[Queue Client] Monitor Execution Queue Events Error:`,
-            error
+          queueLogger.error(
+            { err: error },
+            "Monitor Execution Queue Events Error"
           )
         );
 
@@ -335,7 +346,7 @@ async function getQueues(): Promise<{
 
         // BullMQ Queues initialized
       } catch (error) {
-        console.error("[Queue Client] Failed to initialize queues:", error);
+        queueLogger.error({ err: error }, "[Queue Client] Failed to initialize queues:");
         // Reset promise to allow retrying later
         initPromise = null;
         throw error; // Re-throw to indicate failure
@@ -388,9 +399,9 @@ async function setupQueueCleanup(connection: Redis): Promise<void> {
       try {
         await performQueueCleanup(connection);
       } catch (error) {
-        console.error(
-          "[Queue Client] Error during scheduled queue cleanup:",
-          error
+        queueLogger.error(
+          { err: error },
+          "Error during scheduled queue cleanup"
         );
       }
     }, 12 * 60 * 60 * 1000); // Run cleanup every 12 hours
@@ -398,7 +409,7 @@ async function setupQueueCleanup(connection: Redis): Promise<void> {
     // Make sure interval is properly cleared on process exit
     process.on("exit", () => clearInterval(cleanupInterval));
   } catch (error) {
-    console.error("[Queue Client] Failed to set up queue cleanup:", error);
+    queueLogger.error({ err: error }, "[Queue Client] Failed to set up queue cleanup:");
   }
 }
 
@@ -502,9 +513,9 @@ async function cleanupOrphanedKeys(
       }
     } while (cursor !== "0");
   } catch (error) {
-    console.error(
-      `[Queue Client] Error cleaning up orphaned keys for ${queueName}:`,
-      error
+    queueLogger.error(
+      { err: error, queueName },
+      `Error cleaning up orphaned keys for ${queueName}`
     );
   }
 }
@@ -531,10 +542,8 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<string> {
     // Test added successfully
     return jobUuid;
   } catch (error) {
-    console.error(
-      `[Queue Client] Error adding test ${jobUuid} to queue:`,
-      error
-    );
+    queueLogger.error({ err: error, jobUuid },
+      `Error adding test ${jobUuid} to queue`);
     throw new Error(
       `Failed to add test execution job: ${
         error instanceof Error ? error.message : String(error)
@@ -568,7 +577,7 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<string> {
     // Job added successfully
     return runId;
   } catch (error) {
-    console.error(`[Queue Client] Error adding job ${runId} to queue:`, error);
+    queueLogger.error({ err: error }, "`[Queue Client] Error adding job ${runId} to queue:`");
     throw new Error(
       `Failed to add job execution job: ${
         error instanceof Error ? error.message : String(error)
@@ -595,10 +604,8 @@ export async function addK6TestToQueue(
     });
     return task.runId;
   } catch (error) {
-    console.error(
-      `[Queue Client] Error adding k6 test ${task.runId} to queue:`,
-      error
-    );
+    queueLogger.error({ err: error, runId: task.runId },
+      `Error adding k6 test ${task.runId} to queue`);
     throw new Error(
       `Failed to add k6 test execution job: ${
         error instanceof Error ? error.message : String(error)
@@ -625,10 +632,8 @@ export async function addK6JobToQueue(
     });
     return task.runId;
   } catch (error) {
-    console.error(
-      `[Queue Client] Error adding k6 job ${task.runId} to queue:`,
-      error
-    );
+    queueLogger.error({ err: error, runId: task.runId },
+      `Error adding k6 job ${task.runId} to queue`);
     throw new Error(
       `Failed to add k6 job execution: ${
         error instanceof Error ? error.message : String(error)
@@ -672,15 +677,13 @@ export async function verifyQueueCapacityOrThrow(): Promise<void> {
   } catch (error) {
     // Rethrow capacity errors
     if (error instanceof Error && error.message.includes("capacity limit")) {
-      console.error(`[Queue Client] Capacity limit error: ${error.message}`);
+      queueLogger.error({ err: error }, "Capacity limit error");
       throw error;
     }
 
     // For connection errors, log but still enforce a basic check
-    console.error(
-      "Error checking queue capacity:",
-      error instanceof Error ? error.message : String(error)
-    );
+    queueLogger.error({ err: error },
+      "Error checking queue capacity");
 
     // Fail closed on errors - be conservative when we can't verify capacity
     throw new Error(
@@ -711,7 +714,7 @@ export async function closeQueue(): Promise<void> {
     await Promise.all(promises);
     // All queues closed
   } catch (error) {
-    console.error("[Queue Client] Error closing queues and events:", error);
+    queueLogger.error({ err: error }, "[Queue Client] Error closing queues and events:");
   } finally {
     testQueue = null;
     jobQueue = null;
@@ -818,10 +821,8 @@ export async function addMonitorExecutionJobToQueue(
     // Monitor execution job added
     return job.id!;
   } catch (error) {
-    console.error(
-      `[Queue Client] Error adding monitor execution job for monitor ${task.monitorId}:`,
-      error
-    );
+    queueLogger.error({ err: error, monitorId: task.monitorId },
+      `Error adding monitor execution job for monitor ${task.monitorId}`);
     throw new Error(
       `Failed to add monitor execution job: ${
         error instanceof Error ? error.message : String(error)

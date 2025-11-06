@@ -10,6 +10,7 @@ import { NotificationModule } from './notification/notification.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { HealthModule } from './health/health.module';
 import { EmailTemplateModule } from './email-template/email-template.module';
+import { LoggerModule } from './logger/logger.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { EmailTemplateModule } from './email-template/email-template.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
+    LoggerModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
