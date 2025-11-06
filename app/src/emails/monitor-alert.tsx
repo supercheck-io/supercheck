@@ -17,18 +17,18 @@ interface MonitorAlertEmailProps {
 }
 
 /**
- * Get status icon with better visual indicators
+ * Get status color for visual indicators
  */
-const getStatusIcon = (type: string): string => {
+const getStatusColor = (type: string): string => {
   switch (type) {
     case "failure":
-      return "⚠️";
+      return "#dc2626"; // Red
     case "success":
-      return "✅";
+      return "#16a34a"; // Green
     case "warning":
-      return "⚡";
+      return "#ea580c"; // Orange
     default:
-      return "ℹ️";
+      return "#2563eb"; // Blue
   }
 };
 
@@ -59,8 +59,8 @@ export const MonitorAlertEmail = ({
   type = "failure",
   color = "#dc2626",
 }: MonitorAlertEmailProps) => {
-  const statusIcon = getStatusIcon(type);
-  const statusBadge = getStatusBadge(type, color);
+  const statusColor = getStatusColor(type);
+  const statusBadge = getStatusBadge(type, statusColor);
 
   // Extract dashboard URL from fields if present
   const dashboardField = fields.find((f) =>
@@ -80,13 +80,6 @@ export const MonitorAlertEmail = ({
         </>
       }
     >
-      {/* Status Icon */}
-      <Section style={iconSection}>
-        <div style={{ ...iconCircle, backgroundColor: `${color}15` }}>
-          <span style={iconEmoji}>{statusIcon}</span>
-        </div>
-      </Section>
-
       {/* Status Badge */}
       {statusBadge}
 
@@ -94,7 +87,7 @@ export const MonitorAlertEmail = ({
       <Text style={alertTitle}>{title}</Text>
 
       {/* Alert Message */}
-      <Section style={{ ...messageBox, borderLeftColor: color }}>
+      <Section style={{ ...messageBox, borderLeftColor: statusColor }}>
         <Text style={messageText}>{message}</Text>
       </Section>
 
@@ -128,44 +121,23 @@ export const MonitorAlertEmail = ({
 };
 
 // ============================================================================
-// ICON & BADGE STYLES
+// BADGE STYLES
 // ============================================================================
-
-const iconSection = {
-  textAlign: "center" as const,
-  marginBottom: "20px",
-};
-
-const iconCircle = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: "80px",
-  height: "80px",
-  borderRadius: "50%",
-  margin: "0 auto",
-};
-
-const iconEmoji = {
-  fontSize: "40px",
-  lineHeight: "1",
-};
 
 const badgeContainer = {
   textAlign: "center" as const,
-  marginBottom: "24px",
+  marginBottom: "28px",
 };
 
 const badge = {
   display: "inline-block",
-  padding: "10px 20px",
+  padding: "8px 16px",
   color: "#ffffff",
-  borderRadius: "6px",
-  fontSize: "12px",
+  borderRadius: "4px",
+  fontSize: "11px",
   fontWeight: "700" as const,
   textTransform: "uppercase" as const,
-  letterSpacing: "1px",
-  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+  letterSpacing: "0.8px",
 };
 
 // ============================================================================
@@ -254,16 +226,15 @@ const ctaSection = {
 };
 
 const ctaButton = {
-  backgroundColor: "#667eea",
-  borderRadius: "8px",
+  backgroundColor: "#1f2937",
+  borderRadius: "6px",
   color: "#ffffff",
-  fontSize: "15px",
+  fontSize: "14px",
   fontWeight: "600" as const,
   textDecoration: "none",
   textAlign: "center" as const,
   display: "inline-block",
-  padding: "14px 32px",
-  boxShadow: "0 4px 6px rgba(102, 126, 234, 0.25)",
+  padding: "12px 28px",
 };
 
 // ============================================================================

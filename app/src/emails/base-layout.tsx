@@ -28,14 +28,14 @@ interface BaseLayoutProps {
 const SupercheckLogo = () => (
   <div style={logoContainer}>
     <svg
-      width="40"
-      height="40"
+      width="32"
+      height="32"
       viewBox="0 0 40 40"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      style={{ display: "block" }}
+      style={{ display: "block", marginRight: "10px" }}
     >
-      <rect width="40" height="40" rx="8" fill="white" fillOpacity="0.2" />
+      <rect width="40" height="40" rx="8" fill="white" fillOpacity="0.15" />
       <path
         d="M12 20L18 26L28 14"
         stroke="white"
@@ -132,32 +132,31 @@ const container = {
 // ============================================================================
 
 const header = {
-  padding: "40px 32px 32px",
+  padding: "32px 32px 28px",
   textAlign: "center" as const,
-  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+  background: "#1f2937",
 };
 
 const logoContainer = {
-  display: "flex",
+  display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  gap: "12px",
-  marginBottom: "16px",
+  marginBottom: "12px",
 };
 
 const logoText = {
   color: "#ffffff",
-  fontSize: "24px",
-  fontWeight: "700",
-  letterSpacing: "-0.5px",
+  fontSize: "20px",
+  fontWeight: "600",
+  letterSpacing: "-0.3px",
 };
 
 const headerTitle = {
-  color: "#ffffff",
-  fontSize: "22px",
-  fontWeight: "600",
+  color: "#e5e7eb",
+  fontSize: "18px",
+  fontWeight: "500",
   margin: "0",
-  lineHeight: "1.3",
+  lineHeight: "1.4",
 };
 
 // ============================================================================
