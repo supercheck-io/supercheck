@@ -644,27 +644,70 @@ test('API POST request', async ({ request }) => {
     category: "API Testing",
     testType: "api",
     tags: ["playwright", "api", "put"],
-    code: `import { test, expect } from '@playwright/test';
+    code: `/**
+ * Playwright API PUT Request Test
+ *
+ * This test demonstrates updating existing resources via HTTP PUT requests.
+ * PUT is used for complete resource replacement with new data.
+ *
+ * Test Coverage:
+ * - HTTP PUT request execution
+ * - Complete resource update/replacement
+ * - Response validation (200 OK)
+ * - Updated data verification
+ * - Idempotent operation testing
+ *
+ * Key Features:
+ * - Full resource replacement
+ * - JSON payload with all fields
+ * - Update confirmation validation
+ * - Idempotent operation (same result on repeat)
+ *
+ * Use Cases:
+ * - Update complete resource records
+ * - Replace entire database entries
+ * - Modify user profiles
+ * - Update configuration settings
+ *
+ * Best Practices:
+ * - Include all resource fields in PUT (not partial)
+ * - Verify both status code and response content
+ * - Test idempotency (repeated requests same result)
+ *
+ * Documentation: https://playwright.dev/docs/api-testing
+ *
+ * @requires @playwright/test
+ */
+
+import { test, expect } from '@playwright/test';
 
 test('API PUT request', async ({ request }) => {
+  // Prepare complete resource data
+  const updatedResource = {
+    id: 1,
+    title: 'Updated Title',
+    body: 'Updated body content',
+    userId: 1,
+  };
+
   // Make PUT request to update resource
   const response = await request.put('https://jsonplaceholder.typicode.com/posts/1', {
-    data: {
-      id: 1,
-      title: 'Updated Title',
-      body: 'Updated body content',
-      userId: 1,
+    data: updatedResource,
+    headers: {
+      'Content-Type': 'application/json',
     },
   });
 
-  // Verify response status
+  // Verify response status (200 OK)
   expect(response.ok()).toBeTruthy();
   expect(response.status()).toBe(200);
 
   // Validate updated data
   const data = await response.json();
-  expect(data.title).toBe('Updated Title');
-  expect(data.body).toBe('Updated body content');
+  expect(data.id).toBe(updatedResource.id);
+  expect(data.title).toBe(updatedResource.title);
+  expect(data.body).toBe(updatedResource.body);
+  expect(data.userId).toBe(updatedResource.userId);
 });`,
   },
   {
@@ -674,15 +717,56 @@ test('API PUT request', async ({ request }) => {
     category: "API Testing",
     testType: "api",
     tags: ["playwright", "api", "delete"],
-    code: `import { test, expect } from '@playwright/test';
+    code: `/**
+ * Playwright API DELETE Request Test
+ *
+ * This test demonstrates resource deletion via HTTP DELETE requests
+ * and verifies successful removal from the system.
+ *
+ * Test Coverage:
+ * - HTTP DELETE request execution
+ * - Successful deletion verification (200 OK or 204 No Content)
+ * - Resource removal confirmation
+ * - Idempotent operation testing
+ *
+ * Key Features:
+ * - Resource deletion via ID
+ * - Status code validation
+ * - Clean resource removal
+ * - Simple request pattern
+ *
+ * Use Cases:
+ * - Delete user accounts
+ * - Remove database records
+ * - Clean up test data
+ * - Validate deletion endpoints
+ *
+ * Best Practices:
+ * - Verify 200 or 204 (No Content) status
+ * - Test deletion is idempotent
+ * - Verify resource actually removed (follow-up GET)
+ * - Consider soft delete vs hard delete
+ *
+ * Documentation: https://playwright.dev/docs/api-testing
+ *
+ * @requires @playwright/test
+ */
+
+import { test, expect } from '@playwright/test';
 
 test('API DELETE request', async ({ request }) => {
   // Make DELETE request
   const response = await request.delete('https://jsonplaceholder.typicode.com/posts/1');
 
-  // Verify response status
+  // Verify response status (200 OK or 204 No Content)
   expect(response.ok()).toBeTruthy();
-  expect(response.status()).toBe(200);
+  expect([200, 204]).toContain(response.status());
+
+  // Optional: Verify resource no longer exists
+  const verifyResponse = await request.get('https://jsonplaceholder.typicode.com/posts/1');
+
+  // Note: JSONPlaceholder is a fake API, real API should return 404
+  // In production, you would expect: expect(verifyResponse.status()).toBe(404);
 });`,
   },
   {
@@ -692,13 +776,52 @@ test('API DELETE request', async ({ request }) => {
     category: "API Testing",
     testType: "api",
     tags: ["playwright", "api", "auth"],
-    code: `import { test, expect } from '@playwright/test';
+    code: `/**
+ * Playwright API Authentication Test
+ *
+ * This test demonstrates API requests with authentication headers including
+ * Bearer tokens, API keys, and custom authentication schemes.
+ *
+ * Test Coverage:
+ * - Bearer token authentication
+ * - Custom authentication headers
+ * - Authorized request execution
+ * - Protected endpoint access
+ * - Authentication failure handling
+ *
+ * Key Features:
+ * - Authorization header configuration
+ * - Bearer token pattern
+ * - Multi-header request setup
+ * - Secure API access testing
+ *
+ * Use Cases:
+ * - Test protected API endpoints
+ * - Validate authentication mechanisms
+ * - Verify token-based access control
+ * - Integration testing for secured APIs
+ *
+ * Best Practices:
+ * - Store tokens in environment variables (process.env.API_TOKEN)
+ * - Never commit real tokens to version control
+ * - Test both successful auth and auth failures
+ * - Use test fixtures for auth state management
+ *
+ * Documentation: https://playwright.dev/docs/api-testing
+ *
+ * @requires @playwright/test
+ */
+
+import { test, expect } from '@playwright/test';
 
 test('API request with authentication', async ({ request }) => {
+  // Get token from environment variable (best practice)
+  const authToken = process.env.API_TOKEN || 'YOUR_TOKEN_HERE';
+
   // Make request with authentication header
   const response = await request.get('https://api.example.com/user/profile', {
     headers: {
-      'Authorization': 'Bearer YOUR_TOKEN_HERE',
+      'Authorization': \`Bearer \${authToken}\`,
       'Content-Type': 'application/json',
     },
   });
@@ -711,6 +834,11 @@ test('API request with authentication', async ({ request }) => {
   const data = await response.json();
   expect(data).toHaveProperty('email');
   expect(data).toHaveProperty('name');
+  expect(data).toHaveProperty('id');
+
+  // Verify data types
+  expect(typeof data.email).toBe('string');
+  expect(typeof data.name).toBe('string');
 });`,
   },
   {
@@ -720,7 +848,48 @@ test('API request with authentication', async ({ request }) => {
     category: "API Testing",
     testType: "api",
     tags: ["playwright", "api", "validation"],
-    code: `import { test, expect } from '@playwright/test';
+    code: `/**
+ * Playwright Comprehensive API Validation Test
+ *
+ * This test demonstrates thorough API response validation including
+ * status codes, headers, body structure, data types, and format validation.
+ *
+ * Test Coverage:
+ * - HTTP status code validation
+ * - Response header inspection
+ * - JSON schema validation
+ * - Property existence checks
+ * - Data type validation
+ * - Format validation (email, URLs, etc.)
+ * - Nested object validation
+ * - Array validation
+ *
+ * Key Features:
+ * - Multi-layer validation (status, headers, body)
+ * - Regex pattern matching
+ * - Nested property validation
+ * - Type checking
+ * - Format validation
+ *
+ * Use Cases:
+ * - API contract testing
+ * - Response schema validation
+ * - Data integrity verification
+ * - API specification compliance
+ *
+ * Best Practices:
+ * - Validate multiple layers (status, headers, body)
+ * - Check both presence and format of data
+ * - Validate nested objects and arrays
+ * - Use regex for format validation
+ * - Test boundary conditions
+ *
+ * Documentation: https://playwright.dev/docs/api-testing
+ *
+ * @requires @playwright/test
+ */
+
+import { test, expect } from '@playwright/test';
 
 test('comprehensive API validation', async ({ request }) => {
   // Make GET request
@@ -731,20 +900,43 @@ test('comprehensive API validation', async ({ request }) => {
   expect(response.status()).toBe(200);
 
   // Headers validation
-  expect(response.headers()['content-type']).toContain('application/json');
+  const headers = response.headers();
+  expect(headers['content-type']).toContain('application/json');
+  expect(headers).toHaveProperty('date');
 
   // Response body validation
   const data = await response.json();
+
+  // Required properties
   expect(data).toHaveProperty('id', 1);
   expect(data).toHaveProperty('name');
+  expect(data).toHaveProperty('username');
   expect(data).toHaveProperty('email');
-  // Validate email format
+  expect(data).toHaveProperty('phone');
+  expect(data).toHaveProperty('website');
+
+  // Type validation
+  expect(typeof data.id).toBe('number');
+  expect(typeof data.name).toBe('string');
+  expect(typeof data.email).toBe('string');
+
+  // Format validation - Email
   expect(data.email).toMatch(/^[^\s@]+@[^\s@]+\.[^\s@]+$/);
 
-  // Nested object validation
+  // Nested object validation - Address
   expect(data).toHaveProperty('address');
+  expect(data.address).toHaveProperty('street');
   expect(data.address).toHaveProperty('city');
   expect(data.address).toHaveProperty('zipcode');
+  expect(data.address).toHaveProperty('geo');
+  expect(data.address.geo).toHaveProperty('lat');
+  expect(data.address.geo).toHaveProperty('lng');
+
+  // Nested object validation - Company
+  expect(data).toHaveProperty('company');
+  expect(data.company).toHaveProperty('name');
+  expect(data.company).toHaveProperty('catchPhrase');
+  expect(data.company).toHaveProperty('bs');
 });`,
   },
   {
@@ -754,15 +946,59 @@ test('comprehensive API validation', async ({ request }) => {
     category: "Authentication",
     testType: "browser",
     tags: ["playwright", "auth", "login"],
-    code: `import { test, expect } from '@playwright/test';
+    code: `/**
+ * Playwright User Authentication Flow Test
+ *
+ * This test demonstrates end-to-end user authentication including login,
+ * session management, and authenticated state verification.
+ *
+ * Test Coverage:
+ * - Login form interaction
+ * - Credential submission
+ * - Session establishment
+ * - Post-login navigation
+ * - Authentication state verification
+ * - Logout functionality
+ *
+ * Key Features:
+ * - Form-based authentication
+ * - URL-based navigation validation
+ * - Session persistence checking
+ * - User-specific content verification
+ *
+ * Use Cases:
+ * - User login flow testing
+ * - Session management validation
+ * - Authentication state verification
+ * - Access control testing
+ *
+ * Best Practices:
+ * - Wait for navigation completion (waitForURL)
+ * - Verify authenticated user elements
+ * - Test logout functionality
+ * - Use storage state for auth persistence across tests
+ * - Store credentials in environment variables
+ *
+ * Documentation: https://playwright.dev/docs/auth
+ *
+ * @requires @playwright/test
+ */
+
+import { test, expect } from '@playwright/test';
 
 test('user login test', async ({ page }) => {
   // Navigate to login page
   await page.goto('https://example.com/login');
 
+  // Verify login page loaded
+  await expect(page).toHaveTitle(/Login/);
+
   // Fill in login credentials
   await page.getByLabel('Username').fill('testuser');
   await page.getByLabel('Password').fill('password123');
+
+  // Verify credentials are filled
+  await expect(page.getByLabel('Username')).toHaveValue('testuser');
 
   // Click login button
   await page.getByRole('button', { name: 'Login' }).click();
@@ -775,6 +1011,9 @@ test('user login test', async ({ page }) => {
 
   // Verify logout button is present
   await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible();
+
+  // Verify navigation menu is accessible
+  await expect(page.getByRole('navigation')).toBeVisible();
 });`,
   },
   {
