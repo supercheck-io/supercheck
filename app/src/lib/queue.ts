@@ -94,6 +94,9 @@ export const JOB_SCHEDULER_QUEUE = "job-scheduler";
 export const K6_JOB_SCHEDULER_QUEUE = "k6-job-scheduler";
 export const MONITOR_SCHEDULER_QUEUE = "monitor-scheduler";
 
+// Email template rendering queue
+export const EMAIL_TEMPLATE_QUEUE = "email-template-render";
+
 // Redis capacity limit keys
 export const RUNNING_CAPACITY_LIMIT_KEY = "supercheck:capacity:running";
 export const QUEUE_CAPACITY_LIMIT_KEY = "supercheck:capacity:queued";
@@ -115,6 +118,7 @@ let k6JobExecutionQueue: Queue | null = null;
 let jobSchedulerQueue: Queue | null = null;
 let k6JobSchedulerQueue: Queue | null = null;
 let monitorSchedulerQueue: Queue | null = null;
+let emailTemplateQueue: Queue | null = null;
 
 let monitorExecutionEvents: QueueEvents | null = null;
 
@@ -228,6 +232,7 @@ async function getQueues(): Promise<{
   jobSchedulerQueue: Queue;
   k6JobSchedulerQueue: Queue;
   monitorSchedulerQueue: Queue;
+  emailTemplateQueue: Queue;
   redisConnection: Redis;
 }> {
   if (!initPromise) {
@@ -284,6 +289,9 @@ async function getQueues(): Promise<{
           queueSettings
         );
 
+        // Email template rendering queue
+        emailTemplateQueue = new Queue(EMAIL_TEMPLATE_QUEUE, queueSettings);
+
         monitorExecutionEvents = new QueueEvents(MONITOR_EXECUTION_QUEUE, {
           connection: connection,
         });
@@ -311,6 +319,9 @@ async function getQueues(): Promise<{
         );
         monitorSchedulerQueue.on("error", (error) =>
           console.error(`[Queue Client] Monitor Scheduler Queue Error:`, error)
+        );
+        emailTemplateQueue.on("error", (error) =>
+          console.error(`[Queue Client] Email Template Queue Error:`, error)
         );
         monitorExecutionEvents.on("error", (error) =>
           console.error(
@@ -343,6 +354,7 @@ async function getQueues(): Promise<{
     !jobSchedulerQueue ||
     !k6JobSchedulerQueue ||
     !monitorSchedulerQueue ||
+    !emailTemplateQueue ||
     !redisClient
   ) {
     throw new Error(
@@ -358,6 +370,7 @@ async function getQueues(): Promise<{
     jobSchedulerQueue,
     k6JobSchedulerQueue,
     monitorSchedulerQueue,
+    emailTemplateQueue,
     redisConnection: redisClient,
   };
 }
@@ -404,6 +417,7 @@ async function performQueueCleanup(connection: Redis): Promise<void> {
     { name: JOB_SCHEDULER_QUEUE, queue: jobSchedulerQueue },
     { name: K6_JOB_SCHEDULER_QUEUE, queue: k6JobSchedulerQueue },
     { name: MONITOR_SCHEDULER_QUEUE, queue: monitorSchedulerQueue },
+    { name: EMAIL_TEMPLATE_QUEUE, queue: emailTemplateQueue },
   ];
 
   for (const { name, queue } of queuesToClean) {
@@ -688,6 +702,7 @@ export async function closeQueue(): Promise<void> {
   if (jobSchedulerQueue) promises.push(jobSchedulerQueue.close());
   if (k6JobSchedulerQueue) promises.push(k6JobSchedulerQueue.close());
   if (monitorSchedulerQueue) promises.push(monitorSchedulerQueue.close());
+  if (emailTemplateQueue) promises.push(emailTemplateQueue.close());
   if (redisClient) promises.push(redisClient.quit());
 
   if (monitorExecutionEvents) promises.push(monitorExecutionEvents.close());
@@ -706,6 +721,7 @@ export async function closeQueue(): Promise<void> {
     jobSchedulerQueue = null;
     k6JobSchedulerQueue = null;
     monitorSchedulerQueue = null;
+    emailTemplateQueue = null;
     redisClient = null;
     initPromise = null;
     monitorExecutionEvents = null;
