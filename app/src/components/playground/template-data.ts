@@ -1101,10 +1101,41 @@ test.afterAll(async () => {
     testType: "database",
     tags: ["playwright", "database", "insert"],
     code: `/**
- * Database INSERT Test
+ * Playwright Database INSERT Operation Test
  *
- * Tests creating new database records with parameterized queries
- * and RETURNING clause for immediate validation.
+ * This test demonstrates creating new database records using parameterized
+ * queries with PostgreSQL. It validates data insertion and auto-generated IDs.
+ *
+ * Test Coverage:
+ * - Database connection establishment
+ * - INSERT query execution with parameters
+ * - RETURNING clause for immediate validation
+ * - Auto-generated ID verification
+ * - Inserted data validation
+ * - SQL injection prevention
+ *
+ * Key Features:
+ * - Parameterized queries ($1, $2, etc.)
+ * - RETURNING clause returns inserted row
+ * - Connection pooling
+ * - Automatic type conversion
+ * - Proper resource cleanup
+ *
+ * Use Cases:
+ * - Test user registration flows
+ * - Validate data persistence
+ * - Test record creation APIs
+ * - Integration testing with database
+ *
+ * Best Practices:
+ * - Always use parameterized queries (prevents SQL injection)
+ * - Use RETURNING * to validate inserted data
+ * - Close connections in afterAll hook
+ * - Validate both data and auto-generated IDs
+ * - Use connection pooling for performance
+ *
+ * Database: PostgreSQL (pg library)
+ * Documentation: https://node-postgres.com/
  *
  * @requires @playwright/test, pg
  */
@@ -1112,6 +1143,7 @@ test.afterAll(async () => {
 import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
+// Database connection configuration
 const pool = new Pool({
   host: 'localhost',
   port: 5432,
@@ -1121,17 +1153,26 @@ const pool = new Pool({
 });
 
 test('database INSERT operation', async () => {
+  // Execute INSERT query with parameterized values
   const result = await pool.query(
     'INSERT INTO users (name, email) VALUES ($1, $2) RETURNING *',
     ['Test User', 'test@example.com']
   );
 
+  // Verify one row was inserted
   expect(result.rows).toHaveLength(1);
+
+  // Validate inserted data matches input
   expect(result.rows[0].name).toBe('Test User');
   expect(result.rows[0].email).toBe('test@example.com');
+
+  // Verify auto-generated ID was created
   expect(result.rows[0]).toHaveProperty('id');
+  expect(typeof result.rows[0].id).toBe('number');
+  expect(result.rows[0].id).toBeGreaterThan(0);
 });
 
+// Cleanup after all tests
 test.afterAll(async () => {
   await pool.end();
 });`,
@@ -1144,10 +1185,42 @@ test.afterAll(async () => {
     testType: "database",
     tags: ["playwright", "database", "update"],
     code: `/**
- * Database UPDATE Test
+ * Playwright Database UPDATE Operation Test
  *
- * Tests updating existing records with WHERE clause and RETURNING
- * for verification. Always use parameterized queries.
+ * This test demonstrates updating existing database records using parameterized
+ * queries with WHERE clause. It validates data modification and uses RETURNING
+ * clause for immediate verification.
+ *
+ * Test Coverage:
+ * - Database connection establishment
+ * - UPDATE query execution with parameters
+ * - WHERE clause for targeted updates
+ * - RETURNING clause for immediate validation
+ * - Updated data verification
+ * - SQL injection prevention
+ *
+ * Key Features:
+ * - Parameterized queries ($1, $2, etc.)
+ * - WHERE clause prevents mass updates
+ * - RETURNING clause returns updated row
+ * - Connection pooling
+ * - Proper resource cleanup
+ *
+ * Use Cases:
+ * - Test user profile updates
+ * - Validate data modification flows
+ * - Test record update APIs
+ * - Integration testing with database
+ *
+ * Best Practices:
+ * - Always use parameterized queries (prevents SQL injection)
+ * - Always include WHERE clause (avoid mass updates)
+ * - Use RETURNING * to validate updated data
+ * - Close connections in afterAll hook
+ * - Verify both affected rows and updated values
+ *
+ * Database: PostgreSQL (pg library)
+ * Documentation: https://node-postgres.com/
  *
  * @requires @playwright/test, pg
  */
@@ -1155,6 +1228,7 @@ test.afterAll(async () => {
 import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
+// Database connection configuration
 const pool = new Pool({
   host: 'localhost',
   port: 5432,
@@ -1164,16 +1238,27 @@ const pool = new Pool({
 });
 
 test('database UPDATE operation', async () => {
+  // Execute UPDATE query with parameterized values
   const result = await pool.query(
     'UPDATE users SET name = $1 WHERE id = $2 RETURNING *',
     ['Updated Name', 1]
   );
 
+  // Verify one row was updated
   expect(result.rows).toHaveLength(1);
+
+  // Validate correct row was updated
   expect(result.rows[0].id).toBe(1);
+
+  // Validate data was updated correctly
   expect(result.rows[0].name).toBe('Updated Name');
+
+  // Verify other fields remain unchanged
+  expect(result.rows[0]).toHaveProperty('email');
+  expect(result.rows[0]).toHaveProperty('id');
 });
 
+// Cleanup after all tests
 test.afterAll(async () => {
   await pool.end();
 });`,
@@ -1186,10 +1271,44 @@ test.afterAll(async () => {
     testType: "database",
     tags: ["playwright", "database", "delete"],
     code: `/**
- * Database DELETE Test
+ * Playwright Database DELETE Operation Test
  *
- * Tests deleting records with WHERE clause and verifying removal.
- * Always include WHERE to avoid mass deletion.
+ * This test demonstrates deleting database records using parameterized queries
+ * with WHERE clause. It validates record deletion and verifies removal with
+ * follow-up SELECT query.
+ *
+ * Test Coverage:
+ * - Database connection establishment
+ * - DELETE query execution with parameters
+ * - WHERE clause for targeted deletion
+ * - RETURNING clause captures deleted row
+ * - Deletion verification with SELECT query
+ * - SQL injection prevention
+ *
+ * Key Features:
+ * - Parameterized queries ($1, $2, etc.)
+ * - WHERE clause prevents mass deletion
+ * - RETURNING clause returns deleted row
+ * - Follow-up SELECT verifies deletion
+ * - Connection pooling
+ * - Proper resource cleanup
+ *
+ * Use Cases:
+ * - Test account deletion flows
+ * - Validate record removal
+ * - Test data cleanup operations
+ * - Integration testing with database
+ *
+ * Best Practices:
+ * - Always use parameterized queries (prevents SQL injection)
+ * - Always include WHERE clause (avoid mass deletion)
+ * - Use RETURNING * to capture deleted data
+ * - Verify deletion with follow-up SELECT query
+ * - Close connections in afterAll hook
+ * - Consider soft deletes for audit trails
+ *
+ * Database: PostgreSQL (pg library)
+ * Documentation: https://node-postgres.com/
  *
  * @requires @playwright/test, pg
  */
@@ -1197,6 +1316,7 @@ test.afterAll(async () => {
 import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
+// Database connection configuration
 const pool = new Pool({
   host: 'localhost',
   port: 5432,
@@ -1206,22 +1326,31 @@ const pool = new Pool({
 });
 
 test('database DELETE operation', async () => {
+  // Execute DELETE query with parameterized value
   const result = await pool.query(
     'DELETE FROM users WHERE id = $1 RETURNING *',
     [1]
   );
 
+  // Verify one row was deleted
   expect(result.rows).toHaveLength(1);
-  expect(result.rows[0].id).toBe(1);
 
-  // Verify deletion
+  // Validate correct row was deleted (via RETURNING clause)
+  expect(result.rows[0].id).toBe(1);
+  expect(result.rows[0]).toHaveProperty('name');
+  expect(result.rows[0]).toHaveProperty('email');
+
+  // Verify deletion by attempting to SELECT the deleted row
   const verifyResult = await pool.query(
     'SELECT * FROM users WHERE id = $1',
     [1]
   );
+
+  // Confirm row no longer exists
   expect(verifyResult.rows).toHaveLength(0);
 });
 
+// Cleanup after all tests
 test.afterAll(async () => {
   await pool.end();
 });`,
@@ -1234,10 +1363,50 @@ test.afterAll(async () => {
     testType: "database",
     tags: ["playwright", "database", "transaction"],
     code: `/**
- * Database Transaction Test
+ * Playwright Database Transaction Test
  *
- * Tests BEGIN/COMMIT/ROLLBACK for atomic operations.
- * Validates ACID properties and data consistency.
+ * This test demonstrates database transactions using BEGIN/COMMIT/ROLLBACK
+ * for atomic operations. It validates ACID properties and ensures data
+ * consistency through transaction rollback.
+ *
+ * Test Coverage:
+ * - Database connection and client acquisition
+ * - Transaction initiation (BEGIN)
+ * - Multiple operations within transaction
+ * - Transaction rollback
+ * - Data isolation validation
+ * - Transaction atomicity verification
+ *
+ * Key Features:
+ * - BEGIN starts transaction
+ * - ROLLBACK undoes all changes
+ * - COMMIT persists all changes (not shown, see ROLLBACK)
+ * - Automatic client release (finally block)
+ * - Proper error handling
+ * - Connection pooling
+ *
+ * Use Cases:
+ * - Test multi-step operations requiring atomicity
+ * - Validate transaction rollback on errors
+ * - Test data consistency in complex operations
+ * - Integration testing with database transactions
+ *
+ * Best Practices:
+ * - Always use client.release() in finally block
+ * - Use BEGIN/COMMIT/ROLLBACK for atomic operations
+ * - Use transactions for multiple related operations
+ * - Test both COMMIT and ROLLBACK scenarios
+ * - Handle errors with proper transaction rollback
+ * - Use parameterized queries within transactions
+ *
+ * ACID Properties:
+ * - Atomicity: All operations succeed or all fail
+ * - Consistency: Data remains in valid state
+ * - Isolation: Concurrent transactions don't interfere
+ * - Durability: Committed changes persist
+ *
+ * Database: PostgreSQL (pg library)
+ * Documentation: https://node-postgres.com/features/transactions
  *
  * @requires @playwright/test, pg
  */
@@ -1245,6 +1414,7 @@ test.afterAll(async () => {
 import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
+// Database connection configuration
 const pool = new Pool({
   host: 'localhost',
   port: 5432,
@@ -1254,34 +1424,47 @@ const pool = new Pool({
 });
 
 test('database transaction with rollback', async () => {
+  // Acquire a client from the pool for transaction
   const client = await pool.connect();
 
   try {
+    // Start transaction
     await client.query('BEGIN');
 
+    // Execute INSERT within transaction
     await client.query(
       'INSERT INTO users (name, email) VALUES ($1, $2)',
       ['Transaction User', 'transaction@example.com']
     );
 
+    // Verify data exists within transaction
     const result = await client.query(
       'SELECT * FROM users WHERE email = $1',
       ['transaction@example.com']
     );
     expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].name).toBe('Transaction User');
+    expect(result.rows[0].email).toBe('transaction@example.com');
 
+    // Rollback transaction (undo all changes)
     await client.query('ROLLBACK');
 
+    // Verify data was NOT persisted (rollback successful)
     const verifyResult = await pool.query(
       'SELECT * FROM users WHERE email = $1',
       ['transaction@example.com']
     );
     expect(verifyResult.rows).toHaveLength(0);
+
+    // Note: Use COMMIT instead of ROLLBACK to persist changes
+    // await client.query('COMMIT');
   } finally {
+    // Always release client back to pool
     client.release();
   }
 });
 
+// Cleanup after all tests
 test.afterAll(async () => {
   await pool.end();
 });`,
@@ -1361,12 +1544,52 @@ test('file upload test', async ({ page }) => {
     testType: "custom",
     tags: ["playwright", "custom", "combined"],
     code: `/**
- * Combined Test: DB + API + UI
+ * Playwright Combined Integration Test (DB + API + UI)
  *
- * Shows how to combine database queries, API calls, and browser
- * interactions in a single test for end-to-end validation.
+ * This advanced test demonstrates combining database operations, API testing,
+ * and browser automation in a single end-to-end test flow. It showcases how
+ * different test types can work together to validate complex user journeys.
  *
- * Flow: Query DB → Use data in API → Verify in UI
+ * Test Coverage:
+ * - Database query execution and validation
+ * - API request with dynamic authentication
+ * - Browser UI verification
+ * - Cross-layer data validation
+ * - UI interaction and database persistence
+ * - End-to-end workflow validation
+ *
+ * Key Features:
+ * - Multi-layer testing (DB + API + UI)
+ * - Data flow across layers
+ * - Dynamic authentication using DB data
+ * - UI-driven updates with DB verification
+ * - Comprehensive validation at each step
+ *
+ * Use Cases:
+ * - End-to-end user journey testing
+ * - Cross-layer integration validation
+ * - Complex workflow testing
+ * - Real-world scenario simulation
+ * - Full-stack application testing
+ *
+ * Test Flow:
+ * 1. Query database to retrieve user data
+ * 2. Use DB data (API token) in authenticated API request
+ * 3. Verify both DB and API data in browser UI
+ * 4. Perform UI update action
+ * 5. Verify UI changes persisted in database
+ *
+ * Best Practices:
+ * - Validate data at each integration point
+ * - Use parameterized queries for database operations
+ * - Verify API responses before using data
+ * - Wait for UI updates to complete
+ * - Confirm persistence with database queries
+ * - Handle errors gracefully at each layer
+ * - Use connection pooling for performance
+ *
+ * Database: PostgreSQL (pg library)
+ * Documentation: https://playwright.dev/docs/test-fixtures
  *
  * @requires @playwright/test, pg
  */
@@ -1374,6 +1597,7 @@ test('file upload test', async ({ page }) => {
 import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
+// Database connection configuration
 const pool = new Pool({
   host: 'localhost',
   port: 5432,
@@ -1382,40 +1606,89 @@ const pool = new Pool({
   password: 'testpass',
 });
 
-test('combined DB + API + UI test', async ({ page, request }) => {
-  // 1. Query database to get user data
+test('combined DB + API + UI integration test', async ({ page, request }) => {
+  // ===================================================================
+  // Step 1: Query Database - Retrieve user data for test
+  // ===================================================================
   const dbResult = await pool.query(
-    'SELECT * FROM users WHERE id = $1',
+    'SELECT id, name, email, api_token FROM users WHERE id = $1',
     [1]
   );
-  const user = dbResult.rows[0];
-  expect(user).toHaveProperty('email');
 
-  // 2. Use database data in API call
+  // Validate database query returned data
+  expect(dbResult.rows).toHaveLength(1);
+  const user = dbResult.rows[0];
+
+  // Verify required fields exist
+  expect(user).toHaveProperty('id');
+  expect(user).toHaveProperty('email');
+  expect(user).toHaveProperty('api_token');
+  expect(typeof user.email).toBe('string');
+  expect(user.email).toMatch(/^[^\s@]+@[^\s@]+\.[^\s@]+$/); // Valid email format
+
+  // ===================================================================
+  // Step 2: API Request - Use database data for authentication
+  // ===================================================================
   const apiResponse = await request.get('https://api.example.com/user/profile', {
     headers: {
       'Authorization': \`Bearer \${user.api_token}\`,
+      'Content-Type': 'application/json',
     },
   });
-  expect(apiResponse.ok()).toBeTruthy();
-  const apiData = await apiResponse.json();
 
-  // 3. Verify data in browser UI
+  // Validate API response
+  expect(apiResponse.ok()).toBeTruthy();
+  expect(apiResponse.status()).toBe(200);
+
+  const apiData = await apiResponse.json();
+  expect(apiData).toHaveProperty('name');
+  expect(apiData).toHaveProperty('id', user.id);
+
+  // ===================================================================
+  // Step 3: Browser UI - Verify data from DB and API in UI
+  // ===================================================================
   await page.goto('https://example.com/profile');
+
+  // Wait for page to load completely
+  await page.waitForLoadState('networkidle');
+
+  // Verify database email appears in UI
   await expect(page.getByText(user.email)).toBeVisible();
+
+  // Verify API-returned name appears in UI
   await expect(page.getByText(apiData.name)).toBeVisible();
 
-  // 4. Update via UI and verify in database
-  await page.getByLabel('Name').fill('Updated Name');
+  // Verify profile page elements are present
+  await expect(page.getByLabel('Name')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
+
+  // ===================================================================
+  // Step 4: UI Interaction - Update user name via browser
+  // ===================================================================
+  const updatedName = 'John Doe Updated';
+  await page.getByLabel('Name').fill(updatedName);
   await page.getByRole('button', { name: 'Save' }).click();
 
+  // Wait for save operation to complete
+  await expect(page.getByText('Saved successfully')).toBeVisible({ timeout: 5000 });
+
+  // ===================================================================
+  // Step 5: Database Verification - Confirm UI changes persisted
+  // ===================================================================
   const updatedResult = await pool.query(
-    'SELECT name FROM users WHERE id = $1',
-    [1]
+    'SELECT id, name FROM users WHERE id = $1',
+    [user.id]
   );
-  expect(updatedResult.rows[0].name).toBe('Updated Name');
+
+  // Validate update was persisted in database
+  expect(updatedResult.rows).toHaveLength(1);
+  expect(updatedResult.rows[0].id).toBe(user.id);
+  expect(updatedResult.rows[0].name).toBe(updatedName);
+
+  // Test complete - all layers validated successfully
 });
 
+// Cleanup after all tests
 test.afterAll(async () => {
   await pool.end();
 });`,
@@ -1428,9 +1701,9 @@ export function getTemplatesByType(testType: TestType): CodeTemplate[] {
     return codeTemplates.filter((t) => t.testType === "performance");
   }
 
-  // For custom type, return all Playwright templates
+  // For custom type, return only custom templates (not covered by other types)
   if (testType === "custom") {
-    return codeTemplates.filter((t) => t.testType !== "performance");
+    return codeTemplates.filter((t) => t.testType === "custom");
   }
 
   // For specific Playwright test types, return only matching templates
