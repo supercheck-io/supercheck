@@ -403,9 +403,7 @@ export default function() {
  * Target: test.k6.io - k6's official test site
  * Documentation: https://k6.io/docs/using-k6-browser/
  *
- * Note: Use 'k6/browser' for k6 v0.46.0+, or 'k6/experimental/browser' for older versions
- *
- * @requires k6 binary with browser support (v0.43.0+)
+ * @requires k6 binary with browser support (v0.46.0+)
  * @requires Chromium browser
  */
 

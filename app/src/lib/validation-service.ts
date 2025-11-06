@@ -17,9 +17,7 @@ const ALLOWED_MODULES = new Set([
   "k6/ws", // WebSocket support
   "k6/grpc", // gRPC support
   "k6/net/grpc", // gRPC networking
-  "k6/browser", // Browser automation (experimental)
-  "k6/experimental/redis", // Redis client
-  "k6/experimental/tracing", // Distributed tracing
+  "k6/browser", // Browser automation
 
   // Database Clients
   "mssql", // MSSQL database client
