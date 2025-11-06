@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { type NotificationProviderConfig } from "@/db/schema";
 import { EmailService } from "@/lib/email-service";
+import { renderTestEmail } from "@/lib/email-renderer";
 
 export async function POST(req: NextRequest) {
   try {
@@ -82,11 +83,16 @@ async function testSMTPConnection(testEmail: string): Promise<{ success: boolean
     // Use centralized EmailService
     const emailService = EmailService.getInstance();
 
+    // Render email using react-email template
+    const emailContent = await renderTestEmail({
+      testMessage: 'This is a test email to verify your SMTP configuration is working correctly.',
+    });
+
     const result = await emailService.sendEmail({
       to: testEmail,
-      subject: 'Supercheck - SMTP Test Email',
-      text: 'This is a test email to verify your SMTP configuration is working correctly.',
-      html: '<p>This is a test email to verify your <strong>SMTP configuration</strong> is working correctly.</p>',
+      subject: emailContent.subject,
+      text: emailContent.text,
+      html: emailContent.html,
     });
 
     return {

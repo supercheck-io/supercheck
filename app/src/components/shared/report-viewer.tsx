@@ -564,12 +564,12 @@ export function ReportViewer({
       {showFullscreen && currentReportUrl && (
         <div
           className={`fixed inset-0 z-50 backdrop-blur-sm ${
-            isK6Report && !isDarkMode ? '' : 'bg-card/80'
+            isK6Report && !isDarkMode ? "" : "bg-card/80" 
           }`}
         >
           <div
             className={`fixed inset-8 rounded-lg shadow-lg flex flex-col overflow-hidden border ${
-              isK6Report && !isDarkMode ? 'bg-white' : 'bg-card'
+              isK6Report && !isDarkMode ? "bg-white" : "bg-card"
             }`}
           >
             <div className="p-4 border-b flex items-center justify-between">

@@ -5,6 +5,7 @@ import {
   NotificationProviderType,
   PlainNotificationProviderConfig,
 } from '../db/schema';
+import { EmailTemplateService } from '../email-template/email-template.service';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -105,7 +106,7 @@ interface FormattedNotification {
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
 
-  constructor() {
+  constructor(private readonly emailTemplateService: EmailTemplateService) {
     this.logger.log('NotificationService initialized');
   }
 
@@ -470,7 +471,64 @@ export class NotificationService {
         throw new Error('No valid email addresses found');
       }
 
-      const emailContent = this.formatEmailContent(formatted, payload);
+      // Render email using centralized template service
+      let emailContent: { html: string; text: string; subject?: string };
+      try {
+        // Use appropriate template based on alert type
+        let rendered: { html: string; text: string; subject: string };
+
+        if (payload.type === 'job_failed') {
+          // Use job failure template (generic, no test stats)
+          rendered = await this.emailTemplateService.renderJobFailureEmail({
+            jobName: payload.targetName,
+            duration: payload.metadata?.duration || 0,
+            errorMessage: payload.metadata?.errorMessage,
+            runId: payload.metadata?.runId,
+            dashboardUrl: payload.metadata?.dashboardUrl,
+          });
+        } else if (payload.type === 'job_success') {
+          // Use job success template (generic, no test stats)
+          rendered = await this.emailTemplateService.renderJobSuccessEmail({
+            jobName: payload.targetName,
+            duration: payload.metadata?.duration || 0,
+            runId: payload.metadata?.runId,
+            dashboardUrl: payload.metadata?.dashboardUrl,
+          });
+        } else if (payload.type === 'job_timeout') {
+          // Use job timeout template
+          rendered = await this.emailTemplateService.renderJobTimeoutEmail({
+            jobName: payload.targetName,
+            duration: payload.metadata?.duration || 0,
+            runId: payload.metadata?.runId,
+            dashboardUrl: payload.metadata?.dashboardUrl,
+          });
+        } else {
+          // Use monitor alert template for all other types
+          rendered = await this.emailTemplateService.renderMonitorAlertEmail({
+            title: formatted.title,
+            message: formatted.message,
+            fields: formatted.fields,
+            footer: formatted.footer,
+            type: this.mapSeverityToType(payload.severity),
+            color: formatted.color,
+          });
+        }
+
+        emailContent = {
+          html: rendered.html,
+          text: rendered.text,
+          subject: rendered.subject,
+        };
+        this.logger.debug(
+          `Email template rendered successfully for ${payload.type}`,
+        );
+      } catch (templateError) {
+        // Fallback to old inline formatting if template service fails
+        this.logger.warn(
+          `Failed to fetch template from queue, using fallback: ${getErrorMessage(templateError)}`,
+        );
+        emailContent = this.formatEmailContent(formatted, payload);
+      }
 
       // Send via SMTP
       const smtpSuccess = await this.trySMTPDelivery(
@@ -490,10 +548,28 @@ export class NotificationService {
       return false;
     } catch (error) {
       this.logger.error(
-        `Failed to send email notification: ${error.message}`,
-        error.stack,
+        `Failed to send email notification: ${getErrorMessage(error)}`,
+        getErrorStack(error),
       );
       return false;
+    }
+  }
+
+  /**
+   * Map severity to email template type
+   */
+  private mapSeverityToType(
+    severity: 'info' | 'warning' | 'error' | 'success',
+  ): 'failure' | 'success' | 'warning' {
+    switch (severity) {
+      case 'error':
+        return 'failure';
+      case 'success':
+        return 'success';
+      case 'warning':
+        return 'warning';
+      default:
+        return 'warning';
     }
   }
 
