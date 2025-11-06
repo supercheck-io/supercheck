@@ -802,10 +802,10 @@ test('API DELETE request', async ({ request }) => {
  * - Integration testing for secured APIs
  *
  * Best Practices:
- * - Store tokens in environment variables (process.env.API_TOKEN)
  * - Never commit real tokens to version control
  * - Test both successful auth and auth failures
  * - Use test fixtures for auth state management
+ * - Use app vault for credential management in production
  *
  * Documentation: https://playwright.dev/docs/api-testing
  *
@@ -815,8 +815,8 @@ test('API DELETE request', async ({ request }) => {
 import { test, expect } from '@playwright/test';
 
 test('API request with authentication', async ({ request }) => {
-  // Get token from environment variable (best practice)
-  const authToken = process.env.API_TOKEN || 'YOUR_TOKEN_HERE';
+  // Authentication token (use app vault for production credentials)
+  const authToken = 'your-api-token-here';
 
   // Make request with authentication header
   const response = await request.get('https://api.example.com/user/profile', {
@@ -977,7 +977,6 @@ test('comprehensive API validation', async ({ request }) => {
  * - Verify authenticated user elements
  * - Test logout functionality
  * - Use storage state for auth persistence across tests
- * - Store credentials in environment variables
  *
  * Documentation: https://playwright.dev/docs/auth
  *
@@ -1054,7 +1053,6 @@ test('user login test', async ({ page }) => {
  * - Close connections in afterAll hook
  * - Validate both row count and content
  * - Use connection pooling for performance
- * - Store credentials in environment variables
  *
  * Database: PostgreSQL (pg library)
  * Documentation: https://node-postgres.com/
@@ -1067,11 +1065,11 @@ import { Pool } from 'pg';
 
 // Database connection configuration
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'testdb',
-  user: process.env.DB_USER || 'testuser',
-  password: process.env.DB_PASSWORD || 'testpass',
+  host: 'localhost',
+  port: 5432,
+  database: 'testdb',
+  user: 'testuser',
+  password: 'testpass',
 });
 
 test('database SELECT query', async () => {
@@ -1115,11 +1113,11 @@ import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'testdb',
-  user: process.env.DB_USER || 'testuser',
-  password: process.env.DB_PASSWORD || 'testpass',
+  host: 'localhost',
+  port: 5432,
+  database: 'testdb',
+  user: 'testuser',
+  password: 'testpass',
 });
 
 test('database INSERT operation', async () => {
@@ -1158,11 +1156,11 @@ import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'testdb',
-  user: process.env.DB_USER || 'testuser',
-  password: process.env.DB_PASSWORD || 'testpass',
+  host: 'localhost',
+  port: 5432,
+  database: 'testdb',
+  user: 'testuser',
+  password: 'testpass',
 });
 
 test('database UPDATE operation', async () => {
@@ -1200,11 +1198,11 @@ import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'testdb',
-  user: process.env.DB_USER || 'testuser',
-  password: process.env.DB_PASSWORD || 'testpass',
+  host: 'localhost',
+  port: 5432,
+  database: 'testdb',
+  user: 'testuser',
+  password: 'testpass',
 });
 
 test('database DELETE operation', async () => {
@@ -1248,11 +1246,11 @@ import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'testdb',
-  user: process.env.DB_USER || 'testuser',
-  password: process.env.DB_PASSWORD || 'testpass',
+  host: 'localhost',
+  port: 5432,
+  database: 'testdb',
+  user: 'testuser',
+  password: 'testpass',
 });
 
 test('database transaction with rollback', async () => {
@@ -1377,11 +1375,11 @@ import { test, expect } from '@playwright/test';
 import { Pool } from 'pg';
 
 const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'testdb',
-  user: process.env.DB_USER || 'testuser',
-  password: process.env.DB_PASSWORD || 'testpass',
+  host: 'localhost',
+  port: 5432,
+  database: 'testdb',
+  user: 'testuser',
+  password: 'testpass',
 });
 
 test('combined DB + API + UI test', async ({ page, request }) => {
