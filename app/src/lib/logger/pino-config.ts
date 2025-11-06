@@ -33,14 +33,9 @@ const getLogLevel = (): string => {
 };
 
 /**
- * Custom pretty printer for development
+ * Create pretty print stream for development
  */
-const prettyPrint = (isDevelopment: boolean) => {
-  if (!isDevelopment) {
-    return undefined;
-  }
-
-  // Use pino-pretty's formatting but synchronously
+const createPrettyStream = () => {
   return pinoPretty({
     colorize: true,
     translateTime: 'HH:MM:ss.l',
@@ -49,6 +44,7 @@ const prettyPrint = (isDevelopment: boolean) => {
     levelFirst: true,
     messageFormat: '{if module}[{module}]{end} {msg}',
     customColors: 'info:blue,warn:yellow,error:red',
+    sync: true, // Use synchronous mode for Next.js compatibility
   });
 };
 
@@ -86,11 +82,10 @@ export const pinoConfig = {
 /**
  * Create a root logger instance with pretty printing in development
  */
-const isDevelopment = process.env.NODE_ENV !== 'production';
-export const logger: PinoLogger = pino(
-  pinoConfig,
-  isDevelopment ? prettyPrint(true) : undefined
-);
+const isDevelopment = process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test';
+export const logger: PinoLogger = isDevelopment
+  ? pino(pinoConfig, createPrettyStream())
+  : pino(pinoConfig);
 
 /**
  * Create a child logger with additional context
