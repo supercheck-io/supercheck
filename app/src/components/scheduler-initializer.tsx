@@ -10,6 +10,10 @@ import {
   initializeMonitorSchedulers,
   cleanupMonitorScheduler,
 } from "@/lib/monitor-scheduler";
+import {
+  initializeEmailTemplateProcessor,
+  shutdownEmailTemplateProcessor,
+} from "@/lib/processors/email-template-processor";
 
 /**
  * Server component to initialize the job and monitor schedulers.
@@ -95,6 +99,28 @@ export async function SchedulerInitializer() {
     console.error("❌ Error starting monitor scheduler:", error);
   }
 
+  try {
+    // Initialize email template processor for worker template rendering requests
+    const initializeAsync = async () => {
+      try {
+        await initializeEmailTemplateProcessor();
+        console.log("✅ Email template processor initialized");
+      } catch (error: unknown) {
+        console.error("❌ Email template processor error:", error);
+        throw error;
+      }
+    };
+
+    initializeAsync().catch((error) => {
+      console.error(
+        "❌ Critical: Email template processor failed during startup:",
+        error
+      );
+    });
+  } catch (error) {
+    console.error("❌ Error starting email template processor:", error);
+  }
+
   // This is a server component, so it doesn't render anything
   return null;
 }
@@ -112,11 +138,15 @@ export async function cleanupBackgroundTasks() {
   const lifecycleCleanupPromise = cleanupDataLifecycleService().catch((e) =>
     console.error("Error cleaning data lifecycle service:", e)
   );
+  const emailProcessorCleanupPromise = shutdownEmailTemplateProcessor().catch(
+    (e) => console.error("Error cleaning email template processor:", e)
+  );
 
   await Promise.allSettled([
     jobCleanupPromise,
     monitorSchedulerCleanupPromise,
     lifecycleCleanupPromise,
+    emailProcessorCleanupPromise,
   ]);
   console.log("✅ Background tasks cleanup finished.");
 }

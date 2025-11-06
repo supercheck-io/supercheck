@@ -41,6 +41,7 @@ const ensureBullBoard = async (): Promise<NextBullBoardAdapterState> => {
     jobSchedulerQueue,
     k6JobSchedulerQueue,
     monitorSchedulerQueue,
+    emailTemplateQueue,
   } = await getQueues();
 
   createBullBoard({
@@ -58,6 +59,9 @@ const ensureBullBoard = async (): Promise<NextBullBoardAdapterState> => {
         }),
       new BullMQAdapter(monitorSchedulerQueue, {
         displayName: "Monitor Scheduler",
+      }),
+      new BullMQAdapter(emailTemplateQueue, {
+        displayName: "Email Template Render",
       }),
     ],
     serverAdapter,

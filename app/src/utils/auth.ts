@@ -9,6 +9,7 @@ import {
   checkPasswordResetRateLimit,
   getClientIP,
 } from "@/lib/session-security";
+import { renderPasswordResetEmail } from "@/lib/email-renderer";
 
 import { nextCookies } from "better-auth/next-js";
 
@@ -64,22 +65,17 @@ export const auth = betterAuth({
       }
 
       try {
+        // Render email using react-email template
+        const emailContent = await renderPasswordResetEmail({
+          resetUrl: url,
+          userEmail: user.email,
+        });
+
         const result = await emailService.sendEmail({
           to: user.email,
-          subject: "Reset your Supercheck password",
-          text: `You requested a password reset for your Supercheck account. Click the link below to reset your password:\n\n${url}\n\nThis link will expire in 1 hour for security reasons.\n\nIf you didn't request this reset, please ignore this email.`,
-          html: `
-                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                            <h2 style="color: #333;">Reset your Supercheck password</h2>
-                            <p>You requested a password reset for your Supercheck account.</p>
-                            <p>Click the button below to reset your password:</p>
-                            <a href="${url}" style="display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px; margin: 16px 0;">Reset Password</a>
-                            <p style="color: #666; font-size: 14px;">This link will expire in 1 hour for security reasons.</p>
-                            <p style="color: #666; font-size: 14px;">If you didn't request this reset, please ignore this email.</p>
-                            <hr style="margin: 24px 0; border: none; border-top: 1px solid #eee;">
-                            <p style="color: #999; font-size: 12px;">Supercheck - Automation & Monitoring Platform</p>
-                        </div>
-                    `,
+          subject: emailContent.subject,
+          text: emailContent.text,
+          html: emailContent.html,
         });
 
         if (!result.success) {
