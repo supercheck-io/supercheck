@@ -5,7 +5,7 @@ import { statusPageSubscribers } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { requireProjectContext } from "@/lib/project-context";
 import { EmailService } from "@/lib/email-service";
-import { getVerificationEmailTemplate } from "@/lib/email-templates/status-page-emails";
+import { renderStatusPageVerificationEmail } from "@/lib/email-renderer";
 
 export async function getStatusPageSubscribers(statusPageId: string) {
   try {
@@ -131,17 +131,17 @@ export async function resendVerificationEmail(subscriberId: string) {
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
         const verificationUrl = `${baseUrl}/status-pages/verify/${newVerificationToken}`;
 
-        const emailTemplate = getVerificationEmailTemplate({
-          email: subscriber.email || "",
-          statusPageName: statusPage.headline || statusPage.name,
+        // Render email using react-email template
+        const emailContent = await renderStatusPageVerificationEmail({
           verificationUrl,
+          statusPageName: statusPage.headline || statusPage.name,
         });
 
         const result = await emailService.sendEmail({
           to: subscriber.email || "",
-          subject: emailTemplate.subject,
-          text: emailTemplate.text,
-          html: emailTemplate.html,
+          subject: emailContent.subject,
+          text: emailContent.text,
+          html: emailContent.html,
         });
 
         if (!result.success) {
