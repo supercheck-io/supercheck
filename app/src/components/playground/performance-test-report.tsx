@@ -14,6 +14,9 @@ import {
 import { MonacoConsoleViewer } from "@/components/k6/monaco-console-viewer";
 import { Loader2, Terminal, Download, ChartSpline } from "lucide-react";
 
+const HEARTBEAT_STALE_THRESHOLD_MS = 45_000;
+const HEARTBEAT_CHECK_INTERVAL_MS = 15_000;
+
 interface PerformanceTestReportProps {
   runId: string;
   onStatusChange?: (
@@ -36,6 +39,12 @@ export function PerformanceTestReport({
   const [isInitializing, setIsInitializing] = useState(true);
   const [shouldStream, setShouldStream] = useState(false);
   const [activeTab, setActiveTab] = useState<"logs" | "report">("logs");
+  const [completedConsoleLog, setCompletedConsoleLog] = useState<string | null>(
+    null
+  );
+  const [consoleFetchState, setConsoleFetchState] = useState<
+    "idle" | "loading" | "loaded" | "error"
+  >("idle");
 
   // Keep a ref to the latest onStatusChange callback
   const onStatusChangeRef = useRef(onStatusChange);
@@ -53,6 +62,8 @@ export function PerformanceTestReport({
     setIsInitializing(true);
     setShouldStream(false);
     setActiveTab("logs");
+    setCompletedConsoleLog(null);
+    setConsoleFetchState("idle");
   }, [runId]);
 
   // Fetch initial run details to determine if test is already complete
@@ -66,6 +77,9 @@ export function PerformanceTestReport({
             details.runStatus ?? details.status
           );
           setStatus(derivedStatus);
+          if (derivedStatus !== "running") {
+            setShouldStream(false);
+          }
 
           // If test is already complete, don't set up streaming
           const isComplete = derivedStatus !== "running";
@@ -132,6 +146,31 @@ export function PerformanceTestReport({
     onStatusChangeRef.current?.(status);
   }, [status]);
 
+  const fetchCompletedConsole = useCallback(async () => {
+    if (consoleFetchState === "loading" || consoleFetchState === "loaded") {
+      return;
+    }
+
+    setConsoleFetchState("loading");
+    try {
+      const response = await fetch(
+        `/api/test-results/${encodeURIComponent(
+          runId
+        )}/console.log?ts=${Date.now()}`,
+        { cache: "no-store" }
+      );
+      if (!response.ok) {
+        throw new Error(`Console fetch failed (${response.status})`);
+      }
+      const text = await response.text();
+      setCompletedConsoleLog(text);
+      setConsoleFetchState("loaded");
+    } catch (error) {
+      console.error("Failed to fetch completed console log", error);
+      setConsoleFetchState("error");
+    }
+  }, [consoleFetchState, runId]);
+
   const handleCompletion = useCallback(
     async (finalStatus: string) => {
       const displayStatus = toDisplayStatus(finalStatus);
@@ -187,6 +226,7 @@ export function PerformanceTestReport({
             location: details.location ?? null,
             duration: computeDuration(details),
           });
+
         } else {
           console.warn("Could not fetch k6 run details after retries");
           onStatusChangeRef.current?.(displayStatus);
@@ -200,6 +240,12 @@ export function PerformanceTestReport({
   );
 
   useEffect(() => {
+    if (!shouldStream && status !== "running" && consoleFetchState === "idle") {
+      void fetchCompletedConsole();
+    }
+  }, [shouldStream, status, consoleFetchState, fetchCompletedConsole]);
+
+  useEffect(() => {
     // Only set up streaming if we determined the test is still running or needs to be checked
     if (!shouldStream || isInitializing) {
       return;
@@ -209,6 +255,8 @@ export function PerformanceTestReport({
     let reconnectAttempts = 0;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
     let currentCleanup: (() => void) | null = null;
+    let heartbeatWatchdog: ReturnType<typeof setInterval> | null = null;
+    let lastHeartbeatAt = Date.now();
 
     const clearReconnectTimeout = () => {
       if (reconnectTimeout) {
@@ -217,11 +265,39 @@ export function PerformanceTestReport({
       }
     };
 
+    const stopHeartbeatWatchdog = () => {
+      if (heartbeatWatchdog) {
+        clearInterval(heartbeatWatchdog);
+        heartbeatWatchdog = null;
+      }
+    };
+
+    const recordHeartbeat = () => {
+      lastHeartbeatAt = Date.now();
+    };
+
+    const startHeartbeatWatchdog = () => {
+      if (heartbeatWatchdog) {
+        return;
+      }
+      heartbeatWatchdog = setInterval(() => {
+        if (!isActive) {
+          return;
+        }
+        if (Date.now() - lastHeartbeatAt > HEARTBEAT_STALE_THRESHOLD_MS) {
+          recordHeartbeat();
+          cleanupSource();
+          scheduleReconnect(true);
+        }
+      }, HEARTBEAT_CHECK_INTERVAL_MS);
+    };
+
     const cleanupSource = () => {
       if (currentCleanup) {
         currentCleanup();
         currentCleanup = null;
       }
+      stopHeartbeatWatchdog();
     };
 
     const pollRunStatus = async () => {
@@ -250,18 +326,19 @@ export function PerformanceTestReport({
       }
     };
 
-    const scheduleReconnect = () => {
+    const scheduleReconnect = (dueToStaleness = false) => {
       if (!isActive) {
         return;
       }
 
       reconnectAttempts += 1;
       const delay = Math.min(1000 * 2 ** (reconnectAttempts - 1), 15000);
+      const prefix = dueToStaleness ? "Connection stale." : "Connection lost.";
 
       setStreamError(
         reconnectAttempts === 1
-          ? "Connection lost. Attempting to reconnect…"
-          : `Connection lost. Retrying (attempt ${reconnectAttempts})…`
+          ? `${prefix} Attempting to reconnect…`
+          : `${prefix} Retrying (attempt ${reconnectAttempts})…`
       );
 
       clearReconnectTimeout();
@@ -286,10 +363,13 @@ export function PerformanceTestReport({
       const source = new EventSource(
         `/api/runs/${encodeURIComponent(runId)}/stream`
       );
+      recordHeartbeat();
+      startHeartbeatWatchdog();
 
       const onOpen = () => {
         reconnectAttempts = 0;
         setStreamError(null);
+        recordHeartbeat();
       };
 
       const onConsole = (event: MessageEvent) => {
@@ -298,6 +378,7 @@ export function PerformanceTestReport({
           if (payload?.line) {
             setStreamError(null);
             setConsoleBuffer((prev) => prev + payload.line);
+            recordHeartbeat();
           }
         } catch (err) {
           console.error("Failed to parse console payload", err);
@@ -310,12 +391,16 @@ export function PerformanceTestReport({
           isActive = false;
           clearReconnectTimeout();
           cleanupSource();
+          stopHeartbeatWatchdog();
+          setShouldStream(false);
           void handleCompletion(payload?.status ?? "completed");
         } catch (err) {
           console.error("Failed to parse completion payload", err);
           isActive = false;
           clearReconnectTimeout();
           cleanupSource();
+          stopHeartbeatWatchdog();
+          setShouldStream(false);
           void handleCompletion("error");
         }
       };
@@ -335,16 +420,22 @@ export function PerformanceTestReport({
         scheduleReconnect();
       };
 
+      const onHeartbeat = () => {
+        recordHeartbeat();
+      };
+
       source.addEventListener("open", onOpen);
       source.addEventListener("console", onConsole as EventListener);
       source.addEventListener("complete", onComplete as EventListener);
       source.addEventListener("error", onError as EventListener);
+      source.addEventListener("heartbeat", onHeartbeat as EventListener);
 
       currentCleanup = () => {
         source.removeEventListener("open", onOpen);
         source.removeEventListener("console", onConsole as EventListener);
         source.removeEventListener("complete", onComplete as EventListener);
         source.removeEventListener("error", onError as EventListener);
+        source.removeEventListener("heartbeat", onHeartbeat as EventListener);
         source.close();
       };
     };
@@ -355,6 +446,7 @@ export function PerformanceTestReport({
       isActive = false;
       clearReconnectTimeout();
       cleanupSource();
+      stopHeartbeatWatchdog();
     };
   }, [handleCompletion, runId, shouldStream, isInitializing]);
 
@@ -457,13 +549,25 @@ export function PerformanceTestReport({
                 {streamError}
               </div>
             ) : null}
+            {status !== "running" && consoleFetchState === "loading" ? (
+              <div className="absolute top-20 left-4 right-4 z-10 bg-slate-50 px-4 py-2 text-xs text-slate-600 dark:bg-slate-900/40 dark:text-slate-300 rounded-md shadow-lg">
+                Loading full log from artifact storage…
+              </div>
+            ) : null}
+            {status !== "running" && consoleFetchState === "error" ? (
+              <div className="absolute top-20 left-4 right-4 z-10 bg-rose-50 px-4 py-2 text-xs text-rose-600 dark:bg-rose-900/30 dark:text-rose-300 rounded-md shadow-lg">
+                Unable to load archived logs. Showing partial output instead.
+              </div>
+            ) : null}
 
             {/* Console Output - Full Height */}
             <MonacoConsoleViewer
               content={
                 status === "running"
                   ? consoleBuffer
-                  : runDetails?.consoleOutput || consoleBuffer
+                  : completedConsoleLog ||
+                    runDetails?.consoleOutput ||
+                    consoleBuffer
               }
               className="rounded-none border-0"
             />

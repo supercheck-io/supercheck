@@ -19,7 +19,9 @@ import { LoggerService } from './logger.service';
     PinoLoggerModule.forRoot({
       pinoHttp: {
         // Customize log levels based on environment
-        level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
+        level:
+          process.env.LOG_LEVEL ||
+          (process.env.NODE_ENV === 'production' ? 'info' : 'debug'),
 
         // Transport configuration
         transport:
@@ -45,7 +47,9 @@ import { LoggerService } from './logger.service';
             // Redact sensitive headers
             headers: {
               ...req.headers,
-              authorization: req.headers.authorization ? '[REDACTED]' : undefined,
+              authorization: req.headers.authorization
+                ? '[REDACTED]'
+                : undefined,
               cookie: req.headers.cookie ? '[REDACTED]' : undefined,
             },
           }),

@@ -88,9 +88,6 @@ const createNextConfig = (phase: string): NextConfig => {
       ],
       unoptimized: true,
     },
-    experimental: {
-      // Add any experimental features here
-    },
     // Security headers (only in production)
     ...(isDev ? {} : {
       headers: async () => [
