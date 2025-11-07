@@ -2,7 +2,7 @@ import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Job } from 'bullmq';
-import { sql, eq } from 'drizzle-orm';
+import { sql, eq, type SQL } from 'drizzle-orm';
 import {
   K6ExecutionService,
   K6ExecutionTask,
@@ -73,7 +73,9 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     }
   }
 
-  async handleProcess(job: Job<K6Task>): Promise<{ success: boolean }> {
+  async handleProcess(
+    job: Job<K6Task>,
+  ): Promise<{ success: boolean; timedOut?: boolean }> {
     const processStartTime = Date.now();
     const requestedLocation = job.data.location || 'us-east';
     const normalizedJobLocation = requestedLocation.toLowerCase();
@@ -187,8 +189,11 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         durationString = `${durationSeconds}s`;
       }
 
+      const runStatus: 'passed' | 'failed' = result.success
+        ? 'passed'
+        : 'failed';
       const runUpdate: Record<string, any> = {
-        status: result.success ? 'passed' : 'failed',
+        status: runStatus,
         completedAt: new Date(),
         durationMs: result.durationMs,
         duration: durationString,
@@ -196,8 +201,9 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         logsS3Url: result.logsUrl ?? null,
       };
 
+      let metadataExpression: SQL | undefined;
       if (result.summary?.runId) {
-        runUpdate.metadata = sql`
+        metadataExpression = sql`
           jsonb_set(
             coalesce(metadata, '{}'::jsonb),
             '{k6RunId}',
@@ -206,18 +212,43 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         `;
       }
 
+      if (result.timedOut) {
+        const baseExpression =
+          metadataExpression ?? sql`coalesce(metadata, '{}'::jsonb)`;
+        metadataExpression = sql`
+          jsonb_set(
+            ${baseExpression},
+            '{timedOut}',
+            to_jsonb(true)
+          )
+        `;
+        runUpdate.errorDetails =
+          result.error ?? 'k6 execution timed out before completion.';
+      } else if (result.error) {
+        runUpdate.errorDetails = result.error;
+      }
+
+      if (metadataExpression) {
+        runUpdate.metadata = metadataExpression;
+      }
+
       await this.dbService.db
         .update(schema.runs)
         .set(runUpdate)
         .where(eq(schema.runs.id, runId));
 
       if (taskData.jobId) {
-        const finalStatus = result.success ? 'passed' : 'failed';
+        const finalStatus = result.timedOut
+          ? 'failed'
+          : result.success
+            ? 'passed'
+            : 'failed';
 
         // Update job status based on all current run statuses
         try {
-          const finalRunStatuses =
-            await this.dbService.getRunStatusesForJob(taskData.jobId);
+          const finalRunStatuses = await this.dbService.getRunStatusesForJob(
+            taskData.jobId,
+          );
           const allTerminal = finalRunStatuses.every((s) =>
             ['passed', 'failed', 'error'].includes(s),
           );
@@ -258,11 +289,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           results: [{ success: result.success }],
           jobType: taskData.jobType ?? 'k6',
           location: taskData.location ?? null,
+          errorMessage: result.timedOut ? result.error : undefined,
         });
       }
 
       // Return the success status to BullMQ so queue events are correctly reported
-      return { success: result.success };
+      return { success: result.success, timedOut: result.timedOut };
     } catch (error) {
       if (error instanceof LocationMismatchError) {
         // Don't update run status for location mismatches since the job will be retried
@@ -280,7 +312,9 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
 
       // Update run record to failed status before rethrowing to ensure UI and retries work correctly
       try {
-        const durationSeconds = Math.round((Date.now() - processStartTime) / 1000);
+        const durationSeconds = Math.round(
+          (Date.now() - processStartTime) / 1000,
+        );
         let durationString: string;
         if (durationSeconds <= 0) {
           durationString = '<1s';
@@ -313,8 +347,9 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       if (taskData.jobId) {
         // Update job status based on all current run statuses
         try {
-          const finalRunStatuses =
-            await this.dbService.getRunStatusesForJob(taskData.jobId);
+          const finalRunStatuses = await this.dbService.getRunStatusesForJob(
+            taskData.jobId,
+          );
           const allTerminal = finalRunStatuses.every((s) =>
             ['passed', 'failed', 'error'].includes(s),
           );
@@ -442,13 +477,20 @@ export class K6TestExecutionProcessor extends BaseK6ExecutionProcessor {
     );
   }
 
-  async process(job: Job<K6Task>): Promise<{ success: boolean }> {
+  async process(
+    job: Job<K6Task>,
+  ): Promise<{ success: boolean; timedOut?: boolean }> {
     return await this.handleProcess(job);
   }
 
   @OnWorkerEvent('completed')
   onCompleted(job: Job, result: unknown) {
-    const status = (result as any)?.success ? 'passed' : 'failed';
+    const timedOut = Boolean((result as any)?.timedOut);
+    const status = timedOut
+      ? 'timed out'
+      : (result as any)?.success
+        ? 'passed'
+        : 'failed';
     this.logger.log(`k6 test ${job.id} completed: ${status}`);
   }
 
@@ -487,13 +529,20 @@ export class K6JobExecutionProcessor extends BaseK6ExecutionProcessor {
     );
   }
 
-  async process(job: Job<K6Task>): Promise<{ success: boolean }> {
+  async process(
+    job: Job<K6Task>,
+  ): Promise<{ success: boolean; timedOut?: boolean }> {
     return await this.handleProcess(job);
   }
 
   @OnWorkerEvent('completed')
   onCompleted(job: Job, result: unknown) {
-    const status = (result as any)?.success ? 'passed' : 'failed';
+    const timedOut = Boolean((result as any)?.timedOut);
+    const status = timedOut
+      ? 'timed out'
+      : (result as any)?.success
+        ? 'passed'
+        : 'failed';
     this.logger.log(`k6 job ${job.id} completed: ${status}`);
   }
 

@@ -69,7 +69,11 @@ export class LoggerService {
   /**
    * Log at error level with error object support
    */
-  error(message: string, error?: Error | unknown, data?: Record<string, unknown>) {
+  error(
+    message: string,
+    error?: Error | unknown,
+    data?: Record<string, unknown>,
+  ) {
     const logData: Record<string, unknown> = { ...data };
 
     if (error instanceof Error) {
@@ -88,7 +92,11 @@ export class LoggerService {
   /**
    * Log at fatal level (most severe)
    */
-  fatal(message: string, error?: Error | unknown, data?: Record<string, unknown>) {
+  fatal(
+    message: string,
+    error?: Error | unknown,
+    data?: Record<string, unknown>,
+  ) {
     const logData: Record<string, unknown> = { ...data };
 
     if (error instanceof Error) {

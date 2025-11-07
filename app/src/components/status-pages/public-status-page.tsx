@@ -438,10 +438,12 @@ export function PublicStatusPage({
               </p>
             )}
           </div>
-          <SubscribeDialog
-            statusPageId={statusPage.id}
-            statusPageName={statusPage.headline || statusPage.name}
-          />
+          <div className="flex items-center gap-3">
+            <SubscribeDialog
+              statusPageId={statusPage.id}
+              statusPageName={statusPage.headline || statusPage.name}
+            />
+          </div>
         </div>
       </div>
 

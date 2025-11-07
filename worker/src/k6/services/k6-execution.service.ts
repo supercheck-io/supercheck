@@ -39,6 +39,7 @@ export interface K6ExecutionTask {
 
 export interface K6ExecutionResult {
   success: boolean;
+  timedOut: boolean;
   runId: string;
   durationMs: number;
   summary: any;
@@ -57,6 +58,8 @@ export class K6ExecutionService {
   private readonly k6BinaryPath: string;
   private readonly baseLocalRunDir: string;
   private readonly maxConcurrentK6Runs: number;
+  private readonly testExecutionTimeoutMs: number;
+  private readonly jobExecutionTimeoutMs: number;
   private readonly dashboardPortStart: number;
   private readonly dashboardPortRange: number;
   private readonly dashboardBindAddress: string;
@@ -95,6 +98,20 @@ export class K6ExecutionService {
     this.logger.log(`K6 binary path: ${this.k6BinaryPath}`);
     this.logger.log(`Max concurrent k6 runs: ${this.maxConcurrentK6Runs}`);
     this.logger.log(`K6 reports directory: ${this.baseLocalRunDir}`);
+    this.testExecutionTimeoutMs = this.configService.get<number>(
+      'K6_TEST_EXECUTION_TIMEOUT_MS',
+      60 * 60 * 1000,
+    );
+    this.jobExecutionTimeoutMs = this.configService.get<number>(
+      'K6_JOB_EXECUTION_TIMEOUT_MS',
+      60 * 60 * 1000,
+    );
+    this.logger.log(
+      `k6 test execution timeout: ${this.testExecutionTimeoutMs}ms (${Math.round(this.testExecutionTimeoutMs / 60000)}m)`,
+    );
+    this.logger.log(
+      `k6 job execution timeout: ${this.jobExecutionTimeoutMs}ms (${Math.round(this.jobExecutionTimeoutMs / 60000)}m)`,
+    );
 
     // Verify k6 installation on startup
     this.verifyK6Installation();
@@ -170,10 +187,11 @@ export class K6ExecutionService {
     childProcess.on('close', (code) => {
       if (code === 0) {
         // Check if version output includes the dashboard extension
-        if (versionOutput.includes('xk6-dashboard') || versionOutput.includes('dashboard [output]')) {
-          this.logger.log(
-            '✓ K6 web-dashboard extension is available',
-          );
+        if (
+          versionOutput.includes('xk6-dashboard') ||
+          versionOutput.includes('dashboard [output]')
+        ) {
+          this.logger.log('✓ K6 web-dashboard extension is available');
         } else {
           this.logger.error(
             '❌ CRITICAL: K6 web-dashboard extension NOT FOUND!',
@@ -184,15 +202,11 @@ export class K6ExecutionService {
           this.logger.error(
             'HTML report generation will fail. Please install k6 with web-dashboard:',
           );
-          this.logger.error(
-            '  1. go install go.k6.io/xk6/cmd/xk6@latest',
-          );
+          this.logger.error('  1. go install go.k6.io/xk6/cmd/xk6@latest');
           this.logger.error(
             '  2. xk6 build --with github.com/grafana/xk6-dashboard@latest',
           );
-          this.logger.error(
-            `  3. sudo mv k6 ${this.k6BinaryPath}`,
-          );
+          this.logger.error(`  3. sudo mv k6 ${this.k6BinaryPath}`);
         }
       }
     });
@@ -227,8 +241,15 @@ export class K6ExecutionService {
       runId,
     });
 
+    const executionTimeoutMs = task.jobId
+      ? this.jobExecutionTimeoutMs
+      : this.testExecutionTimeoutMs;
+
     this.logger.log(
       `[${runId}] Starting k6 test${location ? ` (location: ${location})` : ''}`,
+    );
+    this.logger.debug(
+      `[${runId}] Timeout configured for k6 execution: ${executionTimeoutMs}ms`,
     );
     const runDir = path.join(this.baseLocalRunDir, uniqueRunId);
 
@@ -273,6 +294,7 @@ export class K6ExecutionService {
         stdout: string;
         stderr: string;
         error: string | null;
+        timedOut: boolean;
       } | null = null;
       for (let attempt = 1; attempt <= maxDashboardAttempts; attempt++) {
         const dashboardPort = this.useDashboardPortPool
@@ -294,6 +316,7 @@ export class K6ExecutionService {
             runId,
             uniqueRunId,
             k6EnvOverrides,
+            executionTimeoutMs,
             dashboardPort,
           );
         } finally {
@@ -329,6 +352,13 @@ export class K6ExecutionService {
         throw new Error(`[${runId}] k6 did not produce an execution result`);
       }
 
+      const timedOut = execResult.timedOut;
+      if (timedOut) {
+        this.logger.warn(
+          `[${runId}] k6 execution exceeded timeout of ${executionTimeoutMs}ms. Attempting graceful cleanup.`,
+        );
+      }
+
       // 5. Read summary file (created by --summary-export)
       let summary: any = null;
       try {
@@ -336,28 +366,36 @@ export class K6ExecutionService {
         summary = JSON.parse(summaryContent);
       } catch (error) {
         this.logger.warn(
-          `[${runId}] Failed to read summary.json: ${getErrorMessage(error)}`,
+          `[${runId}] ${timedOut ? 'Summary not available before timeout' : 'Failed to read summary.json'}: ${getErrorMessage(error)}`,
         );
       }
 
       // 5a. HTML report is created directly by k6 web-dashboard with K6_WEB_DASHBOARD_EXPORT
-      // Verify that k6 generated the HTML report
+      // Verify that k6 generated the HTML report when execution finished normally
+      let hasHtmlReport = false;
       try {
         await fs.access(htmlReportPath);
+        hasHtmlReport = true;
         this.logger.debug(
           `[${runId}] HTML report generated by k6 web-dashboard`,
         );
       } catch (error) {
-        this.logger.error(
-          `[${runId}] CRITICAL: HTML report not generated by k6 web-dashboard at ${htmlReportPath}: ${getErrorMessage(error)}`,
-        );
-        throw new Error(
-          `K6 failed to generate HTML report. Ensure K6_WEB_DASHBOARD_EXPORT environment variable is set correctly.`,
-        );
+        if (timedOut) {
+          this.logger.warn(
+            `[${runId}] HTML report not generated before timeout: ${getErrorMessage(error)}`,
+          );
+        } else {
+          this.logger.error(
+            `[${runId}] CRITICAL: HTML report not generated by k6 web-dashboard at ${htmlReportPath}: ${getErrorMessage(error)}`,
+          );
+          throw new Error(
+            `K6 failed to generate HTML report. Ensure K6_WEB_DASHBOARD_EXPORT environment variable is set correctly.`,
+          );
+        }
       }
 
       const htmlIndexPath = path.join(reportDir, 'index.html');
-      if (htmlIndexPath !== htmlReportPath) {
+      if (hasHtmlReport && htmlIndexPath !== htmlReportPath) {
         try {
           await fs.copyFile(htmlReportPath, htmlIndexPath);
         } catch (error) {
@@ -427,20 +465,6 @@ export class K6ExecutionService {
       const s3KeyPrefix = `${runId}`;
       const bucket = this.s3Service.getBucketForEntityType('k6_performance');
 
-      // Check if HTML report was generated
-      let hasHtmlReport = false;
-      try {
-        await fs.access(htmlReportPath);
-        hasHtmlReport = true;
-        this.logger.debug(
-          `[${runId}] HTML report file confirmed at ${htmlReportPath}`,
-        );
-      } catch (error) {
-        this.logger.warn(
-          `[${runId}] HTML report file not found: ${getErrorMessage(error)}`,
-        );
-      }
-
       await this.s3Service.uploadDirectory(runDir, s3KeyPrefix, bucket);
 
       const baseUrl = this.s3Service.getBaseUrlForEntity(
@@ -452,16 +476,21 @@ export class K6ExecutionService {
       const consoleUrl = `${baseUrl}/console.log`;
 
       // 7. Determine pass/fail (k6 exit code AND check if any checks failed)
-      const thresholdsPassed = execResult.exitCode === 0;
+      const thresholdsPassed = !timedOut && execResult.exitCode === 0;
 
       // Check if any validation checks failed
-      const checksFailed = summary?.metrics?.checks?.fails ? summary.metrics.checks.fails > 0 : false;
+      const checksFailed = timedOut
+        ? false
+        : summary?.metrics?.checks?.fails
+          ? summary.metrics.checks.fails > 0
+          : false;
 
-      // Test passes only if BOTH thresholds pass AND all checks pass
-      const overallSuccess = thresholdsPassed && !checksFailed;
+      // Test passes only if BOTH thresholds pass AND all checks pass without a timeout
+      const overallSuccess = !timedOut && thresholdsPassed && !checksFailed;
 
       finalResult = {
         success: overallSuccess,
+        timedOut,
         runId,
         durationMs: Date.now() - startTime,
         summary,
@@ -489,9 +518,15 @@ export class K6ExecutionService {
         );
       }
 
-      this.logger.log(
-        `[${runId}] k6 completed: ${thresholdsPassed ? 'PASSED' : 'FAILED'}`,
-      );
+      if (timedOut) {
+        this.logger.warn(
+          `[${runId}] k6 execution timed out after ${executionTimeoutMs}ms`,
+        );
+      } else {
+        this.logger.log(
+          `[${runId}] k6 completed: ${thresholdsPassed ? 'PASSED' : 'FAILED'}`,
+        );
+      }
     } catch (error) {
       this.logger.error(
         `[${runId}] k6 failed: ${getErrorMessage(error)}`,
@@ -500,6 +535,7 @@ export class K6ExecutionService {
 
       finalResult = {
         success: false,
+        timedOut: false,
         runId,
         durationMs: Date.now() - startTime,
         summary: null,
@@ -631,12 +667,14 @@ export class K6ExecutionService {
     runId: string,
     uniqueRunId: string,
     overrideEnv: Record<string, string> = {},
+    timeoutMs?: number,
     dashboardPort?: number,
   ): Promise<{
     exitCode: number;
     stdout: string;
     stderr: string;
     error: string | null;
+    timedOut: boolean;
   }> {
     return new Promise((resolve, reject) => {
       this.logger.log(`[${runId}] Executing: k6 ${args.join(' ')}`);
@@ -655,6 +693,10 @@ export class K6ExecutionService {
 
       let stdout = '';
       let stderr = '';
+      let timedOut = false;
+      let timeoutHandle: NodeJS.Timeout | undefined;
+      let forceKillHandle: NodeJS.Timeout | undefined;
+      let childClosed = false;
 
       if (childProcess.pid) {
         // Update placeholder entry with actual process info
@@ -665,6 +707,49 @@ export class K6ExecutionService {
           runId,
           dashboardPort,
         });
+      }
+
+      const gracePeriodMs = 10_000;
+      if (typeof timeoutMs === 'number' && timeoutMs > 0) {
+        timeoutHandle = setTimeout(() => {
+          if (childClosed) {
+            return;
+          }
+
+          timedOut = true;
+          this.logger.warn(
+            `[${runId}] k6 execution exceeded timeout of ${timeoutMs}ms. Sending SIGTERM.`,
+          );
+          try {
+            const signalled = childProcess.kill('SIGTERM');
+            if (!signalled) {
+              this.logger.warn(
+                `[${runId}] Failed to send SIGTERM to k6 process (process may have already exited).`,
+              );
+            }
+          } catch (killError) {
+            this.logger.error(
+              `[${runId}] Error while sending SIGTERM to k6 process: ${getErrorMessage(killError)}`,
+            );
+          }
+
+          forceKillHandle = setTimeout(() => {
+            if (childClosed) {
+              return;
+            }
+
+            this.logger.warn(
+              `[${runId}] k6 process still running after timeout grace period. Forcing SIGKILL.`,
+            );
+            try {
+              childProcess.kill('SIGKILL');
+            } catch (killError) {
+              this.logger.error(
+                `[${runId}] Error while sending SIGKILL to k6 process: ${getErrorMessage(killError)}`,
+              );
+            }
+          }, gracePeriodMs);
+        }, timeoutMs);
       }
 
       // Stream stdout to Redis (for real-time console)
@@ -689,13 +774,23 @@ export class K6ExecutionService {
       });
 
       childProcess.on('close', (code, signal) => {
-        const wasSignaled = code === null;
-        const exitCode = typeof code === 'number' ? code : 128;
-        const exitDescription = wasSignaled
-          ? `terminated by signal ${signal ?? 'unknown'}`
-          : `exited with code: ${exitCode}`;
+        childClosed = true;
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+        if (forceKillHandle) {
+          clearTimeout(forceKillHandle);
+        }
 
-        if (wasSignaled) {
+        const wasSignaled = code === null;
+        const exitCode = timedOut ? 124 : typeof code === 'number' ? code : 128;
+        const exitDescription = timedOut
+          ? `terminated after exceeding timeout (${timeoutMs ?? 'unknown'}ms)`
+          : wasSignaled
+            ? `terminated by signal ${signal ?? 'unknown'}`
+            : `exited with code: ${exitCode}`;
+
+        if (timedOut || wasSignaled) {
           this.logger.warn(`[${runId}] k6 ${exitDescription}`);
         } else {
           this.logger.log(`[${runId}] k6 ${exitDescription}`);
@@ -714,7 +809,7 @@ export class K6ExecutionService {
         if (stdout) {
           const truncatedStdout =
             stdout.length > 2000
-              ? stdout.substring(0, 2000) + '\n... (truncated)'
+              ? `${stdout.substring(0, 2000)}\n... (truncated)`
               : stdout;
           this.logger.debug(`[${runId}] k6 stdout:\n${truncatedStdout}`);
         }
@@ -725,15 +820,24 @@ export class K6ExecutionService {
           exitCode,
           stdout,
           stderr,
-          error: wasSignaled
-            ? `k6 terminated by signal ${signal ?? 'unknown'}`
-            : exitCode !== 0
-              ? `k6 exited with code ${exitCode}`
-              : null,
+          error: timedOut
+            ? `k6 execution timed out after ${timeoutMs}ms`
+            : wasSignaled
+              ? `k6 terminated by signal ${signal ?? 'unknown'}`
+              : exitCode !== 0
+                ? `k6 exited with code ${exitCode}`
+                : null,
+          timedOut,
         });
       });
 
       childProcess.on('error', (error) => {
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+        if (forceKillHandle) {
+          clearTimeout(forceKillHandle);
+        }
         this.logger.error(
           `[${runId}] k6 process error: ${getErrorMessage(error)}`,
         );
