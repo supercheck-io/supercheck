@@ -45,6 +45,8 @@ RUNNING_CAPACITY=5          # Max concurrent test executions
 QUEUED_CAPACITY=50          # Max queued jobs
 TEST_EXECUTION_TIMEOUT_MS=120000     # 2 minutes
 JOB_EXECUTION_TIMEOUT_MS=900000     # 15 minutes
+K6_TEST_EXECUTION_TIMEOUT_MS=3600000 # 60 minutes
+K6_JOB_EXECUTION_TIMEOUT_MS=3600000  # 60 minutes
 ```
 
 ### Playwright Configuration ⭐ (New Optimized Settings)

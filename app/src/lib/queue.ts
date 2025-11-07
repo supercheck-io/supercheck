@@ -140,6 +140,31 @@ const MULTI_LOCATION_DISTRIBUTED =
 // Queue event subscription type
 export type QueueEventType = "test" | "job"; // Removed 'healthCheck'
 
+export function buildRedisOptions(
+  overrides: Partial<RedisOptions> = {},
+): RedisOptions {
+  const host = process.env.REDIS_HOST || "localhost";
+  const port = parseInt(process.env.REDIS_PORT || "6379");
+  const password = process.env.REDIS_PASSWORD;
+
+  return {
+    host,
+    port,
+    password: password || undefined,
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    retryStrategy: (times: number) => {
+      const delay = Math.min(times * 100, 3000);
+      queueLogger.warn(
+        { times, delay },
+        `Redis connection retry ${times}, delaying ${delay}ms`
+      );
+      return delay;
+    },
+    ...overrides,
+  };
+}
+
 /**
  * Get or create Redis connection using environment variables.
  */
@@ -157,28 +182,7 @@ export async function getRedisConnection(): Promise<Redis> {
     redisClient = null;
   }
 
-  // Read directly from process.env
-  const host = process.env.REDIS_HOST || "localhost";
-  const port = parseInt(process.env.REDIS_PORT || "6379");
-  const password = process.env.REDIS_PASSWORD;
-
-  // Connecting to Redis
-
-  const connectionOpts: RedisOptions = {
-    host,
-    port,
-    password: password || undefined,
-    maxRetriesPerRequest: null, // Required for BullMQ
-    enableReadyCheck: false, // Avoid ready check for client connection
-    retryStrategy: (times: number) => {
-      const delay = Math.min(times * 100, 3000); // Exponential backoff capped at 3s
-      queueLogger.warn(
-        { times, delay },
-        `Redis connection retry ${times}, delaying ${delay}ms`
-      );
-      return delay;
-    },
-  };
+  const connectionOpts = buildRedisOptions();
 
   redisClient = new Redis(connectionOpts);
 

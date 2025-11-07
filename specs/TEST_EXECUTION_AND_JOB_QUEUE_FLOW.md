@@ -512,7 +512,10 @@ AWS_SECRET_ACCESS_KEY=minioadmin
 # Execution Parameters
 RUNNING_CAPACITY=5                 # Maximum concurrent executions allowed to run
 QUEUED_CAPACITY=50                 # Maximum executions allowed in queued state
-TEST_EXECUTION_TIMEOUT_MS=900000   # 15 minutes default
+TEST_EXECUTION_TIMEOUT_MS=120000   # 2 minutes default per single Playwright test
+JOB_EXECUTION_TIMEOUT_MS=900000    # 15 minutes default per Playwright job bundle
+K6_TEST_EXECUTION_TIMEOUT_MS=3600000 # 60 minutes default per single k6 test
+K6_JOB_EXECUTION_TIMEOUT_MS=3600000  # 60 minutes default per aggregated k6 job
 
 # Playground Cleanup Parameters
 PLAYGROUND_CLEANUP_ENABLED=true           # Enable/disable playground cleanup
