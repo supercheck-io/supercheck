@@ -127,7 +127,7 @@ export function formatSlackMessage(event: SlackIncidentEvent): unknown {
   const formattedImpact = incident.impact.toUpperCase();
 
   // Build the blocks for the message body
-  const blocks = [
+  const blocks: unknown[] = [
     {
       type: "header",
       text: {
@@ -158,6 +158,7 @@ export function formatSlackMessage(event: SlackIncidentEvent): unknown {
       text: {
         type: "mrkdwn",
         text: `*Description:*\n${incident.body}`,
+        emoji: true,
       },
     });
   }
@@ -170,6 +171,7 @@ export function formatSlackMessage(event: SlackIncidentEvent): unknown {
       text: {
         type: "mrkdwn",
         text: `*Affected Services:*\n${componentsList}`,
+        emoji: true,
       },
     });
   }
@@ -233,7 +235,7 @@ export async function deliverSlackMessage(
   // Validate webhook URL
   try {
     const url = new URL(webhookUrl);
-    if (!url.hostname.includes("slack.com")) {
+    if (!url.hostname.endsWith(".slack.com")) {
       return {
         success: false,
         error: "Invalid Slack webhook URL (must be a slack.com domain)",
