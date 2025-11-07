@@ -231,4 +231,4 @@ export type IncidentStatus =
   | "resolved"
   | "scheduled";
 export type IncidentImpact = "none" | "minor" | "major" | "critical";
-export type SubscriberMode = "email" | "webhook";
+export type SubscriberMode = "email" | "webhook" | "slack";

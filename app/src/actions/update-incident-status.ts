@@ -15,6 +15,7 @@ import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { sendIncidentNotifications } from "./send-incident-notifications";
 import { sendWebhookNotifications } from "./send-webhook-notifications";
+import { sendSlackNotifications } from "./send-slack-notifications";
 
 const updateIncidentStatusSchema = z.object({
   incidentId: z.string().uuid(),
@@ -149,7 +150,7 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
         success: true,
       });
 
-      // Send notifications to subscribers (both email and webhooks, async, non-blocking)
+      // Send notifications to subscribers (email, webhooks, and Slack, async, non-blocking)
       if (validatedData.deliverNotifications) {
         // Send email notifications
         sendIncidentNotifications(result.id, validatedData.statusPageId).catch(
@@ -162,6 +163,13 @@ export async function updateIncidentStatus(data: UpdateIncidentStatusData) {
         sendWebhookNotifications(result.id, validatedData.statusPageId).catch(
           (error) => {
             console.error("Failed to send incident webhook notifications:", error);
+          }
+        );
+
+        // Send Slack notifications
+        sendSlackNotifications(result.id, validatedData.statusPageId).catch(
+          (error) => {
+            console.error("Failed to send incident Slack notifications:", error);
           }
         );
       }
