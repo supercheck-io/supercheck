@@ -8,7 +8,7 @@
  */
 
 import { db } from "@/utils/db";
-import { statusPages, incidents, incidentComponents } from "@/db/schema";
+import { statusPages, incidents } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -36,10 +36,10 @@ function toRFC822(date: Date): string {
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const statusPageId = params.id;
+    const statusPageId = (await params).id;
 
     // Fetch status page
     const statusPage = await db.query.statusPages.findFirst({
