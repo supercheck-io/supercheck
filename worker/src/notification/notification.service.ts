@@ -471,64 +471,55 @@ export class NotificationService {
         throw new Error('No valid email addresses found');
       }
 
-      // Render email using centralized template service
-      let emailContent: { html: string; text: string; subject?: string };
-      try {
-        // Use appropriate template based on alert type
-        let rendered: { html: string; text: string; subject: string };
+      // Render email using centralized template service (React Email templates)
+      // Use appropriate template based on alert type
+      let rendered: { html: string; text: string; subject: string };
 
-        if (payload.type === 'job_failed') {
-          // Use job failure template (generic, no test stats)
-          rendered = await this.emailTemplateService.renderJobFailureEmail({
-            jobName: payload.targetName,
-            duration: payload.metadata?.duration || 0,
-            errorMessage: payload.metadata?.errorMessage,
-            runId: payload.metadata?.runId,
-            dashboardUrl: payload.metadata?.dashboardUrl,
-          });
-        } else if (payload.type === 'job_success') {
-          // Use job success template (generic, no test stats)
-          rendered = await this.emailTemplateService.renderJobSuccessEmail({
-            jobName: payload.targetName,
-            duration: payload.metadata?.duration || 0,
-            runId: payload.metadata?.runId,
-            dashboardUrl: payload.metadata?.dashboardUrl,
-          });
-        } else if (payload.type === 'job_timeout') {
-          // Use job timeout template
-          rendered = await this.emailTemplateService.renderJobTimeoutEmail({
-            jobName: payload.targetName,
-            duration: payload.metadata?.duration || 0,
-            runId: payload.metadata?.runId,
-            dashboardUrl: payload.metadata?.dashboardUrl,
-          });
-        } else {
-          // Use monitor alert template for all other types
-          rendered = await this.emailTemplateService.renderMonitorAlertEmail({
-            title: formatted.title,
-            message: formatted.message,
-            fields: formatted.fields,
-            footer: formatted.footer,
-            type: this.mapSeverityToType(payload.severity),
-            color: formatted.color,
-          });
-        }
-
-        emailContent = {
-          html: rendered.html,
-          text: rendered.text,
-          subject: rendered.subject,
-        };
-        this.logger.debug(
-          `Email template rendered successfully for ${payload.type}`,
-        );
-      } catch (templateError) {
-        // Fallback to old inline formatting if template service fails
-        this.logger.warn(
-          `Failed to fetch template from queue, using fallback: ${getErrorMessage(templateError)}`,
-        );
-        emailContent = this.formatEmailContent(formatted, payload);
+      if (payload.type === 'job_failed') {
+        // Use job failure template (generic, no test stats)
+        rendered = await this.emailTemplateService.renderJobFailureEmail({
+          jobName: payload.targetName,
+          duration: payload.metadata?.duration || 0,
+          errorMessage: payload.metadata?.errorMessage,
+          runId: payload.metadata?.runId,
+          dashboardUrl: payload.metadata?.dashboardUrl,
+        });
+      } else if (payload.type === 'job_success') {
+        // Use job success template (generic, no test stats)
+        rendered = await this.emailTemplateService.renderJobSuccessEmail({
+          jobName: payload.targetName,
+          duration: payload.metadata?.duration || 0,
+          runId: payload.metadata?.runId,
+          dashboardUrl: payload.metadata?.dashboardUrl,
+        });
+      } else if (payload.type === 'job_timeout') {
+        // Use job timeout template
+        rendered = await this.emailTemplateService.renderJobTimeoutEmail({
+          jobName: payload.targetName,
+          duration: payload.metadata?.duration || 0,
+          runId: payload.metadata?.runId,
+          dashboardUrl: payload.metadata?.dashboardUrl,
+        });
+      } else {
+        // Use monitor alert template for all other types
+        rendered = await this.emailTemplateService.renderMonitorAlertEmail({
+          title: formatted.title,
+          message: formatted.message,
+          fields: formatted.fields,
+          footer: formatted.footer,
+          type: this.mapSeverityToType(payload.severity),
+          color: formatted.color,
+        });
       }
+
+      const emailContent = {
+        html: rendered.html,
+        text: rendered.text,
+        subject: rendered.subject,
+      };
+      this.logger.debug(
+        `Email template rendered successfully for ${payload.type}`,
+      );
 
       // Send via SMTP
       const smtpSuccess = await this.trySMTPDelivery(
@@ -881,195 +872,6 @@ export class NotificationService {
     }
   }
 
-  private formatEmailContent(
-    formatted: FormattedNotification,
-    payload: NotificationPayload,
-  ): { html: string; text: string } {
-    const fieldsHtml = formatted.fields
-      .map(
-        (field) =>
-          `<tr>
-            <td style="padding: 12px 16px; font-weight: 600; vertical-align: top; border-bottom: 1px solid #f1f5f9; color: #475569; font-size: 14px; width: 140px;">
-              ${field.title}:
-            </td>
-            <td style="padding: 12px 16px; vertical-align: top; border-bottom: 1px solid #f1f5f9; color: #334155; font-size: 14px;">
-              ${field.value}
-            </td>
-          </tr>`,
-      )
-      .join('');
-
-    const statusIcon = this.getStatusIcon(payload.type);
-    const statusBadge = this.getStatusBadge(payload.type, formatted.color);
-
-    const html = `
-      <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-      <html xmlns="http://www.w3.org/1999/xhtml">
-        <head>
-          <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>${formatted.title}</title>
-          <!--[if mso]>
-          <noscript>
-            <xml>
-              <o:OfficeDocumentSettings>
-                <o:AllowPNG/>
-                <o:PixelsPerInch>96</o:PixelsPerInch>
-              </o:OfficeDocumentSettings>
-            </xml>
-          </noscript>
-          <![endif]-->
-        </head>
-        <body style="margin: 0; padding: 0; font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #334155; background-color: #f8fafc;">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f8fafc;">
-            <tr>
-              <td align="center" valign="top">
-                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width: 600px; background-color: #ffffff;">
-                  <!-- Header -->
-                  <tr>
-                    <td style="background: #667eea; padding: 32px 24px; text-align: center;">
-                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                        <tr>
-                          <td align="center">
-                            <div style="background: rgba(255, 255, 255, 0.1); display: inline-block; padding: 12px; border-radius: 50%; margin-bottom: 16px;">
-                              ${statusIcon}
-                            </div>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td align="center">
-                            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: bold;">
-                              Supercheck Monitoring Alert
-                            </h1>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td align="center">
-                            <p style="color: #ffffff; margin: 8px 0 0 0; font-size: 16px; opacity: 0.9;">
-                              System Status Notification
-                            </p>
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
-
-                  <!-- Alert Status -->
-                  <tr>
-                    <td style="padding: 24px; border-bottom: 1px solid #e2e8f0;">
-                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                        <tr>
-                          <td>
-                            <div style="margin-bottom: 16px;">
-                              ${statusBadge}
-                            </div>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td>
-                            <h2 style="color: #1e293b; margin: 0 0 8px 0; font-size: 20px; font-weight: bold;">
-                              ${formatted.title}
-                            </h2>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td>
-                            <div style="background: #f8fafc; border-left: 4px solid ${formatted.color}; padding: 16px 20px; margin-top: 16px;">
-                              <p style="margin: 0; color: #475569; font-size: 15px; line-height: 1.6;">
-                                ${formatted.message.replace(/\n/g, '<br>')}
-                              </p>
-                            </div>
-                          </td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
-
-                  <!-- Details Table -->
-                  <tr>
-                    <td style="padding: 24px;">
-                      <h3 style="color: #1e293b; margin: 0 0 16px 0; font-size: 16px; font-weight: bold; text-transform: uppercase;">
-                        Alert Details
-                      </h3>
-                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background: #ffffff; border: 1px solid #e2e8f0;">
-                        ${fieldsHtml}
-                      </table>
-                    </td>
-                  </tr>
-
-                  <!-- Footer -->
-                  <tr>
-                    <td style="background: #f1f5f9; padding: 24px; text-align: center; border-top: 1px solid #e2e8f0;">
-                      <p style="margin: 0 0 8px 0; color: #64748b; font-size: 13px;">
-                        ${formatted.footer}
-                      </p>
-                      <p style="margin: 0; color: #94a3b8; font-size: 12px;">
-                        This is an automated notification from your monitoring system.
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
-    `;
-
-    const text = `
-SUPERCHECK MONITORING ALERT
-${formatted.title}
-
-${formatted.message}
-
-ALERT DETAILS:
-${formatted.fields.map((field) => `${field.title}: ${field.value}`).join('\n')}
-
-${formatted.footer}
-
-This is an automated notification from your monitoring system.
-    `.trim();
-
-    return { html, text };
-  }
-
-  private getStatusIcon(alertType: string): string {
-    // Use Unicode symbols instead of SVG for better email client compatibility
-    switch (alertType) {
-      case 'monitor_failure':
-      case 'job_failed':
-        return '<span style="font-size: 24px; color: white; line-height: 1;">⚠️</span>';
-      case 'monitor_recovery':
-      case 'job_success':
-        return '<span style="font-size: 24px; color: white; line-height: 1;">✅</span>';
-      case 'ssl_expiration':
-        return '<span style="font-size: 24px; color: white; line-height: 1;">🔒</span>';
-      default:
-        return '<span style="font-size: 24px; color: white; line-height: 1;">ℹ️</span>';
-    }
-  }
-
-  private getStatusBadge(alertType: string, color: string): string {
-    const badgeText = this.getStatusBadgeText(alertType);
-    return `<span style="background: ${color}; color: white; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">${badgeText}</span>`;
-  }
-
-  private getStatusBadgeText(alertType: string): string {
-    switch (alertType) {
-      case 'monitor_failure':
-        return 'Monitor Down';
-      case 'monitor_recovery':
-        return 'Monitor Recovered';
-      case 'job_failed':
-        return 'Job Failed';
-      case 'job_success':
-        return 'Job Completed';
-      case 'ssl_expiration':
-        return 'SSL Warning';
-      default:
-        return 'Alert';
-    }
-  }
 
   private formatTelegramMessage(formatted: FormattedNotification): string {
     const fieldsText = formatted.fields
