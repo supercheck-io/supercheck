@@ -378,10 +378,10 @@ async function handleSlackSubscription(
     // Validate that endpoint is a Slack webhook URL
     try {
       const url = new URL(endpoint);
-      if (!url.hostname.includes("slack.com")) {
+      if (!url.hostname.endsWith(".slack.com")) {
         return {
           success: false,
-          message: "Invalid Slack webhook URL. Must be from slack.com domain.",
+          message: "Invalid Slack webhook URL. Must be from a slack.com domain (e.g., hooks.slack.com).",
         };
       }
     } catch {
@@ -460,7 +460,7 @@ async function handleSlackSubscription(
 
     return {
       success: true,
-      message: "Slack subscription successful! Your channel will receive beautifully formatted incident notifications.",
+      message: "Slack subscription successful! Your channel will now receive incident notifications.",
       subscriberId: subscriber.id,
     };
   } catch (error) {

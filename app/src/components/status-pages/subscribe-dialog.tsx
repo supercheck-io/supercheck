@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, CheckCircle2, Mail, Webhook, MessageSquare, Rss, Copy } from "lucide-react";
+import { Loader2, CheckCircle2, Mail, Webhook, Slack, Rss, Copy } from "lucide-react";
 import { subscribeToStatusPage } from "@/actions/subscribe-to-status-page";
 import { toast } from "sonner";
 import { maskWebhookEndpoint } from "@/lib/webhook-utils";
@@ -156,7 +156,7 @@ export function SubscribeDialog({
       setCopiedToClipboard(true);
       toast.success("RSS link copied to clipboard!");
       setTimeout(() => setCopiedToClipboard(false), 2000);
-    } catch (error) {
+    } catch {
       toast.error("Failed to copy to clipboard");
     }
   };
@@ -174,9 +174,9 @@ export function SubscribeDialog({
     // Basic URL validation for Slack
     try {
       const url = new URL(slackWebhookUrl);
-      if (!url.hostname.includes("slack.com")) {
+      if (!url.hostname.endsWith(".slack.com")) {
         toast.error("Invalid Slack webhook URL", {
-          description: "URL must be from slack.com domain",
+          description: "URL must be from a slack.com domain (e.g., hooks.slack.com)",
         });
         return;
       }
@@ -245,7 +245,7 @@ export function SubscribeDialog({
               {mode === "email"
                 ? "Please check your email to verify your subscription."
                 : mode === "slack"
-                ? "Your Slack channel will receive beautifully formatted incident notifications."
+                ? "Your Slack channel will receive incident notifications."
                 : "Your webhook will receive incident notifications."}
             </p>
           </div>
@@ -262,7 +262,7 @@ export function SubscribeDialog({
                   Email
                 </TabsTrigger>
                 <TabsTrigger value="slack" className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4" />
+                  <Slack className="h-4 w-4" />
                   Slack
                 </TabsTrigger>
                 <TabsTrigger
@@ -333,7 +333,7 @@ export function SubscribeDialog({
               <TabsContent value="slack" className="space-y-4 mt-6">
                 <div className="bg-muted/50 border border-border rounded-lg p-4">
                   <p className="text-sm text-muted-foreground">
-                    Send beautifully formatted incident notifications directly to your Slack channel with rich formatting and action buttons.
+                    Send incident notifications directly to your Slack channel with rich formatting and action buttons.
                   </p>
                 </div>
 
