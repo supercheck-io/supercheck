@@ -158,3 +158,6 @@ tmp/
 
 # Sentry CLI
 .sentryclirc
+
+# Task management
+tasks/

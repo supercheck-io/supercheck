@@ -28,6 +28,14 @@ const subscribeSchema = z.union([
     subscribeToAllComponents: z.boolean().default(true),
     selectedComponentIds: z.array(z.string().uuid()).optional(),
   }),
+  // Slack subscription
+  z.object({
+    statusPageId: z.string().uuid(),
+    endpoint: z.string().url("Please enter a valid Slack webhook URL"),
+    subscriptionMode: z.literal("slack"),
+    subscribeToAllComponents: z.boolean().default(true),
+    selectedComponentIds: z.array(z.string().uuid()).optional(),
+  }),
 ]);
 
 type SubscribeInput = z.infer<typeof subscribeSchema>;
@@ -115,6 +123,13 @@ export async function subscribeToStatusPage(data: SubscribeInput) {
       };
     }
 
+    if (mode === "slack" && !statusPage.allowSlackSubscribers) {
+      return {
+        success: false,
+        message: "Slack subscriptions are not enabled for this status page",
+      };
+    }
+
     // Handle email subscription
     if (mode === "email") {
       const emailData = validatedData as Extract<typeof validatedData, { subscriptionMode?: "email" }>;
@@ -125,6 +140,12 @@ export async function subscribeToStatusPage(data: SubscribeInput) {
     if (mode === "webhook") {
       const webhookData = validatedData as Extract<typeof validatedData, { subscriptionMode: "webhook" }>;
       return await handleWebhookSubscription(webhookData, statusPage);
+    }
+
+    // Handle Slack subscription
+    if (mode === "slack") {
+      const slackData = validatedData as Extract<typeof validatedData, { subscriptionMode: "slack" }>;
+      return await handleSlackSubscription(slackData, statusPage);
     }
 
     return {
@@ -342,6 +363,111 @@ async function handleWebhookSubscription(
     return {
       success: false,
       message: "Failed to create webhook subscription. Please try again later.",
+    };
+  }
+}
+
+// Handle Slack subscription
+async function handleSlackSubscription(
+  data: Record<string, unknown>,
+  statusPage: Record<string, unknown>
+) {
+  try {
+    const endpoint = data.endpoint as string;
+
+    // Validate that endpoint is a Slack webhook URL
+    try {
+      const url = new URL(endpoint);
+      if (!url.hostname.includes("slack.com")) {
+        return {
+          success: false,
+          message: "Invalid Slack webhook URL. Must be from slack.com domain.",
+        };
+      }
+    } catch {
+      return {
+        success: false,
+        message: "Invalid webhook URL format",
+      };
+    }
+
+    // Check if Slack webhook already exists
+    const existingSubscriber = await db.query.statusPageSubscribers.findFirst({
+      where: (subscribers, { and, eq }) =>
+        and(
+          eq(subscribers.statusPageId, statusPage.id as string),
+          eq(subscribers.endpoint, endpoint),
+          eq(subscribers.mode, "slack")
+        ),
+    });
+
+    if (existingSubscriber && existingSubscriber.verifiedAt) {
+      return {
+        success: false,
+        message: "This Slack webhook is already subscribed to updates",
+      };
+    }
+
+    // Delete old unverified Slack subscription if exists
+    if (existingSubscriber && !existingSubscriber.verifiedAt) {
+      await db
+        .update(statusPageSubscribers)
+        .set({
+          unsubscribeToken: randomBytes(32).toString("hex"),
+          verifiedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(statusPageSubscribers.id, existingSubscriber.id));
+
+      return {
+        success: true,
+        message: "Slack subscription updated successfully",
+        subscriberId: existingSubscriber.id,
+      };
+    }
+
+    // Generate secure tokens
+    const unsubscribeToken = randomBytes(32).toString("hex");
+
+    // Create Slack subscriber (immediately verified - no email verification needed)
+    const [subscriber] = await db
+      .insert(statusPageSubscribers)
+      .values({
+        statusPageId: statusPage.id as string,
+        endpoint,
+        mode: "slack",
+        unsubscribeToken,
+        skipConfirmationNotification: false,
+        verifiedAt: new Date(), // Slack subscriptions are immediately verified
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    // TODO: If specific components selected, create component subscriptions
+    // if (!data.subscribeToAllComponents && data.selectedComponentIds) {
+    //   await db.insert(statusPageComponentSubscriptions).values(
+    //     data.selectedComponentIds.map(componentId => ({
+    //       subscriberId: subscriber.id,
+    //       componentId,
+    //       createdAt: new Date(),
+    //     }))
+    //   );
+    // }
+
+    // Revalidate the public page
+    revalidatePath(`/status/${statusPage.id as string}`);
+
+    return {
+      success: true,
+      message: "Slack subscription successful! Your channel will receive beautifully formatted incident notifications.",
+      subscriberId: subscriber.id,
+    };
+  } catch (error) {
+    console.error("Error creating Slack subscription:", error);
+    return {
+      success: false,
+      message: "Failed to create Slack subscription. Please try again later.",
     };
   }
 }

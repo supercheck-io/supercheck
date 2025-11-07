@@ -59,6 +59,8 @@ export const statusPages = pgTable("status_pages", {
   allowIncidentSubscribers: boolean("allow_incident_subscribers").default(true),
   allowEmailSubscribers: boolean("allow_email_subscribers").default(true),
   allowWebhookSubscribers: boolean("allow_webhook_subscribers").default(true),
+  allowSlackSubscribers: boolean("allow_slack_subscribers").default(true),
+  allowRssFeed: boolean("allow_rss_feed").default(true),
   notificationsFromEmail: varchar("notifications_from_email", { length: 255 }),
   notificationsEmailFooter: text("notifications_email_footer"),
   timezone: varchar("timezone", { length: 50 }).default("UTC"),

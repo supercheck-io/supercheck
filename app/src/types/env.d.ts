@@ -22,6 +22,9 @@ declare namespace NodeJS {
     RUNNING_CAPACITY: string;
     QUEUED_CAPACITY: string;
     TEST_EXECUTION_TIMEOUT_MS: string;
+    JOB_EXECUTION_TIMEOUT_MS: string;
+    K6_TEST_EXECUTION_TIMEOUT_MS: string;
+    K6_JOB_EXECUTION_TIMEOUT_MS: string;
 
     // Playwright Config
     PLAYWRIGHT_RETRIES: string;

@@ -15,6 +15,7 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { eq } from "drizzle-orm";
 import { sendIncidentNotifications } from "./send-incident-notifications";
 import { sendWebhookNotifications } from "./send-webhook-notifications";
+import { sendSlackNotifications } from "./send-slack-notifications";
 
 const createIncidentSchema = z.object({
   statusPageId: z.string().uuid(),
@@ -162,7 +163,7 @@ export async function createIncident(data: CreateIncidentData) {
         success: true,
       });
 
-      // Send notifications to subscribers (both email and webhooks, async, non-blocking)
+      // Send notifications to subscribers (email, webhooks, and Slack, async, non-blocking)
       console.log(
         `[Create Incident] deliverNotifications flag: ${validatedData.deliverNotifications}`
       );
@@ -187,6 +188,16 @@ export async function createIncident(data: CreateIncidentData) {
           (error) => {
             console.error(
               "Failed to send incident webhook notifications:",
+              error
+            );
+          }
+        );
+
+        // Send Slack notifications
+        sendSlackNotifications(result.id, validatedData.statusPageId).catch(
+          (error) => {
+            console.error(
+              "Failed to send incident Slack notifications:",
               error
             );
           }
