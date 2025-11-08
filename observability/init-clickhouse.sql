@@ -4,6 +4,7 @@
 CREATE DATABASE IF NOT EXISTS signoz_traces;
 CREATE DATABASE IF NOT EXISTS signoz_metrics;
 CREATE DATABASE IF NOT EXISTS signoz_logs;
+CREATE DATABASE IF NOT EXISTS signoz_meter;
 
 -- Create basic tables for traces (SigNoz will create detailed schema)
 CREATE TABLE IF NOT EXISTS signoz_traces.signoz_index_v3 (
