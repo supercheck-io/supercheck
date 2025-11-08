@@ -357,7 +357,16 @@ export const columns: ColumnDef<Job>[] = [
     cell: ({ row }) => {
       const lastRunAt = row.getValue("lastRunAt") as string | null;
       if (!lastRunAt) {
-        return <div className="text-muted-foreground">Never</div>;
+        return (
+          <div className="flex items-center max-w-[120px]">
+            <Clock
+              className="text-muted-foreground mr-2 h-4 w-4 flex-shrink-0"
+            />
+            <span className="text-muted-foreground truncate">
+              Never
+            </span>
+          </div>
+        );
       }
       return (
         <div className="flex flex-col">
@@ -393,7 +402,16 @@ export const columns: ColumnDef<Job>[] = [
       const cronSchedule = row.getValue("cronSchedule") as string | null;
 
       if (!cronSchedule || !nextRunAt) {
-        return <div className="text-muted-foreground">Never</div>;
+        return (
+          <div className="flex items-center max-w-[120px]">
+            <Clock
+              className="text-muted-foreground mr-2 h-4 w-4 flex-shrink-0"
+            />
+            <span className="text-muted-foreground truncate">
+              Never
+            </span>
+          </div>
+        );
       }
 
       return (
