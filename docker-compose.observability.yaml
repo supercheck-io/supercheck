@@ -30,7 +30,7 @@ services:
     command:
       - sync
       - --dsn=tcp://clickhouse:9000
-      - --up=
+      - --replication=false
     depends_on:
       clickhouse:
         condition: service_healthy
