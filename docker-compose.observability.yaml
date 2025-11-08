@@ -1,0 +1,97 @@
+version: "3.8"
+
+services:
+  # ClickHouse - Time-series database for observability data
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: supercheck-clickhouse
+    hostname: clickhouse
+    environment:
+      - CLICKHOUSE_DB=signoz
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native client
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./observability/clickhouse/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - observability
+
+  # OpenTelemetry Collector - Receives, processes, and exports telemetry data
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: supercheck-otel-collector
+    hostname: otel-collector
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./observability/otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "4317:4317"  # OTLP gRPC receiver
+      - "4318:4318"  # OTLP HTTP receiver
+      - "8888:8888"  # Metrics endpoint
+      - "13133:13133" # Health check extension
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - observability
+
+  # SigNoz Query Service - Query interface for observability data
+  query-service:
+    image: signoz/query-service:latest
+    container_name: supercheck-query-service
+    hostname: query-service
+    environment:
+      - CLICKHOUSE_ADDRESS=clickhouse:9000
+      - CLICKHOUSE_DATABASE=signoz
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+      - DEPLOYMENT_TYPE=docker-standalone-amd
+      - TELEMETRY_ENABLED=false
+    ports:
+      - "8080:8080"  # Query service API
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/v1/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - observability
+
+  # Optional: Jaeger UI for trace visualization (alternative to custom UI)
+  # jaeger:
+  #   image: jaegertracing/jaeger-query:latest
+  #   container_name: supercheck-jaeger
+  #   environment:
+  #     - SPAN_STORAGE_TYPE=grpc-plugin
+  #     - GRPC_STORAGE_SERVER=query-service:8080
+  #   ports:
+  #     - "16686:16686"  # Jaeger UI
+  #   depends_on:
+  #     query-service:
+  #       condition: service_healthy
+  #   networks:
+  #     - observability
+
+volumes:
+  clickhouse_data:
+    driver: local
+
+networks:
+  observability:
+    driver: bridge
