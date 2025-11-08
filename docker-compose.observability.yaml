@@ -26,7 +26,7 @@ services:
 
   # OpenTelemetry Collector - Receives, processes, and exports telemetry data
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: signoz/signoz-otel-collector:latest
     container_name: supercheck-otel-collector
     hostname: otel-collector
     command: ["--config=/etc/otel/config.yaml"]
