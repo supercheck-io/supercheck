@@ -31,45 +31,48 @@ processors:
     limit_percentage: 80
     spike_limit_percentage: 25
 
-  # Batch processor reduces network overhead
+  # Batch processor for general use
   batch:
-    send_batch_size: 4096
-    timeout: 2s
-    send_batch_max_size: 8192
-
-  # Resource processor adds SuperCheck context
-  resource:
-    attributes:
-      - key: service.namespace
-        value: supercheck
-        action: upsert
+    send_batch_size: 10000
+    send_batch_max_size: 11000
+    timeout: 10s
 
   # Resource detection adds host/cloud metadata
   resourcedetection:
-    detectors: [env, system, docker]
-    timeout: 5s
+    detectors: [env, system]
+    timeout: 2s
+
+  # Span metrics processor - generates APM metrics from traces
+  signozspanmetrics/delta:
+    metrics_exporter: signozclickhousemetrics
+    metrics_flush_interval: 60s
+    latency_histogram_buckets: [100us, 1ms, 2ms, 6ms, 10ms, 50ms, 100ms, 250ms, 500ms, 1000ms, 1400ms, 2000ms, 5s, 10s, 20s, 40s, 60s]
+    dimensions_cache_size: 100000
+    aggregation_temporality: AGGREGATION_TEMPORALITY_DELTA
+    enable_exp_histogram: true
+    dimensions:
+      - name: service.namespace
+        default: supercheck
+      - name: deployment.environment
+        default: development
+      - name: service.version
+      - name: host.name
+      - name: host.type
+      - name: container.name
 
 exporters:
-  # ClickHouse exporter for SigNoz (using signoz-otel-collector image)
-  clickhouse:
-    endpoint: tcp://clickhouse:9000?database=signoz
-    ttl: 72h  # Data retention: 3 days
-    timeout: 10s
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
-    sending_queue:
-      enabled: true
-      num_consumers: 10
-      queue_size: 1000
+  # SigNoz-specific ClickHouse exporters
+  clickhousetraces:
+    datasource: tcp://clickhouse:9000/signoz_traces
+    use_new_schema: true
 
-  # Logging exporter for debugging
-  logging:
-    loglevel: info
-    sampling_initial: 5
-    sampling_thereafter: 200
+  signozclickhousemetrics:
+    dsn: tcp://clickhouse:9000/signoz_metrics
+
+  clickhouselogsexporter:
+    dsn: tcp://clickhouse:9000/signoz_logs
+    timeout: 10s
+    use_new_schema: true
 
   # Prometheus exporter for collector metrics
   prometheus:
@@ -94,35 +97,29 @@ service:
   extensions: [health_check, pprof, zpages]
 
   pipelines:
-    # Traces pipeline
+    # Traces pipeline - also generates span metrics for APM
     traces:
       receivers: [otlp]
-      processors:
-        - memory_limiter
-        - resourcedetection
-        - resource
-        - batch
-      exporters: [clickhouse]
+      processors: [signozspanmetrics/delta, batch]
+      exporters: [clickhousetraces]
 
     # Metrics pipeline
     metrics:
-      receivers: [otlp, prometheus]
-      processors:
-        - memory_limiter
-        - resourcedetection
-        - resource
-        - batch
-      exporters: [clickhouse, prometheus]
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [signozclickhousemetrics]
+
+    # Prometheus metrics pipeline
+    metrics/prometheus:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [signozclickhousemetrics]
 
     # Logs pipeline
     logs:
       receivers: [otlp]
-      processors:
-        - memory_limiter
-        - resourcedetection
-        - resource
-        - batch
-      exporters: [clickhouse]
+      processors: [batch]
+      exporters: [clickhouselogsexporter]
 
   telemetry:
     logs:

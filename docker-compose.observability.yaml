@@ -3,11 +3,11 @@ version: "3.8"
 services:
   # ClickHouse - Time-series database for observability data
   clickhouse:
-    image: clickhouse/clickhouse-server:latest
+    image: clickhouse/clickhouse-server:25.5.6
     container_name: supercheck-clickhouse
     hostname: clickhouse
     environment:
-      - CLICKHOUSE_DB=signoz
+      - CLICKHOUSE_DB=default
       - CLICKHOUSE_USER=default
       - CLICKHOUSE_PASSWORD=
     ports:
@@ -15,7 +15,6 @@ services:
       - "9000:9000"  # Native client
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-      - ./observability/clickhouse/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
       interval: 10s
@@ -24,14 +23,33 @@ services:
     networks:
       - observability
 
+  # Schema Migrator - Sets up ClickHouse database schemas
+  schema-migrator:
+    image: signoz/signoz-schema-migrator:v0.129.8
+    container_name: supercheck-schema-migrator
+    command:
+      - sync
+      - --dsn=tcp://clickhouse:9000
+      - --up=
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - observability
+
   # OpenTelemetry Collector - Receives, processes, and exports telemetry data
   otel-collector:
-    image: signoz/signoz-otel-collector:latest
+    image: signoz/signoz-otel-collector:v0.129.8
     container_name: supercheck-otel-collector
     hostname: otel-collector
-    command: ["--config=/etc/otel/config.yaml"]
+    command:
+      - --config=/etc/otel/config.yaml
+      - --feature-gates=-pkg.translator.prometheus.NormalizeName
     volumes:
       - ./observability/otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    environment:
+      - OTEL_RESOURCE_ATTRIBUTES=host.name=supercheck-host,os.type=linux
     ports:
       - "4317:4317"  # OTLP gRPC receiver
       - "4318:4318"  # OTLP HTTP receiver
@@ -40,6 +58,8 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
+      schema-migrator:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
       interval: 10s
@@ -50,25 +70,29 @@ services:
 
   # SigNoz Query Service - Query interface for observability data
   query-service:
-    image: signoz/query-service:latest
+    image: signoz/signoz:v0.100.1
     container_name: supercheck-query-service
     hostname: query-service
+    command:
+      - --config=/root/config/prometheus.yml
     environment:
-      - CLICKHOUSE_ADDRESS=clickhouse:9000
-      - CLICKHOUSE_DATABASE=signoz
-      - CLICKHOUSE_USER=default
-      - CLICKHOUSE_PASSWORD=
+      - SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN=tcp://clickhouse:9000
+      - SIGNOZ_SQLSTORE_SQLITE_PATH=/var/lib/signoz/signoz.db
+      - STORAGE=clickhouse
       - DEPLOYMENT_TYPE=docker-standalone-amd
       - TELEMETRY_ENABLED=false
     ports:
       - "8080:8080"  # Query service API
     volumes:
       - signoz_data:/var/lib/signoz
+      - ./observability/prometheus.yml:/root/config/prometheus.yml
     depends_on:
       clickhouse:
         condition: service_healthy
+      schema-migrator:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/v1/version"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/v1/health"]
       interval: 10s
       timeout: 5s
       retries: 5
