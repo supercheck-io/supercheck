@@ -64,6 +64,7 @@ services:
       - STORAGE=clickhouse
       - DEPLOYMENT_TYPE=docker-standalone-amd
       - TELEMETRY_ENABLED=false
+      - DISABLE_AUTH=true
     ports:
       - "8080:8080"  # Query service API
     volumes:
