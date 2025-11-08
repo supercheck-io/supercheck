@@ -12,7 +12,8 @@ import {
   type K6RunStatus,
 } from "@/lib/k6-runs";
 import { MonacoConsoleViewer } from "@/components/k6/monaco-console-viewer";
-import { Loader2, Terminal, Download, ChartSpline } from "lucide-react";
+import { Loader2, Terminal, Download, ChartSpline, WifiOff, RefreshCw, AlertTriangle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const HEARTBEAT_STALE_THRESHOLD_MS = 45_000;
 const HEARTBEAT_CHECK_INTERVAL_MS = 15_000;
@@ -544,19 +545,38 @@ export function PerformanceTestReport({
         <TabsContent value="logs" className="h-full w-full m-0 p-0">
           <div className="h-full w-full flex flex-col">
             {/* Stream Error Alert */}
-            {streamError ? (
-              <div className="absolute top-16 left-4 right-4 z-10 bg-amber-50 px-4 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400 rounded-md shadow-lg">
-                {streamError}
+            {streamError && (
+              <div className="absolute top-16 left-4 right-4 z-10">
+                <Alert className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+                  <WifiOff className="h-4 w-4" />
+                  <AlertDescription className="flex items-center justify-between">
+                    <span>{streamError}</span>
+                    <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                      <RefreshCw className="h-3 w-3 animate-spin" />
+                      <span>Reconnecting…</span>
+                    </div>
+                  </AlertDescription>
+                </Alert>
               </div>
-            ) : null}
+            )}
             {status !== "running" && consoleFetchState === "loading" ? (
-              <div className="absolute top-20 left-4 right-4 z-10 bg-slate-50 px-4 py-2 text-xs text-slate-600 dark:bg-slate-900/40 dark:text-slate-300 rounded-md shadow-lg">
-                Loading full log from artifact storage…
+              <div className="absolute top-20 left-4 right-4 z-10">
+                <Alert className="border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-200">
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <AlertDescription>
+                    Loading full log from artifact storage…
+                  </AlertDescription>
+                </Alert>
               </div>
             ) : null}
             {status !== "running" && consoleFetchState === "error" ? (
-              <div className="absolute top-20 left-4 right-4 z-10 bg-rose-50 px-4 py-2 text-xs text-rose-600 dark:bg-rose-900/30 dark:text-rose-300 rounded-md shadow-lg">
-                Unable to load archived logs. Showing partial output instead.
+              <div className="absolute top-20 left-4 right-4 z-10">
+                <Alert className="border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-200">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    Unable to load archived logs. Showing partial output instead.
+                  </AlertDescription>
+                </Alert>
               </div>
             ) : null}
 
