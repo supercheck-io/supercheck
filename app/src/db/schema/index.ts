@@ -39,3 +39,6 @@ export * from "./statusPage";
 
 // Audit log tables
 export * from "./audit";
+
+// Observability tables
+export * from "./observability";
