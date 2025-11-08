@@ -62,6 +62,8 @@ services:
       - TELEMETRY_ENABLED=false
     ports:
       - "8080:8080"  # Query service API
+    volumes:
+      - signoz_data:/var/lib/signoz
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -90,6 +92,8 @@ services:
 
 volumes:
   clickhouse_data:
+    driver: local
+  signoz_data:
     driver: local
 
 networks:
