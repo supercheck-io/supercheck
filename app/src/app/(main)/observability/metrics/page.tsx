@@ -29,8 +29,8 @@ import {
 
 export default function MetricsPage() {
   const [timePreset, setTimePreset] = useState("last_1h");
-  const [runTypeFilter, setRunTypeFilter] = useState<string>("");
-  const [serviceFilter, setServiceFilter] = useState<string>("");
+  const [runTypeFilter, setRunTypeFilter] = useState<string>("all");
+  const [serviceFilter, setServiceFilter] = useState<string>("all");
   const [showFilters, setShowFilters] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
@@ -104,11 +104,11 @@ export default function MetricsPage() {
   const { data: _metricsData, isLoading: _isLoading } = useMetricsQuery(
     {
       timeRange,
-      runType: runTypeFilter ? [runTypeFilter as "playwright" | "k6" | "job" | "monitor"] : undefined,
-      serviceName: serviceFilter || undefined,
+      runType: runTypeFilter !== "all" ? [runTypeFilter as "playwright" | "k6" | "job" | "monitor"] : undefined,
+      serviceName: serviceFilter !== "all" ? serviceFilter : undefined,
       interval: "1m",
     },
-    { refetchInterval: autoRefresh ? 10000 : false }
+    { refetchInterval: autoRefresh ? 10000 : undefined }
   );
 
   // Mock aggregate metrics for display (would come from API in production)
@@ -219,7 +219,7 @@ export default function MetricsPage() {
                   <SelectValue placeholder="All run types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All types</SelectItem>
+                  <SelectItem value="all">All types</SelectItem>
                   <SelectItem value="playwright">Playwright</SelectItem>
                   <SelectItem value="k6">K6</SelectItem>
                   <SelectItem value="job">Job</SelectItem>
@@ -234,7 +234,7 @@ export default function MetricsPage() {
                   <SelectValue placeholder="All services" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All services</SelectItem>
+                  <SelectItem value="all">All services</SelectItem>
                   {serviceMetrics.map(s => (
                     <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>
                   ))}

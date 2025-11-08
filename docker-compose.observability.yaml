@@ -1,29 +1,130 @@
-version: "3.8"
-
 services:
-  # ClickHouse - Time-series database for observability data
+  # Zookeeper for ClickHouse coordination
+  zookeeper:
+    image: signoz/zookeeper:3.7.1
+    container_name: supercheck-zookeeper
+    user: root
+    environment:
+      - ZOO_SERVER_ID=1
+      - ALLOW_ANONYMOUS_LOGIN=yes
+      - ZOO_AUTOPURGE_INTERVAL=1
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -s -m 2 http://localhost:8080/commands/ruok | grep error | grep null
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - observability
+
+  # Initialize ClickHouse with histogram-quantile binary
+  init-clickhouse:
+    image: clickhouse/clickhouse-server:25.5.6
+    container_name: supercheck-init-clickhouse
+    command:
+      - bash
+      - -c
+      - |
+        version="v0.0.1"
+        node_os=$(uname -s | tr '[:upper:]' '[:lower:]')
+        node_arch=$(uname -m | sed s/aarch64/arm64/ | sed s/x86_64/amd64/)
+        echo "Fetching histogram-binary for $${node_os}/$${node_arch}"
+        cd /tmp
+        wget -O histogram-quantile.tar.gz "https://github.com/SigNoz/signoz/releases/download/histogram-quantile%2F$${version}/histogram-quantile_$${node_os}_$${node_arch}.tar.gz"
+        tar -xvzf histogram-quantile.tar.gz
+        mv histogram-quantile /var/lib/clickhouse/user_scripts/histogramQuantile
+    restart: on-failure
+    volumes:
+      - ./observability/user_scripts:/var/lib/clickhouse/user_scripts/
+    networks:
+      - observability
+
+  # ClickHouse - Time-series database
   clickhouse:
     image: clickhouse/clickhouse-server:25.5.6
     container_name: supercheck-clickhouse
     hostname: clickhouse
+    tty: true
     environment:
-      - CLICKHOUSE_DB=default
-      - CLICKHOUSE_USER=default
-      - CLICKHOUSE_PASSWORD=
+      - CLICKHOUSE_SKIP_USER_SETUP=1
     ports:
       - "8123:8123"  # HTTP interface
       - "9000:9000"  # Native client
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+      - ./observability/user_scripts:/var/lib/clickhouse/user_scripts/
+    depends_on:
+      init-clickhouse:
+        condition: service_completed_successfully
+      zookeeper:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
-      interval: 10s
+      test:
+        - CMD
+        - wget
+        - --spider
+        - -q
+        - 0.0.0.0:8123/ping
+      interval: 30s
       timeout: 5s
-      retries: 5
+      retries: 3
     networks:
       - observability
 
-  # OpenTelemetry Collector - Receives, processes, and exports telemetry data
+  # Schema migrator for ClickHouse
+  schema-migrator:
+    image: signoz/signoz-schema-migrator:v0.129.8
+    container_name: supercheck-schema-migrator
+    command:
+      - sync
+      - --dsn=tcp://clickhouse:9000
+      - --dev
+      - --up=
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - observability
+
+  # SigNoz Query Service
+  signoz:
+    image: signoz/signoz:v0.100.1
+    container_name: supercheck-query-service
+    hostname: query-service
+    command:
+      - --config=/root/config/prometheus.yml
+    environment:
+      - SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN=tcp://clickhouse:9000
+      - SIGNOZ_SQLSTORE_SQLITE_PATH=/var/lib/signoz/signoz.db
+      - STORAGE=clickhouse
+      - GODEBUG=netdns=go
+      - TELEMETRY_ENABLED=false
+      - DEPLOYMENT_TYPE=docker-standalone-amd
+    ports:
+      - "8080:8080"  # Query service API
+    volumes:
+      - signoz_data:/var/lib/signoz
+      - ./observability/prometheus.yml:/root/config/prometheus.yml
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --spider
+        - -q
+        - localhost:8080/api/v1/health
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - observability
+
+  # OpenTelemetry Collector
   otel-collector:
     image: signoz/signoz-otel-collector:v0.129.8
     container_name: supercheck-otel-collector
@@ -43,58 +144,16 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
+      signoz:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
     networks:
       - observability
-
-  # SigNoz Query Service - Query interface for observability data
-  query-service:
-    image: signoz/signoz:v0.100.1
-    container_name: supercheck-query-service
-    hostname: query-service
-    command:
-      - --config=/root/config/prometheus.yml
-    environment:
-      - SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN=tcp://clickhouse:9000
-      - SIGNOZ_SQLSTORE_SQLITE_PATH=/var/lib/signoz/signoz.db
-      - STORAGE=clickhouse
-      - DEPLOYMENT_TYPE=docker-standalone-amd
-      - TELEMETRY_ENABLED=false
-      - DISABLE_AUTH=true
-    ports:
-      - "8080:8080"  # Query service API
-    volumes:
-      - signoz_data:/var/lib/signoz
-      - ./observability/prometheus.yml:/root/config/prometheus.yml
-    depends_on:
-      clickhouse:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/v1/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - observability
-
-  # Optional: Jaeger UI for trace visualization (alternative to custom UI)
-  # jaeger:
-  #   image: jaegertracing/jaeger-query:latest
-  #   container_name: supercheck-jaeger
-  #   environment:
-  #     - SPAN_STORAGE_TYPE=grpc-plugin
-  #     - GRPC_STORAGE_SERVER=query-service:8080
-  #   ports:
-  #     - "16686:16686"  # Jaeger UI
-  #   depends_on:
-  #     query-service:
-  #       condition: service_healthy
-  #   networks:
-  #     - observability
 
 volumes:
   clickhouse_data:
