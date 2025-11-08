@@ -353,6 +353,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenu>
         </SidebarGroup>
         <NavMain groupLabel="Communicate" items={data.Communicate} />
+        <NavMain groupLabel="Observability" items={data.Observability} />
         <NavMain groupLabel="Automate" items={data.Automate} />
         <NavMain groupLabel="Monitor" items={data.Monitor} />
         {adminItems.length > 0 && (
