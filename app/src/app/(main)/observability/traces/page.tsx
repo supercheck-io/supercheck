@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useTracesQuery, useTraceQuery } from "~/hooks/useObservability";
 import { getTimeRangePreset, formatDuration, buildSpanTree } from "~/lib/observability";
 import { Card } from "~/components/ui/card";
@@ -10,6 +11,12 @@ import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { Separator } from "~/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 import {
   Activity,
   Clock,
@@ -28,6 +35,7 @@ import {
 import type { Trace, Span } from "~/types/observability";
 
 export default function TracesPage() {
+  const searchParams = useSearchParams();
   const [timePreset, setTimePreset] = useState("last_1h");
   const [runTypeFilter, setRunTypeFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -38,6 +46,53 @@ export default function TracesPage() {
   const [autoRefresh, setAutoRefresh] = useState(false);
 
   const timeRange = getTimeRangePreset(timePreset);
+
+  // Handle traceId from query parameters (when navigating from logs)
+  useEffect(() => {
+    const traceIdParam = searchParams.get('traceId');
+    if (traceIdParam && traceIdParam !== selectedTraceId) {
+      setSelectedTraceId(traceIdParam);
+    }
+  }, [searchParams, selectedTraceId]);
+
+  const handleExport = (format: 'json' | 'csv') => {
+    if (!tracesData?.data) return;
+
+    const timestamp = new Date().toISOString().split('T')[0];
+    const filename = `traces-${timestamp}.${format}`;
+
+    if (format === 'json') {
+      const blob = new Blob([JSON.stringify(tracesData.data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else if (format === 'csv') {
+      // CSV headers
+      const headers = ['Trace ID', 'Name', 'Run Type', 'Duration (ms)', 'Spans', 'Services', 'Errors', 'Started At'];
+      const rows = tracesData.data.map(trace => [
+        trace.traceId,
+        trace.scTestName || '-',
+        trace.scRunType || '-',
+        trace.duration.toString(),
+        trace.spanCount.toString(),
+        trace.serviceNames.join(';'),
+        trace.errorCount.toString(),
+        new Date(trace.startedAt).toISOString(),
+      ]);
+
+      const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  };
 
   const { data: tracesData, isLoading, refetch } = useTracesQuery(
     {
@@ -86,10 +141,22 @@ export default function TracesPage() {
             <RefreshCw className={`h-4 w-4 mr-1 ${autoRefresh ? "animate-spin" : ""}`} />
             Auto-refresh
           </Button>
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-1" />
-            Export
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-1" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleExport('json')}>
+                Export as JSON
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport('csv')}>
+                Export as CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -252,7 +319,7 @@ export default function TracesPage() {
               {/* Trace view */}
               <div className="flex-1 overflow-auto p-4">
                 {view === "timeline" && <TraceTimeline spans={selectedTrace.spans} />}
-                {view === "flamegraph" && <FlamegraphPlaceholder />}
+                {view === "flamegraph" && <Flamegraph spans={selectedTrace.spans} />}
                 {view === "table" && <SpanTable spans={selectedTrace.spans} />}
               </div>
             </>
@@ -450,13 +517,155 @@ function SpanTable({ spans }: { spans: Span[] }) {
   );
 }
 
-function FlamegraphPlaceholder() {
+function Flamegraph({ spans }: { spans: Span[] }) {
+  const [hoveredSpan, setHoveredSpan] = useState<Span | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  // Build flamegraph data structure
+  const flamegraphData = useMemo(() => {
+    if (!spans.length) return [];
+
+    const tree = buildSpanTree(spans);
+    const result: Array<{ span: Span; depth: number; start: number; end: number }> = [];
+
+    // Find the earliest and latest times
+    const minTime = Math.min(...spans.map(s => new Date(s.startTime).getTime()));
+    const maxTime = Math.max(...spans.map(s => new Date(s.endTime).getTime()));
+    const totalDuration = maxTime - minTime;
+
+    const traverse = (nodes: any[], depth = 0) => {
+      nodes.forEach(node => {
+        const spanStart = new Date(node.startTime).getTime();
+        const spanEnd = new Date(node.endTime).getTime();
+
+        result.push({
+          span: node,
+          depth,
+          start: ((spanStart - minTime) / totalDuration) * 100,
+          end: ((spanEnd - minTime) / totalDuration) * 100,
+        });
+
+        if (node.children?.length > 0) {
+          traverse(node.children, depth + 1);
+        }
+      });
+    };
+
+    traverse(tree);
+    return result;
+  }, [spans]);
+
+  const maxDepth = Math.max(...flamegraphData.map(d => d.depth), 0);
+  const rowHeight = 32;
+
+  // Service colors for consistent coloring
+  const serviceColors = useMemo(() => {
+    const services = [...new Set(spans.map(s => s.serviceName))];
+    const colors = [
+      'bg-blue-500',
+      'bg-purple-500',
+      'bg-green-500',
+      'bg-orange-500',
+      'bg-pink-500',
+      'bg-cyan-500',
+      'bg-yellow-500',
+      'bg-indigo-500',
+    ];
+    return Object.fromEntries(services.map((s, i) => [s, colors[i % colors.length]]));
+  }, [spans]);
+
   return (
-    <div className="flex items-center justify-center h-64 border rounded-lg bg-muted/20">
-      <div className="text-center space-y-2">
-        <Flame className="h-12 w-12 mx-auto text-muted-foreground" />
-        <div className="text-sm font-medium">Flamegraph View</div>
-        <div className="text-xs text-muted-foreground">Coming soon</div>
+    <div className="border rounded-lg bg-background overflow-hidden">
+      <div className="border-b px-3 py-2 bg-muted/30">
+        <div className="text-xs font-medium">Flamegraph View</div>
+        <div className="text-[10px] text-muted-foreground">
+          Width represents duration • Height represents call depth
+        </div>
+      </div>
+
+      <div className="relative overflow-x-auto">
+        <div
+          className="relative"
+          style={{ height: `${(maxDepth + 1) * rowHeight + 40}px`, minWidth: '800px' }}
+          onMouseMove={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+          }}
+        >
+          {/* Time axis */}
+          <div className="absolute top-0 left-0 right-0 h-6 border-b bg-muted/20 flex items-center px-2 text-[10px] text-muted-foreground">
+            <span>0ms</span>
+            <span className="ml-auto">
+              {flamegraphData.length > 0
+                ? formatDuration(Math.max(...spans.map(s => s.duration)))
+                : '0ms'}
+            </span>
+          </div>
+
+          {/* Flamegraph bars */}
+          <div className="absolute top-6 left-0 right-0 bottom-0 px-2 py-2">
+            {flamegraphData.map((item, idx) => {
+              const width = item.end - item.start;
+              const isError = item.span.statusCode === 2;
+              const color = isError
+                ? 'bg-red-500'
+                : serviceColors[item.span.serviceName] || 'bg-gray-500';
+
+              return (
+                <div
+                  key={idx}
+                  className={`absolute ${color} hover:opacity-90 cursor-pointer transition-opacity rounded border border-background/20`}
+                  style={{
+                    left: `${item.start}%`,
+                    width: `${width}%`,
+                    top: `${item.depth * rowHeight}px`,
+                    height: `${rowHeight - 4}px`,
+                  }}
+                  onMouseEnter={() => setHoveredSpan(item.span)}
+                  onMouseLeave={() => setHoveredSpan(null)}
+                >
+                  <div className="px-2 py-1 h-full flex items-center text-white text-[10px] font-medium truncate">
+                    {item.span.name}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Tooltip */}
+          {hoveredSpan && (
+            <div
+              className="absolute z-50 bg-popover text-popover-foreground p-2 rounded-md shadow-lg border text-xs pointer-events-none"
+              style={{
+                left: `${mousePos.x + 10}px`,
+                top: `${mousePos.y + 10}px`,
+                maxWidth: '300px',
+              }}
+            >
+              <div className="font-semibold mb-1">{hoveredSpan.name}</div>
+              <div className="space-y-0.5 text-[10px] text-muted-foreground">
+                <div>Service: {hoveredSpan.serviceName}</div>
+                <div>Duration: {formatDuration(hoveredSpan.duration)}</div>
+                <div>Status: {hoveredSpan.statusCode === 2 ? 'Error' : 'OK'}</div>
+                <div className="font-mono text-[9px]">Span ID: {hoveredSpan.spanId.slice(0, 16)}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="border-t px-3 py-2 bg-muted/10 flex flex-wrap gap-2">
+        {Object.entries(serviceColors).map(([service, color]) => (
+          <div key={service} className="flex items-center gap-1.5 text-[10px]">
+            <div className={`w-3 h-3 rounded ${color}`} />
+            <span>{service}</span>
+          </div>
+        ))}
+        <div className="flex items-center gap-1.5 text-[10px]">
+          <div className="w-3 h-3 rounded bg-red-500" />
+          <span>Error</span>
+        </div>
       </div>
     </div>
   );
