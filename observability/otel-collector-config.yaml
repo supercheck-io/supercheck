@@ -1,5 +1,13 @@
 # OpenTelemetry Collector Configuration for SuperCheck
-# This collector receives telemetry from SuperCheck workers and exports to ClickHouse
+# Based on official SigNoz configuration
+
+connectors:
+  signozmeter:
+    metrics_flush_interval: 1h
+    dimensions:
+      - name: service.name
+      - name: deployment.environment
+      - name: host.name
 
 receivers:
   # OTLP receiver - accepts traces, metrics, and logs
@@ -18,24 +26,27 @@ receivers:
   # Prometheus receiver for scraping metrics
   prometheus:
     config:
+      global:
+        scrape_interval: 60s
       scrape_configs:
         - job_name: 'otel-collector'
-          scrape_interval: 30s
           static_configs:
             - targets: ['localhost:8888']
+              labels:
+                job_name: otel-collector
 
 processors:
-  # Memory limiter prevents OOM
-  memory_limiter:
-    check_interval: 1s
-    limit_percentage: 80
-    spike_limit_percentage: 25
-
   # Batch processor for general use
   batch:
     send_batch_size: 10000
     send_batch_max_size: 11000
     timeout: 10s
+
+  # Batch processor for meter pipeline
+  batch/meter:
+    send_batch_max_size: 25000
+    send_batch_size: 20000
+    timeout: 1s
 
   # Resource detection adds host/cloud metadata
   resourcedetection:
@@ -55,10 +66,20 @@ processors:
         default: supercheck
       - name: deployment.environment
         default: development
+      - name: signoz.collector.id
       - name: service.version
       - name: host.name
       - name: host.type
       - name: container.name
+
+extensions:
+  # Health check extension
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+  # pprof extension for profiling
+  pprof:
+    endpoint: 0.0.0.0:1777
 
 exporters:
   # SigNoz-specific ClickHouse exporters
@@ -74,57 +95,48 @@ exporters:
     timeout: 10s
     use_new_schema: true
 
-  # Prometheus exporter for collector metrics
-  prometheus:
-    endpoint: "0.0.0.0:8889"
-    namespace: otel_collector
-
-extensions:
-  # Health check extension
-  health_check:
-    endpoint: 0.0.0.0:13133
-    path: /
-
-  # pprof extension for profiling
-  pprof:
-    endpoint: 0.0.0.0:1777
-
-  # zpages extension for live debugging
-  zpages:
-    endpoint: 0.0.0.0:55679
+  signozclickhousemeter:
+    dsn: tcp://clickhouse:9000/signoz_meter
+    timeout: 45s
+    sending_queue:
+      enabled: false
 
 service:
-  extensions: [health_check, pprof, zpages]
+  telemetry:
+    logs:
+      encoding: json
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888
+  extensions: [health_check, pprof]
 
   pipelines:
     # Traces pipeline - also generates span metrics for APM
     traces:
       receivers: [otlp]
       processors: [signozspanmetrics/delta, batch]
-      exporters: [clickhousetraces]
+      exporters: [clickhousetraces, signozmeter]
 
     # Metrics pipeline
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [signozclickhousemetrics]
+      exporters: [signozclickhousemetrics, signozmeter]
 
     # Prometheus metrics pipeline
     metrics/prometheus:
       receivers: [prometheus]
       processors: [batch]
-      exporters: [signozclickhousemetrics]
+      exporters: [signozclickhousemetrics, signozmeter]
 
     # Logs pipeline
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [clickhouselogsexporter]
+      exporters: [clickhouselogsexporter, signozmeter]
 
-  telemetry:
-    logs:
-      level: info
-      encoding: json
-    metrics:
-      level: detailed
-      address: 0.0.0.0:8888
+    # Meter pipeline for usage metrics
+    metrics/meter:
+      receivers: [signozmeter]
+      processors: [batch/meter]
+      exporters: [signozclickhousemeter]
