@@ -28,6 +28,29 @@ import type {
 
 const SIGNOZ_URL = process.env.SIGNOZ_URL || "http://localhost:8080";
 const API_TIMEOUT = 30000; // 30 seconds
+const SIGNOZ_DISABLE_AUTH = process.env.SIGNOZ_DISABLE_AUTH === "true";
+const SIGNOZ_API_KEY = process.env.SIGNOZ_API_KEY;
+const SIGNOZ_BEARER_TOKEN = process.env.SIGNOZ_BEARER_TOKEN;
+
+/**
+ * Build auth headers for SigNoz API requests
+ */
+function buildAuthHeaders(): Record<string, string> {
+  if (SIGNOZ_DISABLE_AUTH) {
+    return {};
+  }
+
+  const headers: Record<string, string> = {};
+
+  // Priority: API Key > Bearer Token
+  if (SIGNOZ_API_KEY) {
+    headers["SIGNOZ-API-KEY"] = SIGNOZ_API_KEY;
+  } else if (SIGNOZ_BEARER_TOKEN) {
+    headers["Authorization"] = `Bearer ${SIGNOZ_BEARER_TOKEN}`;
+  }
+
+  return headers;
+}
 
 /**
  * Build query string from filters object
@@ -61,9 +84,17 @@ async function fetchWithTimeout(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
+  // Merge auth headers with provided headers
+  const authHeaders = buildAuthHeaders();
+  const headers = {
+    ...authHeaders,
+    ...(options.headers || {}),
+  };
+
   try {
     const response = await fetch(url, {
       ...options,
+      headers,
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
@@ -83,21 +114,28 @@ function transformTracesResponse(signozResponse: any): TraceSearchResponse {
 
   const traces = records.map((record: any) => ({
     traceId: record.traceID || record.trace_id || "",
-    rootSpanName: record.name || record.rootServiceName || "",
-    serviceName: record.serviceName || "",
+    rootSpanId: record.spanID || record.span_id || "",
     serviceNames: record.serviceName ? [record.serviceName] : [],
     duration: record.durationNano || 0,
     startedAt: new Date(record.timestamp / 1000000).toISOString(), // Convert from nanoseconds
+    endedAt: new Date((record.timestamp + record.durationNano) / 1000000).toISOString(),
+    status: record.hasError ? 2 : 1,
     spanCount: 1, // SigNoz list view doesn't provide this, will be updated when fetching full trace
     errorCount: record.hasError ? 1 : 0,
     scRunType: record["sc.run_type"],
     scRunId: record["sc.run_id"],
     scTestName: record["sc.test_name"],
+    attributes: {},
   }));
 
   return {
     data: traces,
     total: records.length,
+    services: [],
+    runTypes: [],
+    limit: 100,
+    offset: 0,
+    hasMore: false,
   };
 }
 
@@ -121,6 +159,11 @@ function transformLogsResponse(signozResponse: any): LogSearchResponse {
   return {
     data: logs,
     total: records.length,
+    services: [],
+    levels: [],
+    limit: 1000,
+    offset: 0,
+    hasMore: false,
   };
 }
 
@@ -136,8 +179,19 @@ function transformMetricsResponse(signozResponse: any): MetricQueryResponse {
   }));
 
   return {
-    data: metrics,
-    query: "",
+    metrics: metrics.map((m: any) => ({
+      name: m.metric?.__name__ || "unknown",
+      points: m.values?.map((v: any) => ({
+        timestamp: new Date(v[0] * 1000).toISOString(),
+        value: parseFloat(v[1]),
+        seriesKey: JSON.stringify(m.metric),
+      })) || [],
+      labels: m.metric || {},
+    })),
+    timeRange: {
+      start: new Date().toISOString(),
+      end: new Date().toISOString(),
+    },
   };
 }
 
@@ -212,7 +266,9 @@ export async function searchTraces(
     });
   }
 
-  if (filters.hasError !== undefined) {
+  if (filters.status !== undefined) {
+    const statuses = Array.isArray(filters.status) ? filters.status : [filters.status];
+    const hasError = statuses.includes(2);
     filterItems.push({
       key: {
         key: "hasError",
@@ -221,7 +277,7 @@ export async function searchTraces(
         isColumn: true,
       },
       op: "=",
-      value: filters.hasError ? "true" : "false",
+      value: hasError ? "true" : "false",
     });
   }
 
@@ -314,15 +370,19 @@ export async function getTrace(traceId: string): Promise<TraceWithSpans> {
     // In production, we'd need to query spans from ClickHouse directly
     return {
       traceId: trace.traceId,
-      rootSpanName: trace.rootSpanName,
-      serviceName: trace.serviceName,
+      rootSpanId: trace.traceId,
       serviceNames: trace.serviceNames,
       duration: trace.duration,
       startedAt: trace.startedAt,
+      endedAt: trace.startedAt,
+      status: trace.errorCount > 0 ? 2 : 1,
+      spanCount: trace.spanCount,
+      errorCount: trace.errorCount,
       spans: [], // Would need separate endpoint to get all spans
       scRunType: trace.scRunType,
       scRunId: trace.scRunId,
       scTestName: trace.scTestName,
+      attributes: {},
     };
   }
 

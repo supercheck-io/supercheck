@@ -32,13 +32,13 @@ import {
   List,
   LayoutGrid
 } from "lucide-react";
-import type { Trace, Span } from "~/types/observability";
+import type { Trace, Span, SpanStatus } from "~/types/observability";
 
 export default function TracesPage() {
   const searchParams = useSearchParams();
   const [timePreset, setTimePreset] = useState("last_1h");
-  const [runTypeFilter, setRunTypeFilter] = useState<string>("");
-  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [runTypeFilter, setRunTypeFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [view, setView] = useState<"timeline" | "flamegraph" | "table">("timeline");
@@ -97,12 +97,12 @@ export default function TracesPage() {
   const { data: tracesData, isLoading, refetch } = useTracesQuery(
     {
       timeRange,
-      runType: runTypeFilter ? [runTypeFilter as "playwright" | "k6" | "job" | "monitor"] : undefined,
-      status: statusFilter ? [parseInt(statusFilter)] : undefined,
+      runType: runTypeFilter && runTypeFilter !== "all" ? [runTypeFilter as "playwright" | "k6" | "job" | "monitor"] : undefined,
+      status: statusFilter && statusFilter !== "all" ? [parseInt(statusFilter) as SpanStatus] : undefined,
       search: searchQuery || undefined,
       limit: 100,
     },
-    { refetchInterval: autoRefresh ? 5000 : false }
+    { refetchInterval: autoRefresh ? 5000 : undefined }
   );
 
   const { data: selectedTrace } = useTraceQuery(selectedTraceId);
@@ -185,7 +185,7 @@ export default function TracesPage() {
                   <SelectValue placeholder="All run types" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All types</SelectItem>
+                  <SelectItem value="all">All types</SelectItem>
                   <SelectItem value="playwright">Playwright</SelectItem>
                   <SelectItem value="k6">K6</SelectItem>
                   <SelectItem value="job">Job</SelectItem>
@@ -200,7 +200,7 @@ export default function TracesPage() {
                   <SelectValue placeholder="All statuses" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All statuses</SelectItem>
+                  <SelectItem value="all">All statuses</SelectItem>
                   <SelectItem value="1">Success</SelectItem>
                   <SelectItem value="2">Error</SelectItem>
                 </SelectContent>

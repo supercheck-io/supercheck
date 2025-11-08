@@ -94,7 +94,7 @@ export default function LogsPage() {
       search: searchQuery || undefined,
       limit: 5000,
     },
-    { refetchInterval: autoRefresh ? 3000 : false }
+    { refetchInterval: autoRefresh ? 3000 : undefined }
   );
 
   const parentRef = useRef<HTMLDivElement>(null);
@@ -180,7 +180,7 @@ export default function LogsPage() {
                   <SelectValue placeholder="All levels" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All levels</SelectItem>
+                  <SelectItem value="all">All levels</SelectItem>
                   <SelectItem value="DEBUG">Debug</SelectItem>
                   <SelectItem value="INFO">Info</SelectItem>
                   <SelectItem value="WARN">Warning</SelectItem>
@@ -196,7 +196,7 @@ export default function LogsPage() {
                   <SelectValue placeholder="All services" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All services</SelectItem>
+                  <SelectItem value="all">All services</SelectItem>
                   {services.map(service => (
                     <SelectItem key={service} value={service}>{service}</SelectItem>
                   ))}
