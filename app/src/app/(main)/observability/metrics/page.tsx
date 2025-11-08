@@ -8,6 +8,12 @@ import { Button } from "~/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
+import {
   BarChart3,
   TrendingUp,
   TrendingDown,
@@ -30,6 +36,70 @@ export default function MetricsPage() {
   const [activeTab, setActiveTab] = useState("overview");
 
   const timeRange = getTimeRangePreset(timePreset);
+
+  const handleExport = (format: 'json' | 'csv') => {
+    const timestamp = new Date().toISOString().split('T')[0];
+    const filename = `metrics-${activeTab}-${timestamp}.${format}`;
+
+    if (format === 'json') {
+      const data = activeTab === 'services' ? serviceMetrics : activeTab === 'endpoints' ? endpointMetrics : aggregateMetrics;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else if (format === 'csv') {
+      let csv = '';
+
+      if (activeTab === 'services') {
+        const headers = ['Service', 'Requests', 'P95 Latency', 'P99 Latency', 'Errors', 'Error Rate', 'Trend'];
+        const rows = serviceMetrics.map(s => [
+          s.name,
+          s.requests.toString(),
+          s.p95.toString(),
+          s.p99.toString(),
+          s.errors.toString(),
+          `${s.errorRate}%`,
+          `${s.trend}%`,
+        ]);
+        csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+      } else if (activeTab === 'endpoints') {
+        const headers = ['Endpoint', 'Requests', 'P95 Latency', 'Errors', 'Error Rate'];
+        const rows = endpointMetrics.map(e => [
+          e.endpoint,
+          e.requests.toString(),
+          e.p95.toString(),
+          e.errors.toString(),
+          `${e.errorRate}%`,
+        ]);
+        csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+      } else {
+        // Overview metrics
+        const headers = ['Metric', 'Value'];
+        const rows = [
+          ['Avg Latency', `${aggregateMetrics.avgLatency}ms`],
+          ['P50 Latency', `${aggregateMetrics.p50Latency}ms`],
+          ['P95 Latency', `${aggregateMetrics.p95Latency}ms`],
+          ['P99 Latency', `${aggregateMetrics.p99Latency}ms`],
+          ['Error Rate', `${aggregateMetrics.errorRate}%`],
+          ['Throughput', `${aggregateMetrics.throughput} req/s`],
+          ['Total Requests', aggregateMetrics.totalRequests.toString()],
+          ['Active Services', aggregateMetrics.activeServices.toString()],
+        ];
+        csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+      }
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  };
 
   const { data: _metricsData, isLoading: _isLoading } = useMetricsQuery(
     {
@@ -105,10 +175,22 @@ export default function MetricsPage() {
             <RefreshCw className={`h-4 w-4 mr-1 ${autoRefresh ? "animate-spin" : ""}`} />
             Auto
           </Button>
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-1" />
-            Export
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-1" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleExport('json')}>
+                Export as JSON
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport('csv')}>
+                Export as CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

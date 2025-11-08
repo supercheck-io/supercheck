@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useLogsQuery } from "~/hooks/useObservability";
 import { getTimeRangePreset } from "~/lib/observability";
 import { Badge } from "~/components/ui/badge";
@@ -8,6 +9,12 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { Separator } from "~/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 import {
   FileText,
   Search,
@@ -32,6 +39,7 @@ const LEVEL_COLORS = {
 } as const;
 
 export default function LogsPage() {
+  const router = useRouter();
   const [timePreset, setTimePreset] = useState("last_1h");
   const [levelFilter, setLevelFilter] = useState<string>("");
   const [serviceFilter, setServiceFilter] = useState<string>("");
@@ -41,6 +49,42 @@ export default function LogsPage() {
   const [selectedLog, setSelectedLog] = useState<Log | null>(null);
 
   const timeRange = getTimeRangePreset(timePreset);
+
+  const handleExport = (format: 'json' | 'csv') => {
+    if (!logsData?.data) return;
+
+    const timestamp = new Date().toISOString().split('T')[0];
+    const filename = `logs-${timestamp}.${format}`;
+
+    if (format === 'json') {
+      const blob = new Blob([JSON.stringify(logsData.data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else if (format === 'csv') {
+      // CSV headers
+      const headers = ['Timestamp', 'Level', 'Service', 'Message', 'Trace ID'];
+      const rows = logsData.data.map(log => [
+        new Date(log.timestamp).toISOString(),
+        log.severityText,
+        log.serviceName || '-',
+        log.body.replace(/"/g, '""'), // Escape quotes
+        log.traceId || '-',
+      ]);
+
+      const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  };
 
   const { data: logsData, isLoading } = useLogsQuery(
     {
@@ -93,10 +137,22 @@ export default function LogsPage() {
             <RefreshCw className={`h-4 w-4 mr-1 ${autoRefresh ? "animate-spin" : ""}`} />
             Live
           </Button>
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-1" />
-            Export
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-1" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleExport('json')}>
+                Export as JSON
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport('csv')}>
+                Export as CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -210,6 +266,7 @@ export default function LogsPage() {
                         log={log}
                         isSelected={selectedLog?.timestamp === log.timestamp}
                         onClick={() => setSelectedLog(log)}
+                        onTraceClick={(traceId) => router.push(`/observability/traces?traceId=${traceId}`)}
                       />
                     </div>
                   );
@@ -265,10 +322,20 @@ export default function LogsPage() {
                 <div>
                   <div className="text-muted-foreground mb-1">Trace ID</div>
                   <div className="flex items-center gap-2">
-                    <code className="flex-1 text-[11px] p-1 bg-muted rounded">
+                    <code
+                      className="flex-1 text-[11px] p-1 bg-muted rounded cursor-pointer hover:bg-muted/70 transition-colors"
+                      onClick={() => router.push(`/observability/traces?traceId=${selectedLog.traceId}`)}
+                      title="Click to view trace"
+                    >
                       {selectedLog.traceId}
                     </code>
-                    <Button variant="outline" size="sm" className="h-6 text-xs">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-xs"
+                      onClick={() => router.push(`/observability/traces?traceId=${selectedLog.traceId}`)}
+                      title="View trace details"
+                    >
                       <ExternalLink className="h-3 w-3" />
                     </Button>
                   </div>
@@ -296,10 +363,11 @@ export default function LogsPage() {
   );
 }
 
-function LogRow({ log, isSelected, onClick }: {
+function LogRow({ log, isSelected, onClick, onTraceClick }: {
   log: Log;
   isSelected: boolean;
   onClick: () => void;
+  onTraceClick: (traceId: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -309,6 +377,13 @@ function LogRow({ log, isSelected, onClick }: {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [log.body]);
+
+  const handleTraceClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (log.traceId) {
+      onTraceClick(log.traceId);
+    }
+  }, [log.traceId, onTraceClick]);
 
   return (
     <div
@@ -343,7 +418,13 @@ function LogRow({ log, isSelected, onClick }: {
         </Button>
       </div>
 
-      <div className="w-20 text-muted-foreground font-mono text-[10px] truncate">
+      <div
+        className={`w-20 font-mono text-[10px] truncate ${
+          log.traceId ? "text-blue-600 hover:text-blue-800 cursor-pointer underline decoration-dotted" : "text-muted-foreground"
+        }`}
+        onClick={log.traceId ? handleTraceClick : undefined}
+        title={log.traceId ? "Click to view trace" : undefined}
+      >
         {log.traceId ? log.traceId.slice(0, 8) : "-"}
       </div>
     </div>
