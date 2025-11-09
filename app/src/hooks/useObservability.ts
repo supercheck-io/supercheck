@@ -14,7 +14,8 @@ import type {
   MetricQueryResponse,
   TraceWithSpans,
   ServiceMetrics,
-
+  RunObservabilityResponse,
+  ContextualMetricsResponse,
 } from "~/types/observability";
 
 // ============================================================================
@@ -265,6 +266,76 @@ export function useServiceMetricsQuery(
     },
     enabled: !!serviceName && options?.enabled !== false,
     staleTime: 30000,
+  });
+}
+
+// ============================================================================
+// CONTEXTUAL ENTITY HOOKS
+// ============================================================================
+
+type ContextualEntity = "tests" | "jobs" | "monitors";
+
+export function useRunObservability(
+  runId: string | null,
+  options?: { enabled?: boolean; start?: string; end?: string }
+) {
+  return useQuery({
+    queryKey: ["observability", "run", runId, options?.start, options?.end],
+    queryFn: async () => {
+      if (!runId) throw new Error("Run ID is required");
+      const params = new URLSearchParams();
+      if (options?.start) params.append("start", options.start);
+      if (options?.end) params.append("end", options.end);
+      const response = await fetch(
+        `/api/observability/runs/${runId}?${params.toString()}`
+      );
+      if (!response.ok) {
+        throw new Error("Failed to load run observability data");
+      }
+      return (await response.json()) as RunObservabilityResponse;
+    },
+    enabled: !!runId && options?.enabled !== false,
+    staleTime: 30000,
+  });
+}
+
+export function useContextualMetrics(
+  entity: ContextualEntity,
+  entityId: string | null,
+  options?: {
+    enabled?: boolean;
+    start?: string;
+    end?: string;
+    buckets?: number;
+    refetchInterval?: number;
+  }
+) {
+  return useQuery({
+    queryKey: [
+      "observability",
+      entity,
+      entityId,
+      options?.start,
+      options?.end,
+      options?.buckets,
+    ],
+    queryFn: async () => {
+      if (!entityId) throw new Error("Entity ID is required");
+      const params = new URLSearchParams();
+      if (options?.start) params.append("start", options.start);
+      if (options?.end) params.append("end", options.end);
+      if (options?.buckets) params.append("buckets", options.buckets.toString());
+      const response = await fetch(
+        `/api/observability/${entity}/${entityId}/metrics?${params.toString()}`
+      );
+      if (!response.ok) {
+        throw new Error("Failed to load metrics");
+      }
+      return (await response.json()) as ContextualMetricsResponse;
+    },
+    enabled: !!entityId && options?.enabled !== false,
+    staleTime: 60000,
+    refetchInterval: options?.refetchInterval,
   });
 }
 

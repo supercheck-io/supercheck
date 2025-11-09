@@ -25,9 +25,9 @@ import {
   Tally4,
   type LucideIcon,
   RefreshCw,
-  Activity,
-  FileText,
-  BarChart3,
+  ChartNoAxesGantt,
+  ChartPie,
+  Logs,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -75,17 +75,17 @@ const data = {
     {
       title: "Traces",
       url: "/observability/traces",
-      icon: Activity,
+      icon: ChartNoAxesGantt,
     },
     {
       title: "Logs",
       url: "/observability/logs",
-      icon: FileText,
+      icon: Logs,
     },
     {
       title: "Metrics",
       url: "/observability/metrics",
-      icon: BarChart3,
+      icon: ChartPie,
     },
   ],
 

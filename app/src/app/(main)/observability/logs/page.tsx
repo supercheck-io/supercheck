@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useLogsQuery } from "~/hooks/useObservability";
 import { getTimeRangePreset } from "~/lib/observability";
@@ -8,7 +8,7 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
-import { Separator } from "~/components/ui/separator";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +21,6 @@ import {
   Filter,
   RefreshCw,
   Download,
-  ChevronDown,
   ExternalLink,
   Copy,
   Check
@@ -40,15 +39,18 @@ const LEVEL_COLORS = {
 
 export default function LogsPage() {
   const router = useRouter();
-  const [timePreset, setTimePreset] = useState("last_1h");
+  const [timePreset, setTimePreset] = useState("last_24h");
   const [levelFilter, setLevelFilter] = useState<string>("");
   const [serviceFilter, setServiceFilter] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [showFilters, setShowFilters] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [selectedLog, setSelectedLog] = useState<Log | null>(null);
+  const [timeRange, setTimeRange] = useState(() => getTimeRangePreset(timePreset));
 
-  const timeRange = getTimeRangePreset(timePreset);
+  useEffect(() => {
+    setTimeRange(getTimeRangePreset(timePreset));
+  }, [timePreset]);
 
   const handleExport = (format: 'json' | 'csv') => {
     if (!logsData?.data) return;
@@ -86,7 +88,12 @@ export default function LogsPage() {
     }
   };
 
-  const { data: logsData, isLoading } = useLogsQuery(
+  const {
+    data: logsData,
+    isLoading,
+    error: logsError,
+    refetch,
+  } = useLogsQuery(
     {
       timeRange,
       severityLevel: levelFilter ? [levelFilter as "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | "FATAL"] : undefined,
@@ -107,6 +114,9 @@ export default function LogsPage() {
   });
 
   const services = Array.from(new Set(logsData?.data.map(l => l.serviceName).filter(Boolean))) as string[];
+  const authBlocked =
+    logsError instanceof Error &&
+    /unauthenticated|unauthorized|api key/i.test(logsError.message);
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
@@ -153,10 +163,30 @@ export default function LogsPage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
       </div>
+    </div>
 
-      {/* Filters bar */}
+    {logsError && (
+      <div className="px-4 py-3 border-b bg-muted/20">
+        <Alert variant={authBlocked ? "default" : "destructive"}>
+          <AlertTitle>
+            {authBlocked ? "Observability authentication required" : "Failed to load logs"}
+          </AlertTitle>
+          <AlertDescription className="text-xs flex flex-wrap items-center gap-2">
+            <span>
+              {authBlocked
+                ? "SigNoz rejected the request. Add SIGNOZ_API_KEY or set SIGNOZ_DISABLE_AUTH=true to fetch logs."
+                : (logsError as Error).message}
+            </span>
+            <Button size="sm" variant="outline" onClick={() => refetch()}>
+              <RefreshCw className="h-3 w-3 mr-1" /> Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      </div>
+    )}
+
+    {/* Filters bar */}
       {showFilters && (
         <div className="px-4 py-3 border-b bg-muted/30">
           <div className="grid grid-cols-12 gap-2">

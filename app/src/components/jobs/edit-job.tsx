@@ -51,6 +51,7 @@ import { UrlTriggerTooltip } from "./url-trigger-tooltip";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canDeleteJobs } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
+import { ContextualMetricsPanel } from "@/components/observability/contextual-metrics-panel";
 
 
 interface AlertConfiguration {
@@ -409,10 +410,21 @@ export default function EditJob({ jobId }: EditJobProps) {
     return <EditJobSkeleton />;
   }
 
+  const insightsPanel = (
+    <ContextualMetricsPanel
+      entityId={jobId}
+      entityType="jobs"
+      title="Job Performance"
+      description="Recent success rate and duration trends"
+      className="mb-4"
+    />
+  );
+
   // Step 2: Alert Settings
   if (currentStep === 'alerts') {
     return (
       <div className="space-y-4">
+        {insightsPanel}
         <Card>
           <CardHeader>
             <CardTitle>Alert Settings <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Optional</span></CardTitle>
@@ -460,6 +472,7 @@ export default function EditJob({ jobId }: EditJobProps) {
   if (currentStep === 'cicd') {
     return (
       <div className="space-y-4">
+        {insightsPanel}
         <Card>
           <CardHeader>
             <CardTitle>CI/CD Settings <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Optional</span> <UrlTriggerTooltip jobId={jobId} /></CardTitle>
@@ -500,7 +513,8 @@ export default function EditJob({ jobId }: EditJobProps) {
   }
 
   return (
-    <div className="">
+    <div className="space-y-4">
+      {insightsPanel}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6">
           <div>

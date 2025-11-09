@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useParams, notFound } from "next/navigation";
 import { TestPriority, TestType } from "@/db/schema";
 import { PlaygroundSkeleton } from "@/components/playground/playground-skeleton";
+import { ContextualMetricsPanel } from "@/components/observability/contextual-metrics-panel";
 
 // Converting to a client component
 export default function PlaygroundPage() {
@@ -71,6 +72,16 @@ export default function PlaygroundPage() {
   return (
     <div className="h-full flex flex-col">
       <PageBreadcrumbs items={breadcrumbs} />
+      {testData && (
+        <div className="my-4">
+          <ContextualMetricsPanel
+            entityId={id}
+            entityType="tests"
+            title="Test Performance"
+            description="Latency and stability trends for recent runs"
+          />
+        </div>
+      )}
       <div className="relative flex-1 overflow-hidden">
         {isLoading && <PlaygroundSkeleton />}
         <div
