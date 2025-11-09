@@ -114,6 +114,8 @@ x-common-env: &common-env # Database Configuration
   # OpenTelemetry Configuration
   ENABLE_WORKER_OBSERVABILITY: ${ENABLE_WORKER_OBSERVABILITY:-true}
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+  OTEL_EXPORTER_OTLP_HTTP_ENDPOINT: ${OTEL_EXPORTER_OTLP_HTTP_ENDPOINT:-http://otel-collector:4318/v1/traces}
+  OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http}
   OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-supercheck}
   OTEL_LOG_LEVEL: ${OTEL_LOG_LEVEL:-error}
   OTEL_TRACE_SAMPLE_RATE: ${OTEL_TRACE_SAMPLE_RATE:-1.0}
@@ -401,7 +403,13 @@ services:
       schema-migrator:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
+      test:
+        [
+          "CMD",
+          "bash",
+          "-c",
+          "</dev/tcp/127.0.0.1/13133",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5

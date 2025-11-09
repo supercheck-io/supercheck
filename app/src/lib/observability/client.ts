@@ -255,7 +255,7 @@ export function buildFlamegraph(spans: Span[]): FlamegraphNode {
  */
 export function extractSuperCheckAttributes(span: Span) {
   return {
-    orgId: span.attributes["sc.org_id"] as string | undefined,
+    orgId: span.attributes["sc.organization_id"] as string | undefined,
     projectId: span.attributes["sc.project_id"] as string | undefined,
     runId: span.attributes["sc.run_id"] as string | undefined,
     runType: span.attributes["sc.run_type"] as string | undefined,
