@@ -194,7 +194,7 @@ function buildTraceConditions(
   pushAttributeCondition(conditions, "sc.job_id", options.jobId);
   pushAttributeCondition(conditions, "sc.monitor_id", options.monitorId);
   pushAttributeCondition(conditions, "sc.project_id", options.projectId);
-  pushAttributeCondition(conditions, "sc.org_id", options.organizationId);
+  pushAttributeCondition(conditions, "sc.organization_id", options.organizationId);
 
   if (options.search) {
     const query = escapeLiteral(options.search);
@@ -494,7 +494,7 @@ export async function searchLogsClickHouse(
 
   pushAttributeCondition(conditions, "sc.run_id", filters.runId);
   pushAttributeCondition(conditions, "sc.project_id", filters.projectId);
-  pushAttributeCondition(conditions, "sc.org_id", filters.organizationId);
+  pushAttributeCondition(conditions, "sc.organization_id", filters.organizationId);
   pushAttributeCondition(conditions, "sc.run_type", filters.runType);
 
   if (filters.search) {

@@ -36,6 +36,10 @@ import {
   MonitoringLocation,
   MONITORING_LOCATIONS,
 } from '../common/location/location.service';
+import {
+  addSupcheckRunContext,
+  createSpanWithContext,
+} from '../observability/trace-helpers';
 
 // Import shared constants
 import {
@@ -83,6 +87,22 @@ export class MonitorService {
     jobData: MonitorJobDataDto,
     location: MonitoringLocation = MONITORING_LOCATIONS.US_EAST,
   ): Promise<MonitorExecutionResult | null> {
+    const spanContext = {
+      runType: 'monitor' as const,
+      monitorId: jobData.monitorId,
+    };
+
+    return createSpanWithContext(
+      'worker.monitor.execute',
+      spanContext,
+      async () => this.executeMonitorInternal(jobData, location),
+    );
+  }
+
+  private async executeMonitorInternal(
+    jobData: MonitorJobDataDto,
+    location: MonitoringLocation = MONITORING_LOCATIONS.US_EAST,
+  ): Promise<MonitorExecutionResult | null> {
     // Removed log - only log warnings, errors, and status changes
 
     // Check if monitor is paused before execution
@@ -90,6 +110,13 @@ export class MonitorService {
       const monitor = await this.dbService.db.query.monitors.findFirst({
         where: (monitors, { eq }) => eq(monitors.id, jobData.monitorId),
       });
+
+      if (monitor?.organizationId || monitor?.projectId) {
+        addSupcheckRunContext({
+          organizationId: monitor.organizationId ?? undefined,
+          projectId: monitor.projectId ?? undefined,
+        });
+      }
 
       if (!monitor) {
         this.logger.warn(

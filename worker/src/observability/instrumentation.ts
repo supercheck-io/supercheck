@@ -14,7 +14,8 @@
 
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
+import { OTLPTraceExporter as OTLPGrpcExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
+import { OTLPTraceExporter as OTLPHttpExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
 import {
   SEMRESATTRS_SERVICE_NAME,
@@ -33,6 +34,8 @@ interface ObservabilityConfig {
   serviceVersion: string;
   environment: string;
   otlpEndpoint: string;
+  otlpHttpEndpoint: string;
+  otlpProtocol: 'grpc' | 'http';
   logLevel: DiagLogLevel;
   sampleRate: number;
 }
@@ -53,6 +56,14 @@ function loadObservabilityConfig(): ObservabilityConfig {
 
     // OTel Collector endpoint (gRPC)
     otlpEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-collector:4317',
+    otlpHttpEndpoint:
+      process.env.OTEL_EXPORTER_OTLP_HTTP_ENDPOINT ||
+      'http://otel-collector:4318/v1/traces',
+    otlpProtocol: (process.env.OTEL_EXPORTER_OTLP_PROTOCOL || 'grpc')
+      .toLowerCase()
+      .startsWith('http')
+      ? 'http'
+      : 'grpc',
 
     // Logging level for OpenTelemetry SDK (errors only by default)
     logLevel: process.env.OTEL_LOG_LEVEL === 'debug'
@@ -200,12 +211,15 @@ function initializeObservability(): NodeSDK | null {
     // Create resource with custom attributes
     const resource = new Resource(createResourceAttributes(config));
 
-    // Create OTLP exporter for gRPC
-    const traceExporter = new OTLPTraceExporter({
-      url: config.otlpEndpoint,
-      // No authentication for internal Docker network
-      // Add credentials here if needed for production
-    });
+    // Create OTLP exporter (HTTP fallback avoids gRPC transport issues)
+    const traceExporter =
+      config.otlpProtocol === 'http'
+        ? new OTLPHttpExporter({
+            url: config.otlpHttpEndpoint,
+          })
+        : new OTLPGrpcExporter({
+            url: config.otlpEndpoint,
+          });
 
     // Create batch span processor for efficient export
     const spanProcessor = new BatchSpanProcessor(traceExporter, {
@@ -229,6 +243,9 @@ function initializeObservability(): NodeSDK | null {
     console.log(`[Observability] Service: ${config.serviceName} v${config.serviceVersion}`);
     console.log(`[Observability] Environment: ${config.environment}`);
     console.log(`[Observability] OTLP Endpoint: ${config.otlpEndpoint}`);
+    if (config.otlpProtocol === 'http') {
+      console.log(`[Observability] OTLP HTTP Endpoint: ${config.otlpHttpEndpoint}`);
+    }
     console.log(`[Observability] Sample Rate: ${(config.sampleRate * 100).toFixed(0)}%`);
 
     return sdk;
