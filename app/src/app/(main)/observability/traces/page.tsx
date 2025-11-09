@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTracesQuery, useTraceQuery } from "~/hooks/useObservability";
 import { getTimeRangePreset, formatDuration, buildSpanTree } from "~/lib/observability";
@@ -11,6 +11,7 @@ import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { Separator } from "~/components/ui/separator";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,11 +33,11 @@ import {
   List,
   LayoutGrid
 } from "lucide-react";
-import type { Trace, Span, SpanStatus } from "~/types/observability";
+import type { Trace, Span, SpanStatus, SpanTreeNode } from "~/types/observability";
 
 export default function TracesPage() {
   const searchParams = useSearchParams();
-  const [timePreset, setTimePreset] = useState("last_1h");
+  const [timePreset, setTimePreset] = useState("last_24h");
   const [runTypeFilter, setRunTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -44,8 +45,11 @@ export default function TracesPage() {
   const [view, setView] = useState<"timeline" | "flamegraph" | "table">("timeline");
   const [showFilters, setShowFilters] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [timeRange, setTimeRange] = useState(() => getTimeRangePreset(timePreset));
 
-  const timeRange = getTimeRangePreset(timePreset);
+  useEffect(() => {
+    setTimeRange(getTimeRangePreset(timePreset));
+  }, [timePreset]);
 
   // Handle traceId from query parameters (when navigating from logs)
   useEffect(() => {
@@ -94,7 +98,12 @@ export default function TracesPage() {
     }
   };
 
-  const { data: tracesData, isLoading, refetch } = useTracesQuery(
+  const {
+    data: tracesData,
+    isLoading,
+    refetch,
+    error: tracesError,
+  } = useTracesQuery(
     {
       timeRange,
       runType: runTypeFilter && runTypeFilter !== "all" ? [runTypeFilter as "playwright" | "k6" | "job" | "monitor"] : undefined,
@@ -107,9 +116,17 @@ export default function TracesPage() {
 
   const { data: selectedTrace } = useTraceQuery(selectedTraceId);
 
-  const spanTree = useMemo(() => {
-    if (!selectedTrace?.spans) return [];
-    return buildSpanTree(selectedTrace.spans);
+  const authBlocked =
+    tracesError instanceof Error &&
+    /unauthenticated|unauthorized|api key/i.test(tracesError.message);
+
+  const [spanTree, setSpanTree] = useState<SpanTreeNode[]>([]);
+  useEffect(() => {
+    if (selectedTrace?.spans) {
+      setSpanTree(buildSpanTree(selectedTrace.spans));
+    } else {
+      setSpanTree([]);
+    }
   }, [selectedTrace]);
 
   return (
@@ -132,6 +149,14 @@ export default function TracesPage() {
           >
             <Filter className="h-4 w-4 mr-1" />
             Filters
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+          >
+            <RefreshCw className="h-4 w-4 mr-1" />
+            Refresh
           </Button>
           <Button
             variant={autoRefresh ? "default" : "outline"}
@@ -159,6 +184,21 @@ export default function TracesPage() {
           </DropdownMenu>
         </div>
       </div>
+
+      {tracesError && (
+        <div className="px-4 py-3 border-b bg-muted/20">
+          <Alert variant={authBlocked ? "default" : "destructive"}>
+            <AlertTitle>
+              {authBlocked ? "Observability authentication required" : "Failed to load traces"}
+            </AlertTitle>
+            <AlertDescription className="text-xs">
+              {authBlocked
+                ? "SigNoz rejected the request. Add SIGNOZ_API_KEY or set SIGNOZ_DISABLE_AUTH=true to view traces."
+                : (tracesError as Error).message}
+            </AlertDescription>
+          </Alert>
+        </div>
+      )}
 
       {/* Filters bar */}
       {showFilters && (

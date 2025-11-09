@@ -1,237 +1,98 @@
-# SuperCheck Observability Module
+# Supercheck Observability
 
-Complete, production-grade observability solution for SuperCheck platform with distributed tracing, logs, and metrics visualization.
-
-## 📋 Table of Contents
-
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Development](#development)
-- [API Reference](#api-reference)
-- [Troubleshooting](#troubleshooting)
-
-## 🎯 Overview
-
-The SuperCheck Observability module provides comprehensive monitoring and debugging capabilities for:
-
-- **Playwright browser tests** - Trace page navigations, user interactions, and network requests
-- **K6 performance tests** - Monitor load test execution, request latency, and throughput
-- **Jobs & Monitors** - Track scheduled job execution and monitoring checks
-- **Custom applications** - Integrate OpenTelemetry from any service
-
-## 🏗️ Architecture
-
-### System Overview
-
-```mermaid
-flowchart TB
-    subgraph Workers[SuperCheck Workers]
-        PW[Playwright Tests]
-        K6[K6 Performance Tests]
-        JOB[Scheduled Jobs]
-        MON[Monitors]
-    end
-
-    subgraph Backend[Observability Backend]
-        OTEL[OTel Collector<br/>:4317 gRPC<br/>:4318 HTTP]
-        CH[(ClickHouse<br/>Time-Series DB)]
-        QS[SigNoz Query Service<br/>:8080]
-    end
-
-    subgraph Frontend[Next.js UI]
-        API[API Routes<br/>/api/observability/*]
-        HOOKS[React Query Hooks]
-        PAGES[Pages<br/>Traces | Logs | Metrics]
-    end
-
-    PW --> OTEL
-    K6 --> OTEL
-    JOB --> OTEL
-    MON --> OTEL
-
-    OTEL --> CH
-    CH --> QS
-    QS --> API
-    API --> HOOKS
-    HOOKS --> PAGES
-
-    style Workers fill:#e1f5ff
-    style Backend fill:#fff4e1
-    style Frontend fill:#f0e1ff
-```
-
-### Data Flow
-
-```mermaid
-sequenceDiagram
-    participant Worker as SuperCheck Worker
-    participant OTel as OTel Collector
-    participant CH as ClickHouse
-    participant SigNoz as Query Service
-    participant API as Next.js API
-    participant UI as React UI
-
-    Worker->>OTel: Send spans/logs/metrics (gRPC)
-    OTel->>OTel: Process & batch data
-    OTel->>CH: Export to ClickHouse
-
-    UI->>API: Request traces
-    API->>SigNoz: Query traces
-    SigNoz->>CH: Read from ClickHouse
-    CH-->>SigNoz: Return data
-    SigNoz-->>API: Return traces
-    API-->>UI: JSON response
-    UI->>UI: Render visualization
-```
-
-### Component Architecture
-
-```
-app/
-├── src/
-│   ├── app/
-│   │   ├── (main)/
-│   │   │   └── observability/
-│   │   │       ├── traces/page.tsx         # Traces visualization
-│   │   │       ├── logs/page.tsx           # Logs explorer
-│   │   │       ├── metrics/page.tsx        # Metrics dashboard
-│   │   │       └── layout.tsx
-│   │   └── api/
-│   │       └── observability/
-│   │           ├── traces/
-│   │           │   ├── search/route.ts     # Search traces
-│   │           │   └── [traceId]/route.ts  # Get trace details
-│   │           ├── logs/
-│   │           │   └── search/route.ts     # Search logs
-│   │           └── metrics/
-│   │               └── timeseries/route.ts # Query metrics
-│   ├── components/
-│   │   └── observability/                  # (Future enhancements)
-│   ├── hooks/
-│   │   └── useObservability.ts             # React Query hooks
-│   ├── lib/
-│   │   └── observability/
-│   │       ├── client.ts                   # API client & utilities
-│   │       ├── mock-data.ts                # Mock data for dev/testing
-│   │       └── index.ts
-│   ├── types/
-│   │   └── observability.ts                # TypeScript types
-│   └── db/
-│       └── schema/
-│           └── observability.ts            # Drizzle ORM schema
-│
-observability/
-├── docker-compose.observability.yaml       # Docker services
-├── otel-collector-config.yaml              # OTel configuration
-└── clickhouse/
-    └── init/
-        └── 01_init_schema.sql              # ClickHouse schema
-```
-
-## ✨ Features
-
-### Traces
-- ✅ Distributed trace visualization
-- ✅ Span timeline with service grouping
-- ✅ Trace search with filters (time, run type, status)
-- ✅ Span details with attributes and events
-- ✅ Critical path analysis
-- ✅ Correlation with Playwright steps and K6 scenarios
-- ⏳ Flamegraph view (planned enhancement)
-- ⏳ Trace comparison (planned enhancement)
-
-### Logs
-- ✅ Real-time log streaming
-- ✅ Severity-based filtering
-- ✅ Full-text search
-- ✅ Log-to-trace correlation
-- ✅ Virtualized table for performance
-- ⏳ Log pattern detection (planned enhancement)
-
-### Metrics
-- ✅ Time-series visualization
-- ✅ Service-level metrics (latency, throughput, errors)
-- ✅ Endpoint-level breakdown
-- ✅ Custom metric queries
-- ⏳ uPlot charts integration (planned enhancement)
-- ⏳ Alerting rules (planned enhancement)
-
-### Platform Integration
-- ✅ SuperCheck attribute schema (org, project, run context)
-- ✅ React Query for efficient data fetching
-- ✅ Dark mode support (shadcn/ui)
-- ✅ Mobile-responsive design
-- ✅ TypeScript throughout
+Integrated observability stack using **ClickHouse + OpenTelemetry** for distributed tracing, logs, and metrics.
 
 ## 🚀 Quick Start
 
-### Prerequisites
-
-- Docker & Docker Compose
-- Node.js 20+
-- PostgreSQL (for SuperCheck metadata)
-
-### 1. Start Observability Backend
+Observability is now integrated into the main Supercheck docker-compose.yml!
 
 ```bash
-cd /path/to/supercheck
+# Start entire Supercheck stack (includes observability)
+docker-compose up -d
 
-# Start ClickHouse, OTel Collector, and SigNoz Query Service
-docker compose -f docker-compose.observability.yaml up -d
+# Start the observability stack (uses official SigNoz setup)
+docker compose up -d
 
-# Verify services are running
-docker compose -f docker-compose.observability.yaml ps
+# Verify all services are healthy
+docker compose ps
 ```
 
-Expected output:
+**Expected output:**
+- ✅ `signoz-clickhouse` - healthy
+- ✅ `schema-migrator-sync` - exited (completed successfully)
+- ✅ `signoz` - healthy (SigNoz query service)
+- ✅ `signoz-otel-collector` - running
+- ✅ `zookeeper-1` - healthy
+
+**Automatic Schema Initialization**: All required ClickHouse tables are created automatically by SigNoz schema-migrator. No manual steps needed!
+
+## 📦 What's Included
+
+### Services
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| **ClickHouse** | 8123 (HTTP), 9000 (Native) | Time-series database for storing telemetry |
+| **SigNoz Query Service** | 8080 | Query API for traces/logs/metrics |
+| **OTel Collector** | 4317 (gRPC), 4318 (HTTP) | Receives and processes telemetry data |
+
+### Databases & Tables
+
+Automatically created by SigNoz schema-migrator on startup:
+
+**signoz_traces**
+- `signoz_index_v3`, `signoz_spans`, `signoz_error_index_v2` - Local tables
+- `distributed_*` - Distributed tables for cluster compatibility
+- `tag_attributes_v2`, `span_attributes_keys` - Metadata tables
+
+**signoz_metrics**
+- `samples_v4`, `time_series_v4`, `metadata` - Core metrics storage
+- `distributed_*` - Distributed tables for single-node cluster
+
+**signoz_logs**
+- `logs`, `tag_attributes_v2` - Log entries with trace correlation
+- `distributed_*` - Distributed tables
+
+**signoz_meter**
+- `samples_v4`, `time_series_v4` - Usage metrics
+- `distributed_*` - Distributed tables
+
+**Data Retention**: 72 hours (configured automatically by schema-migrator)
+
+## 🏗️ Architecture
+
 ```
-NAME                        STATUS    PORTS
-supercheck-clickhouse       Up        0.0.0.0:8123->8123/tcp, 0.0.0.0:9000->9000/tcp
-supercheck-otel-collector   Up        0.0.0.0:4317-4318->4317-4318/tcp
-supercheck-query-service    Up        0.0.0.0:8080->8080/tcp
+SuperCheck App/Worker
+         ↓
+  OTel Collector (4318)
+         ↓
+    ClickHouse
+         ↓
+  SigNoz Query Service
+         ↓
+   Next.js API Routes
+         ↓
+    React UI (shadcn)
 ```
 
-### 2. Configure Environment
+## ⚙️ Configuration
 
-Add to your `.env` file:
+### Environment Variables
+
+Add to your `.env`:
 
 ```bash
-# SigNoz Query Service URL
+# SigNoz Query Service
 SIGNOZ_URL=http://localhost:8080
 
-# OTel Collector endpoints (for workers)
+# OTel Collector (for sending telemetry)
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 ```
 
-### 3. Run Database Migrations
+### OpenTelemetry Attributes
 
-```bash
-cd app
-
-# Generate and run migrations for observability schema
-npm run db:generate
-npm run db:migrate
-```
-
-### 4. Start the Application
-
-```bash
-cd app
-npm run dev
-```
-
-Navigate to: **http://localhost:3000/observability/traces**
-
-## ⚙️ Configuration
-
-### OTel Attribute Schema
-
-Attach these attributes to your root spans:
+Attach these to your spans for proper correlation:
 
 ```typescript
 {
@@ -239,268 +100,207 @@ Attach these attributes to your root spans:
   "sc.project_id": "project-uuid",
   "sc.run_id": "run-uuid",
   "sc.run_type": "playwright" | "k6" | "job" | "monitor",
-  "sc.test_id": "test-uuid",
   "sc.test_name": "Login Flow Test",
-  "sc.job_id": "job-uuid",
-  "sc.job_name": "Nightly Regression",
-  "sc.monitor_id": "monitor-uuid",
-  "sc.monitor_type": "http_request" | "website" | "ping_host",
-  "sc.worker_id": "worker-001",
-  "sc.region": "us-east-1",
-  "sc.artifacts_url": "https://..."
+  "sc.worker_id": "worker-001"
 }
 ```
 
-### Instrumenting Playwright Tests
+## 🧪 Testing
 
-```typescript
-import { trace } from '@opentelemetry/api';
+### Health Checks
 
-const tracer = trace.getTracer('supercheck-worker');
-
-const span = tracer.startSpan('playwright.test.run', {
-  attributes: {
-    'sc.org_id': orgId,
-    'sc.project_id': projectId,
-    'sc.run_id': runId,
-    'sc.run_type': 'playwright',
-    'sc.test_name': testName,
-  }
-});
-
-// Your test code here
-await page.goto('https://example.com');
-
-span.end();
-```
-
-### ClickHouse Retention
-
-Default retention: **72 hours**
-
-To modify, edit `observability/clickhouse/init/01_init_schema.sql`:
-
-```sql
-TTL toDateTime(timestamp) + INTERVAL 168 HOUR  -- 7 days
-```
-
-## 📖 Usage
-
-### Searching Traces
-
-**By time range:**
-```
-1. Navigate to /observability/traces
-2. Select time range (last 1h, 6h, 24h, 7d)
-3. View traces in timeline
-```
-
-**By run type:**
-```
-Filter: Run Type = "Playwright"
-Shows: All Playwright test executions
-```
-
-**By status:**
-```
-Filter: Status = "Error"
-Shows: Only failed traces
-```
-
-### Viewing Trace Details
-
-Click any trace card to view:
-- Span timeline with service grouping
-- Individual span details
-- Attributes and metadata
-- Correlated logs
-
-### Searching Logs
-
-```
-1. Navigate to /observability/logs
-2. Apply filters:
-   - Time range
-   - Severity level
-   - Service name
-3. Use search box for full-text search
-```
-
-Click a log entry's trace ID to jump to the full trace.
-
-### Metrics Dashboard
-
-```
-1. Navigate to /observability/metrics
-2. View aggregated metrics:
-   - Average latency
-   - P95/P99 latency
-   - Error rate
-   - Throughput
-3. Drill down by service
-```
-
-## 🛠️ Development
-
-### Running with Mock Data
-
-For development without the backend:
-
-```typescript
-// In your component
-import { mockTraceSearchResponse } from '~/lib/observability/mock-data';
-
-// Use mock data instead of API call
-const traces = mockTraceSearchResponse.data;
-```
-
-### Adding Custom Visualizations
-
-```typescript
-// Create component in components/observability/
-export function CustomChart({ data }: { data: TimeSeries[] }) {
-  // Your visualization logic
-}
-```
-
-### Testing
+**Verify all services are responding:**
 
 ```bash
-# Run type checks
-npm run type-check
+# ClickHouse
+curl http://localhost:8123/ping
 
-# Build for production
-npm run build
+# SigNoz Query Service
+curl http://localhost:8080/api/v1/version
+
+# OTel Collector
+curl http://localhost:13133/
 ```
 
-## 📡 API Reference
+### Send Test Data
 
-### GET /api/observability/traces/search
+**Send a test trace to verify the pipeline:**
 
-Search for traces.
+```bash
+# Send test trace via OTel Collector
+curl -X POST http://localhost:4318/v1/traces \
+  -H "Content-Type: application/json" \
+  -d '{
+    "resourceSpans": [{
+      "resource": {
+        "attributes": [{
+          "key": "service.name",
+          "value": {"stringValue": "test-service"}
+        }]
+      },
+      "scopeSpans": [{
+        "spans": [{
+          "traceId": "5b8efff798038103d269b633813fc60c",
+          "spanId": "eee19b7ec3c1b174",
+          "name": "test-span",
+          "startTimeUnixNano": "1544712660000000000",
+          "endTimeUnixNano": "1544712661000000000"
+        }]
+      }]
+    }]
+  }'
 
-**Query Parameters:**
-- `start` (ISO 8601): Start time
-- `end` (ISO 8601): End time
-- `runType` (string): Filter by run type
-- `status` (number): Filter by status (1=OK, 2=ERROR)
-- `limit` (number): Max results (default: 50)
-- `offset` (number): Pagination offset
-
-**Response:**
-```json
-{
-  "data": [...],
-  "total": 150,
-  "limit": 50,
-  "offset": 0,
-  "hasMore": true,
-  "services": ["worker", "api"],
-  "runTypes": ["playwright", "k6"]
-}
+# Verify data in ClickHouse
+docker exec signoz-clickhouse clickhouse-client --query \
+  "SELECT count(*) FROM signoz_traces.signoz_index_v3"
 ```
 
-### GET /api/observability/traces/:traceId
+## 🔧 Troubleshooting
 
-Get trace details with all spans.
+### OTel Collector shows "unhealthy"
 
-**Response:**
-```json
-{
-  "traceId": "abc123",
-  "spans": [...],
-  "duration": 5000000000,
-  "spanCount": 12
-}
+**This is a known Docker health check quirk - ignore it if:**
+- Health endpoint responds: `curl http://localhost:13133/`
+- Logs show: "Everything is ready. Begin running and processing data."
+- Collector is accepting data on ports 4317/4318
+
+### Schema migrator fails or missing tables
+
+```bash
+# Check schema-migrator logs
+docker logs schema-migrator-sync
+
+# List all tables
+docker exec signoz-clickhouse clickhouse-client --query \
+  "SELECT database, name FROM system.tables WHERE database IN ('signoz_traces', 'signoz_metrics', 'signoz_logs') ORDER BY database, name"
+
+# Verify cluster configuration
+docker exec signoz-clickhouse clickhouse-client --query \
+  "SELECT cluster, shard_num, replica_num FROM system.clusters WHERE cluster = 'cluster'"
 ```
-
-### GET /api/observability/logs/search
-
-Search logs.
-
-**Query Parameters:**
-- `start`, `end`: Time range
-- `severityLevel`: Filter by log level
-- `traceId`: Get logs for specific trace
-- `search`: Full-text search
-
-### GET /api/observability/metrics/timeseries
-
-Query time-series metrics.
-
-**Query Parameters:**
-- `metricName`: Metric to query
-- `aggregation`: "avg" | "p95" | "p99"
-- `interval`: "1m" | "5m" | "1h"
-
-## 🐛 Troubleshooting
 
 ### No traces appearing
 
-1. **Check OTel Collector**
-   ```bash
-   docker logs supercheck-otel-collector
-   ```
+1. Check OTel Collector logs: `docker logs signoz-otel-collector --tail 50`
+2. Verify `OTEL_EXPORTER_OTLP_ENDPOINT` is set correctly
+3. Ensure services can reach the collector (network connectivity)
+4. Check ClickHouse has data (see "Send Test Data" above)
 
-2. **Verify ClickHouse connection**
-   ```bash
-   docker exec -it supercheck-clickhouse clickhouse-client
-   SELECT count() FROM signoz.signoz_traces;
-   ```
+### Reset everything
 
-3. **Check worker is sending data**
-   - Ensure `OTEL_EXPORTER_OTLP_ENDPOINT` is set
-   - Verify network connectivity to collector
+```bash
+# Navigate to docker directory
+cd observability/deploy/docker
 
-### Slow query performance
+# Stop and remove all containers + volumes
+docker compose down -v
 
-1. **Increase ClickHouse memory**
+# Start fresh (schema-migrator will create all tables automatically)
+docker compose up -d
+```
+
+## 📊 Usage in SuperCheck
+
+### Next.js API Routes
+
+```typescript
+// app/src/app/api/observability/traces/search/route.ts
+import { signozClient } from '~/lib/observability';
+
+export async function GET(request: Request) {
+  const traces = await signozClient.searchTraces({
+    start: new Date(Date.now() - 3600000),
+    end: new Date(),
+    limit: 50
+  });
+
+  return Response.json(traces);
+}
+```
+
+### React Components
+
+```typescript
+// app/src/components/observability/TracesList.tsx
+import { useTraces } from '~/hooks/useObservability';
+
+export function TracesList() {
+  const { data, isLoading } = useTraces({
+    timeRange: '1h',
+    runType: 'playwright'
+  });
+
+  return <div>...</div>;
+}
+```
+
+## 📁 File Structure
+
+```
+observability/
+├── deploy/
+│   ├── docker/
+│   │   ├── docker-compose.yaml        # Main SigNoz stack
+│   │   ├── otel-collector-config.yaml # OTel configuration
+│   │   └── clickhouse-setup/          # ClickHouse data directory
+│   ├── common/
+│   │   ├── clickhouse/                # ClickHouse configs
+│   │   │   ├── config.xml
+│   │   │   ├── users.xml
+│   │   │   ├── cluster.xml
+│   │   │   └── user_scripts/
+│   │   └── signoz/                    # SigNoz configs
+│   │       ├── prometheus.yml
+│   │       └── otel-collector-opamp-config.yaml
+│   └── install.sh                     # Official SigNoz installer
+├── DEPLOYMENT_GUIDE.md                # Production deployment guide
+└── README.md                          # This file
+
+app/src/
+├── app/api/observability/             # API routes
+├── app/(main)/observability/          # UI pages
+├── hooks/useObservability.ts          # React Query hooks
+├── lib/observability/client.ts        # SigNoz client
+└── types/observability.ts             # TypeScript types
+```
+
+## 🎯 Production Deployment
+
+For production with ClickHouse Cloud:
+
+1. **Create ClickHouse Cloud instance**
+   - Sign up at https://clickhouse.cloud/
+   - Note connection details (host, port, password)
+
+2. **Update docker-compose**
    ```yaml
-   # docker-compose.observability.yaml
-   clickhouse:
-     environment:
-       - MAX_MEMORY_USAGE=8000000000  # 8GB
+   # Comment out clickhouse and schema-init services
+   # Update connection strings to point to cloud
    ```
 
-2. **Optimize time range**
-   - Use shorter time ranges
-   - Add more specific filters
+3. **Security**
+   - Enable authentication: `SIGNOZ_DISABLE_AUTH=false`
+   - Use internal Docker networks
+   - Don't expose ClickHouse/OTel ports publicly
+   - Use TLS for OTel collector
 
-### API errors
+See official SigNoz docs for clustered deployments.
 
-1. **Check SigNoz Query Service**
-   ```bash
-   curl http://localhost:8080/api/v1/version
-   ```
+## 🔍 Key Features
 
-2. **Verify Next.js environment**
-   ```bash
-   echo $SIGNOZ_URL
-   # Should output: http://localhost:8080
-   ```
+- ✅ **Zero Configuration** - Tables created automatically
+- ✅ **Fast Queries** - Optimized ClickHouse indexes
+- ✅ **Trace Correlation** - Link traces → logs → metrics
+- ✅ **Custom Attributes** - SuperCheck-specific metadata
+- ✅ **TTL Management** - Automatic data cleanup after 72h
+- ✅ **Single-Node Ready** - Works out-of-the-box for dev/small deployments
 
 ## 📚 Resources
 
-- [OpenTelemetry Documentation](https://opentelemetry.io/docs/)
-- [SigNoz Documentation](https://signoz.io/docs/)
-- [ClickHouse Documentation](https://clickhouse.com/docs/)
-- [TanStack Query](https://tanstack.com/query/latest)
-
-## 🤝 Contributing
-
-Future enhancements planned:
-- [ ] Flamegraph visualization with D3/visx
-- [ ] Trace comparison tool
-- [ ] Custom dashboard builder
-- [ ] Alert rule editor
-- [ ] Service dependency graph
-- [ ] Anomaly detection
-- [ ] Export to Jaeger format
-
-## 📄 License
-
-MIT License - see SuperCheck repository for details.
+- [OpenTelemetry Docs](https://opentelemetry.io/docs/)
+- [SigNoz Docs](https://signoz.io/docs/)
+- [ClickHouse Docs](https://clickhouse.com/docs/)
 
 ---
 
-**Built with:** Next.js 15, TypeScript, TanStack Query, shadcn/ui, OpenTelemetry, SigNoz, ClickHouse
+**Stack**: SigNoz 0.100.1 | ClickHouse 25.5.6 | OTel Collector 0.129.8

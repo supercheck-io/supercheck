@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useMetricsQuery } from "~/hooks/useObservability";
 import { getTimeRangePreset } from "~/lib/observability";
 import { Badge } from "~/components/ui/badge";
@@ -34,8 +34,11 @@ export default function MetricsPage() {
   const [showFilters, setShowFilters] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
+  const [timeRange, setTimeRange] = useState(() => getTimeRangePreset(timePreset));
 
-  const timeRange = getTimeRangePreset(timePreset);
+  useEffect(() => {
+    setTimeRange(getTimeRangePreset(timePreset));
+  }, [timePreset]);
 
   const handleExport = (format: 'json' | 'csv') => {
     const timestamp = new Date().toISOString().split('T')[0];

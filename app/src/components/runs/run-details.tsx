@@ -40,6 +40,13 @@ import { K6Logo } from "@/components/logo/k6-logo";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { Home } from "lucide-react";
 import { PerformanceTestReport } from "@/components/playground/performance-test-report";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import { RunObservabilityPanel } from "@/components/observability/run-observability-panel";
 import type { K6RunStatus } from "@/lib/k6-runs";
 
 // Type based on the actual API response from /api/runs/[runId]
@@ -81,6 +88,9 @@ export function RunDetails({
   const isPerformanceRun = run.jobType === "k6";
   const [headerLocation, setHeaderLocation] = useState<string | null>(
     run.location ?? null
+  );
+  const [activeTab, setActiveTab] = useState<"report" | "observability">(
+    "report"
   );
 
   // Helper to validate status is one of the allowed values
@@ -494,35 +504,65 @@ export function RunDetails({
         </div>
       </div>
 
-      {isPerformanceRun ? (
-        <div className="bg-card rounded-lg border overflow-hidden">
-          <div className="h-[calc(100vh-280px)]">
-            <PerformanceTestReport
-              runId={run.id}
-              onStatusChange={(status: K6RunStatus, payload) => {
-                handleStatusUpdate(status, payload?.reportUrl, payload?.duration);
-                if (payload?.location && payload.location !== headerLocation) {
-                  setHeaderLocation(payload.location);
-                }
-              }}
-            />
+      <div className="bg-card rounded-lg border overflow-hidden">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) =>
+            setActiveTab(value as "report" | "observability")
+          }
+          className="w-full"
+        >
+          <div className="flex items-center justify-between border-b bg-muted/30 px-4">
+            <TabsList className="h-9">
+              <TabsTrigger value="report" className="px-4">
+                Test Report
+              </TabsTrigger>
+              <TabsTrigger value="observability" className="px-4">
+                Observability
+              </TabsTrigger>
+            </TabsList>
           </div>
-        </div>
-      ) : (
-        <div className="bg-card rounded-lg border overflow-hidden">
-          <div className="w-full h-full">
-            <ReportViewer
-              reportUrl={reportUrl}
-              isRunning={currentStatus === "running"}
-              backToLabel="Back to Runs"
-              backToUrl="/runs"
-              containerClassName="w-full h-[calc(100vh-270px)] relative"
-              iframeClassName="w-full h-full border-0 rounded-lg"
-              hideEmptyMessage={true}
-            />
-          </div>
-        </div>
-      )}
+
+          <TabsContent value="report" className="m-0">
+            {isPerformanceRun ? (
+              <div className="h-[calc(100vh-300px)]">
+                <PerformanceTestReport
+                  runId={run.id}
+                  onStatusChange={(status: K6RunStatus, payload) => {
+                    handleStatusUpdate(
+                      status,
+                      payload?.reportUrl,
+                      payload?.duration
+                    );
+                    if (
+                      payload?.location &&
+                      payload.location !== headerLocation
+                    ) {
+                      setHeaderLocation(payload.location);
+                    }
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="w-full h-full">
+                <ReportViewer
+                  reportUrl={reportUrl}
+                  isRunning={currentStatus === "running"}
+                  backToLabel="Back to Runs"
+                  backToUrl="/runs"
+                  containerClassName="w-full h-[calc(100vh-290px)] relative"
+                  iframeClassName="w-full h-full border-0 rounded-lg"
+                  hideEmptyMessage={true}
+                />
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="observability" className="m-0 p-4">
+            <RunObservabilityPanel runId={run.id} />
+          </TabsContent>
+        </Tabs>
+      </div>
 
       {/* Delete confirmation dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
