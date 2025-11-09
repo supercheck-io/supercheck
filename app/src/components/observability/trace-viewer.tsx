@@ -49,10 +49,15 @@ export function TraceViewer({
 
   if (spans.length === 0) {
     return (
-      <Card className={className}>
-        <div className="p-8 text-center">
-          <Activity className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-          <p className="text-sm text-muted-foreground">No trace data available</p>
+      <Card className={`${className} border-dashed border-border/60 bg-muted/20`}>
+        <div className="p-10 text-center">
+          <div className="flex justify-center mb-4">
+            <div className="p-3 bg-blue-500/10 rounded-lg">
+              <Activity className="h-6 w-6 text-blue-500" />
+            </div>
+          </div>
+          <p className="font-medium text-sm mb-1">No trace data captured</p>
+          <p className="text-xs text-muted-foreground">Trace spans will appear here when available</p>
         </div>
       </Card>
     );
