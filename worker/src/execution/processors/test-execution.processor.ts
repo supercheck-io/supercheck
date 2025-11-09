@@ -4,6 +4,7 @@ import { Logger } from '@nestjs/common';
 import { TEST_EXECUTION_QUEUE } from '../constants';
 import { ExecutionService } from '../services/execution.service';
 import { TestExecutionTask, TestResult } from '../interfaces';
+import { createSpanWithContext } from '../../observability/trace-helpers';
 
 @Processor(TEST_EXECUTION_QUEUE)
 export class TestExecutionProcessor extends WorkerHost {
@@ -51,32 +52,45 @@ export class TestExecutionProcessor extends WorkerHost {
 
   async process(job: Job<TestExecutionTask>): Promise<TestResult> {
     const testId = job.data.testId;
-    const startTime = new Date();
-    // Removed log - only log completion summary
+    const spanContext = {
+      runType: 'test' as const,
+      runId: job.data.runId ?? job.id?.toString(),
+      testId,
+      projectId: job.data.projectId,
+      organizationId: job.data.organizationId,
+    };
 
-    try {
-      await job.updateProgress(10);
+    return createSpanWithContext(
+      'worker.test-execution',
+      spanContext,
+      async () => {
+        const startTime = new Date();
 
-      // Delegate the actual execution to the service
-      const result = await this.executionService.runSingleTest(job.data);
+        try {
+          await job.updateProgress(10);
 
-      // Calculate execution duration
-      const endTime = new Date();
-      const durationMs = endTime.getTime() - startTime.getTime();
-      const durationSeconds = Math.floor(durationMs / 1000);
+          // Delegate the actual execution to the service
+          const result = await this.executionService.runSingleTest(job.data);
 
-      await job.updateProgress(100);
-      // Logging moved to onCompleted event handler
+          // Calculate execution duration
+          const endTime = new Date();
+          const durationMs = endTime.getTime() - startTime.getTime();
+          const durationSeconds = Math.floor(durationMs / 1000);
 
-      // The result object (TestResult) from the service is returned
-      return result;
-    } catch (error) {
-      this.logger.error(
-        `[${testId}] Test execution job ID: ${job.id} failed. Error: ${(error as Error).message}`,
-        (error as Error).stack,
-      );
-      await job.updateProgress(100);
-      throw error instanceof Error ? error : new Error(String(error));
-    }
+          await job.updateProgress(100);
+          // Logging moved to onCompleted event handler
+
+          // The result object (TestResult) from the service is returned
+          return result;
+        } catch (error) {
+          this.logger.error(
+            `[${testId}] Test execution job ID: ${job.id} failed. Error: ${(error as Error).message}`,
+            (error as Error).stack,
+          );
+          await job.updateProgress(100);
+          throw error instanceof Error ? error : new Error(String(error));
+        }
+      },
+    );
   }
 }

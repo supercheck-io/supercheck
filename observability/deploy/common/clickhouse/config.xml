@@ -198,6 +198,39 @@
       -->
     <!-- <listen_reuse_port>0</listen_reuse_port> -->
 
+    <!--
+      Enable embedded ClickHouse Keeper so that ON CLUSTER operations work without a standalone Zookeeper
+      instance. The schema migrator uses distributed DDL statements and expects keeper availability even
+      in single-node setups.
+    -->
+    <keeper_server>
+        <tcp_port>9181</tcp_port>
+        <server_id>1</server_id>
+        <log_storage_path>/var/lib/clickhouse/coordination/log</log_storage_path>
+        <snapshot_storage_path>/var/lib/clickhouse/coordination/snapshots</snapshot_storage_path>
+        <coordination_settings>
+            <raft_logs_level>information</raft_logs_level>
+        </coordination_settings>
+        <raft_configuration>
+            <server>
+                <id>1</id>
+                <hostname>localhost</hostname>
+                <port>9444</port>
+            </server>
+        </raft_configuration>
+    </keeper_server>
+
+    <zookeeper>
+        <node>
+            <host>localhost</host>
+            <port>9181</port>
+        </node>
+    </zookeeper>
+
+    <distributed_ddl>
+        <path>/clickhouse/task_queue/ddl</path>
+    </distributed_ddl>
+
     <!-- <listen_backlog>4096</listen_backlog> -->
 
     <max_connections>4096</max_connections>
