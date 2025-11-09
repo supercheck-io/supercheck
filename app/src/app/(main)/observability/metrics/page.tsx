@@ -1,12 +1,10 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { useMetricsQuery } from "~/hooks/useObservability";
-import { getTimeRangePreset } from "~/lib/observability";
+import { useState, useMemo } from "react";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,11 +32,6 @@ export default function MetricsPage() {
   const [showFilters, setShowFilters] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
-  const [timeRange, setTimeRange] = useState(() => getTimeRangePreset(timePreset));
-
-  useEffect(() => {
-    setTimeRange(getTimeRangePreset(timePreset));
-  }, [timePreset]);
 
   const handleExport = (format: 'json' | 'csv') => {
     const timestamp = new Date().toISOString().split('T')[0];
@@ -104,15 +97,6 @@ export default function MetricsPage() {
     }
   };
 
-  const { data: _metricsData, isLoading: _isLoading } = useMetricsQuery(
-    {
-      timeRange,
-      runType: runTypeFilter !== "all" ? [runTypeFilter as "playwright" | "k6" | "job" | "monitor"] : undefined,
-      serviceName: serviceFilter !== "all" ? serviceFilter : undefined,
-      interval: "1m",
-    },
-    { refetchInterval: autoRefresh ? 10000 : undefined }
-  );
 
   // Mock aggregate metrics for display (would come from API in production)
   const aggregateMetrics = useMemo(() => ({
@@ -438,7 +422,7 @@ function SmallMetricCard({ label, value }: { label: string; value: string | numb
   );
 }
 
-function ServiceRow({ service, rank }: { service: any; rank: number }) {
+function ServiceRow({ service, rank }: { service: { name: string; requests: number; p95: number; p99: number; errors: number; errorRate: number; trend: number }; rank: number }) {
   return (
     <div className="px-4 py-2 flex items-center gap-4 hover:bg-accent/30 text-xs">
       <div className="w-6 text-muted-foreground font-semibold">#{rank}</div>

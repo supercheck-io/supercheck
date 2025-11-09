@@ -6,16 +6,19 @@
 import { NextResponse, NextRequest } from "next/server";
 import { TraceFiltersSchema } from "~/types/observability";
 import { searchTraces } from "~/lib/observability";
-import { requireAuth } from "~/lib/rbac/middleware";
+import { requireProjectContext } from "@/lib/project-context";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
     // Authentication and authorization
-    const session = await requireAuth();
-    const organizationId = session.user.organizationId || session.user.activeOrganizationId;
-    const projectId = req.nextUrl.searchParams.get("projectId") || undefined;
+    const { project, organizationId } = await requireProjectContext();
+    const requestedProjectId = req.nextUrl.searchParams.get("projectId");
+    const projectId =
+      requestedProjectId && requestedProjectId === project.id
+        ? requestedProjectId
+        : project.id;
 
     // Parse query parameters
     const searchParams = req.nextUrl.searchParams;

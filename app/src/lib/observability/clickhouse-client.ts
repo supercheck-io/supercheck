@@ -10,11 +10,13 @@ import type {
   LogFilters,
   TraceWithSpans,
   Span,
+  SpanStatus,
   MetricFilters,
   MetricQueryResponse,
   ServiceMetrics,
   EndpointMetrics,
   RunType,
+  LogLevel,
 } from "~/types/observability";
 
 const CLICKHOUSE_URL = process.env.CLICKHOUSE_URL || "http://localhost:8123";
@@ -27,6 +29,12 @@ const SPAN_TABLE = "signoz_traces.signoz_index_v3"; // Use same table for both t
 const LOG_TABLE = "signoz_logs.distributed_logs_v2";
 
 type TimeRange = { start: string; end: string };
+
+const isRunType = (value: unknown): value is RunType =>
+  value === "playwright" ||
+  value === "k6" ||
+  value === "job" ||
+  value === "monitor";
 
 function escapeLiteral(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
@@ -269,11 +277,14 @@ export async function searchTracesClickHouse(
 
   const traces = rows.map((row) => {
     if (row.serviceName) serviceSet.add(row.serviceName);
-    if (row.scRunType) runTypeSet.add(row.scRunType);
+    if (row.scRunType && isRunType(row.scRunType)) {
+      runTypeSet.add(row.scRunType);
+    }
 
     const startedAt = Number(row.startedAtMs);
     const duration = Number(row.duration);
     const endedAt = startedAt + duration / 1_000_000;
+    const scRunType = row.scRunType && isRunType(row.scRunType) ? row.scRunType : undefined;
 
     return {
       traceId: row.traceId,
@@ -282,10 +293,10 @@ export async function searchTracesClickHouse(
       duration,
       startedAt: new Date(startedAt).toISOString(),
       endedAt: new Date(endedAt).toISOString(),
-      status: row.status,
+      status: Number(row.status) as SpanStatus,
       spanCount: 1,
       errorCount: row.errorCount,
-      scRunType: row.scRunType || undefined,
+      scRunType,
       scRunId: row.scRunId || undefined,
       scTestName: row.scTestName || undefined,
       attributes: {},
@@ -387,6 +398,12 @@ export async function getTraceWithSpansClickHouse(
   const endMs = Math.max(...spans.map((span) => new Date(span.endTime).getTime()));
   const errorCount = spans.filter((span) => span.statusCode === 2).length;
 
+  const scRunTypeAttr = rootSpan.attributes["sc.run_type"];
+  const scRunTypeValue =
+    typeof scRunTypeAttr === "string" && isRunType(scRunTypeAttr)
+      ? scRunTypeAttr
+      : undefined;
+
   return {
     traceId,
     rootSpanId: rootSpan.spanId,
@@ -398,7 +415,7 @@ export async function getTraceWithSpansClickHouse(
     spanCount: spans.length,
     errorCount,
     scRunId: rootSpan.attributes["sc.run_id"] as string | undefined,
-    scRunType: rootSpan.attributes["sc.run_type"] as string | undefined,
+    scRunType: scRunTypeValue,
     scTestName: rootSpan.attributes["sc.test_name"] as string | undefined,
     attributes: rootSpan.attributes,
     spans,
@@ -523,6 +540,16 @@ export async function searchLogsClickHouse(
     const timestampNs = BigInt(row.timestamp);
     const observedNs = BigInt(row.observedTimestamp);
     const resourceAttributes = row.resources || {};
+    const severityText = (row.severityText || "INFO").toUpperCase();
+    const severityLevel =
+      severityText === "TRACE" ||
+      severityText === "DEBUG" ||
+      severityText === "INFO" ||
+      severityText === "WARN" ||
+      severityText === "ERROR" ||
+      severityText === "FATAL"
+        ? (severityText as LogLevel)
+        : ("INFO" as LogLevel);
 
     return {
       timestamp: new Date(Number(timestampNs / BigInt(1_000_000))).toISOString(),
@@ -531,10 +558,10 @@ export async function searchLogsClickHouse(
       ).toISOString(),
       traceId: row.traceId,
       spanId: row.spanId,
-      severityText: row.severityText,
+      severityText: severityLevel,
       severityNumber: row.severityNumber,
       body: row.body,
-      level: row.severityText.toLowerCase(),
+      level: severityLevel.toLowerCase(),
       message: row.body,
       serviceName: (resourceAttributes["service.name"] as string) || "",
       attributes: row.attributes || {},
