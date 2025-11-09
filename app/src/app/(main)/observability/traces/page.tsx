@@ -4,12 +4,11 @@ import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { useTracesQuery, useTraceQuery } from "~/hooks/useObservability";
 import { getTimeRangePreset, formatDuration, buildSpanTree } from "~/lib/observability";
-import { Card } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "~/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { Separator } from "~/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -21,15 +20,12 @@ import {
 import {
   Activity,
   Clock,
-  AlertCircle,
-  CheckCircle2,
   Search,
   Filter,
   RefreshCw,
   Download,
   ChevronRight,
   ChevronDown,
-  Flame,
   List,
   LayoutGrid
 } from "lucide-react";
@@ -116,14 +112,6 @@ export default function TracesPage() {
 
   const { data: selectedTrace } = useTraceQuery(selectedTraceId);
 
-  const [spanTree, setSpanTree] = useState<SpanTreeNode[]>([]);
-  useEffect(() => {
-    if (selectedTrace?.spans) {
-      setSpanTree(buildSpanTree(selectedTrace.spans));
-    } else {
-      setSpanTree([]);
-    }
-  }, [selectedTrace]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
@@ -340,7 +328,7 @@ export default function TracesPage() {
                     </div>
                   </div>
 
-                  <Tabs value={view} onValueChange={(v) => setView(v as any)} className="w-auto">
+                  <Tabs value={view} onValueChange={(v) => setView(v as "timeline" | "flamegraph" | "table")} className="w-auto">
                     <TabsList className="h-8">
                       <TabsTrigger value="timeline" className="text-xs h-6">Timeline</TabsTrigger>
                       <TabsTrigger value="flamegraph" className="text-xs h-6">Flamegraph</TabsTrigger>
@@ -420,8 +408,8 @@ function TraceTimeline({ spans }: { spans: Span[] }) {
 
   const spanTree = useMemo(() => buildSpanTree(spans), [spans]);
   const flatSpans = useMemo(() => {
-    const flat: { span: any; depth: number }[] = [];
-    const traverse = (nodes: any[], depth = 0) => {
+    const flat: { span: SpanTreeNode; depth: number }[] = [];
+    const traverse = (nodes: SpanTreeNode[], depth = 0) => {
       nodes.forEach(node => {
         flat.push({ span: node, depth });
         if (expandedSpans.has(node.spanId)) {
@@ -567,7 +555,7 @@ function Flamegraph({ spans }: { spans: Span[] }) {
     const maxTime = Math.max(...spans.map(s => new Date(s.endTime).getTime()));
     const totalDuration = maxTime - minTime;
 
-    const traverse = (nodes: any[], depth = 0) => {
+    const traverse = (nodes: SpanTreeNode[], depth = 0) => {
       nodes.forEach(node => {
         const spanStart = new Date(node.startTime).getTime();
         const spanEnd = new Date(node.endTime).getTime();

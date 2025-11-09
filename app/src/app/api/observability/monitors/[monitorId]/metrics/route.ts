@@ -9,8 +9,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { monitorId: string } }
+  context: { params: Promise<{ monitorId: string }> }
 ) {
+  const params = await context.params;
   const { monitorId } = params;
 
   if (!monitorId) {

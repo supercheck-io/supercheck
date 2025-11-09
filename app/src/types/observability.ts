@@ -490,7 +490,9 @@ export const TraceFiltersSchema = z.object({
   jobId: z.string().optional(),
   monitorId: z.string().optional(),
   serviceName: z.union([z.string(), z.array(z.string())]).optional(),
-  status: z.union([z.number(), z.array(z.number())]).optional(),
+  status: z
+    .union([z.nativeEnum(SpanStatus), z.array(z.nativeEnum(SpanStatus))])
+    .optional(),
   minDuration: z.number().optional(),
   maxDuration: z.number().optional(),
   timeRange: TimeRangeSchema,

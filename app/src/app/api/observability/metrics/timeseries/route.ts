@@ -6,16 +6,20 @@
 import { NextResponse, NextRequest } from "next/server";
 import { MetricFiltersSchema } from "~/types/observability";
 import { queryMetrics } from "~/lib/observability";
-import { requireAuth } from "~/lib/rbac/middleware";
+import { requireProjectContext } from "@/lib/project-context";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    // Authentication and authorization
-    await requireAuth();
-    const organizationId = undefined; // Optional filter
-    const projectId = req.nextUrl.searchParams.get("projectId") || undefined;
+    // Authentication and authorization with project scope
+    const { project, organizationId } = await requireProjectContext();
+
+    const requestedProjectId = req.nextUrl.searchParams.get("projectId");
+    const projectId =
+      requestedProjectId && requestedProjectId === project.id
+        ? requestedProjectId
+        : project.id;
 
     // Parse query parameters
     const searchParams = req.nextUrl.searchParams;
