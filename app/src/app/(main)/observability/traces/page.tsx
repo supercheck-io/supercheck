@@ -116,10 +116,6 @@ export default function TracesPage() {
 
   const { data: selectedTrace } = useTraceQuery(selectedTraceId);
 
-  const authBlocked =
-    tracesError instanceof Error &&
-    /unauthenticated|unauthorized|api key/i.test(tracesError.message);
-
   const [spanTree, setSpanTree] = useState<SpanTreeNode[]>([]);
   useEffect(() => {
     if (selectedTrace?.spans) {
@@ -187,14 +183,12 @@ export default function TracesPage() {
 
       {tracesError && (
         <div className="px-4 py-3 border-b bg-muted/20">
-          <Alert variant={authBlocked ? "default" : "destructive"}>
-            <AlertTitle>
-              {authBlocked ? "Observability authentication required" : "Failed to load traces"}
-            </AlertTitle>
+          <Alert variant="destructive">
+            <AlertTitle>Failed to load traces</AlertTitle>
             <AlertDescription className="text-xs">
-              {authBlocked
-                ? "SigNoz rejected the request. Add SIGNOZ_API_KEY or set SIGNOZ_DISABLE_AUTH=true to view traces."
-                : (tracesError as Error).message}
+              {tracesError instanceof Error
+                ? tracesError.message
+                : "Unexpected error while querying ClickHouse."}
             </AlertDescription>
           </Alert>
         </div>

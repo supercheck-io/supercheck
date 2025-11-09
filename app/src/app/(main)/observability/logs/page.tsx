@@ -114,10 +114,6 @@ export default function LogsPage() {
   });
 
   const services = Array.from(new Set(logsData?.data.map(l => l.serviceName).filter(Boolean))) as string[];
-  const authBlocked =
-    logsError instanceof Error &&
-    /unauthenticated|unauthorized|api key/i.test(logsError.message);
-
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
       {/* Top bar */}
@@ -168,15 +164,13 @@ export default function LogsPage() {
 
     {logsError && (
       <div className="px-4 py-3 border-b bg-muted/20">
-        <Alert variant={authBlocked ? "default" : "destructive"}>
-          <AlertTitle>
-            {authBlocked ? "Observability authentication required" : "Failed to load logs"}
-          </AlertTitle>
+        <Alert variant="destructive">
+          <AlertTitle>Failed to load logs</AlertTitle>
           <AlertDescription className="text-xs flex flex-wrap items-center gap-2">
             <span>
-              {authBlocked
-                ? "SigNoz rejected the request. Add SIGNOZ_API_KEY or set SIGNOZ_DISABLE_AUTH=true to fetch logs."
-                : (logsError as Error).message}
+              {logsError instanceof Error
+                ? logsError.message
+                : "Unexpected error while querying ClickHouse."}
             </span>
             <Button size="sm" variant="outline" onClick={() => refetch()}>
               <RefreshCw className="h-3 w-3 mr-1" /> Retry

@@ -13,13 +13,6 @@ import type {
 
 export const dynamic = "force-dynamic";
 
-function isAuthError(error: unknown) {
-  return (
-    error instanceof Error &&
-    /unauthenticated|unauthorized|api key/i.test(error.message)
-  );
-}
-
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ runId: string }> }
@@ -86,50 +79,42 @@ export async function GET(
 
     let trace: TraceWithSpans | null = null;
     let logResult: LogSearchResponse | null = null;
-    let authBlocked = false;
 
     try {
       trace = await getTraceByRunId(runId);
     } catch (error) {
-      if (isAuthError(error)) {
-        authBlocked = true;
-        console.warn("Observability trace auth error", error);
-      } else {
-        throw error;
-      }
+      console.error("Failed to load trace for run", runId, error);
     }
 
-    if (!authBlocked) {
-      try {
-        logResult = await searchLogs({
-          runId,
-          projectId: record.projectId ?? undefined,
-          organizationId: record.organizationId ?? undefined,
-          timeRange,
-          limit: 500,
-          offset: 0,
-        });
-      } catch (error) {
-        if (isAuthError(error)) {
-          authBlocked = true;
-          console.warn("Observability log auth error", error);
-        } else {
-          throw error;
-        }
-      }
+    try {
+      logResult = await searchLogs({
+        runId,
+        projectId: record.projectId ?? undefined,
+        organizationId: record.organizationId ?? undefined,
+        timeRange,
+        limit: 500,
+        offset: 0,
+      });
+    } catch (error) {
+      console.error("Failed to load logs for run", runId, error);
     }
+
+    const hasTrace = Boolean(trace?.spans?.length);
+    const logCount = logResult?.total ?? 0;
+    const status = hasTrace || logCount ? "ok" : "no_data";
 
     const response: RunObservabilityResponse = {
-      trace: trace && !authBlocked ? trace : null,
-      logs: authBlocked ? [] : logResult?.data ?? [],
+      trace,
+      logs: logResult?.data ?? [],
       metadata: {
         runId,
-        hasTrace: Boolean(trace?.spans?.length),
-        logCount: logResult?.total ?? 0,
-        status: authBlocked ? "auth_required" : "ok",
-        message: authBlocked
-          ? "SigNoz rejected the request. Add SIGNOZ_API_KEY or set SIGNOZ_DISABLE_AUTH=true to enable observability data."
-          : undefined,
+        hasTrace,
+        logCount,
+        status,
+        message:
+          status === "no_data"
+            ? "No observability data was captured for this run's time range."
+            : undefined,
       },
     };
 

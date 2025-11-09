@@ -92,10 +92,15 @@ export function LogViewer({
 
   if (logs.length === 0) {
     return (
-      <Card className={className}>
-        <div className="p-8 text-center">
-          <FileText className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-          <p className="text-sm text-muted-foreground">No logs available</p>
+      <Card className={`${className} border-dashed border-border/60 bg-muted/20`}>
+        <div className="p-10 text-center">
+          <div className="flex justify-center mb-4">
+            <div className="p-3 bg-amber-500/10 rounded-lg">
+              <FileText className="h-6 w-6 text-amber-500" />
+            </div>
+          </div>
+          <p className="font-medium text-sm mb-1">No logs captured</p>
+          <p className="text-xs text-muted-foreground">Execution logs will appear here when available</p>
         </div>
       </Card>
     );
