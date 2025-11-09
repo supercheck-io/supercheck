@@ -15,7 +15,11 @@
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter as OTLPGrpcExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
-import { OTLPTraceExporter as OTLPHttpExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { OTLPTraceExporter as OTLPHttpTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { LoggerProvider, BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
+import { OTLPLogExporter as OTLPGrpcLogExporter } from '@opentelemetry/exporter-logs-otlp-grpc';
+import { OTLPLogExporter as OTLPHttpLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
+import { logs } from '@opentelemetry/api-logs';
 import { Resource } from '@opentelemetry/resources';
 import {
   SEMRESATTRS_SERVICE_NAME,
@@ -214,7 +218,7 @@ function initializeObservability(): NodeSDK | null {
     // Create OTLP exporter (HTTP fallback avoids gRPC transport issues)
     const traceExporter =
       config.otlpProtocol === 'http'
-        ? new OTLPHttpExporter({
+        ? new OTLPHttpTraceExporter({
             url: config.otlpHttpEndpoint,
           })
         : new OTLPGrpcExporter({
@@ -228,6 +232,28 @@ function initializeObservability(): NodeSDK | null {
       scheduledDelayMillis: 5000, // Export every 5 seconds
       exportTimeoutMillis: 30000, // 30s timeout
     });
+
+    // Configure log exporter/provider
+    const logExporter =
+      config.otlpProtocol === 'http'
+        ? new OTLPHttpLogExporter({
+            url: config.otlpHttpEndpoint,
+          })
+        : new OTLPGrpcLogExporter({
+            url: config.otlpEndpoint,
+          });
+
+    const loggerProvider = new LoggerProvider({ resource });
+    loggerProvider.addLogRecordProcessor(
+      new BatchLogRecordProcessor(logExporter, {
+        maxQueueSize: 1024,
+        maxExportBatchSize: 256,
+        scheduledDelayMillis: 2000,
+        exportTimeoutMillis: 10000,
+      }),
+    );
+    logs.setGlobalLoggerProvider(loggerProvider);
+    registerLoggerProvider(loggerProvider);
 
     // Initialize SDK with all configurations
     const sdk = new NodeSDK({
@@ -257,21 +283,37 @@ function initializeObservability(): NodeSDK | null {
 }
 
 // Initialize observability on module load
-const sdk = initializeObservability();
+const telemetryState: {
+  sdk: NodeSDK | null;
+  loggerProvider: LoggerProvider | null;
+} = {
+  sdk: null,
+  loggerProvider: null,
+};
+
+function registerLoggerProvider(provider: LoggerProvider) {
+  telemetryState.loggerProvider = provider;
+}
+
+telemetryState.sdk = initializeObservability();
 
 /**
  * Graceful shutdown handler
  * Ensures all pending spans are exported before process exits
  */
 async function shutdownObservability(): Promise<void> {
-  if (!sdk) {
-    return;
-  }
-
   try {
-    console.log('[Observability] Shutting down observability SDK...');
-    await sdk.shutdown();
-    console.log('[Observability] Observability SDK shut down successfully');
+    if (telemetryState.sdk) {
+      console.log('[Observability] Shutting down observability SDK...');
+      await telemetryState.sdk.shutdown();
+      console.log('[Observability] Observability SDK shut down successfully');
+    }
+
+    if (telemetryState.loggerProvider) {
+      console.log('[Observability] Flushing telemetry logs...');
+      await telemetryState.loggerProvider.shutdown();
+      console.log('[Observability] Telemetry logs flushed successfully');
+    }
   } catch (error) {
     console.error('[Observability] Error shutting down observability SDK:', error);
   }
@@ -293,6 +335,6 @@ process.on('beforeExit', async () => {
   await shutdownObservability();
 });
 
-// Export SDK instance for advanced use cases (optional)
-export { sdk };
-export default sdk;
+const sdkInstance = telemetryState.sdk;
+export { sdkInstance as sdk };
+export default sdkInstance;

@@ -14,6 +14,9 @@ import {
   K6_JOB_EXECUTION_QUEUE,
   K6_TEST_EXECUTION_QUEUE,
 } from '../k6.constants';
+import { createSpanWithContext } from '../../observability/trace-helpers';
+import { emitTelemetryLog } from '../../observability/log-helpers';
+import { SeverityNumber } from '@opentelemetry/api-logs';
 
 type K6Task = K6ExecutionTask;
 
@@ -95,6 +98,14 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     const runId = taskData.runId;
     const isJobRun = Boolean(taskData.jobId);
     const testId = taskData.tests?.[0]?.id || taskData.testId || null;
+    const telemetryCtx = {
+      runId,
+      testId: testId ?? undefined,
+      projectId: taskData.projectId,
+      organizationId: taskData.organizationId,
+      jobId: taskData.jobId ?? undefined,
+      runType: 'k6' as const,
+    };
 
     if (!testId) {
       this.logger.warn(
@@ -134,7 +145,19 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         .where(eq(schema.runs.id, runId));
 
       // Execute k6
-      const result = await this.k6ExecutionService.runK6Test(taskData);
+      const result = await createSpanWithContext(
+        'k6.run',
+        telemetryCtx,
+        async (span) => {
+          span.setAttribute('k6.location', effectiveJobLocation);
+          span.setAttribute('k6.is_job_run', isJobRun);
+          const executionResult =
+            await this.k6ExecutionService.runK6Test(taskData);
+          span.setAttribute('k6.success', executionResult.success);
+          span.setAttribute('k6.timed_out', executionResult.timedOut);
+          return executionResult;
+        },
+      );
 
       // Extract metrics from summary
       const metrics = this.extractMetrics(result.summary);
@@ -293,6 +316,18 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         });
       }
 
+      emitTelemetryLog({
+        message: `[k6] Run ${runId} ${result.success ? 'passed' : 'failed'}`,
+        ctx: telemetryCtx,
+        severity: result.success ? SeverityNumber.INFO : SeverityNumber.ERROR,
+        attributes: {
+          'k6.duration_ms': result.durationMs,
+          'k6.thresholds_passed': result.thresholdsPassed,
+          'k6.location': effectiveJobLocation,
+        },
+        error: result.success ? undefined : result.error,
+      });
+
       // Return the success status to BullMQ so queue events are correctly reported
       return { success: result.success, timedOut: result.timedOut };
     } catch (error) {
@@ -393,6 +428,13 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           errorMessage: message,
         });
       }
+
+      emitTelemetryLog({
+        message: `[k6] Run ${runId} crashed`,
+        ctx: telemetryCtx,
+        severity: SeverityNumber.ERROR,
+        error,
+      });
 
       throw error;
     }
