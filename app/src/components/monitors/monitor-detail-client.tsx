@@ -88,6 +88,7 @@ import type {
   LocationConfig,
 } from "@/lib/location-service";
 import type { MonitorConfig } from "@/db/schema";
+import { ContextualMetricsPanel } from "@/components/observability/contextual-metrics-panel";
 
 export interface MonitorResultItem {
   id: string;
@@ -1151,6 +1152,14 @@ export function MonitorDetailClient({
           </Card>
         </div>
       </div>
+
+      <ContextualMetricsPanel
+        entityId={monitor.id}
+        entityType="monitors"
+        title="Monitor Performance"
+        description="Response time and error trends from recent checks"
+        className="mb-4"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* For all monitors, show charts and results in two columns */}

@@ -157,10 +157,13 @@ export interface Log {
   severityText: LogLevel;
   severityNumber: number;
   body: string;
+  level?: string;
+  message?: string;
 
   // Attributes
   attributes: Record<string, unknown>;
   resourceAttributes: Record<string, unknown>;
+  resource?: Record<string, unknown>;
 
   // SuperCheck context
   serviceName?: string;
@@ -211,6 +214,18 @@ export interface TimeSeriesPoint {
 export interface TimeSeries {
   name: string;
   points: TimeSeriesPoint[];
+  labels: Record<string, string>;
+}
+
+export interface MetricPoint {
+  timestamp: string;
+  value: number;
+  seriesKey?: string;
+}
+
+export interface MetricSeries {
+  name: string;
+  points: MetricPoint[];
   labels: Record<string, string>;
 }
 
@@ -314,6 +329,56 @@ export interface ServiceMetrics {
 export interface EndpointMetrics extends ServiceMetrics {
   endpoint: string;
   httpMethod?: string;
+}
+
+export interface ContextualMetricsSummary {
+  totalSamples: number;
+  successRate: number;
+  errorRate: number;
+  averageDurationMs: number;
+  medianDurationMs: number;
+  p95DurationMs: number;
+  p99DurationMs: number;
+  fastestDurationMs: number;
+  slowestDurationMs: number;
+  lastSeenAt?: string;
+  timeframe: TimeRange;
+}
+
+export interface ContextualMetricsResponse {
+  summary: ContextualMetricsSummary;
+  latencySeries: MetricSeries[];
+  errorRateSeries: MetricSeries[];
+  throughputSeries: MetricSeries[];
+  timeframe: TimeRange;
+}
+
+export interface RunObservabilityResponse {
+  trace: TraceWithSpans | null;
+  logs: Log[];
+  metadata: {
+    runId: string;
+    hasTrace: boolean;
+    logCount: number;
+    status?: "ok" | "auth_required" | "error";
+    message?: string;
+  };
+}
+
+export interface ProjectObservabilitySnapshot {
+  summary: {
+    runRatePerMinute: number;
+    errorRate: number;
+    avgLatencyMs: number;
+    p95LatencyMs: number;
+    p99LatencyMs: number;
+    successRate: number;
+    totalSamples: number;
+    timeframe: TimeRange;
+  };
+  throughputSeries: MetricSeries[];
+  errorRateSeries: MetricSeries[];
+  latencySeries: MetricSeries[];
 }
 
 export interface RunSummary {
