@@ -112,8 +112,11 @@ x-common-env: &common-env # Database Configuration
   CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-default}
 
   # OpenTelemetry Configuration
+  ENABLE_WORKER_OBSERVABILITY: ${ENABLE_WORKER_OBSERVABILITY:-true}
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
   OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-supercheck}
+  OTEL_LOG_LEVEL: ${OTEL_LOG_LEVEL:-error}
+  OTEL_TRACE_SAMPLE_RATE: ${OTEL_TRACE_SAMPLE_RATE:-1.0}
 
 services:
   # App (Next.js Frontend) - Handles migrations internally
@@ -336,11 +339,11 @@ services:
       - "9001:9000"  # Native protocol (for debugging)
       - "8124:8123"  # HTTP interface (used by app)
     volumes:
-      - clickhouse-observability-data:/var/lib/clickhouse
+      - signoz-clickhouse:/var/lib/clickhouse
       - ./observability/deploy/common/clickhouse/config.xml:/etc/clickhouse-server/config.xml:ro
       - ./observability/deploy/common/clickhouse/users.xml:/etc/clickhouse-server/users.xml:ro
       - ./observability/deploy/common/clickhouse/custom-function.xml:/etc/clickhouse-server/custom-function.xml:ro
-      - ./observability/deploy/common/clickhouse/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
+      - ./observability/deploy/common/clickhouse/cluster-standalone.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
       - ./observability/deploy/common/clickhouse/user_scripts:/var/lib/clickhouse/user_scripts:ro
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "0.0.0.0:8123/ping"]
@@ -366,7 +369,10 @@ services:
     command:
       - sync
       - --dsn=tcp://clickhouse:9000
+      - --cluster-name=cluster
       - --up=
+    environment:
+      - CLICKHOUSE_CLUSTER=cluster
     depends_on:
       clickhouse-observability:
         condition: service_healthy
@@ -422,7 +428,7 @@ volumes:
     driver: local
   worker-reports:
     driver: local
-  clickhouse-observability-data:
+  signoz-clickhouse:
     driver: local
 
 networks:

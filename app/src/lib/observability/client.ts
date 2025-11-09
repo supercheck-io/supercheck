@@ -1,9 +1,6 @@
 /**
- * Observability API Client
- * Handles communication with SigNoz Query Service and provides utilities
- * for processing observability data
+ * Observability data helpers powered by ClickHouse.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type {
   TraceWithSpans,
@@ -23,526 +20,75 @@ import type {
 import {
   searchTracesClickHouse,
   searchLogsClickHouse,
+  getTraceWithSpansClickHouse,
+  getTraceForRunClickHouse,
+  queryMetricsClickHouse,
+  getServiceMetricsClickHouse,
+  getEndpointMetricsClickHouse,
 } from "./clickhouse-client";
-
-// ============================================================================
-// CONFIGURATION
-// ============================================================================
-
-const SIGNOZ_URL = process.env.SIGNOZ_URL || "http://localhost:8080";
-const API_TIMEOUT = 30000; // 30 seconds
-const SIGNOZ_DISABLE_AUTH = process.env.SIGNOZ_DISABLE_AUTH === "true";
-const SIGNOZ_API_KEY = process.env.SIGNOZ_API_KEY;
-const SIGNOZ_BEARER_TOKEN = process.env.SIGNOZ_BEARER_TOKEN;
-
-/**
- * USE_CLICKHOUSE_DIRECT: Query ClickHouse directly instead of via SigNoz API
- *
- * This is recommended for local development and internal deployments where:
- * - SigNoz authentication is enabled and you don't have API credentials
- * - You want faster queries by bypassing the SigNoz query service layer
- * - You're running SigNoz v0.100.1 or earlier (no auth disable option)
- *
- * For production with SigNoz Cloud or newer versions, use SigNoz API with
- * proper authentication (SIGNOZ_API_KEY or SIGNOZ_BEARER_TOKEN).
- */
-const USE_CLICKHOUSE_DIRECT = process.env.USE_CLICKHOUSE_DIRECT === "true";
-
-function parseStructuredField(value: unknown): Record<string, unknown> {
-  if (!value) return {};
-  if (typeof value === "string") {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return { raw: value };
-    }
-  }
-  if (typeof value === "object") {
-    return value as Record<string, unknown>;
-  }
-  return {};
-}
-
-/**
- * Build auth headers for SigNoz API requests
- */
-function buildAuthHeaders(): Record<string, string> {
-  if (SIGNOZ_DISABLE_AUTH) {
-    return {};
-  }
-
-  const headers: Record<string, string> = {};
-
-  // Priority: API Key > Bearer Token
-  if (SIGNOZ_API_KEY) {
-    headers["SIGNOZ-API-KEY"] = SIGNOZ_API_KEY;
-  } else if (SIGNOZ_BEARER_TOKEN) {
-    headers["Authorization"] = `Bearer ${SIGNOZ_BEARER_TOKEN}`;
-  }
-
-  return headers;
-}
-
-function shouldFallbackAuth(status: number, message?: string) {
-  if (status === 401 || status === 403) return true;
-  if (!message) return false;
-  return /unauthenticated|unauthorized|api key/i.test(message);
-}
-
-/**
- * Fetch with timeout
- */
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit = {},
-  timeout = API_TIMEOUT
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-  // Merge auth headers with provided headers
-  const authHeaders = buildAuthHeaders();
-  const headers = {
-    ...authHeaders,
-    ...(options.headers || {}),
-  };
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      headers,
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-    return response;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    throw error;
-  }
-}
-
-/**
- * Transform SigNoz traces API response to our format
- */
-function transformTracesResponse(signozResponse: any): TraceSearchResponse {
-  // SigNoz returns data in result.data.table format for list queries
-  const records = signozResponse?.result?.[0]?.list || [];
-
-  const traces = records.map((record: any) => ({
-    traceId: record.traceID || record.trace_id || "",
-    rootSpanId: record.spanID || record.span_id || "",
-    serviceNames: record.serviceName ? [record.serviceName] : [],
-    duration: record.durationNano || 0,
-    startedAt: new Date(record.timestamp / 1000000).toISOString(), // Convert from nanoseconds
-    endedAt: new Date((record.timestamp + record.durationNano) / 1000000).toISOString(),
-    status: record.hasError ? 2 : 1,
-    spanCount: 1, // SigNoz list view doesn't provide this, will be updated when fetching full trace
-    errorCount: record.hasError ? 1 : 0,
-    scRunType: record["sc.run_type"],
-    scRunId: record["sc.run_id"],
-    scTestName: record["sc.test_name"],
-    attributes: {},
-  }));
-
-  return {
-    data: traces,
-    total: records.length,
-    services: [],
-    runTypes: [],
-    limit: 100,
-    offset: 0,
-    hasMore: false,
-  };
-}
-
-/**
- * Transform SigNoz logs API response to our format
- */
-function transformLogsResponse(signozResponse: any): LogSearchResponse {
-  const records = signozResponse?.result?.[0]?.list || [];
-
-  const logs = records.map((record: any) => {
-    const timestamp = new Date(record.timestamp / 1000000).toISOString();
-    const observedTimestamp = record.observedTimestamp
-      ? new Date(record.observedTimestamp / 1000000).toISOString()
-      : timestamp;
-    const severityText = (
-      record.severity_text ||
-      record.severityText ||
-      record.level ||
-      "INFO"
-    )
-      .toString()
-      .toUpperCase();
-    const attributes = parseStructuredField(
-      record.attributes || record.attributes_string
-    );
-    const resourceAttributes = parseStructuredField(
-      record.resource ||
-        record.resources ||
-        record.resources_string ||
-        record.resourceAttributes
-    );
-
-    return {
-      timestamp,
-      observedTimestamp,
-      traceId: record.trace_id || record.traceId,
-      spanId: record.span_id || record.spanId,
-      severityText,
-      severityNumber: Number(record.severity_number || record.severityNumber || 9),
-      body: record.body || record.message || "",
-      level: (record.level || severityText).toString().toLowerCase(),
-      message: record.body || record.message || "",
-      serviceName: record.service_name || record.serviceName || "",
-      attributes,
-      resourceAttributes,
-      resource: resourceAttributes,
-    };
-  });
-
-  return {
-    data: logs,
-    total: records.length,
-    services: [],
-    levels: [],
-    limit: 1000,
-    offset: 0,
-    hasMore: false,
-  };
-}
-
-/**
- * Transform SigNoz metrics API response to our format
- */
-function transformMetricsResponse(signozResponse: any): MetricQueryResponse {
-  const series = signozResponse?.result?.[0]?.series || [];
-
-  const metrics = series.map((serie: any) => ({
-    metric: serie.labels || {},
-    values: serie.values || [],
-  }));
-
-  return {
-    metrics: metrics.map((m: any) => ({
-      name: m.metric?.__name__ || "unknown",
-      points: m.values?.map((v: any) => ({
-        timestamp: new Date(v[0] * 1000).toISOString(),
-        value: parseFloat(v[1]),
-        seriesKey: JSON.stringify(m.metric),
-      })) || [],
-      labels: m.metric || {},
-    })),
-    timeRange: {
-      start: new Date().toISOString(),
-      end: new Date().toISOString(),
-    },
-  };
-}
 
 // ============================================================================
 // TRACE APIs
 // ============================================================================
 
-/**
- * Search for traces based on filters
- */
 export async function searchTraces(
   filters: TraceFilters
 ): Promise<TraceSearchResponse> {
-  // Always use ClickHouse direct query
-  console.log("[observability] Querying ClickHouse for traces");
-  return await searchTracesClickHouse(filters);
+  return searchTracesClickHouse(filters);
 }
 
-/**
- * Get a specific trace by ID with all its spans
- */
 export async function getTrace(traceId: string): Promise<TraceWithSpans> {
-  const url = `${SIGNOZ_URL}/api/v1/traces/${traceId}`;
-
-  const response = await fetchWithTimeout(url);
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    if (shouldFallbackAuth(response.status, errorText)) {
-      throw new Error(`Authentication failed for trace ${traceId}: ${errorText}`);
-    }
-
-    // If v1 endpoint doesn't exist, try v3 with filter
-    const traceSearchResult = await searchTraces({
-      timeRange: {
-        start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        end: new Date().toISOString(),
-      },
-      limit: 1,
-    });
-
-    if (traceSearchResult.data.length === 0) {
-      throw new Error(`Trace not found: ${traceId}`);
-    }
-
-    const trace = traceSearchResult.data[0];
-
-    // For now, return a minimal TraceWithSpans
-    // In production, we'd need to query spans from ClickHouse directly
-    return {
-      traceId: trace.traceId,
-      rootSpanId: trace.traceId,
-      serviceNames: trace.serviceNames,
-      duration: trace.duration,
-      startedAt: trace.startedAt,
-      endedAt: trace.startedAt,
-      status: trace.errorCount > 0 ? 2 : 1,
-      spanCount: trace.spanCount,
-      errorCount: trace.errorCount,
-      spans: [], // Would need separate endpoint to get all spans
-      scRunType: trace.scRunType,
-      scRunId: trace.scRunId,
-      scTestName: trace.scTestName,
-      attributes: {},
-    };
+  const trace = await getTraceWithSpansClickHouse(traceId);
+  if (!trace) {
+    throw new Error(`Trace not found: ${traceId}`);
   }
-
-  const data = await response.json();
-  return data;
+  return trace;
 }
 
-/**
- * Get trace by run ID (SuperCheck-specific)
- */
-export async function getTraceByRunId(runId: string): Promise<TraceWithSpans | null> {
-  const filters: TraceFilters = {
-    runId,
-    timeRange: {
-      start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-      end: new Date().toISOString(),
-    },
-    limit: 1,
-  };
-
-  const result = await searchTraces(filters);
-
-  if (result.data.length === 0) {
-    return null;
-  }
-
-  try {
-    return await getTrace(result.data[0].traceId);
-  } catch (error) {
-    throw error;
-  }
+export async function getTraceByRunId(
+  runId: string
+): Promise<TraceWithSpans | null> {
+  if (!runId) return null;
+  return getTraceForRunClickHouse(runId);
 }
 
 // ============================================================================
 // LOG APIs
 // ============================================================================
 
-/**
- * Search for logs based on filters
- */
-export async function searchLogs(filters: LogFilters): Promise<LogSearchResponse> {
-  // Try ClickHouse direct first if enabled or if auth is disabled
-  if (USE_CLICKHOUSE_DIRECT || SIGNOZ_DISABLE_AUTH) {
-    try {
-      console.log("[observability] Using ClickHouse direct query for logs");
-      return await searchLogsClickHouse(filters);
-    } catch (error) {
-      console.warn("[observability] ClickHouse direct query failed, falling back to SigNoz:", error);
-      // Fall through to SigNoz API
-    }
-  }
-
-  const url = `${SIGNOZ_URL}/api/v3/query_range`;
-
-  // Convert filters to SigNoz query builder format
-  const filterItems: any[] = [];
-
-  if (filters.serviceName) {
-    const serviceNames = Array.isArray(filters.serviceName)
-      ? filters.serviceName
-      : [filters.serviceName];
-
-    if (serviceNames.length === 1) {
-      filterItems.push({
-        key: {
-          key: "service_name",
-          dataType: "string",
-          type: "resource",
-          isColumn: false,
-        },
-        op: "=",
-        value: serviceNames[0],
-      });
-    } else if (serviceNames.length > 1) {
-      filterItems.push({
-        key: {
-          key: "service_name",
-          dataType: "string",
-          type: "resource",
-          isColumn: false,
-        },
-        op: "in",
-        value: serviceNames,
-      });
-    }
-  }
-
-  if (filters.severityLevel) {
-    const levels = Array.isArray(filters.severityLevel)
-      ? filters.severityLevel
-      : [filters.severityLevel];
-
-    levels.forEach((level) => {
-      filterItems.push({
-        key: {
-          key: "severity_text",
-          dataType: "string",
-          type: "tag",
-          isColumn: true,
-        },
-        op: "=",
-        value: level.toUpperCase(),
-      });
-    });
-  }
-
-  if (filters.traceId) {
-    filterItems.push({
-      key: {
-        key: "trace_id",
-        dataType: "string",
-        type: "tag",
-        isColumn: true,
-      },
-      op: "=",
-      value: filters.traceId,
-    });
-  }
-
-  if (filters.spanId) {
-    filterItems.push({
-      key: {
-        key: "span_id",
-        dataType: "string",
-        type: "tag",
-        isColumn: true,
-      },
-      op: "=",
-      value: filters.spanId,
-    });
-  }
-
-  if (filters.search) {
-    filterItems.push({
-      key: {
-        key: "body",
-        dataType: "string",
-        type: "tag",
-        isColumn: true,
-      },
-      op: "contains",
-      value: filters.search,
-    });
-  }
-
-  const timeRange = filters.timeRange || getTimeRangePreset("last_1h");
-  const start = new Date(timeRange.start).getTime();
-  const end = new Date(timeRange.end).getTime();
-
-  const payload = {
-    start,
-    end,
-    step: 60,
-    variables: {},
-    compositeQuery: {
-      queryType: "builder",
-      panelType: "list",
-      builderQueries: {
-        A: {
-          dataSource: "logs",
-          queryName: "A",
-          aggregateOperator: "noop",
-          aggregateAttribute: {},
-          filters: {
-            items: filterItems,
-            op: "AND",
-          },
-          expression: "A",
-          disabled: false,
-          having: [],
-          stepInterval: 60,
-          limit: filters.limit || 1000,
-          offset: filters.offset || 0,
-          orderBy: [
-            {
-              columnName: "timestamp",
-              order: "desc",
-            },
-          ],
-          groupBy: [],
-          legend: "",
-          reduceTo: "sum",
-        },
-      },
-    },
-  };
-
-  try {
-    const response = await fetchWithTimeout(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      if (shouldFallbackAuth(response.status, errorText)) {
-        throw new Error(`Authentication failed for logs: ${errorText}`);
-      }
-      throw new Error(`Failed to search logs: ${response.statusText} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    return transformLogsResponse(data);
-  } catch (error) {
-    throw error;
-  }
+export async function searchLogs(
+  filters: LogFilters
+): Promise<LogSearchResponse> {
+  return searchLogsClickHouse(filters);
 }
 
-/**
- * Get logs for a specific trace
- */
 export async function getLogsForTrace(traceId: string): Promise<Log[]> {
-  const filters: LogFilters = {
+  if (!traceId) return [];
+
+  const result = await searchLogs({
     traceId,
     timeRange: {
       start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
       end: new Date().toISOString(),
     },
-    limit: 10000,
-  };
+    limit: 10_000,
+  });
 
-  const result = await searchLogs(filters);
   return result.data;
 }
 
-/**
- * Get logs for a specific span
- */
 export async function getLogsForSpan(spanId: string): Promise<Log[]> {
-  const filters: LogFilters = {
+  if (!spanId) return [];
+
+  const result = await searchLogs({
     spanId,
     timeRange: {
       start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
       end: new Date().toISOString(),
     },
-    limit: 1000,
-  };
+    limit: 1_000,
+  });
 
-  const result = await searchLogs(filters);
   return result.data;
 }
 
@@ -550,187 +96,25 @@ export async function getLogsForSpan(spanId: string): Promise<Log[]> {
 // METRIC APIs
 // ============================================================================
 
-/**
- * Query time series metrics
- */
 export async function queryMetrics(
   filters: MetricFilters
 ): Promise<MetricQueryResponse> {
-  const url = `${SIGNOZ_URL}/api/v3/query_range`;
-
-  // Convert filters to SigNoz query builder format
-  const filterItems: any[] = [];
-
-  if (filters.serviceName) {
-    const serviceNames = Array.isArray(filters.serviceName)
-      ? filters.serviceName
-      : [filters.serviceName];
-
-    if (serviceNames.length === 1) {
-      filterItems.push({
-        key: {
-          key: "service_name",
-          dataType: "string",
-          type: "tag",
-          isColumn: false,
-        },
-        op: "=",
-        value: serviceNames[0],
-      });
-    } else if (serviceNames.length > 1) {
-      filterItems.push({
-        key: {
-          key: "service_name",
-          dataType: "string",
-          type: "tag",
-          isColumn: false,
-        },
-        op: "in",
-        value: serviceNames,
-      });
-    }
-  }
-
-  if (filters.metricName) {
-    filterItems.push({
-      key: {
-        key: "__name__",
-        dataType: "string",
-        type: "tag",
-        isColumn: true,
-      },
-      op: "=",
-      value: filters.metricName,
-    });
-  }
-
-  const timeRange = filters.timeRange || getTimeRangePreset("last_1h");
-  const start = new Date(timeRange.start).getTime();
-  const end = new Date(timeRange.end).getTime();
-
-  const payload = {
-    start,
-    end,
-    step: 60,
-    variables: {},
-    compositeQuery: {
-      queryType: "builder",
-      panelType: "graph",
-      builderQueries: {
-        A: {
-          dataSource: "metrics",
-          queryName: "A",
-          aggregateOperator: filters.aggregation || "avg",
-          aggregateAttribute: {
-            key: filters.metricName || "signoz_latency_bucket",
-            dataType: "float64",
-            type: "tag",
-            isColumn: true,
-          },
-          filters: {
-            items: filterItems,
-            op: "AND",
-          },
-          expression: "A",
-          disabled: false,
-          having: [],
-          stepInterval: 60,
-          limit: null,
-          orderBy: [],
-          groupBy: filters.groupBy?.map((key) => ({
-            key,
-            dataType: "string",
-            type: "tag",
-            isColumn: false,
-          })) || [],
-          legend: "",
-          reduceTo: filters.aggregation || "avg",
-        },
-      },
-    },
-  };
-
-  try {
-    const response = await fetchWithTimeout(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      if (shouldFallbackAuth(response.status, errorText)) {
-        throw new Error(`Authentication failed for metrics: ${errorText}`);
-      }
-      throw new Error(`Failed to query metrics: ${response.statusText} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    return transformMetricsResponse(data);
-  } catch (error) {
-    throw error;
-  }
+  return queryMetricsClickHouse(filters);
 }
 
-/**
- * Get service metrics (latency, error rate, throughput)
- */
 export async function getServiceMetrics(
   serviceName: string,
   timeRange: { start: string; end: string }
 ): Promise<ServiceMetrics> {
-  const filters: MetricFilters = {
-    serviceName,
-    timeRange,
-    aggregation: "p95",
-  };
-
-  // Query metrics (result currently unused, mock data below)
-  await queryMetrics(filters);
-
-  // Process and aggregate the metrics
-  // This is a simplified example - actual implementation would parse SigNoz response
-  const metrics: ServiceMetrics = {
-    serviceName,
-    requestCount: 0,
-    errorCount: 0,
-    errorRate: 0,
-    p50Latency: 0,
-    p95Latency: 0,
-    p99Latency: 0,
-    avgLatency: 0,
-    throughput: 0,
-  };
-
-  return metrics;
+  return getServiceMetricsClickHouse(serviceName, timeRange);
 }
 
-/**
- * Get endpoint metrics grouped by endpoint
- */
 export async function getEndpointMetrics(
   serviceName: string,
   timeRange: { start: string; end: string }
 ): Promise<EndpointMetrics[]> {
-  const filters: MetricFilters = {
-    serviceName,
-    timeRange,
-    groupBy: ["http.route"],
-    aggregation: "p95",
-  };
-
-  // Query metrics (result currently unused, mock data below)
-  await queryMetrics(filters);
-
-  // Process and group by endpoint
-  const endpoints: EndpointMetrics[] = [];
-
-  return endpoints;
+  return getEndpointMetricsClickHouse(serviceName, timeRange);
 }
-
-// ============================================================================
 // SPAN TREE UTILITIES
 // ============================================================================
 

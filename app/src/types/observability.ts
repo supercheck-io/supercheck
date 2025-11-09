@@ -360,7 +360,7 @@ export interface RunObservabilityResponse {
     runId: string;
     hasTrace: boolean;
     logCount: number;
-    status?: "ok" | "auth_required" | "error";
+    status?: "ok" | "auth_required" | "error" | "no_data";
     message?: string;
   };
 }

@@ -1,3 +1,7 @@
+// IMPORTANT: Instrumentation MUST be imported first, before any other imports
+// This ensures OpenTelemetry can properly instrument all dependencies
+import './observability/instrumentation';
+
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from 'nestjs-pino';
