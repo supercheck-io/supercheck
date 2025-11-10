@@ -191,6 +191,7 @@ export async function POST(request: NextRequest) {
           runId: runIdForQueue || testId,
           jobId: null,
           testId,
+          testName: "Playground Test", // Default name for playground tests
           script: code,
           tests: [{ id: testId, script: code }],
           organizationId,
@@ -203,6 +204,7 @@ export async function POST(request: NextRequest) {
         // Route to Playwright test-execution queue
         const task: TestExecutionTask = {
           testId,
+          testName: "Playground Test", // Default name for playground tests
           code: scriptToExecute,
           variables: variableResolution.variables,
           secrets: variableResolution.secrets,

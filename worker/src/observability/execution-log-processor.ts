@@ -95,8 +95,53 @@ export class ExecutionLogProcessor implements LogRecordProcessor {
     }
 
     const attributes = logRecord.attributes || {};
+    const body = logRecord.body?.toString() || '';
 
-    // Always show ERROR and FATAL logs for debugging
+    // FIRST: Check for infrastructure operations to EXCLUDE
+    // (Check exclusions before inclusions to be strict)
+
+    // Exclude S3 operations
+    if (
+      attributes['aws.s3.bucket'] !== undefined ||
+      attributes['rpc.service'] === 'S3' ||
+      attributes['rpc.method']?.toString().startsWith('S3.') ||
+      body.includes('S3.') ||
+      body.includes('s3Service') ||
+      body.includes('uploadDirectory')
+    ) {
+      return false;
+    }
+
+    // Exclude Redis publish operations
+    if (
+      attributes['db.system'] === 'redis' ||
+      body.includes('Redis') ||
+      body.includes('publish') && body.includes('console')
+    ) {
+      return false;
+    }
+
+    // Exclude database operations
+    if (
+      attributes['db.system'] === 'postgresql' ||
+      attributes['db.system'] === 'postgres' ||
+      body.includes('SQL') ||
+      body.includes('database')
+    ) {
+      return false;
+    }
+
+    // Exclude HTTP client operations (but NOT server operations)
+    if (
+      attributes['http.method'] !== undefined &&
+      attributes['http.url'] !== undefined
+    ) {
+      return false;
+    }
+
+    // NOW: Check for execution context to INCLUDE
+
+    // Always show ERROR and FATAL logs for debugging (even infrastructure errors)
     if (this.config.alwaysShowErrors) {
       const severity = logRecord.severityNumber;
       if (

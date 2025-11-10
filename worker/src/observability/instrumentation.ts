@@ -30,6 +30,7 @@ import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-node';
 import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
 import { existsSync } from 'fs';
 import { createExecutionLogProcessor } from './execution-log-processor';
+import { createExecutionSpanProcessor } from './execution-span-processor';
 
 /**
  * Configuration interface for observability
@@ -273,11 +274,18 @@ function initializeObservability(): NodeSDK | null {
           });
 
     // Create batch span processor for efficient export
-    const spanProcessor = new BatchSpanProcessor(traceExporter, {
+    const batchSpanProcessor = new BatchSpanProcessor(traceExporter, {
       maxQueueSize: 2048,
       maxExportBatchSize: 512,
       scheduledDelayMillis: 5000, // Export every 5 seconds
       exportTimeoutMillis: 30000, // 30s timeout
+    });
+
+    // Wrap with execution span filter to only show test/job/monitor spans
+    // This removes noise from infrastructure operations (S3, Redis publish, HTTP calls)
+    const spanProcessor = createExecutionSpanProcessor(batchSpanProcessor, {
+      enableFiltering: process.env.FILTER_EXECUTION_SPANS !== 'false',
+      alwaysShowErrors: true,
     });
 
     // Configure log exporter/provider
