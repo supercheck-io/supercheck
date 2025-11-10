@@ -12,7 +12,7 @@ import { ReportUploadService } from '../../common/services/report-upload.service
 import { createSpan, createSpanWithContext, getTraceContextEnv } from '../../observability/trace-helpers';
 import { emitTelemetryLog } from '../../observability/log-helpers';
 import { SeverityNumber } from '@opentelemetry/api-logs';
-import { Span } from '@opentelemetry/api';
+import { Span, trace } from '@opentelemetry/api';
 import {
   TestResult,
   TestExecutionResult,
@@ -457,6 +457,7 @@ export class ExecutionService implements OnModuleDestroy {
     const telemetryCtx = {
       runId: task.runId ?? undefined,
       testId,
+      testName: task.testName, // Added for proper span naming
       projectId: task.projectId,
       organizationId: task.organizationId,
       runType: isMonitorExecution ? 'monitor' : 'test',
@@ -520,25 +521,24 @@ export class ExecutionService implements OnModuleDestroy {
       // 4. Execute the test script using the native Playwright runner with timeout
       // Removed verbose execution log
       // Pass the directory path to the runner (the runner will find the .spec.mjs file inside)
-      const execResult = await createSpanWithContext(
-        isMonitorExecution ? 'monitor.playwright-run' : 'playwright.run',
+      // No wrapper span needed, processor already created span
+      const activeSpan = trace.getActiveSpan();
+      if (activeSpan) {
+        activeSpan.setAttribute('playwright.run_dir', runDir);
+        activeSpan.setAttribute('playwright.is_monitor_execution', isMonitorExecution);
+        activeSpan.setAttribute('playwright.test_id', testId ?? 'unknown');
+      }
+      const execResult = await this._executePlaywrightNativeRunner(
+        testDirPath,
+        false,
         telemetryCtx,
-        async (span) => {
-          span.setAttribute('playwright.run_dir', runDir);
-          span.setAttribute('playwright.is_monitor_execution', isMonitorExecution);
-          span.setAttribute('playwright.test_id', testId ?? 'unknown');
-          const result = await this._executePlaywrightNativeRunner(
-            testDirPath,
-            false,
-            telemetryCtx,
-          );
-          if (typeof result.executionTimeMs === 'number') {
-            span.setAttribute('playwright.execution_ms', result.executionTimeMs);
-          }
-          span.setAttribute('playwright.success', result.success);
-          return result;
-        },
       );
+      if (activeSpan) {
+        if (typeof execResult.executionTimeMs === 'number') {
+          activeSpan.setAttribute('playwright.execution_ms', execResult.executionTimeMs);
+        }
+        activeSpan.setAttribute('playwright.success', execResult.success);
+      }
 
       // 5. Process result and upload report
       let finalStatus: 'passed' | 'failed' = 'failed'; // Default to failed
@@ -734,6 +734,7 @@ export class ExecutionService implements OnModuleDestroy {
     const jobTelemetryCtx = {
       runId,
       jobId: task.jobId ?? undefined,
+      jobName: task.jobName, // Added for proper span naming
       projectId: task.projectId,
       organizationId: task.organizationId,
       runType: 'job' as const,
@@ -870,16 +871,13 @@ export class ExecutionService implements OnModuleDestroy {
       this.logger.log(
         `[${runId}] Executing all test specs in directory via Playwright runner (timeout: ${this.jobExecutionTimeoutMs}ms)...`,
       );
-      // Pass isJob=true so the helper knows to execute the directory
-      const execResult = await createSpanWithContext(
-        'playwright.job-run',
-        jobTelemetryCtx,
-        async (span) => {
-          span.setAttribute('playwright.run_dir', runDir);
-          span.setAttribute('playwright.job_test_count', testScripts.length);
-          return this._executePlaywrightNativeRunner(runDir, true, jobTelemetryCtx);
-        },
-      );
+      // Pass isJob=true - no wrapper span needed, processor already created span
+      const activeSpan = trace.getActiveSpan();
+      if (activeSpan) {
+        activeSpan.setAttribute('playwright.run_dir', runDir);
+        activeSpan.setAttribute('playwright.job_test_count', testScripts.length);
+      }
+      const execResult = await this._executePlaywrightNativeRunner(runDir, true, jobTelemetryCtx);
       overallSuccess = execResult.success;
       stdout_log = execResult.stdout;
       stderr_log = execResult.stderr;
@@ -1047,15 +1045,26 @@ export class ExecutionService implements OnModuleDestroy {
   private async _executePlaywrightNativeRunner(
     runDir: string, // Directory containing the spec file(s) OR the single spec file for single tests
     isJob: boolean = false, // Flag to indicate if running multiple tests in a dir (job) vs single file
-    telemetryCtx?: any, // Telemetry context for consistent naming
+    telemetryCtx?: any, // Telemetry context - if provided, we're already in a span (processor span)
   ): Promise<PlaywrightExecutionResult> {
-    // Build span name based on context
-    const spanName = telemetryCtx
-      ? `playwright.${telemetryCtx.runType || 'test'}: ${telemetryCtx.jobName || telemetryCtx.testName || 'Unnamed'} | ID: ${telemetryCtx.runId || 'unknown'}`
-      : (isJob ? 'playwright.native.job' : 'playwright.native.single');
+    // If telemetryCtx is provided, we're already in a span from the processor
+    // Don't create another span - just execute directly
+    if (telemetryCtx) {
+      return this.executePlaywrightDirectly(runDir, isJob);
+    }
 
-    // Define the span execution logic (shared between both paths)
-    const executeWithinSpan = async (span: Span): Promise<PlaywrightExecutionResult> => {
+    // No telemetry context - create a fallback span for direct calls
+    const spanName = isJob ? 'playwright.native.job' : 'playwright.native.single';
+    return createSpan(spanName, async (span) => {
+      return this.executePlaywrightDirectly(runDir, isJob);
+    });
+  }
+
+  private async executePlaywrightDirectly(
+    runDir: string,
+    isJob: boolean,
+  ): Promise<PlaywrightExecutionResult> {
+    const activeSpan = trace.getActiveSpan();
     const serviceRoot = process.cwd();
     const playwrightConfigPath = path.join(serviceRoot, 'playwright.config.js'); // Get absolute path to config
     // Use a subdirectory in the provided runDir for the standard playwright report
@@ -1198,11 +1207,14 @@ export class ExecutionService implements OnModuleDestroy {
         }
       }
 
-          span.setAttribute('playwright.execution_id', executionId);
-          span.setAttribute('playwright.command', command);
-          span.setAttribute('playwright.success', execResult.success);
-          span.setAttribute('playwright.stdout_length', execResult.stdout.length);
-          span.setAttribute('playwright.stderr_length', execResult.stderr.length);
+      // Add attributes to active span if available
+      if (activeSpan) {
+        activeSpan.setAttribute('playwright.execution_id', executionId);
+        activeSpan.setAttribute('playwright.command', command);
+        activeSpan.setAttribute('playwright.success', execResult.success);
+        activeSpan.setAttribute('playwright.stdout_length', execResult.stdout.length);
+        activeSpan.setAttribute('playwright.stderr_length', execResult.stderr.length);
+      }
 
       return {
         success: execResult.success,
@@ -1212,23 +1224,17 @@ export class ExecutionService implements OnModuleDestroy {
         executionTimeMs: execResult.executionTimeMs,
       };
     } catch (error) {
-      span.setAttribute('playwright.execution_id', executionId);
-      span.setAttribute('playwright.success', false);
-      span.setAttribute('error.message', (error as Error).message);
+      if (activeSpan) {
+        activeSpan.setAttribute('playwright.execution_id', executionId);
+        activeSpan.setAttribute('playwright.success', false);
+        activeSpan.setAttribute('error.message', (error as Error).message);
+      }
       return {
         success: false,
         error: (error as Error).message,
         stdout: '',
         stderr: (error as Error).stack || '',
       };
-    }
-    };
-
-    // Use createSpanWithContext if telemetryCtx is available to ensure execution attributes are added
-    if (telemetryCtx) {
-      return createSpanWithContext(spanName, telemetryCtx, executeWithinSpan);
-    } else {
-      return createSpan(spanName, executeWithinSpan);
     }
   }
 
