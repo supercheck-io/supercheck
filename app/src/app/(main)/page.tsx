@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ChartContainer,
   ChartTooltip,
@@ -25,6 +26,7 @@ import {
   Info,
 } from "lucide-react";
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
@@ -49,6 +51,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { MetricsChart } from "@/components/observability/metrics-chart";
+import { RunTraceDrawer } from "@/components/observability/run-trace-drawer";
+import { runStatuses } from "@/components/runs/data";
+import type {
+  ProjectObservabilitySnapshot,
+  MetricSeries,
+} from "~/types/observability";
 
 interface ProjectStats {
   tests: number;
@@ -141,6 +150,7 @@ interface DashboardData {
   tests: TestSummary;
   alerts: AlertHistoryItem[];
   system: SystemHealth;
+  observability: ProjectObservabilitySnapshot | null;
 }
 
 interface ChartDataPoint {
@@ -206,6 +216,13 @@ const MetricInfoButton: React.FC<MetricInfoButtonProps> = ({
       </div>
     </PopoverContent>
   </Popover>
+);
+
+const MetricSummary = ({ label, value }: { label: string; value: string }) => (
+  <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+    <p className="text-xs text-muted-foreground">{label}</p>
+    <p className="text-lg font-semibold">{value}</p>
+  </div>
 );
 
 // Custom tooltip component with theme-aware styling
@@ -323,6 +340,49 @@ export default function Home() {
     setError(null);
 
     try {
+      type RawSeries = {
+        name?: unknown;
+        labels?: unknown;
+        points?: unknown;
+      };
+      type RawPoint = {
+        timestamp?: unknown;
+        value?: unknown;
+        seriesKey?: unknown;
+      };
+
+      const normalizeSeries = (series?: unknown): MetricSeries[] => {
+        if (!Array.isArray(series)) return [];
+        return (series as RawSeries[]).map((serie) => {
+          const labels =
+            typeof serie.labels === "object" && serie.labels !== null
+              ? (serie.labels as Record<string, string>)
+              : {};
+          const points = Array.isArray(serie.points)
+            ? (serie.points as RawPoint[]).map((point) => ({
+                timestamp:
+                  typeof point.timestamp === "string"
+                    ? point.timestamp
+                    : new Date().toISOString(),
+                value:
+                  typeof point.value === "number"
+                    ? point.value
+                    : Number(point.value) || 0,
+                seriesKey:
+                  typeof point.seriesKey === "string"
+                    ? point.seriesKey
+                    : undefined,
+              }))
+            : [];
+
+          return {
+            name: typeof serie.name === "string" ? serie.name : "Series",
+            labels,
+            points,
+          };
+        });
+      };
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
@@ -388,6 +448,59 @@ export default function Home() {
           severity: "medium" as const,
         });
       }
+
+      const observabilitySnapshot: ProjectObservabilitySnapshot | null =
+        data.observability
+          ? {
+              summary: {
+                runRatePerMinute: Number(
+                  data.observability.summary?.runRatePerMinute ?? 0
+                ),
+                errorRate: Math.max(
+                  0,
+                  Number(data.observability.summary?.errorRate) || 0
+                ),
+                avgLatencyMs: Math.max(
+                  0,
+                  Number(data.observability.summary?.avgLatencyMs) || 0
+                ),
+                p95LatencyMs: Math.max(
+                  0,
+                  Number(data.observability.summary?.p95LatencyMs) || 0
+                ),
+                p99LatencyMs: Math.max(
+                  0,
+                  Number(data.observability.summary?.p99LatencyMs) || 0
+                ),
+                successRate: Math.max(
+                  0,
+                  Math.min(
+                    1,
+                    Number(data.observability.summary?.successRate) || 0
+                  )
+                ),
+                totalSamples: Math.max(
+                  0,
+                  Number(data.observability.summary?.totalSamples) || 0
+                ),
+                timeframe: {
+                  start:
+                    data.observability.summary?.timeframe?.start ||
+                    new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+                  end:
+                    data.observability.summary?.timeframe?.end ||
+                    new Date().toISOString(),
+                },
+              },
+              throughputSeries: normalizeSeries(
+                data.observability.throughputSeries
+              ),
+              errorRateSeries: normalizeSeries(
+                data.observability.errorRateSeries
+              ),
+              latencySeries: normalizeSeries(data.observability.latencySeries),
+            }
+          : null;
 
       // Sanitize and validate all data
       const transformedData: DashboardData = {
@@ -489,6 +602,7 @@ export default function Home() {
           healthy: Boolean(data.system?.healthy ?? systemIssues.length === 0),
           issues: systemIssues,
         },
+        observability: observabilitySnapshot,
       };
 
       setDashboardData(transformedData);
@@ -823,9 +937,9 @@ export default function Home() {
                 </Card>
               ))}
             </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        </div>
     );
   }
 
@@ -872,6 +986,11 @@ export default function Home() {
 
   if (!dashboardData || !chartData) return null;
 
+  const projectObservability = dashboardData.observability;
+  const latestRuns = dashboardData.jobs.recentRuns
+    ? dashboardData.jobs.recentRuns.slice(0, 4)
+    : [];
+
   return (
     <div className="overflow-hidden">
       <PageBreadcrumbs items={breadcrumbs} />
@@ -908,8 +1027,15 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Key Metrics Grid - 5 cards per row */}
-          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 mb-4">
+          <Tabs defaultValue="overview" className="space-y-4">
+            <TabsList>
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="observability">Observability</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="space-y-4">
+              {/* Key Metrics Grid - 5 cards per row */}
+              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 mb-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
@@ -1077,6 +1203,163 @@ export default function Home() {
               </CardContent>
             </Card>
           </div>
+            </TabsContent>
+
+            <TabsContent value="observability" className="space-y-4">
+              {projectObservability ? (
+            <Card className="mb-4">
+              <CardHeader className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Real-time Observability</CardTitle>
+                    <CardDescription>
+                      Run rate, latency, and error trends (last hour)
+                    </CardDescription>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Window:{" "}
+                    {new Date(
+                      projectObservability.summary.timeframe.start
+                    ).toLocaleTimeString()}{" "}
+                    –{" "}
+                    {new Date(
+                      projectObservability.summary.timeframe.end
+                    ).toLocaleTimeString()}
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <MetricSummary
+                    label="Runs / min"
+                    value={projectObservability.summary.runRatePerMinute.toFixed(
+                      2
+                    )}
+                  />
+                  <MetricSummary
+                    label="Avg latency"
+                    value={`${projectObservability.summary.avgLatencyMs.toFixed(
+                      1
+                    )} ms`}
+                  />
+                  <MetricSummary
+                    label="P95 latency"
+                    value={`${projectObservability.summary.p95LatencyMs.toFixed(
+                      1
+                    )} ms`}
+                  />
+                  <MetricSummary
+                    label="Error rate"
+                    value={`${(
+                      projectObservability.summary.errorRate * 100
+                    ).toFixed(2)}%`}
+                  />
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <MetricsChart
+                    metrics={projectObservability.latencySeries}
+                    title="Latency Trend"
+                    description="Latest p95 and p99 latency"
+                    unit="ms"
+                    height={200}
+                  />
+                  <MetricsChart
+                    metrics={projectObservability.errorRateSeries}
+                    title="Error Rate"
+                    description="Failure percentage per interval"
+                    unit="%"
+                    height={200}
+                  />
+                </div>
+                <MetricsChart
+                  metrics={projectObservability.throughputSeries}
+                  title="Execution Rate"
+                  description="Runs processed per minute"
+                  height={200}
+                />
+              </CardContent>
+            </Card>
+              ) : (
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <Activity className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No Observability Data</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Run some tests or jobs to see observability metrics
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+          </Tabs>
+
+          {latestRuns.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-base font-semibold">Latest Runs</h3>
+                <Link
+                  href="/runs"
+                  className="text-xs text-primary hover:underline font-medium"
+                >
+                  View all
+                </Link>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                {latestRuns.map((run) => {
+                  const statusMeta =
+                    runStatuses.find((status) => status.value === run.status) ||
+                    runStatuses[0];
+                  const StatusIcon = statusMeta.icon;
+                  return (
+                    <Card key={run.id}>
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <CardTitle className="text-sm">
+                              {run.jobName || "Untitled Job"}
+                            </CardTitle>
+                            <p className="text-xs text-muted-foreground">
+                              {run.startedAt
+                                ? formatDistanceToNow(new Date(run.startedAt), {
+                                    addSuffix: true,
+                                  })
+                                : "unknown start"}
+                            </p>
+                          </div>
+                          <div
+                            className={`flex items-center gap-1 text-xs font-semibold ${statusMeta.color}`}
+                          >
+                            <StatusIcon className="h-3.5 w-3.5" />
+                            {statusMeta.label}
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="flex items-center justify-between text-sm">
+                        <div>
+                          <p className="text-xs text-muted-foreground">
+                            Duration
+                          </p>
+                          <p className="font-semibold">
+                            {run.duration ? run.duration : "—"}
+                          </p>
+                        </div>
+                        <RunTraceDrawer
+                          runId={run.id}
+                          jobName={run.jobName}
+                          statusLabel={statusMeta.label}
+                          trigger={
+                            <Button variant="outline" size="sm">
+                              View Trace
+                            </Button>
+                          }
+                        />
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Top Row Charts - 3 charts per row (formerly bottom row) */}
           <div className="grid gap-4 lg:grid-cols-3 mb-4">

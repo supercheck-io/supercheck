@@ -104,6 +104,22 @@ x-common-env: &common-env # Database Configuration
   AI_MAX_RETRIES: ${AI_MAX_RETRIES:-2}
   AI_TEMPERATURE: ${AI_TEMPERATURE:-0.1}
 
+  # Observability Configuration
+  USE_CLICKHOUSE_DIRECT: ${USE_CLICKHOUSE_DIRECT:-true}
+  CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse-observability:8123}
+  CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
+  CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+  CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-default}
+
+  # OpenTelemetry Configuration
+  ENABLE_WORKER_OBSERVABILITY: ${ENABLE_WORKER_OBSERVABILITY:-true}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+  OTEL_EXPORTER_OTLP_HTTP_ENDPOINT: ${OTEL_EXPORTER_OTLP_HTTP_ENDPOINT:-http://otel-collector:4318/v1/traces}
+  OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http}
+  OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-supercheck}
+  OTEL_LOG_LEVEL: ${OTEL_LOG_LEVEL:-error}
+  OTEL_TRACE_SAMPLE_RATE: ${OTEL_TRACE_SAMPLE_RATE:-1.0}
+
 services:
   # App (Next.js Frontend) - Handles migrations internally
   app:
@@ -309,6 +325,106 @@ services:
           cpus: "0.25"
           memory: 512M
 
+  # ============================================================================
+  # OBSERVABILITY STACK
+  # ============================================================================
+
+  # ClickHouse - Time-series database for observability data
+  clickhouse-observability:
+    image: clickhouse/clickhouse-server:25.5.6
+    container_name: clickhouse-observability
+    hostname: clickhouse
+    environment:
+      - CLICKHOUSE_SKIP_USER_SETUP=1
+      - CLICKHOUSE_DEFAULT_REPLICATION=false
+    ports:
+      - "9001:9000"  # Native protocol (for debugging)
+      - "8124:8123"  # HTTP interface (used by app)
+    volumes:
+      - signoz-clickhouse:/var/lib/clickhouse
+      - ./observability/deploy/common/clickhouse/config.xml:/etc/clickhouse-server/config.xml:ro
+      - ./observability/deploy/common/clickhouse/users.xml:/etc/clickhouse-server/users.xml:ro
+      - ./observability/deploy/common/clickhouse/custom-function.xml:/etc/clickhouse-server/custom-function.xml:ro
+      - ./observability/deploy/common/clickhouse/cluster-standalone.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
+      - ./observability/deploy/common/clickhouse/user_scripts:/var/lib/clickhouse/user_scripts:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "0.0.0.0:8123/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - supercheck-network
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 1G
+
+  # Schema Migrator - Sets up ClickHouse tables for observability data
+  schema-migrator:
+    image: signoz/signoz-schema-migrator:v0.129.8
+    container_name: schema-migrator
+    command:
+      - sync
+      - --dsn=tcp://clickhouse:9000
+      - --cluster-name=cluster
+      - --up=
+    environment:
+      - CLICKHOUSE_CLUSTER=cluster
+    depends_on:
+      clickhouse-observability:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - supercheck-network
+
+  # OpenTelemetry Collector - Receives and processes telemetry data
+  otel-collector:
+    image: signoz/signoz-otel-collector:v0.129.8
+    container_name: otel-collector
+    hostname: otel-collector
+    command:
+      - --config=/etc/otel/config.yaml
+      - --feature-gates=-pkg.translator.prometheus.NormalizeName
+    volumes:
+      - ./observability/deploy/docker/otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    environment:
+      - OTEL_RESOURCE_ATTRIBUTES=host.name=supercheck-host,os.type=linux
+    ports:
+      - "4317:4317"  # OTLP gRPC receiver
+      - "4318:4318"  # OTLP HTTP receiver
+    depends_on:
+      clickhouse-observability:
+        condition: service_healthy
+      schema-migrator:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bash",
+          "-c",
+          "</dev/tcp/127.0.0.1/13133",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - supercheck-network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
 volumes:
   postgres-data:
     driver: local
@@ -319,6 +435,8 @@ volumes:
   worker-playwright-reports:
     driver: local
   worker-reports:
+    driver: local
+  signoz-clickhouse:
     driver: local
 
 networks:

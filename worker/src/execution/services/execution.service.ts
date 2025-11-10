@@ -9,6 +9,9 @@ import { S3Service } from './s3.service';
 import { DbService } from './db.service';
 import { RedisService } from './redis.service';
 import { ReportUploadService } from '../../common/services/report-upload.service';
+import { createSpan, createSpanWithContext } from '../../observability/trace-helpers';
+import { emitTelemetryLog } from '../../observability/log-helpers';
+import { SeverityNumber } from '@opentelemetry/api-logs';
 import {
   TestResult,
   TestExecutionResult,
@@ -450,6 +453,13 @@ export class ExecutionService implements OnModuleDestroy {
     isMonitorExecution = false,
   ): Promise<TestResult> {
     const { testId, code } = task;
+    const telemetryCtx = {
+      runId: task.runId ?? undefined,
+      testId,
+      projectId: task.projectId,
+      organizationId: task.organizationId,
+      runType: isMonitorExecution ? 'monitor' : 'test',
+    } as const;
 
     // Check concurrency limits (unless bypassed for monitors)
     if (
@@ -509,9 +519,23 @@ export class ExecutionService implements OnModuleDestroy {
       // 4. Execute the test script using the native Playwright runner with timeout
       // Removed verbose execution log
       // Pass the directory path to the runner (the runner will find the .spec.mjs file inside)
-      const execResult = await this._executePlaywrightNativeRunner(
-        testDirPath,
-        false,
+      const execResult = await createSpanWithContext(
+        isMonitorExecution ? 'monitor.playwright-run' : 'playwright.run',
+        telemetryCtx,
+        async (span) => {
+          span.setAttribute('playwright.run_dir', runDir);
+          span.setAttribute('playwright.is_monitor_execution', isMonitorExecution);
+          span.setAttribute('playwright.test_id', testId ?? 'unknown');
+          const result = await this._executePlaywrightNativeRunner(
+            testDirPath,
+            false,
+          );
+          if (typeof result.executionTimeMs === 'number') {
+            span.setAttribute('playwright.execution_ms', result.executionTimeMs);
+          }
+          span.setAttribute('playwright.success', result.success);
+          return result;
+        },
       );
 
       // 5. Process result and upload report
@@ -562,6 +586,14 @@ export class ExecutionService implements OnModuleDestroy {
           error: null,
           executionTimeMs: execResult.executionTimeMs,
         };
+        emitTelemetryLog({
+          message: `[Playwright] Test ${testId} passed`,
+          ctx: telemetryCtx,
+          attributes: {
+            'playwright.execution_ms': execResult.executionTimeMs ?? 0,
+            'playwright.report_url': s3Url ?? '',
+          },
+        });
       } else {
         // Playwright execution failed
         const specificError =
@@ -621,6 +653,16 @@ export class ExecutionService implements OnModuleDestroy {
           stderr: execResult.stderr,
           executionTimeMs: execResult.executionTimeMs,
         };
+        emitTelemetryLog({
+          message: `[Playwright] Test ${testId} failed`,
+          ctx: telemetryCtx,
+          severity: SeverityNumber.ERROR,
+          attributes: {
+            'playwright.execution_ms': execResult.executionTimeMs ?? 0,
+            'playwright.report_url': s3Url ?? '',
+          },
+          error: specificError,
+        });
 
         // <<< REMOVED: Do not throw error here; return the result object >>>
         // throw new Error(specificError); // OLD WAY
@@ -655,6 +697,12 @@ export class ExecutionService implements OnModuleDestroy {
         stdout: '',
         stderr: (error as Error).stack || (error as Error).message,
       };
+      emitTelemetryLog({
+        message: `[Playwright] Test ${testId} crashed`,
+        ctx: telemetryCtx,
+        severity: SeverityNumber.ERROR,
+        error,
+      });
       // Propagate the error to the BullMQ processor so the job is marked as failed
       throw error;
     } finally {
@@ -681,6 +729,13 @@ export class ExecutionService implements OnModuleDestroy {
    */
   async runJob(task: JobExecutionTask): Promise<TestExecutionResult> {
     const { runId, testScripts } = task;
+    const jobTelemetryCtx = {
+      runId,
+      jobId: task.jobId ?? undefined,
+      projectId: task.projectId,
+      organizationId: task.organizationId,
+      runType: 'job' as const,
+    };
 
     if (task.jobType === 'k6') {
       throw new Error(
@@ -814,9 +869,14 @@ export class ExecutionService implements OnModuleDestroy {
         `[${runId}] Executing all test specs in directory via Playwright runner (timeout: ${this.jobExecutionTimeoutMs}ms)...`,
       );
       // Pass isJob=true so the helper knows to execute the directory
-      const execResult = await this._executePlaywrightNativeRunner(
-        runDir,
-        true,
+      const execResult = await createSpanWithContext(
+        'playwright.job-run',
+        jobTelemetryCtx,
+        async (span) => {
+          span.setAttribute('playwright.run_dir', runDir);
+          span.setAttribute('playwright.job_test_count', testScripts.length);
+          return this._executePlaywrightNativeRunner(runDir, true);
+        },
       );
       overallSuccess = execResult.success;
       stdout_log = execResult.stdout;
@@ -906,6 +966,17 @@ export class ExecutionService implements OnModuleDestroy {
 
       // Store final run result
       await this.dbService.updateRunStatus(runId, finalStatus, durationStr);
+      emitTelemetryLog({
+        message: `[Playwright Job] ${runId} completed (${finalStatus})`,
+        ctx: jobTelemetryCtx,
+        severity: finalStatus === 'passed' ? SeverityNumber.INFO : SeverityNumber.ERROR,
+        attributes: {
+          'playwright.job_duration_ms': durationMs,
+          'playwright.job_report_url': s3Url ?? '',
+          'playwright.job_total_tests': testScripts.length,
+        },
+        error: finalError ?? undefined,
+      });
     } catch (error) {
       this.logger.error(
         `[${runId}] Unhandled error during job execution: ${(error as Error).message}`,
@@ -940,6 +1011,12 @@ export class ExecutionService implements OnModuleDestroy {
         stdout: stdout_log,
         stderr: stderr_log + ((error as Error).stack || ''),
       };
+      emitTelemetryLog({
+        message: `[Playwright Job] ${runId} crashed`,
+        ctx: jobTelemetryCtx,
+        severity: SeverityNumber.ERROR,
+        error,
+      });
       throw error;
     } finally {
       // Remove from active executions
@@ -968,6 +1045,9 @@ export class ExecutionService implements OnModuleDestroy {
     runDir: string, // Directory containing the spec file(s) OR the single spec file for single tests
     isJob: boolean = false, // Flag to indicate if running multiple tests in a dir (job) vs single file
   ): Promise<PlaywrightExecutionResult> {
+    return createSpan(
+      isJob ? 'playwright.native.job' : 'playwright.native.single',
+      async (span) => {
     const serviceRoot = process.cwd();
     const playwrightConfigPath = path.join(serviceRoot, 'playwright.config.js'); // Get absolute path to config
     // Use a subdirectory in the provided runDir for the standard playwright report
@@ -1105,6 +1185,12 @@ export class ExecutionService implements OnModuleDestroy {
         }
       }
 
+          span.setAttribute('playwright.execution_id', executionId);
+          span.setAttribute('playwright.command', command);
+          span.setAttribute('playwright.success', execResult.success);
+          span.setAttribute('playwright.stdout_length', execResult.stdout.length);
+          span.setAttribute('playwright.stderr_length', execResult.stderr.length);
+
       return {
         success: execResult.success,
         error: extractedError, // Use the extracted error message
@@ -1113,6 +1199,9 @@ export class ExecutionService implements OnModuleDestroy {
         executionTimeMs: execResult.executionTimeMs,
       };
     } catch (error) {
+      span.setAttribute('playwright.execution_id', executionId);
+      span.setAttribute('playwright.success', false);
+      span.setAttribute('error.message', (error as Error).message);
       return {
         success: false,
         error: (error as Error).message,
@@ -1120,6 +1209,8 @@ export class ExecutionService implements OnModuleDestroy {
         stderr: (error as Error).stack || '',
       };
     }
+      },
+    );
   }
 
   /**
