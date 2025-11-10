@@ -751,10 +751,10 @@ For production deployments:
 
 ## Configuration Files
 
-Essential configuration files in `observability/deploy/`:
+Essential configuration files in `otel/deploy/`:
 
 ```
-observability/deploy/
+otel/deploy/
 ├── README.md                           # Config documentation
 ├── common/clickhouse/
 │   ├── config.xml                      # ClickHouse server config
