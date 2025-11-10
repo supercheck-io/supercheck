@@ -342,11 +342,11 @@ services:
       - "8124:8123"  # HTTP interface (used by app)
     volumes:
       - signoz-clickhouse:/var/lib/clickhouse
-      - ./observability/deploy/common/clickhouse/config.xml:/etc/clickhouse-server/config.xml:ro
-      - ./observability/deploy/common/clickhouse/users.xml:/etc/clickhouse-server/users.xml:ro
-      - ./observability/deploy/common/clickhouse/custom-function.xml:/etc/clickhouse-server/custom-function.xml:ro
-      - ./observability/deploy/common/clickhouse/cluster-standalone.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
-      - ./observability/deploy/common/clickhouse/user_scripts:/var/lib/clickhouse/user_scripts:ro
+      - ./otel/deploy/common/clickhouse/config.xml:/etc/clickhouse-server/config.xml:ro
+      - ./otel/deploy/common/clickhouse/users.xml:/etc/clickhouse-server/users.xml:ro
+      - ./otel/deploy/common/clickhouse/custom-function.xml:/etc/clickhouse-server/custom-function.xml:ro
+      - ./otel/deploy/common/clickhouse/cluster-standalone.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
+      - ./otel/deploy/common/clickhouse/user_scripts:/var/lib/clickhouse/user_scripts:ro
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "0.0.0.0:8123/ping"]
       interval: 30s
@@ -391,7 +391,7 @@ services:
       - --config=/etc/otel/config.yaml
       - --feature-gates=-pkg.translator.prometheus.NormalizeName
     volumes:
-      - ./observability/deploy/docker/otel-collector-config.yaml:/etc/otel/config.yaml:ro
+      - ./otel/deploy/docker/otel-collector-config.yaml:/etc/otel/config.yaml:ro
     environment:
       - OTEL_RESOURCE_ATTRIBUTES=host.name=supercheck-host,os.type=linux
     ports:
