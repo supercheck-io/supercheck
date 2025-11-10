@@ -366,7 +366,7 @@ export function getTraceContextEnv(): Record<string, string> {
 
 /**
  * Build a descriptive span name from Supercheck context
- * Creates human-readable span names that include execution type, name, and ID
+ * Creates human-readable span names that include execution type, name, and full ID
  *
  * @param operation - The operation being performed (e.g., 'execute', 'upload', 'process')
  * @param ctx - Supercheck context
@@ -374,26 +374,25 @@ export function getTraceContextEnv(): Record<string, string> {
  *
  * @example
  * ```ts
- * buildSpanName('execute', { runType: 'test', testName: 'Login Flow', runId: '123' })
- * // Returns: "test.execute [Login Flow] (123)"
+ * buildSpanName('execute', { runType: 'test', testName: 'Login Flow', runId: '123-abc' })
+ * // Returns: "test: Login Flow | ID: 123-abc"
  *
- * buildSpanName('execute', { runType: 'job', jobName: 'Nightly Tests', runId: '456' })
- * // Returns: "job.execute [Nightly Tests] (456)"
+ * buildSpanName('execute', { runType: 'job', jobName: 'Nightly Tests', runId: '456-def' })
+ * // Returns: "job: Nightly Tests | ID: 456-def"
  * ```
  */
 export function buildSpanName(operation: string, ctx: SupercheckContext): string {
   const type = ctx.runType || 'execution';
 
   // Get the name based on execution type
-  const name = ctx.testName || ctx.jobName || ctx.monitorName || 'Unnamed';
+  const name = ctx.testName || ctx.jobName || ctx.monitorName || 'Unnamed Test';
 
-  // Get the primary ID
+  // Get the primary ID (use full ID for better traceability)
   const id = ctx.runId || ctx.testId || ctx.jobId || ctx.monitorId || 'unknown';
 
-  // Format: {type}.{operation} [{name}] ({shortId})
-  const shortId = id.length > 8 ? id.substring(0, 8) : id;
-
-  return `${type}.${operation} [${name}] (${shortId})`;
+  // Format: {type}: {name} | ID: {fullId}
+  // This provides clear identification with full context
+  return `${type}: ${name} | ID: ${id}`;
 }
 
 /**

@@ -68,14 +68,14 @@ const DEFAULT_CONFIG: ExecutionSpanFilterConfig = {
   enableFiltering: true,
   alwaysShowErrors: true,
   allowedSpanPatterns: [
-    '*.execute',
-    'test.*',
-    'job.*',
-    'k6.*',
-    'monitor.*',
-    'playwright.*',
+    // Only show actual test execution spans, not orchestration
+    'playwright.*',      // Playwright execution spans
+    'k6.execute',        // K6 execution spans
+    'test.execute',      // Individual test execution spans
+    'monitor.*',         // Monitor execution spans
   ],
   excludedSpanPatterns: [
+    'job.execute',       // Exclude job orchestration spans (we want playwright.* instead)
     'publish',
     'S3.*',
     'Redis.*',

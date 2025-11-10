@@ -319,7 +319,9 @@ export async function POST(
         const k6Task: K6ExecutionTask = {
           runId,
           jobId,
+          jobName: job.name, // Add job name for trace identification
           testId: primaryTestId,
+          testName: processedTestScripts[0]?.name, // Add test name for trace identification
           script: primaryScript,
           tests: processedTestScripts.map((script) => ({
             id: script.id,
@@ -334,6 +336,7 @@ export async function POST(
       } else {
         const task: JobExecutionTask = {
           jobId: jobId,
+          jobName: job.name, // Add job name for trace identification
           testScripts: processedTestScripts,
           runId: runId,
           originalJobId: jobId,
