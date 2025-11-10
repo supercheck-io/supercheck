@@ -5,7 +5,7 @@ This directory contains essential configuration files for Supercheck's observabi
 ## Directory Structure
 
 ```
-observability/deploy/
+otel/deploy/
 ├── common/clickhouse/          # ClickHouse database configuration
 │   ├── config.xml              # Main ClickHouse server configuration
 │   ├── users.xml               # User authentication and permissions
@@ -69,15 +69,15 @@ These files are mounted read-only into the respective containers:
 ```yaml
 clickhouse-observability:
   volumes:
-    - ./observability/deploy/common/clickhouse/config.xml:/etc/clickhouse-server/config.xml:ro
-    - ./observability/deploy/common/clickhouse/users.xml:/etc/clickhouse-server/users.xml:ro
-    - ./observability/deploy/common/clickhouse/custom-function.xml:/etc/clickhouse-server/custom-function.xml:ro
-    - ./observability/deploy/common/clickhouse/cluster-standalone.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
-    - ./observability/deploy/common/clickhouse/user_scripts:/var/lib/clickhouse/user_scripts:ro
+    - ./otel/deploy/common/clickhouse/config.xml:/etc/clickhouse-server/config.xml:ro
+    - ./otel/deploy/common/clickhouse/users.xml:/etc/clickhouse-server/users.xml:ro
+    - ./otel/deploy/common/clickhouse/custom-function.xml:/etc/clickhouse-server/custom-function.xml:ro
+    - ./otel/deploy/common/clickhouse/cluster-standalone.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
+    - ./otel/deploy/common/clickhouse/user_scripts:/var/lib/clickhouse/user_scripts:ro
 
 otel-collector:
   volumes:
-    - ./observability/deploy/docker/otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    - ./otel/deploy/docker/otel-collector-config.yaml:/etc/otel/config.yaml:ro
 ```
 
 ## Customization
