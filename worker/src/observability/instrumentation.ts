@@ -39,6 +39,7 @@ interface ObservabilityConfig {
   environment: string;
   otlpEndpoint: string;
   otlpHttpEndpoint: string;
+  otlpHttpLogsEndpoint: string;
   otlpProtocol: 'grpc' | 'http';
   logLevel: DiagLogLevel;
   sampleRate: number;
@@ -49,6 +50,15 @@ interface ObservabilityConfig {
  * Uses sensible defaults for all values
  */
 function loadObservabilityConfig(): ObservabilityConfig {
+  const otlpHttpEndpoint =
+    process.env.OTEL_EXPORTER_OTLP_HTTP_ENDPOINT ||
+    'http://otel-collector:4318/v1/traces';
+
+  // Derive logs endpoint from traces endpoint by replacing /v1/traces with /v1/logs
+  const otlpHttpLogsEndpoint =
+    process.env.OTEL_EXPORTER_OTLP_HTTP_LOGS_ENDPOINT ||
+    otlpHttpEndpoint.replace('/v1/traces', '/v1/logs');
+
   return {
     // Master switch - can disable all observability with single env var
     enabled: process.env.ENABLE_WORKER_OBSERVABILITY !== 'false',
@@ -60,9 +70,8 @@ function loadObservabilityConfig(): ObservabilityConfig {
 
     // OTel Collector endpoint (gRPC)
     otlpEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-collector:4317',
-    otlpHttpEndpoint:
-      process.env.OTEL_EXPORTER_OTLP_HTTP_ENDPOINT ||
-      'http://otel-collector:4318/v1/traces',
+    otlpHttpEndpoint,
+    otlpHttpLogsEndpoint,
     otlpProtocol: (process.env.OTEL_EXPORTER_OTLP_PROTOCOL || 'grpc')
       .toLowerCase()
       .startsWith('http')
@@ -237,7 +246,7 @@ function initializeObservability(): NodeSDK | null {
     const logExporter =
       config.otlpProtocol === 'http'
         ? new OTLPHttpLogExporter({
-            url: config.otlpHttpEndpoint,
+            url: config.otlpHttpLogsEndpoint,
           })
         : new OTLPGrpcLogExporter({
             url: config.otlpEndpoint,
@@ -270,7 +279,8 @@ function initializeObservability(): NodeSDK | null {
     console.log(`[Observability] Environment: ${config.environment}`);
     console.log(`[Observability] OTLP Endpoint: ${config.otlpEndpoint}`);
     if (config.otlpProtocol === 'http') {
-      console.log(`[Observability] OTLP HTTP Endpoint: ${config.otlpHttpEndpoint}`);
+      console.log(`[Observability] OTLP HTTP Traces Endpoint: ${config.otlpHttpEndpoint}`);
+      console.log(`[Observability] OTLP HTTP Logs Endpoint: ${config.otlpHttpLogsEndpoint}`);
     }
     console.log(`[Observability] Sample Rate: ${(config.sampleRate * 100).toFixed(0)}%`);
 
