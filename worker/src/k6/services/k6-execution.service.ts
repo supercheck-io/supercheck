@@ -327,6 +327,7 @@ export class K6ExecutionService {
             k6EnvOverrides,
             executionTimeoutMs,
             dashboardPort,
+            location,
           );
         } finally {
           if (this.useDashboardPortPool) {
@@ -678,6 +679,7 @@ export class K6ExecutionService {
     overrideEnv: Record<string, string> = {},
     timeoutMs?: number,
     dashboardPort?: number,
+    location?: string,
   ): Promise<{
     exitCode: number;
     stdout: string;
