@@ -414,6 +414,8 @@ export async function getTraceWithSpansClickHouse(
     serviceNames: Array.from(serviceNames),
     spanCount: spans.length,
     errorCount,
+    scOrgId: rootSpan.attributes["sc.organization_id"] as string | undefined,
+    scProjectId: rootSpan.attributes["sc.project_id"] as string | undefined,
     scRunId: rootSpan.attributes["sc.run_id"] as string | undefined,
     scRunType: scRunTypeValue,
     scTestName: rootSpan.attributes["sc.test_name"] as string | undefined,
