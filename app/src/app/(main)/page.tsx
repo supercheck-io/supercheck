@@ -1293,73 +1293,7 @@ export default function Home() {
             </TabsContent>
           </Tabs>
 
-          {latestRuns.length > 0 && (
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-base font-semibold">Latest Runs</h3>
-                <Link
-                  href="/runs"
-                  className="text-xs text-primary hover:underline font-medium"
-                >
-                  View all
-                </Link>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                {latestRuns.map((run) => {
-                  const statusMeta =
-                    runStatuses.find((status) => status.value === run.status) ||
-                    runStatuses[0];
-                  const StatusIcon = statusMeta.icon;
-                  return (
-                    <Card key={run.id}>
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <CardTitle className="text-sm">
-                              {run.jobName || "Untitled Job"}
-                            </CardTitle>
-                            <p className="text-xs text-muted-foreground">
-                              {run.startedAt
-                                ? formatDistanceToNow(new Date(run.startedAt), {
-                                    addSuffix: true,
-                                  })
-                                : "unknown start"}
-                            </p>
-                          </div>
-                          <div
-                            className={`flex items-center gap-1 text-xs font-semibold ${statusMeta.color}`}
-                          >
-                            <StatusIcon className="h-3.5 w-3.5" />
-                            {statusMeta.label}
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="flex items-center justify-between text-sm">
-                        <div>
-                          <p className="text-xs text-muted-foreground">
-                            Duration
-                          </p>
-                          <p className="font-semibold">
-                            {run.duration ? run.duration : "—"}
-                          </p>
-                        </div>
-                        <RunTraceDrawer
-                          runId={run.id}
-                          jobName={run.jobName}
-                          statusLabel={statusMeta.label}
-                          trigger={
-                            <Button variant="outline" size="sm">
-                              View Trace
-                            </Button>
-                          }
-                        />
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+    
 
           {/* Top Row Charts - 3 charts per row (formerly bottom row) */}
           <div className="grid gap-4 lg:grid-cols-3 mb-4">
