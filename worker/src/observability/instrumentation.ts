@@ -28,6 +28,7 @@ import {
 } from '@opentelemetry/semantic-conventions';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-node';
 import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
+import { existsSync } from 'fs';
 
 /**
  * Configuration interface for observability
@@ -43,16 +44,49 @@ interface ObservabilityConfig {
   otlpProtocol: 'grpc' | 'http';
   logLevel: DiagLogLevel;
   sampleRate: number;
+  isRunningInDocker: boolean;
+}
+
+/**
+ * Detect if the process is running inside Docker
+ * Checks for /.dockerenv file (most reliable method)
+ */
+function isRunningInDocker(): boolean {
+  try {
+    return existsSync('/.dockerenv');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve the OTEL collector host based on environment
+ */
+function resolveOtelHost(): string {
+  // If explicitly set, use it
+  if (process.env.OTEL_COLLECTOR_HOST) {
+    return process.env.OTEL_COLLECTOR_HOST;
+  }
+
+  // Auto-detect based on Docker presence
+  if (isRunningInDocker()) {
+    return 'otel-collector';
+  }
+
+  return 'localhost';
 }
 
 /**
  * Load and validate observability configuration from environment variables
- * Uses sensible defaults for all values
+ * Uses sensible defaults for all values with auto-detection for local vs Docker
  */
 function loadObservabilityConfig(): ObservabilityConfig {
+  const isDocker = isRunningInDocker();
+  const otelHost = resolveOtelHost();
+
   const otlpHttpEndpoint =
     process.env.OTEL_EXPORTER_OTLP_HTTP_ENDPOINT ||
-    'http://otel-collector:4318/v1/traces';
+    `http://${otelHost}:4318/v1/traces`;
 
   // Derive logs endpoint from traces endpoint by replacing /v1/traces with /v1/logs
   const otlpHttpLogsEndpoint =
@@ -68,8 +102,8 @@ function loadObservabilityConfig(): ObservabilityConfig {
     serviceVersion: process.env.SERVICE_VERSION || process.env.npm_package_version || '1.0.0',
     environment: process.env.NODE_ENV || 'production',
 
-    // OTel Collector endpoint (gRPC)
-    otlpEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-collector:4317',
+    // OTel Collector endpoint (gRPC) - auto-detects Docker vs local
+    otlpEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || `http://${otelHost}:4317`,
     otlpHttpEndpoint,
     otlpHttpLogsEndpoint,
     otlpProtocol: (process.env.OTEL_EXPORTER_OTLP_PROTOCOL || 'grpc')
@@ -85,6 +119,9 @@ function loadObservabilityConfig(): ObservabilityConfig {
 
     // Sampling rate (1.0 = 100%, 0.5 = 50%)
     sampleRate: parseFloat(process.env.OTEL_TRACE_SAMPLE_RATE || '1.0'),
+
+    // Environment detection
+    isRunningInDocker: isDocker,
   };
 }
 
@@ -277,6 +314,7 @@ function initializeObservability(): NodeSDK | null {
     console.log(`[Observability] Worker observability initialized successfully`);
     console.log(`[Observability] Service: ${config.serviceName} v${config.serviceVersion}`);
     console.log(`[Observability] Environment: ${config.environment}`);
+    console.log(`[Observability] Running in: ${config.isRunningInDocker ? 'Docker' : 'Local/Native'}`);
     console.log(`[Observability] OTLP Endpoint: ${config.otlpEndpoint}`);
     if (config.otlpProtocol === 'http') {
       console.log(`[Observability] OTLP HTTP Traces Endpoint: ${config.otlpHttpEndpoint}`);
