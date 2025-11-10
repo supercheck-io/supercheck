@@ -68,23 +68,18 @@ const DEFAULT_CONFIG: ExecutionSpanFilterConfig = {
   enableFiltering: true,
   alwaysShowErrors: true,
   allowedSpanPatterns: [
-    // Execution spans - only show actual test/job/monitor execution, not orchestration
-    'playwright.*',      // All Playwright execution spans
-    'k6*',              // All K6 execution spans (matches "k6: Name" and "k6.execute")
-    'test*',            // All test execution spans (matches "test: Name" and "test.execute")
-    'monitor*',         // All monitor execution spans (matches "monitor: Name" and "monitor.execute")
+    // Execution spans - show ALL test/job/monitor/k6 execution spans
+    // Pattern format: "type: Name | ID: xxx" (from buildSpanName)
+    'k6:*',              // K6 execution spans (format: "k6: Name | ID: xxx")
+    'test:*',            // Test execution spans (format: "test: Name | ID: xxx")
+    'job:*',             // Job execution spans (format: "job: Name | ID: xxx")
+    'monitor:*',         // Monitor execution spans (format: "monitor: Name | ID: xxx")
+    'playwright.*',      // Playwright-specific execution spans (native runner, etc.)
   ],
   excludedSpanPatterns: [
-    // Job orchestration spans (we only want the actual execution spans)
-    'job:*',             // Exclude job orchestration spans (format: "job: Name | ID: xxx")
-    'job.execute',       // Exclude job orchestration spans (old format)
-
-    // Playwright wrapper spans (we only want the actual execution span)
-    'playwright.job-run',
-    'playwright.run',
-
-    // Infrastructure operations
+    // Infrastructure operations only - NOT execution spans
     'publish',
+    'worker.*',          // Exclude any spans with "worker." prefix (legacy)
     'S3.*',
     'Redis.*',
     'GET',

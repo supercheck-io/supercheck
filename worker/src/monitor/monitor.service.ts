@@ -39,6 +39,7 @@ import {
 import {
   addSupcheckRunContext,
   createSpanWithContext,
+  createExecutionSpan,
 } from '../observability/trace-helpers';
 
 // Import shared constants
@@ -87,13 +88,40 @@ export class MonitorService {
     jobData: MonitorJobDataDto,
     location: MonitoringLocation = MONITORING_LOCATIONS.US_EAST,
   ): Promise<MonitorExecutionResult | null> {
+    // Fetch monitor details for complete telemetry context
+    let monitorName: string | undefined;
+    let organizationId: string | undefined;
+    let projectId: string | undefined;
+
+    try {
+      const monitor = await this.dbService.db.query.monitors.findFirst({
+        where: (monitors, { eq }) => eq(monitors.id, jobData.monitorId),
+      });
+
+      if (monitor) {
+        monitorName = monitor.name;
+        organizationId = monitor.organizationId ?? undefined;
+        projectId = monitor.projectId ?? undefined;
+      }
+    } catch (err) {
+      // Log error but continue - we'll use incomplete context
+      this.logger.warn(
+        `Failed to fetch monitor details for telemetry: ${getErrorMessage(err)}`,
+      );
+    }
+
     const spanContext = {
       runType: 'monitor' as const,
       monitorId: jobData.monitorId,
+      monitorName,
+      organizationId,
+      projectId,
+      // Use monitorId as runId for monitors for consistency
+      runId: jobData.monitorId,
     };
 
-    return createSpanWithContext(
-      'worker.monitor.execute',
+    return createExecutionSpan(
+      'execute',
       spanContext,
       async () => this.executeMonitorInternal(jobData, location),
     );
