@@ -1053,14 +1053,8 @@ export class ExecutionService implements OnModuleDestroy {
       ? `playwright.${telemetryCtx.runType || 'test'}: ${telemetryCtx.jobName || telemetryCtx.testName || 'Unnamed'} | ID: ${telemetryCtx.runId || 'unknown'}`
       : (isJob ? 'playwright.native.job' : 'playwright.native.single');
 
-    // Use createSpanWithContext if telemetryCtx is available to ensure execution attributes are added
-    const createSpanFn = telemetryCtx
-      ? (name: string, fn: any) => createSpanWithContext(name, telemetryCtx, fn)
-      : (name: string, fn: any) => createSpan(name, fn);
-
-    return createSpanFn(
-      spanName,
-      async (span) => {
+    // Define the span execution logic (shared between both paths)
+    const executeWithinSpan = async (span: Span): Promise<PlaywrightExecutionResult> => {
     const serviceRoot = process.cwd();
     const playwrightConfigPath = path.join(serviceRoot, 'playwright.config.js'); // Get absolute path to config
     // Use a subdirectory in the provided runDir for the standard playwright report
@@ -1227,8 +1221,14 @@ export class ExecutionService implements OnModuleDestroy {
         stderr: (error as Error).stack || '',
       };
     }
-      },
-    );
+    };
+
+    // Use createSpanWithContext if telemetryCtx is available to ensure execution attributes are added
+    if (telemetryCtx) {
+      return createSpanWithContext(spanName, telemetryCtx, executeWithinSpan);
+    } else {
+      return createSpan(spanName, executeWithinSpan);
+    }
   }
 
   /**
