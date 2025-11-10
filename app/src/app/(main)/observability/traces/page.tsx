@@ -306,7 +306,7 @@ export default function TracesPage() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <h2 className="text-sm font-semibold">
-                        {selectedTrace.scTestName || selectedTrace.traceId}
+                        {buildTraceName(selectedTrace)}
                       </h2>
                       <Badge variant={selectedTrace.errorCount > 0 ? "destructive" : "default"} className="h-5 text-xs">
                         {selectedTrace.errorCount > 0 ? "Error" : "Success"}
@@ -316,6 +316,9 @@ export default function TracesPage() {
                           {selectedTrace.scRunType}
                         </Badge>
                       )}
+                    </div>
+                    <div className="text-xs text-muted-foreground font-mono mb-2">
+                      ID: {selectedTrace.traceId}
                     </div>
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
@@ -356,6 +359,53 @@ export default function TracesPage() {
   );
 }
 
+/**
+ * Build a descriptive trace name based on run type and test name
+ * Follows the same convention as backend span naming for consistency
+ */
+function buildTraceName(trace: Trace): string {
+  let typeLabel = 'Unknown';
+  let name = 'Unnamed';
+
+  // Determine type label with subtype if available
+  if (trace.scRunType === 'job') {
+    typeLabel = trace.scJobType ? `${trace.scJobType.charAt(0).toUpperCase() + trace.scJobType.slice(1)} Job` : 'Job';
+    name = trace.scJobName || 'Unnamed';
+  } else if (trace.scRunType === 'test') {
+    typeLabel = trace.scTestType ? `${trace.scTestType.charAt(0).toUpperCase() + trace.scTestType.slice(1)} Test` : 'Test';
+    name = trace.scTestName || 'Unnamed';
+  } else if (trace.scRunType === 'monitor') {
+    typeLabel = 'Monitor';
+    name = trace.scMonitorName || 'Unnamed';
+  } else if (trace.scRunType === 'k6') {
+    // K6 can be either a job or a test - check for job name first
+    if (trace.scJobName) {
+      typeLabel = 'K6 Job';
+      name = trace.scJobName;
+    } else {
+      typeLabel = 'K6';
+      name = trace.scTestName || 'Unnamed';
+    }
+  } else if (trace.scRunType === 'playground') {
+    typeLabel = 'Playground';
+    name = trace.scTestName || 'Unnamed';
+  } else {
+    // Fallback: try to infer from available data
+    if (trace.scJobName) {
+      typeLabel = 'Job';
+      name = trace.scJobName;
+    } else if (trace.scMonitorName) {
+      typeLabel = 'Monitor';
+      name = trace.scMonitorName;
+    } else if (trace.scTestName) {
+      typeLabel = 'Test';
+      name = trace.scTestName;
+    }
+  }
+
+  return `${typeLabel}: ${name}`;
+}
+
 function CompactTraceCard({ trace, isSelected, onClick }: {
   trace: Trace;
   isSelected: boolean;
@@ -378,7 +428,10 @@ function CompactTraceCard({ trace, isSelected, onClick }: {
         <div className="mt-1.5">{statusIcon}</div>
         <div className="flex-1 min-w-0 space-y-1">
           <div className="font-medium truncate">
-            {trace.scTestName || `Trace ${trace.traceId.slice(0, 8)}`}
+            {buildTraceName(trace)}
+          </div>
+          <div className="text-[10px] text-muted-foreground truncate font-mono">
+            {trace.traceId.slice(0, 16)}...
           </div>
           <div className="flex items-center gap-2 text-muted-foreground">
             <span className="flex items-center gap-1">

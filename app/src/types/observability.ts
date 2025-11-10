@@ -128,6 +128,10 @@ export interface Trace {
   scRunId?: string;
   scRunType?: RunType;
   scTestName?: string;
+  scJobName?: string;
+  scMonitorName?: string;
+  scJobType?: 'playwright' | 'k6';
+  scTestType?: string;
 
   // Aggregated attributes
   attributes: Record<string, unknown>;

@@ -102,10 +102,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       runId,
       testId: testId ?? undefined,
       testName: taskData.testName,
+      testType: 'performance' as const,
       projectId: taskData.projectId,
       organizationId: taskData.organizationId,
       jobId: taskData.jobId ?? undefined,
       jobName: taskData.jobName,
+      jobType: 'k6' as const,
       runType: 'k6' as const,
     };
 

@@ -18,6 +18,7 @@
  */
 
 import { trace, context, Span, SpanStatusCode } from '@opentelemetry/api';
+import type { JobType, TestType } from '../db/schema/types';
 
 /**
  * Supercheck entity types for trace correlation
@@ -31,8 +32,10 @@ export interface SupercheckContext {
   runId?: string;
   testId?: string;
   testName?: string;
+  testType?: TestType;
   jobId?: string;
   jobName?: string;
+  jobType?: JobType;
   monitorId?: string;
   monitorName?: string;
   projectId?: string;
@@ -69,8 +72,10 @@ export function addSupcheckRunContext(ctx: SupercheckContext): boolean {
   if (ctx.runId) span.setAttribute('sc.run_id', ctx.runId);
   if (ctx.testId) span.setAttribute('sc.test_id', ctx.testId);
   if (ctx.testName) span.setAttribute('sc.test_name', ctx.testName);
+  if (ctx.testType) span.setAttribute('sc.test_type', ctx.testType);
   if (ctx.jobId) span.setAttribute('sc.job_id', ctx.jobId);
   if (ctx.jobName) span.setAttribute('sc.job_name', ctx.jobName);
+  if (ctx.jobType) span.setAttribute('sc.job_type', ctx.jobType);
   if (ctx.monitorId) span.setAttribute('sc.monitor_id', ctx.monitorId);
   if (ctx.monitorName) span.setAttribute('sc.monitor_name', ctx.monitorName);
   if (ctx.projectId) span.setAttribute('sc.project_id', ctx.projectId);
@@ -377,12 +382,35 @@ export function getTraceContextEnv(): Record<string, string> {
  * buildSpanName('execute', { runType: 'test', testName: 'Login Flow', runId: '123-abc' })
  * // Returns: "test: Login Flow | ID: 123-abc"
  *
- * buildSpanName('execute', { runType: 'job', jobName: 'Nightly Tests', runId: '456-def' })
- * // Returns: "job: Nightly Tests | ID: 456-def"
+ * buildSpanName('execute', { runType: 'job', jobType: 'playwright', jobName: 'Nightly Tests', runId: '456-def' })
+ * // Returns: "Playwright Job: Nightly Tests | ID: 456-def"
  * ```
  */
 export function buildSpanName(operation: string, ctx: SupercheckContext): string {
-  const type = ctx.runType || 'execution';
+  // Map run types to human-readable labels with optional subtype
+  let typeLabel = ctx.runType || 'Execution';
+
+  // Add subtype info for better clarity
+  if (ctx.runType === 'job' && ctx.jobType) {
+    typeLabel = `${capitalize(ctx.jobType)} Job`;
+  } else if (ctx.runType === 'test' && ctx.testType) {
+    typeLabel = `${capitalize(ctx.testType)} Test`;
+  } else if (ctx.runType === 'job') {
+    typeLabel = 'Job';
+  } else if (ctx.runType === 'test') {
+    typeLabel = 'Test';
+  } else if (ctx.runType === 'monitor') {
+    typeLabel = 'Monitor';
+  } else if (ctx.runType === 'k6') {
+    // K6 can be either a job or a test - check for job name first
+    if (ctx.jobName) {
+      typeLabel = 'K6 Job';
+    } else {
+      typeLabel = 'K6';
+    }
+  } else if (ctx.runType === 'playground') {
+    typeLabel = 'Playground';
+  }
 
   // Get the name based on execution type
   const name = ctx.testName || ctx.jobName || ctx.monitorName || 'Unnamed Test';
@@ -392,7 +420,14 @@ export function buildSpanName(operation: string, ctx: SupercheckContext): string
 
   // Format: {type}: {name} | ID: {fullId}
   // This provides clear identification with full context
-  return `${type}: ${name} | ID: ${id}`;
+  return `${typeLabel}: ${name} | ID: ${id}`;
+}
+
+/**
+ * Capitalize the first letter of a string
+ */
+function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 /**

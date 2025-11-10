@@ -34,6 +34,7 @@ export class JobExecutionProcessor extends WorkerHost {
       runId: job.data.runId,
       jobId: job.data.originalJobId ?? job.data.jobId,
       jobName: job.data.jobName,
+      jobType: job.data.jobType,
       projectId: job.data.projectId,
       organizationId: job.data.organizationId,
     };

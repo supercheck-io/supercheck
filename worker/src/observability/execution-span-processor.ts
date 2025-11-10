@@ -69,11 +69,15 @@ const DEFAULT_CONFIG: ExecutionSpanFilterConfig = {
   alwaysShowErrors: true,
   allowedSpanPatterns: [
     // Execution spans - show ALL test/job/monitor/k6 execution spans
-    // Pattern format: "type: Name | ID: xxx" (from buildSpanName)
-    'k6:*',              // K6 execution spans (format: "k6: Name | ID: xxx")
-    'test:*',            // Test execution spans (format: "test: Name | ID: xxx")
-    'job:*',             // Job execution spans (format: "job: Name | ID: xxx")
-    'monitor:*',         // Monitor execution spans (format: "monitor: Name | ID: xxx")
+    // Pattern format: "Type: Name | ID: xxx" (from buildSpanName)
+    'K6:*',              // K6 execution spans (format: "K6: Name | ID: xxx")
+    'K6 Job:*',          // K6 Job execution spans (format: "K6 Job: Name | ID: xxx")
+    'Test:*',            // Test execution spans (format: "Test: Name | ID: xxx")
+    'Browser Test:*',    // Browser Test execution spans (format: "Browser Test: Name | ID: xxx")
+    'Job:*',             // Job execution spans (fallback for untyped jobs)
+    'Playwright Job:*',  // Playwright Job execution spans (format: "Playwright Job: Name | ID: xxx")
+    'Monitor:*',         // Monitor execution spans (format: "Monitor: Name | ID: xxx")
+    'Playground:*',      // Playground execution spans
     'playwright.*',      // Playwright-specific execution spans (native runner, etc.)
   ],
   excludedSpanPatterns: [

@@ -250,7 +250,11 @@ export async function searchTracesClickHouse(
       CASE WHEN has_error THEN 1 ELSE 0 END AS errorCount,
       attributes_string['sc.run_type'] AS scRunType,
       attributes_string['sc.run_id'] AS scRunId,
-      attributes_string['sc.test_name'] AS scTestName
+      attributes_string['sc.test_name'] AS scTestName,
+      attributes_string['sc.job_name'] AS scJobName,
+      attributes_string['sc.monitor_name'] AS scMonitorName,
+      attributes_string['sc.job_type'] AS scJobType,
+      attributes_string['sc.test_type'] AS scTestType
     FROM ${TRACE_TABLE}
     WHERE ${whereClause}
     ORDER BY timestamp DESC
@@ -269,6 +273,10 @@ export async function searchTracesClickHouse(
     scRunType?: string;
     scRunId?: string;
     scTestName?: string;
+    scJobName?: string;
+    scMonitorName?: string;
+    scJobType?: string;
+    scTestType?: string;
   }
 
   const rows = await executeQuery<TraceRow>(query);
@@ -299,6 +307,10 @@ export async function searchTracesClickHouse(
       scRunType,
       scRunId: row.scRunId || undefined,
       scTestName: row.scTestName || undefined,
+      scJobName: row.scJobName || undefined,
+      scMonitorName: row.scMonitorName || undefined,
+      scJobType: row.scJobType as 'playwright' | 'k6' | undefined,
+      scTestType: row.scTestType || undefined,
       attributes: {},
     };
   });
@@ -419,6 +431,10 @@ export async function getTraceWithSpansClickHouse(
     scRunId: rootSpan.attributes["sc.run_id"] as string | undefined,
     scRunType: scRunTypeValue,
     scTestName: rootSpan.attributes["sc.test_name"] as string | undefined,
+    scJobName: rootSpan.attributes["sc.job_name"] as string | undefined,
+    scMonitorName: rootSpan.attributes["sc.monitor_name"] as string | undefined,
+    scJobType: rootSpan.attributes["sc.job_type"] as 'playwright' | 'k6' | undefined,
+    scTestType: rootSpan.attributes["sc.test_type"] as string | undefined,
     attributes: rootSpan.attributes,
     spans,
   };
