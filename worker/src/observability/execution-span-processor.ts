@@ -69,13 +69,19 @@ const DEFAULT_CONFIG: ExecutionSpanFilterConfig = {
   alwaysShowErrors: true,
   allowedSpanPatterns: [
     // Only show actual test execution spans, not orchestration
-    'playwright.*',      // Playwright execution spans
-    'k6.execute',        // K6 execution spans
-    'test.execute',      // Individual test execution spans
-    'monitor.*',         // Monitor execution spans
+    'playwright.job:*',   // Playwright job execution (new format: "playwright.job: Name | ID: xxx")
+    'playwright.test:*',  // Playwright test execution (new format: "playwright.test: Name | ID: xxx")
+    'playwright.monitor:*', // Playwright monitor execution (new format)
+    'playwright.native.*', // Playwright native execution spans (fallback for backward compat)
+    'k6:*',              // K6 execution spans (new format: "k6: Name | ID: xxx")
+    'test:*',            // Individual test execution spans (new format)
+    'monitor:*',         // Monitor execution spans (new format)
   ],
   excludedSpanPatterns: [
-    'job.execute',       // Exclude job orchestration spans (we want playwright.* instead)
+    'job:*',             // Exclude job orchestration spans (new format: "job: Name | ID: xxx")
+    'job.execute',       // Exclude job orchestration spans (old format, backwards compat)
+    'playwright.job-run', // Exclude playwright job wrapper span (we want native.* instead)
+    'playwright.run',    // Exclude playwright run wrapper span (we want native.* instead)
     'publish',
     'S3.*',
     'Redis.*',

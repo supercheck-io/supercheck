@@ -529,6 +529,7 @@ export class ExecutionService implements OnModuleDestroy {
           const result = await this._executePlaywrightNativeRunner(
             testDirPath,
             false,
+            telemetryCtx,
           );
           if (typeof result.executionTimeMs === 'number') {
             span.setAttribute('playwright.execution_ms', result.executionTimeMs);
@@ -875,7 +876,7 @@ export class ExecutionService implements OnModuleDestroy {
         async (span) => {
           span.setAttribute('playwright.run_dir', runDir);
           span.setAttribute('playwright.job_test_count', testScripts.length);
-          return this._executePlaywrightNativeRunner(runDir, true);
+          return this._executePlaywrightNativeRunner(runDir, true, jobTelemetryCtx);
         },
       );
       overallSuccess = execResult.success;
@@ -1040,13 +1041,20 @@ export class ExecutionService implements OnModuleDestroy {
    * Execute a Playwright test using the native binary
    * @param runDir The base directory for this specific run where test files are located
    * @param isJob Whether this is a job execution (multiple tests)
+   * @param telemetryCtx Telemetry context for span naming and attributes
    */
   private async _executePlaywrightNativeRunner(
     runDir: string, // Directory containing the spec file(s) OR the single spec file for single tests
     isJob: boolean = false, // Flag to indicate if running multiple tests in a dir (job) vs single file
+    telemetryCtx?: any, // Telemetry context for consistent naming
   ): Promise<PlaywrightExecutionResult> {
+    // Build span name based on context
+    const spanName = telemetryCtx
+      ? `playwright.${telemetryCtx.runType || 'test'}: ${telemetryCtx.jobName || telemetryCtx.testName || 'Unnamed'} | ID: ${telemetryCtx.runId || 'unknown'}`
+      : (isJob ? 'playwright.native.job' : 'playwright.native.single');
+
     return createSpan(
-      isJob ? 'playwright.native.job' : 'playwright.native.single',
+      spanName,
       async (span) => {
     const serviceRoot = process.cwd();
     const playwrightConfigPath = path.join(serviceRoot, 'playwright.config.js'); // Get absolute path to config
