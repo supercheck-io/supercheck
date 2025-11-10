@@ -55,7 +55,7 @@ export function emitTelemetryLog({
   error,
 }: TelemetryLogOptions): void {
   try {
-    const logger = logs.getLogger('supercheck-worker');
+    const logger = logs.getLogger('supercheck');
     const logAttributes: Record<string, string | number | boolean> = {};
 
     // Automatically include trace context for log correlation

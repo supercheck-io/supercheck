@@ -102,7 +102,7 @@ export async function createSpan<T>(
   fn: (span: Span) => Promise<T>,
   attributes?: Record<string, string | number | boolean>,
 ): Promise<T> {
-  const tracer = trace.getTracer('supercheck-worker');
+  const tracer = trace.getTracer('supercheck');
 
   return tracer.startActiveSpan(name, async (span) => {
     try {

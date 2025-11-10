@@ -100,7 +100,7 @@ function loadObservabilityConfig(): ObservabilityConfig {
     enabled: process.env.ENABLE_WORKER_OBSERVABILITY !== 'false',
 
     // Service identification
-    serviceName: process.env.OTEL_SERVICE_NAME || 'supercheck-worker',
+    serviceName: process.env.OTEL_SERVICE_NAME || 'supercheck',
     serviceVersion: process.env.SERVICE_VERSION || process.env.npm_package_version || '1.0.0',
     environment: process.env.NODE_ENV || 'production',
 

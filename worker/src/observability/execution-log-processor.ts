@@ -175,7 +175,7 @@ export class ExecutionLogProcessor implements LogRecordProcessor {
       const hasTraceContext = attributes['trace_id'] !== undefined;
       const isExternalApp =
         hasTraceContext &&
-        !attributes['service.name']?.toString().includes('supercheck-worker');
+        !attributes['service.name']?.toString().includes('supercheck');
 
       if (isExternalApp) {
         return true;

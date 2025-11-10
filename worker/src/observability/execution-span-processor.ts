@@ -68,20 +68,22 @@ const DEFAULT_CONFIG: ExecutionSpanFilterConfig = {
   enableFiltering: true,
   alwaysShowErrors: true,
   allowedSpanPatterns: [
-    // Only show actual test execution spans, not orchestration
-    'playwright.job:*',   // Playwright job execution (new format: "playwright.job: Name | ID: xxx")
-    'playwright.test:*',  // Playwright test execution (new format: "playwright.test: Name | ID: xxx")
-    'playwright.monitor:*', // Playwright monitor execution (new format)
-    'playwright.native.*', // Playwright native execution spans (fallback for backward compat)
-    'k6:*',              // K6 execution spans (new format: "k6: Name | ID: xxx")
-    'test:*',            // Individual test execution spans (new format)
-    'monitor:*',         // Monitor execution spans (new format)
+    // Execution spans - only show actual test/job/monitor execution, not orchestration
+    'playwright.*',      // All Playwright execution spans
+    'k6*',              // All K6 execution spans (matches "k6: Name" and "k6.execute")
+    'test*',            // All test execution spans (matches "test: Name" and "test.execute")
+    'monitor*',         // All monitor execution spans (matches "monitor: Name" and "monitor.execute")
   ],
   excludedSpanPatterns: [
-    'job:*',             // Exclude job orchestration spans (new format: "job: Name | ID: xxx")
-    'job.execute',       // Exclude job orchestration spans (old format, backwards compat)
-    'playwright.job-run', // Exclude playwright job wrapper span (we want native.* instead)
-    'playwright.run',    // Exclude playwright run wrapper span (we want native.* instead)
+    // Job orchestration spans (we only want the actual execution spans)
+    'job:*',             // Exclude job orchestration spans (format: "job: Name | ID: xxx")
+    'job.execute',       // Exclude job orchestration spans (old format)
+
+    // Playwright wrapper spans (we only want the actual execution span)
+    'playwright.job-run',
+    'playwright.run',
+
+    // Infrastructure operations
     'publish',
     'S3.*',
     'Redis.*',
@@ -177,7 +179,7 @@ export class ExecutionSpanProcessor implements SpanProcessor {
     if (this.config.includeExternalAppSpans) {
       const serviceName = attributes['service.name'] as string | undefined;
       const isExternalApp =
-        serviceName && !serviceName.includes('supercheck-worker');
+        serviceName && !serviceName.includes('supercheck');
 
       if (isExternalApp) {
         return true;

@@ -1053,7 +1053,12 @@ export class ExecutionService implements OnModuleDestroy {
       ? `playwright.${telemetryCtx.runType || 'test'}: ${telemetryCtx.jobName || telemetryCtx.testName || 'Unnamed'} | ID: ${telemetryCtx.runId || 'unknown'}`
       : (isJob ? 'playwright.native.job' : 'playwright.native.single');
 
-    return createSpan(
+    // Use createSpanWithContext if telemetryCtx is available to ensure execution attributes are added
+    const createSpanFn = telemetryCtx
+      ? (name: string, fn: any) => createSpanWithContext(name, telemetryCtx, fn)
+      : (name: string, fn: any) => createSpan(name, fn);
+
+    return createSpanFn(
       spanName,
       async (span) => {
     const serviceRoot = process.cwd();
