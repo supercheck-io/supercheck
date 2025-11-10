@@ -657,10 +657,14 @@ export async function queryMetricsClickHouse(
 
 export async function getServiceMetricsClickHouse(
   serviceName: string,
-  timeRange: TimeRange
+  timeRange: TimeRange,
+  projectId?: string,
+  organizationId?: string
 ): Promise<ServiceMetrics> {
   const conditions = buildTraceConditions(timeRange, {
     serviceName,
+    projectId,
+    organizationId,
     rootOnly: true,
   });
 
@@ -709,10 +713,14 @@ export async function getServiceMetricsClickHouse(
 
 export async function getEndpointMetricsClickHouse(
   serviceName: string,
-  timeRange: TimeRange
+  timeRange: TimeRange,
+  projectId?: string,
+  organizationId?: string
 ): Promise<EndpointMetrics[]> {
   const conditions = buildTraceConditions(timeRange, {
     serviceName,
+    projectId,
+    organizationId,
     rootOnly: true,
   });
   conditions.push(`attributes_string['http.route'] != ''`);

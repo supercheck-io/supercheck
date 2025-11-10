@@ -5,7 +5,7 @@
 
 import { NextResponse, NextRequest } from "next/server";
 import { getTrace } from "~/lib/observability";
-import { requireAuth } from "~/lib/rbac/middleware";
+import { requireProjectContext } from "@/lib/project-context";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +14,8 @@ export async function GET(
   { params }: { params: Promise<{ traceId: string }> }
 ) {
   try {
-    // Authentication
-    await requireAuth();
+    // Authentication and authorization
+    const { project, organizationId } = await requireProjectContext();
 
     const { traceId } = await params;
 
@@ -31,6 +31,14 @@ export async function GET(
 
     if (!trace) {
       return NextResponse.json({ error: "Trace not found" }, { status: 404 });
+    }
+
+    // Verify trace belongs to user's project
+    if (trace.scProjectId !== project.id || trace.scOrgId !== organizationId) {
+      return NextResponse.json(
+        { error: "Access denied: Trace not found" },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json(trace);
