@@ -12,6 +12,7 @@ import { ReportUploadService } from '../../common/services/report-upload.service
 import { createSpan, createSpanWithContext, getTraceContextEnv } from '../../observability/trace-helpers';
 import { emitTelemetryLog } from '../../observability/log-helpers';
 import { SeverityNumber } from '@opentelemetry/api-logs';
+import { Span } from '@opentelemetry/api';
 import {
   TestResult,
   TestExecutionResult,
