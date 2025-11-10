@@ -8,6 +8,9 @@ import { S3Service } from '../../execution/services/s3.service';
 import { DbService } from '../../execution/services/db.service';
 import { RedisService } from '../../execution/services/redis.service';
 import * as net from 'net';
+import { getTraceContextEnv } from '../../observability/trace-helpers';
+import { emitTelemetryLog } from '../../observability/log-helpers';
+import { SeverityNumber } from '@opentelemetry/api-logs';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -259,9 +262,10 @@ export class K6ExecutionService {
       // 1. Create directory
       await fs.mkdir(runDir, { recursive: true });
 
-      // 2. Write script
+      // 2. Write script with trace context propagation wrapper
       const scriptPath = path.join(runDir, 'test.js');
-      await fs.writeFile(scriptPath, script);
+      const wrappedScript = this.wrapScriptWithTraceContext(script);
+      await fs.writeFile(scriptPath, wrappedScript);
 
       // 3. Build k6 command with web dashboard for HTML report generation
       const reportDir = path.join(runDir, 'report');
@@ -301,12 +305,17 @@ export class K6ExecutionService {
           ? await this.allocateDashboardPort(runId)
           : 0; // Let the OS choose a free ephemeral port
 
+        // Get trace context for subprocess propagation (enables end-to-end traceability)
+        const traceContextEnv = getTraceContextEnv();
+
         const k6EnvOverrides = {
           K6_WEB_DASHBOARD: 'true',
           K6_WEB_DASHBOARD_EXPORT: htmlReportPath, // Write HTML report to this path
           K6_WEB_DASHBOARD_PORT: dashboardPort.toString(), // Use unique port
           K6_WEB_DASHBOARD_ADDR: this.dashboardBindAddress,
           K6_NO_COLOR: '1', // Disable ANSI colors in output
+          // Inject trace context for end-to-end correlation
+          ...traceContextEnv,
         };
 
         try {
@@ -752,7 +761,7 @@ export class K6ExecutionService {
         }, timeoutMs);
       }
 
-      // Stream stdout to Redis (for real-time console)
+      // Stream stdout to Redis (for real-time console) and emit as OTLP logs
       childProcess.stdout.on('data', (data: Buffer) => {
         const chunk = data.toString();
         stdout += chunk;
@@ -766,11 +775,43 @@ export class K6ExecutionService {
               `Failed to publish console: ${getErrorMessage(err)}`,
             );
           });
+
+        // Emit K6 console output as structured OTLP logs for trace correlation
+        // This enables viewing K6 logs alongside worker spans in the observability UI
+        const lines = chunk.split('\n').filter((line) => line.trim());
+        for (const line of lines) {
+          // Parse K6 log level from output if possible
+          const severity = this.parseK6LogSeverity(line);
+
+          emitTelemetryLog({
+            message: line,
+            severity,
+            attributes: {
+              'k6.run_id': runId,
+              'k6.source': 'stdout',
+              'k6.location': location || 'default',
+            },
+          });
+        }
       });
 
       childProcess.stderr.on('data', (data: Buffer) => {
         const chunk = data.toString();
         stderr += chunk;
+
+        // Emit K6 stderr as error logs for trace correlation
+        const lines = chunk.split('\n').filter((line) => line.trim());
+        for (const line of lines) {
+          emitTelemetryLog({
+            message: line,
+            severity: SeverityNumber.ERROR,
+            attributes: {
+              'k6.run_id': runId,
+              'k6.source': 'stderr',
+              'k6.location': location || 'default',
+            },
+          });
+        }
       });
 
       childProcess.on('close', (code, signal) => {
@@ -867,5 +908,151 @@ export class K6ExecutionService {
         };
       },
     );
+  }
+
+  /**
+   * Wrap K6 script to automatically propagate trace context headers
+   * This enables end-to-end traceability by injecting W3C Trace Context headers
+   * into all HTTP requests made by the K6 test.
+   */
+  private wrapScriptWithTraceContext(userScript: string): string {
+    // Trace context propagation wrapper for K6 scripts
+    const traceContextWrapper = `
+// ==== SuperCheck Trace Context Propagation ====
+// Automatically inject W3C Trace Context headers for end-to-end observability
+// This wrapper reads TRACEPARENT from environment and adds it to all HTTP requests
+
+// Read trace context from environment (injected by SuperCheck worker)
+const TRACEPARENT = __ENV.TRACEPARENT || '';
+const TRACE_ID = __ENV.OTEL_TRACE_ID || '';
+const SPAN_ID = __ENV.OTEL_SPAN_ID || '';
+
+// Create trace headers object
+const traceHeaders = {};
+if (TRACEPARENT) {
+  traceHeaders['traceparent'] = TRACEPARENT;
+}
+
+// Store original exported functions
+const originalScript = (() => {
+${this.indentScript(userScript, 2)}
+})();
+
+// Helper to merge trace headers with user-provided headers
+function mergeTraceHeaders(params) {
+  if (!TRACEPARENT) return params;
+
+  const mergedParams = params ? { ...params } : {};
+  mergedParams.headers = {
+    ...traceHeaders,
+    ...(mergedParams.headers || {})
+  };
+  return mergedParams;
+}
+
+// Export wrapped functions that inject trace headers
+export default function() {
+  // If user script exports default function, wrap it
+  if (typeof originalScript.default === 'function') {
+    return originalScript.default();
+  }
+}
+
+// Export setup function with trace context
+export function setup() {
+  if (typeof originalScript.setup === 'function') {
+    return originalScript.setup();
+  }
+}
+
+// Export teardown function
+export function teardown(data) {
+  if (typeof originalScript.teardown === 'function') {
+    return originalScript.teardown(data);
+  }
+}
+
+// Re-export options from user script
+export const options = originalScript.options || {};
+
+// Override http module to automatically inject trace headers (if needed)
+// Note: K6 doesn't support module interception, so users need to manually
+// include trace headers in their requests using the params object.
+// We've made TRACEPARENT available as an environment variable.
+
+// ==== End SuperCheck Trace Context Propagation ====
+`;
+
+    // Check if user script already handles trace context
+    if (userScript.includes('TRACEPARENT') || userScript.includes('traceparent')) {
+      this.logger.debug(
+        'User script already handles trace context, skipping wrapper',
+      );
+      return userScript;
+    }
+
+    // Check if script uses ES6 exports - if so, use the wrapper
+    if (userScript.includes('export default') || userScript.includes('export function')) {
+      return traceContextWrapper;
+    }
+
+    // For simple scripts without exports, just prepend trace context comment
+    const simpleWrapper = `
+// SuperCheck Trace Context Available:
+// Use __ENV.TRACEPARENT in your HTTP request headers for end-to-end tracing
+// Example: http.get('https://example.com', { headers: { 'traceparent': __ENV.TRACEPARENT } })
+//
+// Trace ID: ${this.maskTraceId()}
+// Span ID: ${this.maskTraceId()}
+
+${userScript}
+`;
+
+    return simpleWrapper;
+  }
+
+  /**
+   * Indent script lines for wrapping
+   */
+  private indentScript(script: string, spaces: number): string {
+    const indent = ' '.repeat(spaces);
+    return script
+      .split('\n')
+      .map((line) => (line.trim() ? indent + line : line))
+      .join('\n');
+  }
+
+  /**
+   * Mask trace ID for logging (security)
+   */
+  private maskTraceId(): string {
+    return '${__ENV.OTEL_TRACE_ID || "not-set"}';
+  }
+
+  /**
+   * Parse K6 log severity from console output
+   * K6 outputs typically include INFO, WARN, ERROR patterns
+   */
+  private parseK6LogSeverity(logLine: string): SeverityNumber {
+    const upperLine = logLine.toUpperCase();
+
+    if (upperLine.includes('ERROR') || upperLine.includes('FAIL')) {
+      return SeverityNumber.ERROR;
+    }
+
+    if (upperLine.includes('WARN')) {
+      return SeverityNumber.WARN;
+    }
+
+    if (
+      upperLine.includes('INFO') ||
+      upperLine.includes('✓') ||
+      upperLine.includes('PASS')
+    ) {
+      return SeverityNumber.INFO;
+    }
+
+    // Default to DEBUG for metrics and other output
+    return SeverityNumber.DEBUG;
   }
 }

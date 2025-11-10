@@ -9,7 +9,7 @@ import { S3Service } from './s3.service';
 import { DbService } from './db.service';
 import { RedisService } from './redis.service';
 import { ReportUploadService } from '../../common/services/report-upload.service';
-import { createSpan, createSpanWithContext } from '../../observability/trace-helpers';
+import { createSpan, createSpanWithContext, getTraceContextEnv } from '../../observability/trace-helpers';
 import { emitTelemetryLog } from '../../observability/log-helpers';
 import { SeverityNumber } from '@opentelemetry/api-logs';
 import {
@@ -1096,6 +1096,9 @@ export class ExecutionService implements OnModuleDestroy {
         );
       }
 
+      // Get trace context for subprocess propagation (enables end-to-end traceability)
+      const traceContextEnv = getTraceContextEnv();
+
       // Add unique environment variables for this execution
       const envVars = {
         PLAYWRIGHT_TEST_DIR: runDir,
@@ -1110,6 +1113,8 @@ export class ExecutionService implements OnModuleDestroy {
         PLAYWRIGHT_HTML_REPORT: playwrightReportDir,
         // Add timestamp to prevent caching issues
         PLAYWRIGHT_TIMESTAMP: Date.now().toString(),
+        // Inject trace context for end-to-end correlation
+        ...traceContextEnv,
       };
 
       this.logger.debug(

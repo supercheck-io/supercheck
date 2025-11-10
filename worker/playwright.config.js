@@ -100,6 +100,19 @@ module.exports = defineConfig({
 
     /* Ignore HTTPS errors for testing flexibility */
     ignoreHTTPSErrors: true,
+
+    /* Automatic trace context propagation for end-to-end observability */
+    extraHTTPHeaders: {
+      // Propagate W3C Trace Context to enable full trace correlation
+      // This allows instrumented applications to join the same trace
+      ...(process.env.TRACEPARENT
+        ? { traceparent: process.env.TRACEPARENT }
+        : {}),
+      // Also propagate tracestate if present for vendor-specific trace data
+      ...(process.env.TRACESTATE
+        ? { tracestate: process.env.TRACESTATE }
+        : {}),
+    },
   },
 
   /* Directory for test artifacts such as screenshots, videos, traces, etc. */

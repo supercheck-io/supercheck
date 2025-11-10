@@ -1,5 +1,6 @@
 import { logs, SeverityNumber } from '@opentelemetry/api-logs';
 import type { SupercheckContext } from './trace-helpers';
+import { getCurrentTraceId, getCurrentSpanId } from './trace-helpers';
 
 const MAX_LOG_ATTR_LENGTH = 4000;
 
@@ -35,6 +36,12 @@ export function emitTelemetryLog({
   try {
     const logger = logs.getLogger('supercheck-worker');
     const logAttributes: Record<string, string | number | boolean> = {};
+
+    // Automatically include trace context for log correlation
+    const traceId = getCurrentTraceId();
+    const spanId = getCurrentSpanId();
+    if (traceId) logAttributes['trace_id'] = traceId;
+    if (spanId) logAttributes['span_id'] = spanId;
 
     if (ctx?.runId) logAttributes['sc.run_id'] = ctx.runId;
     if (ctx?.testId) logAttributes['sc.test_id'] = ctx.testId;

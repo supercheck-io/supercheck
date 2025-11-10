@@ -293,3 +293,73 @@ export function addSpanEvent(name: string, attributes?: Record<string, string | 
   span.addEvent(name, attributes);
   return true;
 }
+
+/**
+ * Get the W3C Trace Context traceparent header value from the current active span
+ * Format: 00-{trace_id}-{span_id}-{trace_flags}
+ *
+ * This is used to propagate trace context to subprocesses and HTTP requests
+ * to achieve end-to-end traceability across all SuperCheck components.
+ *
+ * @returns W3C traceparent header value, or undefined if no active span
+ *
+ * @example
+ * ```ts
+ * const traceparent = getTraceparent();
+ * // Returns: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+ *
+ * // Use in subprocess environment
+ * spawn('playwright', args, {
+ *   env: { ...process.env, TRACEPARENT: traceparent }
+ * });
+ * ```
+ */
+export function getTraceparent(): string | undefined {
+  const span = trace.getActiveSpan();
+  if (!span) {
+    return undefined;
+  }
+
+  const spanContext = span.spanContext();
+
+  // W3C Trace Context format: version-trace_id-span_id-trace_flags
+  // version: always "00" for current spec
+  // trace_id: 32 hex characters (128 bits)
+  // span_id: 16 hex characters (64 bits)
+  // trace_flags: 2 hex characters (8 bits) - "01" if sampled, "00" if not
+  const version = '00';
+  const traceId = spanContext.traceId;
+  const spanId = spanContext.spanId;
+  const traceFlags = (spanContext.traceFlags || 0).toString(16).padStart(2, '0');
+
+  return `${version}-${traceId}-${spanId}-${traceFlags}`;
+}
+
+/**
+ * Get trace context as environment variables for subprocess propagation
+ * Returns both TRACEPARENT (W3C standard) and legacy format variables
+ *
+ * @returns Object with trace context environment variables
+ *
+ * @example
+ * ```ts
+ * const traceEnv = getTraceContextEnv();
+ * spawn('k6', args, {
+ *   env: { ...process.env, ...traceEnv }
+ * });
+ * ```
+ */
+export function getTraceContextEnv(): Record<string, string> {
+  const traceparent = getTraceparent();
+
+  if (!traceparent) {
+    return {};
+  }
+
+  return {
+    TRACEPARENT: traceparent,
+    // Also provide individual components for easier access
+    OTEL_TRACE_ID: getCurrentTraceId() || '',
+    OTEL_SPAN_ID: getCurrentSpanId() || '',
+  };
+}
