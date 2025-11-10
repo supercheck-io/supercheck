@@ -5,7 +5,7 @@
 
 import { NextResponse, NextRequest } from "next/server";
 import { getServiceMetrics } from "~/lib/observability";
-import { requireAuth } from "~/lib/rbac/middleware";
+import { requireProjectContext } from "@/lib/project-context";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +14,8 @@ export async function GET(
   { params }: { params: Promise<{ serviceName: string }> }
 ) {
   try {
-    // Authentication
-    await requireAuth();
+    // Authentication and authorization
+    const { project, organizationId } = await requireProjectContext();
 
     const { serviceName } = await params;
 
@@ -35,8 +35,8 @@ export async function GET(
       end: searchParams.get("end") || new Date().toISOString(),
     };
 
-    // Get service metrics
-    const metrics = await getServiceMetrics(serviceName, timeRange);
+    // Get service metrics (scoped to user's project)
+    const metrics = await getServiceMetrics(serviceName, timeRange, project.id, organizationId);
 
     return NextResponse.json(metrics);
   } catch (error) {

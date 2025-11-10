@@ -104,16 +104,20 @@ export async function queryMetrics(
 
 export async function getServiceMetrics(
   serviceName: string,
-  timeRange: { start: string; end: string }
+  timeRange: { start: string; end: string },
+  projectId?: string,
+  organizationId?: string
 ): Promise<ServiceMetrics> {
-  return getServiceMetricsClickHouse(serviceName, timeRange);
+  return getServiceMetricsClickHouse(serviceName, timeRange, projectId, organizationId);
 }
 
 export async function getEndpointMetrics(
   serviceName: string,
-  timeRange: { start: string; end: string }
+  timeRange: { start: string; end: string },
+  projectId?: string,
+  organizationId?: string
 ): Promise<EndpointMetrics[]> {
-  return getEndpointMetricsClickHouse(serviceName, timeRange);
+  return getEndpointMetricsClickHouse(serviceName, timeRange, projectId, organizationId);
 }
 // SPAN TREE UTILITIES
 // ============================================================================
