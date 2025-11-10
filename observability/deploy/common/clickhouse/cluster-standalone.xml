@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <!-- Standalone single-node cluster configuration without Zookeeper -->
+    <!-- For production with multiple nodes, use cluster.xml with Zookeeper -->
+
+    <remote_servers>
+        <cluster>
+            <shard>
+                <!-- Single replica, no replication -->
+                <internal_replication>false</internal_replication>
+                <replica>
+                    <host>clickhouse</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </cluster>
+    </remote_servers>
+</clickhouse>
