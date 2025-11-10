@@ -26,6 +26,7 @@ import {
   BellOff,
   FolderOpen,
   Copy,
+  Telescope,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { ReportViewer } from "@/components/shared/report-viewer";
@@ -88,6 +89,13 @@ import type {
   LocationConfig,
 } from "@/lib/location-service";
 import type { MonitorConfig } from "@/db/schema";
+import { RunObservabilityPanel } from "@/components/observability/run-observability-panel";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 export interface MonitorResultItem {
   id: string;
@@ -181,6 +189,17 @@ export function MonitorDetailClient({
     "all"
   );
   const [availableLocations, setAvailableLocations] = useState<string[]>([]);
+  const [isObservabilitySheetOpen, setIsObservabilitySheetOpen] =
+    useState(false);
+  const latestRunId = useMemo(() => {
+    // Only show observability for synthetic test monitors with valid testExecutionId
+    const testExecId = monitor.recentResults?.find((result) => result.testExecutionId)?.testExecutionId;
+    // Validate that it's a proper UUID (36 chars with hyphens in correct positions)
+    if (testExecId && typeof testExecId === "string" && testExecId.length === 36) {
+      return testExecId;
+    }
+    return null;
+  }, [monitor.recentResults]);
   const resultsPerPage = 10;
 
   // Copy to clipboard handler
@@ -734,7 +753,8 @@ export function MonitorDetailClient({
   };
 
   return (
-    <div className="h-full">
+    <>
+      <div className="h-full">
       {/* Logo, breadcrumbs, and user nav for notification view */}
       {isNotificationView && (
         <div className="flex items-center justify-between mb-4">
@@ -955,6 +975,19 @@ export function MonitorDetailClient({
                 </div>
               )}
 
+            {!isNotificationView && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 px-3 flex items-center gap-1.5 transition-colors"
+                onClick={() => setIsObservabilitySheetOpen(true)}
+                title={latestRunId ? "View distributed traces and execution logs" : "Observability data not yet available"}
+              >
+                <Telescope className="h-4 w-4" />
+                <span>Observe</span>
+              </Button>
+            )}
+
             {/* Action buttons - only show if user has manage permissions and not notification view */}
             {!isNotificationView &&
               !permissionsLoading &&
@@ -1152,7 +1185,7 @@ export function MonitorDetailClient({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* For all monitors, show charts and results in two columns */}
         <div className="flex flex-col gap-4">
           <div>
@@ -1579,5 +1612,42 @@ export function MonitorDetailClient({
         </div>
       )}
     </div>
+
+      <Sheet
+        open={isObservabilitySheetOpen}
+        onOpenChange={setIsObservabilitySheetOpen}
+      >
+        <SheetContent className="sm:max-w-3xl w-full overflow-y-auto p-6">
+          <SheetHeader className="mb-6">
+            <SheetTitle className="flex items-center gap-2">
+              <Telescope className="h-5 w-5 text-primary" />
+              Monitor Observability
+            </SheetTitle>
+            <p className="text-sm text-muted-foreground mt-2">
+              Distributed traces and execution logs from this monitor
+            </p>
+          </SheetHeader>
+          {latestRunId ? (
+            <RunObservabilityPanel runId={latestRunId} className="mt-2" />
+          ) : (
+            <Card className="border-dashed border-border/60 bg-muted/20">
+              <CardContent className="py-10 px-6 text-center">
+                <div className="flex justify-center mb-4">
+                  <div className="p-3 bg-primary/10 rounded-lg">
+                    <Telescope className="h-6 w-6 text-primary" />
+                  </div>
+                </div>
+                <p className="font-semibold text-sm mb-2">Observability data not available</p>
+                <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                  {monitor.type === "synthetic_test"
+                    ? "Run this monitor to capture traces and logs"
+                    : "Observability is only available for synthetic test monitors"}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
