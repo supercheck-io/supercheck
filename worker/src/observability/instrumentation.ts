@@ -29,6 +29,7 @@ import {
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-node';
 import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
 import { existsSync } from 'fs';
+import { createExecutionLogProcessor } from './execution-log-processor';
 
 /**
  * Configuration interface for observability
@@ -290,14 +291,23 @@ function initializeObservability(): NodeSDK | null {
           });
 
     const loggerProvider = new LoggerProvider({ resource });
-    loggerProvider.addLogRecordProcessor(
-      new BatchLogRecordProcessor(logExporter, {
-        maxQueueSize: 1024,
-        maxExportBatchSize: 256,
-        scheduledDelayMillis: 2000,
-        exportTimeoutMillis: 10000,
-      }),
-    );
+
+    // Create batch processor for efficient export
+    const batchLogProcessor = new BatchLogRecordProcessor(logExporter, {
+      maxQueueSize: 1024,
+      maxExportBatchSize: 256,
+      scheduledDelayMillis: 2000,
+      exportTimeoutMillis: 10000,
+    });
+
+    // Wrap with execution log filter to only show test/job/monitor logs
+    // This removes noise from infrastructure operations (S3, Redis, DB)
+    const filteredLogProcessor = createExecutionLogProcessor(batchLogProcessor, {
+      enableFiltering: process.env.FILTER_EXECUTION_LOGS !== 'false',
+      alwaysShowErrors: true,
+    });
+
+    loggerProvider.addLogRecordProcessor(filteredLogProcessor);
     logs.setGlobalLoggerProvider(loggerProvider);
     registerLoggerProvider(loggerProvider);
 

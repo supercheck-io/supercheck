@@ -31,10 +31,12 @@ function getErrorStack(error: unknown): string | undefined {
 export interface K6ExecutionTask {
   runId: string;
   testId: string;
+  testName?: string; // Test name for better trace identification
   organizationId: string;
   projectId: string;
   script: string; // Decoded k6 script
   jobId?: string | null;
+  jobName?: string; // Job name for better trace identification
   tests: Array<{ id: string; script: string }>;
   location?: string; // Execution location
   jobType?: string;

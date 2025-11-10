@@ -363,3 +363,80 @@ export function getTraceContextEnv(): Record<string, string> {
     OTEL_SPAN_ID: getCurrentSpanId() || '',
   };
 }
+
+/**
+ * Build a descriptive span name from Supercheck context
+ * Creates human-readable span names that include execution type, name, and ID
+ *
+ * @param operation - The operation being performed (e.g., 'execute', 'upload', 'process')
+ * @param ctx - Supercheck context
+ * @returns Formatted span name
+ *
+ * @example
+ * ```ts
+ * buildSpanName('execute', { runType: 'test', testName: 'Login Flow', runId: '123' })
+ * // Returns: "test.execute [Login Flow] (123)"
+ *
+ * buildSpanName('execute', { runType: 'job', jobName: 'Nightly Tests', runId: '456' })
+ * // Returns: "job.execute [Nightly Tests] (456)"
+ * ```
+ */
+export function buildSpanName(operation: string, ctx: SupercheckContext): string {
+  const type = ctx.runType || 'execution';
+
+  // Get the name based on execution type
+  const name = ctx.testName || ctx.jobName || ctx.monitorName || 'Unnamed';
+
+  // Get the primary ID
+  const id = ctx.runId || ctx.testId || ctx.jobId || ctx.monitorId || 'unknown';
+
+  // Format: {type}.{operation} [{name}] ({shortId})
+  const shortId = id.length > 8 ? id.substring(0, 8) : id;
+
+  return `${type}.${operation} [${name}] (${shortId})`;
+}
+
+/**
+ * Create an execution span with automatically formatted name
+ * Combines createSpanWithContext with automatic span naming
+ *
+ * @param operation - The operation being performed
+ * @param ctx - Supercheck context
+ * @param fn - Async function to execute
+ * @param attributes - Optional initial attributes
+ * @returns Result of the function execution
+ *
+ * @example
+ * ```ts
+ * await createExecutionSpan('execute', {
+ *   runId: '01JCABCD...',
+ *   testId: 'test-123',
+ *   testName: 'Login Flow Test',
+ *   runType: 'test',
+ *   projectId: 'proj-456',
+ *   organizationId: 'org-789'
+ * }, async (span) => {
+ *   span.setAttribute('browser', 'chromium');
+ *   await runPlaywrightTest();
+ * });
+ * // Creates span: "test.execute [Login Flow Test] (01JCABCD)"
+ * ```
+ */
+export async function createExecutionSpan<T>(
+  operation: string,
+  ctx: SupercheckContext,
+  fn: (span: Span) => Promise<T>,
+  attributes?: Record<string, string | number | boolean>,
+): Promise<T> {
+  const spanName = buildSpanName(operation, ctx);
+
+  // Add execution ID as a top-level attribute for easy filtering
+  const enhancedAttributes = {
+    ...attributes,
+    'execution.id': ctx.runId || ctx.jobId || ctx.monitorId || 'unknown',
+    'execution.type': ctx.runType || 'unknown',
+    'execution.name': ctx.testName || ctx.jobName || ctx.monitorName || 'unnamed',
+  };
+
+  return createSpanWithContext(spanName, ctx, fn, enhancedAttributes);
+}

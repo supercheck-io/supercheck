@@ -52,6 +52,7 @@ export interface TestExecutionResult {
 // Task data for the test execution queue
 export interface TestExecutionTask {
   testId: string;
+  testName?: string; // Test name for better trace identification
   // Consider passing the code directly instead of a path
   // as the worker service doesn't share the filesystem
   code: string;
@@ -66,6 +67,7 @@ export interface TestExecutionTask {
 // Task data for the job execution queue
 export interface JobExecutionTask {
   jobId: string;
+  jobName?: string; // Job name for better trace identification
   testScripts: TestScript[];
   runId: string; // Required run ID to distinguish parallel executions of the same job
   originalJobId?: string; // The original job ID from the 'jobs' table that should be updated

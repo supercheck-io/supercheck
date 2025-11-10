@@ -14,7 +14,7 @@ import {
   K6_JOB_EXECUTION_QUEUE,
   K6_TEST_EXECUTION_QUEUE,
 } from '../k6.constants';
-import { createSpanWithContext } from '../../observability/trace-helpers';
+import { createExecutionSpan } from '../../observability/trace-helpers';
 import { emitTelemetryLog } from '../../observability/log-helpers';
 import { SeverityNumber } from '@opentelemetry/api-logs';
 
@@ -101,9 +101,11 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     const telemetryCtx = {
       runId,
       testId: testId ?? undefined,
+      testName: taskData.testName,
       projectId: taskData.projectId,
       organizationId: taskData.organizationId,
       jobId: taskData.jobId ?? undefined,
+      jobName: taskData.jobName,
       runType: 'k6' as const,
     };
 
@@ -144,9 +146,9 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         })
         .where(eq(schema.runs.id, runId));
 
-      // Execute k6
-      const result = await createSpanWithContext(
-        'k6.run',
+      // Execute k6 with enhanced tracing (includes execution name and ID in span name)
+      const result = await createExecutionSpan(
+        'execute',
         telemetryCtx,
         async (span) => {
           span.setAttribute('k6.location', effectiveJobLocation);

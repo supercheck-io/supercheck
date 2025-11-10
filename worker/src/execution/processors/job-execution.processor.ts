@@ -9,7 +9,7 @@ import { eq } from 'drizzle-orm';
 import { jobs } from '../../db/schema';
 import { ErrorHandler } from '../../common/utils/error-handler';
 import { JobNotificationService } from '../services/job-notification.service';
-import { createSpanWithContext } from '../../observability/trace-helpers';
+import { createExecutionSpan } from '../../observability/trace-helpers';
 
 // Types are now imported from interfaces.ts which uses schema types
 
@@ -33,12 +33,13 @@ export class JobExecutionProcessor extends WorkerHost {
       runType: 'job' as const,
       runId: job.data.runId,
       jobId: job.data.originalJobId ?? job.data.jobId,
+      jobName: job.data.jobName,
       projectId: job.data.projectId,
       organizationId: job.data.organizationId,
     };
 
-    return createSpanWithContext(
-      'worker.job-execution',
+    return createExecutionSpan(
+      'execute',
       spanContext,
       async () => {
         // Renamed to process

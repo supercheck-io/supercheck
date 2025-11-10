@@ -4,7 +4,7 @@ import { Logger } from '@nestjs/common';
 import { TEST_EXECUTION_QUEUE } from '../constants';
 import { ExecutionService } from '../services/execution.service';
 import { TestExecutionTask, TestResult } from '../interfaces';
-import { createSpanWithContext } from '../../observability/trace-helpers';
+import { createExecutionSpan } from '../../observability/trace-helpers';
 
 @Processor(TEST_EXECUTION_QUEUE)
 export class TestExecutionProcessor extends WorkerHost {
@@ -56,12 +56,13 @@ export class TestExecutionProcessor extends WorkerHost {
       runType: 'test' as const,
       runId: job.data.runId ?? job.id?.toString(),
       testId,
+      testName: job.data.testName,
       projectId: job.data.projectId,
       organizationId: job.data.organizationId,
     };
 
-    return createSpanWithContext(
-      'worker.test-execution',
+    return createExecutionSpan(
+      'execute',
       spanContext,
       async () => {
         const startTime = new Date();

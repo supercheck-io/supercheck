@@ -1,3 +1,24 @@
+/**
+ * Log Helpers for OpenTelemetry
+ *
+ * Provides structured logging with automatic trace correlation.
+ * Logs are automatically linked to active spans for end-to-end observability.
+ *
+ * External App Integration:
+ * - When external apps send logs with TRACEPARENT, they automatically correlate
+ * - The trace_id from the active span links all logs across services
+ * - External apps should emit logs with their own service.name attribute
+ * - The ExecutionLogProcessor will include them if they have valid trace context
+ *
+ * Example external app logging (from instrumented app):
+ * ```
+ * // App receives TRACEPARENT from SuperCheck worker
+ * // App's OTLP instrumentation reads TRACEPARENT and creates child span
+ * // App logs are automatically correlated via shared trace_id
+ * logger.info('Processing request', { user_id: '123' });
+ * ```
+ */
+
 import { logs, SeverityNumber } from '@opentelemetry/api-logs';
 import type { SupercheckContext } from './trace-helpers';
 import { getCurrentTraceId, getCurrentSpanId } from './trace-helpers';
