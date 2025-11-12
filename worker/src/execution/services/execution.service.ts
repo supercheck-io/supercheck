@@ -587,7 +587,7 @@ export class ExecutionService implements OnModuleDestroy {
           executionTimeMs: execResult.executionTimeMs,
         };
         emitTelemetryLog({
-          message: `[Playwright] Test ${testId} passed`,
+          message: `[Playwright Test] ${testId} passed`,
           ctx: telemetryCtx,
           attributes: {
             'playwright.execution_ms': execResult.executionTimeMs ?? 0,
@@ -654,7 +654,7 @@ export class ExecutionService implements OnModuleDestroy {
           executionTimeMs: execResult.executionTimeMs,
         };
         emitTelemetryLog({
-          message: `[Playwright] Test ${testId} failed`,
+          message: `[Playwright Test] ${testId} failed`,
           ctx: telemetryCtx,
           severity: SeverityNumber.ERROR,
           attributes: {
@@ -698,7 +698,7 @@ export class ExecutionService implements OnModuleDestroy {
         stderr: (error as Error).stack || (error as Error).message,
       };
       emitTelemetryLog({
-        message: `[Playwright] Test ${testId} crashed`,
+        message: `[Playwright Test] ${testId} crashed`,
         ctx: telemetryCtx,
         severity: SeverityNumber.ERROR,
         error,
@@ -799,63 +799,75 @@ export class ExecutionService implements OnModuleDestroy {
         `[${runId}] Processing ${testScripts.length} test scripts`,
       );
       for (let i = 0; i < testScripts.length; i++) {
-        const { id, script: originalScript } = testScripts[i];
+        const { id, script: originalScript, name } = testScripts[i];
         const testId = id;
-        this.logger.debug(`[${runId}] Processing test ${testId}`);
+        const testName = name || `Test ${i + 1}`;
 
-        try {
-          // Check if the script is Base64 encoded and decode it
-          let decodedScript = originalScript;
+        // Create individual span for each test in the job
+        await createSpan(`Playwright Test: ${testName}`, async (span) => {
+          span.setAttribute('test.id', testId);
+          span.setAttribute('test.name', testName);
+          span.setAttribute('test.index', i);
+          span.setAttribute('job.run_id', runId);
+
+          this.logger.debug(`[Playwright Job] Processing test: ${testName} (${testId})`);
+
           try {
-            // Check if it looks like Base64 (typical characteristics)
-            if (
-              originalScript &&
-              typeof originalScript === 'string' &&
-              originalScript.length > 100 &&
-              /^[A-Za-z0-9+/]+=*$/.test(originalScript)
-            ) {
-              const decoded = Buffer.from(originalScript, 'base64').toString(
-                'utf8',
-              );
-              // Verify it's actually JavaScript by checking for common patterns
+            // Check if the script is Base64 encoded and decode it
+            let decodedScript = originalScript;
+            try {
+              // Check if it looks like Base64 (typical characteristics)
               if (
-                decoded.includes('import') ||
-                decoded.includes('test(') ||
-                decoded.includes('describe(')
+                originalScript &&
+                typeof originalScript === 'string' &&
+                originalScript.length > 100 &&
+                /^[A-Za-z0-9+/]+=*$/.test(originalScript)
               ) {
-                decodedScript = decoded;
-                this.logger.debug(
-                  `[${runId}] Decoded Base64 script for test ${testId}`,
+                const decoded = Buffer.from(originalScript, 'base64').toString(
+                  'utf8',
                 );
+                // Verify it's actually JavaScript by checking for common patterns
+                if (
+                  decoded.includes('import') ||
+                  decoded.includes('test(') ||
+                  decoded.includes('describe(')
+                ) {
+                  decodedScript = decoded;
+                  this.logger.debug(
+                    `[Playwright Job] Decoded Base64 script for test ${testName}`,
+                  );
+                }
               }
+            } catch (decodeError) {
+              this.logger.warn(
+                `[Playwright Job] Failed to decode potential Base64 script for test ${testName}:`,
+                decodeError,
+              );
+              // Continue with original script if decoding fails
             }
-          } catch (decodeError) {
-            this.logger.warn(
-              `[${runId}] Failed to decode potential Base64 script for test ${testId}:`,
-              decodeError,
+
+            // Ensure the script has proper trace configuration
+            const script = ensureProperTraceConfiguration(decodedScript, testId);
+
+            // Create the test file with unique ID in filename (using .mjs for ES module support)
+            const testFilePath = path.join(runDir, `${testId}.spec.mjs`);
+
+            // Write the individual test script content
+            // No need to remove require/import as each is a standalone file
+            await fs.writeFile(testFilePath, script);
+            span.setAttribute('test.file_path', testFilePath);
+            this.logger.debug(
+              `[Playwright Job] Test spec written: ${testName} -> ${testFilePath}`,
             );
-            // Continue with original script if decoding fails
+          } catch (error) {
+            span.setAttribute('test.preparation_failed', true);
+            this.logger.error(
+              `[Playwright Job] Error creating test file for ${testName}: ${(error as Error).message}`,
+              (error as Error).stack,
+            );
+            throw error; // This will mark the span as failed
           }
-
-          // Ensure the script has proper trace configuration
-          const script = ensureProperTraceConfiguration(decodedScript, testId);
-
-          // Create the test file with unique ID in filename (using .mjs for ES module support)
-          const testFilePath = path.join(runDir, `${testId}.spec.mjs`);
-
-          // Write the individual test script content
-          // No need to remove require/import as each is a standalone file
-          await fs.writeFile(testFilePath, script);
-          this.logger.debug(
-            `[${runId}] Individual test spec written to: ${testFilePath}`,
-          );
-        } catch (error) {
-          this.logger.error(
-            `[${runId}] Error creating test file for ${testId}: ${(error as Error).message}`,
-            (error as Error).stack,
-          );
-          continue;
-        }
+        });
       }
 
       if (testScripts.length === 0) {
