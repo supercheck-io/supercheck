@@ -61,6 +61,8 @@ module.exports = defineConfig({
   reporter: [
     ['html'], // Always generate HTML reports for S3 upload
     ['list'], // Console output for debugging
+    // Custom OpenTelemetry reporter for internal test spans
+    [path.join(__dirname, 'dist', 'observability', 'playwright-reporter.js')],
     // Add JSON reporter for metrics if needed
     ...(process.env.ENABLE_JSON_REPORTER
       ? [['json', { outputFile: 'test-results.json' }]]
