@@ -1,394 +1,664 @@
-# API Key System
+# API Key System Specification
 
-This document provides a comprehensive overview of the Supercheck API key system, including authentication implementation, job-specific access control, and testing procedures for remote job triggering.
+## Overview
+
+The Supercheck API key system provides secure, programmatic access to job triggering functionality through a robust authentication and authorization mechanism. Each API key is directly associated with a specific job and provides scoped access for remote execution from CI/CD pipelines, external systems, or automation scripts.
 
 ## Table of Contents
 
-1. [System Overview](#system-overview)
-2. [Authentication Fix](#authentication-fix)
-3. [Job Association Improvements](#job-association-improvements)
-4. [Database Schema Changes](#database-schema-changes)
-5. [Code Implementation](#code-implementation)
-6. [Testing Guide](#testing-guide)
-7. [Security Considerations](#security-considerations)
-8. [Migration History](#migration-history)
+1. [System Architecture](#system-architecture)
+2. [Core Components](#core-components)
+3. [API Key Lifecycle](#api-key-lifecycle)
+4. [Authentication Flow](#authentication-flow)
+5. [Security Model](#security-model)
+6. [Database Schema](#database-schema)
+7. [Rate Limiting](#rate-limiting)
+8. [Testing Guide](#testing-guide)
+9. [Migration History](#migration-history)
 
-## System Overview
+## System Architecture
 
 ```mermaid
 graph TB
-    subgraph "API Key Creation"
-        A1[User Session] --> A2[Create API Key]
-        A2 --> A3[Direct DB Insert]
-        A3 --> A4[Job Association]
+    subgraph "🌐 External Access"
+        EXT1[CI/CD Pipeline]
+        EXT2[Automation Script]
+        EXT3[External System]
     end
-    
-    subgraph "API Key Authentication"
-        B1[External Request] --> B2[API Key Header]
-        B2 --> B3[DB Validation]
-        B3 --> B4{Key Valid?}
-        B4 -->|Yes| B5[Job Access Granted]
-        B4 -->|No| B6[401 Unauthorized]
+
+    subgraph "🔐 API Gateway"
+        API1[Job Trigger Endpoint<br/>/api/jobs/:id/trigger]
+        API2[API Key Validation]
+        API3[Job Authorization]
     end
-    
-    subgraph "Database Relationships"
-        C1[(Users)] -->|no action on delete| C2[(API Keys)]
-        C2 -->|cascade on delete| C3[(Jobs)]
-        C2 --> C4[(Projects)]
+
+    subgraph "💾 Data Layer"
+        DB1[(API Key Table)]
+        DB2[(Job Table)]
+        DB3[(Test Table)]
     end
-    
-    B5 --> D1[Job Execution]
-    D1 --> E1[Worker Service]
-    E1 --> F1[Test Results]
+
+    subgraph "⚙️ Processing"
+        QUEUE[BullMQ Queue]
+        WORKER[Worker Service]
+    end
+
+    EXT1 & EXT2 & EXT3 -->|Bearer Token| API1
+    API1 --> API2
+    API2 --> DB1
+    API2 --> API3
+    API3 --> DB2
+    API3 --> DB3
+    API3 --> QUEUE
+    QUEUE --> WORKER
+
+    classDef external fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef api fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef data fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef process fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+
+    class EXT1,EXT2,EXT3 external
+    class API1,API2,API3 api
+    class DB1,DB2,DB3 data
+    class QUEUE,WORKER process
 ```
 
-The Supercheck API key system provides secure, programmatic access to job triggering functionality through a robust authentication and authorization mechanism. Each API key is directly associated with a specific job and provides scoped access for remote execution.
+## Core Components
 
-### Key Features
-- **Secure Authentication**: Session-based validation with direct database operations
-- **Job-Specific Access**: Direct job association for precise access control
-- **Data Persistence**: API keys survive user deletion for audit trails
-- **Lifecycle Management**: Automatic cleanup when jobs are deleted
-- **Rate Limiting**: Built-in rate limiting for API protection
+### API Key Manager
 
-## Authentication Fix
+Handles CRUD operations for API keys within the context of a specific job.
 
-### Problem
-The error "Unauthorized or invalid session" was occurring when trying to create API keys because the better-auth server-side API calls were not working correctly with the session context.
+**Key Responsibilities:**
+- Create new API keys with job association
+- Update API key metadata (name, status)
+- Delete API keys
+- List API keys for a job
+- Toggle enabled/disabled status
 
-### Root Cause
-The better-auth API was throwing an error: "The property you're trying to set can only be set from the server auth instance only." This indicated that the API key creation needed to be handled differently.
+**Location:** `app/src/app/api/jobs/[id]/api-keys/route.ts`
 
-### Solution
-Replaced better-auth API calls with direct database operations to create, update, delete, and verify API keys while maintaining proper session validation.
+### API Key Validator
 
-### Files Modified
+Validates incoming API keys for job trigger requests.
 
-1. **`app/src/app/api/jobs/[id]/api-keys/route.ts`**
-   - Replaced `auth.api.createApiKey()` with direct database insertion
-   - Added proper session validation and user association
+**Validation Steps:**
+1. Extract Bearer token from Authorization header
+2. Look up API key in database
+3. Verify key is enabled
+4. Check expiration timestamp
+5. Verify job association matches request
+6. Validate rate limit thresholds
 
-2. **`app/src/app/api/jobs/[id]/api-keys/[keyId]/route.ts`**
-   - Replaced `auth.api.updateApiKey()` with direct database update
-   - Replaced `auth.api.deleteApiKey()` with direct database deletion
-   - Added missing imports for database operations
+**Location:** `app/src/app/api/jobs/[id]/trigger/route.ts`
 
-3. **`app/src/app/api/jobs/[id]/trigger/route.ts`**
-   - Replaced `auth.api.verifyApiKey()` with direct database verification
-   - Added proper API key validation (enabled, expired, permissions)
-   - Added JSON parsing for permissions validation
-   - Added job tests fetching to provide required data for job execution
+### Rate Limiter
 
-## Job Association Improvements
+Token bucket algorithm implementation for controlling API request rates.
 
-### Problem
-The previous API key system had two issues:
-1. API keys were deleted when users were deleted (cascade delete)
-2. API keys were associated with users but only had permissions for jobs, making the relationship indirect
+**Configuration:**
+- Rate limit window (default: 3600 seconds)
+- Maximum requests per window (default: 1000)
+- Refill rate and amount
+- Last refill timestamp tracking
 
-### Solution
-Restructured the API key system to:
-1. **API keys are NOT deleted when users are deleted** (changed from `cascade` to `no action`)
-2. **API keys belong to specific jobs** (added `jobId` field)
-3. **Permissions field kept but not used** (maintained for future flexibility)
+## API Key Lifecycle
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant API
+    participant DB
+
+    Note over User,DB: API Key Creation
+
+    User->>Frontend: Navigate to Job CI/CD Settings
+    Frontend->>API: GET /api/jobs/:id/api-keys
+    API->>DB: Query API keys for job
+    DB-->>API: Return API keys list
+    API-->>Frontend: Return API keys
+
+    User->>Frontend: Click "Create API Key"
+    Frontend->>User: Show creation form
+    User->>Frontend: Enter name, expiration
+
+    Frontend->>API: POST /api/jobs/:id/api-keys
+    API->>API: Validate session
+    API->>API: Generate UUID
+    API->>API: Generate key: job_[32-char-hex]
+    API->>DB: Insert API key record
+    DB-->>API: Return created key
+    API-->>Frontend: Return key (shown once)
+    Frontend-->>User: Display key with warning
+
+    Note over User,DB: API Key Usage
+
+    User->>Frontend: Copy API key
+    User->>User: Configure CI/CD pipeline
+
+    Note over User,DB: Job Trigger via API Key
+
+    User->>API: POST /api/jobs/:id/trigger<br/>Authorization: Bearer [key]
+    API->>API: Extract Bearer token
+    API->>DB: Lookup API key
+    DB-->>API: Return key record
+    API->>API: Validate enabled status
+    API->>API: Check expiration
+    API->>API: Verify job association
+    API->>API: Check rate limit
+    API->>DB: Fetch job tests
+    DB-->>API: Return tests
+    API->>API: Add job to queue
+    API-->>User: Return success + run ID
+```
+
+## Authentication Flow
+
+### API Key Creation Flow
+
+```mermaid
+graph LR
+    A[User Session] -->|Authenticated| B[Create API Key Request]
+    B --> C{Valid Session?}
+    C -->|No| D[401 Unauthorized]
+    C -->|Yes| E[Generate UUID]
+    E --> F[Generate Key Value]
+    F --> G[Set Expiration]
+    G --> H[Insert to Database]
+    H --> I[Return Key Once]
+
+    classDef success fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef error fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef process fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+
+    class I success
+    class D error
+    class E,F,G,H process
+```
+
+### Job Trigger Authentication Flow
+
+```mermaid
+graph TB
+    A[External Request] --> B{Authorization Header?}
+    B -->|Missing| C[401 Missing Token]
+    B -->|Present| D[Extract Bearer Token]
+    D --> E[Query Database]
+    E --> F{Key Exists?}
+    F -->|No| G[401 Invalid Key]
+    F -->|Yes| H{Key Enabled?}
+    H -->|No| I[403 Key Disabled]
+    H -->|Yes| J{Not Expired?}
+    J -->|Expired| K[403 Key Expired]
+    J -->|Valid| L{Job Match?}
+    L -->|No| M[403 Wrong Job]
+    L -->|Yes| N{Rate Limit OK?}
+    N -->|Exceeded| O[429 Rate Limited]
+    N -->|OK| P[✅ Authorized]
+    P --> Q[Add Job to Queue]
+    Q --> R[Return Run ID]
+
+    classDef error fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef success fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef check fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+
+    class C,G,I,K,M,O error
+    class P,R success
+    class F,H,J,L,N check
+```
+
+## Security Model
+
+### Direct Job Association
+
+Each API key is directly associated with a specific job through a foreign key relationship. This provides:
+
+**Benefits:**
+- Simple, efficient authorization checks
+- No complex JSON permission parsing
+- Clear audit trail
+- Reduced attack surface
+- Database-enforced constraints
+
+**Authorization Check:**
+```
+IF apiKey.jobId === requestedJobId THEN
+    ALLOW
+ELSE
+    DENY (403 Forbidden)
+END IF
+```
+
+### Key Lifecycle Management
+
+**User Deletion:**
+- API keys are NOT deleted when users are deleted
+- Foreign key: `ON DELETE NO ACTION`
+- Rationale: Preserves audit trails and allows continued automation
+- Result: `userId` becomes a dangling reference but key remains functional
+
+**Job Deletion:**
+- API keys ARE deleted when jobs are deleted
+- Foreign key: `ON DELETE CASCADE`
+- Rationale: No orphaned keys for non-existent jobs
+- Result: Clean database state, automatic cleanup
+
+### Access Control Matrix
+
+| Action | Required Permission | Scope |
+|--------|-------------------|-------|
+| Create API Key | `job:update` | Job-level |
+| List API Keys | `job:read` | Job-level |
+| Update API Key | `job:update` | Job-level |
+| Delete API Key | `job:update` | Job-level |
+| Trigger Job | API Key Auth | Key-specific job only |
 
 ## Database Schema
 
-The API key system uses a comprehensive database schema with the following key components:
+### API Key Table Structure
 
-**Core Fields:**
-- Primary key with UUID generation
-- Display name and key prefix for organization
-- Full API key value for authentication
-- User association with audit trail preservation
+**Table Name:** `apikey`
 
-**Access Control:**
-- Job-specific association for scoped access
-- Project-level association for context
-- Enabled/disabled status for key lifecycle management
-- Optional expiration timestamp for time-based access
+**Key Fields:**
 
-**Rate Limiting:**
-- Built-in rate limiting with configurable windows
-- Maximum request limits per time window
-- Refill interval and amount for token bucket implementation
-- Last refill tracking for accurate rate limiting
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Primary key |
+| `name` | VARCHAR(255) | Display name for identification |
+| `prefix` | VARCHAR(50) | Key prefix (e.g., "job") |
+| `start` | VARCHAR(20) | First 8 characters for display |
+| `key` | VARCHAR(255) | Full key value (indexed, unique) |
+| `userId` | UUID | Creator user ID (FK to users) |
+| `jobId` | UUID | Associated job ID (FK to jobs) |
+| `projectId` | UUID | Project context (FK to projects) |
+| `enabled` | BOOLEAN | Active status flag |
+| `expiresAt` | TIMESTAMP | Optional expiration time |
+| `createdAt` | TIMESTAMP | Creation timestamp |
+| `updatedAt` | TIMESTAMP | Last modification timestamp |
+| `permissions` | JSONB | Future use (currently unused) |
+
+**Rate Limiting Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `rateLimitWindow` | INTEGER | Time window in seconds |
+| `rateLimitMaxRequests` | INTEGER | Max requests per window |
+| `rateLimitRefillRate` | INTEGER | Refill interval in seconds |
+| `rateLimitRefillAmount` | INTEGER | Tokens added per refill |
+| `rateLimitLastRefill` | TIMESTAMP | Last refill time |
 
 **Foreign Key Relationships:**
-- User deletion does NOT cascade to API keys (audit trail preservation)
-- Job deletion DOES cascade to API keys (cleanup on job removal)
 
-### Key Changes Made
+```mermaid
+graph LR
+    A[👤 Users] -->|no action<br/>on delete| B[🔑 API Keys]
+    C[⚙️ Jobs] -->|cascade<br/>on delete| B
+    D[📁 Projects] -->|no action<br/>on delete| B
 
-#### 1. **Foreign Key Behavior Changes**
-- **User → API Key**: Changed from `ON DELETE cascade` to `ON DELETE no action`
-  - API keys now persist when users are deleted
-  - Maintains historical access and audit trails
-- **Job → API Key**: Added `ON DELETE cascade`
-  - When a job is deleted, its API keys are automatically deleted
-  - Ensures clean job lifecycle management
+    classDef user fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef key fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef resource fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
 
-#### 2. **API Key Association**
-- **Direct Job Association**: API keys now have a direct `jobId` field
-- **Simplified Permissions**: No need for complex JSON permissions parsing in current implementation
-- **Job-Specific Access**: Each API key can only trigger its associated job
-- **Future Flexibility**: Permissions field kept for potential future use
-
-## Code Implementation
-
-### API Key Creation
-
-#### Before (Better-Auth API)
-```typescript
-const apiKey = await auth.api.createApiKey({
-  body: {
-    name: name.trim(),
-    prefix: "job",
-    permissions: {
-      jobs: [`trigger:${jobId}`],
-    },
-    expiresIn: expiresIn,
-  },
-});
+    class A user
+    class B key
+    class C,D resource
 ```
 
-#### After (Direct Database)
-```typescript
-// Create API key directly in database with proper permissions
-const apiKeyId = crypto.randomUUID();
-const apiKeyValue = `job_${crypto.randomUUID().replace(/-/g, '')}`;
-const apiKeyStart = apiKeyValue.substring(0, 8);
+### Database Indexes
 
-const now = new Date();
-const expiresAt = expiresIn ? new Date(now.getTime() + expiresIn * 1000) : null;
+**Performance Indexes:**
+- `idx_apikey_key` - Unique index on `key` field (fast lookups)
+- `idx_apikey_jobId` - Index on `jobId` (list keys for job)
+- `idx_apikey_userId` - Index on `userId` (list keys by user)
+- `idx_apikey_enabled_expiresAt` - Composite index for active key queries
 
-const newApiKey = await db.insert(apikey).values({
-  id: apiKeyId,
-  name: name.trim(),
-  start: apiKeyStart,
-  prefix: "job",
-  key: apiKeyValue,
-  userId: session.user.id,
-  jobId: jobId, // Direct job association
-  enabled: true,
-  expiresAt: expiresAt,
-  createdAt: now,
-  updatedAt: now,
-  permissions: JSON.stringify({
-    jobs: [`trigger:${jobId}`],
-  }),
-}).returning();
+## Rate Limiting
 
-const apiKey = newApiKey[0];
+### Token Bucket Algorithm
+
+```mermaid
+graph TB
+    A[Incoming Request] --> B[Load API Key Config]
+    B --> C{Rate Limit<br/>Configured?}
+    C -->|No| D[✅ Allow Request]
+    C -->|Yes| E[Calculate Tokens]
+    E --> F[Refill Bucket]
+    F --> G{Tokens Available?}
+    G -->|No| H[❌ 429 Rate Limited]
+    G -->|Yes| I[Consume 1 Token]
+    I --> J[Update Last Refill]
+    J --> K[✅ Allow Request]
+
+    classDef success fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef error fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef process fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+
+    class D,K success
+    class H error
+    class E,F,I,J process
 ```
 
-### API Key Verification
+### Configuration
 
-#### Before (JSON Permissions)
-```typescript
-// Parse permissions JSON
-let hasPermission = false;
-if (key.permissions) {
-  const permissions = JSON.parse(key.permissions);
-  hasPermission = permissions.jobs && permissions.jobs.includes(`trigger:${jobId}`);
-}
+**Default Values:**
+- Rate limit window: 3600 seconds (1 hour)
+- Max requests: 1000
+- Refill rate: 60 seconds
+- Refill amount: 16 tokens
+
+**Calculation:**
 ```
-
-#### After (Direct Job ID)
-```typescript
-// Direct job ID comparison
-if (key.jobId !== jobId) {
-  return NextResponse.json({ error: "API key not authorized for this job" }, { status: 403 });
-}
-```
-
-### API Key Listing
-
-#### Before (Pattern Matching)
-```typescript
-// Search by permissions pattern
-.where(like(apikey.permissions, `%trigger:${jobId}%`))
-```
-
-#### After (Direct Query)
-```typescript
-// Direct job ID query
-.where(eq(apikey.jobId, jobId))
+elapsedTime = now - lastRefill
+tokensToAdd = floor(elapsedTime / refillRate) * refillAmount
+currentTokens = min(previousTokens + tokensToAdd, maxRequests)
 ```
 
 ## Testing Guide
 
-### Test Steps
-
-#### 1. Create an API Key
-1. Navigate to a job's CI/CD settings
-2. Click "Create API Key"
-3. Enter a name (e.g., "Test Key")
-4. Click "Create API Key"
-5. **Expected Result**: API key should be created successfully without "Unauthorized or invalid session" error
-
-#### 2. Test API Key Verification
-1. Copy the generated API key
-2. Use curl to test the trigger endpoint:
-```bash
-curl -X POST "${NEXT_PUBLIC_APP_URL}/api/jobs/{jobId}/trigger" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer {your-api-key}"
-```
-3. **Expected Result**: Should return success response with job execution details, not "Invalid API key" or "Invalid job data" errors
-
-#### 3. Test API Key Management
-1. Try toggling the API key enabled/disabled state
-2. Try updating the API key name
-3. Try deleting the API key
-4. **Expected Result**: All operations should work without errors
-
 ### Test Scenarios
-1. **Create API Key**: Should associate with specific job
-2. **Trigger Job**: Should work with job-specific API key
-3. **User Deletion**: API keys should persist
-4. **Job Deletion**: API keys should be deleted
-5. **Cross-Job Access**: Should be denied
 
-### Example Test Commands
-```bash
-# Create API key for job
-curl -X POST "${NEXT_PUBLIC_APP_URL}/api/jobs/{jobId}/api-keys" \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Test Key"}'
+#### 1. Create API Key
 
-# Trigger job with API key
-curl -X POST "${NEXT_PUBLIC_APP_URL}/api/jobs/{jobId}/trigger" \
-  -H "Authorization: Bearer {api-key}"
+**Steps:**
+1. Navigate to Job → CI/CD Settings
+2. Click "Create API Key"
+3. Enter name: "CI Pipeline Key"
+4. Set expiration: 30 days
+5. Click "Create"
+
+**Expected:**
+- API key displayed once with copy button
+- Key format: `job_[32-character-hex-string]`
+- Success message shown
+- Key appears in list with partial value (`job_xxxxx...`)
+
+#### 2. Trigger Job with API Key
+
+**HTTP Request:**
+```http
+POST https://app.supercheck.io/api/jobs/{jobId}/trigger
+Authorization: Bearer job_abc123def456...
+Content-Type: application/json
 ```
 
-## What Was Fixed
+**Expected Response:**
+```json
+{
+  "message": "Job queued successfully",
+  "runId": "uuid-here",
+  "jobId": "job-uuid",
+  "status": "queued"
+}
+```
 
-### Before
-- ❌ API key creation failed with "Unauthorized or invalid session"
-- ❌ API key verification failed with "Invalid API key"
-- ❌ Job triggering failed with "Invalid job data. Job ID and tests are required"
-- ❌ Better-auth API limitations prevented proper operation
-- ❌ API keys deleted when users were deleted
-- ❌ Complex JSON permissions parsing required
+#### 3. Test Invalid Key
 
-### After
-- ✅ API key creation works with direct database operations
-- ✅ API key verification works with custom database queries
-- ✅ All API key management operations work reliably
-- ✅ Proper session validation and security maintained
-- ✅ Job-specific permissions work correctly
-- ✅ Job triggering works with proper test data inclusion
-- ✅ API keys persist when users are deleted
-- ✅ Direct job association simplifies access control
+**HTTP Request:**
+```http
+POST /api/jobs/{jobId}/trigger
+Authorization: Bearer invalid-key-value
+```
 
-## Security Considerations
+**Expected Response:**
+```json
+{
+  "error": "Invalid API key"
+}
+```
+**Status Code:** 401
 
-### API Key Security
-- ✅ Session validation required for all operations
-- ✅ API keys associated with authenticated users
-- ✅ Job-specific access control maintained
-- ✅ Expiration and enabled/disabled status still work
-- ✅ Rate limiting and other security features preserved
-- ✅ Database operations use parameterized queries to prevent SQL injection
+#### 4. Test Cross-Job Access
 
-### Access Control
-- ✅ Only API keys associated with a specific job can trigger that job
-- ✅ No cross-job access possible
-- ✅ Clean separation of concerns
-- ✅ Direct job association eliminates permission parsing
-- ✅ Reduced attack surface (no JSON injection risks)
+**Setup:**
+- Create API key for Job A
+- Attempt to trigger Job B with Job A's key
 
-## Benefits
+**Expected Response:**
+```json
+{
+  "error": "API key not authorized for this job"
+}
+```
+**Status Code:** 403
 
-### 1. **Data Persistence**
-- ✅ API keys survive user deletion
-- ✅ Maintains historical job execution capabilities
-- ✅ Preserves audit trails and access logs
+#### 5. Test Expired Key
 
-### 2. **Simplified Security Model**
-- ✅ Direct job association eliminates permission parsing
-- ✅ Reduced attack surface (no JSON injection risks)
-- ✅ Clearer access control logic
+**Setup:**
+- Create API key with 1-minute expiration
+- Wait for expiration
+- Attempt to use key
 
-### 3. **Better Job Lifecycle Management**
-- ✅ API keys automatically cleaned up when jobs are deleted
-- ✅ No orphaned API keys for deleted jobs
-- ✅ Cleaner database state
+**Expected Response:**
+```json
+{
+  "error": "API key has expired"
+}
+```
+**Status Code:** 403
 
-### 4. **Performance Improvements**
-- ✅ Direct foreign key queries instead of JSON pattern matching
-- ✅ Simpler database indexes
-- ✅ Faster API key validation
+#### 6. Test Rate Limiting
 
-### 5. **Future Flexibility**
-- ✅ Permissions field available for future enhancements
-- ✅ Can implement more complex permission models later
-- ✅ Backward compatibility maintained
+**Setup:**
+- Create API key with rate limit: 10 requests per minute
+- Send 11 requests in quick succession
+
+**Expected:**
+- First 10 requests succeed
+- 11th request returns 429 with retry-after header
+
+#### 7. Test Key Lifecycle with User Deletion
+
+**Steps:**
+1. User A creates API key for Job X
+2. Admin deletes User A
+3. Trigger job with API key
+
+**Expected:**
+- API key remains functional
+- Job triggers successfully
+- User reference is dangling but doesn't affect operation
+
+#### 8. Test Key Lifecycle with Job Deletion
+
+**Steps:**
+1. Create API key for Job X
+2. Delete Job X
+3. Query API keys
+
+**Expected:**
+- API key automatically deleted (CASCADE)
+- No orphaned keys in database
+
+### Integration Tests
+
+```mermaid
+graph TB
+    A[Test Suite] --> B[Unit Tests]
+    A --> C[Integration Tests]
+    A --> D[E2E Tests]
+
+    B --> B1[Key Generation]
+    B --> B2[Validation Logic]
+    B --> B3[Rate Limit Calculation]
+
+    C --> C1[Database Operations]
+    C --> C2[API Endpoints]
+    C --> C3[Job Triggering]
+
+    D --> D1[Full User Flow]
+    D --> D2[CI/CD Integration]
+    D --> D3[Error Scenarios]
+
+    classDef test fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+
+    class B1,B2,B3,C1,C2,C3,D1,D2,D3 test
+```
 
 ## Migration History
 
-### Migration Files
-1. `0003_youthful_clea.sql` - Added jobId field, changed user foreign key
-2. `0004_sharp_weapon_omega.sql` - Removed permissions field (temporarily)
-3. `0005_dry_zarda.sql` - Added permissions field back (for future use)
+### Database Migrations
 
-### Schema Updates
-- `app/src/db/schema/schema.ts` - Updated API key table definition
-- `worker/src/db/schema.ts` - Updated worker schema to match
+**Migration 1: `0003_youthful_clea.sql`**
+- Added `jobId` field to `apikey` table
+- Changed user foreign key from `ON DELETE CASCADE` to `ON DELETE NO ACTION`
+- Added job foreign key with `ON DELETE CASCADE`
 
-## What Happens When User is Deleted
+**Migration 2: `0004_sharp_weapon_omega.sql`**
+- Temporarily removed `permissions` field
+- Testing simplified job-based authorization
 
-### Before
-- ❌ All user's API keys were deleted
-- ❌ Job triggering capabilities lost
-- ❌ Historical access information lost
+**Migration 3: `0005_dry_zarda.sql`**
+- Re-added `permissions` field as JSONB
+- Kept for future flexibility
+- Currently unused in favor of direct `jobId` checks
 
-### After
-- ✅ API keys remain in the system
-- ✅ Jobs can still be triggered via existing API keys
-- ✅ Audit trails preserved
-- ⚠️ `userId` becomes a dangling reference (points to deleted user)
+### Schema Files Updated
+
+**App Schema:** `app/src/db/schema/schema.ts`
+- Updated `apikey` table definition
+- Added foreign key constraints
+- Added indexes
+
+**Worker Schema:** `worker/src/db/schema.ts`
+- Synchronized with app schema
+- Ensures consistency across services
+
+## Security Considerations
+
+### Key Generation
+
+**Format:** `job_` + 32 random hexadecimal characters
+
+**Entropy:** 128 bits (32 hex chars = 16 bytes)
+
+**Algorithm:** Uses `crypto.randomUUID()` with hyphens removed
+
+**Collision Probability:** Negligible (1 in 2^128)
+
+### Storage
+
+**Database:**
+- Keys stored as plain text (required for verification)
+- Protected by database access controls
+- Never logged in application logs
+- Masked in UI (only first 8 characters shown)
+
+**Transmission:**
+- HTTPS required for all API requests
+- Bearer token in Authorization header
+- Never passed in URL parameters
+
+### Best Practices
+
+**For Users:**
+1. Treat API keys like passwords
+2. Use environment variables, never commit to code
+3. Rotate keys periodically
+4. Use separate keys for different environments
+5. Set appropriate expiration times
+6. Disable unused keys immediately
+7. Monitor usage in audit logs
+
+**For Administrators:**
+1. Enforce HTTPS in production
+2. Enable rate limiting
+3. Set reasonable expiration defaults
+4. Monitor for suspicious patterns
+5. Audit key usage regularly
+6. Implement alerting for unusual activity
 
 ## Current Implementation vs Future Possibilities
 
 ### Current Implementation
-- Uses `jobId` field for direct job association
-- Permissions field exists but is not used
-- Simple and efficient job-specific access control
 
-### Future Possibilities
-- Could use `permissions` field for more granular access control
-- Could implement role-based permissions within jobs
-- Could add cross-job permissions for admin users
-- Could implement time-based or conditional permissions
+**Authorization Model:**
+- Direct `jobId` foreign key relationship
+- Simple equality check for authorization
+- Efficient database queries with indexed lookups
 
-## Technical Details
+**Permissions Field:**
+- Exists in schema as JSONB
+- Not currently used in authorization logic
+- Maintained for backward compatibility
 
-### API Key Creation
-- Direct database insertion with proper user association
-- Secure key generation with UUID-based format
-- JSON permissions storage for job-specific access
+### Future Enhancements
 
-### API Key Verification
-- Direct database lookup by key value
-- Proper validation of enabled status and expiration
-- JSON parsing of permissions for job access control
+**Potential Use Cases:**
+1. **Multi-job Keys:** Single key triggering multiple jobs
+2. **Granular Permissions:** Read-only vs execute permissions
+3. **Conditional Access:** Time-based or IP-based restrictions
+4. **Resource Limits:** Per-key execution quotas
+5. **Webhook Access:** Keys for webhook endpoints
+6. **Read API Access:** Keys for querying results without execution
 
-### Security Maintained
-- Session validation required for all operations
-- API keys associated with authenticated users
-- Proper permission scoping to specific jobs
-- Database operations use parameterized queries
+**Implementation Path:**
+```
+Phase 1 (Current): Direct jobId association
+Phase 2: Optional permissions JSON for advanced use cases
+Phase 3: Role-based key permissions
+Phase 4: Policy-based access control
+```
 
-## Related Files
-- `app/src/utils/auth.ts` - better-auth configuration
-- `app/src/middleware/middleware.ts` - session validation middleware
-- `app/src/app/(main)/layout.tsx` - main layout with session validation
-- `app/src/components/jobs/api-key-dialog.tsx` - frontend API key creation UI
-- `app/src/db/schema/schema.ts` - database schema for API keys
-- `app/src/app/api/jobs/[id]/api-keys/route.ts` - API key management
-- `app/src/app/api/jobs/[id]/trigger/route.ts` - Job triggering
-- `app/src/db/migrations/0003_youthful_clea.sql` - Migration 1
-- `app/src/db/migrations/0004_sharp_weapon_omega.sql` - Migration 2
-- `app/src/db/migrations/0005_dry_zarda.sql` - Migration 3 
+## API Endpoints Reference
+
+### Create API Key
+**Endpoint:** `POST /api/jobs/:id/api-keys`
+
+**Request:**
+- `name` (string, required): Display name
+- `expiresIn` (number, optional): Expiration in seconds
+
+**Response:**
+- `id`: Key UUID
+- `key`: Full key value (shown once only)
+- `name`: Display name
+- `start`: First 8 characters
+- `createdAt`: Creation timestamp
+- `expiresAt`: Expiration timestamp (if set)
+
+### List API Keys
+**Endpoint:** `GET /api/jobs/:id/api-keys`
+
+**Response:**
+- Array of API key objects (key field redacted)
+
+### Update API Key
+**Endpoint:** `PATCH /api/jobs/:id/api-keys/:keyId`
+
+**Request:**
+- `name` (string, optional): New display name
+- `enabled` (boolean, optional): Enable/disable key
+
+### Delete API Key
+**Endpoint:** `DELETE /api/jobs/:id/api-keys/:keyId`
+
+**Response:**
+- `204 No Content` on success
+
+### Trigger Job with API Key
+**Endpoint:** `POST /api/jobs/:id/trigger`
+
+**Headers:**
+- `Authorization: Bearer <api-key>`
+
+**Response:**
+- `message`: Success message
+- `runId`: UUID of created run
+- `jobId`: Job UUID
+- `status`: Initial run status
+
+## Related Documentation
+
+- **Authentication System:** See `AUTHENTICATION.md` for Better Auth integration
+- **Job System:** See `JOB_TRIGGER_SYSTEM.md` for job execution details
+- **RBAC System:** See `RBAC_DOCUMENTATION.md` for permission model
+- **Database Schema:** See `ERD_DIAGRAM.md` for complete schema
+
+## Revision History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 3.0 | 2025-01-12 | Removed code snippets, enhanced diagrams |
+| 2.0 | 2024-12-15 | Updated with direct job association model |
+| 1.0 | 2024-11-01 | Initial specification |
