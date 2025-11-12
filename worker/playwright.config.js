@@ -61,7 +61,9 @@ module.exports = defineConfig({
   reporter: [
     ['html'], // Always generate HTML reports for S3 upload
     ['list'], // Console output for debugging
-    ['json', { outputFile: 'test-results.json' }], // Always generate JSON for observability spans
+    ['json', {
+      outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT || 'test-results.json'
+    }], // Generate JSON for observability spans
   ],
 
   /* Timeouts aligned with execution service limits */
