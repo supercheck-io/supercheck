@@ -26,7 +26,6 @@ import {
   Info,
 } from "lucide-react";
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
@@ -52,8 +51,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { MetricsChart } from "@/components/observability/metrics-chart";
-import { RunTraceDrawer } from "@/components/observability/run-trace-drawer";
-import { runStatuses } from "@/components/runs/data";
 import type {
   ProjectObservabilitySnapshot,
   MetricSeries,
@@ -987,9 +984,6 @@ export default function Home() {
   if (!dashboardData || !chartData) return null;
 
   const projectObservability = dashboardData.observability;
-  const latestRuns = dashboardData.jobs.recentRuns
-    ? dashboardData.jobs.recentRuns.slice(0, 4)
-    : [];
 
   return (
     <div className="overflow-hidden">

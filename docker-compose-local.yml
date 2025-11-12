@@ -1,10 +1,20 @@
 # Local Development Docker Compose - Simplified
 # Use this for local development
 #
-# Access:
-# - Main app: http://localhost:3000
-# - Status pages: http://localhost:3000/status/{subdomain}
-# - Example: http://localhost:3000/status/abc123
+# App and Worker services are commented out - run them locally:
+# - App: cd app && npm run dev (runs on http://localhost:3000)
+# - Worker: cd worker && npm run dev (runs on http://localhost:3001)
+#
+# Infrastructure components that will be started:
+# - PostgreSQL: localhost:5432
+# - Redis: localhost:6379
+# - MinIO: localhost:9000 (API), localhost:9002 (console)
+# - ClickHouse: localhost:9001 (native), localhost:8124 (HTTP)
+# - OpenTelemetry Collector: localhost:4317, localhost:4318
+#
+# S3 buckets are auto-created by worker:
+# - playwright-job-artifacts, playwright-test-artifacts, playwright-monitor-artifacts
+# - k6-status-artifacts, k6-performance-artifacts
 #
 # Status pages also accessible via middleware rewriting if needed
 
@@ -49,8 +59,8 @@ x-common-env: &common-env # Database Configuration
   S3_JOB_BUCKET_NAME: playwright-job-artifacts
   S3_TEST_BUCKET_NAME: playwright-test-artifacts
   S3_MONITOR_BUCKET_NAME: playwright-monitor-artifacts
-  S3_STATUS_BUCKET_NAME: playwright-status-artifacts
-  S3_PERFORMANCE_BUCKET_NAME: supercheck-performance-artifacts
+  S3_STATUS_BUCKET_NAME: k6-status-artifacts
+  S3_PERFORMANCE_BUCKET_NAME: k6-performance-artifacts
   S3_FORCE_PATH_STYLE: true
   S3_OPERATION_TIMEOUT: 10000
   S3_MAX_RETRIES: 3
@@ -131,120 +141,124 @@ x-common-env: &common-env # Database Configuration
   OTEL_TRACE_SAMPLE_RATE: ${OTEL_TRACE_SAMPLE_RATE:-1.0}
 
 services:
-  # App (Next.js Frontend)
-  app:
-    build:
-      context: ./app
-      dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env.local
-    environment:
-      <<: *common-env
-    volumes:
-      # Mount TypeScript definitions for Monaco Editor in playground
-      - ./app/public/supercheck.d.ts:/app/public/supercheck.d.ts:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "const http = require('http'); const req = http.request({hostname: 'localhost', port: 3000, path: '/api/health', timeout: 5000}, (res) => process.exit(res.statusCode < 400 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 120s
-    networks:
-      - supercheck-network
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 2G
-        reservations:
-          cpus: "0.5"
-          memory: 1G
+  # App (Next.js Frontend) - Commented out for local development
+  # app:
+  #   build:
+  #     context: ./app
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "3000:3000"
+  #   env_file:
+  #     - .env.local
+  #   environment:
+  #     <<: *common-env
+  #     SKIP_MIGRATIONS: "true"
+  #   volumes:
+  #     # Mount TypeScript definitions for Monaco Editor in playground
+  #     - ./app/public/supercheck.d.ts:/app/public/supercheck.d.ts:ro
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #     minio:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test:
+  #       [
+  #         "CMD",
+  #         "node",
+  #         "-e",
+  #         "const http = require('http'); const req = http.request({hostname: 'localhost', port: 3000, path: '/api/health', timeout: 5000}, (res) => process.exit(res.statusCode < 400 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();",
+  #       ]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  #     start_period: 120s
+  #   networks:
+  #     - supercheck-network
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "1.0"
+  #         memory: 2G
+  #       reservations:
+  #         cpus: "0.5"
+  #         memory: 1G
 
-  # Worker (NestJS Runner)
-  worker:
-    build:
-      context: ./worker
-      dockerfile: Dockerfile
-    env_file:
-      - .env.local
-    environment:
-      <<: *common-env
-    volumes:
-      - worker-playwright-reports:/app/playwright-reports
-      - worker-reports:/app/report
-      - type: tmpfs
-        target: /dev/shm
-        tmpfs:
-          size: 8589934592 # 8GB shared memory
-    depends_on:
-      postgres:
-        condition: service_healthy
-      app:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "const http = require('http'); const req = http.request({hostname: 'localhost', port: 3001, path: '/health', timeout: 5000}, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    networks:
-      - supercheck-network
-    deploy:
-      replicas: 1
-      resources:
-        limits:
-          cpus: "1.5" # Keep local worker responsive without starving the host machine
-          memory: 3G # Enough for two Playwright sessions with tracing in dev
-        reservations:
-          cpus: "0.75"
-          memory: 2048M
-    sysctls:
-      - net.core.somaxconn=4096
-    ulimits:
-      nproc: 65535
-      nofile:
-        soft: 1048576
-        hard: 1048576
-      memlock:
-        soft: -1
-        hard: -1
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - SYS_ADMIN
+  # Worker (NestJS Runner) - Commented out for local development
+  # worker:
+  #   build:
+  #     context: ./worker
+  #     dockerfile: Dockerfile
+  #   env_file:
+  #     - .env.local
+  #   environment:
+  #     <<: *common-env
+  #     SKIP_MIGRATIONS: "true"
+  #   volumes:
+  #     - worker-playwright-reports:/app/playwright-reports
+  #     - worker-reports:/app/report
+  #     - type: tmpfs
+  #       target: /dev/shm
+  #       tmpfs:
+  #         size: 8589934592 # 8GB shared memory
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     app:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #     minio:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test:
+  #       [
+  #         "CMD",
+  #         "node",
+  #         "-e",
+  #         "const http = require('http'); const req = http.request({hostname: 'localhost', port: 3001, path: '/health', timeout: 5000}, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();",
+  #       ]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 60s
+  #   networks:
+  #     - supercheck-network
+  #   deploy:
+  #     replicas: 1
+  #     resources:
+  #       limits:
+  #         cpus: "1.5" # Keep local worker responsive without starving the host machine
+  #         memory: 3G # Enough for two Playwright sessions with tracing in dev
+  #       reservations:
+  #         cpus: "0.75"
+  #         memory: 2048M
+  #   sysctls:
+  #     - net.core.somaxconn=4096
+  #   ulimits:
+  #     nproc: 65535
+  #     nofile:
+  #       soft: 1048576
+  #       hard: 1048576
+  #     memlock:
+  #       soft: -1
+  #       hard: -1
+  #   security_opt:
+  #     - no-new-privileges:true
+  #   cap_drop:
+  #     - ALL
+  #   cap_add:
+  #     - SYS_ADMIN
 
   # PostgreSQL Database
   postgres:
     image: postgres:18
+    ports:
+      - "5432:5432"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -308,7 +322,10 @@ services:
     environment:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
-    command: server /data --console-address ":9001"
+    command: server /data --console-address ":9002"
+    ports:
+      - "9000:9000"  # API
+      - "9002:9002"  # Console
     volumes:
       - minio-data:/data
     restart: unless-stopped
@@ -319,14 +336,6 @@ services:
       retries: 5
     networks:
       - supercheck-network
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 1G
-        reservations:
-          cpus: "0.25"
-          memory: 512M
 
   # ============================================================================
   # OBSERVABILITY STACK

@@ -23,6 +23,7 @@ export interface S3Config {
   jobBucketName: string;
   testBucketName: string;
   monitorBucketName: string;
+  performanceBucketName: string;
   maxRetries?: number;
   operationTimeout?: number;
 }
@@ -588,16 +589,11 @@ export function createS3CleanupService(): S3CleanupService {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || "minioadmin",
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "minioadmin",
     jobBucketName: process.env.S3_JOB_BUCKET_NAME || "playwright-job-artifacts",
-    testBucketName:
-      process.env.S3_TEST_BUCKET_NAME || "playwright-test-artifacts",
-    monitorBucketName:
-      process.env.S3_MONITOR_BUCKET_NAME || "playwright-monitor-artifacts",
-    maxRetries: process.env.S3_MAX_RETRIES
-      ? parseInt(process.env.S3_MAX_RETRIES, 10)
-      : 3,
-    operationTimeout: process.env.S3_OPERATION_TIMEOUT
-      ? parseInt(process.env.S3_OPERATION_TIMEOUT, 10)
-      : 10000,
+    testBucketName: process.env.S3_TEST_BUCKET_NAME || "playwright-test-artifacts",
+    monitorBucketName: process.env.S3_MONITOR_BUCKET_NAME || "playwright-monitor-artifacts",
+    performanceBucketName: process.env.S3_K6_PERFORMANCE_BUCKET_NAME || "k6-performance-artifacts",
+    maxRetries: parseInt(process.env.S3_MAX_RETRIES || "3"),
+    operationTimeout: parseInt(process.env.S3_OPERATION_TIMEOUT || "10000"),
   };
 
   return new S3CleanupService(config);

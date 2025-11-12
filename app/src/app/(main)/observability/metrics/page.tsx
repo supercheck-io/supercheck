@@ -19,6 +19,8 @@ import {
   Activity
 } from "lucide-react";
 
+import Link from "next/link";
+
 export default function MetricsPage() {
   const [timePreset, setTimePreset] = useState("last_1h");
   const [runTypeFilter, setRunTypeFilter] = useState<string>("all");
@@ -158,10 +160,10 @@ export default function MetricsPage() {
 
           <div className="flex gap-3 justify-center">
             <Button asChild>
-              <a href="/tests">Create a Test</a>
+              <Link href="/tests">Create a Test</Link>
             </Button>
             <Button variant="outline" asChild>
-              <a href="/monitors">View Monitors</a>
+              <Link href="/monitors">View Monitors</Link>
             </Button>
           </div>
         </div>

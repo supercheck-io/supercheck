@@ -54,11 +54,11 @@ export class S3Service implements OnModuleInit {
     );
     this.statusBucketName = this.configService.get<string>(
       'S3_STATUS_BUCKET_NAME',
-      'supercheck-status-artifacts',
+      'k6-status-artifacts',
     );
     this.k6PerformanceBucketName = this.configService.get<string>(
       'S3_K6_PERFORMANCE_BUCKET_NAME',
-      'supercheck-performance-artifacts',
+      'k6-performance-artifacts',
     );
     this.s3Endpoint = this.configService.get<string>(
       'S3_ENDPOINT',

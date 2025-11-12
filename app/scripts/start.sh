@@ -66,10 +66,15 @@ start_server() {
 main() {
     log "Starting Supercheck App..."
     
-    # Always run migrations first
-    if ! run_migrations; then
-        log_error "Failed to run migrations. Exiting."
-        exit 1
+    # Check if migrations should be skipped
+    if [ "${SKIP_MIGRATIONS:-false}" = "true" ]; then
+        log "Skipping database migrations (SKIP_MIGRATIONS=true)"
+    else
+        # Always run migrations first
+        if ! run_migrations; then
+            log_error "Failed to run migrations. Exiting."
+            exit 1
+        fi
     fi
     
     # Start the server

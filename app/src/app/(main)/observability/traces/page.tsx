@@ -371,7 +371,7 @@ function buildTraceName(trace: Trace): string {
   if (trace.scRunType === 'job') {
     typeLabel = trace.scJobType ? `${trace.scJobType.charAt(0).toUpperCase() + trace.scJobType.slice(1)} Job` : 'Job';
     name = trace.scJobName || 'Unnamed';
-  } else if (trace.scRunType === 'test') {
+  } else if (trace.scRunType === 'playwright') {
     typeLabel = trace.scTestType ? `${trace.scTestType.charAt(0).toUpperCase() + trace.scTestType.slice(1)} Test` : 'Test';
     name = trace.scTestName || 'Unnamed';
   } else if (trace.scRunType === 'monitor') {
