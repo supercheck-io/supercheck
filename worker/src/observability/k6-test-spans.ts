@@ -96,6 +96,13 @@ export async function createSpansFromK6Summary(
     const tracer = trace.getTracer('supercheck-worker');
     let createdSpanCount = 0;
 
+    // Get the parent span and create a context for child spans
+    const parentSpan = trace.getActiveSpan();
+    if (!parentSpan) {
+      logger.warn('No active parent span found for K6 - child spans may not be properly linked');
+    }
+    const parentContext = parentSpan ? trace.setSpan(context.active(), parentSpan) : context.active();
+
     // Get test run duration from state
     const testDuration = summary.state?.testRunDurationMs || 0;
     const testStartTime = Date.now() - testDuration;
@@ -141,7 +148,7 @@ export async function createSpansFromK6Summary(
               }),
             },
           },
-          context.active(),
+          parentContext,
         );
 
         // Add additional HTTP metrics as attributes
@@ -206,7 +213,7 @@ export async function createSpansFromK6Summary(
               }),
             },
           },
-          context.active(),
+          parentContext,
         );
 
         if (check.fails > 0) {
@@ -249,7 +256,7 @@ export async function createSpansFromK6Summary(
             }),
           },
         },
-        context.active(),
+        parentContext,
       );
 
       span.setStatus({ code: SpanStatusCode.OK });

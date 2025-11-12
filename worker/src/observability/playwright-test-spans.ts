@@ -118,6 +118,13 @@ export async function createSpansFromPlaywrightResults(
     // Get the tracer
     const tracer = trace.getTracer('supercheck-worker');
 
+    // Get the parent span and create a context for child spans
+    const parentSpan = trace.getActiveSpan();
+    if (!parentSpan) {
+      logger.warn('No active parent span found - child spans may not be properly linked');
+    }
+    const parentContext = parentSpan ? trace.setSpan(context.active(), parentSpan) : context.active();
+
     // Parse start time from stats
     const jobStartTime = results.stats?.startTime ? new Date(results.stats.startTime).getTime() : Date.now();
 
@@ -129,7 +136,7 @@ export async function createSpansFromPlaywrightResults(
       const testStartTime = currentTestStartTime;
       const testEndTime = testStartTime + test.duration;
 
-      // Create span with explicit start/end times
+      // Create span with explicit start/end times and parent context
       const span = tracer.startSpan(
         `Playwright Test: ${test.title}`,
         {
@@ -152,7 +159,7 @@ export async function createSpansFromPlaywrightResults(
             ...(telemetryCtx?.organizationId && { 'sc.organization_id': telemetryCtx.organizationId }),
           },
         },
-        context.active(), // Use current context to ensure proper parent linkage
+        parentContext, // Explicitly pass parent context for proper linkage
       );
 
       // Add error information if test failed
