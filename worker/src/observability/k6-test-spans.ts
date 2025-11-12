@@ -100,6 +100,14 @@ export async function createSpansFromK6Summary(
     // Log available metric keys for debugging
     logger.log(`K6 summary metrics available: ${Object.keys(summary.metrics).join(', ')}`);
 
+    // Debug: Log structure of key metrics to understand format
+    if (summary.metrics['http_reqs']) {
+      logger.log(`K6 http_reqs structure: ${JSON.stringify(summary.metrics['http_reqs'], null, 2)}`);
+    }
+    if (summary.metrics['vus']) {
+      logger.log(`K6 vus structure: ${JSON.stringify(summary.metrics['vus'], null, 2)}`);
+    }
+
     const tracer = trace.getTracer('supercheck-worker');
     let createdSpanCount = 0;
 
@@ -127,6 +135,11 @@ export async function createSpansFromK6Summary(
       // Get http_reqs metric (total requests)
       const httpReqs = summary.metrics['http_reqs'];
       const httpReqDuration = summary.metrics['http_req_duration'];
+
+      logger.log(`K6 DEBUG: httpReqs exists=${!!httpReqs}, has values=${!!httpReqs?.values}, has count=${!!httpReqs?.values?.count}`);
+      if (httpReqs?.values) {
+        logger.log(`K6 DEBUG: httpReqs.values properties: ${Object.keys(httpReqs.values).join(', ')}`);
+      }
 
       if (httpReqs && httpReqs.values && httpReqs.values.count) {
         const requestCount = httpReqs.values.count;
@@ -162,22 +175,22 @@ export async function createSpansFromK6Summary(
         );
 
         // Add additional HTTP metrics as attributes
-        if (summary.metrics['http_req_blocked']) {
+        if (summary.metrics['http_req_blocked']?.values) {
           span.setAttribute('http.blocked.avg_ms', summary.metrics['http_req_blocked'].values.avg || 0);
         }
-        if (summary.metrics['http_req_connecting']) {
+        if (summary.metrics['http_req_connecting']?.values) {
           span.setAttribute('http.connecting.avg_ms', summary.metrics['http_req_connecting'].values.avg || 0);
         }
-        if (summary.metrics['http_req_sending']) {
+        if (summary.metrics['http_req_sending']?.values) {
           span.setAttribute('http.sending.avg_ms', summary.metrics['http_req_sending'].values.avg || 0);
         }
-        if (summary.metrics['http_req_waiting']) {
+        if (summary.metrics['http_req_waiting']?.values) {
           span.setAttribute('http.waiting.avg_ms', summary.metrics['http_req_waiting'].values.avg || 0);
         }
-        if (summary.metrics['http_req_receiving']) {
+        if (summary.metrics['http_req_receiving']?.values) {
           span.setAttribute('http.receiving.avg_ms', summary.metrics['http_req_receiving'].values.avg || 0);
         }
-        if (summary.metrics['http_req_failed']) {
+        if (summary.metrics['http_req_failed']?.values) {
           const failRate = summary.metrics['http_req_failed'].values.rate || 0;
           span.setAttribute('http.failure_rate', failRate);
           if (failRate > 0) {
@@ -251,15 +264,18 @@ export async function createSpansFromK6Summary(
     // Create a span for VUs (Virtual Users) metrics
     if (summary.metrics['vus']) {
       const vusMetric = summary.metrics['vus'];
-      const span = tracer.startSpan(
-        'K6 Virtual Users',
-        {
-          kind: SpanKind.INTERNAL,
-          startTime: testStartTime,
-          attributes: {
-            'vus.min': vusMetric.values.min || 0,
-            'vus.max': vusMetric.values.max || 0,
-            'vus.avg': vusMetric.values.avg || 0,
+
+      // Check if values property exists
+      if (vusMetric.values) {
+        const span = tracer.startSpan(
+          'K6 Virtual Users',
+          {
+            kind: SpanKind.INTERNAL,
+            startTime: testStartTime,
+            attributes: {
+              'vus.min': vusMetric.values.min || 0,
+              'vus.max': vusMetric.values.max || 0,
+              'vus.avg': vusMetric.values.avg || 0,
             ...(telemetryCtx?.runId && { 'sc.run_id': telemetryCtx.runId }),
             ...(telemetryCtx?.testId && { 'sc.test_id': telemetryCtx.testId }),
             ...(telemetryCtx?.jobId && { 'sc.job_id': telemetryCtx.jobId }),
@@ -273,9 +289,12 @@ export async function createSpansFromK6Summary(
         parentContext,
       );
 
-      span.setStatus({ code: SpanStatusCode.OK });
-      span.end(testStartTime + testDuration);
-      createdSpanCount++;
+        span.setStatus({ code: SpanStatusCode.OK });
+        span.end(testStartTime + testDuration);
+        createdSpanCount++;
+      } else {
+        logger.log('K6: Skipping VUs span - vusMetric.values is undefined');
+      }
     }
 
     logger.log(`Created ${createdSpanCount} K6 spans from summary JSON`);
