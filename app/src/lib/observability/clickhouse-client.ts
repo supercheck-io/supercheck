@@ -36,6 +36,53 @@ const isRunType = (value: unknown): value is RunType =>
   value === "job" ||
   value === "monitor";
 
+/**
+ * Normalize run types emitted from worker to API-compatible values
+ * Maps granular worker run types to simplified API enum values
+ *
+ * Worker emits: playwright_job, playwright_test, k6_job, k6_test
+ * API expects: playwright, k6, job, monitor
+ */
+function normalizeRunType(value: unknown): RunType | undefined {
+  if (typeof value !== "string") return undefined;
+
+  // Map new granular types to existing enum, pass through canonical values
+  switch (value) {
+    case "playwright_job":
+    case "playwright_test":
+    case "playwright":
+      return "playwright";
+    case "k6_job":
+    case "k6_test":
+    case "k6":
+      return "k6";
+    case "job":
+    case "monitor":
+      return value as RunType;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Expand canonical run types to include granular variants for filtering
+ * When filtering by canonical type, include both the canonical and granular values
+ * to match all traces regardless of which format they were stored with.
+ */
+function expandRunTypeForFiltering(value: string): string[] {
+  switch (value) {
+    case "playwright":
+      return ["playwright", "playwright_job", "playwright_test"];
+    case "k6":
+      return ["k6", "k6_job", "k6_test"];
+    case "job":
+    case "monitor":
+      return [value];
+    default:
+      return [value];
+  }
+}
+
 function escapeLiteral(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
@@ -188,7 +235,14 @@ function buildTraceConditions(
     conditions.push(`duration_nano <= ${options.maxDuration * 1_000_000}`);
   }
 
-  pushAttributeCondition(conditions, "sc.run_type", options.runType);
+  // Expand canonical run types to include granular variants for matching
+  if (options.runType) {
+    const runTypes = Array.isArray(options.runType)
+      ? options.runType
+      : [options.runType];
+    const expandedRunTypes = runTypes.flatMap((rt) => expandRunTypeForFiltering(rt));
+    pushAttributeCondition(conditions, "sc.run_type", expandedRunTypes);
+  }
   pushAttributeCondition(conditions, "sc.run_id", options.runId);
   pushAttributeCondition(conditions, "sc.test_id", options.testId);
   pushAttributeCondition(conditions, "sc.job_id", options.jobId);
@@ -277,14 +331,14 @@ export async function searchTracesClickHouse(
 
   const traces = rows.map((row) => {
     if (row.serviceName) serviceSet.add(row.serviceName);
-    if (row.scRunType && isRunType(row.scRunType)) {
-      runTypeSet.add(row.scRunType);
+    const scRunType = row.scRunType ? normalizeRunType(row.scRunType) : undefined;
+    if (scRunType) {
+      runTypeSet.add(scRunType);
     }
 
     const startedAt = Number(row.startedAtMs);
     const duration = Number(row.duration);
     const endedAt = startedAt + duration / 1_000_000;
-    const scRunType = row.scRunType && isRunType(row.scRunType) ? row.scRunType : undefined;
 
     return {
       traceId: row.traceId,
@@ -398,11 +452,9 @@ export async function getTraceWithSpansClickHouse(
   const endMs = Math.max(...spans.map((span) => new Date(span.endTime).getTime()));
   const errorCount = spans.filter((span) => span.statusCode === 2).length;
 
-  const scRunTypeAttr = rootSpan.attributes["sc.run_type"];
-  const scRunTypeValue =
-    typeof scRunTypeAttr === "string" && isRunType(scRunTypeAttr)
-      ? scRunTypeAttr
-      : undefined;
+  const scRunTypeValue = rootSpan.attributes["sc.run_type"]
+    ? normalizeRunType(rootSpan.attributes["sc.run_type"])
+    : undefined;
 
   return {
     traceId,
@@ -497,7 +549,15 @@ export async function searchLogsClickHouse(
   pushAttributeCondition(conditions, "sc.run_id", filters.runId);
   pushAttributeCondition(conditions, "sc.project_id", filters.projectId);
   pushAttributeCondition(conditions, "sc.organization_id", filters.organizationId);
-  pushAttributeCondition(conditions, "sc.run_type", filters.runType);
+
+  // Expand canonical run types to include granular variants for matching
+  if (filters.runType) {
+    const runTypes = Array.isArray(filters.runType)
+      ? filters.runType
+      : [filters.runType];
+    const expandedRunTypes = runTypes.flatMap((rt) => expandRunTypeForFiltering(rt));
+    pushAttributeCondition(conditions, "sc.run_type", expandedRunTypes);
+  }
 
   if (filters.search) {
     const query = escapeLiteral(filters.search);
