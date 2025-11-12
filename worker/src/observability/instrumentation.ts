@@ -168,7 +168,7 @@ function configureInstrumentations() {
 
     // Enable HTTP instrumentation with custom hooks
     '@opentelemetry/instrumentation-http': {
-      enabled: true,
+      enabled: false, // Disabled to reduce trace noise - only show execution-level spans
       requestHook: (span, request) => {
         // Add useful HTTP attributes
         // Type guard for IncomingMessage (has headers property)
@@ -210,22 +210,21 @@ function configureInstrumentations() {
 
     // Enable Express instrumentation (NestJS uses Express under the hood)
     '@opentelemetry/instrumentation-express': {
-      enabled: true,
+      enabled: false, // Disabled to reduce trace noise - only show execution-level spans
     },
 
     // Enable database instrumentations
     '@opentelemetry/instrumentation-pg': {
-      enabled: true,
-      enhancedDatabaseReporting: true, // Capture SQL queries
+      enabled: false, // Disabled to reduce trace noise - only show execution-level spans
     },
 
     '@opentelemetry/instrumentation-redis-4': {
-      enabled: true,
+      enabled: false, // Disabled to reduce trace noise - only show execution-level spans
     },
 
     // Enable AWS SDK instrumentation (for S3 operations)
     '@opentelemetry/instrumentation-aws-sdk': {
-      enabled: true,
+      enabled: false, // Disabled to reduce trace noise - only show execution-level spans
       suppressInternalInstrumentation: true,
     },
 
