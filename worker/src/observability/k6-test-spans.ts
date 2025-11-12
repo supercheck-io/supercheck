@@ -97,6 +97,9 @@ export async function createSpansFromK6Summary(
       return 0;
     }
 
+    // Log available metric keys for debugging
+    logger.log(`K6 summary metrics available: ${Object.keys(summary.metrics).join(', ')}`);
+
     const tracer = trace.getTracer('supercheck-worker');
     let createdSpanCount = 0;
 
@@ -125,7 +128,7 @@ export async function createSpansFromK6Summary(
       const httpReqs = summary.metrics['http_reqs'];
       const httpReqDuration = summary.metrics['http_req_duration'];
 
-      if (httpReqs && httpReqs.values.count) {
+      if (httpReqs && httpReqs.values && httpReqs.values.count) {
         const requestCount = httpReqs.values.count;
         const avgDuration = httpReqDuration?.values?.avg || 0;
         const maxDuration = httpReqDuration?.values?.max || 0;
@@ -191,7 +194,11 @@ export async function createSpansFromK6Summary(
 
         span.end(testStartTime + testDuration);
         createdSpanCount++;
+      } else {
+        logger.log('K6: Skipping HTTP requests span - no valid http_reqs metric with count');
       }
+    } else {
+      logger.log('K6: No HTTP metrics found in summary');
     }
 
     // Create spans for checks/assertions
