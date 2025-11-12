@@ -1,7 +1,7 @@
 import { trace, context, SpanStatusCode, type Span } from '@opentelemetry/api';
 import * as fs from 'fs';
 import * as readline from 'readline';
-import { Logger } from '../utils/logger';
+import { Logger } from '@nestjs/common';
 
 const logger = new Logger('K6JSONParser');
 
@@ -130,7 +130,7 @@ function calculatePercentile(sortedValues: number[], percentile: number): number
  * Parse K6 JSON output and create aggregated OpenTelemetry spans
  *
  * @param jsonOutputPath - Path to the K6 JSON output file (NDJSON format)
- * @param telemetryCtx - Telemetry context with trace/span IDs for correlation
+ * @param telemetryCtx - Telemetry context for correlation (unused, kept for API consistency)
  * @param parentSpan - Parent span for proper trace hierarchy
  * @param testStartTime - Start time of the K6 test execution
  * @param config - Configuration options for parsing
@@ -138,7 +138,7 @@ function calculatePercentile(sortedValues: number[], percentile: number): number
  */
 export async function createSpansFromK6JSON(
   jsonOutputPath: string,
-  telemetryCtx?: { traceId?: string; spanId?: string },
+  telemetryCtx?: any,
   parentSpan?: Span,
   testStartTime?: number,
   config: K6ParserConfig = {},
