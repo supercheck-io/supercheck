@@ -146,7 +146,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
 
       // Execute k6
       const result = await createSpanWithContext(
-        'k6.run',
+        isJobRun ? 'K6 Job' : 'K6 Test',
         telemetryCtx,
         async (span) => {
           span.setAttribute('k6.location', effectiveJobLocation);
@@ -317,7 +317,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       }
 
       emitTelemetryLog({
-        message: `[k6] Run ${runId} ${result.success ? 'passed' : 'failed'}`,
+        message: `[${isJobRun ? 'K6 Job' : 'K6 Test'}] ${runId} ${result.success ? 'passed' : 'failed'}`,
         ctx: telemetryCtx,
         severity: result.success ? SeverityNumber.INFO : SeverityNumber.ERROR,
         attributes: {
@@ -430,7 +430,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       }
 
       emitTelemetryLog({
-        message: `[k6] Run ${runId} crashed`,
+        message: `[${isJobRun ? 'K6 Job' : 'K6 Test'}] ${runId} crashed`,
         ctx: telemetryCtx,
         severity: SeverityNumber.ERROR,
         error,
