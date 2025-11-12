@@ -8,7 +8,6 @@ import { S3Service } from '../../execution/services/s3.service';
 import { DbService } from '../../execution/services/db.service';
 import { RedisService } from '../../execution/services/redis.service';
 import * as net from 'net';
-import { trace } from '@opentelemetry/api';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -271,18 +270,15 @@ export class K6ExecutionService {
       const htmlReportPath = path.join(reportDir, 'report.html'); // k6 will export here
       const consolePath = path.join(runDir, 'console.log');
 
-      // Build robust k6 command for HTML report generation and OpenTelemetry tracing
+      // Build robust k6 command for HTML report generation
       // The web-dashboard output generates the interactive HTML report
       // K6_WEB_DASHBOARD_EXPORT writes it directly to a file without needing the web server
-      // The experimental-opentelemetry output sends traces to OTEL collector
       const args = [
         'run',
         '--summary-export',
         summaryPath,
         '--out',
         'web-dashboard',
-        '--out',
-        'experimental-opentelemetry', // Enable OTEL traces for internal spans
         scriptPath,
       ];
 
@@ -305,39 +301,12 @@ export class K6ExecutionService {
           ? await this.allocateDashboardPort(runId)
           : 0; // Let the OS choose a free ephemeral port
 
-        // Get parent trace context for K6 span linking
-        const activeSpan = trace.getActiveSpan();
-        const spanContext = activeSpan?.spanContext();
-        const parentTraceId = spanContext?.traceId;
-        const parentSpanId = spanContext?.spanId;
-
-        // Get OTEL collector endpoint from config
-        const otelEndpoint = this.configService.get<string>(
-          'OTEL_EXPORTER_OTLP_ENDPOINT',
-          'http://localhost:4317',
-        );
-
         const k6EnvOverrides: Record<string, string> = {
           K6_WEB_DASHBOARD: 'true',
           K6_WEB_DASHBOARD_EXPORT: htmlReportPath, // Write HTML report to this path
           K6_WEB_DASHBOARD_PORT: dashboardPort.toString(), // Use unique port
           K6_WEB_DASHBOARD_ADDR: this.dashboardBindAddress,
           K6_NO_COLOR: '1', // Disable ANSI colors in output
-
-          // OpenTelemetry configuration for K6 internal spans
-          K6_TRACES_OUTPUT: 'experimental-opentelemetry', // Enable OTEL output
-          OTEL_EXPORTER_OTLP_ENDPOINT: otelEndpoint, // Send to same OTEL collector
-          OTEL_SERVICE_NAME: 'k6-execution', // Service name for K6 spans
-          OTEL_RESOURCE_ATTRIBUTES: `sc.run_id=${runId}`, // Add run correlation
-
-          // Parent trace/span linking for proper hierarchy
-          ...(parentTraceId && parentSpanId
-            ? {
-                OTEL_TRACES_SAMPLER: 'parentbased_always_on',
-                OTEL_PARENT_TRACE_ID: parentTraceId,
-                OTEL_PARENT_SPAN_ID: parentSpanId,
-              }
-            : {}),
         };
 
         try {
