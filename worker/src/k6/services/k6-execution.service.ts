@@ -273,16 +273,20 @@ export class K6ExecutionService {
       const summaryPath = path.join(runDir, 'summary.json');
       const htmlReportPath = path.join(reportDir, 'report.html'); // k6 will export here
       const consolePath = path.join(runDir, 'console.log');
+      const jsonOutputPath = path.join(runDir, 'metrics.json');
 
       // Build robust k6 command for HTML report generation
       // The web-dashboard output generates the interactive HTML report
       // K6_WEB_DASHBOARD_EXPORT writes it directly to a file without needing the web server
+      // Also output JSON metrics for granular observability spans
       const args = [
         'run',
         '--summary-export',
         summaryPath,
         '--out',
         'web-dashboard',
+        '--out',
+        `json=${jsonOutputPath}`, // JSON output for detailed network metrics
         scriptPath,
       ];
 
@@ -414,6 +418,46 @@ export class K6ExecutionService {
           this.logger.log(
             `[${runId}] ✅ Created ${spanCount} K6 internal spans from summary`,
           );
+
+          // Create detailed network request spans from JSON output
+          try {
+            const { createSpansFromK6JSON } = await import(
+              '../../observability/k6-json-parser'
+            );
+
+            this.logger.log(
+              `[${runId}] Attempting to create detailed network spans from JSON output at ${jsonOutputPath}`,
+            );
+
+            const networkSpanCount = await createSpansFromK6JSON(
+              jsonOutputPath,
+              telemetryCtx,
+              parentSpan,
+              startTime,
+              {
+                aggregateByEndpoint: true, // Aggregate requests by endpoint pattern
+                includeScenarios: true, // Include scenario-level spans
+                includeChecks: true, // Include check result spans
+                sampleSlowRequests: 10, // Sample top 10 slowest requests
+                sampleFailedRequests: true, // Include all failed requests
+              },
+            );
+
+            if (networkSpanCount > 0) {
+              this.logger.log(
+                `[${runId}] ✅ Created ${networkSpanCount} detailed network spans from K6 JSON output`,
+              );
+            } else {
+              this.logger.debug(
+                `[${runId}] No network spans created from JSON output (file may be empty or not found)`,
+              );
+            }
+          } catch (jsonError) {
+            this.logger.warn(
+              `[${runId}] Failed to create network spans from K6 JSON: ${getErrorMessage(jsonError)}`,
+            );
+            // Don't fail the execution if JSON span creation fails
+          }
         } catch (error) {
           this.logger.error(
             `[${runId}] ❌ Failed to create K6 internal spans: ${getErrorMessage(error)}`,

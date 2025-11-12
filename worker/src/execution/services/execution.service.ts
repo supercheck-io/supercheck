@@ -1126,9 +1126,11 @@ export class ExecutionService implements OnModuleDestroy {
       // Add unique environment variables for this execution
       // Set explicit JSON output path via env var for Playwright JSON reporter
       const jsonResultsPath = path.join(runDir, 'test-results.json');
+      const networkEventsPath = path.join(runDir, 'network-events.json');
       const envVars = {
         PLAYWRIGHT_TEST_DIR: runDir,
         PLAYWRIGHT_JSON_OUTPUT: jsonResultsPath, // Explicit JSON output path for reporter
+        PLAYWRIGHT_NETWORK_EVENTS_FILE: networkEventsPath, // Network Events API capture file
         CI: 'true',
         PLAYWRIGHT_EXECUTION_ID: executionId,
         // Create a unique artifacts folder for this execution
@@ -1150,6 +1152,9 @@ export class ExecutionService implements OnModuleDestroy {
       let command: string;
       let args: string[];
 
+      // Path to Network Events API instrumentation setup
+      const testSetupPath = path.join(serviceRoot, 'playwright-test-setup.js');
+
       if (isWindows) {
         // On Windows, use npx to execute playwright more reliably
         command = 'npx';
@@ -1158,6 +1163,7 @@ export class ExecutionService implements OnModuleDestroy {
           'test',
           `"${targetPath}"`, // Quote paths on Windows
           `--config="${playwrightConfigPath}"`,
+          `--require="${testSetupPath}"`, // Auto-instrument with Network Events API
           // Don't override reporters - let config file handle them with proper options
         ];
       } else {
@@ -1174,6 +1180,7 @@ export class ExecutionService implements OnModuleDestroy {
           'test',
           targetPath,
           `--config=${playwrightConfigPath}`,
+          `--require=${testSetupPath}`, // Auto-instrument with Network Events API
           // Don't override reporters - let config file handle them with proper options
         ];
       }
@@ -1272,6 +1279,38 @@ export class ExecutionService implements OnModuleDestroy {
             this.logger.log(
               `[${executionId}] ✅ Created ${spanCount} individual test spans from Playwright results`,
             );
+
+            // Create network request spans from Network Events API capture
+            try {
+              const { createSpansFromNetworkEvents } = await import(
+                '../../observability/playwright-network-events-parser'
+              );
+
+              const networkSpanCount = await createSpansFromNetworkEvents(
+                networkEventsPath,
+                attributes,
+                activeSpan,
+                {
+                  sampleRate: 1.0, // Capture all requests (adjust if needed)
+                  maxUrlLength: 200, // Limit URL length in span names
+                },
+              );
+
+              if (networkSpanCount > 0) {
+                this.logger.log(
+                  `[${executionId}] ✅ Created ${networkSpanCount} network request spans via Network Events API`,
+                );
+              } else {
+                this.logger.debug(
+                  `[${executionId}] No network spans created (events file may be empty or not found)`,
+                );
+              }
+            } catch (networkError) {
+              this.logger.warn(
+                `[${executionId}] Failed to create network spans: ${(networkError as Error).message}`,
+              );
+              // Don't fail the execution if network span creation fails
+            }
           } else {
             this.logger.warn(
               `[${executionId}] ❌ Playwright JSON results file not found at ${jsonResultsPath}`,
