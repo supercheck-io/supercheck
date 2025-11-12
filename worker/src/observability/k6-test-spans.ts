@@ -61,13 +61,16 @@ const logger = new Logger('K6TestSpans');
  *
  * @param summaryJsonPath - Path to summary.json file
  * @param telemetryCtx - Optional Supercheck context for span attributes
+ * @param parentSpan - Optional explicit parent span (if not provided, will try to get active span)
  * @returns Number of spans created
  *
  * @example
  * ```ts
+ * const parentSpan = trace.getActiveSpan();
  * const spanCount = await createSpansFromK6Summary(
  *   '/tmp/k6-tests/summary.json',
- *   { runId: '123', testId: 'test-abc', runType: 'k6_job' }
+ *   { runId: '123', testId: 'test-abc', runType: 'k6_job' },
+ *   parentSpan
  * );
  * console.log(`Created ${spanCount} K6 spans`);
  * ```
@@ -82,6 +85,7 @@ export async function createSpansFromK6Summary(
     projectId?: string;
     organizationId?: string;
   },
+  parentSpan?: any,
 ): Promise<number> {
   try {
     // Read and parse summary JSON
@@ -96,12 +100,15 @@ export async function createSpansFromK6Summary(
     const tracer = trace.getTracer('supercheck-worker');
     let createdSpanCount = 0;
 
-    // Get the parent span and create a context for child spans
-    const parentSpan = trace.getActiveSpan();
-    if (!parentSpan) {
-      logger.warn('No active parent span found for K6 - child spans may not be properly linked');
+    // Use provided parent span or try to get active span
+    const actualParentSpan = parentSpan || trace.getActiveSpan();
+    if (!actualParentSpan) {
+      logger.warn('No parent span provided or active for K6 - child spans may not be properly linked');
+      return 0; // Can't create child spans without a parent
     }
-    const parentContext = parentSpan ? trace.setSpan(context.active(), parentSpan) : context.active();
+
+    // Create a context with the parent span
+    const parentContext = trace.setSpan(context.active(), actualParentSpan);
 
     // Get test run duration from state
     const testDuration = summary.state?.testRunDurationMs || 0;

@@ -225,6 +225,10 @@ export class K6ExecutionService {
     const { runId, testId, script, location } = task;
     const startTime = Date.now();
 
+    // Capture the active span at the start - this is the processor's span
+    const { trace } = await import('@opentelemetry/api');
+    const parentSpan = trace.getActiveSpan();
+
     const uniqueRunId = `${runId}-${crypto.randomUUID().substring(0, 8)}`;
 
     // Check concurrency and reserve a slot atomically to prevent race condition
@@ -371,7 +375,7 @@ export class K6ExecutionService {
       }
 
       // 5a. Create individual spans from K6 summary (HTTP requests, checks, VUs)
-      if (summary && !timedOut) {
+      if (summary && !timedOut && parentSpan) {
         try {
           this.logger.debug(
             `[${runId}] Attempting to create K6 internal spans from summary.json`,
@@ -392,7 +396,12 @@ export class K6ExecutionService {
             runType: task.jobId ? 'k6_job' : 'k6_test',
           };
 
-          const spanCount = await createSpansFromK6Summary(summaryPath, telemetryCtx);
+          // Pass the parent span explicitly to ensure proper parent linkage
+          const spanCount = await createSpansFromK6Summary(
+            summaryPath,
+            telemetryCtx,
+            parentSpan,
+          );
           this.logger.log(
             `[${runId}] Created ${spanCount} K6 internal spans from summary`,
           );

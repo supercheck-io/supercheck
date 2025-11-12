@@ -77,13 +77,16 @@ function extractTests(
  *
  * @param jsonResultsPath - Path to test-results.json file
  * @param telemetryCtx - Optional Supercheck context for span attributes
+ * @param parentSpan - Optional explicit parent span (if not provided, will try to get active span)
  * @returns Number of test spans created
  *
  * @example
  * ```ts
+ * const parentSpan = trace.getActiveSpan();
  * const spanCount = await createSpansFromPlaywrightResults(
  *   '/tmp/playwright-tests/test-results.json',
- *   { runId: '123', testId: 'test-abc', runType: 'playwright_job' }
+ *   { runId: '123', testId: 'test-abc', runType: 'playwright_job' },
+ *   parentSpan
  * );
  * console.log(`Created ${spanCount} test spans`);
  * ```
@@ -98,6 +101,7 @@ export async function createSpansFromPlaywrightResults(
     projectId?: string;
     organizationId?: string;
   },
+  parentSpan?: any,
 ): Promise<number> {
   try {
     // Read and parse JSON results
@@ -118,12 +122,15 @@ export async function createSpansFromPlaywrightResults(
     // Get the tracer
     const tracer = trace.getTracer('supercheck-worker');
 
-    // Get the parent span and create a context for child spans
-    const parentSpan = trace.getActiveSpan();
-    if (!parentSpan) {
-      logger.warn('No active parent span found - child spans may not be properly linked');
+    // Use provided parent span or try to get active span
+    const actualParentSpan = parentSpan || trace.getActiveSpan();
+    if (!actualParentSpan) {
+      logger.warn('No parent span provided or active - child spans may not be properly linked');
+      return 0; // Can't create child spans without a parent
     }
-    const parentContext = parentSpan ? trace.setSpan(context.active(), parentSpan) : context.active();
+
+    // Create a context with the parent span
+    const parentContext = trace.setSpan(context.active(), actualParentSpan);
 
     // Parse start time from stats
     const jobStartTime = results.stats?.startTime ? new Date(results.stats.startTime).getTime() : Date.now();
