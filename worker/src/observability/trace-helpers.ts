@@ -202,6 +202,16 @@ export async function createSpanWithContext<T>(
     // Set span name as attribute for trace UI
     span.setAttribute('span.name', name);
 
+    // Also set as generic 'name' attribute for trace list display
+    span.setAttribute('name', name);
+
+    // Set trace-level display name for trace list UI
+    const spanContext = span.spanContext();
+    if (spanContext.traceFlags) {
+      // This span is part of a sampled trace
+      span.setAttribute('trace.name', name);
+    }
+
     // Add Supercheck context
     addSupcheckRunContext(ctx);
 
