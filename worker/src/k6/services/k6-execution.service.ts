@@ -370,7 +370,41 @@ export class K6ExecutionService {
         );
       }
 
-      // 5a. HTML report is created directly by k6 web-dashboard with K6_WEB_DASHBOARD_EXPORT
+      // 5a. Create individual spans from K6 summary (HTTP requests, checks, VUs)
+      if (summary && !timedOut) {
+        try {
+          this.logger.debug(
+            `[${runId}] Attempting to create K6 internal spans from summary.json`,
+          );
+
+          // Import dynamically to avoid circular dependencies
+          const { createSpansFromK6Summary, hasK6Summary } = await import(
+            '../../observability/k6-test-spans'
+          );
+
+          // Extract telemetry context from task data
+          const telemetryCtx = {
+            runId: task.runId,
+            testId: task.testId,
+            jobId: task.jobId,
+            projectId: task.projectId,
+            organizationId: task.organizationId,
+            runType: task.jobId ? 'k6_job' : 'k6_test',
+          };
+
+          const spanCount = await createSpansFromK6Summary(summaryPath, telemetryCtx);
+          this.logger.log(
+            `[${runId}] Created ${spanCount} K6 internal spans from summary`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `[${runId}] Failed to create K6 internal spans: ${getErrorMessage(error)}`,
+          );
+          // Don't fail the execution if span creation fails
+        }
+      }
+
+      // 5b. HTML report is created directly by k6 web-dashboard with K6_WEB_DASHBOARD_EXPORT
       // Verify that k6 generated the HTML report when execution finished normally
       let hasHtmlReport = false;
       try {
