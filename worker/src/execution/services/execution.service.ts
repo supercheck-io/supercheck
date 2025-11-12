@@ -460,7 +460,7 @@ export class ExecutionService implements OnModuleDestroy {
       testName: task.testName, // ✅ Added testName
       projectId: task.projectId,
       organizationId: task.organizationId,
-      runType: isMonitorExecution ? 'monitor' : 'test',
+      runType: isMonitorExecution ? 'monitor' : 'playwright_test',
     } as const;
 
     // Check concurrency limits (unless bypassed for monitors)
@@ -735,7 +735,7 @@ export class ExecutionService implements OnModuleDestroy {
       jobName: task.jobName, // ✅ Added jobName
       projectId: task.projectId,
       organizationId: task.organizationId,
-      runType: 'job' as const,
+      runType: 'playwright_job' as const,
     };
 
     if (task.jobType === 'k6') {
@@ -803,71 +803,61 @@ export class ExecutionService implements OnModuleDestroy {
         const testId = id;
         const testName = name || `Test ${i + 1}`;
 
-        // Create individual span for each test in the job
-        await createSpan(`Playwright Test: ${testName}`, async (span) => {
-          span.setAttribute('test.id', testId);
-          span.setAttribute('test.name', testName);
-          span.setAttribute('test.index', i);
-          span.setAttribute('job.run_id', runId);
+        this.logger.debug(`[Playwright Job] Processing test: ${testName} (${testId})`);
 
-          this.logger.debug(`[Playwright Job] Processing test: ${testName} (${testId})`);
-
+        try {
+          // Check if the script is Base64 encoded and decode it
+          let decodedScript = originalScript;
           try {
-            // Check if the script is Base64 encoded and decode it
-            let decodedScript = originalScript;
-            try {
-              // Check if it looks like Base64 (typical characteristics)
-              if (
-                originalScript &&
-                typeof originalScript === 'string' &&
-                originalScript.length > 100 &&
-                /^[A-Za-z0-9+/]+=*$/.test(originalScript)
-              ) {
-                const decoded = Buffer.from(originalScript, 'base64').toString(
-                  'utf8',
-                );
-                // Verify it's actually JavaScript by checking for common patterns
-                if (
-                  decoded.includes('import') ||
-                  decoded.includes('test(') ||
-                  decoded.includes('describe(')
-                ) {
-                  decodedScript = decoded;
-                  this.logger.debug(
-                    `[Playwright Job] Decoded Base64 script for test ${testName}`,
-                  );
-                }
-              }
-            } catch (decodeError) {
-              this.logger.warn(
-                `[Playwright Job] Failed to decode potential Base64 script for test ${testName}:`,
-                decodeError,
+            // Check if it looks like Base64 (typical characteristics)
+            if (
+              originalScript &&
+              typeof originalScript === 'string' &&
+              originalScript.length > 100 &&
+              /^[A-Za-z0-9+/]+=*$/.test(originalScript)
+            ) {
+              const decoded = Buffer.from(originalScript, 'base64').toString(
+                'utf8',
               );
-              // Continue with original script if decoding fails
+              // Verify it's actually JavaScript by checking for common patterns
+              if (
+                decoded.includes('import') ||
+                decoded.includes('test(') ||
+                decoded.includes('describe(')
+              ) {
+                decodedScript = decoded;
+                this.logger.debug(
+                  `[Playwright Job] Decoded Base64 script for test ${testName}`,
+                );
+              }
             }
-
-            // Ensure the script has proper trace configuration
-            const script = ensureProperTraceConfiguration(decodedScript, testId);
-
-            // Create the test file with unique ID in filename (using .mjs for ES module support)
-            const testFilePath = path.join(runDir, `${testId}.spec.mjs`);
-
-            // Write the individual test script content
-            // No need to remove require/import as each is a standalone file
-            await fs.writeFile(testFilePath, script);
-            span.setAttribute('test.file_path', testFilePath);
-            this.logger.debug(
-              `[Playwright Job] Test spec written: ${testName} -> ${testFilePath}`,
+          } catch (decodeError) {
+            this.logger.warn(
+              `[Playwright Job] Failed to decode potential Base64 script for test ${testName}:`,
+              decodeError,
             );
-          } catch (error) {
-            span.setAttribute('test.preparation_failed', true);
-            this.logger.error(
-              `[Playwright Job] Error creating test file for ${testName}: ${(error as Error).message}`,
-              (error as Error).stack,
-            );
-            throw error; // This will mark the span as failed
+            // Continue with original script if decoding fails
           }
-        });
+
+          // Ensure the script has proper trace configuration
+          const script = ensureProperTraceConfiguration(decodedScript, testId);
+
+          // Create the test file with unique ID in filename (using .mjs for ES module support)
+          const testFilePath = path.join(runDir, `${testId}.spec.mjs`);
+
+          // Write the individual test script content
+          // No need to remove require/import as each is a standalone file
+          await fs.writeFile(testFilePath, script);
+          this.logger.debug(
+            `[Playwright Job] Test spec written: ${testName} -> ${testFilePath}`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `[Playwright Job] Error creating test file for ${testName}: ${(error as Error).message}`,
+            (error as Error).stack,
+          );
+          continue; // Skip this test but continue with others
+        }
       }
 
       if (testScripts.length === 0) {

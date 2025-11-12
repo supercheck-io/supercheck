@@ -53,7 +53,7 @@ export class TestExecutionProcessor extends WorkerHost {
   async process(job: Job<TestExecutionTask>): Promise<TestResult> {
     const testId = job.data.testId;
     const spanContext = {
-      runType: 'test' as const,
+      runType: 'playwright_test' as const,
       runId: job.data.runId ?? job.id?.toString(),
       testId,
       testName: job.data.testName,

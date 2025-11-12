@@ -157,84 +157,48 @@ function createResourceAttributes(config: ObservabilityConfig): Record<string, s
 
 /**
  * Configure auto-instrumentations with optimized settings
- * Disables unnecessary instrumentations and configures useful ones
+ * All internal instrumentations disabled to show only execution-level spans
  */
 function configureInstrumentations() {
   return getNodeAutoInstrumentations({
-    // Disable file system instrumentation (too noisy)
+    // Disable ALL auto-instrumentations to prevent internal operation spans
     '@opentelemetry/instrumentation-fs': {
       enabled: false,
     },
 
-    // Enable HTTP instrumentation with custom hooks
     '@opentelemetry/instrumentation-http': {
-      enabled: false, // Disabled to reduce trace noise - only show execution-level spans
-      requestHook: (span, request) => {
-        // Add useful HTTP attributes
-        // Type guard for IncomingMessage (has headers property)
-        if ('headers' in request && request.headers) {
-          const userAgent = request.headers['user-agent'];
-          if (userAgent) {
-            span.setAttribute('http.user_agent', Array.isArray(userAgent) ? userAgent[0] : userAgent);
-          }
-
-          // Capture Supercheck context from headers (if present)
-          const runId = request.headers['x-supercheck-run-id'];
-          if (runId) {
-            span.setAttribute('sc.run_id', Array.isArray(runId) ? runId[0] : runId);
-          }
-
-          const testId = request.headers['x-supercheck-test-id'];
-          if (testId) {
-            span.setAttribute('sc.test_id', Array.isArray(testId) ? testId[0] : testId);
-          }
-        }
-      },
-      responseHook: (span, response) => {
-        // Capture response size if available
-        // Type guard for IncomingMessage (has headers property)
-        if ('headers' in response && response.headers) {
-          const contentLength = response.headers['content-length'];
-          if (contentLength) {
-            const length = Array.isArray(contentLength) ? contentLength[0] : contentLength;
-            span.setAttribute('http.response.body.size', parseInt(length, 10));
-          }
-        }
-      },
-      ignoreIncomingRequestHook: (request) => {
-        // Ignore health check endpoints to reduce noise
-        const url = request.url || '';
-        return url.includes('/health') || url.includes('/metrics');
-      },
+      enabled: false,
     },
 
-    // Enable Express instrumentation (NestJS uses Express under the hood)
     '@opentelemetry/instrumentation-express': {
-      enabled: false, // Disabled to reduce trace noise - only show execution-level spans
+      enabled: false,
     },
 
-    // Enable database instrumentations
     '@opentelemetry/instrumentation-pg': {
-      enabled: false, // Disabled to reduce trace noise - only show execution-level spans
+      enabled: false,
     },
 
     '@opentelemetry/instrumentation-redis-4': {
-      enabled: false, // Disabled to reduce trace noise - only show execution-level spans
+      enabled: false,
     },
 
-    // Enable AWS SDK instrumentation (for S3 operations)
+    '@opentelemetry/instrumentation-ioredis': {
+      enabled: false,
+    },
+
     '@opentelemetry/instrumentation-aws-sdk': {
-      enabled: false, // Disabled to reduce trace noise - only show execution-level spans
-      suppressInternalInstrumentation: true,
+      enabled: false,
     },
 
-    // Disable DNS instrumentation (too granular)
     '@opentelemetry/instrumentation-dns': {
       enabled: false,
     },
 
-    // Disable net instrumentation (covered by HTTP)
     '@opentelemetry/instrumentation-net': {
+      enabled: false,
+    },
+
+    '@opentelemetry/instrumentation-grpc': {
       enabled: false,
     },
   });
