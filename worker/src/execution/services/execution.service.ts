@@ -974,7 +974,7 @@ export class ExecutionService implements OnModuleDestroy {
       // Store final run result
       await this.dbService.updateRunStatus(runId, finalStatus, durationStr);
       emitTelemetryLog({
-        message: `[Playwright Job] ${runId} completed (${finalStatus})`,
+        message: `[Playwright Job] ${runId} ${finalStatus}`,
         ctx: jobTelemetryCtx,
         severity: finalStatus === 'passed' ? SeverityNumber.INFO : SeverityNumber.ERROR,
         attributes: {
