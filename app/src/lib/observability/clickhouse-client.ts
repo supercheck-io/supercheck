@@ -46,13 +46,15 @@ const isRunType = (value: unknown): value is RunType =>
 function normalizeRunType(value: unknown): RunType | undefined {
   if (typeof value !== "string") return undefined;
 
-  // Map new granular types to existing enum
+  // Map new granular types to existing enum, pass through canonical values
   switch (value) {
     case "playwright_job":
     case "playwright_test":
+    case "playwright":
       return "playwright";
     case "k6_job":
     case "k6_test":
+    case "k6":
       return "k6";
     case "job":
     case "monitor":
