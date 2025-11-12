@@ -33,6 +33,7 @@ console.log(`Playwright Config Loaded`);
 console.log(`Service Root: ${serviceRoot}`);
 console.log(`Test Directory: ${testDir}`);
 console.log(`Output Directory: ${relativeOutputDir}`);
+console.log(`JSON Output File: ${process.env.PLAYWRIGHT_JSON_OUTPUT || path.join(testDir, 'test-results.json')}`);
 console.log(`Worker Count: ${getOptimalWorkerCount()}`);
 
 /**
@@ -40,6 +41,9 @@ console.log(`Worker Count: ${getOptimalWorkerCount()}`);
  */
 module.exports = defineConfig({
   testDir: testDir,
+
+  /* Global setup for Network Events API instrumentation */
+  globalSetup: require.resolve('./playwright-global-setup.js'),
 
   /* Optimized parallel execution aligned with execution service */
   fullyParallel: true,
@@ -61,10 +65,10 @@ module.exports = defineConfig({
   reporter: [
     ['html'], // Always generate HTML reports for S3 upload
     ['list'], // Console output for debugging
-    // Add JSON reporter for metrics if needed
-    ...(process.env.ENABLE_JSON_REPORTER
-      ? [['json', { outputFile: 'test-results.json' }]]
-      : []),
+    ['json', {
+      // Use env var for dynamic output path set per execution
+      outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT || path.join(testDir, 'test-results.json')
+    }], // Generate JSON for observability spans
   ],
 
   /* Timeouts aligned with execution service limits */
