@@ -1158,7 +1158,7 @@ export class ExecutionService implements OnModuleDestroy {
           'test',
           `"${targetPath}"`, // Quote paths on Windows
           `--config="${playwrightConfigPath}"`,
-          '--reporter=html,list',
+          '--reporter=html,list,json',
         ];
       } else {
         // On Unix-like systems, use node directly with playwright CLI
@@ -1174,7 +1174,7 @@ export class ExecutionService implements OnModuleDestroy {
           'test',
           targetPath,
           `--config=${playwrightConfigPath}`,
-          '--reporter=html,list',
+          '--reporter=html,list,json',
         ];
       }
 

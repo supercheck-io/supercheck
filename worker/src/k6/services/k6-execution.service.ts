@@ -404,11 +404,12 @@ export class K6ExecutionService {
             `[${runId}] Calling createSpansFromK6Summary with parent span`,
           );
 
-          // Pass the parent span explicitly to ensure proper parent linkage
+          // Pass the parent span and start time explicitly to ensure proper timing
           const spanCount = await createSpansFromK6Summary(
             summaryPath,
             telemetryCtx,
             parentSpan,
+            startTime, // Actual execution start time for accurate span timing
           );
           this.logger.log(
             `[${runId}] ✅ Created ${spanCount} K6 internal spans from summary`,
