@@ -64,6 +64,25 @@ function normalizeRunType(value: unknown): RunType | undefined {
   }
 }
 
+/**
+ * Expand canonical run types to include granular variants for filtering
+ * When filtering by canonical type, include both the canonical and granular values
+ * to match all traces regardless of which format they were stored with.
+ */
+function expandRunTypeForFiltering(value: string): string[] {
+  switch (value) {
+    case "playwright":
+      return ["playwright", "playwright_job", "playwright_test"];
+    case "k6":
+      return ["k6", "k6_job", "k6_test"];
+    case "job":
+    case "monitor":
+      return [value];
+    default:
+      return [value];
+  }
+}
+
 function escapeLiteral(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
@@ -216,7 +235,14 @@ function buildTraceConditions(
     conditions.push(`duration_nano <= ${options.maxDuration * 1_000_000}`);
   }
 
-  pushAttributeCondition(conditions, "sc.run_type", options.runType);
+  // Expand canonical run types to include granular variants for matching
+  if (options.runType) {
+    const runTypes = Array.isArray(options.runType)
+      ? options.runType
+      : [options.runType];
+    const expandedRunTypes = runTypes.flatMap((rt) => expandRunTypeForFiltering(rt));
+    pushAttributeCondition(conditions, "sc.run_type", expandedRunTypes);
+  }
   pushAttributeCondition(conditions, "sc.run_id", options.runId);
   pushAttributeCondition(conditions, "sc.test_id", options.testId);
   pushAttributeCondition(conditions, "sc.job_id", options.jobId);
@@ -523,7 +549,15 @@ export async function searchLogsClickHouse(
   pushAttributeCondition(conditions, "sc.run_id", filters.runId);
   pushAttributeCondition(conditions, "sc.project_id", filters.projectId);
   pushAttributeCondition(conditions, "sc.organization_id", filters.organizationId);
-  pushAttributeCondition(conditions, "sc.run_type", filters.runType);
+
+  // Expand canonical run types to include granular variants for matching
+  if (filters.runType) {
+    const runTypes = Array.isArray(filters.runType)
+      ? filters.runType
+      : [filters.runType];
+    const expandedRunTypes = runTypes.flatMap((rt) => expandRunTypeForFiltering(rt));
+    pushAttributeCondition(conditions, "sc.run_type", expandedRunTypes);
+  }
 
   if (filters.search) {
     const query = escapeLiteral(filters.search);
