@@ -33,12 +33,13 @@ export class JobExecutionProcessor extends WorkerHost {
       runType: 'job' as const,
       runId: job.data.runId,
       jobId: job.data.originalJobId ?? job.data.jobId,
+      jobName: job.data.jobName,
       projectId: job.data.projectId,
       organizationId: job.data.organizationId,
     };
 
     return createSpanWithContext(
-      'worker.job-execution',
+      'Playwright Job',
       spanContext,
       async () => {
         // Renamed to process

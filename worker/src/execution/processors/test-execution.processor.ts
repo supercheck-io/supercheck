@@ -56,12 +56,13 @@ export class TestExecutionProcessor extends WorkerHost {
       runType: 'test' as const,
       runId: job.data.runId ?? job.id?.toString(),
       testId,
+      testName: job.data.testName,
       projectId: job.data.projectId,
       organizationId: job.data.organizationId,
     };
 
     return createSpanWithContext(
-      'worker.test-execution',
+      'Playwright Test',
       spanContext,
       async () => {
         const startTime = new Date();
