@@ -52,18 +52,22 @@ export class TestExecutionProcessor extends WorkerHost {
 
   async process(job: Job<TestExecutionTask>): Promise<TestResult> {
     const testId = job.data.testId;
+    const runId = job.data.runId ?? job.id?.toString();
     const spanContext = {
-      runType: 'test' as const,
-      runId: job.data.runId ?? job.id?.toString(),
+      runType: 'playwright_test' as const,
+      runId,
       testId,
+      testName: job.data.testName,
       projectId: job.data.projectId,
       organizationId: job.data.organizationId,
     };
 
     return createSpanWithContext(
-      'worker.test-execution',
+      `Trace ${testId?.substring(0, 8) ?? runId?.substring(0, 8)}`,
       spanContext,
-      async () => {
+      async (span) => {
+        span.setAttribute('sc.execution_type', 'playwright_test');
+        span.setAttribute('sc.test_id', testId ?? '');
         const startTime = new Date();
 
         try {

@@ -29,21 +29,25 @@ export class JobExecutionProcessor extends WorkerHost {
   // Specify concurrency if needed, e.g., @Process({ concurrency: 2 })
   // @Process()
   async process(job: Job<JobExecutionTask>): Promise<TestExecutionResult> {
+    const runId = job.data.runId;
     const spanContext = {
-      runType: 'job' as const,
-      runId: job.data.runId,
+      runType: 'playwright_job' as const,
+      runId,
       jobId: job.data.originalJobId ?? job.data.jobId,
+      jobName: job.data.jobName,
       projectId: job.data.projectId,
       organizationId: job.data.organizationId,
     };
 
     return createSpanWithContext(
-      'worker.job-execution',
+      `Trace ${runId.substring(0, 8)}`,
       spanContext,
-      async () => {
+      async (span) => {
+        span.setAttribute('sc.execution_type', 'playwright_job');
+        span.setAttribute('sc.run_id', runId);
         // Renamed to process
         const jobData = job.data;
-        const { runId, jobId: originalJobId } = jobData;
+        const { jobId: originalJobId } = jobData;
         const jobIdForLookup = jobData.originalJobId || jobData.jobId;
         const startTime = new Date();
         this.logger.log(
