@@ -17,19 +17,27 @@ import { trace, context, SpanStatusCode, SpanKind } from '@opentelemetry/api';
 import { Logger } from '@nestjs/common';
 
 interface PlaywrightTestResult {
-  title: string;
   status: 'passed' | 'failed' | 'timedOut' | 'skipped';
   duration: number;
+  startTime?: string;
   errors?: Array<{ message?: string; stack?: string }>;
-  retry: number;
 }
 
-interface PlaywrightSuiteResult {
+interface PlaywrightTest {
+  results: PlaywrightTestResult[];
+}
+
+interface PlaywrightSpec {
   title: string;
   file?: string;
   line?: number;
   column?: number;
-  tests?: PlaywrightTestResult[];
+  tests: PlaywrightTest[];
+}
+
+interface PlaywrightSuiteResult {
+  title?: string;
+  specs?: PlaywrightSpec[];
   suites?: PlaywrightSuiteResult[];
 }
 
@@ -44,32 +52,27 @@ interface PlaywrightJsonReport {
 const logger = new Logger('PlaywrightTestSpans');
 
 /**
- * Recursively extract all tests from nested suites
+ * Recursively extract all test specs from nested suites
  */
-function extractTests(
+function extractSpecs(
   suite: PlaywrightSuiteResult,
-  tests: Array<PlaywrightTestResult & { file?: string; line?: number; column?: number }> = [],
-): Array<PlaywrightTestResult & { file?: string; line?: number; column?: number }> {
-  // Add location info to tests in this suite
-  if (suite.tests) {
-    for (const test of suite.tests) {
-      tests.push({
-        ...test,
-        file: suite.file,
-        line: suite.line,
-        column: suite.column,
-      });
+  specs: Array<PlaywrightSpec> = [],
+): Array<PlaywrightSpec> {
+  // Add specs from this suite
+  if (suite.specs) {
+    for (const spec of suite.specs) {
+      specs.push(spec);
     }
   }
 
   // Recursively process nested suites
   if (suite.suites) {
     for (const nestedSuite of suite.suites) {
-      extractTests(nestedSuite, tests);
+      extractSpecs(nestedSuite, specs);
     }
   }
 
-  return tests;
+  return specs;
 }
 
 /**
@@ -108,14 +111,14 @@ export async function createSpansFromPlaywrightResults(
     const jsonContent = await fs.readFile(jsonResultsPath, 'utf-8');
     const results: PlaywrightJsonReport = JSON.parse(jsonContent);
 
-    // Extract all tests from nested suites
-    const allTests: Array<PlaywrightTestResult & { file?: string; line?: number; column?: number }> = [];
+    // Extract all specs from nested suites
+    const allSpecs: Array<PlaywrightSpec> = [];
     for (const suite of results.suites) {
-      extractTests(suite, allTests);
+      extractSpecs(suite, allSpecs);
     }
 
-    if (allTests.length === 0) {
-      logger.warn('No tests found in Playwright JSON results');
+    if (allSpecs.length === 0) {
+      logger.warn('No specs found in Playwright JSON results');
       return 0;
     }
 
@@ -136,27 +139,44 @@ export async function createSpansFromPlaywrightResults(
     const jobStartTime = results.stats?.startTime ? new Date(results.stats.startTime).getTime() : Date.now();
 
     let createdSpanCount = 0;
-    let currentTestStartTime = jobStartTime;
 
-    // Create a span for each test with proper timestamps
-    for (const test of allTests) {
-      const testStartTime = currentTestStartTime;
-      const testEndTime = testStartTime + test.duration;
+    // Create a span for each spec (test definition) with all its retries
+    for (const spec of allSpecs) {
+      // Get the final result (last result in the array, after all retries)
+      if (spec.tests.length === 0 || spec.tests[0].results.length === 0) {
+        continue;
+      }
+
+      const testRun = spec.tests[0]; // First test run object (contains all retries)
+      const finalResult = testRun.results[testRun.results.length - 1]; // Last result after retries
+      const firstResult = testRun.results[0]; // First attempt
+
+      // Use startTime from first result, or fallback to job start time
+      const testStartTime = firstResult.startTime
+        ? new Date(firstResult.startTime).getTime()
+        : jobStartTime;
+      const testDuration = finalResult.duration || 0;
+      const testEndTime = testStartTime + testDuration;
+
+      // Determine overall status (flaky if multiple attempts, use final status)
+      const status = testRun.results.length > 1
+        ? (finalResult.status === 'passed' ? 'flaky' : finalResult.status)
+        : finalResult.status;
 
       // Create span with explicit start/end times and parent context
       const span = tracer.startSpan(
-        `Playwright Test: ${test.title}`,
+        `Playwright Test: ${spec.title}`,
         {
           kind: SpanKind.INTERNAL,
           startTime: testStartTime,
           attributes: {
-            'test.title': test.title,
-            'test.status': test.status,
-            'test.duration_ms': test.duration,
-            'test.retries': test.retry,
-            ...(test.file && { 'test.file': test.file }),
-            ...(test.line && { 'test.line': test.line }),
-            ...(test.column && { 'test.column': test.column }),
+            'test.title': spec.title,
+            'test.status': status,
+            'test.duration_ms': testDuration,
+            'test.retries': testRun.results.length - 1,
+            ...(spec.file && { 'test.file': spec.file }),
+            ...(spec.line && { 'test.line': spec.line }),
+            ...(spec.column && { 'test.column': spec.column }),
             // Add Supercheck context if provided
             ...(telemetryCtx?.runId && { 'sc.run_id': telemetryCtx.runId }),
             ...(telemetryCtx?.testId && { 'sc.test_id': telemetryCtx.testId }),
@@ -170,8 +190,8 @@ export async function createSpansFromPlaywrightResults(
       );
 
       // Add error information if test failed
-      if (test.errors && test.errors.length > 0) {
-        const error = test.errors[0];
+      if (finalResult.errors && finalResult.errors.length > 0) {
+        const error = finalResult.errors[0];
         if (error.message || error.stack) {
           span.recordException({
             name: 'TestFailure',
@@ -182,23 +202,20 @@ export async function createSpansFromPlaywrightResults(
       }
 
       // Set span status based on test result
-      if (test.status === 'passed') {
+      if (status === 'passed' || status === 'flaky') {
         span.setStatus({ code: SpanStatusCode.OK });
-      } else if (test.status === 'skipped') {
+      } else if (status === 'skipped') {
         span.setStatus({ code: SpanStatusCode.UNSET });
       } else {
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: test.status,
+          message: status,
         });
       }
 
       // End span with proper timestamp
       span.end(testEndTime);
       createdSpanCount++;
-
-      // Update start time for next test
-      currentTestStartTime = testEndTime;
     }
 
     logger.log(`Created ${createdSpanCount} Playwright test spans from JSON results`);
