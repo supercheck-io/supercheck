@@ -17,19 +17,19 @@ import { trace, context, SpanStatusCode, SpanKind } from '@opentelemetry/api';
 import { Logger } from '@nestjs/common';
 
 interface K6Metric {
-  type: string;
-  contains: string;
-  values: {
-    count?: number;
-    rate?: number;
-    avg?: number;
-    min?: number;
-    med?: number;
-    max?: number;
-    'p(90)'?: number;
-    'p(95)'?: number;
-    'p(99)'?: number;
-  };
+  type?: string;
+  contains?: string;
+  // K6 v1.3.0+ metrics have properties directly, not nested in 'values'
+  count?: number;
+  rate?: number;
+  avg?: number;
+  min?: number;
+  med?: number;
+  max?: number;
+  value?: number; // Used by VUs and other gauge metrics
+  'p(90)'?: number;
+  'p(95)'?: number;
+  'p(99)'?: number;
 }
 
 interface K6Summary {
@@ -99,14 +99,7 @@ export async function createSpansFromK6Summary(
 
     // Log available metric keys for debugging
     logger.log(`K6 summary metrics available: ${Object.keys(summary.metrics).join(', ')}`);
-
-    // Debug: Log structure of key metrics to understand format
-    if (summary.metrics['http_reqs']) {
-      logger.log(`K6 http_reqs structure: ${JSON.stringify(summary.metrics['http_reqs'], null, 2)}`);
-    }
-    if (summary.metrics['vus']) {
-      logger.log(`K6 vus structure: ${JSON.stringify(summary.metrics['vus'], null, 2)}`);
-    }
+    logger.log(`K6 creating spans from ${Object.keys(summary.metrics).length} metrics`);
 
     const tracer = trace.getTracer('supercheck-worker');
     let createdSpanCount = 0;
@@ -136,17 +129,13 @@ export async function createSpansFromK6Summary(
       const httpReqs = summary.metrics['http_reqs'];
       const httpReqDuration = summary.metrics['http_req_duration'];
 
-      logger.log(`K6 DEBUG: httpReqs exists=${!!httpReqs}, has values=${!!httpReqs?.values}, has count=${!!httpReqs?.values?.count}`);
-      if (httpReqs?.values) {
-        logger.log(`K6 DEBUG: httpReqs.values properties: ${Object.keys(httpReqs.values).join(', ')}`);
-      }
-
-      if (httpReqs && httpReqs.values && httpReqs.values.count) {
-        const requestCount = httpReqs.values.count;
-        const avgDuration = httpReqDuration?.values?.avg || 0;
-        const maxDuration = httpReqDuration?.values?.max || 0;
-        const minDuration = httpReqDuration?.values?.min || 0;
-        const p95Duration = httpReqDuration?.values?.['p(95)'] || 0;
+      // K6 v1.3.0+ structure: metrics have properties directly, not nested in 'values'
+      if (httpReqs && typeof httpReqs.count === 'number') {
+        const requestCount = httpReqs.count;
+        const avgDuration = httpReqDuration?.avg || 0;
+        const maxDuration = httpReqDuration?.max || 0;
+        const minDuration = httpReqDuration?.min || 0;
+        const p95Duration = httpReqDuration?.['p(95)'] || 0;
 
         // Create a single span representing all HTTP requests
         const span = tracer.startSpan(
@@ -175,23 +164,23 @@ export async function createSpansFromK6Summary(
         );
 
         // Add additional HTTP metrics as attributes
-        if (summary.metrics['http_req_blocked']?.values) {
-          span.setAttribute('http.blocked.avg_ms', summary.metrics['http_req_blocked'].values.avg || 0);
+        if (summary.metrics['http_req_blocked']?.avg) {
+          span.setAttribute('http.blocked.avg_ms', summary.metrics['http_req_blocked'].avg);
         }
-        if (summary.metrics['http_req_connecting']?.values) {
-          span.setAttribute('http.connecting.avg_ms', summary.metrics['http_req_connecting'].values.avg || 0);
+        if (summary.metrics['http_req_connecting']?.avg) {
+          span.setAttribute('http.connecting.avg_ms', summary.metrics['http_req_connecting'].avg);
         }
-        if (summary.metrics['http_req_sending']?.values) {
-          span.setAttribute('http.sending.avg_ms', summary.metrics['http_req_sending'].values.avg || 0);
+        if (summary.metrics['http_req_sending']?.avg) {
+          span.setAttribute('http.sending.avg_ms', summary.metrics['http_req_sending'].avg);
         }
-        if (summary.metrics['http_req_waiting']?.values) {
-          span.setAttribute('http.waiting.avg_ms', summary.metrics['http_req_waiting'].values.avg || 0);
+        if (summary.metrics['http_req_waiting']?.avg) {
+          span.setAttribute('http.waiting.avg_ms', summary.metrics['http_req_waiting'].avg);
         }
-        if (summary.metrics['http_req_receiving']?.values) {
-          span.setAttribute('http.receiving.avg_ms', summary.metrics['http_req_receiving'].values.avg || 0);
+        if (summary.metrics['http_req_receiving']?.avg) {
+          span.setAttribute('http.receiving.avg_ms', summary.metrics['http_req_receiving'].avg);
         }
-        if (summary.metrics['http_req_failed']?.values) {
-          const failRate = summary.metrics['http_req_failed'].values.rate || 0;
+        if (summary.metrics['http_req_failed']?.rate !== undefined) {
+          const failRate = summary.metrics['http_req_failed'].rate;
           span.setAttribute('http.failure_rate', failRate);
           if (failRate > 0) {
             span.setStatus({
@@ -208,7 +197,7 @@ export async function createSpansFromK6Summary(
         span.end(testStartTime + testDuration);
         createdSpanCount++;
       } else {
-        logger.log('K6: Skipping HTTP requests span - no valid http_reqs metric with count');
+        logger.log('K6: Skipping HTTP requests span - no valid http_reqs metric with count property');
       }
     } else {
       logger.log('K6: No HTTP metrics found in summary');
@@ -265,17 +254,17 @@ export async function createSpansFromK6Summary(
     if (summary.metrics['vus']) {
       const vusMetric = summary.metrics['vus'];
 
-      // Check if values property exists
-      if (vusMetric.values) {
+      // K6 v1.3.0+ structure: VUs have min/max/value directly
+      if (typeof vusMetric.min === 'number' || typeof vusMetric.max === 'number') {
         const span = tracer.startSpan(
           'K6 Virtual Users',
           {
             kind: SpanKind.INTERNAL,
             startTime: testStartTime,
             attributes: {
-              'vus.min': vusMetric.values.min || 0,
-              'vus.max': vusMetric.values.max || 0,
-              'vus.avg': vusMetric.values.avg || 0,
+              'vus.min': vusMetric.min || 0,
+              'vus.max': vusMetric.max || 0,
+              'vus.value': vusMetric.value || 0,
             ...(telemetryCtx?.runId && { 'sc.run_id': telemetryCtx.runId }),
             ...(telemetryCtx?.testId && { 'sc.test_id': telemetryCtx.testId }),
             ...(telemetryCtx?.jobId && { 'sc.job_id': telemetryCtx.jobId }),
@@ -293,7 +282,7 @@ export async function createSpansFromK6Summary(
         span.end(testStartTime + testDuration);
         createdSpanCount++;
       } else {
-        logger.log('K6: Skipping VUs span - vusMetric.values is undefined');
+        logger.log('K6: Skipping VUs span - no valid min/max properties found');
       }
     }
 
