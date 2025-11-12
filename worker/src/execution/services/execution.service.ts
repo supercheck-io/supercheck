@@ -1124,6 +1124,7 @@ export class ExecutionService implements OnModuleDestroy {
       }
 
       // Add unique environment variables for this execution
+      // Note: JSON results will be written to runDir/test-results.json by Playwright's JSON reporter
       const jsonResultsPath = path.join(runDir, 'test-results.json');
       const envVars = {
         PLAYWRIGHT_TEST_DIR: runDir,
@@ -1136,8 +1137,6 @@ export class ExecutionService implements OnModuleDestroy {
         ),
         // Standard location for Playwright HTML report
         PLAYWRIGHT_HTML_REPORT: playwrightReportDir,
-        // JSON output for observability spans
-        PLAYWRIGHT_JSON_OUTPUT: jsonResultsPath,
         // Add timestamp to prevent caching issues
         PLAYWRIGHT_TIMESTAMP: Date.now().toString(),
       };

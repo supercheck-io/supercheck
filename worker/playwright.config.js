@@ -62,7 +62,7 @@ module.exports = defineConfig({
     ['html'], // Always generate HTML reports for S3 upload
     ['list'], // Console output for debugging
     ['json', {
-      outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT || 'test-results.json'
+      outputFile: 'test-results.json' // Always relative to test directory
     }], // Generate JSON for observability spans
   ],
 
