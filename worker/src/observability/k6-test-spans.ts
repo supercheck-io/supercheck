@@ -86,6 +86,7 @@ export async function createSpansFromK6Summary(
     organizationId?: string;
   },
   parentSpan?: any,
+  executionStartTime?: number, // Actual start time from when K6 execution began
 ): Promise<number> {
   try {
     // Read and parse summary JSON
@@ -116,7 +117,9 @@ export async function createSpansFromK6Summary(
 
     // Get test run duration from state
     const testDuration = summary.state?.testRunDurationMs || 0;
-    const testStartTime = Date.now() - testDuration;
+    // Use provided execution start time if available, otherwise calculate backwards
+    const testStartTime = executionStartTime || (Date.now() - testDuration);
+    const testEndTime = testStartTime + testDuration;
 
     // Create spans for HTTP requests (grouped by URL/endpoint)
     const httpMetrics = Object.entries(summary.metrics).filter(
@@ -194,7 +197,7 @@ export async function createSpansFromK6Summary(
           span.setStatus({ code: SpanStatusCode.OK });
         }
 
-        span.end(testStartTime + testDuration);
+        span.end(testEndTime);
         createdSpanCount++;
       } else {
         logger.log('K6: Skipping HTTP requests span - no valid http_reqs metric with count property');
@@ -279,7 +282,7 @@ export async function createSpansFromK6Summary(
       );
 
         span.setStatus({ code: SpanStatusCode.OK });
-        span.end(testStartTime + testDuration);
+        span.end(testEndTime);
         createdSpanCount++;
       } else {
         logger.log('K6: Skipping VUs span - no valid min/max properties found');
