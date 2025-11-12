@@ -98,13 +98,14 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     const runId = taskData.runId;
     const isJobRun = Boolean(taskData.jobId);
     const testId = taskData.tests?.[0]?.id || taskData.testId || null;
+    const runType = isJobRun ? ('k6_job' as const) : ('k6_test' as const);
     const telemetryCtx = {
       runId,
       testId: testId ?? undefined,
       projectId: taskData.projectId,
       organizationId: taskData.organizationId,
       jobId: taskData.jobId ?? undefined,
-      runType: (isJobRun ? 'k6_job' : 'k6_test') as const,
+      runType,
     };
 
     if (!testId) {
