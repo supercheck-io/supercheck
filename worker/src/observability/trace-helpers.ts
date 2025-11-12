@@ -22,7 +22,16 @@ import { trace, context, Span, SpanStatusCode } from '@opentelemetry/api';
 /**
  * Supercheck entity types for trace correlation
  */
-export type SupercheckRunType = 'test' | 'job' | 'monitor' | 'k6' | 'playground';
+export type SupercheckRunType =
+  | 'test'
+  | 'job'
+  | 'monitor'
+  | 'k6'
+  | 'playground'
+  | 'playwright_job'
+  | 'playwright_test'
+  | 'k6_job'
+  | 'k6_test';
 
 /**
  * Supercheck context that can be attached to spans
