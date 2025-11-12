@@ -1227,7 +1227,7 @@ export class ExecutionService implements OnModuleDestroy {
 
       // Create individual test spans from JSON results (for jobs with multiple tests)
       // Note: jsonResultsPath is defined above in envVars section
-      if (isJob) {
+      if (isJob && activeSpan) {
         try {
           this.logger.debug(
             `[${executionId}] Attempting to create individual test spans from JSON results at: ${jsonResultsPath}`,
@@ -1241,20 +1241,22 @@ export class ExecutionService implements OnModuleDestroy {
           const hasResults = await hasPlaywrightJsonResults(jsonResultsPath);
           if (hasResults) {
             // Extract telemetry context from active span attributes
-            const spanContext = activeSpan?.spanContext();
             const attributes: any = {};
 
             // Get Supercheck context from span attributes if available
-            if (activeSpan) {
-              const spanAttrs = (activeSpan as any).attributes || {};
-              attributes.runId = spanAttrs['sc.run_id'];
-              attributes.jobId = spanAttrs['sc.job_id'];
-              attributes.runType = spanAttrs['sc.run_type'];
-              attributes.projectId = spanAttrs['sc.project_id'];
-              attributes.organizationId = spanAttrs['sc.organization_id'];
-            }
+            const spanAttrs = (activeSpan as any).attributes || {};
+            attributes.runId = spanAttrs['sc.run_id'];
+            attributes.jobId = spanAttrs['sc.job_id'];
+            attributes.runType = spanAttrs['sc.run_type'];
+            attributes.projectId = spanAttrs['sc.project_id'];
+            attributes.organizationId = spanAttrs['sc.organization_id'];
 
-            const spanCount = await createSpansFromPlaywrightResults(jsonResultsPath, attributes);
+            // Pass the active span explicitly to ensure proper parent linkage
+            const spanCount = await createSpansFromPlaywrightResults(
+              jsonResultsPath,
+              attributes,
+              activeSpan,
+            );
             this.logger.log(
               `[${executionId}] Created ${spanCount} individual test spans from Playwright results`,
             );
