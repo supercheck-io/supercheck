@@ -1127,10 +1127,13 @@ export class ExecutionService implements OnModuleDestroy {
       // Set explicit JSON output path via env var for Playwright JSON reporter
       const jsonResultsPath = path.join(runDir, 'test-results.json');
       const networkEventsPath = path.join(runDir, 'network-events.json');
+      const testSetupPath = path.join(serviceRoot, 'playwright-test-setup.js');
       const envVars = {
         PLAYWRIGHT_TEST_DIR: runDir,
         PLAYWRIGHT_JSON_OUTPUT: jsonResultsPath, // Explicit JSON output path for reporter
         PLAYWRIGHT_NETWORK_EVENTS_FILE: networkEventsPath, // Network Events API capture file
+        // Preload Network Events API instrumentation module
+        NODE_OPTIONS: `--require ${testSetupPath}`,
         CI: 'true',
         PLAYWRIGHT_EXECUTION_ID: executionId,
         // Create a unique artifacts folder for this execution
@@ -1152,9 +1155,6 @@ export class ExecutionService implements OnModuleDestroy {
       let command: string;
       let args: string[];
 
-      // Path to Network Events API instrumentation setup
-      const testSetupPath = path.join(serviceRoot, 'playwright-test-setup.js');
-
       if (isWindows) {
         // On Windows, use npx to execute playwright more reliably
         command = 'npx';
@@ -1163,7 +1163,6 @@ export class ExecutionService implements OnModuleDestroy {
           'test',
           `"${targetPath}"`, // Quote paths on Windows
           `--config="${playwrightConfigPath}"`,
-          `--require="${testSetupPath}"`, // Auto-instrument with Network Events API
           // Don't override reporters - let config file handle them with proper options
         ];
       } else {
@@ -1180,7 +1179,6 @@ export class ExecutionService implements OnModuleDestroy {
           'test',
           targetPath,
           `--config=${playwrightConfigPath}`,
-          `--require=${testSetupPath}`, // Auto-instrument with Network Events API
           // Don't override reporters - let config file handle them with proper options
         ];
       }
