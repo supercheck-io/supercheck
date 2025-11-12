@@ -375,10 +375,14 @@ export class K6ExecutionService {
       }
 
       // 5a. Create individual spans from K6 summary (HTTP requests, checks, VUs)
+      this.logger.log(
+        `[${runId}] DEBUG: summary=${summary ? 'present' : 'null'}, timedOut=${timedOut}, parentSpan=${parentSpan ? 'present' : 'null'}`,
+      );
+
       if (summary && !timedOut && parentSpan) {
         try {
-          this.logger.debug(
-            `[${runId}] Attempting to create K6 internal spans from summary.json`,
+          this.logger.log(
+            `[${runId}] Attempting to create K6 internal spans from summary.json at ${summaryPath}`,
           );
 
           // Import dynamically to avoid circular dependencies
@@ -396,6 +400,10 @@ export class K6ExecutionService {
             runType: task.jobId ? 'k6_job' : 'k6_test',
           };
 
+          this.logger.log(
+            `[${runId}] Calling createSpansFromK6Summary with parent span`,
+          );
+
           // Pass the parent span explicitly to ensure proper parent linkage
           const spanCount = await createSpansFromK6Summary(
             summaryPath,
@@ -403,14 +411,18 @@ export class K6ExecutionService {
             parentSpan,
           );
           this.logger.log(
-            `[${runId}] Created ${spanCount} K6 internal spans from summary`,
+            `[${runId}] ✅ Created ${spanCount} K6 internal spans from summary`,
           );
         } catch (error) {
           this.logger.error(
-            `[${runId}] Failed to create K6 internal spans: ${getErrorMessage(error)}`,
+            `[${runId}] ❌ Failed to create K6 internal spans: ${getErrorMessage(error)}`,
           );
           // Don't fail the execution if span creation fails
         }
+      } else {
+        this.logger.log(
+          `[${runId}] Skipping K6 child span creation: summary=${summary ? 'present' : 'null'}, timedOut=${timedOut}, parentSpan=${parentSpan ? 'present' : 'null'}`,
+        );
       }
 
       // 5b. HTML report is created directly by k6 web-dashboard with K6_WEB_DASHBOARD_EXPORT

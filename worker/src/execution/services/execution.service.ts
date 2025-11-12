@@ -1227,9 +1227,13 @@ export class ExecutionService implements OnModuleDestroy {
 
       // Create individual test spans from JSON results (for jobs with multiple tests)
       // Note: jsonResultsPath is defined above in envVars section
+      this.logger.log(
+        `[${executionId}] DEBUG: isJob=${isJob}, activeSpan=${activeSpan ? 'present' : 'null'}, jsonResultsPath=${jsonResultsPath}`,
+      );
+
       if (isJob && activeSpan) {
         try {
-          this.logger.debug(
+          this.logger.log(
             `[${executionId}] Attempting to create individual test spans from JSON results at: ${jsonResultsPath}`,
           );
 
@@ -1239,6 +1243,10 @@ export class ExecutionService implements OnModuleDestroy {
           );
 
           const hasResults = await hasPlaywrightJsonResults(jsonResultsPath);
+          this.logger.log(
+            `[${executionId}] JSON results file exists: ${hasResults}`,
+          );
+
           if (hasResults) {
             // Extract telemetry context from active span attributes
             const attributes: any = {};
@@ -1251,6 +1259,10 @@ export class ExecutionService implements OnModuleDestroy {
             attributes.projectId = spanAttrs['sc.project_id'];
             attributes.organizationId = spanAttrs['sc.organization_id'];
 
+            this.logger.log(
+              `[${executionId}] Calling createSpansFromPlaywrightResults with parent span`,
+            );
+
             // Pass the active span explicitly to ensure proper parent linkage
             const spanCount = await createSpansFromPlaywrightResults(
               jsonResultsPath,
@@ -1258,20 +1270,24 @@ export class ExecutionService implements OnModuleDestroy {
               activeSpan,
             );
             this.logger.log(
-              `[${executionId}] Created ${spanCount} individual test spans from Playwright results`,
+              `[${executionId}] ✅ Created ${spanCount} individual test spans from Playwright results`,
             );
           } else {
             this.logger.warn(
-              `[${executionId}] Playwright JSON results file not found at ${jsonResultsPath}`,
+              `[${executionId}] ❌ Playwright JSON results file not found at ${jsonResultsPath}`,
             );
           }
         } catch (error) {
           this.logger.error(
-            `[${executionId}] Failed to create individual test spans: ${(error as Error).message}`,
+            `[${executionId}] ❌ Failed to create individual test spans: ${(error as Error).message}`,
             (error as Error).stack,
           );
           // Don't fail the execution if span creation fails
         }
+      } else {
+        this.logger.log(
+          `[${executionId}] Skipping child span creation: isJob=${isJob}, activeSpan=${activeSpan ? 'present' : 'null'}`,
+        );
       }
 
       return {
