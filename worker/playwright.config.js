@@ -33,7 +33,7 @@ console.log(`Playwright Config Loaded`);
 console.log(`Service Root: ${serviceRoot}`);
 console.log(`Test Directory: ${testDir}`);
 console.log(`Output Directory: ${relativeOutputDir}`);
-console.log(`JSON Output File: ${path.join(testDir, 'test-results.json')}`);
+console.log(`JSON Output File: ${process.env.PLAYWRIGHT_JSON_OUTPUT || path.join(testDir, 'test-results.json')}`);
 console.log(`Worker Count: ${getOptimalWorkerCount()}`);
 
 /**
@@ -63,7 +63,8 @@ module.exports = defineConfig({
     ['html'], // Always generate HTML reports for S3 upload
     ['list'], // Console output for debugging
     ['json', {
-      outputFile: path.join(testDir, 'test-results.json') // Absolute path to test directory
+      // Use env var for dynamic output path set per execution
+      outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT || path.join(testDir, 'test-results.json')
     }], // Generate JSON for observability spans
   ],
 

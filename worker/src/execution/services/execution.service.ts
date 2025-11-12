@@ -1124,10 +1124,11 @@ export class ExecutionService implements OnModuleDestroy {
       }
 
       // Add unique environment variables for this execution
-      // Note: JSON results will be written to runDir/test-results.json by Playwright's JSON reporter
+      // Set explicit JSON output path via env var for Playwright JSON reporter
       const jsonResultsPath = path.join(runDir, 'test-results.json');
       const envVars = {
         PLAYWRIGHT_TEST_DIR: runDir,
+        PLAYWRIGHT_JSON_OUTPUT: jsonResultsPath, // Explicit JSON output path for reporter
         CI: 'true',
         PLAYWRIGHT_EXECUTION_ID: executionId,
         // Create a unique artifacts folder for this execution
