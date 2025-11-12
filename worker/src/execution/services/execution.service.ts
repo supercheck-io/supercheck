@@ -1124,6 +1124,7 @@ export class ExecutionService implements OnModuleDestroy {
       }
 
       // Add unique environment variables for this execution
+      const jsonResultsPath = path.join(runDir, 'test-results.json');
       const envVars = {
         PLAYWRIGHT_TEST_DIR: runDir,
         CI: 'true',
@@ -1135,6 +1136,8 @@ export class ExecutionService implements OnModuleDestroy {
         ),
         // Standard location for Playwright HTML report
         PLAYWRIGHT_HTML_REPORT: playwrightReportDir,
+        // JSON output for observability spans
+        PLAYWRIGHT_JSON_OUTPUT: jsonResultsPath,
         // Add timestamp to prevent caching issues
         PLAYWRIGHT_TIMESTAMP: Date.now().toString(),
       };
@@ -1223,9 +1226,13 @@ export class ExecutionService implements OnModuleDestroy {
       }
 
       // Create individual test spans from JSON results (for jobs with multiple tests)
-      if (isJob && execResult.success) {
-        const jsonResultsPath = path.join(runDir, 'test-results.json');
+      // Note: jsonResultsPath is defined above in envVars section
+      if (isJob) {
         try {
+          this.logger.debug(
+            `[${executionId}] Attempting to create individual test spans from JSON results at: ${jsonResultsPath}`,
+          );
+
           // Import dynamically to avoid circular dependencies
           const { createSpansFromPlaywrightResults, hasPlaywrightJsonResults } = await import(
             '../../observability/playwright-test-spans'
@@ -1247,11 +1254,19 @@ export class ExecutionService implements OnModuleDestroy {
               attributes.organizationId = spanAttrs['sc.organization_id'];
             }
 
-            await createSpansFromPlaywrightResults(jsonResultsPath, attributes);
+            const spanCount = await createSpansFromPlaywrightResults(jsonResultsPath, attributes);
+            this.logger.log(
+              `[${executionId}] Created ${spanCount} individual test spans from Playwright results`,
+            );
+          } else {
+            this.logger.warn(
+              `[${executionId}] Playwright JSON results file not found at ${jsonResultsPath}`,
+            );
           }
         } catch (error) {
-          this.logger.warn(
-            `Failed to create individual test spans: ${(error as Error).message}`,
+          this.logger.error(
+            `[${executionId}] Failed to create individual test spans: ${(error as Error).message}`,
+            (error as Error).stack,
           );
           // Don't fail the execution if span creation fails
         }
