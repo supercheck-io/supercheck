@@ -115,15 +115,28 @@ export async function createSpansFromK6Summary(
     // Create a context with the parent span
     const parentContext = trace.setSpan(context.active(), actualParentSpan);
 
-    // Get test run duration from state
-    const testDuration = summary.state?.testRunDurationMs || 0;
-    // Use provided execution start time if available, otherwise calculate backwards
-    const testStartTime = executionStartTime || (Date.now() - testDuration);
-    const testEndTime = testStartTime + testDuration;
+    // Calculate test duration
+    // If executionStartTime is provided, use actual elapsed time, otherwise try from summary
+    const now = Date.now();
+    let testDuration: number;
+    let testStartTime: number;
+    let testEndTime: number;
+
+    if (executionStartTime) {
+      // Use actual execution timing
+      testStartTime = executionStartTime;
+      testEndTime = now;
+      testDuration = testEndTime - testStartTime;
+    } else {
+      // Fallback: try to get from summary state
+      testDuration = summary.state?.testRunDurationMs || 0;
+      testStartTime = now - testDuration;
+      testEndTime = now;
+    }
 
     // Debug logging for span timing
     logger.log(`K6 Span Timing: duration=${testDuration}ms, startTime=${new Date(testStartTime).toISOString()}, endTime=${new Date(testEndTime).toISOString()}`);
-    logger.log(`K6 Span Timing: executionStartTime provided=${!!executionStartTime}, now=${new Date().toISOString()}`);
+    logger.log(`K6 Span Timing: executionStartTime provided=${!!executionStartTime}, calculated from actual runtime`);
 
     // Create spans for HTTP requests (grouped by URL/endpoint)
     const httpMetrics = Object.entries(summary.metrics).filter(
