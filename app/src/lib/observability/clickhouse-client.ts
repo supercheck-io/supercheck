@@ -36,6 +36,32 @@ const isRunType = (value: unknown): value is RunType =>
   value === "job" ||
   value === "monitor";
 
+/**
+ * Normalize run types emitted from worker to API-compatible values
+ * Maps granular worker run types to simplified API enum values
+ *
+ * Worker emits: playwright_job, playwright_test, k6_job, k6_test
+ * API expects: playwright, k6, job, monitor
+ */
+function normalizeRunType(value: unknown): RunType | undefined {
+  if (typeof value !== "string") return undefined;
+
+  // Map new granular types to existing enum
+  switch (value) {
+    case "playwright_job":
+    case "playwright_test":
+      return "playwright";
+    case "k6_job":
+    case "k6_test":
+      return "k6";
+    case "job":
+    case "monitor":
+      return value as RunType;
+    default:
+      return undefined;
+  }
+}
+
 function escapeLiteral(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
@@ -277,14 +303,14 @@ export async function searchTracesClickHouse(
 
   const traces = rows.map((row) => {
     if (row.serviceName) serviceSet.add(row.serviceName);
-    if (row.scRunType && isRunType(row.scRunType)) {
-      runTypeSet.add(row.scRunType);
+    const scRunType = row.scRunType ? normalizeRunType(row.scRunType) : undefined;
+    if (scRunType) {
+      runTypeSet.add(scRunType);
     }
 
     const startedAt = Number(row.startedAtMs);
     const duration = Number(row.duration);
     const endedAt = startedAt + duration / 1_000_000;
-    const scRunType = row.scRunType && isRunType(row.scRunType) ? row.scRunType : undefined;
 
     return {
       traceId: row.traceId,
@@ -398,11 +424,9 @@ export async function getTraceWithSpansClickHouse(
   const endMs = Math.max(...spans.map((span) => new Date(span.endTime).getTime()));
   const errorCount = spans.filter((span) => span.statusCode === 2).length;
 
-  const scRunTypeAttr = rootSpan.attributes["sc.run_type"];
-  const scRunTypeValue =
-    typeof scRunTypeAttr === "string" && isRunType(scRunTypeAttr)
-      ? scRunTypeAttr
-      : undefined;
+  const scRunTypeValue = rootSpan.attributes["sc.run_type"]
+    ? normalizeRunType(rootSpan.attributes["sc.run_type"])
+    : undefined;
 
   return {
     traceId,
