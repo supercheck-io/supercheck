@@ -1,7 +1,7 @@
 import { trace, context, SpanStatusCode, type Span } from '@opentelemetry/api';
 import * as fs from 'fs';
 import * as readline from 'readline';
-import { Logger } from '../utils/logger';
+import { Logger } from '@nestjs/common';
 
 const logger = new Logger('PlaywrightNetworkEventsParser');
 
@@ -80,14 +80,14 @@ function shouldSampleRequest(sampleRate: number, status?: number): boolean {
  * Parse network events file and create OpenTelemetry spans
  *
  * @param eventsFilePath - Path to the network events NDJSON file
- * @param telemetryCtx - Telemetry context with trace/span IDs for correlation
+ * @param telemetryCtx - Telemetry context for correlation (unused, kept for API consistency)
  * @param parentSpan - Parent span for proper trace hierarchy
  * @param config - Configuration options for parsing
  * @returns Number of spans created
  */
 export async function createSpansFromNetworkEvents(
   eventsFilePath: string,
-  telemetryCtx?: { traceId?: string; spanId?: string },
+  telemetryCtx?: any,
   parentSpan?: Span,
   config: NetworkEventsParserConfig = {},
 ): Promise<number> {
