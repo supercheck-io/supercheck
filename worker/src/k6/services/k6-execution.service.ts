@@ -386,7 +386,7 @@ export class K6ExecutionService {
           const telemetryCtx = {
             runId: task.runId,
             testId: task.testId,
-            jobId: task.jobId,
+            jobId: task.jobId ?? undefined,
             projectId: task.projectId,
             organizationId: task.organizationId,
             runType: task.jobId ? 'k6_job' : 'k6_test',
