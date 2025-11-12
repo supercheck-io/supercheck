@@ -1222,6 +1222,41 @@ export class ExecutionService implements OnModuleDestroy {
         activeSpan.setAttribute('playwright.stderr_length', execResult.stderr.length);
       }
 
+      // Create individual test spans from JSON results (for jobs with multiple tests)
+      if (isJob && execResult.success) {
+        const jsonResultsPath = path.join(runDir, 'test-results.json');
+        try {
+          // Import dynamically to avoid circular dependencies
+          const { createSpansFromPlaywrightResults, hasPlaywrightJsonResults } = await import(
+            '../../observability/playwright-test-spans'
+          );
+
+          const hasResults = await hasPlaywrightJsonResults(jsonResultsPath);
+          if (hasResults) {
+            // Extract telemetry context from active span attributes
+            const spanContext = activeSpan?.spanContext();
+            const attributes: any = {};
+
+            // Get Supercheck context from span attributes if available
+            if (activeSpan) {
+              const spanAttrs = (activeSpan as any).attributes || {};
+              attributes.runId = spanAttrs['sc.run_id'];
+              attributes.jobId = spanAttrs['sc.job_id'];
+              attributes.runType = spanAttrs['sc.run_type'];
+              attributes.projectId = spanAttrs['sc.project_id'];
+              attributes.organizationId = spanAttrs['sc.organization_id'];
+            }
+
+            await createSpansFromPlaywrightResults(jsonResultsPath, attributes);
+          }
+        } catch (error) {
+          this.logger.warn(
+            `Failed to create individual test spans: ${(error as Error).message}`,
+          );
+          // Don't fail the execution if span creation fails
+        }
+      }
+
       return {
         success: execResult.success,
         error: extractedError, // Use the extracted error message
