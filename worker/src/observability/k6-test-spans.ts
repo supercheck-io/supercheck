@@ -121,6 +121,10 @@ export async function createSpansFromK6Summary(
     const testStartTime = executionStartTime || (Date.now() - testDuration);
     const testEndTime = testStartTime + testDuration;
 
+    // Debug logging for span timing
+    logger.log(`K6 Span Timing: duration=${testDuration}ms, startTime=${new Date(testStartTime).toISOString()}, endTime=${new Date(testEndTime).toISOString()}`);
+    logger.log(`K6 Span Timing: executionStartTime provided=${!!executionStartTime}, now=${new Date().toISOString()}`);
+
     // Create spans for HTTP requests (grouped by URL/endpoint)
     const httpMetrics = Object.entries(summary.metrics).filter(
       ([key]) => key.startsWith('http_req_') || key.includes('http_req_'),
