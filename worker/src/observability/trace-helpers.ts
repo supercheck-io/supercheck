@@ -84,9 +84,34 @@ export function addSupcheckRunContext(ctx: SupercheckContext): boolean {
   if (ctx.monitorName) span.setAttribute('sc.monitor_name', ctx.monitorName);
   if (ctx.projectId) span.setAttribute('sc.project_id', ctx.projectId);
   if (ctx.organizationId) span.setAttribute('sc.organization_id', ctx.organizationId);
-  if (ctx.runType) span.setAttribute('sc.run_type', ctx.runType);
+  if (ctx.runType) {
+    span.setAttribute('sc.run_type', ctx.runType);
+    // Also set display name based on run type for trace UI consistency
+    const displayName = getDisplayNameForRunType(ctx.runType);
+    if (displayName) {
+      span.setAttribute('sc.display_name', displayName);
+    }
+  }
 
   return true;
+}
+
+/**
+ * Get display-friendly name for run type
+ */
+function getDisplayNameForRunType(runType: SupercheckRunType): string {
+  const nameMap: Record<SupercheckRunType, string> = {
+    'playwright_job': 'Playwright Job',
+    'playwright_test': 'Playwright Test',
+    'k6_job': 'K6 Job',
+    'k6_test': 'K6 Test',
+    'job': 'Job',
+    'test': 'Test',
+    'k6': 'K6',
+    'monitor': 'Monitor',
+    'playground': 'Playground',
+  };
+  return nameMap[runType] || runType;
 }
 
 /**
@@ -174,6 +199,9 @@ export async function createSpanWithContext<T>(
   attributes?: Record<string, string | number | boolean>,
 ): Promise<T> {
   return createSpan(name, async (span) => {
+    // Set span name as attribute for trace UI
+    span.setAttribute('span.name', name);
+
     // Add Supercheck context
     addSupcheckRunContext(ctx);
 
