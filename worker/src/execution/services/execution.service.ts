@@ -1156,13 +1156,12 @@ export class ExecutionService implements OnModuleDestroy {
       let command: string;
       let args: string[];
 
-      // Use npx playwright for container compatibility
-      // The Playwright Docker image has playwright pre-installed
+      // Use playwright directly (pre-installed in Docker image)
+      // The Playwright Docker image has playwright in PATH
       // We mount the worker root at /workspace, so paths are relative to that
       const relativeRunDir = path.relative(serviceRoot, runDir);
-      command = 'npx';
+      command = 'playwright';
       args = [
-        'playwright',
         'test',
         `/workspace/${relativeRunDir}`, // Tests directory relative to worker root
         '--config=/workspace/playwright.config.js', // Config at worker root
@@ -1173,10 +1172,18 @@ export class ExecutionService implements OnModuleDestroy {
       // Use container path for output directory
       args.push(`--output=/workspace/${relativeRunDir}/report-${executionId}`);
 
+      // Prepare environment variables for container execution
+      // Override HOME to prevent npm/node from trying to access host paths
+      const containerEnv = {
+        ...envVars,
+        HOME: '/tmp', // Use /tmp for npm cache and config in container
+        npm_config_cache: '/tmp/.npm', // Explicit npm cache location
+      };
+
       // Execute the command with environment variables, ensuring correct CWD
       // Use executeCommandSafely for defense-in-depth security (container isolation when enabled)
       const execResult = await this.executeCommandSafely(command, args, {
-        env: { ...process.env, ...envVars },
+        env: containerEnv,
         cwd: serviceRoot, // Run playwright from service root
         shell: isWindows, // Use shell on Windows for proper command execution
         timeout: isJob
