@@ -151,19 +151,35 @@ export class ContainerExecutorService {
 
     // Check if container execution is enabled
     if (!this.enableContainerExecution) {
-      this.logger.warn(
-        'Container execution is disabled, falling back to direct execution',
+      this.logger.error(
+        'Container execution is disabled but required. Set ENABLE_CONTAINER_EXECUTION=true',
       );
-      return this.executeDirect(scriptPath, command, options);
+      return {
+        success: false,
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Container execution is required but ENABLE_CONTAINER_EXECUTION is not set. Please enable container execution in your environment configuration.',
+        duration: Date.now() - startTime,
+        timedOut: false,
+        error: 'Container execution is required but not enabled',
+      };
     }
 
     // Check if Docker is available
     const dockerAvailable = await this.checkDockerAvailable();
     if (!dockerAvailable) {
-      this.logger.warn(
-        'Docker is not available, falling back to direct execution',
+      this.logger.error(
+        'Docker is not available. Please ensure Docker is installed, running, and the required image is available.',
       );
-      return this.executeDirect(scriptPath, command, options);
+      return {
+        success: false,
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Docker is not available or the required image could not be pulled. Please ensure Docker is installed and running, and you have access to pull the required image.',
+        duration: Date.now() - startTime,
+        timedOut: false,
+        error: 'Docker is not available or image pull failed',
+      };
     }
 
     // Default options
@@ -286,76 +302,56 @@ export class ContainerExecutorService {
   }
 
   /**
-   * Fallback to direct execution (when Docker is not available)
-   * Still uses execa for safer execution
-   */
-  private async executeDirect(
-    scriptPath: string,
-    command: string[],
-    options: ContainerExecutionOptions,
-  ): Promise<ContainerExecutionResult> {
-    const startTime = Date.now();
-    const { timeoutMs = 300000, env = {} } = options;
-
-    // Ensure timeout is a number (handle string values from config)
-    const timeout = typeof timeoutMs === 'string' ? parseInt(timeoutMs, 10) : timeoutMs;
-    const validTimeout = typeof timeout === 'number' && !isNaN(timeout) && timeout > 0 ? timeout : undefined;
-
-    try {
-      this.logger.log(
-        `Direct execution (no container): ${command.join(' ')} ${scriptPath}`,
-      );
-
-      const result = await execa(command[0], [...command.slice(1), scriptPath], {
-        timeout: validTimeout,
-        reject: false,
-        env: {
-          ...process.env,
-          ...env,
-        },
-        cwd: path.dirname(scriptPath),
-      });
-
-      const duration = Date.now() - startTime;
-      const timedOut = result.timedOut || false;
-
-      return {
-        success: result.exitCode === 0 && !timedOut,
-        exitCode: result.exitCode || (timedOut ? 124 : 1),
-        stdout: result.stdout || '',
-        stderr: result.stderr || '',
-        duration,
-        timedOut,
-        error: timedOut
-          ? `Execution timed out after ${validTimeout || timeoutMs}ms`
-          : result.exitCode !== 0
-            ? `Process exited with code ${result.exitCode}`
-            : undefined,
-      };
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      return {
-        success: false,
-        exitCode: 1,
-        stdout: '',
-        stderr: error instanceof Error ? error.message : String(error),
-        duration,
-        timedOut: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }
-
-  /**
-   * Checks if Docker is available
+   * Checks if Docker is available and the required image exists
    */
   private async checkDockerAvailable(): Promise<boolean> {
     try {
+      // Check if Docker daemon is running
       const result = await execa('docker', ['--version'], {
         timeout: 5000,
         reject: false,
       });
-      return result.exitCode === 0;
+
+      if (result.exitCode !== 0) {
+        return false;
+      }
+
+      // Check if required image exists locally
+      const imageCheck = await execa('docker', ['images', '-q', this.defaultImage], {
+        timeout: 5000,
+        reject: false,
+      });
+
+      // If image doesn't exist, try to pull it automatically
+      if (!imageCheck.stdout || imageCheck.stdout.trim() === '') {
+        this.logger.warn(
+          `Docker image ${this.defaultImage} not found locally. Attempting to pull...`,
+        );
+
+        try {
+          const pullResult = await execa('docker', ['pull', this.defaultImage], {
+            timeout: 120000, // 2 minutes for pull
+            reject: false,
+          });
+
+          if (pullResult.exitCode === 0) {
+            this.logger.log(`Successfully pulled Docker image: ${this.defaultImage}`);
+            return true;
+          } else {
+            this.logger.warn(
+              `Failed to pull Docker image: ${pullResult.stderr}`,
+            );
+            return false;
+          }
+        } catch (pullError) {
+          this.logger.warn(
+            `Could not pull Docker image: ${pullError instanceof Error ? pullError.message : String(pullError)}`,
+          );
+          return false;
+        }
+      }
+
+      return true;
     } catch {
       return false;
     }

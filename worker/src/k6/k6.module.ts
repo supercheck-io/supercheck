@@ -10,6 +10,7 @@ import {
   K6_TEST_EXECUTION_QUEUE,
 } from './k6.constants';
 import { ExecutionModule } from '../execution.module';
+import { SecurityModule } from '../common/security/security.module';
 
 // Define job options with TTL settings
 const defaultJobOptions = {
@@ -22,6 +23,7 @@ const defaultJobOptions = {
 @Module({
   imports: [
     ExecutionModule, // Import ExecutionModule to get S3Service and RedisService
+    SecurityModule, // Import SecurityModule for container execution
     BullModule.registerQueue(
       {
         name: K6_TEST_EXECUTION_QUEUE,
