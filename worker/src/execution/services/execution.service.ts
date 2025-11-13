@@ -1173,21 +1173,11 @@ export class ExecutionService implements OnModuleDestroy {
       // Use container path for output directory
       args.push(`--output=/workspace/${relativeRunDir}/report-${executionId}`);
 
-      // Prepare environment variables for container execution
-      // Set HOME and npm cache to /tmp to prevent npm from accessing host paths
-      // Docker containers have their own PATH from the image, so we only need to override
-      // specific vars that might cause issues (HOME, npm_config_cache)
-      const containerEnv = {
-        ...envVars,
-        HOME: '/tmp', // Use /tmp for npm cache and config in container
-        npm_config_cache: '/tmp/.npm', // Explicit npm cache location in writable directory
-        npm_config_update_notifier: 'false', // Disable update notifier
-      };
-
       // Execute the command with environment variables, ensuring correct CWD
       // Use executeCommandSafely for defense-in-depth security (container isolation when enabled)
+      // Use only test-specific environment variables, let container use its own configured environment
       const execResult = await this.executeCommandSafely(command, args, {
-        env: containerEnv,
+        env: envVars, // Only test-specific vars, don't override container's HOME/npm config
         cwd: serviceRoot, // Run playwright from service root
         shell: isWindows, // Use shell on Windows for proper command execution
         timeout: isJob
