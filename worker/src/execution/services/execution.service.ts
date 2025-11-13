@@ -1132,18 +1132,21 @@ export class ExecutionService implements OnModuleDestroy {
       // loads modules during Node.js initialization, before Playwright's test context
       // exists. This causes test.beforeEach() to fail with "not expected to be called here".
       // Future work: Implement network instrumentation via custom Playwright reporter or fixtures.
+
+      // Convert paths to container paths (relative to worker root, prefixed with /workspace)
+      const relativeRunDir = path.relative(serviceRoot, runDir);
+      const relativeJsonResultsPath = path.relative(serviceRoot, jsonResultsPath);
+      const relativePlaywrightReportDir = path.relative(serviceRoot, playwrightReportDir);
+
       const envVars = {
-        PLAYWRIGHT_TEST_DIR: runDir,
-        PLAYWRIGHT_JSON_OUTPUT: jsonResultsPath, // Explicit JSON output path for reporter
+        PLAYWRIGHT_TEST_DIR: `/workspace/${relativeRunDir}`, // Container path
+        PLAYWRIGHT_JSON_OUTPUT: `/workspace/${relativeJsonResultsPath}`, // Container path for JSON reporter
         CI: 'true',
         PLAYWRIGHT_EXECUTION_ID: executionId,
         // Create a unique artifacts folder for this execution
-        PLAYWRIGHT_ARTIFACTS_DIR: path.join(
-          runDir,
-          `.artifacts-${executionId}`,
-        ),
+        PLAYWRIGHT_ARTIFACTS_DIR: `/workspace/${relativeRunDir}/.artifacts-${executionId}`, // Container path
         // Standard location for Playwright HTML report
-        PLAYWRIGHT_HTML_REPORT: playwrightReportDir,
+        PLAYWRIGHT_HTML_REPORT: `/workspace/${relativePlaywrightReportDir}`, // Container path
         // Add timestamp to prevent caching issues
         PLAYWRIGHT_TIMESTAMP: Date.now().toString(),
       };
@@ -1159,7 +1162,7 @@ export class ExecutionService implements OnModuleDestroy {
       // Use pre-installed playwright from node_modules for container execution
       // The Playwright Docker image has browsers pre-installed at /ms-playwright
       // We mount the worker root at /workspace, so paths are relative to that
-      const relativeRunDir = path.relative(serviceRoot, runDir);
+      // Note: relativeRunDir is already calculated above for envVars
       command = '/workspace/node_modules/.bin/playwright';
       args = [
         'test',
