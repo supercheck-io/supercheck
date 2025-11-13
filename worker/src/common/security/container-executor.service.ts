@@ -191,6 +191,9 @@ export class ContainerExecutorService {
         // Mount script directory as read-write (containers need to write output files)
         '-v',
         `${path.dirname(scriptPath)}:${workingDir}`,
+        // Mount /tmp as tmpfs for writable temp files (needed for npm cache, etc.)
+        '--tmpfs',
+        '/tmp:rw,noexec,nosuid,size=512m',
       ];
 
       // Add environment variables

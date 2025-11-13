@@ -1175,9 +1175,12 @@ export class ExecutionService implements OnModuleDestroy {
 
       // Execute the command with environment variables, ensuring correct CWD
       // Use executeCommandSafely for defense-in-depth security (container isolation when enabled)
-      // Use only test-specific environment variables, let container use its own configured environment
+      // Set HOME=/tmp so npm uses the writable tmpfs mount for its cache
       const execResult = await this.executeCommandSafely(command, args, {
-        env: envVars, // Only test-specific vars, don't override container's HOME/npm config
+        env: {
+          ...envVars,
+          HOME: '/tmp', // Use tmpfs mount for npm cache (container has --read-only root fs)
+        },
         cwd: serviceRoot, // Run playwright from service root
         shell: isWindows, // Use shell on Windows for proper command execution
         timeout: isJob
