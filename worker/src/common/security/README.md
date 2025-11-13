@@ -69,21 +69,26 @@ docker --version
 ```bash
 # For Playwright tests
 docker pull mcr.microsoft.com/playwright:v1.56.1-noble
+
+# For K6 performance tests
+docker pull grafana/k6:latest
 ```
 
-#### 3. Configure Docker Image (Optional)
+#### 3. Configure Docker Images (Optional)
 
-You can optionally configure a custom Docker image in your `.env` or `docker-compose.yml`:
+You can optionally configure custom Docker images in your `.env` or `docker-compose.yml`:
 
 ```env
 DOCKER_DEFAULT_IMAGE=mcr.microsoft.com/playwright:v1.56.1-noble
+K6_DOCKER_IMAGE=grafana/k6:latest
 ```
 
 ### Configuration Options
 
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
-| `DOCKER_DEFAULT_IMAGE` | `mcr.microsoft.com/playwright:v1.56.1-noble` | Default Docker image for test execution |
+| `DOCKER_DEFAULT_IMAGE` | `mcr.microsoft.com/playwright:v1.56.1-noble` | Docker image for Playwright test execution |
+| `K6_DOCKER_IMAGE` | `grafana/k6:latest` | Docker image for K6 performance test execution |
 
 ### Container Execution Options
 
