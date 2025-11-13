@@ -85,7 +85,7 @@ export class ContainerExecutorService {
   constructor(private configService: ConfigService) {
     this.defaultImage = this.configService.get<string>(
       'DOCKER_DEFAULT_IMAGE',
-      'mcr.microsoft.com/playwright:v1.56.0-focal',
+      'mcr.microsoft.com/playwright:v1.56.1-noble',
     );
 
     this.logger.log(
