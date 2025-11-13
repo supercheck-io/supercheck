@@ -1156,13 +1156,12 @@ export class ExecutionService implements OnModuleDestroy {
       let command: string;
       let args: string[];
 
-      // Use npx playwright for container execution
-      // The Playwright Docker image has playwright installed via npm
+      // Use pre-installed playwright from node_modules for container execution
+      // The Playwright Docker image has browsers pre-installed at /ms-playwright
       // We mount the worker root at /workspace, so paths are relative to that
       const relativeRunDir = path.relative(serviceRoot, runDir);
-      command = 'npx';
+      command = '/workspace/node_modules/.bin/playwright';
       args = [
-        'playwright',
         'test',
         `/workspace/${relativeRunDir}`, // Tests directory relative to worker root
         '--config=/workspace/playwright.config.js', // Config at worker root
@@ -1175,11 +1174,11 @@ export class ExecutionService implements OnModuleDestroy {
 
       // Execute the command with environment variables, ensuring correct CWD
       // Use executeCommandSafely for defense-in-depth security (container isolation when enabled)
-      // Set HOME=/tmp so npm uses the writable tmpfs mount for its cache
+      // Set PLAYWRIGHT_BROWSERS_PATH to use pre-installed browsers in the Docker image
       const execResult = await this.executeCommandSafely(command, args, {
         env: {
           ...envVars,
-          HOME: '/tmp', // Use tmpfs mount for npm cache (container has --read-only root fs)
+          PLAYWRIGHT_BROWSERS_PATH: '/ms-playwright', // Use pre-installed browsers in Docker image
         },
         cwd: serviceRoot, // Run playwright from service root
         shell: isWindows, // Use shell on Windows for proper command execution
