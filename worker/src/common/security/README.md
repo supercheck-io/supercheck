@@ -68,7 +68,7 @@ docker --version
 
 ```bash
 # For Playwright tests
-docker pull mcr.microsoft.com/playwright:v1.56.0-focal
+docker pull mcr.microsoft.com/playwright:v1.56.1-noble
 ```
 
 #### 3. Configure Docker Image (Optional)
@@ -76,14 +76,14 @@ docker pull mcr.microsoft.com/playwright:v1.56.0-focal
 You can optionally configure a custom Docker image in your `.env` or `docker-compose.yml`:
 
 ```env
-DOCKER_DEFAULT_IMAGE=mcr.microsoft.com/playwright:v1.56.0-focal
+DOCKER_DEFAULT_IMAGE=mcr.microsoft.com/playwright:v1.56.1-noble
 ```
 
 ### Configuration Options
 
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
-| `DOCKER_DEFAULT_IMAGE` | `mcr.microsoft.com/playwright:v1.56.0-focal` | Default Docker image for test execution |
+| `DOCKER_DEFAULT_IMAGE` | `mcr.microsoft.com/playwright:v1.56.1-noble` | Default Docker image for test execution |
 
 ### Container Execution Options
 

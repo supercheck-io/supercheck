@@ -783,25 +783,8 @@ export class K6ExecutionService {
       `[${runId}] k6 environment variables: ${JSON.stringify(overrideEnv, null, 2)}`,
     );
 
-    // Validate k6 binary path
-    const pathValidation = validatePath(this.k6BinaryPath, {
-      allowAbsolute: true,
-      allowRelative: false,
-    });
-
-    if (!pathValidation.valid) {
-      const errorMsg = pathValidation.error || 'Unknown validation error';
-      this.logger.error(
-        `[${runId}] Invalid k6 binary path: ${errorMsg}`,
-      );
-      return {
-        exitCode: 1,
-        stdout: '',
-        stderr: `Invalid k6 binary path: ${errorMsg}`,
-        error: errorMsg,
-        timedOut: false,
-      };
-    }
+    // Note: We don't validate the host's k6 binary path for container execution
+    // since k6 will be available in the container's PATH
 
     // Validate all arguments
     for (const arg of args) {
