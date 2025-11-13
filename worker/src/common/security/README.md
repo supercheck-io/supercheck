@@ -71,12 +71,11 @@ docker --version
 docker pull mcr.microsoft.com/playwright:v1.56.0-focal
 ```
 
-#### 3. Enable Container Execution
+#### 3. Configure Docker Image (Optional)
 
-Set environment variable in your `.env` or `docker-compose.yml`:
+You can optionally configure a custom Docker image in your `.env` or `docker-compose.yml`:
 
 ```env
-ENABLE_CONTAINER_EXECUTION=true
 DOCKER_DEFAULT_IMAGE=mcr.microsoft.com/playwright:v1.56.0-focal
 ```
 
@@ -84,8 +83,7 @@ DOCKER_DEFAULT_IMAGE=mcr.microsoft.com/playwright:v1.56.0-focal
 
 | Environment Variable | Default | Description |
 |---------------------|---------|-------------|
-| `ENABLE_CONTAINER_EXECUTION` | `false` | Enable Docker container isolation |
-| `DOCKER_DEFAULT_IMAGE` | `mcr.microsoft.com/playwright:v1.56.0-focal` | Default Docker image |
+| `DOCKER_DEFAULT_IMAGE` | `mcr.microsoft.com/playwright:v1.56.0-focal` | Default Docker image for test execution |
 
 ### Container Execution Options
 
@@ -116,14 +114,11 @@ interface ContainerExecutionOptions {
                   ▼
 ┌─────────────────────────────────────────────────────┐
 │          executeCommandSafely()                      │
-│  (Smart wrapper - chooses execution method)         │
+│  (Container execution wrapper)                      │
 │                                                      │
-│  if (ENABLE_CONTAINER_EXECUTION) {                  │
-│    ├─> ContainerExecutorService ──┐                │
-│  } else {                          │                │
-│    └─> Direct Execution            │                │
-│  }                                 │                │
-└────────────────────────────────────┼────────────────┘
+│  Always uses ContainerExecutorService               │
+│            (mandatory container execution)          │
+└────────────────────────────────────┬────────────────┘
                                      │
                                      ▼
 ┌─────────────────────────────────────────────────────┐
@@ -157,21 +152,13 @@ User Script Submission
 └────────┬────────┘
          │ ✓ Valid
          ▼
-┌──────────────────┐      ┌─────────────────┐
-│ Container Enabled?├─Yes─>│ Docker Available?│
-└────────┬─────────┘      └────────┬────────┘
-         │ No                       │
-         │                    Yes   │   No
-         │                          │   │
-         │                          ▼   ▼
-         │                    ┌──────────────┐
-         └───────────────────>│Direct Execution│
-                              │ (with execa)  │
-                              └──────┬────────┘
-                                     │
-         ┌───────────────────────────┘
+┌─────────────────┐
+│ Docker Available?│
+└────────┬────────┘
          │
-         ▼
+    Yes  │   No (Error)
+         │   │
+         ▼   ▼
 ┌──────────────────────┐
 │ Container Execution  │
 │  - Build secure cmd  │
@@ -290,12 +277,11 @@ sudo usermod -aG docker $USER
 ### Container Execution is Mandatory
 
 Container execution is now mandatory for all Playwright and K6 tests. Execution will fail with a clear error message if:
-- `ENABLE_CONTAINER_EXECUTION` is `false`
 - Docker is not installed or not running
 - Docker permissions are insufficient
 - Required Docker image is not available
 
-**Action Required**: Ensure Docker is properly installed and `ENABLE_CONTAINER_EXECUTION=true` is set in your environment configuration.
+**Action Required**: Ensure Docker is properly installed and running with correct permissions.
 
 ### Performance issues
 
@@ -311,24 +297,24 @@ If containers are slow:
 ### Test Container Execution
 
 ```bash
-# Start worker with container execution enabled
-ENABLE_CONTAINER_EXECUTION=true npm run start:dev
+# Start worker
+npm run start:dev
 
 # Submit a test and check logs for:
-# "[Container] Attempting containerized execution"
+# "[Container] Executing in container: ..."
 ```
 
-### Test Fallback
+### Test Docker Unavailable
 
 ```bash
 # Stop Docker
 sudo systemctl stop docker
 
-# Start worker - should fallback to direct execution
+# Start worker
 npm run start:dev
 
-# Check logs for:
-# "[Direct] Executing directly"
+# Submit a test - should fail with clear error message:
+# "Docker is not available or the required image could not be pulled..."
 ```
 
 ## Security Best Practices

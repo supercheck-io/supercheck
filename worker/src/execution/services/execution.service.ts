@@ -1422,8 +1422,7 @@ export class ExecutionService implements OnModuleDestroy {
    * Execute a command safely - uses container isolation exclusively
    * This provides defense-in-depth security for user-supplied scripts
    *
-   * IMPORTANT: Container execution is mandatory. Direct execution has been removed
-   * for security reasons. Ensure ENABLE_CONTAINER_EXECUTION=true and Docker is available.
+   * IMPORTANT: Container execution is mandatory. Docker must be available.
    */
   private async executeCommandSafely(
     command: string,
@@ -1443,23 +1442,6 @@ export class ExecutionService implements OnModuleDestroy {
     executionTimeMs?: number;
   }> {
     const startTime = Date.now();
-    const enableContainer = this.configService.get<boolean>(
-      'ENABLE_CONTAINER_EXECUTION',
-      false,
-    );
-
-    // Validate that container execution is enabled
-    if (!enableContainer) {
-      this.logger.error(
-        '[Container] Container execution is disabled but required for security. Set ENABLE_CONTAINER_EXECUTION=true',
-      );
-      return {
-        success: false,
-        stdout: '',
-        stderr: 'Container execution is required but ENABLE_CONTAINER_EXECUTION is not set. Please enable container execution in your environment configuration.',
-        executionTimeMs: Date.now() - startTime,
-      };
-    }
 
     // Validate that script path is provided
     if (!options.scriptPath) {
@@ -1478,7 +1460,7 @@ export class ExecutionService implements OnModuleDestroy {
       `[Container] Executing in container: ${command} ${args.join(' ')}`,
     );
 
-    // Execute in container - this is now the only execution path
+    // Execute in container - this is the only execution path
     const containerResult =
       await this.containerExecutorService.executeInContainer(
         options.scriptPath,

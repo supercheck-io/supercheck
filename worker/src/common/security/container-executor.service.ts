@@ -81,27 +81,16 @@ export interface ContainerExecutionResult {
 export class ContainerExecutorService {
   private readonly logger = new Logger(ContainerExecutorService.name);
   private readonly defaultImage: string;
-  private readonly enableContainerExecution: boolean;
 
   constructor(private configService: ConfigService) {
     this.defaultImage = this.configService.get<string>(
       'DOCKER_DEFAULT_IMAGE',
       'mcr.microsoft.com/playwright:v1.56.0-focal',
     );
-    this.enableContainerExecution = this.configService.get<boolean>(
-      'ENABLE_CONTAINER_EXECUTION',
-      false,
-    );
 
-    if (this.enableContainerExecution) {
-      this.logger.log(
-        `Container execution enabled with default image: ${this.defaultImage}`,
-      );
-    } else {
-      this.logger.warn(
-        'Container execution is disabled. Set ENABLE_CONTAINER_EXECUTION=true to enable sandboxed execution.',
-      );
-    }
+    this.logger.log(
+      `Container executor initialized with default image: ${this.defaultImage}`,
+    );
   }
 
   /**
@@ -147,22 +136,6 @@ export class ContainerExecutorService {
           error: argValidation.error,
         };
       }
-    }
-
-    // Check if container execution is enabled
-    if (!this.enableContainerExecution) {
-      this.logger.error(
-        'Container execution is disabled but required. Set ENABLE_CONTAINER_EXECUTION=true',
-      );
-      return {
-        success: false,
-        exitCode: 1,
-        stdout: '',
-        stderr: 'Container execution is required but ENABLE_CONTAINER_EXECUTION is not set. Please enable container execution in your environment configuration.',
-        duration: Date.now() - startTime,
-        timedOut: false,
-        error: 'Container execution is required but not enabled',
-      };
     }
 
     // Check if Docker is available
