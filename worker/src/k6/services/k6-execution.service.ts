@@ -835,9 +835,10 @@ export class K6ExecutionService {
       );
 
       // Execute in container
+      // Note: grafana/k6 image has 'k6' as ENTRYPOINT, so we only pass the subcommand and args
       const containerResult = await this.containerExecutorService.executeInContainer(
         scriptPath,
-        ['k6', ...args],
+        args, // Just pass args directly (e.g., ['run', '--summary-export', ...])
         {
           timeoutMs: timeoutMs || this.testExecutionTimeoutMs,
           env: {
