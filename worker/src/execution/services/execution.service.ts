@@ -1419,8 +1419,11 @@ export class ExecutionService implements OnModuleDestroy {
   }
 
   /**
-   * Execute a command safely - uses container isolation if enabled, falls back to direct execution
+   * Execute a command safely - uses container isolation exclusively
    * This provides defense-in-depth security for user-supplied scripts
+   *
+   * IMPORTANT: Container execution is mandatory. Direct execution has been removed
+   * for security reasons. Ensure ENABLE_CONTAINER_EXECUTION=true and Docker is available.
    */
   private async executeCommandSafely(
     command: string,
@@ -1439,56 +1442,71 @@ export class ExecutionService implements OnModuleDestroy {
     stderr: string;
     executionTimeMs?: number;
   }> {
+    const startTime = Date.now();
     const enableContainer = this.configService.get<boolean>(
       'ENABLE_CONTAINER_EXECUTION',
       false,
     );
 
-    // If container execution is enabled and we have a script path, try container execution
-    if (enableContainer && options.scriptPath) {
-      this.logger.debug(
-        `[Container] Attempting containerized execution for: ${command} ${args.join(' ')}`,
+    // Validate that container execution is enabled
+    if (!enableContainer) {
+      this.logger.error(
+        '[Container] Container execution is disabled but required for security. Set ENABLE_CONTAINER_EXECUTION=true',
       );
-
-      try {
-        const containerResult =
-          await this.containerExecutorService.executeInContainer(
-            options.scriptPath,
-            [command, ...args],
-            {
-              timeoutMs: options.timeout,
-              env: options.env as Record<string, string>,
-              workingDir: options.workingDir || '/workspace',
-              memoryLimitMb: 1024, // 1GB
-              cpuLimit: 1.0, // 100% of one CPU
-              networkMode: 'bridge', // Allow network for Playwright
-              autoRemove: true,
-            },
-          );
-
-        return {
-          success: containerResult.success,
-          stdout: containerResult.stdout,
-          stderr: containerResult.stderr,
-          executionTimeMs: containerResult.duration,
-        };
-      } catch (containerError) {
-        this.logger.warn(
-          `[Container] Container execution failed, falling back to direct execution: ${
-            containerError instanceof Error
-              ? containerError.message
-              : String(containerError)
-          }`,
-        );
-        // Fall through to direct execution
-      }
+      return {
+        success: false,
+        stdout: '',
+        stderr: 'Container execution is required but ENABLE_CONTAINER_EXECUTION is not set. Please enable container execution in your environment configuration.',
+        executionTimeMs: Date.now() - startTime,
+      };
     }
 
-    // Fall back to direct execution (current implementation)
+    // Validate that script path is provided
+    if (!options.scriptPath) {
+      this.logger.error(
+        '[Container] Script path is required for container execution',
+      );
+      return {
+        success: false,
+        stdout: '',
+        stderr: 'Script path is required for secure container execution.',
+        executionTimeMs: Date.now() - startTime,
+      };
+    }
+
     this.logger.debug(
-      `[Direct] Executing directly: ${command} ${args.join(' ')}`,
+      `[Container] Executing in container: ${command} ${args.join(' ')}`,
     );
-    return this._executeCommand(command, args, options);
+
+    // Execute in container - this is now the only execution path
+    const containerResult =
+      await this.containerExecutorService.executeInContainer(
+        options.scriptPath,
+        [command, ...args],
+        {
+          timeoutMs: options.timeout,
+          env: options.env as Record<string, string>,
+          workingDir: options.workingDir || '/workspace',
+          memoryLimitMb: 1024, // 1GB
+          cpuLimit: 1.0, // 100% of one CPU
+          networkMode: 'bridge', // Allow network for Playwright
+          autoRemove: true,
+        },
+      );
+
+    // Return the container execution result with proper error context
+    if (!containerResult.success) {
+      this.logger.error(
+        `[Container] Container execution failed: ${containerResult.error || 'Unknown error'}`,
+      );
+    }
+
+    return {
+      success: containerResult.success,
+      stdout: containerResult.stdout,
+      stderr: containerResult.stderr,
+      executionTimeMs: containerResult.duration,
+    };
   }
 
   /**
