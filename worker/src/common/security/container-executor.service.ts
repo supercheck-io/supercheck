@@ -80,14 +80,10 @@ export interface ContainerExecutionResult {
 @Injectable()
 export class ContainerExecutorService {
   private readonly logger = new Logger(ContainerExecutorService.name);
-  private readonly defaultImage: string;
+  // Hardcoded Playwright Docker image for security and consistency
+  private readonly defaultImage = 'mcr.microsoft.com/playwright:v1.56.1-noble';
 
   constructor(private configService: ConfigService) {
-    this.defaultImage = this.configService.get<string>(
-      'DOCKER_DEFAULT_IMAGE',
-      'mcr.microsoft.com/playwright:v1.56.1-noble',
-    );
-
     this.logger.log(
       `Container executor initialized with default image: ${this.defaultImage}`,
     );
