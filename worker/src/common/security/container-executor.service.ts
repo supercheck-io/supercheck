@@ -18,6 +18,7 @@ import { ConfigService } from '@nestjs/config';
 import { execa } from 'execa';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import { randomUUID } from 'crypto';
 import {
   validatePath,
@@ -189,8 +190,11 @@ export class ContainerExecutorService {
         '-w',
         workingDir,
         // Mount script directory as read-write (containers need to write output files)
+        // Handle both file and directory scriptPaths:
+        // - If scriptPath is a file, mount its parent directory
+        // - If scriptPath is a directory, mount it directly
         '-v',
-        `${path.dirname(scriptPath)}:${workingDir}`,
+        `${this.getMountPath(scriptPath)}:${workingDir}`,
         // Mount /tmp as tmpfs for writable temp files (needed for npm cache and npx binaries)
         // Note: Removed noexec to allow npx to install and execute playwright from /tmp
         '--tmpfs',
@@ -282,6 +286,28 @@ export class ContainerExecutorService {
         timedOut: false,
         error: error instanceof Error ? error.message : String(error),
       };
+    }
+  }
+
+  /**
+   * Determines the correct host path to mount in the container
+   * - If scriptPath is a directory, mounts it directly
+   * - If scriptPath is a file, mounts its parent directory
+   */
+  private getMountPath(scriptPath: string): string {
+    try {
+      const stats = fsSync.statSync(scriptPath);
+      if (stats.isDirectory()) {
+        return scriptPath;
+      } else {
+        return path.dirname(scriptPath);
+      }
+    } catch (error) {
+      // If path doesn't exist or can't be stat'd, assume it's a file and use dirname
+      this.logger.warn(
+        `Could not stat scriptPath ${scriptPath}, assuming file: ${error}`,
+      );
+      return path.dirname(scriptPath);
     }
   }
 
