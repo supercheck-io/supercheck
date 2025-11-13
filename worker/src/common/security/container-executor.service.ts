@@ -175,8 +175,8 @@ export class ContainerExecutorService {
         '--read-only', // Read-only root filesystem
         '--security-opt=no-new-privileges', // Prevent privilege escalation
         '--cap-drop=ALL', // Drop all Linux capabilities
-        '--user',
-        '1000:1000', // Run as non-root user
+        // Note: Not forcing --user because Playwright image has its own non-root user (pwuser)
+        // Forcing a different UID causes permission issues with npm/npx
         // Resource limits
         `--memory=${memoryLimitMb}m`,
         `--cpus=${cpuLimit}`,
