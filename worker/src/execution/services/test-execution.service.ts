@@ -250,11 +250,17 @@ const path = require('path');
     this.logger.log(`Executing Node script: ${testFilePath}`);
 
     try {
-      // Execute the test script with Node.js
+      // Execute the test script with Node.js, passing reportDir via environment variable
       const { stdout, stderr, exitCode } = await this._executeCommand(
         'node',
         [testFilePath],
-        { cwd: process.cwd() },
+        {
+          cwd: process.cwd(),
+          env: {
+            ...process.env,
+            REPORT_DIR: reportDir,
+          },
+        },
       );
 
       // Check if there's a success.json file which our test script creates on success
@@ -438,28 +444,30 @@ async function launchBrowserWithRetry(maxRetries = 3) {
     // Launch browser with retry logic
     browser = await launchBrowserWithRetry(3);
     page = await browser.newPage();
-    
+
     // Navigate to URL if provided
     ${url ? `await page.goto('${url}');` : ''}
-    
+
     // Execute the test code
     const testFn = async (page) => {
       ${code}
     };
-    
+
     await testFn(page);
-    
+
     // If execution reaches here without errors, mark as success
     results.success = true;
     results.message = 'Test executed successfully';
   } catch (error) {
     results.success = false;
     results.message = error.toString();
-    
+
     // Capture screenshot on failure if page is available
     if (page) {
       try {
-        const screenshotPath = path.join(process.cwd(), 'error-screenshot.png');
+        // Use REPORT_DIR environment variable if provided, otherwise use process.cwd()
+        const reportDir = process.env.REPORT_DIR || process.cwd();
+        const screenshotPath = path.join(reportDir, 'error-screenshot.png');
         await page.screenshot({ path: screenshotPath });
         results.screenshots.push(screenshotPath);
       } catch (screenshotError) {
@@ -471,13 +479,15 @@ async function launchBrowserWithRetry(maxRetries = 3) {
     if (browser) {
       await browser.close();
     }
-    
+
     // Write results to file
+    // Use REPORT_DIR environment variable if provided, otherwise use process.cwd()
+    const reportDir = process.env.REPORT_DIR || process.cwd();
     fs.writeFileSync(
-      path.join(process.cwd(), 'success.json'),
+      path.join(reportDir, 'success.json'),
       JSON.stringify(results, null, 2)
     );
-    
+
     if (results.success) {
       // Test completed successfully
     } else {
