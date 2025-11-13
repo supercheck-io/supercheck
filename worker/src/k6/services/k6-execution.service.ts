@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { spawn } from 'child_process';
+import { execa } from 'execa';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
@@ -8,6 +8,7 @@ import { S3Service } from '../../execution/services/s3.service';
 import { DbService } from '../../execution/services/db.service';
 import { RedisService } from '../../execution/services/redis.service';
 import * as net from 'net';
+import { validatePath, validateCommandArgument } from '../../common/security/path-validator';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -135,57 +136,41 @@ export class K6ExecutionService {
   /**
    * Verify k6 is installed and working
    */
-  private verifyK6Installation(): void {
-    const childProcess = spawn(this.k6BinaryPath, ['version'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+  private async verifyK6Installation(): Promise<void> {
+    try {
+      const result = await execa(this.k6BinaryPath, ['version'], {
+        timeout: 5000,
+        reject: false,
+      });
 
-    let versionOutput = '';
-    let versionError = '';
-
-    childProcess.stdout?.on('data', (data) => {
-      versionOutput += data.toString();
-    });
-
-    childProcess.stderr?.on('data', (data) => {
-      versionError += data.toString();
-    });
-
-    childProcess.on('close', (code) => {
-      if (code === 0 && versionOutput) {
-        this.logger.log(`K6 is installed: ${versionOutput.trim()}`);
+      if (result.exitCode === 0 && result.stdout) {
+        this.logger.log(`K6 is installed: ${result.stdout.trim()}`);
         // Verify web-dashboard extension is available
-        this.verifyWebDashboardExtension();
+        await this.verifyWebDashboardExtension();
       } else {
         this.logger.warn(
-          `K6 verification failed. Code: ${code}, Output: ${versionOutput}, Error: ${versionError}`,
+          `K6 verification failed. Exit code: ${result.exitCode}, Output: ${result.stdout}, Error: ${result.stderr}`,
         );
       }
-    });
-
-    childProcess.on('error', (error) => {
+    } catch (error) {
       this.logger.error(
         `K6 verification error: ${getErrorMessage(error)}. Make sure k6 is installed at ${this.k6BinaryPath}`,
       );
-    });
+    }
   }
 
   /**
    * Verify k6 web-dashboard extension is available
    */
-  private verifyWebDashboardExtension(): void {
-    const childProcess = spawn(this.k6BinaryPath, ['version'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+  private async verifyWebDashboardExtension(): Promise<void> {
+    try {
+      const result = await execa(this.k6BinaryPath, ['version'], {
+        timeout: 5000,
+        reject: false,
+      });
 
-    let versionOutput = '';
-
-    childProcess.stdout?.on('data', (data) => {
-      versionOutput += data.toString();
-    });
-
-    childProcess.on('close', (code) => {
-      if (code === 0) {
+      if (result.exitCode === 0) {
+        const versionOutput = result.stdout || '';
         // Check if version output includes the dashboard extension
         if (
           versionOutput.includes('xk6-dashboard') ||
@@ -209,13 +194,11 @@ export class K6ExecutionService {
           this.logger.error(`  3. sudo mv k6 ${this.k6BinaryPath}`);
         }
       }
-    });
-
-    childProcess.on('error', (error) => {
+    } catch (error) {
       this.logger.warn(
         `Could not verify web-dashboard extension: ${getErrorMessage(error)}`,
       );
-    });
+    }
   }
 
   /**
@@ -265,7 +248,22 @@ export class K6ExecutionService {
 
       // 2. Write script
       const scriptPath = path.join(runDir, 'test.js');
-      await fs.writeFile(scriptPath, script);
+
+      // Validate script path before writing
+      const scriptPathValidation = validatePath(scriptPath, {
+        allowAbsolute: true,
+        allowRelative: false,
+        allowedExtensions: ['.js'],
+        baseDirectory: runDir,
+      });
+
+      if (!scriptPathValidation.valid) {
+        throw new Error(
+          `Invalid script path: ${scriptPathValidation.error}`,
+        );
+      }
+
+      await fs.writeFile(scriptPathValidation.sanitized!, script);
 
       // 3. Build k6 command with web dashboard for HTML report generation
       const reportDir = path.join(runDir, 'report');
@@ -759,7 +757,7 @@ export class K6ExecutionService {
   }
 
   /**
-   * Execute k6 binary and stream stdout
+   * Execute k6 binary using execa (safer than spawn)
    */
   private async executeK6Binary(
     args: string[],
@@ -776,174 +774,155 @@ export class K6ExecutionService {
     error: string | null;
     timedOut: boolean;
   }> {
-    return new Promise((resolve, reject) => {
-      this.logger.log(`[${runId}] Executing: k6 ${args.join(' ')}`);
-      this.logger.debug(
-        `[${runId}] k6 environment variables: ${JSON.stringify(overrideEnv, null, 2)}`,
-      );
+    this.logger.log(`[${runId}] Executing: k6 ${args.join(' ')}`);
+    this.logger.debug(
+      `[${runId}] k6 environment variables: ${JSON.stringify(overrideEnv, null, 2)}`,
+    );
 
-      const childProcess = spawn(this.k6BinaryPath, args, {
+    // Validate k6 binary path
+    const pathValidation = validatePath(this.k6BinaryPath, {
+      allowAbsolute: true,
+      allowRelative: false,
+    });
+
+    if (!pathValidation.valid) {
+      const errorMsg = pathValidation.error || 'Unknown validation error';
+      this.logger.error(
+        `[${runId}] Invalid k6 binary path: ${errorMsg}`,
+      );
+      return {
+        exitCode: 1,
+        stdout: '',
+        stderr: `Invalid k6 binary path: ${errorMsg}`,
+        error: errorMsg,
+        timedOut: false,
+      };
+    }
+
+    // Validate all arguments
+    for (const arg of args) {
+      const argValidation = validateCommandArgument(arg);
+      if (!argValidation.valid) {
+        const errorMsg = argValidation.error || 'Unknown validation error';
+        this.logger.error(
+          `[${runId}] Invalid k6 argument: ${errorMsg}`,
+        );
+        return {
+          exitCode: 1,
+          stdout: '',
+          stderr: `Invalid argument: ${errorMsg}`,
+          error: errorMsg,
+          timedOut: false,
+        };
+      }
+    }
+
+    try {
+      // Use execa for safer execution
+      const subprocess = execa(pathValidation.sanitized!, args, {
         cwd,
         env: {
           ...process.env,
           ...overrideEnv,
           K6_NO_COLOR: '1', // Disable ANSI colors
         },
+        timeout: timeoutMs,
+        reject: false, // Don't throw on non-zero exit
+        all: true, // Combine stdout and stderr
+        buffer: true, // Buffer output
       });
 
-      let stdout = '';
-      let stderr = '';
-      let timedOut = false;
-      let timeoutHandle: NodeJS.Timeout | undefined;
-      let forceKillHandle: NodeJS.Timeout | undefined;
-      let childClosed = false;
-
-      if (childProcess.pid) {
-        // Update placeholder entry with actual process info
+      // Track the process
+      if (subprocess.pid) {
         const existing = this.activeK6Runs.get(uniqueRunId);
         this.activeK6Runs.set(uniqueRunId, {
-          pid: childProcess.pid,
+          pid: subprocess.pid,
           startTime: existing?.startTime ?? Date.now(),
           runId,
           dashboardPort,
         });
       }
 
-      const gracePeriodMs = 10_000;
-      if (typeof timeoutMs === 'number' && timeoutMs > 0) {
-        timeoutHandle = setTimeout(() => {
-          if (childClosed) {
-            return;
-          }
-
-          timedOut = true;
-          this.logger.warn(
-            `[${runId}] k6 execution exceeded timeout of ${timeoutMs}ms. Sending SIGTERM.`,
-          );
-          try {
-            const signalled = childProcess.kill('SIGTERM');
-            if (!signalled) {
+      // Stream stdout to Redis for real-time console
+      if (subprocess.stdout) {
+        subprocess.stdout.on('data', (data: Buffer) => {
+          const chunk = data.toString();
+          // Publish to Redis for SSE
+          this.redisService
+            .getClient()
+            .publish(`k6:run:${runId}:console`, chunk)
+            .catch((err) => {
               this.logger.warn(
-                `[${runId}] Failed to send SIGTERM to k6 process (process may have already exited).`,
+                `Failed to publish console: ${getErrorMessage(err)}`,
               );
-            }
-          } catch (killError) {
-            this.logger.error(
-              `[${runId}] Error while sending SIGTERM to k6 process: ${getErrorMessage(killError)}`,
-            );
-          }
-
-          forceKillHandle = setTimeout(() => {
-            if (childClosed) {
-              return;
-            }
-
-            this.logger.warn(
-              `[${runId}] k6 process still running after timeout grace period. Forcing SIGKILL.`,
-            );
-            try {
-              childProcess.kill('SIGKILL');
-            } catch (killError) {
-              this.logger.error(
-                `[${runId}] Error while sending SIGKILL to k6 process: ${getErrorMessage(killError)}`,
-              );
-            }
-          }, gracePeriodMs);
-        }, timeoutMs);
+            });
+        });
       }
 
-      // Stream stdout to Redis (for real-time console)
-      childProcess.stdout.on('data', (data: Buffer) => {
-        const chunk = data.toString();
-        stdout += chunk;
+      // Wait for the process to complete
+      const result = await subprocess;
 
-        // Publish to Redis for SSE
-        this.redisService
-          .getClient()
-          .publish(`k6:run:${runId}:console`, chunk)
-          .catch((err) => {
-            this.logger.warn(
-              `Failed to publish console: ${getErrorMessage(err)}`,
-            );
-          });
-      });
+      // Clean up active runs tracking
+      this.activeK6Runs.delete(uniqueRunId);
 
-      childProcess.stderr.on('data', (data: Buffer) => {
-        const chunk = data.toString();
-        stderr += chunk;
-      });
+      const timedOut = result.timedOut || false;
+      const exitCode = timedOut ? 124 : result.exitCode || 0;
+      const stdout = result.stdout || '';
+      const stderr = result.stderr || '';
 
-      childProcess.on('close', (code, signal) => {
-        childClosed = true;
-        if (timeoutHandle) {
-          clearTimeout(timeoutHandle);
-        }
-        if (forceKillHandle) {
-          clearTimeout(forceKillHandle);
-        }
+      const exitDescription = timedOut
+        ? `terminated after exceeding timeout (${timeoutMs ?? 'unknown'}ms)`
+        : `exited with code: ${exitCode}`;
 
-        const wasSignaled = code === null;
-        const exitCode = timedOut ? 124 : typeof code === 'number' ? code : 128;
-        const exitDescription = timedOut
-          ? `terminated after exceeding timeout (${timeoutMs ?? 'unknown'}ms)`
-          : wasSignaled
-            ? `terminated by signal ${signal ?? 'unknown'}`
-            : `exited with code: ${exitCode}`;
+      if (timedOut || exitCode !== 0) {
+        this.logger.warn(`[${runId}] k6 ${exitDescription}`);
+      } else {
+        this.logger.log(`[${runId}] k6 ${exitDescription}`);
+      }
 
-        if (timedOut || wasSignaled) {
-          this.logger.warn(`[${runId}] k6 ${exitDescription}`);
+      // Log stderr if present
+      if (stderr) {
+        if (exitCode !== 0) {
+          this.logger.error(`[${runId}] k6 stderr output:\n${stderr}`);
         } else {
-          this.logger.log(`[${runId}] k6 ${exitDescription}`);
+          this.logger.debug(`[${runId}] k6 stderr output:\n${stderr}`);
         }
+      }
 
-        // Log stderr if present
-        if (stderr) {
-          if (exitCode !== 0) {
-            this.logger.error(`[${runId}] k6 stderr output:\n${stderr}`);
-          } else {
-            this.logger.debug(`[${runId}] k6 stderr output:\n${stderr}`);
-          }
-        }
+      // Log stdout for debugging (first 2000 chars)
+      if (stdout) {
+        const truncatedStdout =
+          stdout.length > 2000
+            ? `${stdout.substring(0, 2000)}\n... (truncated)`
+            : stdout;
+        this.logger.debug(`[${runId}] k6 stdout:\n${truncatedStdout}`);
+      }
 
-        // Log stdout for debugging (first 2000 chars)
-        if (stdout) {
-          const truncatedStdout =
-            stdout.length > 2000
-              ? `${stdout.substring(0, 2000)}\n... (truncated)`
-              : stdout;
-          this.logger.debug(`[${runId}] k6 stdout:\n${truncatedStdout}`);
-        }
+      return {
+        exitCode,
+        stdout,
+        stderr,
+        error: timedOut
+          ? `k6 execution timed out after ${timeoutMs}ms`
+          : exitCode !== 0
+            ? `k6 exited with code ${exitCode}`
+            : null,
+        timedOut,
+      };
+    } catch (error) {
+      this.activeK6Runs.delete(uniqueRunId);
+      this.logger.error(
+        `[${runId}] k6 process error: ${getErrorMessage(error)}`,
+      );
 
-        this.activeK6Runs.delete(uniqueRunId);
-
-        resolve({
-          exitCode,
-          stdout,
-          stderr,
-          error: timedOut
-            ? `k6 execution timed out after ${timeoutMs}ms`
-            : wasSignaled
-              ? `k6 terminated by signal ${signal ?? 'unknown'}`
-              : exitCode !== 0
-                ? `k6 exited with code ${exitCode}`
-                : null,
-          timedOut,
-        });
-      });
-
-      childProcess.on('error', (error) => {
-        if (timeoutHandle) {
-          clearTimeout(timeoutHandle);
-        }
-        if (forceKillHandle) {
-          clearTimeout(forceKillHandle);
-        }
-        this.logger.error(
-          `[${runId}] k6 process error: ${getErrorMessage(error)}`,
-        );
-        reject(error);
-      });
-    });
+      return {
+        exitCode: 1,
+        stdout: '',
+        stderr: getErrorMessage(error),
+        error: getErrorMessage(error),
+        timedOut: false,
+      };
+    }
   }
 
   /**
