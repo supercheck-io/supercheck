@@ -9,6 +9,7 @@ import { S3Service } from './s3.service';
 import { DbService } from './db.service';
 import { RedisService } from './redis.service';
 import { ReportUploadService } from '../../common/services/report-upload.service';
+import { ContainerExecutorService } from '../../common/security/container-executor.service';
 import { createSpan, createSpanWithContext } from '../../observability/trace-helpers';
 import { emitTelemetryLog } from '../../observability/log-helpers';
 import { SeverityNumber } from '@opentelemetry/api-logs';
@@ -135,6 +136,7 @@ export class ExecutionService implements OnModuleDestroy {
     private dbService: DbService,
     private redisService: RedisService,
     private reportUploadService: ReportUploadService,
+    private containerExecutorService: ContainerExecutorService,
   ) {
     // Set timeouts: configurable via env vars with sensible defaults
     this.testExecutionTimeoutMs = this.configService.get<number>(
@@ -1187,13 +1189,16 @@ export class ExecutionService implements OnModuleDestroy {
       args.push(`--output=${outputDir}`);
 
       // Execute the command with environment variables, ensuring correct CWD
-      const execResult = await this._executeCommand(command, args, {
+      // Use executeCommandSafely for defense-in-depth security (container isolation when enabled)
+      const execResult = await this.executeCommandSafely(command, args, {
         env: { ...process.env, ...envVars },
         cwd: serviceRoot, // Run playwright from service root
         shell: isWindows, // Use shell on Windows for proper command execution
         timeout: isJob
           ? this.jobExecutionTimeoutMs
           : this.testExecutionTimeoutMs, // Apply timeout
+        scriptPath: targetPath, // Pass script path for container execution
+        workingDir: runDir, // Working directory for container
       });
 
       // Improve error reporting
@@ -1414,7 +1419,81 @@ export class ExecutionService implements OnModuleDestroy {
   }
 
   /**
+   * Execute a command safely - uses container isolation if enabled, falls back to direct execution
+   * This provides defense-in-depth security for user-supplied scripts
+   */
+  private async executeCommandSafely(
+    command: string,
+    args: string[],
+    options: {
+      env?: Record<string, string | undefined>;
+      cwd?: string;
+      shell?: boolean;
+      timeout?: number;
+      scriptPath?: string; // Path to the script being executed (for container mounting)
+      workingDir?: string; // Working directory inside container
+    } = {},
+  ): Promise<{
+    success: boolean;
+    stdout: string;
+    stderr: string;
+    executionTimeMs?: number;
+  }> {
+    const enableContainer = this.configService.get<boolean>(
+      'ENABLE_CONTAINER_EXECUTION',
+      false,
+    );
+
+    // If container execution is enabled and we have a script path, try container execution
+    if (enableContainer && options.scriptPath) {
+      this.logger.debug(
+        `[Container] Attempting containerized execution for: ${command} ${args.join(' ')}`,
+      );
+
+      try {
+        const containerResult =
+          await this.containerExecutorService.executeInContainer(
+            options.scriptPath,
+            [command, ...args],
+            {
+              timeoutMs: options.timeout,
+              env: options.env as Record<string, string>,
+              workingDir: options.workingDir || '/workspace',
+              memoryLimitMb: 1024, // 1GB
+              cpuLimit: 1.0, // 100% of one CPU
+              networkMode: 'bridge', // Allow network for Playwright
+              autoRemove: true,
+            },
+          );
+
+        return {
+          success: containerResult.success,
+          stdout: containerResult.stdout,
+          stderr: containerResult.stderr,
+          executionTimeMs: containerResult.duration,
+        };
+      } catch (containerError) {
+        this.logger.warn(
+          `[Container] Container execution failed, falling back to direct execution: ${
+            containerError instanceof Error
+              ? containerError.message
+              : String(containerError)
+          }`,
+        );
+        // Fall through to direct execution
+      }
+    }
+
+    // Fall back to direct execution (current implementation)
+    this.logger.debug(
+      `[Direct] Executing directly: ${command} ${args.join(' ')}`,
+    );
+    return this._executeCommand(command, args, options);
+  }
+
+  /**
    * Helper method to execute a command with proper error handling and timeout
+   * @private Internal use only - prefer executeCommandSafely for user-supplied scripts
    */
   private async _executeCommand(
     command: string,
