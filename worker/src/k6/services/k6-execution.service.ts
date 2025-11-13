@@ -58,6 +58,7 @@ export interface K6ExecutionResult {
 export class K6ExecutionService {
   private readonly logger = new Logger(K6ExecutionService.name);
   private readonly k6BinaryPath: string;
+  private readonly k6DockerImage: string;
   private readonly baseLocalRunDir: string;
   private readonly maxConcurrentK6Runs: number;
   private readonly testExecutionTimeoutMs: number;
@@ -92,6 +93,12 @@ export class K6ExecutionService {
         process.env.NODE_ENV === 'production' ? '/usr/local/bin/k6' : 'k6';
     }
 
+    // K6 Docker image for container execution
+    this.k6DockerImage = this.configService.get<string>(
+      'K6_DOCKER_IMAGE',
+      'grafana/k6:latest',
+    );
+
     this.baseLocalRunDir = path.join(process.cwd(), 'k6-reports');
     this.maxConcurrentK6Runs = this.configService.get<number>(
       'K6_MAX_CONCURRENCY',
@@ -99,6 +106,7 @@ export class K6ExecutionService {
     );
 
     this.logger.log(`K6 binary path: ${this.k6BinaryPath}`);
+    this.logger.log(`K6 Docker image: ${this.k6DockerImage}`);
     this.logger.log(`Max concurrent k6 runs: ${this.maxConcurrentK6Runs}`);
     this.logger.log(`K6 reports directory: ${this.baseLocalRunDir}`);
     this.testExecutionTimeoutMs = this.configService.get<number>(
@@ -846,6 +854,7 @@ export class K6ExecutionService {
           cpuLimit: 2.0, // 200% of one CPU
           networkMode: 'bridge', // k6 needs network access
           autoRemove: true,
+          image: this.k6DockerImage, // Use K6-specific Docker image
         },
       );
 
