@@ -580,8 +580,13 @@ export class K6ExecutionService {
       const summaryUrl = `${baseUrl}/summary.json`;
       const consoleUrl = `${baseUrl}/console.log`;
 
-      // 7. Determine pass/fail (k6 exit code AND check if any checks failed)
-      const thresholdsPassed = !timedOut && execResult.exitCode === 0;
+      // 7. Determine pass/fail by checking actual threshold results in summary.json
+      // K6's exit code doesn't always accurately reflect threshold status
+      // Check each metric's thresholds to see if any failed (ok: false)
+      const thresholdsPassed = this.checkThresholdsFromSummary(
+        summary,
+        timedOut,
+      );
 
       // Check if any validation checks failed
       const checksFailed = timedOut
@@ -926,6 +931,56 @@ export class K6ExecutionService {
         timedOut: false,
       };
     }
+  }
+
+  /**
+   * Check if thresholds passed by examining the summary.json structure
+   * K6 exit code doesn't always reflect threshold status accurately
+   * @param summary The K6 summary object from summary.json
+   * @param timedOut Whether the execution timed out
+   * @returns true if all thresholds passed or no thresholds defined, false otherwise
+   */
+  private checkThresholdsFromSummary(
+    summary: any,
+    timedOut: boolean,
+  ): boolean {
+    // If timed out, thresholds are considered failed
+    if (timedOut) {
+      return false;
+    }
+
+    // If no summary or metrics, assume pass (no thresholds defined)
+    if (!summary || !summary.metrics) {
+      return true;
+    }
+
+    // Check each metric's thresholds for failures
+    // Each threshold has an "ok" property: true=passed, false=failed
+    for (const [metricName, metric] of Object.entries(summary.metrics)) {
+      if (!metric || typeof metric !== 'object') {
+        continue;
+      }
+
+      const metricData = metric as any;
+      const thresholds = metricData.thresholds;
+
+      // If this metric has thresholds, check if any failed
+      if (thresholds && typeof thresholds === 'object') {
+        for (const [thresholdName, threshold] of Object.entries(thresholds)) {
+          const thresholdData = threshold as any;
+          // If ok is false, this threshold failed
+          if (thresholdData && thresholdData.ok === false) {
+            this.logger.warn(
+              `Threshold failed: ${metricName} - ${thresholdName}`,
+            );
+            return false;
+          }
+        }
+      }
+    }
+
+    // All thresholds passed (or no thresholds defined)
+    return true;
   }
 
   /**
