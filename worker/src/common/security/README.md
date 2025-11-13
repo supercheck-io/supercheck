@@ -44,10 +44,10 @@ The module implements multiple security layers:
    - Resource constraints
    - Network isolation options
 
-3. **Graceful Fallback**
-   - Falls back to direct execution if Docker unavailable
-   - Maintains security with `execa` (no shell interpolation)
-   - Preserves all validation checks
+3. **Mandatory Container Execution**
+   - Container execution is required for all Playwright and K6 tests
+   - No fallback to direct execution (removed for security)
+   - Clear error messages when Docker is unavailable
 
 ## Usage
 
@@ -287,18 +287,15 @@ sudo usermod -aG docker $USER
 # Then logout and login again
 ```
 
-### Fallback to direct execution
+### Container Execution is Mandatory
 
-Container execution falls back to direct execution when:
-- `ENABLE_CONTAINER_EXECUTION` is `false` (default)
+Container execution is now mandatory for all Playwright and K6 tests. Execution will fail with a clear error message if:
+- `ENABLE_CONTAINER_EXECUTION` is `false`
 - Docker is not installed or not running
 - Docker permissions are insufficient
-- Container execution fails for any reason
+- Required Docker image is not available
 
-The fallback still maintains security through:
-- `execa` usage (no shell interpolation)
-- Path validation
-- Argument sanitization
+**Action Required**: Ensure Docker is properly installed and `ENABLE_CONTAINER_EXECUTION=true` is set in your environment configuration.
 
 ### Performance issues
 
