@@ -191,9 +191,10 @@ export class ContainerExecutorService {
         // Mount script directory as read-write (containers need to write output files)
         '-v',
         `${path.dirname(scriptPath)}:${workingDir}`,
-        // Mount /tmp as tmpfs for writable temp files (needed for npm cache, etc.)
+        // Mount /tmp as tmpfs for writable temp files (needed for npm cache and npx binaries)
+        // Note: Removed noexec to allow npx to install and execute playwright from /tmp
         '--tmpfs',
-        '/tmp:rw,noexec,nosuid,size=512m',
+        '/tmp:rw,nosuid,size=512m',
       ];
 
       // Add environment variables
