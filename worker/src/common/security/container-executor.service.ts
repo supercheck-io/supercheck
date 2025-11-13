@@ -188,9 +188,9 @@ export class ContainerExecutorService {
         // Working directory
         '-w',
         workingDir,
-        // Mount script directory as read-only
+        // Mount script directory as read-write (containers need to write output files)
         '-v',
-        `${path.dirname(scriptPath)}:${workingDir}:ro`,
+        `${path.dirname(scriptPath)}:${workingDir}`,
       ];
 
       // Add environment variables
