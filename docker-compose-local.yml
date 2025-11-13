@@ -176,7 +176,8 @@ services:
           cpus: "0.5"
           memory: 1G
 
-  # Worker (NestJS Runner)
+  # Worker (NestJS Runner) - Container-based test execution
+  # Tests run in isolated Docker containers (Playwright/K6), not inside worker
   worker:
     build:
       context: ./worker
@@ -186,12 +187,12 @@ services:
     environment:
       <<: *common-env
     volumes:
+      # Mount Docker socket for container-based execution
+      # Worker spawns isolated containers for Playwright and K6 tests
+      - /var/run/docker.sock:/var/run/docker.sock
       - worker-playwright-reports:/app/playwright-reports
+      - worker-k6-reports:/app/k6-reports
       - worker-reports:/app/report
-      - type: tmpfs
-        target: /dev/shm
-        tmpfs:
-          size: 8589934592 # 8GB shared memory
     depends_on:
       postgres:
         condition: service_healthy
@@ -220,27 +221,17 @@ services:
       replicas: 1
       resources:
         limits:
-          cpus: "1.5" # Keep local worker responsive without starving the host machine
-          memory: 3G # Enough for two Playwright sessions with tracing in dev
+          cpus: "1.0"
+          memory: 1G # Reduced - browsers run in separate containers now
         reservations:
-          cpus: "0.75"
-          memory: 2048M
-    sysctls:
-      - net.core.somaxconn=4096
-    ulimits:
-      nproc: 65535
-      nofile:
-        soft: 1048576
-        hard: 1048576
-      memlock:
-        soft: -1
-        hard: -1
+          cpus: "0.5"
+          memory: 512M
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    cap_add:
-      - SYS_ADMIN
+    # Note: SYS_ADMIN capability removed - not needed for container execution
+    # Browsers run in separate containers with their own capabilities
 
   # PostgreSQL Database
   postgres:
@@ -436,6 +427,8 @@ volumes:
   minio-data:
     driver: local
   worker-playwright-reports:
+    driver: local
+  worker-k6-reports:
     driver: local
   worker-reports:
     driver: local
