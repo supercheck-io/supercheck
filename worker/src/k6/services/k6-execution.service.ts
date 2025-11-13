@@ -282,15 +282,17 @@ export class K6ExecutionService {
       // The web-dashboard output generates the interactive HTML report
       // K6_WEB_DASHBOARD_EXPORT writes it directly to a file without needing the web server
       // Also output JSON metrics for granular observability spans
+      // Build args with container paths
+      // Files are mounted at /workspace, so use paths relative to that
       const args = [
         'run',
         '--summary-export',
-        summaryPath,
+        `/workspace/${path.basename(summaryPath)}`,
         '--out',
         'web-dashboard',
         '--out',
-        `json=${jsonOutputPath}`, // JSON output for detailed network metrics
-        scriptPath,
+        `json=/workspace/${path.basename(jsonOutputPath)}`, // JSON output for detailed network metrics
+        `/workspace/${path.basename(scriptPath)}`,
       ];
 
       // Configure web dashboard environment variables for robust HTML export
@@ -314,7 +316,7 @@ export class K6ExecutionService {
 
         const k6EnvOverrides: Record<string, string> = {
           K6_WEB_DASHBOARD: 'true',
-          K6_WEB_DASHBOARD_EXPORT: htmlReportPath, // Write HTML report to this path
+          K6_WEB_DASHBOARD_EXPORT: `/workspace/report/${path.basename(htmlReportPath)}`, // Write HTML report using container path
           K6_WEB_DASHBOARD_PORT: dashboardPort.toString(), // Use unique port
           K6_WEB_DASHBOARD_ADDR: this.dashboardBindAddress,
           K6_NO_COLOR: '1', // Disable ANSI colors in output
