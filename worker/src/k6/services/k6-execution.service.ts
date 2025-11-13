@@ -9,6 +9,7 @@ import { DbService } from '../../execution/services/db.service';
 import { RedisService } from '../../execution/services/redis.service';
 import * as net from 'net';
 import { validatePath, validateCommandArgument } from '../../common/security/path-validator';
+import { ContainerExecutorService } from '../../common/security/container-executor.service';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -77,6 +78,7 @@ export class K6ExecutionService {
     private s3Service: S3Service,
     private dbService: DbService,
     private redisService: RedisService,
+    private containerExecutorService: ContainerExecutorService,
   ) {
     // Check for k6 binary in multiple common locations
     const configuredPath = this.configService.get<string>('K6_BIN_PATH', '');
@@ -757,7 +759,8 @@ export class K6ExecutionService {
   }
 
   /**
-   * Execute k6 binary using execa (safer than spawn)
+   * Execute k6 binary in secure container
+   * IMPORTANT: Container execution is mandatory for security
    */
   private async executeK6Binary(
     args: string[],
@@ -774,10 +777,30 @@ export class K6ExecutionService {
     error: string | null;
     timedOut: boolean;
   }> {
-    this.logger.log(`[${runId}] Executing: k6 ${args.join(' ')}`);
+    const startTime = Date.now();
+    this.logger.log(`[${runId}] Executing in container: k6 ${args.join(' ')}`);
     this.logger.debug(
       `[${runId}] k6 environment variables: ${JSON.stringify(overrideEnv, null, 2)}`,
     );
+
+    // Check if container execution is enabled
+    const enableContainer = this.configService.get<boolean>(
+      'ENABLE_CONTAINER_EXECUTION',
+      false,
+    );
+
+    if (!enableContainer) {
+      this.logger.error(
+        `[${runId}] Container execution is disabled but required for security. Set ENABLE_CONTAINER_EXECUTION=true`,
+      );
+      return {
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Container execution is required but ENABLE_CONTAINER_EXECUTION is not set. Please enable container execution in your environment configuration.',
+        error: 'Container execution is required but not enabled',
+        timedOut: false,
+      };
+    }
 
     // Validate k6 binary path
     const pathValidation = validatePath(this.k6BinaryPath, {
@@ -818,57 +841,70 @@ export class K6ExecutionService {
     }
 
     try {
-      // Use execa for safer execution
-      const subprocess = execa(pathValidation.sanitized!, args, {
-        cwd,
-        env: {
-          ...process.env,
-          ...overrideEnv,
-          K6_NO_COLOR: '1', // Disable ANSI colors
-        },
-        timeout: timeoutMs,
-        reject: false, // Don't throw on non-zero exit
-        all: true, // Combine stdout and stderr
-        buffer: true, // Buffer output
+      // Find the script file from args (first arg after "run" or first .js file)
+      let scriptFile = 'script.js'; // default
+      const runIndex = args.indexOf('run');
+      if (runIndex !== -1 && args.length > runIndex + 1) {
+        // Next arg after "run" is usually the script
+        const candidate = args[runIndex + 1];
+        if (!candidate.startsWith('-')) {
+          scriptFile = path.basename(candidate);
+        }
+      }
+
+      // Create a marker file to indicate start of execution
+      const scriptPath = path.join(cwd, scriptFile);
+
+      // Track the run start
+      this.activeK6Runs.set(uniqueRunId, {
+        pid: 0, // Container execution doesn't give us direct PID
+        startTime: Date.now(),
+        runId,
+        dashboardPort,
       });
 
-      // Track the process
-      if (subprocess.pid) {
-        const existing = this.activeK6Runs.get(uniqueRunId);
-        this.activeK6Runs.set(uniqueRunId, {
-          pid: subprocess.pid,
-          startTime: existing?.startTime ?? Date.now(),
-          runId,
-          dashboardPort,
-        });
-      }
+      this.logger.debug(
+        `[${runId}] Using container execution with script: ${scriptPath}`,
+      );
 
-      // Stream stdout to Redis for real-time console
-      if (subprocess.stdout) {
-        subprocess.stdout.on('data', (data: Buffer) => {
-          const chunk = data.toString();
-          // Publish to Redis for SSE
-          this.redisService
-            .getClient()
-            .publish(`k6:run:${runId}:console`, chunk)
-            .catch((err) => {
-              this.logger.warn(
-                `Failed to publish console: ${getErrorMessage(err)}`,
-              );
-            });
-        });
-      }
-
-      // Wait for the process to complete
-      const result = await subprocess;
+      // Execute in container
+      const containerResult = await this.containerExecutorService.executeInContainer(
+        scriptPath,
+        ['k6', ...args],
+        {
+          timeoutMs: timeoutMs || this.testExecutionTimeoutMs,
+          env: {
+            ...overrideEnv,
+            K6_NO_COLOR: '1', // Disable ANSI colors
+          },
+          workingDir: '/workspace',
+          memoryLimitMb: 2048, // 2GB for k6 (may need more for large tests)
+          cpuLimit: 2.0, // 200% of one CPU
+          networkMode: 'bridge', // k6 needs network access
+          autoRemove: true,
+        },
+      );
 
       // Clean up active runs tracking
       this.activeK6Runs.delete(uniqueRunId);
 
-      const timedOut = result.timedOut || false;
-      const exitCode = timedOut ? 124 : result.exitCode || 0;
-      const stdout = result.stdout || '';
-      const stderr = result.stderr || '';
+      const timedOut = containerResult.timedOut;
+      const exitCode = containerResult.exitCode;
+      const stdout = containerResult.stdout;
+      const stderr = containerResult.stderr;
+
+      // Publish final output to Redis (since we can't stream from container)
+      if (stdout) {
+        try {
+          await this.redisService
+            .getClient()
+            .publish(`k6:run:${runId}:console`, stdout);
+        } catch (err) {
+          this.logger.warn(
+            `[${runId}] Failed to publish console output: ${getErrorMessage(err)}`,
+          );
+        }
+      }
 
       const exitDescription = timedOut
         ? `terminated after exceeding timeout (${timeoutMs ?? 'unknown'}ms)`
@@ -902,17 +938,13 @@ export class K6ExecutionService {
         exitCode,
         stdout,
         stderr,
-        error: timedOut
-          ? `k6 execution timed out after ${timeoutMs}ms`
-          : exitCode !== 0
-            ? `k6 exited with code ${exitCode}`
-            : null,
+        error: containerResult.error || null,
         timedOut,
       };
     } catch (error) {
       this.activeK6Runs.delete(uniqueRunId);
       this.logger.error(
-        `[${runId}] k6 process error: ${getErrorMessage(error)}`,
+        `[${runId}] k6 container execution error: ${getErrorMessage(error)}`,
       );
 
       return {
