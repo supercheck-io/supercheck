@@ -1156,37 +1156,22 @@ export class ExecutionService implements OnModuleDestroy {
       let command: string;
       let args: string[];
 
-      if (isWindows) {
-        // On Windows, use npx to execute playwright more reliably
-        command = 'npx';
-        args = [
-          'playwright',
-          'test',
-          `"${targetPath}"`, // Quote paths on Windows
-          `--config="${playwrightConfigPath}"`,
-          // Don't override reporters - let config file handle them with proper options
-        ];
-      } else {
-        // On Unix-like systems, use node directly with playwright CLI
-        const playwrightCliPath = path.join(
-          serviceRoot,
-          'node_modules',
-          '.bin',
-          'playwright',
-        );
-        command = 'node';
-        args = [
-          playwrightCliPath,
-          'test',
-          targetPath,
-          `--config=${playwrightConfigPath}`,
-          // Don't override reporters - let config file handle them with proper options
-        ];
-      }
+      // Use npx playwright for container compatibility
+      // The Playwright Docker image has playwright pre-installed
+      // We mount the worker root at /workspace, so paths are relative to that
+      const relativeRunDir = path.relative(serviceRoot, runDir);
+      command = 'npx';
+      args = [
+        'playwright',
+        'test',
+        `/workspace/${relativeRunDir}`, // Tests directory relative to worker root
+        '--config=/workspace/playwright.config.js', // Config at worker root
+        // Don't override reporters - let config file handle them with proper options
+      ];
 
       // Add unique output dir for this execution - using consistent naming across job and test
-      const outputDir = path.join(runDir, `report-${executionId}`);
-      args.push(`--output=${outputDir}`);
+      // Use container path for output directory
+      args.push(`--output=/workspace/${relativeRunDir}/report-${executionId}`);
 
       // Execute the command with environment variables, ensuring correct CWD
       // Use executeCommandSafely for defense-in-depth security (container isolation when enabled)
@@ -1197,8 +1182,8 @@ export class ExecutionService implements OnModuleDestroy {
         timeout: isJob
           ? this.jobExecutionTimeoutMs
           : this.testExecutionTimeoutMs, // Apply timeout
-        scriptPath: targetPath, // Pass script path for container execution
-        workingDir: runDir, // Working directory for container
+        scriptPath: serviceRoot, // Mount worker root directory at /workspace in container
+        // workingDir defaults to /workspace in container
       });
 
       // Improve error reporting
