@@ -236,6 +236,17 @@ export class ContainerExecutorService {
         await this.forceRemoveContainer(containerName);
       }
 
+      // Log detailed error information for debugging
+      if (result.exitCode !== 0 && !timedOut) {
+        this.logger.error(`Container ${containerName} exited with code ${result.exitCode}`);
+        if (result.stdout) {
+          this.logger.error(`Container stdout: ${result.stdout.substring(0, 500)}`);
+        }
+        if (result.stderr) {
+          this.logger.error(`Container stderr: ${result.stderr.substring(0, 500)}`);
+        }
+      }
+
       return {
         success: result.exitCode === 0 && !timedOut,
         exitCode: result.exitCode || (timedOut ? 124 : 1),
