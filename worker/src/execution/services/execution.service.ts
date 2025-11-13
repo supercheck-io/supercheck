@@ -1178,8 +1178,10 @@ export class ExecutionService implements OnModuleDestroy {
       // Execute the command with environment variables, ensuring correct CWD
       // Use executeCommandSafely for defense-in-depth security (container isolation when enabled)
       // Set PLAYWRIGHT_BROWSERS_PATH to use pre-installed browsers in the Docker image
+      // Forward worker process environment variables so tests have access to deployment-level secrets
       const execResult = await this.executeCommandSafely(command, args, {
         env: {
+          ...process.env,
           ...envVars,
           PLAYWRIGHT_BROWSERS_PATH: '/ms-playwright', // Use pre-installed browsers in Docker image
         },

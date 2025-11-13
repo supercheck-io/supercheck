@@ -199,6 +199,9 @@ export class ContainerExecutorService {
         // Note: Removed noexec to allow npx to install and execute playwright from /tmp
         '--tmpfs',
         '/tmp:rw,nosuid,size=512m',
+        // Allocate larger shared memory for Playwright/Chromium browsers
+        // Default 64MB is insufficient and causes crashes with multiple tabs/video recording
+        '--shm-size=512m',
       ];
 
       // Add environment variables
