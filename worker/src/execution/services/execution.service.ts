@@ -1156,12 +1156,13 @@ export class ExecutionService implements OnModuleDestroy {
       let command: string;
       let args: string[];
 
-      // Use playwright directly (pre-installed in Docker image)
-      // The Playwright Docker image has playwright in PATH
+      // Use npx playwright for container execution
+      // The Playwright Docker image has playwright installed via npm
       // We mount the worker root at /workspace, so paths are relative to that
       const relativeRunDir = path.relative(serviceRoot, runDir);
-      command = 'playwright';
+      command = 'npx';
       args = [
+        'playwright',
         'test',
         `/workspace/${relativeRunDir}`, // Tests directory relative to worker root
         '--config=/workspace/playwright.config.js', // Config at worker root
@@ -1173,11 +1174,14 @@ export class ExecutionService implements OnModuleDestroy {
       args.push(`--output=/workspace/${relativeRunDir}/report-${executionId}`);
 
       // Prepare environment variables for container execution
-      // Override HOME to prevent npm/node from trying to access host paths
+      // Set HOME and npm cache to /tmp to prevent npm from accessing host paths
+      // Docker containers have their own PATH from the image, so we only need to override
+      // specific vars that might cause issues (HOME, npm_config_cache)
       const containerEnv = {
         ...envVars,
         HOME: '/tmp', // Use /tmp for npm cache and config in container
-        npm_config_cache: '/tmp/.npm', // Explicit npm cache location
+        npm_config_cache: '/tmp/.npm', // Explicit npm cache location in writable directory
+        npm_config_update_notifier: 'false', // Disable update notifier
       };
 
       // Execute the command with environment variables, ensuring correct CWD
