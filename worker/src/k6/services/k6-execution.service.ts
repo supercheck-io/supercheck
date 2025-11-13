@@ -783,25 +783,6 @@ export class K6ExecutionService {
       `[${runId}] k6 environment variables: ${JSON.stringify(overrideEnv, null, 2)}`,
     );
 
-    // Check if container execution is enabled
-    const enableContainer = this.configService.get<boolean>(
-      'ENABLE_CONTAINER_EXECUTION',
-      false,
-    );
-
-    if (!enableContainer) {
-      this.logger.error(
-        `[${runId}] Container execution is disabled but required for security. Set ENABLE_CONTAINER_EXECUTION=true`,
-      );
-      return {
-        exitCode: 1,
-        stdout: '',
-        stderr: 'Container execution is required but ENABLE_CONTAINER_EXECUTION is not set. Please enable container execution in your environment configuration.',
-        error: 'Container execution is required but not enabled',
-        timedOut: false,
-      };
-    }
-
     // Validate k6 binary path
     const pathValidation = validatePath(this.k6BinaryPath, {
       allowAbsolute: true,
