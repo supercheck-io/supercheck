@@ -366,6 +366,7 @@ export class K6ExecutionService {
       }
 
       const timedOut = execResult.timedOut;
+      const exitCode = execResult.exitCode;
       if (timedOut) {
         this.logger.warn(
           `[${runId}] k6 execution exceeded timeout of ${executionTimeoutMs}ms. Attempting graceful cleanup.`,
@@ -583,9 +584,11 @@ export class K6ExecutionService {
       // 7. Determine pass/fail by checking actual threshold results in summary.json
       // K6's exit code doesn't always accurately reflect threshold status
       // Check each metric's thresholds to see if any failed (ok: false)
+      // Fall back to exit code if summary is missing (indicates k6 crash)
       const thresholdsPassed = this.checkThresholdsFromSummary(
         summary,
         timedOut,
+        exitCode,
       );
 
       // Check if any validation checks failed
@@ -938,20 +941,24 @@ export class K6ExecutionService {
    * K6 exit code doesn't always reflect threshold status accurately
    * @param summary The K6 summary object from summary.json
    * @param timedOut Whether the execution timed out
+   * @param exitCode The k6 process exit code (used as fallback when summary is missing)
    * @returns true if all thresholds passed or no thresholds defined, false otherwise
    */
   private checkThresholdsFromSummary(
     summary: any,
     timedOut: boolean,
+    exitCode: number,
   ): boolean {
     // If timed out, thresholds are considered failed
     if (timedOut) {
       return false;
     }
 
-    // If no summary or metrics, assume pass (no thresholds defined)
+    // If no summary or metrics, fall back to exit code
+    // Missing summary indicates k6 crashed (syntax error, missing module, etc.)
     if (!summary || !summary.metrics) {
-      return true;
+      // Exit code 0 means success, non-zero means failure
+      return exitCode === 0;
     }
 
     // Check each metric's thresholds for failures
