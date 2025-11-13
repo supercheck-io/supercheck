@@ -1134,9 +1134,10 @@ export class ExecutionService implements OnModuleDestroy {
       // Future work: Implement network instrumentation via custom Playwright reporter or fixtures.
 
       // Convert paths to container paths (relative to worker root, prefixed with /workspace)
-      const relativeRunDir = path.relative(serviceRoot, runDir);
-      const relativeJsonResultsPath = path.relative(serviceRoot, jsonResultsPath);
-      const relativePlaywrightReportDir = path.relative(serviceRoot, playwrightReportDir);
+      // Normalize to POSIX format (forward slashes) for Linux container compatibility
+      const relativeRunDir = path.relative(serviceRoot, runDir).replace(/\\/g, '/');
+      const relativeJsonResultsPath = path.relative(serviceRoot, jsonResultsPath).replace(/\\/g, '/');
+      const relativePlaywrightReportDir = path.relative(serviceRoot, playwrightReportDir).replace(/\\/g, '/');
 
       const envVars = {
         PLAYWRIGHT_TEST_DIR: `/workspace/${relativeRunDir}`, // Container path
@@ -1147,6 +1148,12 @@ export class ExecutionService implements OnModuleDestroy {
         PLAYWRIGHT_ARTIFACTS_DIR: `/workspace/${relativeRunDir}/.artifacts-${executionId}`, // Container path
         // Standard location for Playwright HTML report
         PLAYWRIGHT_HTML_REPORT: `/workspace/${relativePlaywrightReportDir}`, // Container path
+        // Set compilation cache directory to /tmp (writable tmpfs in container)
+        // Prevents ENOENT errors when Playwright tries to cache compiled test transforms
+        PLAYWRIGHT_CACHE_DIR: '/tmp/.playwright-cache',
+        // Set TMPDIR to container's /tmp to prevent Node from using host's temp directory
+        // This ensures Playwright compilation cache uses accessible paths inside container
+        TMPDIR: '/tmp',
         // Add timestamp to prevent caching issues
         PLAYWRIGHT_TIMESTAMP: Date.now().toString(),
       };

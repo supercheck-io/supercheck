@@ -87,9 +87,12 @@ module.exports = defineConfig({
     navigationTimeout: 30000, // 30 seconds for page loads
 
     /* Artifact collection strategy - configurable via environment variables */
+    // Capture traces on failure for debugging
     trace: process.env.PLAYWRIGHT_TRACE || 'retain-on-failure',
-    screenshot: process.env.PLAYWRIGHT_SCREENSHOT || 'only-on-failure',
-    // Video recording enabled on test failures for debugging (with increased resource limits)
+    // Capture screenshots only on failure to avoid performance degradation
+    // Full screenshots for all tests can be enabled via PLAYWRIGHT_SCREENSHOT='all'
+    screenshot: process.env.PLAYWRIGHT_SCREENSHOT || 'on',
+    // Video recording for failed tests for debugging (with increased resource limits)
     video: process.env.PLAYWRIGHT_VIDEO || 'retain-on-failure',
 
     /* Browser optimization for resource efficiency - browser-specific args moved to projects */
