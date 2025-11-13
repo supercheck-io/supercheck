@@ -163,22 +163,20 @@ services:
           cpus: "0.5"
           memory: 1G
 
-  # Worker (NestJS Runner) - Minimal resource limits for maximum test compatibility
+  # Worker (NestJS Runner) - Container-based test execution
+  # Tests run in isolated Docker containers (Playwright/K6), not inside worker
   worker:
     image: ghcr.io/supercheck-io/supercheck/worker:1.1.3-beta
     environment:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)
-      # Removed NODE_OPTIONS memory limits - let Node.js use what it needs
-      # Removed UV_THREADPOOL_SIZE limits - let system manage threads
     volumes:
+      # Mount Docker socket for container-based execution
+      # Worker spawns isolated containers for Playwright and K6 tests
+      - /var/run/docker.sock:/var/run/docker.sock
       - worker-playwright-reports:/app/playwright-reports
+      - worker-k6-reports:/app/k6-reports
       - worker-reports:/app/report
-      # CRITICAL: Use host's shared memory - no artificial size limit
-      - type: tmpfs
-        target: /dev/shm
-        tmpfs:
-          size: 8589934592 # 8GB shared memory (increased from 3GB to prevent browser crashes)
     depends_on:
       postgres:
         condition: service_healthy
@@ -207,11 +205,11 @@ services:
       replicas: 3 # Default footprint for an 8 vCPU / 16 GB host; add replicas instead of raising concurrency
       resources:
         limits:
-          cpus: "2.0" # Cap each worker at 2 vCPU so browsers do not starve the OS
-          memory: 4G # Headroom for two parallel Playwright sessions with trace/video
+          cpus: "2.0" # Cap each worker at 2 vCPU
+          memory: 2G # Reduced from 4G - browsers run in separate containers now
         reservations:
-          cpus: "1.0" # Guarantee a dedicated core per worker
-          memory: 3072M # Reserve ~3 GB to avoid overcommitting when scaling
+          cpus: "0.5"
+          memory: 1G
 
       # Container Restart Protection (handles stuck/crashed containers)
       restart_policy:
@@ -220,24 +218,13 @@ services:
         delay: 15s
         window: 120s
 
-    # Minimal system-level settings for compatibility
-    sysctls:
-      - net.core.somaxconn=4096 # High connection backlog for Playwright
-    ulimits:
-      nproc: 65535 # Allow many processes (browser + video + FFmpeg)
-      nofile: # High file descriptor limits for browser tabs
-        soft: 1048576
-        hard: 1048576
-      memlock: # Unlimited memory locking for browser
-        soft: -1
-        hard: -1
-    # Security constraints (minimal - only prevent privilege escalation)
+    # Security constraints
     security_opt:
       - no-new-privileges:true # Prevent privilege escalation
     cap_drop:
       - ALL # Drop all capabilities by default
-    cap_add:
-      - SYS_ADMIN # Required for browser sandboxing (minimal required capability)
+    # Note: SYS_ADMIN capability removed - not needed for container execution
+    # Browsers run in separate containers with their own capabilities
 
   # PostgreSQL Database
   postgres:
@@ -439,6 +426,8 @@ volumes:
   minio-data:
     driver: local
   worker-playwright-reports:
+    driver: local
+  worker-k6-reports:
     driver: local
   worker-reports:
     driver: local
