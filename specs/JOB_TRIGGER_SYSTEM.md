@@ -1,258 +1,648 @@
-# Job Trigger System Documentation
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Database Schema Changes](#database-schema-changes)
-- [API Changes](#api-changes)
-- [Frontend Changes](#frontend-changes)
-- [Backend Changes](#backend-changes)
-- [E2E Flow Analysis](#e2e-flow-analysis)
-- [Improvements Made](#improvements-made)
-- [Future Enhancements](#future-enhancements)
-- [Migration Notes](#migration-notes)
-- [Conclusion](#conclusion)
+# Job Trigger System Specification
 
 ## Overview
 
-This document outlines the comprehensive job trigger system in Supercheck, which supports three distinct trigger types: `manual`, `remote`, and `schedule`. The system provides full traceability and control over how jobs are initiated and executed.
+The Supercheck Job Trigger System provides three distinct execution pathways: **Manual** (user-initiated), **Remote** (API-driven), and **Schedule** (automated). This multi-trigger architecture enables seamless integration with CI/CD pipelines, automated testing workflows, and interactive development scenarios while maintaining complete execution traceability and audit compliance.
 
-## Trigger Types Architecture
+## Table of Contents
+
+1. [System Architecture](#system-architecture)
+2. [Trigger Types](#trigger-types)
+3. [Execution Flow](#execution-flow)
+4. [Capacity Management](#capacity-management)
+5. [Security & Authorization](#security--authorization)
+6. [Database Schema](#database-schema)
+7. [API Endpoints](#api-endpoints)
+8. [Integration Patterns](#integration-patterns)
+9. [Monitoring & Observability](#monitoring--observability)
+
+## System Architecture
 
 ```mermaid
 graph TB
-    subgraph "Manual Triggers"
-        A1[Web UI] --> A2[User clicks Run] --> A3["Jobs Run API"]
+    subgraph "🎨 Trigger Sources"
+        M1[👤 Web UI<br/>Manual Trigger]
+        R1[🔗 External API<br/>Remote Trigger]
+        S1[⏰ Cron Scheduler<br/>Schedule Trigger]
     end
-    
-    subgraph "Remote Triggers"
-        B1[External System] --> B2[API Key Auth] --> B3["Job Trigger API"]
+
+    subgraph "🔐 Authentication Layer"
+        AUTH1[Session Auth<br/>Manual]
+        AUTH2[API Key Auth<br/>Remote]
+        AUTH3[Internal Auth<br/>Schedule]
     end
-    
-    subgraph "Schedule Triggers"
-        C1[Cron Scheduler] --> C2[BullMQ Job] --> C3[Automated Execution]
+
+    subgraph "⚙️ Processing Pipeline"
+        VALIDATE[Capacity Check<br/>& Validation]
+        QUEUE[BullMQ Queue<br/>Job Placement]
+        WORKER[Worker Service<br/>Test Execution]
     end
-    
-    A3 --> D1[Job Execution Pipeline]
-    B3 --> D1
-    C3 --> D1
-    
-    D1 --> E1[Worker Service]
-    E1 --> F1[Test Execution]
-    F1 --> G1[Results & Reports]
-    
-    G1 --> H1[(Database)]
-    H1 --> I1[Runs Table with Trigger Type]
+
+    subgraph "💾 State Management"
+        DB[(PostgreSQL<br/>Run Records)]
+        CACHE[Redis<br/>Capacity Tracking]
+    end
+
+    subgraph "📊 Observability"
+        OTEL[OpenTelemetry<br/>Distributed Tracing]
+        SSE[Server-Sent Events<br/>Real-time Updates]
+    end
+
+    M1 --> AUTH1
+    R1 --> AUTH2
+    S1 --> AUTH3
+
+    AUTH1 & AUTH2 & AUTH3 --> VALIDATE
+    VALIDATE --> CACHE
+    VALIDATE --> QUEUE
+    QUEUE --> WORKER
+
+    WORKER --> DB
+    WORKER --> OTEL
+    QUEUE --> SSE
+
+    classDef source fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef auth fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef process fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef data fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef obs fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+
+    class M1,R1,S1 source
+    class AUTH1,AUTH2,AUTH3 auth
+    class VALIDATE,QUEUE,WORKER process
+    class DB,CACHE data
+    class OTEL,SSE obs
 ```
 
-### 1. Manual Trigger (`manual`)
-- **Source**: User-initiated job execution from the web UI
-- **Label**: "Manual"
-- **Authentication**: Session-based user authentication
-- **Flow**: Interactive job execution with immediate feedback
+## Trigger Types
 
-### 2. Remote Trigger (`remote`)
-- **Source**: External API calls using API keys
-- **Label**: "Remote"  
-- **Authentication**: API key validation required
-- **Flow**: Programmatic integration for CI/CD and external systems
+### Manual Trigger
 
-### 3. Schedule Trigger (`schedule`)
-- **Source**: Automated execution based on cron schedules
-- **Label**: "Schedule"
-- **Authentication**: Internal system execution
-- **Flow**: Time-based automated job execution
+**Purpose:** Interactive job execution initiated by authenticated users through the web interface.
 
-## Database Schema Changes
+**Characteristics:**
+- Real-time user feedback
+- Immediate capacity validation
+- Session-based authentication
+- SSE progress updates
+- User-specific RBAC enforcement
 
-### Database Schema Implementation
+**Use Cases:**
+- Development and debugging
+- Ad-hoc test runs
+- Manual regression testing
+- Interactive test exploration
 
-The trigger system is implemented through database schema updates:
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant API
+    participant Queue
+    participant Worker
 
-**Runs Table Enhancement:**
-- Added `trigger` field to track job execution source
-- Field type: varchar(50) with default value 'manual'
-- Supports three trigger types: `manual`, `remote`, `schedule`
+    User->>Frontend: Click "Run Job"
+    Frontend->>API: POST /api/jobs/run
+    API->>API: Validate session
+    API->>API: Check RBAC permissions
+    API->>API: Verify capacity
 
-**JobTrigger Type Definition:**
-- Enum-like type definition for trigger values
-- Ensures type safety across the application
-- Default value: 'manual' for backward compatibility
+    alt Capacity Available
+        API->>Queue: Add job (trigger: manual)
+        Queue-->>API: Job queued
+        API-->>Frontend: 200 {runId, status}
+        Frontend->>Frontend: Open SSE connection
+        Queue->>Worker: Process job
+        Worker->>Worker: Execute tests
+        Worker-->>Frontend: SSE updates
+        Worker-->>User: Completion notification
+    else No Capacity
+        API-->>Frontend: 429 Capacity Exceeded
+        Frontend-->>User: Show retry message
+    end
+```
 
-**Database Migration:**
-- Migration adds trigger column to existing runs table
-- Maintains referential integrity with existing data
-- Supports historical trigger type tracking
+### Remote Trigger
 
-## API Changes
+**Purpose:** Programmatic job execution via API keys for CI/CD integration and external automation.
 
-### 1. Job Run API (`/api/jobs/run`)
-- **Method**: POST
-- **Trigger**: `manual` (default)
-- **Changes**: Now accepts and validates trigger parameter
-- **Validation**: Ensures trigger is one of: `manual`, `remote`, `schedule`
+**Characteristics:**
+- API key authentication
+- Rate limiting per key
+- No user session required
+- Webhook-friendly
+- Support for job parameters
 
-### 2. Remote Trigger API (`/api/jobs/[id]/trigger`)
-- **Method**: POST
-- **Trigger**: `remote`
-- **Authentication**: API key required
-- **Features**: 
-  - API key validation
-  - Job existence validation
-  - Test association validation
-  - Usage statistics tracking
+**Use Cases:**
+- CI/CD pipeline integration
+- Pre-deployment validation
+- Scheduled external triggers
+- Third-party integrations
 
-### 3. Runs API (`/api/runs`)
-- **Method**: GET
-- **Changes**: Now includes `trigger` field in response
-- **Display**: Shows trigger type in runs table
+```mermaid
+sequenceDiagram
+    participant CI_CD
+    participant API
+    participant DB
+    participant Queue
+    participant Worker
 
-## Frontend Changes
+    CI_CD->>API: POST /api/jobs/:id/trigger<br/>Authorization: Bearer [api-key]
+    API->>API: Extract API key
+    API->>DB: Validate API key
 
-### 1. Runs Table Display
-- **Column**: "Trigger" column added to runs table
-- **Icons**: Different icons for each trigger type
-- **Colors**: Distinct colors for visual differentiation
-- **Fallback**: Shows "-" for unknown trigger types
+    alt Valid API Key
+        DB-->>API: Key valid, jobId matches
+        API->>API: Check rate limit
+        API->>API: Check capacity
 
-### 2. Job Execution Components
-- **Manual Trigger**: Run button in jobs table
-- **Remote Trigger**: API documentation and curl examples
-- **Schedule Trigger**: Cron scheduler interface
+        alt Within Limits
+            API->>Queue: Add job (trigger: remote)
+            Queue-->>API: Job queued
+            API-->>CI_CD: 200 {runId, message}
+            Queue->>Worker: Process job
+            Worker->>Worker: Execute tests
+            Worker-->>CI_CD: Optional webhook callback
+        else Rate Limited
+            API-->>CI_CD: 429 Rate Limit Exceeded
+        end
+    else Invalid Key
+        API-->>CI_CD: 401 Unauthorized
+    end
+```
 
-### 3. Data Flow
-- **API Response**: Includes trigger field
-- **UI Components**: Properly handle trigger field
-- **Type Safety**: TypeScript interfaces updated
+### Schedule Trigger
 
-## Backend Changes
+**Purpose:** Automated time-based job execution using cron expressions.
 
-### 1. Worker Service
-- **Schema**: Added `JobTrigger` type and `trigger` field
-- **Processor**: Updated to handle trigger field in job execution
-- **Scheduler**: Properly sets `schedule` trigger for scheduled jobs
+**Characteristics:**
+- Cron-based scheduling
+- No external authentication
+- System-initiated execution
+- Configurable retry logic
+- Prevents concurrent executions
 
-### 2. Queue System
-- **Interface**: Updated `JobExecutionTask` to include trigger field
-- **Validation**: Ensures trigger is passed through the entire execution pipeline
+**Use Cases:**
+- Continuous monitoring
+- Nightly regression suites
+- Periodic smoke tests
+- Regular health checks
 
-## E2E Flow Analysis
+```mermaid
+sequenceDiagram
+    participant Cron
+    participant Scheduler
+    participant DB
+    participant Queue
+    participant Worker
 
-### Manual Trigger Flow
-1. User clicks "Run" button in UI
-2. Frontend sends POST to `/api/jobs/run` with `trigger: "manual"`
-3. API validates trigger and creates run record
-4. Job is queued for execution
-5. Worker processes job and updates status
-6. UI displays run with manual trigger icon
+    Cron->>Scheduler: Cron expression triggered
+    Scheduler->>DB: Fetch jobs with schedules
 
-### Remote Trigger Flow
-1. External system sends POST to `/api/jobs/[id]/trigger` with API key
-2. API validates API key and job existence
-3. API calls internal `/api/jobs/run` with `trigger: "remote"`
-4. Job is queued for execution
-5. Worker processes job and updates status
-6. UI displays run with remote trigger icon
+    loop For each scheduled job
+        Scheduler->>DB: Check last run time
+        Scheduler->>DB: Check if currently running
 
-### Schedule Trigger Flow
-1. Cron scheduler triggers based on schedule
-2. BullMQ job is created with job data
-3. Worker scheduler processor handles the job
-4. Creates run record with `trigger: "schedule"`
-5. Job is queued for execution
-6. Worker processes job and updates status
-7. UI displays run with schedule trigger icon
+        alt Ready to Run
+            Scheduler->>Queue: Add job (trigger: schedule)
+            Queue-->>Scheduler: Job queued
+            Scheduler->>DB: Update next run time
+            Queue->>Worker: Process job
+            Worker->>Worker: Execute tests
+            Worker->>DB: Save results
+        else Already Running
+            Scheduler->>Scheduler: Skip (prevent duplicate)
+        end
+    end
+```
 
-## Improvements Made
+## Execution Flow
 
-### 1. Data Consistency
-- ✅ All run creation points now include trigger field
-- ✅ Database schema updated with proper defaults
-- ✅ API responses include trigger information
-- ✅ UI components properly handle trigger field
+### Complete Job Lifecycle
 
-### 2. Type Safety
-- ✅ TypeScript interfaces updated
-- ✅ Proper validation in API endpoints
-- ✅ Schema definitions consistent across app and worker
+```mermaid
+stateDiagram-v2
+    [*] --> Triggered: User/API/Schedule
+    Triggered --> Validating: Authenticate
 
-### 3. User Experience
-- ✅ Visual indicators for different trigger types
-- ✅ Consistent iconography and colors
-- ✅ Proper fallback handling for unknown triggers
+    Validating --> Rejected: Auth Failed
+    Validating --> CheckingCapacity: Auth Success
 
-### 4. API Design
-- ✅ RESTful endpoints for remote triggering
-- ✅ Proper authentication and authorization
-- ✅ Comprehensive error handling
-- ✅ Usage statistics tracking
+    CheckingCapacity --> Queued: Capacity Available
+    CheckingCapacity --> Rejected: No Capacity
 
-## Testing Recommendations
+    Queued --> Waiting: In Queue
+    Waiting --> Active: Worker Picks Up
 
-### 1. Manual Trigger Testing
-- [ ] Test run button in jobs table
-- [ ] Verify trigger field is set to "manual"
-- [ ] Check UI displays correct icon
+    Active --> Running: Tests Executing
+    Running --> Uploading: Tests Complete
+    Uploading --> Completed: Artifacts Saved
+    Running --> Failed: Test Error
 
-### 2. Remote Trigger Testing
-- [ ] Test API key authentication
-- [ ] Test job existence validation
-- [ ] Test curl command examples
-- [ ] Verify trigger field is set to "remote"
+    Completed --> [*]
+    Failed --> [*]
+    Rejected --> [*]
+```
 
-### 3. Schedule Trigger Testing
-- [ ] Test cron schedule creation
-- [ ] Test scheduled job execution
-- [ ] Verify trigger field is set to "schedule"
-- [ ] Test next run calculation
+### Trigger-Specific Paths
 
-### 4. UI Testing
-- [ ] Test trigger column display
-- [ ] Test icon and color rendering
-- [ ] Test fallback handling
-- [ ] Test data table filtering
+```mermaid
+graph LR
+    A[Trigger Initiated] --> B{Trigger Type?}
 
-## Future Enhancements
+    B -->|Manual| C1[Session Validation]
+    B -->|Remote| C2[API Key Validation]
+    B -->|Schedule| C3[Internal Validation]
 
-### 1. Trigger Analytics
-- Track trigger type usage patterns
-- Monitor trigger success rates
-- Analyze trigger timing patterns
+    C1 --> D1[User RBAC Check]
+    C2 --> D2[Rate Limit Check]
+    C3 --> D3[Duplicate Check]
 
-### 2. Advanced Trigger Types
-- Webhook triggers
-- Git push triggers
-- Time-based triggers with timezone support
+    D1 & D2 & D3 --> E[Capacity Check]
+    E --> F[Add to Queue]
+    F --> G[Worker Execution]
 
-### 3. Trigger Configuration
-- Allow users to configure trigger behavior
-- Support for trigger-specific settings
-- Trigger validation rules
+    classDef manual fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef remote fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef schedule fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef common fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
 
-### 4. Trigger History
-- Detailed trigger history per job
-- Trigger audit logs
-- Trigger performance metrics
+    class C1,D1 manual
+    class C2,D2 remote
+    class C3,D3 schedule
+    class E,F,G common
+```
 
-## Migration Notes
+## Capacity Management
 
-### Database Migration
-- Existing runs without trigger field will default to "manual"
-- Migration script available to update existing records
-- Backward compatibility maintained
+### Capacity Tracking Architecture
 
-### API Compatibility
-- All existing API endpoints remain functional
-- New trigger field is optional in responses
-- Default trigger behavior unchanged
+```mermaid
+graph TB
+    A[Job Trigger Request] --> B{Check Capacity}
 
-### UI Compatibility
-- Existing UI components continue to work
-- New trigger column is optional
-- Graceful handling of missing trigger data
+    subgraph "Redis Capacity Store"
+        C[Running Count<br/>Current: 4]
+        D[Queued Count<br/>Current: 15]
+        E[Running Capacity<br/>Limit: 6]
+        F[Queued Capacity<br/>Limit: 50]
+    end
 
-## Conclusion
+    B --> C & D & E & F
 
-The job trigger system has been successfully implemented with comprehensive support for manual, remote, and scheduled triggers. The system provides clear visual indicators, maintains data consistency, and offers a robust foundation for future enhancements.
+    B --> G{Running < Limit?}
+    G -->|No| H{Queued < Limit?}
+    H -->|No| I[❌ Reject: 429]
+    H -->|Yes| J[✅ Add to Queue]
 
-All changes maintain backward compatibility while adding significant value through improved traceability and user experience. 
+    G -->|Yes| K[✅ Add to Queue]
+    K --> L[Increment Queued Count]
+    J --> L
+
+    M[Worker Picks Job] --> N[Decrement Queued]
+    N --> O[Increment Running]
+
+    P[Job Complete] --> Q[Decrement Running]
+
+    classDef check fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef redis fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef success fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef reject fill:#ffcdd2,stroke:#c62828,stroke-width:2px
+
+    class B,G,H check
+    class C,D,E,F redis
+    class J,K,L,N,O,Q success
+    class I reject
+```
+
+### Capacity Limits
+
+| Limit Type | Default | Configurable | Scope |
+|------------|---------|--------------|-------|
+| **Running Capacity** | 6 | `RUNNING_CAPACITY` | Global |
+| **Queued Capacity** | 50 | `QUEUED_CAPACITY` | Global |
+| **Execution Timeout** | 15 min | `JOB_EXECUTION_TIMEOUT_MS` | Per Job |
+| **Max Concurrent Tests** | 2 | `MAX_CONCURRENT_EXECUTIONS` | Per Worker |
+
+## Security & Authorization
+
+### Authorization Matrix
+
+```mermaid
+graph TB
+    A[Trigger Request] --> B{Trigger Type}
+
+    B -->|Manual| C1[Session Check]
+    B -->|Remote| C2[API Key Check]
+    B -->|Schedule| C3[Internal Auth]
+
+    C1 --> D1{Valid Session?}
+    D1 -->|No| E1[401 Unauthorized]
+    D1 -->|Yes| F1[RBAC Check]
+
+    F1 --> G1{Has job:execute?}
+    G1 -->|No| H1[403 Forbidden]
+    G1 -->|Yes| I[Proceed to Execution]
+
+    C2 --> D2{Valid API Key?}
+    D2 -->|No| E2[401 Invalid Key]
+    D2 -->|Yes| F2[Job Match Check]
+
+    F2 --> G2{Key for this job?}
+    G2 -->|No| H2[403 Wrong Job]
+    G2 -->|Yes| F3[Rate Limit Check]
+
+    F3 --> G3{Within Limit?}
+    G3 -->|No| H3[429 Rate Limited]
+    G3 -->|Yes| I
+
+    C3 --> D3{Internal Token?}
+    D3 -->|No| E3[401 Unauthorized]
+    D3 -->|Yes| F4[Schedule Check]
+
+    F4 --> G4{Schedule Active?}
+    G4 -->|No| H4[400 Disabled]
+    G4 -->|Yes| I
+
+    classDef error fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef check fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef success fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+
+    class E1,E2,E3,H1,H2,H3,H4 error
+    class D1,D2,D3,F1,F2,F3,F4,G1,G2,G3,G4 check
+    class I success
+```
+
+### Security Considerations by Trigger Type
+
+| Security Aspect | Manual | Remote | Schedule |
+|----------------|--------|--------|----------|
+| **Authentication** | Session cookie | Bearer token | Internal JWT |
+| **Authorization** | RBAC + Project membership | API key → Job mapping | System-level |
+| **Rate Limiting** | Per user (10/min) | Per API key (configurable) | N/A |
+| **Audit Logging** | User ID + timestamp | API key ID + IP | System + cron ID |
+| **CSRF Protection** | Required | N/A | N/A |
+
+## Database Schema
+
+### Runs Table Structure
+
+```mermaid
+erDiagram
+    RUNS ||--o{ RUN_RESULTS : contains
+    RUNS }o--|| JOBS : belongs_to
+    RUNS }o--|| USERS : initiated_by
+    RUNS }o--o| API_KEYS : triggered_by
+
+    RUNS {
+        uuid id PK
+        uuid jobId FK
+        uuid userId FK
+        uuid apiKeyId FK
+        string trigger "manual|remote|schedule"
+        string status
+        timestamp startedAt
+        timestamp completedAt
+        jsonb metadata
+        timestamp createdAt
+    }
+
+    JOBS {
+        uuid id PK
+        string name
+        boolean scheduled
+        string cronExpression
+        timestamp nextRunAt
+    }
+
+    API_KEYS {
+        uuid id PK
+        uuid jobId FK
+        string key
+        boolean enabled
+    }
+```
+
+### Trigger Field Specification
+
+**Field:** `trigger`
+**Type:** `varchar(50)`
+**Default:** `'manual'`
+**Values:**
+- `manual` - User-initiated via web UI
+- `remote` - API-triggered via API key
+- `schedule` - Cron-based automation
+
+**Indexes:**
+- `idx_runs_trigger` - Fast filtering by trigger type
+- `idx_runs_job_trigger` - Composite index for job + trigger queries
+- `idx_runs_created_trigger` - Timeline queries by trigger type
+
+## API Endpoints
+
+### Manual Trigger
+
+**Endpoint:** `POST /api/jobs/run`
+
+**Authentication:** Session cookie
+
+**Request Body:**
+```json
+{
+  "jobId": "uuid",
+  "metadata": {}
+}
+```
+
+**Response:**
+```json
+{
+  "runId": "uuid",
+  "status": "queued",
+  "trigger": "manual",
+  "message": "Job queued successfully"
+}
+```
+
+### Remote Trigger
+
+**Endpoint:** `POST /api/jobs/:id/trigger`
+
+**Authentication:** Bearer token (API key)
+
+**Headers:**
+```
+Authorization: Bearer job_abc123...
+```
+
+**Response:**
+```json
+{
+  "runId": "uuid",
+  "jobId": "uuid",
+  "status": "queued",
+  "trigger": "remote",
+  "message": "Job queued successfully"
+}
+```
+
+### Schedule Management
+
+**Endpoint:** `PATCH /api/jobs/:id/schedule`
+
+**Request Body:**
+```json
+{
+  "scheduled": true,
+  "cronExpression": "0 2 * * *",
+  "timezone": "America/New_York"
+}
+```
+
+## Integration Patterns
+
+### CI/CD Integration
+
+```mermaid
+sequenceDiagram
+    participant GitHub
+    participant GitHubActions
+    participant Supercheck
+    participant Slack
+
+    GitHub->>GitHubActions: Push to main
+    GitHubActions->>GitHubActions: Build & Test
+
+    alt Build Success
+        GitHubActions->>Supercheck: POST /api/jobs/:id/trigger<br/>API Key Auth
+        Supercheck-->>GitHubActions: Job queued
+
+        loop Poll Status (or use webhook)
+            GitHubActions->>Supercheck: GET /api/runs/:runId
+            Supercheck-->>GitHubActions: Status update
+        end
+
+        Supercheck->>Slack: Test results notification
+
+        alt Tests Pass
+            GitHubActions->>GitHubActions: Deploy to production
+        else Tests Fail
+            GitHubActions->>GitHub: Block deployment
+        end
+    end
+```
+
+### Automated Monitoring
+
+```mermaid
+graph TB
+    A[Cron Schedule] -->|Every Hour| B[Monitor Job]
+    B --> C[Health Check Tests]
+    C --> D{All Pass?}
+
+    D -->|Yes| E[Update Status Page<br/>Operational]
+    D -->|No| F[Alert On-Call Engineer]
+
+    F --> G[Create Incident]
+    G --> H[Send Notifications]
+    H --> I[Email + Slack + PagerDuty]
+
+    E --> J[Record Metrics]
+    F --> J
+
+    J --> K[Update Dashboard]
+
+    classDef success fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef alert fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef monitor fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+
+    class A,B,C,J,K monitor
+    class E success
+    class F,G,H,I alert
+```
+
+## Monitoring & Observability
+
+### Key Metrics
+
+```mermaid
+graph TB
+    subgraph "📊 Trigger Metrics"
+        M1[Manual Trigger Rate<br/>Jobs/min by user]
+        M2[Remote Trigger Rate<br/>Jobs/min by API key]
+        M3[Schedule Success Rate<br/>Percentage on-time]
+    end
+
+    subgraph "⚡ Performance Metrics"
+        P1[Queue Wait Time<br/>Time to worker pickup]
+        P2[Execution Duration<br/>Per trigger type]
+        P3[Capacity Utilization<br/>Running / Total capacity]
+    end
+
+    subgraph "🔍 Quality Metrics"
+        Q1[Success Rate<br/>Per trigger type]
+        Q2[Failure Patterns<br/>Error categorization]
+        Q3[Retry Rates<br/>Re-triggered jobs]
+    end
+
+    M1 & M2 & M3 --> DASH[Grafana Dashboard]
+    P1 & P2 & P3 --> DASH
+    Q1 & Q2 & Q3 --> DASH
+
+    classDef metric fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    class M1,M2,M3,P1,P2,P3,Q1,Q2,Q3 metric
+```
+
+### Distributed Tracing
+
+**OpenTelemetry Attributes:**
+- `sc.trigger_type` - manual/remote/schedule
+- `sc.run_id` - Unique run identifier
+- `sc.job_id` - Job identifier
+- `sc.user_id` - User ID (manual only)
+- `sc.api_key_id` - API key ID (remote only)
+- `sc.cron_id` - Cron schedule ID (schedule only)
+
+### Alerting Thresholds
+
+| Metric | Warning | Critical |
+|--------|---------|----------|
+| **Queue Wait Time** | > 2 min | > 5 min |
+| **Capacity Utilization** | > 80% | > 95% |
+| **Failed Triggers** | > 5% | > 10% |
+| **Schedule Misses** | > 1 | > 3 |
+| **API Rate Limit Hits** | > 10/hour | > 50/hour |
+
+## Best Practices
+
+### For Manual Triggers
+- Provide clear feedback on queue position
+- Show estimated wait time
+- Allow cancellation of queued jobs
+- Display capacity status before trigger
+
+### For Remote Triggers
+- Implement exponential backoff on 429 responses
+- Use webhook callbacks instead of polling
+- Set appropriate API key rate limits
+- Monitor API key usage patterns
+
+### For Schedule Triggers
+- Use timezone-aware cron expressions
+- Prevent overlapping executions
+- Implement schedule drift detection
+- Log all schedule changes
+
+## Related Documentation
+
+- **API Keys:** See `API_KEY_SYSTEM.md` for detailed API key documentation
+- **Queue System:** See `TEST_EXECUTION_AND_JOB_QUEUE_FLOW.md` for queue details
+- **Authentication:** See `AUTHENTICATION.md` for auth mechanisms
+- **Observability:** See `OBSERVABILITY.md` for tracing details
+
+## Revision History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 2.0 | 2025-01-12 | Enhanced with comprehensive diagrams and architecture |
+| 1.0 | 2024-10-01 | Initial job trigger specification |
