@@ -353,6 +353,205 @@ graph LR
     class A,B,C,E,F,K,L process
 ```
 
+## Container-Based Execution (Security Isolation)
+
+### Overview
+
+**All test execution (Playwright and K6) runs exclusively in Docker containers** for security isolation. There is no fallback to local execution. This prevents code injection attacks and ensures consistent, reproducible test environments.
+
+### Container Execution Flow
+
+```mermaid
+graph TB
+    subgraph "Worker Host"
+        W[Worker Service]
+        M[/workspace Mount<br/>Worker Directory]
+        NM[node_modules<br/>Playwright Package]
+    end
+
+    subgraph "Docker Container (Isolated)"
+        C[Container Executor]
+        P[/workspace/node_modules/.bin/playwright]
+        B[Pre-installed Browsers<br/>/ms-playwright]
+        T[Test Execution]
+        R[Report Generation]
+    end
+
+    subgraph "Security Boundaries"
+        S1[Read-only Root Filesystem]
+        S2[No Privilege Escalation]
+        S3[Capability Drops]
+        S4[Resource Limits]
+    end
+
+    W -->|Mount worker dir| M
+    M --> NM
+    M -->|Volume Mount| C
+    C -->|Execute| P
+    P -->|Use browsers| B
+    P --> T
+    T --> R
+    R -->|Write to /workspace| M
+
+    C --> S1 & S2 & S3 & S4
+
+    classDef worker fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef container fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef security fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+
+    class W,M,NM worker
+    class C,P,B,T,R container
+    class S1,S2,S3,S4 security
+```
+
+### Docker Images Used
+
+#### Playwright Container
+- **Image**: `mcr.microsoft.com/playwright:v1.56.1-noble`
+- **Size**: ~1.9 GB (cached after first pull)
+- **Includes**:
+  - Pre-installed browsers (Chromium, Firefox, WebKit) at `/ms-playwright`
+  - All browser dependencies (fonts, libraries, codecs)
+  - Node.js runtime
+- **Volume Mount**: Worker directory → `/workspace`
+- **Binary**: Uses `/workspace/node_modules/.bin/playwright` (from package.json)
+- **Environment**: `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`
+
+#### K6 Container
+- **Image**: `grafana/k6:latest`
+- **Size**: ~109 MB (cached after first pull)
+- **Includes**:
+  - K6 binary as ENTRYPOINT
+  - xk6-dashboard extension for HTML reports
+- **Volume Mount**: Script directory → `/workspace`
+
+### Container Security Configuration
+
+```mermaid
+graph TB
+    subgraph "Security Hardening"
+        S1[--read-only<br/>Read-only root filesystem]
+        S2[--security-opt=no-new-privileges<br/>Prevent privilege escalation]
+        S3[--cap-drop=ALL<br/>Drop all Linux capabilities]
+        S4[--memory=2048m<br/>Memory limit]
+        S5[--cpus=2<br/>CPU limit]
+        S6[--pids-limit=100<br/>Process limit]
+        S7[--network=bridge<br/>Network isolation]
+        S8[--tmpfs /tmp<br/>Writable temp space]
+    end
+
+    S1 & S2 & S3 --> SEC[Secure Execution Environment]
+    S4 & S5 & S6 --> RES[Resource Protection]
+    S7 --> NET[Network Isolation]
+    S8 --> TMP[Temp File Support]
+
+    SEC & RES & NET & TMP --> SAFE[Isolated & Secure Test Execution]
+
+    classDef security fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef resource fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef result fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+
+    class S1,S2,S3,SEC security
+    class S4,S5,S6,S7,S8,RES,NET,TMP resource
+    class SAFE result
+```
+
+### Path Mapping (Host → Container)
+
+| Host Path | Container Path | Purpose |
+|-----------|---------------|---------|
+| `/Users/..../worker` | `/workspace` | Worker root directory |
+| `/Users/..../worker/node_modules` | `/workspace/node_modules` | Playwright package & binary |
+| `/Users/..../worker/playwright-reports/xxx` | `/workspace/playwright-reports/xxx` | Test execution directory |
+| `/Users/..../worker/playwright.config.js` | `/workspace/playwright.config.js` | Playwright configuration |
+| N/A (Docker image) | `/ms-playwright` | Pre-installed browsers |
+
+### Why Package.json Still Needs Playwright
+
+**Q: Don't we get Playwright from the Docker image?**
+
+**A: No!** The Docker image provides **browsers**, not the npm package:
+
+```mermaid
+graph LR
+    subgraph "Docker Image Provides"
+        I1[Pre-installed Browsers]
+        I2[Browser Dependencies]
+        I3[Node.js Runtime]
+    end
+
+    subgraph "package.json Provides"
+        P1[Playwright npm Package]
+        P2[playwright CLI Binary]
+        P3[@playwright/test Framework]
+        P4[TypeScript Types]
+    end
+
+    subgraph "How They Work Together"
+        W[Worker installs from package.json]
+        W --> M[node_modules mounted in container]
+        M --> E[Execute /workspace/node_modules/.bin/playwright]
+        E --> B[Use browsers from /ms-playwright]
+    end
+
+    I1 & I2 & I3 --> B
+    P1 & P2 & P3 & P4 --> E
+
+    classDef image fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef package fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef execution fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+
+    class I1,I2,I3 image
+    class P1,P2,P3,P4 package
+    class W,M,E,B execution
+```
+
+**Required dependencies in package.json:**
+- ✅ `playwright: ^1.56.0` - Core package with CLI
+- ✅ `@playwright/test: ^1.56.0` - Test framework
+
+### Image Caching Behavior
+
+**Q: Are images downloaded on every execution?**
+
+**A: No!** Docker caches images locally:
+
+```mermaid
+graph LR
+    A[First Execution] -->|docker run| B{Image Exists Locally?}
+    B -->|No| C[Pull from Registry<br/>~2 GB for Playwright]
+    B -->|Yes| D[Use Cached Image<br/>Instant]
+    C --> E[Cache Image]
+    E --> F[Execute Container]
+    D --> F
+
+    G[Subsequent Executions] -->|docker run| H{Image Cached?}
+    H -->|Yes| I[Use Cached Image<br/>No Download]
+    I --> J[Execute Container]
+
+    classDef download fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef cached fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+
+    class C download
+    class D,E,I cached
+```
+
+**Cache invalidation:**
+- Images are only re-downloaded when:
+  - Image tag changes (e.g., `v1.56.0` → `v1.57.0`)
+  - Manual pull: `docker pull <image>`
+  - Image removed: `docker rmi <image>`
+
+### Container Execution Performance
+
+| Metric | Value | Notes |
+|--------|-------|-------|
+| Image pull (first time) | 60-120s | Playwright: ~1.9 GB, K6: ~109 MB |
+| Image pull (cached) | 0s | Instant - uses local cache |
+| Container startup | <1s | Very fast after first pull |
+| Test execution overhead | <100ms | Negligible compared to test duration |
+| Container cleanup | <500ms | Automatic with `--rm` flag |
+
 ## Parallel Execution
 
 ### Concurrency Control
