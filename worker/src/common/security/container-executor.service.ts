@@ -210,8 +210,9 @@ export class ContainerExecutorService {
 
       // Add environment variables
       for (const [key, value] of Object.entries(env)) {
-        // Validate env var names and values
-        if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) {
+        // Validate env var names (allow alphanumeric and underscore, must start with letter or underscore)
+        // This allows npm_* and other common environment variables
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
           this.logger.warn(`Invalid environment variable name: ${key}`);
           continue;
         }
@@ -224,13 +225,17 @@ export class ContainerExecutorService {
       // Add command
       dockerArgs.push(...command);
 
+      // Ensure timeout is a number (handle string values from config)
+      const timeout = typeof timeoutMs === 'string' ? parseInt(timeoutMs, 10) : timeoutMs;
+      const validTimeout = typeof timeout === 'number' && !isNaN(timeout) && timeout > 0 ? timeout : undefined;
+
       this.logger.log(
-        `Executing in container: ${containerName} with timeout ${timeoutMs}ms`,
+        `Executing in container: ${containerName} with timeout ${validTimeout || 'none'}ms`,
       );
 
       // Execute with timeout
       const result = await execa('docker', dockerArgs, {
-        timeout: timeoutMs,
+        timeout: validTimeout,
         reject: false, // Don't throw on non-zero exit
         all: true, // Combine stdout and stderr
       });
@@ -292,13 +297,17 @@ export class ContainerExecutorService {
     const startTime = Date.now();
     const { timeoutMs = 300000, env = {} } = options;
 
+    // Ensure timeout is a number (handle string values from config)
+    const timeout = typeof timeoutMs === 'string' ? parseInt(timeoutMs, 10) : timeoutMs;
+    const validTimeout = typeof timeout === 'number' && !isNaN(timeout) && timeout > 0 ? timeout : undefined;
+
     try {
       this.logger.log(
         `Direct execution (no container): ${command.join(' ')} ${scriptPath}`,
       );
 
       const result = await execa(command[0], [...command.slice(1), scriptPath], {
-        timeout: timeoutMs,
+        timeout: validTimeout,
         reject: false,
         env: {
           ...process.env,
@@ -318,7 +327,7 @@ export class ContainerExecutorService {
         duration,
         timedOut,
         error: timedOut
-          ? `Execution timed out after ${timeoutMs}ms`
+          ? `Execution timed out after ${validTimeout || timeoutMs}ms`
           : result.exitCode !== 0
             ? `Process exited with code ${result.exitCode}`
             : undefined,
