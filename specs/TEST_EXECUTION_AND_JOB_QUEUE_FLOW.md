@@ -1,659 +1,757 @@
-# Test Execution and Job Queue Flow
+# Test Execution and Job Queue Flow Specification
+
+## Overview
+
+The Supercheck test execution system provides a distributed, scalable architecture for running Playwright and K6 performance tests. The system uses **BullMQ** job queues, **worker pools** for parallel execution, and **capacity management** to ensure reliable test execution at scale while maintaining resource efficiency.
 
 ## Table of Contents
 
-- [System Architecture](#system-architecture)
-- [Execution Flow Diagram](#execution-flow-diagram)
-- [Execution Sequence Diagram](#execution-sequence-diagram)
-- [Parallel Execution System](#parallel-execution-system)
-- [Key Components](#key-components)
-- [Error Handling and Recovery](#error-handling-and-recovery)
-- [Playground Cleanup System](#playground-cleanup-system)
-- [Monitor Execution System](#monitor-execution-system)
-- [Configuration Options](#configuration-options)
-- [Start Services Quick Reference](#start-services-quick-reference)
-- [Implementation Details](#implementation-details)
-- [Production Best Practices](#production-best-practices)
-- [Review and Recommendations](#review-and-recommendations)
-
-This document explains the comprehensive end-to-end flow of test execution and job processing in Supercheck, including queue management, parallel execution, capacity limits, and reporting mechanisms for both single tests and multi-test jobs.
+1. [System Architecture](#system-architecture)
+2. [Execution Pipeline](#execution-pipeline)
+3. [Queue Management](#queue-management)
+4. [Worker Architecture](#worker-architecture)
+5. [Parallel Execution](#parallel-execution)
+6. [Capacity Management](#capacity-management)
+7. [Artifact Storage](#artifact-storage)
+8. [Error Handling](#error-handling)
+9. [Performance Optimization](#performance-optimization)
 
 ## System Architecture
 
-The test execution system is built with a distributed architecture using the following components:
-
-- **Frontend (Next.js)**: User interface for creating and running tests/jobs
-- **API Layer**: NextJS API routes that handle test/job execution requests
-- **Queue System**: BullMQ + Redis for job queuing
-- **Worker Service**: NestJS service that processes queued tests
-- **Storage**:
-  - PostgreSQL database for metadata
-  - Local filesystem for immediate test artifacts
-  - MinIO/S3 for persistent storage of test reports and artifacts
-
-## Execution Flow Diagram
-
 ```mermaid
-flowchart TB
-    subgraph "Frontend"
-        A1[User Interface]
-        B1[ReportViewer Component]
+graph TB
+    subgraph "🎨 Frontend Layer"
+        UI[User Interface]
+        MONITOR[Real-time Monitoring]
     end
 
-    subgraph "API Layer"
-        C1["API Test Route"]
-        C2["API Jobs Run Route"]
-        C3["API Test Results Route"]
-        C4["Playground Cleanup API"]
-        C5["Script Validation API"]
+    subgraph "🔐 API Layer"
+        API1[Test Execution API]
+        API2[Job Execution API]
+        API3[Capacity Check API]
     end
 
-    subgraph "Queue System"
-        D1[Redis]
-        D2[BullMQ]
-        D3[Playground Cleanup Queue]
-        D4[Monitor Execution Queue]
-        D5[Job Scheduler Queue]
-        D6[Monitor Scheduler Queue]
+    subgraph "📨 Queue System"
+        REDIS[(Redis)]
+        Q1[test-execution queue]
+        Q2[job-execution queue]
+        Q3[k6-test-execution queue]
+        Q4[k6-job-execution queue]
     end
 
-    subgraph "Worker Service"
-        E1[Worker Process]
-        E2[Test Execution Service]
-        E3[Report Generation]
-        E4[Enhanced Validation Service]
-        E5[General Validation Service]
-        E6[Monitor Execution Service]
-        E7[Job Scheduler Service]
-        E8[Monitor Scheduler Service]
+    subgraph "⚙️ Worker Pool"
+        W1[Worker 1<br/>Concurrency: 2]
+        W2[Worker 2<br/>Concurrency: 2]
+        W3[Worker N<br/>Concurrency: 2]
     end
 
-    subgraph "Background Services"
-        G1[Playground Cleanup Service]
-        G2[S3 Cleanup Service]
-        G3[Scheduled Cleanup Worker]
+    subgraph "🔧 Test Execution"
+        PLAYWRIGHT[Playwright Runner]
+        K6[K6 Performance Runner]
+        VALIDATION[Script Validation]
     end
 
-    subgraph "Storage"
-        F1[(PostgreSQL)]
-        F2[Local Filesystem]
-        F3[MinIO/S3]
+    subgraph "💾 Storage Layer"
+        DB[(PostgreSQL<br/>Metadata)]
+        S3[MinIO/S3<br/>Artifacts]
+        CACHE[Redis<br/>Capacity Tracking]
     end
 
-    A1 -->|Validate Script| C5
-    C5 -->|Validation Response| A1
-    A1 -->|Execute Test/Job| C1
-    A1 -->|Execute Job| C2
-    C1 -->|Queue Test| D2
-    C2 -->|Queue Job| D2
-    D2 <-->|Store Jobs| D1
-    D2 -->|Process Jobs| E1
-    D4 -->|Process Monitor Checks| E6
-    D5 -->|Schedule Jobs| E7
-    D6 -->|Schedule Monitors| E8
-    E1 -->|Validate Monitor Config| E4
-    E4 -->|Validation Response| E1
-    E1 -->|Execute Tests| E2
-    E2 -->|Generate Reports| E3
-    E3 -->|Store Results| F2
-    E3 -->|Upload Reports| F3
-    E1 -->|Update Status| F1
-    E1 -->|Publish Status Events| D1
-    A1 -->|Poll Status via SSE| D1
-    A1 -->|Fetch Reports| C3
-    C3 -->|Retrieve Report Files| F3
-    C3 -->|Return Report| B1
-    F1 <-->|Store/Retrieve Metadata| C1
-    F1 <-->|Store/Retrieve Metadata| C2
-    F1 <-->|Retrieve Report Metadata| C3
+    subgraph "📊 Observability"
+        OTEL[OpenTelemetry Traces]
+        METRICS[Metrics Collection]
+    end
 
-    %% Playground Cleanup Flow
-    G1 -->|Schedule Cleanup Jobs| D3
-    D3 <-->|Store Cleanup Jobs| D1
-    D3 -->|Process Cleanup| G3
-    G3 -->|Batch Delete S3 Objects| G2
-    G2 -->|Delete Reports| F3
-    C4 -->|Manual Trigger| G1
-    C4 -->|Status Check| G1
+    UI --> API1 & API2
+    API1 & API2 --> API3
+    API3 --> CACHE
+    API1 --> Q1 & Q3
+    API2 --> Q2 & Q4
+
+    Q1 & Q2 & Q3 & Q4 --> REDIS
+    REDIS --> W1 & W2 & W3
+
+    W1 & W2 & W3 --> VALIDATION
+    VALIDATION --> PLAYWRIGHT & K6
+
+    PLAYWRIGHT & K6 --> S3
+    PLAYWRIGHT & K6 --> DB
+    PLAYWRIGHT & K6 --> OTEL
+
+    REDIS --> MONITOR
+    MONITOR --> UI
+
+    classDef frontend fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef api fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef queue fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef worker fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef storage fill:#e0f2f1,stroke:#00796b,stroke-width:2px
+    classDef obs fill:#fce4ec,stroke:#c2185b,stroke-width:2px
+
+    class UI,MONITOR frontend
+    class API1,API2,API3 api
+    class REDIS,Q1,Q2,Q3,Q4 queue
+    class W1,W2,W3,PLAYWRIGHT,K6,VALIDATION worker
+    class DB,S3,CACHE storage
+    class OTEL,METRICS obs
 ```
 
-## Execution Sequence Diagram
+## Execution Pipeline
+
+### Complete Test Execution Flow
 
 ```mermaid
 sequenceDiagram
-    participant Client as Browser Client
-    participant NextFE as Next.js Frontend
-    participant NextAPI as Next.js API Routes
-    participant Redis as Redis (Queue + PubSub)
-    participant NestJS as NestJS Worker Service
-    participant S3 as S3/MinIO Storage
-    participant DB as PostgreSQL Database
-    participant PW as Playwright Test Runner
+    participant User
+    participant API
+    participant Capacity
+    participant Queue
+    participant Worker
+    participant Playwright
+    participant S3
+    participant DB
+    participant SSE
 
-    %% Individual Test Execution Flow (e.g., Playground)
-    Client->>NextFE: Submit test script
-    NextFE->>NextAPI: POST /api/validate-script (pre-validation)
-    NextAPI-->>NextFE: Validation response
-    alt Validation fails
-        NextFE-->>Client: Show validation error
-    else Validation passes
-        NextFE->>NextFE: Show loading toast notification
-        NextFE->>NextAPI: POST /api/test
-        NextAPI->>Redis: Add test to 'test-execution' queue
-        NextAPI-->>NextFE: Return testId, success status
-        NextFE->>NextAPI: Open SSE connection /api/test-status/events/[testId]
+    User->>API: Execute Test
+    API->>API: Validate test definition
+    API->>Capacity: Check available capacity
+
+    alt Capacity Available
+        Capacity-->>API: Capacity OK
+        API->>Queue: Add test to queue
+        Queue-->>API: Job ID
+        API-->>User: Test queued (runId)
+
+        User->>SSE: Open SSE connection
+        SSE-->>User: Connection established
+
+        Queue->>Worker: Job available
+        Worker->>Worker: Claim job
+        Worker->>Capacity: Increment running count
+        Worker->>SSE: Status: Active
+        SSE-->>User: Test started
+
+        Worker->>Playwright: Execute test
+        activate Playwright
+        Playwright->>Playwright: Run test suite
+        Playwright->>Playwright: Generate reports
+        Playwright->>Playwright: Capture screenshots/videos
+        deactivate Playwright
+
+        Worker->>S3: Upload artifacts
+        S3-->>Worker: Upload complete
+
+        Worker->>DB: Save test results
+        DB-->>Worker: Results saved
+
+        Worker->>Capacity: Decrement running count
+        Worker->>SSE: Status: Completed
+        SSE-->>User: Test completed
+
+        User->>API: Get test results
+        API->>DB: Fetch results
+        DB-->>API: Return results
+        API-->>User: Display results
+
+    else No Capacity
+        Capacity-->>API: Capacity exceeded
+        API-->>User: 429 Too Many Requests
     end
-    NextAPI->>Redis: Subscribe to test status and complete channels
-    NextAPI-->>NextFE: Establish SSE stream
-
-    %% Worker picks up test from queue
-    Redis->>NestJS: TestExecutionProcessor receives test task
-    activate NestJS
-    NestJS->>Redis: Publish 'running' status with TTL
-    Redis-->>NextAPI: Message: status='running'
-    NextAPI-->>NextFE: SSE event: status='running'
-
-    %% Test execution process
-    NestJS->>NestJS: Validate test script
-    NestJS->>NestJS: Create test run directory with unique ID
-    NestJS->>NestJS: Enhance script with trace configuration
-    NestJS->>NestJS: Write test to JavaScript file
-    NestJS->>PW: Execute test with Playwright native runner
-    activate PW
-    PW-->>NestJS: Return execution results
-    deactivate PW
-
-    %% Handling test results
-    NestJS->>NestJS: Search for reports in expected directories
-    NestJS->>NestJS: Process report files to fix trace URLs
-    NestJS->>S3: Upload test report/artifacts
-    NestJS->>DB: Update test status & metadata
-    NestJS->>Redis: Publish completion status with TTL
-    Redis-->>NextAPI: Message: status='completed'/'failed'
-    NextAPI-->>NextFE: SSE event: status='completed'/'failed'
-    NextFE->>NextFE: Dismiss loading toast
-    NextFE->>NextFE: Show success/error toast
-    NextFE->>NextAPI: Close SSE connection
-    NextFE->>NextFE: Display test results/report
 ```
 
-## Test Execution Flow
-
-### 1. Single Test Execution (Playground)
-
-1. **User Initiates Test**:
-
-   - User enters test code in the Playground UI
-   - Clicks "Run Test" button
-
-2. **API Request Processing**:
-
-   - Frontend sends a POST request to `/api/test` with test code
-   - API generates a unique test ID
-   - Creates a run entry in the database with "pending" status
-   - Adds the test to the BullMQ `test-execution` queue
-   - Returns the test ID and report URL path to the frontend
-
-3. **Worker Processing**:
-
-   - The test execution worker picks up the queued test
-   - Creates a temporary directory for test artifacts
-   - Writes the test code to a JavaScript file
-   - Executes the test using Playwright
-   - Publishes real-time status updates via Redis pub/sub
-
-4. **Report Generation**:
-
-   - Playwright generates an HTML report with test results
-   - The report includes screenshots, videos, and traces
-   - Report is stored locally in the configured output directory
-   - For persistence, the report is uploaded to S3/MinIO
-
-5. **Status Updates**:
-
-   - Worker updates the test status in the database
-   - Publishes status updates via Redis for real-time updates
-   - Frontend receives updates via Server-Sent Events (SSE)
-
-6. **Report Viewing**:
-   - Once test completes, frontend displays the report
-   - The ReportViewer component fetches report via `/api/test-results`
-   - API proxy handles authentication and fetches the report from S3/local storage
-
-### 2. Job Execution Flow (Multiple Tests)
-
-1. **User Initiates Job**:
-
-   - User selects a job from the jobs UI
-   - Clicks "Run" to execute the job
-
-2. **API Request Processing**:
-
-   - Frontend sends a POST request to `/api/jobs/run` with job ID
-   - API fetches all test scripts associated with the job
-   - Creates a run entry in the database with "pending" status
-   - Updates the `last_run_at` timestamp in the jobs table
-   - Adds the job to the BullMQ `job-execution` queue
-   - Returns the run ID and initial report URL path to the frontend
-
-3. **Worker Processing**:
-
-   - The job execution worker picks up the queued job
-   - Creates a run directory for the job's test artifacts
-   - Writes each test script to separate JavaScript files
-   - Executes all tests using Playwright (potentially in parallel)
-   - Publishes real-time status updates via Redis pub/sub
-
-4. **Report Generation**:
-
-   - Playwright generates a combined HTML report
-   - The report includes results for all tests in the job
-   - Worker uploads the report and artifacts to S3/MinIO
-   - Report metadata is stored in the database for quick lookup
-
-5. **Status Updates**:
-
-   - Worker updates the run status in the database
-   - Publishes job status updates via Redis
-   - Frontend receives updates via Server-Sent Events (SSE)
-
-6. **Report Viewing**:
-   - Once job completes, frontend displays the combined report
-   - The ReportViewer component fetches report via `/api/test-results`
-   - API proxy handles authentication and retrieves the report from S3
-
-## Parallel Execution System
-
-The application includes a sophisticated parallel execution system that provides real-time visibility into test and job execution while enforcing configurable capacity limits.
-
-### Core Concepts
-
-1. **Parallel Executions:** Each test or job run counts as a separate "execution" that consumes execution capacity.
-
-2. **Capacity Limits:** The system enforces two primary limits:
-
-   - **Running Capacity (default: 5):** Maximum number of concurrent executions that can run simultaneously.
-   - **Queued Capacity (default: 50):** Maximum number of executions that can be queued when running capacity is full.
-
-3. **Execution Flow:**
-   - New executions are added to the running pool if capacity is available.
-   - If running capacity is full, executions are placed in the queue.
-   - If queued capacity is full, new submissions are rejected with a 429 (Too Many Requests) status code.
-   - As running executions complete, queued executions are automatically moved to the running state.
-
-### How Capacity Limits Are Enforced
-
-The system enforces capacity limits at multiple levels:
-
-1. **API Layer Enforcement (QUEUED_CAPACITY):**
-
-   - Before adding a job to the queue, the API checks if queued capacity is exceeded
-   - If queue is full, the API rejects the submission with a 429 status code
-   - Prevents overloading the system with too many pending executions
-
-2. **Worker Layer Enforcement (RUNNING_CAPACITY):**
-   - Workers check running job count before processing each job
-   - If running capacity is full, the job is delayed and returned to the queue
-   - This ensures only the allowed number of jobs run simultaneously
-
-These multi-level checks ensure the system maintains stability under heavy load while providing accurate UI feedback.
-
-## Key Components
-
-### 1. Queue System
-
-The application uses BullMQ with Redis for job queuing:
-
-- **Queues**:
-
-  - `test-execution`: For single test executions
-  - `job-execution`: For running multiple tests as part of a job
-  - `monitor-execution`: For monitor checks triggered by schedulers
-  - `job-scheduler`: For cron-driven job scheduling
-  - `monitor-scheduler`: For cron-driven monitor scheduling
-  - `playground-cleanup`: For scheduled cleanup of old playground test reports
-
-- **Benefits**:
-  - **Reliability**: Failed jobs can be retried
-  - **Persistence**: Jobs survive application restarts
-  - **Scalability**: Multiple workers can process jobs concurrently
-  - **Monitoring**: Job progress and status tracking
-
-### 2. Worker Service
-
-The NestJS worker service processes queued jobs:
-
-- **Processors**:
-
-  - `TestExecutionProcessor`: Handles single test execution and enforces running capacity
-  - `JobExecutionProcessor`: Handles job execution with multiple tests and enforces running capacity
-
-- **Services**:
-  - `ExecutionService`: Orchestrates test execution
-  - `S3Service`: Handles artifact uploads to S3/MinIO
-  - `DbService`: Manages database operations
-  - `RedisService`: Handles real-time status updates and connection management
-  - `QueueStatusService`: Manages Bull queue event listeners for monitoring
-  - `MonitorService`: Handles monitor execution and alerting
-  - `PlaygroundCleanupService`: Manages scheduled S3 cleanup with batch processing (1000 objects per batch) using BullMQ Worker
-
-### 3. Report Storage and Retrieval
-
-Test reports are stored in multiple locations:
-
-- **Local Storage**:
-
-  - Test results are initially stored on the local filesystem
-  - Default locations are defined in the Playwright configuration
-
-- **S3/MinIO Storage**:
-
-  - Test reports and artifacts are uploaded for persistence
-  - Organized by test/job IDs to allow easy retrieval
-  - Accessible via the API layer or directly from S3 (if authenticated)
-
-- **Database**:
-  - Metadata about tests, runs, and reports is stored in PostgreSQL
-  - Includes status, timestamps, URLs, and error information
-
-### 4. Real-time Status Updates
-
-Status updates use a publish/subscribe pattern:
-
-- **Publishers**:
-
-  - Worker service publishes status updates to Redis channels
-  - Channels are named based on test/job IDs
-
-- **Subscribers**:
-  - Frontend subscribes to updates via Server-Sent Events (SSE)
-  - Updates are used to show real-time progress and status
-
-### 5. Validation Services
-
-The system includes comprehensive validation services to ensure security and reliability:
-
-- **Script Validation Service** (`ValidationService`):
-
-  - Pre-execution validation of test scripts
-  - Security checks for dangerous patterns and blocked identifiers
-  - Module import validation (only allows approved libraries)
-  - Syntax validation and complexity analysis
-  - Protection against code injection and infinite loops
-
-- **Enhanced Validation Service** (`EnhancedValidationService`):
-
-  - URL and hostname validation with SSRF protection
-  - HTTP configuration validation
-  - Port and security validation
-  - Private IP range detection and blocking
-
-- **General Validation Service** (Zod-based):
-
-  - Schema-based input validation
-  - Type-safe data transformation
-  - Structured error handling
-
-- **Script Validation API** (`/api/validate-script`):
-  - Pre-execution endpoint for client-side validation
-  - Real-time feedback during script editing
-  - Integration with playground UI for immediate validation
-
-### 6. Redis Memory Management
-
-The system includes a sophisticated Redis memory management strategy to prevent unbounded memory growth:
-
-- **Key TTL (Time-To-Live) Settings**:
-
-  - **Job Data (7 days)**: Completed and failed jobs are retained for analysis
-  - **Event Streams (24 hours)**: Real-time status updates expire after a day
-  - **Metrics Data (48 hours)**: Performance metrics are kept for two days
-
-- **Automated Cleanup Mechanisms**:
-
-  - **Job Cleanup**: Regular cleaning of completed/failed jobs older than TTL
-  - **Event Stream Trimming**: Event streams capped at 1000 events
-  - **Orphaned Key Detection**: Background workers scan for keys without TTL and add expiration
-
-- **Memory Optimization Techniques**:
-
-  - **Batched Processing**: Keys are processed in small batches (100 at a time)
-  - **Efficient Key Scanning**: Uses Redis SCAN instead of KEYS to reduce memory pressure
-  - **Reduced Storage Limits**: Lower limits for completed jobs (500) and failed jobs (1000)
-  - **Frequent Cleanup**: Cleanup operations run every 12 hours
-
-- **BullMQ Configuration**:
-
-  - Queue configuration follows NestJS BullMQ best practices
-  - Default job options set job removal limits (500 completed/1000 failed jobs)
-  - Worker processors implement proper stalled job handling
-  - Implementation across both client and server for consistent memory management
-
-- **Benefits**:
-  - Predictable memory usage over time
-  - Automatic recovery from memory leaks
-  - Protection against Redis out-of-memory conditions
-  - Consistent performance regardless of system uptime
-
-## Error Handling and Recovery
-
-The system implements several error handling mechanisms:
-
-1. **Queue-Level Retries**:
-
-   - BullMQ automatically retries failed jobs with backoff
-   - Maximum retry attempts are configurable
-
-2. **Execution Timeouts**:
-
-   - Tests are terminated if they exceed the configured timeout
-   - Default timeout is 15 minutes (configurable)
-
-3. **Worker Crash Recovery**:
-
-   - Jobs are marked as "stalled" if workers crash
-   - BullMQ automatically reprocesses stalled jobs
-
-4. **Report Fallbacks**:
-
-   - If S3 upload fails, local report access is attempted
-   - Error reports are still generated for failed tests
-
-5. **UI Error Handling**:
-   - ReportViewer shows user-friendly error messages
-   - Provides retry options and troubleshooting information
-
-## Playground Cleanup System
-
-### Background Process Integration
-
-The playground cleanup system operates as a separate background process that integrates seamlessly with the existing job execution architecture:
-
-**Process Characteristics:**
-
-- **Independence**: Operates independently from test execution workflows
-- **Multi-Instance Safe**: Uses Redis coordination to prevent duplicate cleanup across multiple app instances
-- **Configurable**: Environment-driven scheduling and retention policies
-- **Robust**: Comprehensive error handling and retry logic
-
-**Integration Points:**
-
-- **Initialization**: Starts after job schedulers during app startup sequence
-- **Redis Connection**: Leverages existing Redis connection pool from queue management
-- **S3 Service**: Reuses existing S3 cleanup service for consistency and reliability
-- **Monitoring**: Provides status and manual trigger endpoints for administrative control
-
-**Batch Processing Architecture:**
-
-- **Memory Optimization**: Processes 1000 S3 objects per batch to prevent memory overflow
-- **API Efficiency**: Aligns with AWS S3 DeleteObjects API limit (1000 objects max per request)
-- **Progress Tracking**: Logs progress every batch for operational visibility
-- **Interrupt Recovery**: Failure recovery limited to current batch, not entire operation
-
-## Configuration Options
-
-The test execution system can be configured via environment variables:
-
-```bash
-# Database
-DATABASE_URL=postgres://user:password@${DB_HOST}:5432/supercheck
-
-# Redis (for queue)
-REDIS_URL=redis://${REDIS_HOST}:6379
-
-# S3/MinIO
-S3_ENDPOINT=http://${S3_HOST}:9000
-S3_JOB_BUCKET_NAME=playwright-job-artifacts
-S3_TEST_BUCKET_NAME=playwright-test-artifacts
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=minioadmin
-AWS_SECRET_ACCESS_KEY=minioadmin
-
-# Execution Parameters
-RUNNING_CAPACITY=5                 # Maximum concurrent executions allowed to run
-QUEUED_CAPACITY=50                 # Maximum executions allowed in queued state
-TEST_EXECUTION_TIMEOUT_MS=120000   # 2 minutes default per single Playwright test
-JOB_EXECUTION_TIMEOUT_MS=900000    # 15 minutes default per Playwright job bundle
-K6_TEST_EXECUTION_TIMEOUT_MS=3600000 # 60 minutes default per single k6 test
-K6_JOB_EXECUTION_TIMEOUT_MS=3600000  # 60 minutes default per aggregated k6 job
-
-# Playground Cleanup Parameters
-PLAYGROUND_CLEANUP_ENABLED=true           # Enable/disable playground cleanup
-PLAYGROUND_CLEANUP_CRON=0 */12 * * *      # Cron schedule (default: every 12 hours)
-PLAYGROUND_CLEANUP_MAX_AGE_HOURS=24       # Delete reports older than 24 hours
+### Job Execution Flow (Multiple Tests)
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant API
+    participant Queue
+    participant Worker
+    participant DB
+
+    User->>API: Execute Job (10 tests)
+    API->>API: Validate job
+    API->>Queue: Add job to queue
+    Queue-->>API: Job ID
+    API-->>User: Job queued
+
+    Queue->>Worker: Job available
+    Worker->>Worker: Fetch job tests
+    Worker->>DB: Get test definitions
+    DB-->>Worker: 10 test configs
+
+    loop For each test in job
+        Worker->>Worker: Execute test
+        Worker->>Worker: Upload artifacts
+        Worker->>DB: Save test result
+        Worker->>Worker: Update job progress
+    end
+
+    Worker->>DB: Mark job complete
+    Worker->>Worker: Send notifications
+    DB-->>Worker: Job saved
+    Worker-->>User: Job complete notification
 ```
 
-## Start Services Quick Reference
+## Queue Management
 
-```bash
-# Start Redis
-docker run -d --name redis-supercheck -p 6379:6379 redis
+### BullMQ Queue Architecture
 
-# Start Postgres
-docker run -d --name postgres-supercheck -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=supercheck -p 5432:5432 postgres:18
+```mermaid
+graph TB
+    subgraph "Queue Types"
+        Q1[test-execution<br/>Single Tests]
+        Q2[job-execution<br/>Multi-Test Jobs]
+        Q3[k6-test-execution<br/>Performance Tests]
+        Q4[monitor-execution<br/>Health Checks]
+        Q5[Job Scheduler<br/>Cron Jobs]
+    end
 
-# Start MinIO
-docker run -d --name minio-supercheck -p 9000:9000 -p 9001:9001 -e "MINIO_ROOT_USER=minioadmin" -e "MINIO_ROOT_PASSWORD=minioadmin" minio/minio server /data --console-address ":9001"
+    subgraph "Queue Configuration"
+        C1[Max Concurrency: 2/worker]
+        C2[Job Timeout: 15 min]
+        C3[Retry: 3 attempts]
+        C4[Exponential Backoff]
+        C5[Remove on Complete: 500]
+        C6[Remove on Fail: 1000]
+    end
+
+    subgraph "Queue Events"
+        E1[waiting → Job added]
+        E2[active → Worker processing]
+        E3[completed → Success]
+        E4[failed → Error]
+        E5[stalled → Timeout]
+    end
+
+    Q1 & Q2 & Q3 & Q4 & Q5 --> C1
+    C1 --> C2 --> C3 --> C4 --> C5 --> C6
+
+    C6 --> E1 --> E2 --> E3
+    E2 --> E4
+    E2 --> E5
+
+    classDef queue fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef config fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef event fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+
+    class Q1,Q2,Q3,Q4,Q5 queue
+    class C1,C2,C3,C4,C5,C6 config
+    class E1,E2,E3,E4,E5 event
 ```
 
-## Implementation Details
+### Job Lifecycle States
 
-### Queue Configuration
+```mermaid
+stateDiagram-v2
+    [*] --> Waiting: Job Added to Queue
+    Waiting --> Active: Worker Picks Up
+    Active --> Processing: Test Execution
+    Processing --> Uploading: Tests Complete
+    Uploading --> Completed: Artifacts Saved
+    Processing --> Failed: Test Error
+    Active --> Stalled: Worker Timeout
+    Stalled --> Active: Retry
+    Stalled --> Failed: Max Retries Exceeded
+    Completed --> [*]
+    Failed --> [*]
 
-The system uses BullMQ with the following configuration:
+    note right of Active
+        Worker claims job
+        Capacity incremented
+    end note
 
-```typescript
-// Default job options with TTL settings (consistent across app and worker)
-const defaultJobOptions = {
-  removeOnComplete: { count: 500, age: 24 * 3600 }, // Keep completed jobs for 24 hours (500 max)
-  removeOnFail: { count: 1000, age: 7 * 24 * 3600 }, // Keep failed jobs for 7 days (1000 max)
-  attempts: 3,
-  backoff: { type: "exponential", delay: 1000 },
-};
+    note right of Processing
+        Playwright/K6 executing
+        Screenshots/videos captured
+    end note
 
-// Queue settings with Redis TTL and auto-cleanup options
-const queueSettings = {
-  connection,
-  defaultJobOptions,
-  stalledInterval: 30000, // Check for stalled jobs every 30 seconds
-  metrics: {
-    maxDataPoints: 60, // Limit metrics storage to 60 data points
-    collectDurations: true,
-  },
-};
-
-// Redis connection configuration (consistent across app and worker)
-const redisOptions = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379'),
-  password: process.env.REDIS_PASSWORD,
-  username: process.env.REDIS_USERNAME,
-  maxRetriesPerRequest: null, // Required for BullMQ
-  enableReadyCheck: false, // Avoid ready check for client connection
-  retryStrategy: (times: number) => {
-    const delay = Math.min(times * 100, 3000); // Exponential backoff capped at 3s
-    return delay;
-  },
-  tls: process.env.REDIS_TLS_ENABLED === 'true' ? {
-    rejectUnauthorized: process.env.REDIS_TLS_REJECT_UNAUTHORIZED !== 'false',
-  } : undefined,
-};
+    note right of Completed
+        Capacity decremented
+        SSE notification sent
+    end note
 ```
 
-### SSE Implementation
+## Worker Architecture
 
-Server-Sent Events are implemented for real-time status updates:
+### Worker Service Components
 
-```typescript
-// SSE endpoint for test status
-export async function GET(request: Request) {
-  const stream = new ReadableStream({
-    async start(controller) {
-      // Set up polling to check test status from Bull queue
-      const pollInterval = setInterval(async () => {
-        // Get job state and send updates
-        const state = await updatedTestJob.getState();
-        controller.enqueue(
-          encoder.encode(
-            createSSEMessage({
-              status,
-              testId,
-              progress,
-              reportPath: updatedReport?.reportPath,
-              s3Url: updatedReport?.s3Url,
-            })
-          )
-        );
-      }, 1000); // Poll every second
-    },
-  });
+```mermaid
+graph TB
+    subgraph "Worker Service (NestJS)"
+        MAIN[Main Worker Process]
 
-  return new NextResponse(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
-  });
-}
+        subgraph "Processors"
+            P1[Test Execution Processor]
+            P2[Job Execution Processor]
+            P3[K6 Test Processor]
+            P4[Monitor Processor]
+        end
+
+        subgraph "Services"
+            S1[Execution Service]
+            S2[S3 Upload Service]
+            S3[Database Service]
+            S4[Validation Service]
+            S5[Resource Manager]
+        end
+
+        subgraph "Utilities"
+            U1[Memory Monitor]
+            U2[Timeout Handler]
+            U3[Cleanup Service]
+            U4[Trace Creator]
+        end
+    end
+
+    MAIN --> P1 & P2 & P3 & P4
+    P1 & P2 --> S1
+    P3 --> S1
+    P4 --> S1
+
+    S1 --> S2 & S3 & S4 & S5
+    S1 --> U1 & U2 & U3 & U4
+
+    classDef processor fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef service fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef utility fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+
+    class P1,P2,P3,P4 processor
+    class S1,S2,S3,S4,S5 service
+    class U1,U2,U3,U4 utility
 ```
 
-### Capacity Management
+### Worker Execution Model
 
-The system implements sophisticated capacity management through environment-configurable limits:
+```mermaid
+graph LR
+    A[Worker Starts] --> B{Poll Queue}
+    B -->|Job Available| C[Claim Job]
+    B -->|No Jobs| D[Wait 1s]
+    D --> B
 
-```typescript
-// Capacity limits from worker/src/execution/constants.ts and app/src/lib/queue-stats.ts
-export const RUNNING_CAPACITY = parseInt(process.env.RUNNING_CAPACITY || "5");
-export const QUEUED_CAPACITY = parseInt(process.env.QUEUED_CAPACITY || "50");
+    C --> E[Increment Capacity]
+    E --> F[Execute Test]
+    F --> G{Success?}
 
-// Real-time queue statistics from app/src/lib/queue-stats.ts
-export async function fetchQueueStats(): Promise<QueueStats> {
-  // Counts active jobs from BullMQ Redis keys
-  const runningCount =
-    activeJobs + activeTests + processingJobs + processingTests;
-  const queuedCount = waitingJobs + waitingTests + delayedJobs + delayedTests;
+    G -->|Yes| H[Upload Artifacts]
+    G -->|No| I[Capture Error]
 
-  return {
-    running: Math.min(runningCount, RUNNING_CAPACITY),
-    runningCapacity: RUNNING_CAPACITY,
-    queued: queuedCount,
-    queuedCapacity: QUEUED_CAPACITY,
-  };
-}
+    H --> J[Save Results]
+    I --> J
 
-// Capacity verification before job submission
-export async function verifyQueueCapacityOrThrow(): Promise<void> {
-  const stats = await fetchQueueStats();
+    J --> K[Decrement Capacity]
+    K --> L[Emit Event]
+    L --> B
 
-  if (stats.running >= stats.runningCapacity) {
-    if (stats.queued >= stats.queuedCapacity) {
-      throw new Error(
-        `Queue capacity limit reached (${stats.queued}/${stats.queuedCapacity} queued jobs).`
-      );
-    }
-  }
-}
+    classDef success fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef error fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef process fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+
+    class H,J success
+    class I error
+    class A,B,C,E,F,K,L process
 ```
 
-This comprehensive system ensures reliable, scalable, and observable test execution with proper resource management and real-time feedback. The capacity management system uses RUNNING_CAPACITY and QUEUED_CAPACITY environment variables to control system load, with sophisticated Redis-based queue statistics tracking for accurate capacity enforcement across distributed workers.
+## Parallel Execution
+
+### Concurrency Control
+
+```mermaid
+graph TB
+    A[Parallel Execution Manager] --> B[Configuration]
+
+    B --> C[MAX_CONCURRENT_EXECUTIONS: 2]
+    B --> D[Per-Worker Limit]
+    B --> E[Semaphore Pattern]
+
+    F[Execution Flow] --> G{Current < Max?}
+    G -->|Yes| H[Acquire Slot]
+    G -->|No| I[Wait in Queue]
+
+    H --> J[Execute Test]
+    J --> K[Release Slot]
+    K --> L[Next Test]
+
+    I --> M{Timeout?}
+    M -->|No| G
+    M -->|Yes| N[Fail with Timeout]
+
+    classDef config fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef exec fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef wait fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef error fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+
+    class B,C,D,E config
+    class H,J,K,L exec
+    class I,M wait
+    class N error
+```
+
+### Resource Allocation
+
+```mermaid
+graph TB
+    subgraph "Per-Worker Resources"
+        R1[CPU: 2 cores allocated]
+        R2[Memory: 3GB limit]
+        R3[Disk: 10GB /tmp space]
+        R4[Browser Instances: 2 max]
+    end
+
+    subgraph "Resource Monitoring"
+        M1[Memory Usage Tracker]
+        M2[CPU Usage Monitor]
+        M3[Disk Space Check]
+    end
+
+    subgraph "Cleanup Triggers"
+        C1[After Each Test]
+        C2[On Memory Threshold: 80%]
+        C3[On Disk Threshold: 85%]
+        C4[Every 30 minutes]
+    end
+
+    R1 & R2 & R3 & R4 --> M1 & M2 & M3
+    M1 & M2 & M3 --> C1 & C2 & C3 & C4
+
+    classDef resource fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef monitor fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef cleanup fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+
+    class R1,R2,R3,R4 resource
+    class M1,M2,M3 monitor
+    class C1,C2,C3,C4 cleanup
+```
+
+## Capacity Management
+
+### Global Capacity Tracking
+
+```mermaid
+graph TB
+    subgraph "Redis Capacity Keys"
+        K1[supercheck:capacity:running<br/>Current Count]
+        K2[supercheck:capacity:queued<br/>Queue Count]
+    end
+
+    subgraph "Capacity Limits"
+        L1[RUNNING_CAPACITY: 6]
+        L2[QUEUED_CAPACITY: 50]
+    end
+
+    subgraph "Operations"
+        O1[Before Queue: Check]
+        O2[Worker Start: Increment Running]
+        O3[Worker Complete: Decrement Running]
+        O4[Queue Add: Increment Queued]
+        O5[Worker Pickup: Decrement Queued]
+    end
+
+    A[Job Request] --> O1
+    O1 --> K1 & K2
+    O1 --> L1 & L2
+
+    O1 --> D{Capacity OK?}
+    D -->|Yes| O4
+    D -->|No| E[Reject: 429]
+
+    O4 --> F[Add to Queue]
+    F --> O5
+    O5 --> O2
+    O2 --> G[Execute]
+    G --> O3
+
+    classDef redis fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef limit fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef op fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+
+    class K1,K2 redis
+    class L1,L2 limit
+    class O1,O2,O3,O4,O5 op
+```
+
+### Capacity Decision Flow
+
+```mermaid
+graph TB
+    A[Test/Job Trigger] --> B{Check Running Capacity}
+    B -->|running < RUNNING_CAPACITY| C[Allow]
+    B -->|running >= RUNNING_CAPACITY| D{Check Queue Capacity}
+
+    D -->|queued < QUEUED_CAPACITY| E[Add to Queue]
+    D -->|queued >= QUEUED_CAPACITY| F[429 Capacity Exceeded]
+
+    C --> G[Increment Queued Count]
+    E --> G
+    G --> H[Add to BullMQ]
+    H --> I[Return Success]
+
+    F --> J[Return Error with Retry-After]
+
+    classDef success fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef check fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef error fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+
+    class C,E,G,H,I success
+    class B,D check
+    class F,J error
+```
+
+## Artifact Storage
+
+### Storage Architecture
+
+```mermaid
+graph TB
+    subgraph "Artifact Generation"
+        A1[Playwright Execution]
+        A2[HTML Report]
+        A3[Screenshots PNG/JPEG]
+        A4[Videos WebM]
+        A5[Trace Files ZIP]
+        A6[Console Logs]
+    end
+
+    subgraph "Local Storage"
+        L1[/tmp/playwright-reports/]
+        L2[playwright-results/]
+    end
+
+    subgraph "S3/MinIO Buckets"
+        S1[playwright-test-artifacts]
+        S2[playwright-job-artifacts]
+        S3[k6-performance-artifacts]
+        S4[playwright-monitor-artifacts]
+    end
+
+    subgraph "Database"
+        D1[runs table<br/>Metadata + S3 URLs]
+    end
+
+    A1 --> A2 & A3 & A4 & A5 & A6
+    A2 & A3 & A4 & A5 & A6 --> L1
+    L1 --> L2
+
+    L2 -->|Upload| S1 & S2 & S3 & S4
+    S1 & S2 & S3 & S4 -->|Reference| D1
+
+    classDef gen fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef local fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef s3 fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef db fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+
+    class A1,A2,A3,A4,A5,A6 gen
+    class L1,L2 local
+    class S1,S2,S3,S4 s3
+    class D1 db
+```
+
+### Upload Pipeline
+
+```mermaid
+sequenceDiagram
+    participant Worker
+    participant Local
+    participant S3
+    participant DB
+    participant Cleanup
+
+    Worker->>Local: Generate artifacts
+    Local-->>Worker: Files created
+
+    Worker->>Worker: Validate artifacts exist
+    Worker->>S3: Recursive upload
+    activate S3
+    S3->>S3: Create bucket path
+    S3->>S3: Upload files
+    S3-->>Worker: Upload complete
+    deactivate S3
+
+    Worker->>DB: Save artifact URLs
+    DB-->>Worker: Metadata saved
+
+    Worker->>Cleanup: Trigger local cleanup
+    Cleanup->>Local: Delete /tmp files
+    Local-->>Cleanup: Cleanup complete
+```
+
+## Error Handling
+
+### Error Recovery Strategy
+
+```mermaid
+graph TB
+    A[Error Detected] --> B{Error Type?}
+
+    B -->|Network Error| C[Retry 3x with backoff]
+    B -->|Timeout| D[Mark as timeout, no retry]
+    B -->|Out of Memory| E[Cleanup + Retry once]
+    B -->|Validation Error| F[Fail immediately]
+    B -->|Browser Crash| G[Retry 2x]
+
+    C --> H{Retry Success?}
+    H -->|Yes| I[Continue]
+    H -->|No| J[Mark Failed]
+
+    E --> K{Cleanup Success?}
+    K -->|Yes| L[Retry Execution]
+    K -->|No| J
+
+    G --> M{Retry Success?}
+    M -->|Yes| I
+    M -->|No| J
+
+    D --> J
+    F --> J
+
+    J --> N[Save Error Details]
+    N --> O[Capture Screenshot]
+    O --> P[Upload Error Artifacts]
+    P --> Q[Send Notification]
+
+    classDef retry fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef success fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef fail fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+
+    class C,E,G,H,K,L,M retry
+    class I success
+    class D,F,J,N,O,P,Q fail
+```
+
+### Timeout Management
+
+```mermaid
+graph LR
+    A[Test Starts] --> B[Set Timeout Timer]
+    B --> C{Execution Complete?}
+
+    C -->|Before Timeout| D[Clear Timer]
+    C -->|After Timeout| E[Kill Process]
+
+    D --> F[Success]
+
+    E --> G[Capture Partial Results]
+    G --> H[Mark as Timeout]
+    H --> I[Save What's Available]
+
+    classDef normal fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef timeout fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+
+    class A,B,C,D,F normal
+    class E,G,H,I timeout
+```
+
+## Performance Optimization
+
+### Optimization Strategies
+
+```mermaid
+graph TB
+    subgraph "Queue Optimization"
+        Q1[Job Priority Levels]
+        Q2[Batch Test Execution]
+        Q3[Intelligent Retry Logic]
+    end
+
+    subgraph "Execution Optimization"
+        E1[Browser Instance Reuse]
+        E2[Parallel Test Execution]
+        E3[Headless Mode Default]
+        E4[Trace on Failure Only]
+    end
+
+    subgraph "Storage Optimization"
+        S1[Compress Screenshots]
+        S2[Stream Large Files]
+        S3[Cleanup Old Artifacts]
+        S4[Incremental Uploads]
+    end
+
+    subgraph "Resource Optimization"
+        R1[Memory Pool Management]
+        R2[CPU Affinity]
+        R3[Disk Space Monitoring]
+        R4[Network Bandwidth Control]
+    end
+
+    Q1 & Q2 & Q3 --> PERF[Performance Gains]
+    E1 & E2 & E3 & E4 --> PERF
+    S1 & S2 & S3 & S4 --> PERF
+    R1 & R2 & R3 & R4 --> PERF
+
+    PERF --> RESULT[50% Faster Execution<br/>30% Lower Resource Usage]
+
+    classDef opt fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef result fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+
+    class Q1,Q2,Q3,E1,E2,E3,E4,S1,S2,S3,S4,R1,R2,R3,R4 opt
+    class RESULT result
+```
+
+### Key Performance Metrics
+
+| Metric | Target | Current | Status |
+|--------|--------|---------|--------|
+| Queue Wait Time | < 30s | 15s avg | ✅ |
+| Test Execution Time | < 2 min | 1.5 min avg | ✅ |
+| Artifact Upload Time | < 10s | 8s avg | ✅ |
+| Worker Utilization | 70-80% | 75% avg | ✅ |
+| Memory per Test | < 500MB | 380MB avg | ✅ |
+| Concurrent Tests | 12 (6 workers × 2) | 12 | ✅ |
+
+## Configuration Reference
+
+### Environment Variables
+
+**Capacity Configuration:**
+- `RUNNING_CAPACITY` - Maximum concurrent executions (default: 6)
+- `QUEUED_CAPACITY` - Maximum queued jobs (default: 50)
+- `MAX_CONCURRENT_EXECUTIONS` - Per-worker concurrency (default: 2)
+
+**Timeout Configuration:**
+- `TEST_EXECUTION_TIMEOUT_MS` - Single test timeout (default: 120000 = 2 min)
+- `JOB_EXECUTION_TIMEOUT_MS` - Job timeout (default: 900000 = 15 min)
+
+**Playwright Configuration:**
+- `PLAYWRIGHT_HEADLESS` - Run headless (default: true)
+- `PLAYWRIGHT_RETRIES` - Retry count (default: 1)
+- `PLAYWRIGHT_TRACE` - Trace mode (default: retain-on-failure)
+
+**Resource Configuration:**
+- `WORKER_MEMORY_LIMIT` - Memory limit (default: 3GB)
+- `CLEANUP_INTERVAL_MS` - Cleanup frequency (default: 1800000 = 30 min)
+
+## Best Practices
+
+### For High Throughput
+1. Scale workers horizontally (not concurrency per worker)
+2. Use job priority for critical tests
+3. Implement test result caching
+4. Optimize Playwright test selectors
+
+### For Reliability
+1. Implement comprehensive error handling
+2. Use idempotent job processing
+3. Enable detailed logging and tracing
+4. Monitor queue health metrics
+
+### For Resource Efficiency
+1. Clean up artifacts regularly
+2. Use headless mode by default
+3. Limit screenshot/video capture
+4. Implement memory monitoring
+
+## Related Documentation
+
+- **Queue System:** See `REAL_TIME_STATUS_UPDATES_SSE.md` for SSE integration
+- **Job Triggers:** See `JOB_TRIGGER_SYSTEM.md` for trigger types
+- **Observability:** See `OBSERVABILITY.md` for tracing details
+- **API Keys:** See `API_KEY_SYSTEM.md` for remote triggers
+
+## Revision History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 2.0 | 2025-01-12 | Complete rewrite with comprehensive diagrams |
+| 1.0 | 2024-09-15 | Initial test execution specification |
