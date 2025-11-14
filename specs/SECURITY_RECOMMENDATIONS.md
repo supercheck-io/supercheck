@@ -23,11 +23,11 @@ This document outlines **37 identified issues** (8 Critical, 12 High, 11 Medium,
 1. ✅ **Mandatory container execution** for all Playwright and K6 tests
 2. ✅ **No fallback to local execution** - containers are required, not optional
 3. ✅ **Security hardening:**
-   - Read-only root filesystem (`--read-only`)
    - No privilege escalation (`--security-opt=no-new-privileges`)
    - All capabilities dropped (`--cap-drop=ALL`)
    - Resource limits (CPU, memory, PIDs)
    - Network isolation
+   - **Note:** Read-only root filesystem removed (containers need write access to `/tmp/` for test scripts and reports)
 4. ✅ **Docker images:**
    - Playwright: `mcr.microsoft.com/playwright:v1.56.1-noble`
    - K6: `grafana/k6:latest`
@@ -100,10 +100,10 @@ graph LR
     D --> E[Secure Results]
 
     subgraph "Security Boundaries"
-        F[Read-only Root FS]
-        G[No Privilege Escalation]
-        H[Capability Drops]
-        I[Resource Limits]
+        F[No Privilege Escalation]
+        G[Capability Drops]
+        H[Resource Limits]
+        I[Network Isolation]
     end
 
     C --> F & G & H & I
@@ -120,7 +120,6 @@ graph LR
 **Implementation Details:**
 1. ✅ **Mandatory container execution** - No fallback to local execution
 2. ✅ **Security hardening:**
-   - Read-only root filesystem (`--read-only`)
    - No privilege escalation (`--security-opt=no-new-privileges`)
    - All capabilities dropped (`--cap-drop=ALL`)
    - Resource limits (CPU, memory, PIDs)
@@ -129,6 +128,7 @@ graph LR
    - Playwright: `mcr.microsoft.com/playwright:v1.56.1-noble`
    - K6: `grafana/k6:latest`
 4. ✅ **Path isolation:** Worker directory mounted at `/workspace`
+5. ✅ **Writable container filesystem:** Allows test scripts and report generation in `/tmp/`
 
 **Security Benefits Achieved:**
 - ✅ Prevents Remote Code Execution (RCE) attacks
@@ -508,8 +508,9 @@ gantt
 **✅ Completed:**
 - ✅ **Code Injection Prevention** - Container-based execution fully deployed
   - Docker container isolation for all test execution
-  - Security hardening (read-only FS, no privilege escalation, capability drops)
-  - Resource limits and network isolation
+  - Security hardening (no privilege escalation, capability drops, resource limits)
+  - Network isolation and path mapping
+  - Writable container filesystem for test execution
   - Playwright and K6 container images implemented
 
 ### 🔄 In Progress (Next Priority)
@@ -570,10 +571,11 @@ gantt
 
 **✅ Completed Security Items:**
 - [x] **Container-based test execution** - All tests run in isolated Docker containers
-- [x] **Security hardening** - Read-only filesystem, no privilege escalation, capability drops
+- [x] **Security hardening** - No privilege escalation, capability drops, resource limits
 - [x] **Resource limits** - CPU, memory, and process limits enforced
 - [x] **Network isolation** - Containers run with restricted network access
 - [x] **Path isolation** - Worker directory mounted at `/workspace` with proper mapping
+- [x] **Writable container filesystem** - Allows test execution and report generation in `/tmp/`
 
 ### Infrastructure Security
 - [ ] Enable TLS for all internal communication (Redis, PostgreSQL)
