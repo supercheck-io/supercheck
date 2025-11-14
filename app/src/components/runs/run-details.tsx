@@ -518,7 +518,7 @@ export function RunDetails({
       <div className="bg-card rounded-lg border overflow-hidden">
      
         {isPerformanceRun ? (
-          <div className="h-[calc(100vh-300px)]">
+          <div className="h-[calc(100vh-270px)]">
             <PerformanceTestReport
               runId={run.id}
               onStatusChange={(status: K6RunStatus, payload) => {
@@ -540,7 +540,7 @@ export function RunDetails({
               isRunning={currentStatus === "running"}
               backToLabel="Back to Runs"
               backToUrl="/runs"
-              containerClassName="w-full h-[calc(100vh-290px)] relative"
+              containerClassName="w-full h-[calc(100vh-270px)] relative"
               iframeClassName="w-full h-full border-0 rounded-lg"
               hideEmptyMessage={true}
             />

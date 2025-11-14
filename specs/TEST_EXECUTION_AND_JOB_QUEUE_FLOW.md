@@ -859,7 +859,7 @@ graph TB
     end
 
     subgraph "Capacity Limits"
-        L1["RUNNING_CAPACITY: 6"]
+        L1["RUNNING_CAPACITY: 5"]
         L2["QUEUED_CAPACITY: 50"]
     end
 
@@ -1121,16 +1121,18 @@ graph TB
 | Artifact Upload Time | < 10s | 8s avg | ✅ |
 | Worker Utilization | 70-80% | 75% avg | ✅ |
 | Memory per Test | < 500MB | 380MB avg | ✅ |
-| Concurrent Tests | 12 (6 workers × 2) | 12 | ✅ |
+| Concurrent Tests | 5 (default global limit) | 5 | ✅ |
 
 ## Configuration Reference
 
 ### Environment Variables
 
 **Capacity Configuration:**
-- `RUNNING_CAPACITY` - Maximum concurrent executions (default: 6)
+- `RUNNING_CAPACITY` - Maximum concurrent executions (default: 5)
 - `QUEUED_CAPACITY` - Maximum queued jobs (default: 50)
-- `MAX_CONCURRENT_EXECUTIONS` - Per-worker concurrency (default: 2)
+- `MAX_CONCURRENT_EXECUTIONS` - Per-worker concurrency (default: 5)
+
+> **Note:** These defaults are placeholders. When subscription-aware capacity management ships, limits will be derived from organization settings stored in the database, giving each org its own `RUNNING_CAPACITY`, `QUEUED_CAPACITY`, and per-worker concurrency values.
 
 **Timeout Configuration:**
 - `TEST_EXECUTION_TIMEOUT_MS` - Single test timeout (default: 120000 = 2 min)

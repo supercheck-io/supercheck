@@ -2,8 +2,7 @@
 
 Welcome to the comprehensive technical documentation for **Supercheck**, an enterprise-grade end-to-end testing, monitoring, and AI-powered automation platform built with modern distributed architecture.
 
-> 📖 **For getting started**: See the [main README](../README.md) for quick setup instructions and usage guide.  
-> 📋 **For development**: See [CLAUDE.md](../CLAUDE.md) for project overview and development guidelines.
+> 📖 **For getting started**: See the [main README](../README.md) for quick setup instructions and usage guide.
 
 This documentation provides in-depth technical specifications, architectural details, and implementation guides for developers and system administrators working with the Supercheck platform.
 
@@ -72,12 +71,12 @@ This documentation provides in-depth technical specifications, architectural det
 
 ## 📋 **Documentation Status**
 
-### ✅ **Complete & Accurate (Updated September 2025)**
+### ✅ **Complete & Accurate (Updated November 2025)**
 
 - **System Architecture** - Complete system architecture with modern technology stack (React 19.1.1, Next.js 15.4.6, AI services)
 - **System Overview (README.md)** - Comprehensive architecture overview and navigation guide with AI integration
 - **Environment Variables** - Complete environment configuration and deployment guide including AI Fix setup
-- **API Routes Analysis** - 61+ API endpoints including new AI Fix service endpoints
+- **API Routes Analysis** - 60+ API endpoints including the latest AI Fix service endpoints
 - **Authentication** - Better Auth 1.2.8 integration with enhanced security features
 - **Database Schema** - Updated ERD diagram verified against current implementation
 - **AI Fix Documentation** - Complete AI-powered test fixing system documentation
@@ -129,10 +128,8 @@ All reviewed documentation provides comprehensive coverage of:
 - **`/worker/`** - NestJS worker service for distributed test execution
 - **`/scripts/`** - Deployment scripts, Docker builds, and utility tools
 - **`/specs/`** - Technical documentation and system specifications (this directory)
-- **`CLAUDE.md`** - Development guidelines and project overview
+- **`/docs/`** - Marketing site, public docs, and supporting assets
+- **`/otel/`** - Observability deployment templates and guidance
 - **`README.md`** - Main project documentation with quick start guide
+- **`CONTRIBUTING.md`** - Contribution workflow, code style, and review expectations
 
----
-
-_Last updated: September 2025_
-_Maintained by: Supercheck Team_
