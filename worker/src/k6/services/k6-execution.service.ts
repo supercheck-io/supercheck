@@ -560,13 +560,8 @@ export class K6ExecutionService {
 
       // HTML report is already in the report directory (generated directly by k6 web dashboard)
 
-      try {
-        await fs.rm(scriptPath);
-      } catch (error) {
-        this.logger.warn(
-          `[${runId}] Failed to remove temporary script: ${getErrorMessage(error)}`,
-        );
-      }
+      // Note: Script cleanup removed - execution now runs in containers
+      // Container cleanup is automatic and handles all temporary files
 
       const s3KeyPrefix = `${runId}`;
       const bucket = this.s3Service.getBucketForEntityType('k6_performance');
@@ -665,14 +660,8 @@ export class K6ExecutionService {
     } finally {
       this.activeK6Runs.delete(uniqueRunId);
 
-      // Cleanup
-      try {
-        await fs.rm(runDir, { recursive: true, force: true });
-      } catch (cleanupError) {
-        this.logger.warn(
-          `[${runId}] Cleanup failed: ${getErrorMessage(cleanupError)}`,
-        );
-      }
+      // Note: Local directory cleanup removed - execution now runs in containers
+      // Container cleanup is automatic and handles all temporary files
     }
 
     return finalResult;
@@ -748,22 +737,11 @@ export class K6ExecutionService {
     htmlReportPath: string;
     consolePath: string;
   }): Promise<void> {
-    const { reportDir, summaryPath, htmlReportPath, consolePath } = paths;
+    const { reportDir } = paths;
 
-    await Promise.allSettled([
-      fs.rm(summaryPath, { force: true }),
-      fs.rm(consolePath, { force: true }),
-      fs.rm(htmlReportPath, { force: true }),
-    ]);
-
-    try {
-      await fs.rm(reportDir, { recursive: true, force: true });
-    } catch (error) {
-      this.logger.warn(
-        `Failed to remove report directory during retry cleanup: ${getErrorMessage(error)}`,
-      );
-    }
-
+    // Note: Local directory cleanup removed - execution now runs in containers
+    // Container cleanup is automatic and handles all temporary files
+    // Just ensure the report directory exists for the next run
     await fs.mkdir(reportDir, { recursive: true });
   }
 

@@ -2,19 +2,21 @@
 
 ## Overview
 
-The Supercheck test execution system provides a distributed, scalable architecture for running Playwright and K6 performance tests. The system uses **BullMQ** job queues, **worker pools** for parallel execution, and **capacity management** to ensure reliable test execution at scale while maintaining resource efficiency.
+The Supercheck test execution system provides a **distributed, secure, and scalable architecture** for running Playwright and K6 performance tests. The system uses **BullMQ** job queues, **container-based execution** for security isolation, and **horizontal scaling** for high throughput.
+
+**🔒 Security-First Design:** All test execution runs in isolated Docker containers with comprehensive security boundaries, preventing code injection attacks and ensuring complete isolation from the host system.
 
 ## Table of Contents
 
 1. [System Architecture](#system-architecture)
-2. [Execution Pipeline](#execution-pipeline)
-3. [Queue Management](#queue-management)
-4. [Worker Architecture](#worker-architecture)
-5. [Parallel Execution](#parallel-execution)
-6. [Capacity Management](#capacity-management)
-7. [Artifact Storage](#artifact-storage)
-8. [Error Handling](#error-handling)
-9. [Performance Optimization](#performance-optimization)
+2. [Container-Based Execution](#container-based-execution)
+3. [Execution Pipeline](#execution-pipeline)
+4. [Queue Management](#queue-management)
+5. [Worker Architecture](#worker-architecture)
+6. [Resource Limits & Management](#resource-limits--management)
+7. [Docker Compose Best Practices](#docker-compose-best-practices)
+8. [Performance Optimization](#performance-optimization)
+9. [Monitoring & Observability](#monitoring--observability)
 
 ## System Architecture
 
@@ -39,15 +41,21 @@ graph TB
         Q4[k6-job-execution queue]
     end
 
-    subgraph "⚙️ Worker Pool"
+    subgraph "⚙️ Worker Pool (Horizontal Scaling)"
         W1[Worker 1<br/>Concurrency: 2]
         W2[Worker 2<br/>Concurrency: 2]
         W3[Worker N<br/>Concurrency: 2]
     end
 
-    subgraph "🔧 Test Execution"
-        PLAYWRIGHT[Playwright Runner]
-        K6[K6 Performance Runner]
+    subgraph "🐳 Container Execution Layer"
+        subgraph "Security Isolation"
+            C1[Playwright Container 1]
+            C2[Playwright Container 2]
+            C3[K6 Container 1]
+            C4[K6 Container 2]
+        end
+        
+        CONTAINER[Container Executor Service]
         VALIDATION[Script Validation]
     end
 
@@ -60,6 +68,7 @@ graph TB
     subgraph "📊 Observability"
         OTEL[OpenTelemetry Traces]
         METRICS[Metrics Collection]
+        CLICK[(ClickHouse<br/>Time Series)]
     end
 
     UI --> API1 & API2
@@ -72,29 +81,180 @@ graph TB
     REDIS --> W1 & W2 & W3
 
     W1 & W2 & W3 --> VALIDATION
-    VALIDATION --> PLAYWRIGHT & K6
+    VALIDATION --> CONTAINER
+    CONTAINER --> C1 & C2 & C3 & C4
 
-    PLAYWRIGHT & K6 --> S3
-    PLAYWRIGHT & K6 --> DB
-    PLAYWRIGHT & K6 --> OTEL
+    C1 & C2 & C3 & C4 --> S3
+    C1 & C2 & C3 & C4 --> DB
+    C1 & C2 & C3 & C4 --> OTEL
 
     REDIS --> MONITOR
+    OTEL --> CLICK
     MONITOR --> UI
 
     classDef frontend fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     classDef api fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     classDef queue fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     classDef worker fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef container fill:#ffebee,stroke:#d32f2f,stroke-width:2px
     classDef storage fill:#e0f2f1,stroke:#00796b,stroke-width:2px
     classDef obs fill:#fce4ec,stroke:#c2185b,stroke-width:2px
 
     class UI,MONITOR frontend
     class API1,API2,API3 api
     class REDIS,Q1,Q2,Q3,Q4 queue
-    class W1,W2,W3,PLAYWRIGHT,K6,VALIDATION worker
+    class W1,W2,W3,VALIDATION,CONTAINER worker
+    class C1,C2,C3,C4 container
     class DB,S3,CACHE storage
-    class OTEL,METRICS obs
+    class OTEL,METRICS,CLICK obs
 ```
+
+## Container-Based Execution (Security Isolation)
+
+### Overview
+
+**All test execution (Playwright and K6) runs exclusively in Docker containers** for security isolation. There is no fallback to local execution. This prevents code injection attacks and ensures consistent, reproducible test environments.
+
+### Container Execution Flow
+
+```mermaid
+graph TB
+    subgraph "Worker Host"
+        W[Worker Service]
+        M["/workspace Mount<br/>Worker Directory"]
+        NM["node_modules<br/>Playwright Package"]
+        DS[Docker Socket<br/>Container Spawning]
+    end
+
+    subgraph "Docker Container (Isolated)"
+        C[Container Executor]
+        P["/workspace/node_modules/.bin/playwright"]
+        B["Pre-installed Browsers<br/>/ms-playwright"]
+        T[Test Execution]
+        R[Report Generation]
+    end
+
+    subgraph "Security Boundaries"
+        S1[Read-only Root Filesystem]
+        S2[No Privilege Escalation]
+        S3[Capability Drops]
+        S4[Resource Limits]
+        S5[Network Isolation]
+    end
+
+    W -->|Mount worker dir| M
+    W -->|Access Docker| DS
+    M --> NM
+    M -->|Volume Mount| C
+    DS -->|Spawn container| C
+    C -->|Execute| P
+    P -->|Use browsers| B
+    P --> T
+    T --> R
+    R -->|Write to /workspace| M
+
+    C --> S1 & S2 & S3 & S4 & S5
+
+    classDef worker fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef container fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef security fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+
+    class W,M,NM,DS worker
+    class C,P,B,T,R container
+    class S1,S2,S3,S4,S5 security
+```
+
+### Docker Images Used
+
+#### Playwright Container
+- **Image**: `mcr.microsoft.com/playwright:v1.56.1-noble`
+- **Size**: ~1.9 GB (cached after first pull)
+- **Includes**:
+  - Pre-installed browsers (Chromium, Firefox, WebKit) at `/ms-playwright`
+  - All browser dependencies (fonts, libraries, codecs)
+  - Node.js runtime
+- **Volume Mount**: Worker directory → `/workspace`
+- **Binary**: Uses `/workspace/node_modules/.bin/playwright` (from package.json)
+- **Environment**: `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`
+
+#### K6 Container
+- **Image**: `grafana/k6:latest`
+- **Size**: ~109 MB (cached after first pull)
+- **Includes**:
+  - K6 binary as ENTRYPOINT
+  - xk6-dashboard extension for HTML reports
+- **Volume Mount**: Script directory → `/workspace`
+
+### Container Security Configuration
+
+```mermaid
+graph TB
+    subgraph "Security Hardening"
+        S1[--read-only<br/>Read-only root filesystem]
+        S2[--security-opt=no-new-privileges<br/>Prevent privilege escalation]
+        S3[--cap-drop=ALL<br/>Drop all Linux capabilities]
+        S4[--memory=2048m<br/>Memory limit]
+        S5[--cpus=2<br/>CPU limit]
+        S6[--pids-limit=100<br/>Process limit]
+        S7[--network=bridge<br/>Network isolation]
+        S8[--tmpfs /tmp<br/>Writable temp space]
+        S9[--shm-size=512m<br/>Shared memory for browsers]
+    end
+
+    S1 & S2 & S3 --> SEC[Secure Execution Environment]
+    S4 & S5 & S6 --> RES[Resource Protection]
+    S7 --> NET[Network Isolation]
+    S8 & S9 --> TEMP[Temp File Support]
+
+    SEC & RES & NET & TEMP --> SAFE[Isolated & Secure Test Execution]
+
+    classDef security fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef resource fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef result fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+
+    class S1,S2,S3,SEC security
+    class S4,S5,S6,S7,S8,S9,RES,NET,TEMP resource
+    class SAFE result
+```
+
+### Path Mapping (Host → Container)
+
+| Host Path | Container Path | Purpose |
+|-----------|---------------|---------|
+| `/Users/..../worker` | `/workspace` | Worker root directory |
+| `/Users/..../worker/node_modules` | `/workspace/node_modules` | Playwright package & binary |
+| `/Users/..../worker/playwright-reports/xxx` | `/workspace/playwright-reports/xxx` | Test execution directory |
+| `/Users/..../worker/playwright.config.js` | `/workspace/playwright.config.js` | Playwright configuration |
+| N/A (Docker image) | `/ms-playwright` | Pre-installed browsers |
+
+### Container Lifecycle Management
+
+```mermaid
+stateDiagram-v2
+    [*] --> Created: Worker spawns container
+    Created --> Running: docker start
+    Running --> Executing: Test runner starts
+    Executing --> Completed: Test finishes
+    Executing --> Failed: Error/Timeout
+    Completed --> Cleanup: Upload artifacts
+    Failed --> Cleanup: Capture error logs
+    Cleanup --> Removed: docker rm -f
+    Removed --> [*]
+
+    note right of Running
+        Security limits enforced
+        Resource monitoring active
+        Network isolation applied
+    end note
+
+    note right of Cleanup
+        Reports uploaded to S3
+        Metadata saved to DB
+        Temporary files cleaned
+    end note
+```
+
+
 
 ## Execution Pipeline
 
@@ -107,7 +267,7 @@ sequenceDiagram
     participant Capacity
     participant Queue
     participant Worker
-    participant Playwright
+    participant Container
     participant S3
     participant DB
     participant SSE
@@ -131,19 +291,20 @@ sequenceDiagram
         Worker->>SSE: Status: Active
         SSE-->>User: Test started
 
-        Worker->>Playwright: Execute test
-        activate Playwright
-        Playwright->>Playwright: Run test suite
-        Playwright->>Playwright: Generate reports
-        Playwright->>Playwright: Capture screenshots/videos
-        deactivate Playwright
+        Worker->>Container: Spawn isolated container
+        activate Container
+        Container->>Container: Execute test in isolation
+        Container->>Container: Generate reports
+        Container->>Container: Capture screenshots/videos
+        deactivate Container
 
-        Worker->>S3: Upload artifacts
-        S3-->>Worker: Upload complete
+        Container->>S3: Upload artifacts
+        S3-->>Container: Upload complete
 
         Worker->>DB: Save test results
         DB-->>Worker: Results saved
 
+        Worker->>Container: Cleanup container
         Worker->>Capacity: Decrement running count
         Worker->>SSE: Status: Completed
         SSE-->>User: Test completed
@@ -157,6 +318,30 @@ sequenceDiagram
         Capacity-->>API: Capacity exceeded
         API-->>User: 429 Too Many Requests
     end
+```
+
+### Container Spawning Flow
+
+```mermaid
+sequenceDiagram
+    participant Worker
+    participant Docker
+    participant Container
+    participant Playwright
+
+    Worker->>Docker: docker run (with security constraints)
+    Note over Worker,Docker: --read-only, --security-opt, --cap-drop
+    Docker->>Container: Create isolated container
+    Docker->>Container: Mount /workspace volume
+    Docker->>Container: Set resource limits
+    
+    Container->>Playwright: Execute /workspace/node_modules/.bin/playwright
+    Playwright->>Container: Run test suite
+    Container->>Container: Write reports to /workspace
+    
+    Container->>Worker: Exit with results
+    Worker->>Docker: docker rm -f (cleanup)
+    Docker-->>Worker: Container removed
 ```
 
 ### Job Execution Flow (Multiple Tests)
@@ -365,14 +550,14 @@ graph LR
 graph TB
     subgraph "Worker Host"
         W[Worker Service]
-        M[/workspace Mount<br/>Worker Directory]
-        NM[node_modules<br/>Playwright Package]
+        M["/workspace Mount<br/>Worker Directory"]
+        NM["node_modules<br/>Playwright Package"]
     end
 
     subgraph "Docker Container (Isolated)"
         C[Container Executor]
-        P[/workspace/node_modules/.bin/playwright]
-        B[Pre-installed Browsers<br/>/ms-playwright]
+        P["/workspace/node_modules/.bin/playwright"]
+        B["Pre-installed Browsers<br/>/ms-playwright"]
         T[Test Execution]
         R[Report Generation]
     end
@@ -483,15 +668,18 @@ graph LR
     subgraph "package.json Provides"
         P1[Playwright npm Package]
         P2[playwright CLI Binary]
-        P3[@playwright/test Framework]
+        P3["@playwright/test" Framework]
         P4[TypeScript Types]
     end
 
     subgraph "How They Work Together"
         W[Worker installs from package.json]
-        W --> M[node_modules mounted in container]
-        M --> E[Execute /workspace/node_modules/.bin/playwright]
-        E --> B[Use browsers from /ms-playwright]
+        M["node_modules mounted in container"]
+        E["Execute /workspace/node_modules/.bin/playwright"]
+        B["Use browsers from /ms-playwright"]
+        W --> M
+        M --> E
+        E --> B
     end
 
     I1 & I2 & I3 --> B
@@ -560,7 +748,7 @@ graph LR
 graph TB
     A[Parallel Execution Manager] --> B[Configuration]
 
-    B --> C[MAX_CONCURRENT_EXECUTIONS: 2]
+    B --> C["MAX_CONCURRENT_EXECUTIONS: 2"]
     B --> D[Per-Worker Limit]
     B --> E[Semaphore Pattern]
 
@@ -606,8 +794,8 @@ graph TB
 
     subgraph "Cleanup Triggers"
         C1[After Each Test]
-        C2[On Memory Threshold: 80%]
-        C3[On Disk Threshold: 85%]
+        C2["On Memory Threshold: 80%"]
+        C3["On Disk Threshold: 85%"]
         C4[Every 30 minutes]
     end
 
@@ -630,21 +818,21 @@ graph TB
 ```mermaid
 graph TB
     subgraph "Redis Capacity Keys"
-        K1[supercheck:capacity:running<br/>Current Count]
-        K2[supercheck:capacity:queued<br/>Queue Count]
+        K1["supercheck:capacity:running"<br/>Current Count]
+        K2["supercheck:capacity:queued"<br/>Queue Count]
     end
 
     subgraph "Capacity Limits"
-        L1[RUNNING_CAPACITY: 6]
-        L2[QUEUED_CAPACITY: 50]
+        L1["RUNNING_CAPACITY: 6"]
+        L2["QUEUED_CAPACITY: 50"]
     end
 
     subgraph "Operations"
-        O1[Before Queue: Check]
-        O2[Worker Start: Increment Running]
-        O3[Worker Complete: Decrement Running]
-        O4[Queue Add: Increment Queued]
-        O5[Worker Pickup: Decrement Queued]
+        O1["Before Queue: Check"]
+        O2["Worker Start: Increment Running"]
+        O3["Worker Complete: Decrement Running"]
+        O4["Queue Add: Increment Queued"]
+        O5["Worker Pickup: Decrement Queued"]
     end
 
     A[Job Request] --> O1
@@ -653,7 +841,7 @@ graph TB
 
     O1 --> D{Capacity OK?}
     D -->|Yes| O4
-    D -->|No| E[Reject: 429]
+    D -->|No| E["Reject: 429"]
 
     O4 --> F[Add to Queue]
     F --> O5
@@ -879,7 +1067,7 @@ graph TB
     S1 & S2 & S3 & S4 --> PERF
     R1 & R2 & R3 & R4 --> PERF
 
-    PERF --> RESULT[50% Faster Execution<br/>30% Lower Resource Usage]
+    PERF --> RESULT["50% Faster Execution<br/>30% Lower Resource Usage"]
 
     classDef opt fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     classDef result fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
@@ -921,25 +1109,301 @@ graph TB
 - `WORKER_MEMORY_LIMIT` - Memory limit (default: 3GB)
 - `CLEANUP_INTERVAL_MS` - Cleanup frequency (default: 1800000 = 30 min)
 
-## Best Practices
+## Resource Limits & Management
 
-### For High Throughput
-1. Scale workers horizontally (not concurrency per worker)
-2. Use job priority for critical tests
-3. Implement test result caching
-4. Optimize Playwright test selectors
+### Worker Resource Limits
 
-### For Reliability
-1. Implement comprehensive error handling
-2. Use idempotent job processing
-3. Enable detailed logging and tracing
-4. Monitor queue health metrics
+```yaml
+# Worker Container Configuration
+worker:
+  deploy:
+    resources:
+      limits:
+        cpus: "2.0"          # Max 2 vCPU per worker
+        memory: 2G           # Max 2GB RAM per worker
+      reservations:
+        cpus: "0.5"          # Guaranteed 0.5 vCPU
+        memory: 1G           # Guaranteed 1GB RAM
+```
 
-### For Resource Efficiency
-1. Clean up artifacts regularly
-2. Use headless mode by default
-3. Limit screenshot/video capture
-4. Implement memory monitoring
+### Test Container Resource Limits
+
+```yaml
+# Test Execution Container Limits
+Container Security:
+  memory: 2048m             # 2GB memory limit
+  cpus: 2                   # 2 vCPU limit
+  pids-limit: 100           # Max 100 processes
+  shm-size: 512m            # Shared memory for browsers
+  tmpfs: /tmp:rw,size=512m  # Temporary file storage
+```
+
+### Resource Allocation Strategy
+
+```mermaid
+graph TB
+    subgraph "Host Resources (8 vCPU / 16 GB)"
+        H1["System: 1 vCPU / 2 GB"]
+        H2["PostgreSQL: 0.5 vCPU / 1 GB"]
+        H3["Redis: 0.25 vCPU / 256 MB"]
+        H4["MinIO: 0.5 vCPU / 1 GB"]
+        H5["App: 1 vCPU / 2 GB"]
+        H6["Observability: 0.75 vCPU / 1.5 GB"]
+        H7["Workers: 4 vCPU / 8 GB"]
+    end
+
+    subgraph "Worker Allocation (3 workers)"
+        W1["Worker 1: 1.33 vCPU / 2.67 GB"]
+        W2["Worker 2: 1.33 vCPU / 2.67 GB"]
+        W3["Worker 3: 1.33 vCPU / 2.67 GB"]
+    end
+
+    H7 --> W1 & W2 & W3
+
+    classDef system fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef worker fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+
+    class H1,H2,H3,H4,H5,H6 system
+    class W1,W2,W3 worker
+```
+
+### Memory Usage Patterns
+
+| Component | Base Memory | Peak Memory | Notes |
+|-----------|-------------|-------------|--------|
+| Worker Process | ~200 MB | ~500 MB | NestJS runtime |
+| Test Container | ~100 MB | ~2 GB | Browser execution |
+| Playwright Browser | ~300 MB | ~1.5 GB | Chromium instance |
+| K6 Runtime | ~50 MB | ~500 MB | Load testing |
+| Report Generation | ~100 MB | ~300 MB | HTML/JSON reports |
+
+### Monitoring Resource Usage
+
+```mermaid
+graph LR
+    A[Resource Monitor] --> B{Memory > 85%?}
+    A --> C{CPU > 90%?}
+    A --> D{Disk > 90%?}
+    
+    B -->|Yes| E[Block New Jobs]
+    C -->|Yes| F[Scale Workers Down]
+    D -->|Yes| G[Trigger Cleanup]
+    
+    E --> H[Alert Admin]
+    F --> H
+    G --> H
+    
+    classDef alert fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+    classDef normal fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    
+    class E,F,G,H alert
+```
+
+## Docker Compose Best Practices
+
+### Production Docker Compose Configuration
+
+```yaml
+# Production-ready docker-compose.yml
+version: '3.8'
+
+# Use YAML anchors for DRY configuration
+x-common-env: &common-env
+  DATABASE_URL: ${DATABASE_URL}
+  REDIS_URL: ${REDIS_URL}
+  # ... other common variables
+
+x-healthcheck: &default-healthcheck
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 60s
+
+x-resource-limits: &default-limits
+  cpus: "0.5"
+  memory: 512M
+  reservations:
+    cpus: "0.25"
+    memory: 256M
+
+services:
+  # App Service
+  app:
+    image: ghcr.io/supercheck-io/supercheck/app:1.1.3-beta
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 1G
+    networks:
+      - supercheck-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Worker Service - Horizontal Scaling
+  worker:
+    image: ghcr.io/supercheck-io/supercheck/worker:1.1.3-beta
+    restart: unless-stopped
+    environment:
+      <<: *common-env
+      MAX_CONCURRENT_EXECUTIONS: 2  # Keep low, scale horizontally
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Read-only socket
+      - worker-reports:/app/reports
+    deploy:
+      replicas: 3  # Scale horizontally
+      resources:
+        limits:
+          cpus: "2.0"  # Cap individual worker
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+        delay: 15s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      <<: *default-healthcheck
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+    networks:
+      - supercheck-network
+
+# Network Configuration
+networks:
+  supercheck-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Volume Configuration
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  worker-reports:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /tmp/supercheck-reports
+```
+
+### Scaling Docker Compose Deployments
+
+```bash
+# Scale workers manually
+docker-compose up --scale worker=5
+
+# Scale with environment variables
+WORKER_REPLICAS=5 docker-compose up
+
+# Update docker-compose.yml for scaling
+worker:
+  deploy:
+    replicas: ${WORKER_REPLICAS:-3}  # Default to 3
+```
+
+### Multi-Host Docker Compose
+
+```yaml
+# docker-compose.cluster.yml
+version: '3.8'
+
+services:
+  # Shared services (run once)
+  postgres:
+    deploy:
+      placement:
+        constraints:
+          - node.hostname == db-host
+
+  redis:
+    deploy:
+      placement:
+        constraints:
+          - node.hostname == db-host
+
+  # Worker services (run on all hosts)
+  worker:
+    deploy:
+      mode: replicated
+      replicas: 2  # Per host
+      placement:
+        max_replicas_per_node: 2
+```
+
+### Environment-Specific Configurations
+
+```yaml
+# docker-compose.override.yml (development)
+version: '3.8'
+services:
+  worker:
+    deploy:
+      replicas: 1
+    volumes:
+      - ./worker/src:/app/src:ro  # Mount source for debugging
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=debug
+
+# docker-compose.prod.yml (production)
+version: '3.8'
+services:
+  worker:
+    deploy:
+      replicas: 5
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+### Best Practices Summary
+
+**🎯 Scaling Best Practices:**
+1. **Horizontal over Vertical** - Scale worker count, not individual worker size
+2. **Resource Limits** - Always set CPU and memory limits
+3. **Health Checks** - Implement comprehensive health monitoring
+4. **Restart Policies** - Configure automatic restart on failure
+5. **Security Hardening** - Use read-only filesystems and capability drops
+
+**🔧 Docker Compose Best Practices:**
+1. **YAML Anchors** - Use anchors for DRY configuration
+2. **Environment Variables** - Externalize all configuration
+3. **Network Isolation** - Use custom networks
+4. **Volume Management** - Use named volumes with proper drivers
+5. **Multi-Stage Builds** - Optimize image sizes
+
+**📊 Monitoring Best Practices:**
+1. **Resource Monitoring** - Track CPU, memory, and disk usage
+2. **Queue Metrics** - Monitor queue depth and processing times
+3. **Container Lifecycle** - Track container spawn/cleanup times
+4. **Error Rates** - Monitor test failure patterns
+5. **Capacity Planning** - Track utilization trends
 
 ## Related Documentation
 
@@ -952,5 +1416,7 @@ graph TB
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 3.1 | 2025-01-14 | Moved scaling strategies to dedicated SCALING_GUIDE.md, integrated scaling options into Docker Compose files |
+| 3.0 | 2025-01-14 | Major update - Container-based execution, scaling strategies, Docker Compose best practices |
 | 2.0 | 2025-01-12 | Complete rewrite with comprehensive diagrams |
 | 1.0 | 2024-09-15 | Initial test execution specification |
