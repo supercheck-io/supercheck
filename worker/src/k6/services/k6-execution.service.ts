@@ -1,13 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { spawn } from 'child_process';
+import { execa } from 'execa';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import * as os from 'os';
 import { S3Service } from '../../execution/services/s3.service';
 import { DbService } from '../../execution/services/db.service';
 import { RedisService } from '../../execution/services/redis.service';
 import * as net from 'net';
+import { createSafeTempPath } from '../../common/security/path-validator';
+import { ContainerExecutorService } from '../../common/security/container-executor.service';
+import {
+  findFirstFileByNames,
+  pathExists,
+} from '../../common/utils/file-search';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -56,7 +63,8 @@ export interface K6ExecutionResult {
 export class K6ExecutionService {
   private readonly logger = new Logger(K6ExecutionService.name);
   private readonly k6BinaryPath: string;
-  private readonly baseLocalRunDir: string;
+  // Hardcoded K6 Docker image for container execution
+  private readonly k6DockerImage = 'grafana/k6:latest';
   private readonly maxConcurrentK6Runs: number;
   private readonly testExecutionTimeoutMs: number;
   private readonly jobExecutionTimeoutMs: number;
@@ -76,6 +84,7 @@ export class K6ExecutionService {
     private s3Service: S3Service,
     private dbService: DbService,
     private redisService: RedisService,
+    private containerExecutorService: ContainerExecutorService,
   ) {
     // Check for k6 binary in multiple common locations
     const configuredPath = this.configService.get<string>('K6_BIN_PATH', '');
@@ -89,15 +98,14 @@ export class K6ExecutionService {
         process.env.NODE_ENV === 'production' ? '/usr/local/bin/k6' : 'k6';
     }
 
-    this.baseLocalRunDir = path.join(process.cwd(), 'k6-reports');
     this.maxConcurrentK6Runs = this.configService.get<number>(
       'K6_MAX_CONCURRENCY',
       3,
     );
 
     this.logger.log(`K6 binary path: ${this.k6BinaryPath}`);
+    this.logger.log(`K6 Docker image: ${this.k6DockerImage}`);
     this.logger.log(`Max concurrent k6 runs: ${this.maxConcurrentK6Runs}`);
-    this.logger.log(`K6 reports directory: ${this.baseLocalRunDir}`);
     this.testExecutionTimeoutMs = this.configService.get<number>(
       'K6_TEST_EXECUTION_TIMEOUT_MS',
       60 * 60 * 1000,
@@ -135,57 +143,41 @@ export class K6ExecutionService {
   /**
    * Verify k6 is installed and working
    */
-  private verifyK6Installation(): void {
-    const childProcess = spawn(this.k6BinaryPath, ['version'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+  private async verifyK6Installation(): Promise<void> {
+    try {
+      const result = await execa(this.k6BinaryPath, ['version'], {
+        timeout: 5000,
+        reject: false,
+      });
 
-    let versionOutput = '';
-    let versionError = '';
-
-    childProcess.stdout?.on('data', (data) => {
-      versionOutput += data.toString();
-    });
-
-    childProcess.stderr?.on('data', (data) => {
-      versionError += data.toString();
-    });
-
-    childProcess.on('close', (code) => {
-      if (code === 0 && versionOutput) {
-        this.logger.log(`K6 is installed: ${versionOutput.trim()}`);
+      if (result.exitCode === 0 && result.stdout) {
+        this.logger.log(`K6 is installed: ${result.stdout.trim()}`);
         // Verify web-dashboard extension is available
-        this.verifyWebDashboardExtension();
+        await this.verifyWebDashboardExtension();
       } else {
         this.logger.warn(
-          `K6 verification failed. Code: ${code}, Output: ${versionOutput}, Error: ${versionError}`,
+          `K6 verification failed. Exit code: ${result.exitCode}, Output: ${result.stdout}, Error: ${result.stderr}`,
         );
       }
-    });
-
-    childProcess.on('error', (error) => {
+    } catch (error) {
       this.logger.error(
         `K6 verification error: ${getErrorMessage(error)}. Make sure k6 is installed at ${this.k6BinaryPath}`,
       );
-    });
+    }
   }
 
   /**
    * Verify k6 web-dashboard extension is available
    */
-  private verifyWebDashboardExtension(): void {
-    const childProcess = spawn(this.k6BinaryPath, ['version'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+  private async verifyWebDashboardExtension(): Promise<void> {
+    try {
+      const result = await execa(this.k6BinaryPath, ['version'], {
+        timeout: 5000,
+        reject: false,
+      });
 
-    let versionOutput = '';
-
-    childProcess.stdout?.on('data', (data) => {
-      versionOutput += data.toString();
-    });
-
-    childProcess.on('close', (code) => {
-      if (code === 0) {
+      if (result.exitCode === 0) {
+        const versionOutput = result.stdout || '';
         // Check if version output includes the dashboard extension
         if (
           versionOutput.includes('xk6-dashboard') ||
@@ -209,13 +201,11 @@ export class K6ExecutionService {
           this.logger.error(`  3. sudo mv k6 ${this.k6BinaryPath}`);
         }
       }
-    });
-
-    childProcess.on('error', (error) => {
+    } catch (error) {
       this.logger.warn(
         `Could not verify web-dashboard extension: ${getErrorMessage(error)}`,
       );
-    });
+    }
   }
 
   /**
@@ -255,39 +245,35 @@ export class K6ExecutionService {
     this.logger.debug(
       `[${runId}] Timeout configured for k6 execution: ${executionTimeoutMs}ms`,
     );
-    const runDir = path.join(this.baseLocalRunDir, uniqueRunId);
+
+    // Create OS temp directory for extracted reports (only location where host files exist)
+    const extractedReportsDir = createSafeTempPath(`k6-reports-${uniqueRunId}`);
 
     let finalResult: K6ExecutionResult;
 
     try {
-      // 1. Create directory
-      await fs.mkdir(runDir, { recursive: true });
+      // Ensure OS temp directory exists for extracted reports
+      await fs.mkdir(extractedReportsDir, { recursive: true });
 
-      // 2. Write script
-      const scriptPath = path.join(runDir, 'test.js');
-      await fs.writeFile(scriptPath, script);
+      // Build k6 command using container paths (/tmp inside container)
+      // All files will be created inside the container at /tmp
+      const scriptFileName = 'test.js';
+      const summaryFileName = 'summary.json';
+      const jsonOutputFileName = 'metrics.json';
+      const reportDirName = 'report';
+      const htmlReportFileName = 'index.html';
+      const htmlExportFileName = 'report.html';
+      const htmlExportPathContainer = `/tmp/${reportDirName}/${htmlExportFileName}`;
 
-      // 3. Build k6 command with web dashboard for HTML report generation
-      const reportDir = path.join(runDir, 'report');
-      await fs.mkdir(reportDir, { recursive: true });
-      const summaryPath = path.join(runDir, 'summary.json');
-      const htmlReportPath = path.join(reportDir, 'report.html'); // k6 will export here
-      const consolePath = path.join(runDir, 'console.log');
-      const jsonOutputPath = path.join(runDir, 'metrics.json');
-
-      // Build robust k6 command for HTML report generation
-      // The web-dashboard output generates the interactive HTML report
-      // K6_WEB_DASHBOARD_EXPORT writes it directly to a file without needing the web server
-      // Also output JSON metrics for granular observability spans
       const args = [
         'run',
         '--summary-export',
-        summaryPath,
+        `/tmp/${summaryFileName}`,
         '--out',
         'web-dashboard',
         '--out',
-        `json=${jsonOutputPath}`, // JSON output for detailed network metrics
-        scriptPath,
+        `json=/tmp/${jsonOutputFileName}`, // JSON output for detailed network metrics
+        `/tmp/${scriptFileName}`,
       ];
 
       // Configure web dashboard environment variables for robust HTML export
@@ -311,7 +297,7 @@ export class K6ExecutionService {
 
         const k6EnvOverrides: Record<string, string> = {
           K6_WEB_DASHBOARD: 'true',
-          K6_WEB_DASHBOARD_EXPORT: htmlReportPath, // Write HTML report to this path
+          K6_WEB_DASHBOARD_EXPORT: htmlExportPathContainer, // Export HTML into specific file under /tmp/report
           K6_WEB_DASHBOARD_PORT: dashboardPort.toString(), // Use unique port
           K6_WEB_DASHBOARD_ADDR: this.dashboardBindAddress,
           K6_NO_COLOR: '1', // Disable ANSI colors in output
@@ -320,7 +306,8 @@ export class K6ExecutionService {
         try {
           execResult = await this.executeK6Binary(
             args,
-            runDir,
+            script, // Pass script content instead of directory
+            extractedReportsDir, // Pass extraction directory
             runId,
             uniqueRunId,
             k6EnvOverrides,
@@ -346,12 +333,7 @@ export class K6ExecutionService {
           this.logger.warn(
             `[${runId}] k6 dashboard port ${dashboardPort} unavailable (attempt ${attempt}/${maxDashboardAttempts}). Retrying with a new port...`,
           );
-          await this.resetDashboardArtifacts({
-            reportDir,
-            summaryPath,
-            htmlReportPath,
-            consolePath,
-          });
+          // No need to reset artifacts - they're created fresh in each container
           await this.delay(150);
         }
       }
@@ -361,13 +343,27 @@ export class K6ExecutionService {
       }
 
       const timedOut = execResult.timedOut;
+      const exitCode = execResult.exitCode;
       if (timedOut) {
         this.logger.warn(
           `[${runId}] k6 execution exceeded timeout of ${executionTimeoutMs}ms. Attempting graceful cleanup.`,
         );
       }
 
-      // 5. Read summary file (created by --summary-export)
+      // 5. Read summary file (extracted from container)
+      let summaryPath = path.join(extractedReportsDir, summaryFileName);
+      if (!(await pathExists(summaryPath))) {
+        const fallbackSummary = await findFirstFileByNames(
+          extractedReportsDir,
+          [summaryFileName],
+        );
+        if (fallbackSummary) {
+          this.logger.debug(
+            `[${runId}] Located k6 summary at fallback path ${fallbackSummary}`,
+          );
+          summaryPath = fallbackSummary;
+        }
+      }
       let summary: any = null;
       try {
         const summaryContent = await fs.readFile(summaryPath, 'utf8');
@@ -425,6 +421,7 @@ export class K6ExecutionService {
               '../../observability/k6-json-parser'
             );
 
+            const jsonOutputPath = path.join(extractedReportsDir, jsonOutputFileName);
             this.logger.log(
               `[${runId}] Attempting to create detailed network spans from JSON output at ${jsonOutputPath}`,
             );
@@ -470,8 +467,44 @@ export class K6ExecutionService {
         );
       }
 
-      // 5b. HTML report is created directly by k6 web-dashboard with K6_WEB_DASHBOARD_EXPORT
+      // 5b. HTML report is extracted from container
       // Verify that k6 generated the HTML report when execution finished normally
+      const reportDir = path.join(extractedReportsDir, reportDirName);
+      await fs.mkdir(reportDir, { recursive: true });
+      const htmlReportPath = path.join(reportDir, htmlReportFileName);
+      let exportedHtmlPath = path.join(reportDir, htmlExportFileName);
+
+      if (!(await pathExists(exportedHtmlPath))) {
+        const fallbackHtml = await findFirstFileByNames(
+          extractedReportsDir,
+          [htmlExportFileName, htmlReportFileName],
+        );
+        if (fallbackHtml) {
+          this.logger.debug(
+            `[${runId}] Located k6 HTML export at fallback path ${fallbackHtml}`,
+          );
+          exportedHtmlPath = fallbackHtml;
+        }
+      }
+
+      if (await pathExists(exportedHtmlPath)) {
+        if (exportedHtmlPath !== htmlReportPath) {
+          try {
+            await fs.copyFile(exportedHtmlPath, htmlReportPath);
+          } catch (moveError) {
+            this.logger.debug(
+              `[${runId}] Failed to copy HTML report to ${htmlReportPath}: ${getErrorMessage(moveError)}`,
+            );
+            try {
+              await fs.rename(exportedHtmlPath, htmlReportPath);
+            } catch (renameError) {
+              this.logger.debug(
+                `[${runId}] Skipping HTML rename step: ${getErrorMessage(renameError)}`,
+              );
+            }
+          }
+        }
+      }
       let hasHtmlReport = false;
       try {
         await fs.access(htmlReportPath);
@@ -480,32 +513,21 @@ export class K6ExecutionService {
           `[${runId}] HTML report generated by k6 web-dashboard`,
         );
       } catch (error) {
+        const message = `[${runId}] HTML report not generated by k6 web-dashboard at ${htmlReportPath}: ${getErrorMessage(error)}`;
         if (timedOut) {
-          this.logger.warn(
-            `[${runId}] HTML report not generated before timeout: ${getErrorMessage(error)}`,
-          );
+          this.logger.warn(message);
+        } else if (exitCode !== 0) {
+          this.logger.warn(`${message} (execution already failed with code ${exitCode})`);
         } else {
-          this.logger.error(
-            `[${runId}] CRITICAL: HTML report not generated by k6 web-dashboard at ${htmlReportPath}: ${getErrorMessage(error)}`,
-          );
+          this.logger.error(message);
           throw new Error(
             `K6 failed to generate HTML report. Ensure K6_WEB_DASHBOARD_EXPORT environment variable is set correctly.`,
           );
         }
       }
 
-      const htmlIndexPath = path.join(reportDir, 'index.html');
-      if (hasHtmlReport && htmlIndexPath !== htmlReportPath) {
-        try {
-          await fs.copyFile(htmlReportPath, htmlIndexPath);
-        } catch (error) {
-          this.logger.warn(
-            `[${runId}] Failed to create index.html alias for HTML report: ${getErrorMessage(error)}`,
-          );
-        }
-      }
-
-      // 5b. Persist console output for artifact upload
+      // 5c. Persist console output for artifact upload
+      const consolePath = path.join(extractedReportsDir, 'console.log');
       try {
         const combinedLog =
           execResult.stdout +
@@ -519,7 +541,9 @@ export class K6ExecutionService {
         );
       }
 
-      // 6. Prepare artifacts for upload
+      // 6. Prepare artifacts for upload (organize files in report directory)
+      await fs.mkdir(reportDir, { recursive: true });
+
       const targetSummaryPath = path.join(reportDir, 'summary.json');
       try {
         await fs.rename(summaryPath, targetSummaryPath);
@@ -552,20 +576,13 @@ export class K6ExecutionService {
         }
       }
 
-      // HTML report is already in the report directory (generated directly by k6 web dashboard)
+      // HTML report and metrics.json are already in the extracted directory
 
-      try {
-        await fs.rm(scriptPath);
-      } catch (error) {
-        this.logger.warn(
-          `[${runId}] Failed to remove temporary script: ${getErrorMessage(error)}`,
-        );
-      }
-
+      // 7. Upload extracted reports to S3
       const s3KeyPrefix = `${runId}`;
       const bucket = this.s3Service.getBucketForEntityType('k6_performance');
 
-      await this.s3Service.uploadDirectory(runDir, s3KeyPrefix, bucket);
+      await this.s3Service.uploadDirectory(extractedReportsDir, s3KeyPrefix, bucket);
 
       const baseUrl = this.s3Service.getBaseUrlForEntity(
         'k6_performance',
@@ -575,8 +592,15 @@ export class K6ExecutionService {
       const summaryUrl = `${baseUrl}/summary.json`;
       const consoleUrl = `${baseUrl}/console.log`;
 
-      // 7. Determine pass/fail (k6 exit code AND check if any checks failed)
-      const thresholdsPassed = !timedOut && execResult.exitCode === 0;
+      // 7. Determine pass/fail by checking actual threshold results in summary.json
+      // K6's exit code doesn't always accurately reflect threshold status
+      // Check each metric's thresholds to see if any failed (ok: false)
+      // Fall back to exit code if summary is missing (indicates k6 crash)
+      const thresholdsPassed = this.checkThresholdsFromSummary(
+        summary,
+        timedOut,
+        exitCode,
+      );
 
       // Check if any validation checks failed
       const checksFailed = timedOut
@@ -652,12 +676,13 @@ export class K6ExecutionService {
     } finally {
       this.activeK6Runs.delete(uniqueRunId);
 
-      // Cleanup
+      // Clean up extracted reports directory (OS temp directory)
       try {
-        await fs.rm(runDir, { recursive: true, force: true });
+        await fs.rm(extractedReportsDir, { recursive: true, force: true });
+        this.logger.debug(`[${runId}] Cleaned up extracted reports directory`);
       } catch (cleanupError) {
         this.logger.warn(
-          `[${runId}] Cleanup failed: ${getErrorMessage(cleanupError)}`,
+          `[${runId}] Failed to cleanup extracted reports directory: ${getErrorMessage(cleanupError)}`,
         );
       }
     }
@@ -729,41 +754,18 @@ export class K6ExecutionService {
     });
   }
 
-  private async resetDashboardArtifacts(paths: {
-    reportDir: string;
-    summaryPath: string;
-    htmlReportPath: string;
-    consolePath: string;
-  }): Promise<void> {
-    const { reportDir, summaryPath, htmlReportPath, consolePath } = paths;
-
-    await Promise.allSettled([
-      fs.rm(summaryPath, { force: true }),
-      fs.rm(consolePath, { force: true }),
-      fs.rm(htmlReportPath, { force: true }),
-    ]);
-
-    try {
-      await fs.rm(reportDir, { recursive: true, force: true });
-    } catch (error) {
-      this.logger.warn(
-        `Failed to remove report directory during retry cleanup: ${getErrorMessage(error)}`,
-      );
-    }
-
-    await fs.mkdir(reportDir, { recursive: true });
-  }
-
   private async delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
-   * Execute k6 binary and stream stdout
+   * Execute k6 binary in secure container with inline script
+   * IMPORTANT: Container execution is mandatory for security
    */
   private async executeK6Binary(
     args: string[],
-    cwd: string,
+    scriptContent: string,
+    extractToHost: string,
     runId: string,
     uniqueRunId: string,
     overrideEnv: Record<string, string> = {},
@@ -776,174 +778,199 @@ export class K6ExecutionService {
     error: string | null;
     timedOut: boolean;
   }> {
-    return new Promise((resolve, reject) => {
-      this.logger.log(`[${runId}] Executing: k6 ${args.join(' ')}`);
+    const startTime = Date.now();
+    this.logger.log(`[${runId}] Executing in container: k6 ${args.join(' ')}`);
+    this.logger.debug(
+      `[${runId}] k6 environment variables: ${JSON.stringify(overrideEnv, null, 2)}`,
+    );
+
+    // Note: No validation of shell command arguments here
+    // The args will be part of a shell script generated by ContainerExecutorService
+    // which handles its own validation and escaping
+
+    try {
+      // Find the script filename from args (first arg after "run" or first .js file)
+      let scriptFileName = 'test.js'; // default
+      const runIndex = args.indexOf('run');
+      if (runIndex !== -1 && args.length > runIndex + 1) {
+        // Next arg after "run" is usually the script
+        const candidate = args[runIndex + 1];
+        if (!candidate.startsWith('-')) {
+          scriptFileName = path.basename(candidate);
+        }
+      }
+
+      // Track the run start
+      this.activeK6Runs.set(uniqueRunId, {
+        pid: 0, // Container execution doesn't give us direct PID
+        startTime: Date.now(),
+        runId,
+        dashboardPort,
+      });
+
       this.logger.debug(
-        `[${runId}] k6 environment variables: ${JSON.stringify(overrideEnv, null, 2)}`,
+        `[${runId}] Using container-only execution with inline script: ${scriptFileName}`,
       );
 
-      const childProcess = spawn(this.k6BinaryPath, args, {
-        cwd,
-        env: {
-          ...process.env,
-          ...overrideEnv,
-          K6_NO_COLOR: '1', // Disable ANSI colors
+      // Create report directory structure inside container before execution
+      // K6_WEB_DASHBOARD_EXPORT requires the parent directory to exist
+      const directoriesToEnsure = new Set<string>(['/tmp']);
+      const webDashboardExportPath = overrideEnv.K6_WEB_DASHBOARD_EXPORT;
+      if (webDashboardExportPath) {
+        const exportDir = webDashboardExportPath.endsWith('.html')
+          ? path.dirname(webDashboardExportPath)
+          : webDashboardExportPath;
+        directoriesToEnsure.add(exportDir);
+      }
+
+      // Execute in container with inline script
+      const containerResult = await this.containerExecutorService.executeInContainer(
+        null, // No host script path - using inline content
+        ['k6', ...args],
+        {
+          inlineScriptContent: scriptContent,
+          inlineScriptFileName: scriptFileName,
+          ensureDirectories: Array.from(directoriesToEnsure),
+          extractFromContainer: '/tmp/.', // Extract contents of /tmp (trailing /. copies contents)
+          extractToHost: extractToHost, // To OS temp directory
+          timeoutMs: timeoutMs || this.testExecutionTimeoutMs,
+          env: {
+            ...overrideEnv,
+            K6_NO_COLOR: '1', // Disable ANSI colors
+          },
+          workingDir: '/tmp',
+          memoryLimitMb: 2048, // 2GB for k6 (may need more for large tests)
+          cpuLimit: 2.0, // 200% of one CPU
+          networkMode: 'bridge', // k6 needs network access
+          autoRemove: false, // Don't auto-remove - we need to extract files first
+          image: this.k6DockerImage, // Use K6-specific Docker image
         },
-      });
+      );
 
-      let stdout = '';
-      let stderr = '';
-      let timedOut = false;
-      let timeoutHandle: NodeJS.Timeout | undefined;
-      let forceKillHandle: NodeJS.Timeout | undefined;
-      let childClosed = false;
+      // Clean up active runs tracking
+      this.activeK6Runs.delete(uniqueRunId);
 
-      if (childProcess.pid) {
-        // Update placeholder entry with actual process info
-        const existing = this.activeK6Runs.get(uniqueRunId);
-        this.activeK6Runs.set(uniqueRunId, {
-          pid: childProcess.pid,
-          startTime: existing?.startTime ?? Date.now(),
-          runId,
-          dashboardPort,
-        });
-      }
+      const timedOut = containerResult.timedOut;
+      const exitCode = containerResult.exitCode;
+      const stdout = containerResult.stdout;
+      const stderr = containerResult.stderr;
 
-      const gracePeriodMs = 10_000;
-      if (typeof timeoutMs === 'number' && timeoutMs > 0) {
-        timeoutHandle = setTimeout(() => {
-          if (childClosed) {
-            return;
-          }
-
-          timedOut = true;
+      // Publish final output to Redis (since we can't stream from container)
+      if (stdout) {
+        try {
+          await this.redisService
+            .getClient()
+            .publish(`k6:run:${runId}:console`, stdout);
+        } catch (err) {
           this.logger.warn(
-            `[${runId}] k6 execution exceeded timeout of ${timeoutMs}ms. Sending SIGTERM.`,
+            `[${runId}] Failed to publish console output: ${getErrorMessage(err)}`,
           );
-          try {
-            const signalled = childProcess.kill('SIGTERM');
-            if (!signalled) {
-              this.logger.warn(
-                `[${runId}] Failed to send SIGTERM to k6 process (process may have already exited).`,
-              );
-            }
-          } catch (killError) {
-            this.logger.error(
-              `[${runId}] Error while sending SIGTERM to k6 process: ${getErrorMessage(killError)}`,
-            );
-          }
-
-          forceKillHandle = setTimeout(() => {
-            if (childClosed) {
-              return;
-            }
-
-            this.logger.warn(
-              `[${runId}] k6 process still running after timeout grace period. Forcing SIGKILL.`,
-            );
-            try {
-              childProcess.kill('SIGKILL');
-            } catch (killError) {
-              this.logger.error(
-                `[${runId}] Error while sending SIGKILL to k6 process: ${getErrorMessage(killError)}`,
-              );
-            }
-          }, gracePeriodMs);
-        }, timeoutMs);
+        }
       }
 
-      // Stream stdout to Redis (for real-time console)
-      childProcess.stdout.on('data', (data: Buffer) => {
-        const chunk = data.toString();
-        stdout += chunk;
+      const exitDescription = timedOut
+        ? `terminated after exceeding timeout (${timeoutMs ?? 'unknown'}ms)`
+        : `exited with code: ${exitCode}`;
 
-        // Publish to Redis for SSE
-        this.redisService
-          .getClient()
-          .publish(`k6:run:${runId}:console`, chunk)
-          .catch((err) => {
-            this.logger.warn(
-              `Failed to publish console: ${getErrorMessage(err)}`,
-            );
-          });
-      });
+      if (timedOut || exitCode !== 0) {
+        this.logger.warn(`[${runId}] k6 ${exitDescription}`);
+      } else {
+        this.logger.log(`[${runId}] k6 ${exitDescription}`);
+      }
 
-      childProcess.stderr.on('data', (data: Buffer) => {
-        const chunk = data.toString();
-        stderr += chunk;
-      });
-
-      childProcess.on('close', (code, signal) => {
-        childClosed = true;
-        if (timeoutHandle) {
-          clearTimeout(timeoutHandle);
-        }
-        if (forceKillHandle) {
-          clearTimeout(forceKillHandle);
-        }
-
-        const wasSignaled = code === null;
-        const exitCode = timedOut ? 124 : typeof code === 'number' ? code : 128;
-        const exitDescription = timedOut
-          ? `terminated after exceeding timeout (${timeoutMs ?? 'unknown'}ms)`
-          : wasSignaled
-            ? `terminated by signal ${signal ?? 'unknown'}`
-            : `exited with code: ${exitCode}`;
-
-        if (timedOut || wasSignaled) {
-          this.logger.warn(`[${runId}] k6 ${exitDescription}`);
+      // Log stderr if present
+      if (stderr) {
+        if (exitCode !== 0) {
+          this.logger.error(`[${runId}] k6 stderr output:\n${stderr}`);
         } else {
-          this.logger.log(`[${runId}] k6 ${exitDescription}`);
+          this.logger.debug(`[${runId}] k6 stderr output:\n${stderr}`);
         }
+      }
 
-        // Log stderr if present
-        if (stderr) {
-          if (exitCode !== 0) {
-            this.logger.error(`[${runId}] k6 stderr output:\n${stderr}`);
-          } else {
-            this.logger.debug(`[${runId}] k6 stderr output:\n${stderr}`);
+      // Log stdout for debugging (first 2000 chars)
+      if (stdout) {
+        const truncatedStdout =
+          stdout.length > 2000
+            ? `${stdout.substring(0, 2000)}\n... (truncated)`
+            : stdout;
+        this.logger.debug(`[${runId}] k6 stdout:\n${truncatedStdout}`);
+      }
+
+      return {
+        exitCode,
+        stdout,
+        stderr,
+        error: containerResult.error || null,
+        timedOut,
+      };
+    } catch (error) {
+      this.activeK6Runs.delete(uniqueRunId);
+      this.logger.error(
+        `[${runId}] k6 container execution error: ${getErrorMessage(error)}`,
+      );
+
+      return {
+        exitCode: 1,
+        stdout: '',
+        stderr: getErrorMessage(error),
+        error: getErrorMessage(error),
+        timedOut: false,
+      };
+    }
+  }
+
+  /**
+   * Check if thresholds passed by examining the summary.json structure
+   * K6 exit code doesn't always reflect threshold status accurately
+   * @param summary The K6 summary object from summary.json
+   * @param timedOut Whether the execution timed out
+   * @param exitCode The k6 process exit code (used as fallback when summary is missing)
+   * @returns true if all thresholds passed or no thresholds defined, false otherwise
+   */
+  private checkThresholdsFromSummary(
+    summary: any,
+    timedOut: boolean,
+    exitCode: number,
+  ): boolean {
+    // If timed out, thresholds are considered failed
+    if (timedOut) {
+      return false;
+    }
+
+    // If no summary or metrics, fall back to exit code
+    // Missing summary indicates k6 crashed (syntax error, missing module, etc.)
+    if (!summary || !summary.metrics) {
+      // Exit code 0 means success, non-zero means failure
+      return exitCode === 0;
+    }
+
+    // Check each metric's thresholds for failures
+    // Each threshold has an "ok" property: true=passed, false=failed
+    for (const [metricName, metric] of Object.entries(summary.metrics)) {
+      if (!metric || typeof metric !== 'object') {
+        continue;
+      }
+
+      const metricData = metric as any;
+      const thresholds = metricData.thresholds;
+
+      // If this metric has thresholds, check if any failed
+      if (thresholds && typeof thresholds === 'object') {
+        for (const [thresholdName, threshold] of Object.entries(thresholds)) {
+          const thresholdData = threshold as any;
+          // If ok is false, this threshold failed
+          if (thresholdData && thresholdData.ok === false) {
+            this.logger.warn(
+              `Threshold failed: ${metricName} - ${thresholdName}`,
+            );
+            return false;
           }
         }
+      }
+    }
 
-        // Log stdout for debugging (first 2000 chars)
-        if (stdout) {
-          const truncatedStdout =
-            stdout.length > 2000
-              ? `${stdout.substring(0, 2000)}\n... (truncated)`
-              : stdout;
-          this.logger.debug(`[${runId}] k6 stdout:\n${truncatedStdout}`);
-        }
-
-        this.activeK6Runs.delete(uniqueRunId);
-
-        resolve({
-          exitCode,
-          stdout,
-          stderr,
-          error: timedOut
-            ? `k6 execution timed out after ${timeoutMs}ms`
-            : wasSignaled
-              ? `k6 terminated by signal ${signal ?? 'unknown'}`
-              : exitCode !== 0
-                ? `k6 exited with code ${exitCode}`
-                : null,
-          timedOut,
-        });
-      });
-
-      childProcess.on('error', (error) => {
-        if (timeoutHandle) {
-          clearTimeout(timeoutHandle);
-        }
-        if (forceKillHandle) {
-          clearTimeout(forceKillHandle);
-        }
-        this.logger.error(
-          `[${runId}] k6 process error: ${getErrorMessage(error)}`,
-        );
-        reject(error);
-      });
-    });
+    // All thresholds passed (or no thresholds defined)
+    return true;
   }
 
   /**

@@ -106,6 +106,9 @@ export const MONITOR_SCHEDULER_QUEUE = "monitor-scheduler";
 // Email template rendering queue
 export const EMAIL_TEMPLATE_QUEUE = "email-template-render";
 
+// Data lifecycle cleanup queue
+export const DATA_LIFECYCLE_CLEANUP_QUEUE = "data-lifecycle-cleanup";
+
 // Redis capacity limit keys
 export const RUNNING_CAPACITY_LIMIT_KEY = "supercheck:capacity:running";
 export const QUEUE_CAPACITY_LIMIT_KEY = "supercheck:capacity:queued";
@@ -128,6 +131,7 @@ let jobSchedulerQueue: Queue | null = null;
 let k6JobSchedulerQueue: Queue | null = null;
 let monitorSchedulerQueue: Queue | null = null;
 let emailTemplateQueue: Queue | null = null;
+let dataLifecycleCleanupQueue: Queue | null = null;
 
 let monitorExecutionEvents: QueueEvents | null = null;
 
@@ -248,6 +252,7 @@ async function getQueues(): Promise<{
   k6JobSchedulerQueue: Queue;
   monitorSchedulerQueue: Queue;
   emailTemplateQueue: Queue;
+  dataLifecycleCleanupQueue: Queue;
   redisConnection: Redis;
 }> {
   if (!initPromise) {
@@ -307,6 +312,9 @@ async function getQueues(): Promise<{
         // Email template rendering queue
         emailTemplateQueue = new Queue(EMAIL_TEMPLATE_QUEUE, queueSettings);
 
+        // Data lifecycle cleanup queue
+        dataLifecycleCleanupQueue = new Queue(DATA_LIFECYCLE_CLEANUP_QUEUE, queueSettings);
+
         monitorExecutionEvents = new QueueEvents(MONITOR_EXECUTION_QUEUE, {
           connection: connection,
         });
@@ -337,6 +345,9 @@ async function getQueues(): Promise<{
         );
         emailTemplateQueue.on("error", (error) =>
           queueLogger.error({ err: error }, "Email Template Queue Error")
+        );
+        dataLifecycleCleanupQueue.on("error", (error) =>
+          queueLogger.error({ err: error }, "Data Lifecycle Cleanup Queue Error")
         );
         monitorExecutionEvents.on("error", (error) =>
           queueLogger.error(
@@ -370,6 +381,7 @@ async function getQueues(): Promise<{
     !k6JobSchedulerQueue ||
     !monitorSchedulerQueue ||
     !emailTemplateQueue ||
+    !dataLifecycleCleanupQueue ||
     !redisClient
   ) {
     throw new Error(
@@ -386,6 +398,7 @@ async function getQueues(): Promise<{
     k6JobSchedulerQueue,
     monitorSchedulerQueue,
     emailTemplateQueue,
+    dataLifecycleCleanupQueue,
     redisConnection: redisClient,
   };
 }
