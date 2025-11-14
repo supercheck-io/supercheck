@@ -9,6 +9,10 @@ import { existsSync } from 'fs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { S3Service } from '../../execution/services/s3.service';
+import {
+  findFirstMatchingFile,
+  pathExists,
+} from '../utils/file-search';
 
 export interface ReportUploadResult {
   success: boolean;
@@ -61,15 +65,21 @@ export class ReportUploadService {
     let reportFound = false;
     let s3Url: string | null = null;
 
-    // Location 1: Check custom output directory (report-{testId})
-    const customOutputDir = path.join(
-      runDir,
-      `report-${testId.substring(0, 8)}`,
-    );
+    const candidateDirs: string[] = [
+      path.join(runDir, `report-${testId.substring(0, 8)}`),
+      path.join(runDir, 'pw-report'),
+      path.join(runDir, 'playwright-report'),
+      path.join(runDir, 'playwright-reports', 'html'),
+      path.join(runDir, 'playwright-reports'),
+    ];
 
-    if (existsSync(customOutputDir)) {
+    for (const dir of candidateDirs) {
+      if (!(await pathExists(dir))) {
+        continue;
+      }
+
       const result = await this._uploadFromDirectory(
-        customOutputDir,
+        dir,
         s3ReportKeyPrefix,
         testBucket,
         executionId,
@@ -87,13 +97,17 @@ export class ReportUploadService {
       }
     }
 
-    // Location 2: Check default Playwright report directory (pw-report)
     if (!reportFound) {
-      const playwrightReportDir = path.join(runDir, 'pw-report');
+      const fallbackIndex = await findFirstMatchingFile(
+        runDir,
+        (fullPath, entryName) => entryName === 'index.html',
+        { maxDepth: 6 },
+      );
 
-      if (existsSync(playwrightReportDir)) {
+      if (fallbackIndex) {
+        const fallbackDir = path.dirname(fallbackIndex);
         const result = await this._uploadFromDirectory(
-          playwrightReportDir,
+          fallbackDir,
           s3ReportKeyPrefix,
           testBucket,
           executionId,
@@ -161,8 +175,8 @@ export class ReportUploadService {
         entityType,
       );
 
-      // Clean up local directory after successful upload
-      await this._cleanupLocalReportDirectory(dirPath, executionId);
+      // Note: Local directory cleanup is now handled by the execution service's finally block
+      // after report upload completes, preventing disk space exhaustion
 
       return { success: true };
     } catch (error) {
@@ -204,27 +218,6 @@ export class ReportUploadService {
         `Failed to process report files for execution ${executionId}: ${error instanceof Error ? error.message : String(error)}`,
       );
       // Non-critical error, continue with upload
-    }
-  }
-
-  /**
-   * Clean up local report directory after successful upload
-   * @private
-   */
-  private async _cleanupLocalReportDirectory(
-    reportDir: string,
-    executionId: string,
-  ): Promise<void> {
-    try {
-      await fs.rm(reportDir, { recursive: true, force: true });
-      this.logger.debug(
-        `Cleaned up local report directory for execution ${executionId}`,
-      );
-    } catch (error) {
-      this.logger.warn(
-        `Failed to clean up local report directory ${reportDir}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      // Non-critical error, report was already uploaded
     }
   }
 

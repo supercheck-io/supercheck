@@ -183,22 +183,18 @@ services:
           cpus: "0.5"
           memory: 1G
 
-  # Worker (NestJS Runner) - Minimal resource limits for maximum test compatibility
+  # Worker (NestJS Runner) - Container-based execution with Docker socket mounting
   worker:
     image: ghcr.io/supercheck-io/supercheck/worker:1.1.3-beta
     environment:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)
-      # Removed NODE_OPTIONS memory limits - let Node.js use what it needs
-      # Removed UV_THREADPOOL_SIZE limits - let system manage threads
     volumes:
+      # CRITICAL: Mount Docker socket for container-based test execution
+      - /var/run/docker.sock:/var/run/docker.sock
       - worker-playwright-reports:/app/playwright-reports
+      - worker-k6-reports:/app/k6-reports
       - worker-reports:/app/report
-      # CRITICAL: Use host's shared memory - no artificial size limit
-      - type: tmpfs
-        target: /dev/shm
-        tmpfs:
-          size: 8589934592 # 8GB shared memory (increased from 3GB to prevent browser crashes)
     depends_on:
       app:
         condition: service_healthy # Wait for app to complete migrations
@@ -221,11 +217,11 @@ services:
       replicas: 3 # Baseline footprint for production; scale horizontally by adding replicas
       resources:
         limits:
-          cpus: "2.0" # Limit to 2 vCPU so external dependencies retain headroom
-          memory: 4G # Sized for two Playwright browsers with tracing enabled
+          cpus: "2.0" # Limit to 2 vCPU
+          memory: 2G # Reduced from 4G - browsers run in separate containers
         reservations:
-          cpus: "1.0" # Guarantee at least one core per worker
-          memory: 3072M # Reserve ~3 GB to avoid squeezing external infra
+          cpus: "0.5" # Reduced from 1.0 - worker only orchestrates containers
+          memory: 1G # Reduced from 3072M - browser memory not needed in worker
 
       # Container Restart Protection (handles stuck/crashed containers)
       restart_policy:
@@ -234,27 +230,16 @@ services:
         delay: 15s
         window: 120s
 
-    # Minimal system-level settings for compatibility
-    sysctls:
-      - net.core.somaxconn=4096 # High connection backlog for Playwright
-    ulimits:
-      nproc: 65535 # Allow many processes (browser + video + FFmpeg)
-      nofile: # High file descriptor limits for browser tabs
-        soft: 1048576
-        hard: 1048576
-      memlock: # Unlimited memory locking for browser
-        soft: -1
-        hard: -1
-    # Security constraints (minimal - only prevent privilege escalation)
+    # Security constraints - Enhanced security with container-based execution
     security_opt:
       - no-new-privileges:true # Prevent privilege escalation
     cap_drop:
       - ALL # Drop all capabilities by default
-    cap_add:
-      - SYS_ADMIN # Required for browser sandboxing (minimal required capability)
 
 volumes:
   worker-playwright-reports:
+    driver: local
+  worker-k6-reports:
     driver: local
   worker-reports:
     driver: local

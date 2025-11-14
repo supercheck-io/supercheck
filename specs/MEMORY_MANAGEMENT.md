@@ -263,32 +263,68 @@ Enhanced file processing with memory-conscious operations:
 - **Cleanup Integration**: Proper resource cleanup on failures
 - **Directory Processing**: Systematic file-by-file upload with GC
 
-```typescript
-// Memory-conscious file upload with cleanup
-const key = await this.uploadFile(
-  fullLocalPath,
-  s3Key,
-  undefined,
-  targetBucket
-);
-uploadedKeys.push(key);
+**S3 Upload Process:**
+- Upload file to S3 bucket
+- Add key to uploaded keys list
+- Force garbage collection after each upload
+- Continue with next file
 
-// Force garbage collection after each upload
-if (global.gc) {
-  global.gc();
-}
+### Container-Only Execution Model
+
+**All test execution occurs exclusively within Docker containers with zero host filesystem dependencies for test files.**
+
+#### Test Script Handling
+- **NO host files created**: Test scripts passed inline to containers (base64-encoded)
+- **Container location**: Scripts written to `/tmp/{testId}.spec.mjs` inside container
+- **Lifecycle**: Automatically destroyed when container is removed
+- **No cleanup required**: Container destruction handles all test file cleanup
+
+#### Report Artifacts
+- **Container generation**: Reports written to `/tmp/playwright-reports/` inside container (tmpfs)
+- **Extraction**: `docker cp` extracts reports to OS temp directory before container destruction
+- **OS temp location**: `$TMPDIR/supercheck-reports-{uniqueRunId}/`
+- **Upload**: Extracted reports uploaded to S3
+- **Local cleanup**: OS temp directory removed after S3 upload
+- **Retention**: Permanent in S3, ephemeral on host
+
+#### Container Lifecycle
+```
+1. Spawn container with:
+   - node_modules mounted read-only
+   - playwright.config.js mounted read-only
+   - Test script passed inline (base64)
+   - Writable container filesystem for /tmp
+
+2. Inside container:
+   - Decode test script to /tmp/test.spec.mjs
+   - Execute Playwright test
+   - Write reports to /tmp/playwright-reports/
+
+3. Extract reports:
+   - docker cp /tmp/playwright-reports/ → host OS temp
+
+4. Destroy container:
+   - All internal /tmp files automatically cleaned
+   - No host filesystem pollution
+
+5. Upload & cleanup:
+   - Upload from host OS temp → S3
+   - Remove host OS temp directory
 ```
 
-### Temporary File Management
+#### Benefits
+- ✅ **Zero host filesystem pollution**: No test files written to host
+- ✅ **Automatic cleanup**: Container destruction cleans everything inside
+- ✅ **True isolation**: Test scripts never touch host persistent storage
+- ✅ **Simplified code**: No directory creation/permission handling
+- ✅ **No disk exhaustion**: OS temp is ephemeral and managed by OS
 
-Automated cleanup of temporary files and directories:
-
-**Cleanup Strategy:**
-
-- **Age-Based**: Removes files older than 1 hour
-- **Directory Management**: Recursive cleanup of test directories
-- **Permission Handling**: Enhanced error handling
-- **Scheduled Cleanup**: Automated periodic cleanup
+**Key Points:**
+- Test scripts never written to host persistent storage
+- Container destruction automatically cleans up all internal files
+- Only extracted reports briefly exist in OS temp
+- No scheduled cleanup needed for test files
+- Path validation ensures safe temporary directory creation for extracted reports
 
 ## Docker and Infrastructure
 
@@ -296,32 +332,21 @@ Automated cleanup of temporary files and directories:
 
 Optimized Docker configuration for memory management:
 
-```yaml
-# Worker service configuration
-worker:
-  environment:
-  deploy:
-    resources:
-      limits:
-        memory: 4G
-      reservations:
-        memory: 2G
-```
+**Worker Service:**
+- Memory limit: 4GB
+- Memory reservation: 2GB
+- Garbage collection enabled
+- Max old space size: 2048MB
 
 ### Redis Configuration
 
 Memory-limited Redis with proper resource constraints:
 
-```yaml
-redis:
-  command: sh -c "redis-server --maxmemory 512mb --maxmemory-policy noeviction"
-  deploy:
-    resources:
-      limits:
-        memory: 512M
-      reservations:
-        memory: 256M
-```
+**Redis Settings:**
+- Max memory: 512MB
+- Memory policy: noeviction
+- Memory limit: 512MB
+- Memory reservation: 256MB
 
 ## Performance Impact and Benefits
 
@@ -337,19 +362,14 @@ redis:
 
 Real-time insights into system performance:
 
-```typescript
-// Memory monitoring and alerting
-const memUsage = process.memoryUsage();
-const memUsageMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-
-if (memUsageMB > this.memoryThresholdMB) {
-  this.logger.warn(`High memory usage: ${memUsageMB}MB`);
-  await this.performMemoryCleanup();
-}
-```
+**Monitoring Process:**
+- Get current process memory usage
+- Calculate heap used in MB
+- Compare against memory threshold
+- Trigger cleanup if threshold exceeded
+- Log memory status
 
 **Monitoring Features:**
-
 - Real-time memory usage tracking
 - Active execution monitoring
 - Stale execution detection
@@ -362,100 +382,63 @@ if (memUsageMB > this.memoryThresholdMB) {
 
 Proper initialization and cleanup across service lifecycle:
 
-```typescript
-// Service initialization
-constructor() {
-  this.setupMemoryMonitoring();
-  this.gcInterval = setInterval(() => {
-    if (global.gc) global.gc();
-  }, 30000);
-}
+**Initialization:**
+- Setup memory monitoring
+- Configure garbage collection intervals (30 seconds)
+- Initialize execution tracking
 
-// Service destruction
-onModuleDestroy() {
-  clearInterval(this.memoryCleanupInterval);
-  clearInterval(this.gcInterval);
-  // Cleanup active executions
-  for (const [id, execution] of this.activeExecutions.entries()) {
-    if (execution.pid) this.killProcessTree(execution.pid);
-  }
-  this.activeExecutions.clear();
-}
-```
+**Destruction:**
+- Clear monitoring intervals
+- Clear garbage collection intervals
+- Cleanup active executions
+- Kill process trees for remaining processes
+- Clear execution tracking map
 
 ### Memory Cleanup Operations
 
 Comprehensive cleanup procedures:
 
-```typescript
-private async performMemoryCleanup(): Promise<void> {
-  try {
-    // Force garbage collection
-    if (global.gc) global.gc();
-
-    // Clean old temporary files
-    await this.cleanupOldTempFiles();
-
-    // Clean zombie processes
-    await this.cleanupBrowserProcesses();
-
-    // Log memory status
-    const memUsage = process.memoryUsage();
-    this.logger.debug(`Cleanup completed. Heap: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`);
-  } catch (error) {
-    this.logger.error(`Memory cleanup failed: ${error.message}`);
-  }
-}
-```
+**Cleanup Process:**
+- Monitor current memory usage
+- Calculate heap used in MB
+- Check if memory exceeds 90% of threshold
+- Log memory status if high
+- Note: Local file cleanup removed - execution now runs in containers
+- Container cleanup is automatic and handles all temporary files
 
 ## Configuration and Usage
 
 ### Environment Variables
 
-Comprehensive configuration options:
+Configure memory management via environment variables:
 
-```bash
+**Redis Configuration:**
+- REDIS_HOST: redis
+- REDIS_PORT: 6379
+- REDIS_PASSWORD: secure-password
 
-# Redis Configuration
-REDIS_HOST=redis
-REDIS_PORT=6379
-REDIS_PASSWORD=your-secure-password
+**TTL Configuration (optional overrides):**
+- REDIS_JOB_TTL: 604800 (7 days)
+- REDIS_EVENT_TTL: 86400 (24 hours)
+- REDIS_METRICS_TTL: 172800 (48 hours)
+- REDIS_CLEANUP_BATCH_SIZE: 100
 
-# TTL Configuration (optional overrides)
-REDIS_JOB_TTL=604800        # 7 days
-REDIS_EVENT_TTL=86400       # 24 hours
-REDIS_METRICS_TTL=172800    # 48 hours
-REDIS_CLEANUP_BATCH_SIZE=100
-
-# Playground Cleanup
-PLAYGROUND_CLEANUP_ENABLED=true
-PLAYGROUND_CLEANUP_CRON=0 */12 * * *
-PLAYGROUND_CLEANUP_MAX_AGE_HOURS=24
-```
+**Playground Cleanup:**
+- PLAYGROUND_CLEANUP_ENABLED: true
+- PLAYGROUND_CLEANUP_CRON: 0 */12 * * *
+- PLAYGROUND_CLEANUP_MAX_AGE_HOURS: 24
 
 ### Development Environment
 
-```bash
-# Start with memory monitoring
-npm run dev
-
-# Monitor memory usage
-docker stats supercheck-worker
-docker stats supercheck-redis
-```
+- Start with memory monitoring: npm run dev
+- Monitor worker memory: docker stats supercheck-worker
+- Monitor Redis memory: docker stats supercheck-redis
 
 ### Production Monitoring
 
-```bash
-# Check worker memory
-docker exec supercheck-worker node -e "console.log(process.memoryUsage())"
-
-# Redis memory info
-docker exec supercheck-redis redis-cli info memory
-
-# Active processes
-docker exec supercheck-worker pgrep -f playwright
-```
+- Check worker memory via Docker exec
+- Redis memory info via redis-cli
+- Active processes monitoring via pgrep
 
 ## Testing and Validation
 
@@ -497,18 +480,9 @@ docker exec supercheck-worker pgrep -f playwright
 
 ### Debug Commands
 
-```bash
-# Worker service debugging
-docker exec supercheck-worker ps aux | grep node
-docker exec supercheck-worker cat /proc/meminfo
-
-# Redis debugging
-docker exec supercheck-redis redis-cli info memory
-docker exec supercheck-redis redis-cli dbsize
-
-# Process monitoring
-docker exec supercheck-worker pgrep -f "playwright|chrome"
-```
+- Worker service debugging via docker exec
+- Redis debugging via redis-cli
+- Process monitoring via pgrep
 
 ## Future Enhancements
 

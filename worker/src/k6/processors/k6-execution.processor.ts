@@ -125,7 +125,6 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       const message = `[Job ${job.id}] Skipping - job location (${requestedLocation}) doesn't match worker location (${this.workerLocation})`;
       this.logger.debug(message);
       // Throw error to trigger BullMQ's automatic retry mechanism
-      // BullMQ will retry this job (attempts: 3, exponential backoff)
       // allowing another worker in the correct region to pick it up
       throw new LocationMismatchError(message);
     }
