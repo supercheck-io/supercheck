@@ -125,7 +125,7 @@ graph TB
 
 ### Multi-Location Architecture
 
-The monitoring system now operates exclusively in distributed mode. The shared `MULTI_LOCATION_DISTRIBUTED` environment variable (consumed by the Next.js app and the NestJS worker) defaults to `true`, ensuring that every monitor run is expanded into per-location jobs handled by regional workers.
+The distributed multi-location pipeline is available but currently **opt-in**. The shared `MULTI_LOCATION_DISTRIBUTED` environment variable (used by both the Next.js app and the NestJS worker) defaults to `false`, so monitors run on whichever worker picks them up unless you explicitly enable distributed mode. When set to `true`, every monitor run is expanded into per-location jobs handled by regional workers. Subscription-aware org-level capacity limits and location policies will eventually flip this flag automatically per organization.
 
 | Region | Worker Location Code | Description |
 |--------|----------------------|-------------|

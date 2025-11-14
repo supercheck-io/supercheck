@@ -18,6 +18,19 @@ Supercheck implements comprehensive observability using **OpenTelemetry** for di
 10. [Query API](#query-api)
 11. [Frontend Integration](#frontend-integration)
 12. [Configuration](#configuration)
+13. [Quick Start & Health Checks](#quick-start--health-checks)
+14. [Local Development Setup](#local-development-setup)
+15. [Docker/Production Setup](#dockerproduction-setup)
+16. [External Service Instrumentation Example](#external-service-instrumentation-example)
+17. [Viewing Traces & Logs](#viewing-traces--logs)
+18. [Troubleshooting Guide](#troubleshooting-guide)
+19. [Environment Variables Reference](#environment-variables-reference)
+20. [Advanced Operations](#advanced-operations)
+21. [Need Help](#need-help)
+22. [Best Practices](#best-practices)
+23. [Testing Guide](#testing-guide)
+24. [Related Documentation](#related-documentation)
+25. [Revision History](#revision-history)
 
 ## System Architecture
 
@@ -627,6 +640,349 @@ CLICKHOUSE_USER=default
 CLICKHOUSE_PASSWORD=<secure-password>
 ```
 
+## Quick Start & Health Checks
+
+1. Run `docker-compose up -d` to start worker, app, ClickHouse, OTel collector, schema migrator.
+2. Verify:
+   - `docker-compose ps | grep -E "clickhouse|otel|schema"`
+   - `curl http://localhost:8124/ping` → `Ok.`
+   - `curl http://localhost:13133/` → collector health
+   - `docker-compose logs worker | grep Observability` → initialization log
+3. Execute a Playwright test, then open `http://localhost:3000/observability/traces` and filter by service `supercheck-worker`.
+
+## Local Development Setup
+
+**Prereqs:** Docker Desktop + Node.js 20+
+
+1. Start observability stack only:
+
+   ```bash
+   docker-compose up -d clickhouse-observability schema-migrator otel-collector
+   docker-compose logs -f schema-migrator   # Wait for "Applied migrations successfully"
+   ```
+
+2. Configure env files:
+
+   `worker/.env`
+
+   ```bash
+   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+   ENABLE_WORKER_OBSERVABILITY=true
+   OTEL_SERVICE_NAME=supercheck-worker
+   OTEL_LOG_LEVEL=error
+   CLICKHOUSE_URL=http://localhost:8124
+   ```
+
+   `app/.env`
+
+   ```bash
+   CLICKHOUSE_URL=http://localhost:8124
+   OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+   ENABLE_WORKER_OBSERVABILITY=true
+   ```
+
+3. Run services locally:
+
+   ```bash
+   cd worker && npm install && npm run dev
+   cd ../app && npm run dev
+   ```
+
+   Expect `[Observability] Worker observability initialized successfully` in logs.
+
+## Docker/Production Setup
+
+Observability services already live in `docker-compose.yml`:
+
+```yaml
+clickhouse-observability:
+  image: clickhouse/clickhouse-server:25.5.6
+  ports:
+    - "8124:8123"
+    - "9001:9000"
+
+schema-migrator:
+  image: signoz/signoz-schema-migrator:v0.129.8
+
+otel-collector:
+  image: signoz/signoz-otel-collector:v0.129.8
+  ports:
+    - "4317:4317"
+    - "4318:4318"
+```
+
+Shared env block:
+
+```yaml
+x-common-env: &common-env
+  ENABLE_WORKER_OBSERVABILITY: ${ENABLE_WORKER_OBSERVABILITY:-true}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+  OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-supercheck-worker}
+  OTEL_LOG_LEVEL: ${OTEL_LOG_LEVEL:-error}
+  OTEL_TRACE_SAMPLE_RATE: ${OTEL_TRACE_SAMPLE_RATE:-1.0}
+  CLICKHOUSE_URL: ${CLICKHOUSE_URL:-http://clickhouse-observability:8123}
+  USE_CLICKHOUSE_DIRECT: ${USE_CLICKHOUSE_DIRECT:-true}
+```
+
+> When running inside Docker, use service names (`otel-collector`, `clickhouse-observability`). Only standalone processes should point to `localhost`.
+
+## External Service Instrumentation Example
+
+Demonstrate distributed tracing using an Express app.
+
+1. Install dependencies:
+
+   ```bash
+   mkdir test-observability-app && cd test-observability-app
+   npm init -y
+   npm install express
+   npm install @opentelemetry/api @opentelemetry/sdk-node \
+     @opentelemetry/auto-instrumentations-node \
+     @opentelemetry/exporter-trace-otlp-grpc \
+     @opentelemetry/resources @opentelemetry/semantic-conventions
+   ```
+
+2. `instrumentation.js`
+
+   ```javascript
+   const { NodeSDK } = require('@opentelemetry/sdk-node');
+   const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
+   const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
+   const { Resource } = require('@opentelemetry/resources');
+   const { SEMRESATTRS_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
+
+   const sdk = new NodeSDK({
+     resource: new Resource({
+       [SEMRESATTRS_SERVICE_NAME]: 'my-test-app',
+       'sc.organization_id': 'org-test-123',
+       'sc.project_id': 'proj-test-456',
+     }),
+     traceExporter: new OTLPTraceExporter({ url: 'http://localhost:4317' }),
+     instrumentations: [getNodeAutoInstrumentations()],
+   });
+
+   sdk.start();
+   process.on('SIGTERM', () => sdk.shutdown().finally(() => process.exit(0)));
+   ```
+
+3. `app.js`
+
+   ```javascript
+   const express = require('express');
+   const { trace } = require('@opentelemetry/api');
+   const app = express();
+
+   app.get('/', (_req, res) => res.json({ message: 'Hello from test app!' }));
+
+   app.get('/api/users/:id', async (req, res) => {
+     const tracer = trace.getTracer('my-test-app');
+     await tracer.startActiveSpan('fetch-user', async (span) => {
+       try {
+         span.setAttribute('user.id', req.params.id);
+         await tracer.startActiveSpan('db.query', async (dbSpan) => {
+           dbSpan.setAttribute('db.system', 'postgresql');
+           dbSpan.setAttribute('db.statement', `SELECT * FROM users WHERE id = ${req.params.id}`);
+           await new Promise((resolve) => setTimeout(resolve, 50));
+           dbSpan.end();
+         });
+         span.setStatus({ code: 0 });
+         res.json({ userId: req.params.id });
+       } catch (error) {
+         span.recordException(error);
+         span.setStatus({ code: 2, message: error.message });
+         res.status(500).json({ error: error.message });
+       } finally {
+         span.end();
+       }
+     });
+   });
+
+   app.listen(3001, () => {
+     console.log('✅ Test app running on http://localhost:3001');
+   });
+   ```
+
+4. Run & generate traces:
+
+   ```bash
+   node --require ./instrumentation.js app.js
+   curl http://localhost:3001/
+   curl http://localhost:3001/api/users/123
+   ```
+
+5. Create a Playwright test calling `http://host.docker.internal:3001/api/users/789` to observe a worker → external app → DB span chain.
+
+## Viewing Traces & Logs
+
+UI lives at `http://localhost:3000/observability`:
+
+- **Traces** (`app/src/app/(main)/observability/traces/page.tsx`): timeline, flamegraph, table; filters for time, run type, status, search.
+- **Logs** (`.../logs/page.tsx`): virtualized table, severity/service filters, deep links to traces.
+- **Metrics**: placeholder page; metrics dashboard still TODO.
+
+Traces show duration, span count, service list, normalized `sc.run_type`, and core Supercheck IDs. Error badges appear whenever any span has `statusCode = 2`.
+
+## Troubleshooting Guide
+
+### Worker DNS Errors
+
+```
+14 UNAVAILABLE: Name resolution failed for target dns:otel-collector:4317
+```
+
+- Local dev: `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317`
+- Docker: `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317`
+
+### No Traces Visible
+
+1. `docker-compose logs otel-collector --tail=50`
+2. `docker exec clickhouse-observability clickhouse-client --query "SELECT count() FROM signoz_traces.signoz_index_v3"`
+3. Confirm UI time range + `CLICKHOUSE_URL`
+
+### Instrumentation Missing
+
+- Ensure `import './observability/instrumentation';` is first in `worker/src/main.ts`
+- `ENABLE_WORKER_OBSERVABILITY=true`
+- Rebuild Docker images if env vars change
+
+### Traces Not Linked Across Services
+
+1. Worker and external services must share the same OTLP endpoint
+2. Inspect `traceparent` headers (`docker-compose logs worker | grep traceparent`)
+
+### High Resource Usage
+
+- Lower sampling via `OTEL_TRACE_SAMPLE_RATE=0.1` or `0.01`
+- Restart worker after adjusting sampling
+
+### Helpful ClickHouse Queries
+
+```bash
+docker exec clickhouse-observability clickhouse-client --query \
+  "SELECT serviceName, count() FROM signoz_traces.signoz_index_v3 GROUP BY serviceName"
+
+docker exec clickhouse-observability clickhouse-client --query \
+  "SELECT traceID, name FROM signoz_traces.signoz_index_v3 \
+   WHERE stringTagMap['sc.run_id'] = 'YOUR_RUN_ID' ORDER BY timestamp DESC"
+```
+
+## Environment Variables Reference
+
+### Worker Service
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENABLE_WORKER_OBSERVABILITY` | `true` | Master ON/OFF switch |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://otel-collector:4317` | OTLP gRPC endpoint |
+| `OTEL_SERVICE_NAME` | `supercheck-worker` | Service name |
+| `SERVICE_VERSION` | `1.0.0` | Auto-read from package.json |
+| `OTEL_LOG_LEVEL` | `error` | SDK log level |
+| `OTEL_TRACE_SAMPLE_RATE` | `1.0` | Sampling rate |
+| `CLICKHOUSE_URL` | `http://clickhouse-observability:8123` | ClickHouse HTTP endpoint |
+| `CLICKHOUSE_USER` | `default` | ClickHouse user |
+| `CLICKHOUSE_PASSWORD` | *(empty)* | Set in prod |
+| `CLICKHOUSE_DATABASE` | `default` | Default DB |
+| `USE_CLICKHOUSE_DIRECT` | `true` | Bypass SigNoz query service |
+
+### App Service
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `USE_CLICKHOUSE_DIRECT` | `true` | Query ClickHouse directly |
+| `CLICKHOUSE_URL` | `http://clickhouse-observability:8123` | HTTP endpoint |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://otel-collector:4317` | Collector endpoint |
+| `ENABLE_WORKER_OBSERVABILITY` | `true` | Allows UI toggle |
+
+### Local vs Docker Quick Reference
+
+```bash
+# Local dev
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+CLICKHOUSE_URL=http://localhost:8124
+
+# Docker
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+CLICKHOUSE_URL=http://clickhouse-observability:8123
+```
+
+## Advanced Operations
+
+### Custom Playwright Spans
+
+```javascript
+import { test } from '@playwright/test';
+import { trace } from '@opentelemetry/api';
+
+test('checkout flow', async ({ page }) => {
+  const tracer = trace.getTracer('playwright-tests');
+  await tracer.startActiveSpan('user-checkout', async (span) => {
+    span.setAttribute('test.feature', 'checkout');
+    await page.goto('https://example.com/checkout');
+    span.setStatus({ code: 0 });
+    span.end();
+  });
+});
+```
+
+### Disable Instrumentation Temporarily
+
+```bash
+ENABLE_WORKER_OBSERVABILITY=false npm run dev
+```
+
+### Sampling & Logging
+
+```bash
+OTEL_TRACE_SAMPLE_RATE=0.1
+OTEL_LOG_LEVEL=error
+```
+
+### Data Retention
+
+```bash
+docker exec clickhouse-observability clickhouse-client --query \
+  "ALTER TABLE signoz_traces.signoz_index_v3 DELETE WHERE timestamp < now() - INTERVAL 30 DAY"
+docker exec clickhouse-observability clickhouse-client --query \
+  "OPTIMIZE TABLE signoz_traces.signoz_index_v3 FINAL"
+```
+
+### Production Security Tips
+
+1. Set `CLICKHOUSE_PASSWORD`
+2. Remove public port mappings for ClickHouse when possible
+3. Keep OTel collector ports open only when external services need them
+4. Use sampling (`OTEL_TRACE_SAMPLE_RATE < 1`) in production
+
+### Managed Config Files
+
+```
+otel/deploy/
+├── README.md
+├── common/clickhouse/
+│   ├── config.xml
+│   ├── users.xml
+│   ├── custom-function.xml
+│   ├── cluster-standalone.xml
+│   └── user_scripts/histogramQuantile
+└── docker/otel-collector-config.yaml
+```
+
+## Need Help
+
+```bash
+docker-compose logs clickhouse-observability
+docker-compose logs otel-collector
+docker-compose logs worker | grep Observability
+
+curl http://localhost:8124/ping
+curl http://localhost:13133/
+telnet localhost 4317
+
+docker exec clickhouse-observability clickhouse-client \
+  --query "SELECT count() FROM signoz_traces.signoz_index_v3"
+```
+
+Include the command outputs plus worker/app logs when escalating issues.
 ### Deployment Architecture
 
 ```mermaid

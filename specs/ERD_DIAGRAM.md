@@ -220,7 +220,7 @@ erDiagram
         uuid organizationId FK
         uuid createdByUserId FK
         varchar entityType
-        uuid entityId
+        text entityId
         varchar reportPath
         varchar status
         varchar s3Url
@@ -564,7 +564,7 @@ erDiagram
     %% Core Relationships
     USER ||--o{ MEMBER : "belongs to"
     USER ||--o{ INVITATION : "invites"
-    USER ||--o{ projectMembers : "member of"
+    USER ||--o{ project_members : "member of"
     USER ||--o{ SESSION : "has"
     USER ||--o{ ACCOUNT : "linked to"
     USER ||--o{ apikey : "owns"
