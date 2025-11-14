@@ -269,22 +269,62 @@ Enhanced file processing with memory-conscious operations:
 - Force garbage collection after each upload
 - Continue with next file
 
-### Temporary File Management
+### Container-Only Execution Model
 
-Temporary files are created during test execution in containers:
+**All test execution occurs exclusively within Docker containers with zero host filesystem dependencies for test files.**
 
-**Temporary File Lifecycle:**
-- **Creation**: Temporary directories created via `createSafeTempPath()` function
-- **Location**: System temp directory (/tmp or TMPDIR environment variable)
-- **Naming**: Prefix-based with timestamp and random suffix for uniqueness
-- **Container Cleanup**: Automatic cleanup when container is destroyed
-- **No Local Cleanup**: Container filesystem is isolated and destroyed after execution
+#### Test Script Handling
+- **NO host files created**: Test scripts passed inline to containers (base64-encoded)
+- **Container location**: Scripts written to `/tmp/{testId}.spec.mjs` inside container
+- **Lifecycle**: Automatically destroyed when container is removed
+- **No cleanup required**: Container destruction handles all test file cleanup
+
+#### Report Artifacts
+- **Container generation**: Reports written to `/tmp/playwright-reports/` inside container (tmpfs)
+- **Extraction**: `docker cp` extracts reports to OS temp directory before container destruction
+- **OS temp location**: `$TMPDIR/supercheck-reports-{uniqueRunId}/`
+- **Upload**: Extracted reports uploaded to S3
+- **Local cleanup**: OS temp directory removed after S3 upload
+- **Retention**: Permanent in S3, ephemeral on host
+
+#### Container Lifecycle
+```
+1. Spawn container with:
+   - node_modules mounted read-only
+   - playwright.config.js mounted read-only
+   - Test script passed inline (base64)
+   - Writable container filesystem for /tmp
+
+2. Inside container:
+   - Decode test script to /tmp/test.spec.mjs
+   - Execute Playwright test
+   - Write reports to /tmp/playwright-reports/
+
+3. Extract reports:
+   - docker cp /tmp/playwright-reports/ → host OS temp
+
+4. Destroy container:
+   - All internal /tmp files automatically cleaned
+   - No host filesystem pollution
+
+5. Upload & cleanup:
+   - Upload from host OS temp → S3
+   - Remove host OS temp directory
+```
+
+#### Benefits
+- ✅ **Zero host filesystem pollution**: No test files written to host
+- ✅ **Automatic cleanup**: Container destruction cleans everything inside
+- ✅ **True isolation**: Test scripts never touch host persistent storage
+- ✅ **Simplified code**: No directory creation/permission handling
+- ✅ **No disk exhaustion**: OS temp is ephemeral and managed by OS
 
 **Key Points:**
-- Temporary files are created inside containers, not on host
-- Container destruction automatically cleans up all temporary files
-- No scheduled cleanup needed on host machine
-- Path validation ensures safe temporary directory creation
+- Test scripts never written to host persistent storage
+- Container destruction automatically cleans up all internal files
+- Only extracted reports briefly exist in OS temp
+- No scheduled cleanup needed for test files
+- Path validation ensures safe temporary directory creation for extracted reports
 
 ## Docker and Infrastructure
 

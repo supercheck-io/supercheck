@@ -30,9 +30,12 @@ export interface PathValidationOptions {
 
 /**
  * Dangerous path patterns that should be blocked
+ * NOTE: Regex patterns intentionally use no flags to avoid stateful behavior
+ * with test() calls. The 'g' flag causes lastIndex to advance between calls,
+ * making pattern matching unreliable in loops.
  */
 const DANGEROUS_PATTERNS = [
-  /\.\./g, // Path traversal
+  /\.\./, // Path traversal (no 'g' flag to prevent stateful test() behavior)
   /~/, // Home directory expansion
   /\$/, // Variable expansion
   /`/, // Command substitution

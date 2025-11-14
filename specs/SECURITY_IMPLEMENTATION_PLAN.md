@@ -35,11 +35,11 @@ This document provides **detailed code implementations** for fixing the 37 ident
 1. ✅ **Mandatory container execution** for all Playwright and K6 tests
 2. ✅ **No fallback to local execution** - containers are required, not optional
 3. ✅ **Security hardening:**
-   - Read-only root filesystem (`--read-only`)
    - No privilege escalation (`--security-opt=no-new-privileges`)
    - All capabilities dropped (`--cap-drop=ALL`)
    - Resource limits (CPU, memory, PIDs)
    - Network isolation
+   - Writable container filesystem for internal test operations
 4. ✅ **Docker images:**
    - Playwright: `mcr.microsoft.com/playwright:v1.56.1-noble`
    - K6: `grafana/k6:latest`
