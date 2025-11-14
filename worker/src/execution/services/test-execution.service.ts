@@ -357,8 +357,8 @@ const path = require('path');
         testId: params.testId,
       };
     } finally {
-      // Clean up temp directory
-      await this._removeTempDir(tempDir);
+      // Note: Local directory cleanup removed - execution now runs in containers
+      // Container cleanup is automatic and handles all temporary files
     }
   }
 
@@ -367,13 +367,6 @@ const path = require('path');
     await fs.mkdir(tempDir, { recursive: true });
     this.logger.log(`Created temporary directory: ${tempDir}`);
     return tempDir;
-  }
-
-  private async _removeTempDir(dir: string): Promise<void> {
-    if (await this._fileExists(dir)) {
-      await fs.rm(dir, { recursive: true, force: true });
-      this.logger.log(`Removed temporary directory: ${dir}`);
-    }
   }
 
   private _generateNodeTestScript(params: ExecutionParams): string {

@@ -33,6 +33,18 @@ x-common-env: &common-env # Database Configuration
   BETTER_AUTH_URL: http://localhost:3000
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: development
+  # Scaling Configuration
+  # Environment variables for scaling:
+  # - WORKER_REPLICAS: Number of worker replicas (default: 1 for local)
+  # - RUNNING_CAPACITY: Total concurrent test capacity (default: 2)
+  # - QUEUED_CAPACITY: Maximum queue size (default: 10)
+  # 
+  # Local Scaling Examples:
+  #   Development: WORKER_REPLICAS=1 RUNNING_CAPACITY=2
+  #   Heavy Testing: WORKER_REPLICAS=2 RUNNING_CAPACITY=4
+  #
+  # Usage: WORKER_REPLICAS=2 docker-compose -f docker-compose-local.yml up -d
+
   RUNNING_CAPACITY: 2 # Single worker replica × 2 concurrent runs for local dev
   QUEUED_CAPACITY: 10
   MAX_CONCURRENT_EXECUTIONS: 2 # Mirrors production default; bump replicas instead of this value
@@ -186,13 +198,16 @@ services:
       - .env.local
     environment:
       <<: *common-env
+      MAX_CONCURRENT_EXECUTIONS: 2 # Keep low for local development
     volumes:
       # Mount Docker socket for container-based execution
       # Worker spawns isolated containers for Playwright and K6 tests
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro # Read-only for security
       - worker-playwright-reports:/app/playwright-reports
       - worker-k6-reports:/app/k6-reports
       - worker-reports:/app/report
+      # Development: Mount source for hot reload (remove in production)
+      - ./worker/src:/app/src:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -218,18 +233,19 @@ services:
     networks:
       - supercheck-network
     deploy:
-      replicas: 1
+      replicas: ${WORKER_REPLICAS:-1} # Single worker for local development, configurable for testing
       resources:
         limits:
-          cpus: "1.0"
+          cpus: "1.0" # Lower limits for local dev
           memory: 1G # Reduced - browsers run in separate containers now
         reservations:
           cpus: "0.5"
           memory: 512M
+    # Security constraints - maintain production security locally
     security_opt:
-      - no-new-privileges:true
+      - no-new-privileges:true # Prevent privilege escalation
     cap_drop:
-      - ALL
+      - ALL # Drop all capabilities by default
     # Note: SYS_ADMIN capability removed - not needed for container execution
     # Browsers run in separate containers with their own capabilities
 

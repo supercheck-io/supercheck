@@ -280,79 +280,20 @@ export class ExecutionService implements OnModuleDestroy {
   }
 
   /**
-   * Performs optimized memory cleanup operations - only when needed
+   * Performs optimized memory monitoring - only when needed
+   * Note: Local file cleanup removed - execution now runs in containers
    */
   private async performMemoryCleanup(): Promise<void> {
     try {
       const memUsage = process.memoryUsage();
       const memUsageMB = Math.round(memUsage.heapUsed / 1024 / 1024);
 
-      // Only perform cleanup if memory is actually high or we have active executions
-      if (
-        memUsageMB > this.memoryThresholdMB * 0.8 ||
-        this.activeExecutions.size > 0
-      ) {
-        await this.cleanupOldTempFiles();
-      }
-
       // Reduced logging frequency
       if (memUsageMB > this.memoryThresholdMB * 0.9) {
         this.logger.debug(`Memory usage: ${memUsageMB}MB`);
       }
     } catch (error) {
-      this.logger.error(`Error during cleanup: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Cleans up old temporary files to prevent disk space issues - optimized for performance
-   */
-  private async cleanupOldTempFiles(): Promise<void> {
-    try {
-      // Check if base directory exists before trying to read it
-      if (!existsSync(this.baseLocalRunDir)) {
-        return;
-      }
-
-      const dirs = await fs.readdir(this.baseLocalRunDir);
-
-      // Only clean up if there are many directories (performance optimization)
-      if (dirs.length < 10) {
-        return;
-      }
-
-      const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000; // Increased to 2 hours to reduce frequency
-      let cleanedCount = 0;
-
-      for (const dir of dirs) {
-        const dirPath = path.join(this.baseLocalRunDir, dir);
-
-        try {
-          const stats = await fs.stat(dirPath);
-
-          if (stats.isDirectory() && stats.mtime.getTime() < twoHoursAgo) {
-            await fs.rm(dirPath, { recursive: true, force: true });
-            cleanedCount++;
-            this.logger.debug(`Cleaned up old temp directory: ${dirPath}`);
-
-            // Limit cleanup operations per run to reduce CPU usage
-            if (cleanedCount >= 5) {
-              break;
-            }
-          }
-        } catch (statError) {
-          // Skip files that can't be stat'd (might be in use)
-          continue;
-        }
-      }
-
-      if (cleanedCount > 0) {
-        this.logger.debug(`Cleaned up ${cleanedCount} old temp directories`);
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Failed to cleanup old temp files: ${(error as Error).message}`,
-      );
+      this.logger.error(`Error during memory monitoring: ${(error as Error).message}`);
     }
   }
 
@@ -711,15 +652,8 @@ export class ExecutionService implements OnModuleDestroy {
       // Remove from active executions
       this.activeExecutions.delete(uniqueRunId);
 
-      // 6. Cleanup local run directory after all processing is complete
-      // Removed cleanup log - only log errors
-      await fs.rm(runDir, { recursive: true, force: true }).catch((err) => {
-        this.logger.warn(
-          `[${testId}] Failed to cleanup local run directory ${runDir}: ${(err as Error).message}`,
-        );
-      });
-
-      // Removed forced garbage collection
+      // Note: Local directory cleanup removed - execution now runs in containers
+      // Container cleanup is automatic and handles all temporary files
     }
 
     return finalResult;
@@ -1031,15 +965,8 @@ export class ExecutionService implements OnModuleDestroy {
       // Remove from active executions
       this.activeExecutions.delete(uniqueRunId);
 
-      // 7. Cleanup local run directory after all processing is complete
-      // Removed cleanup log - only log errors
-      await fs.rm(runDir, { recursive: true, force: true }).catch((err) => {
-        this.logger.warn(
-          `[${runId}] Failed to cleanup local run directory ${runDir}: ${(err as Error).message}`,
-        );
-      });
-
-      // Removed forced garbage collection
+      // Note: Local directory cleanup removed - execution now runs in containers
+      // Container cleanup is automatic and handles all temporary files
     }
 
     return finalResult;

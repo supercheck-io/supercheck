@@ -21,6 +21,20 @@ x-common-env: &common-env # Database Configuration
   STATUS_PAGE_BASE_DOMAIN: ${STATUS_PAGE_BASE_DOMAIN:-localhost}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
+  # Scaling Configuration
+  # Environment variables for scaling:
+  # - WORKER_REPLICAS: Number of worker replicas (default: 3)
+  # - RUNNING_CAPACITY: Total concurrent test capacity (default: 6)
+  # - QUEUED_CAPACITY: Maximum queue size (default: 50)
+  # 
+  # Scaling Examples:
+  #   Small (4 vCPU): WORKER_REPLICAS=2 RUNNING_CAPACITY=4
+  #   Medium (8 vCPU): WORKER_REPLICAS=3 RUNNING_CAPACITY=6
+  #   Large (16 vCPU): WORKER_REPLICAS=6 RUNNING_CAPACITY=12
+  #   X-Large (32 vCPU): WORKER_REPLICAS=12 RUNNING_CAPACITY=24
+  #
+  # Usage: WORKER_REPLICAS=4 docker-compose up -d
+
   RUNNING_CAPACITY: ${RUNNING_CAPACITY:-6} # 3 worker replicas × 2 concurrent runs (keep env + replicas in sync)
   QUEUED_CAPACITY: ${QUEUED_CAPACITY:-50}
   MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-2} # Two Playwright runs per worker; prefer more replicas over a larger single worker
@@ -170,10 +184,11 @@ services:
     environment:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)
+      MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-2} # Keep low, scale horizontally
     volumes:
       # Mount Docker socket for container-based execution
       # Worker spawns isolated containers for Playwright and K6 tests
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:ro # Read-only for security
       - worker-playwright-reports:/app/playwright-reports
       - worker-k6-reports:/app/k6-reports
       - worker-reports:/app/report
@@ -202,7 +217,7 @@ services:
     networks:
       - supercheck-network
     deploy:
-      replicas: 3 # Default footprint for an 8 vCPU / 16 GB host; add replicas instead of raising concurrency
+      replicas: ${WORKER_REPLICAS:-3} # Scale horizontally, not vertically
       resources:
         limits:
           cpus: "2.0" # Cap each worker at 2 vCPU
@@ -218,13 +233,17 @@ services:
         delay: 15s
         window: 120s
 
-    # Security constraints
+    # Security constraints - hardened for production
     security_opt:
       - no-new-privileges:true # Prevent privilege escalation
+      - apparmor:docker-default # Use AppArmor profile
+      - seccomp:default # Use default seccomp profile
     cap_drop:
       - ALL # Drop all capabilities by default
     # Note: SYS_ADMIN capability removed - not needed for container execution
     # Browsers run in separate containers with their own capabilities
+    # Add only required capabilities if needed
+    cap_add: []
 
   # PostgreSQL Database
   postgres:

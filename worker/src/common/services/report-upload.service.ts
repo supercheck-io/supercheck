@@ -161,8 +161,8 @@ export class ReportUploadService {
         entityType,
       );
 
-      // Clean up local directory after successful upload
-      await this._cleanupLocalReportDirectory(dirPath, executionId);
+      // Note: Local directory cleanup removed - execution now runs in containers
+      // Container cleanup is automatic and handles all temporary files
 
       return { success: true };
     } catch (error) {
@@ -204,27 +204,6 @@ export class ReportUploadService {
         `Failed to process report files for execution ${executionId}: ${error instanceof Error ? error.message : String(error)}`,
       );
       // Non-critical error, continue with upload
-    }
-  }
-
-  /**
-   * Clean up local report directory after successful upload
-   * @private
-   */
-  private async _cleanupLocalReportDirectory(
-    reportDir: string,
-    executionId: string,
-  ): Promise<void> {
-    try {
-      await fs.rm(reportDir, { recursive: true, force: true });
-      this.logger.debug(
-        `Cleaned up local report directory for execution ${executionId}`,
-      );
-    } catch (error) {
-      this.logger.warn(
-        `Failed to clean up local report directory ${reportDir}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      // Non-critical error, report was already uploaded
     }
   }
 
