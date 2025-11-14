@@ -10,6 +10,7 @@ import { DbService } from './db.service';
 import { RedisService } from './redis.service';
 import { ReportUploadService } from '../../common/services/report-upload.service';
 import { ContainerExecutorService } from '../../common/security/container-executor.service';
+import { findFirstFileByNames } from '../../common/utils/file-search';
 import { createSpan, createSpanWithContext } from '../../observability/trace-helpers';
 import { emitTelemetryLog } from '../../observability/log-helpers';
 import { SeverityNumber } from '@opentelemetry/api-logs';
@@ -115,7 +116,6 @@ export class ExecutionService implements OnModuleDestroy {
   private readonly testExecutionTimeoutMs: number;
   private readonly jobExecutionTimeoutMs: number;
   private readonly playwrightConfigPath: string;
-  private readonly baseLocalRunDir: string;
   private readonly maxConcurrentExecutions: number; // Configurable via MAX_CONCURRENT_EXECUTIONS env var
   private readonly memoryThresholdMB = 2048; // 2GB memory threshold
   private activeExecutions: Map<
@@ -166,14 +166,18 @@ export class ExecutionService implements OnModuleDestroy {
     }
     this.playwrightConfigPath = configPath;
 
-    this.baseLocalRunDir = path.join(process.cwd(), 'playwright-reports');
+    // Container-only execution: No host directories needed for test files
+    // Test scripts are passed inline to containers
+    // Reports are written to /tmp inside containers and extracted via docker cp
+    this.logger.log(
+      `Execution mode: Container-only (no host filesystem dependencies)`,
+    );
     this.logger.log(
       `Test execution timeout set to: ${this.testExecutionTimeoutMs}ms (${this.testExecutionTimeoutMs / 1000}s)`,
     );
     this.logger.log(
       `Job execution timeout set to: ${this.jobExecutionTimeoutMs}ms (${this.jobExecutionTimeoutMs / 1000}s)`,
     );
-    this.logger.log(`Base local run directory: ${this.baseLocalRunDir}`);
     this.logger.log(
       `Using Playwright config (relative): ${path.relative(process.cwd(), this.playwrightConfigPath)}`,
     );
@@ -184,8 +188,7 @@ export class ExecutionService implements OnModuleDestroy {
     );
     this.logger.log(`Memory threshold: ${this.memoryThresholdMB}MB`);
 
-    // Ensure base local dir exists and has correct permissions
-    void this.ensureBaseDirectoryPermissions();
+    // Container-only execution: No base directory setup required
 
     // Setup basic memory monitoring
     this.setupMemoryMonitoring();
@@ -298,98 +301,8 @@ export class ExecutionService implements OnModuleDestroy {
   }
 
   /**
-   * Ensures base directory exists and has correct permissions for the nodejs user
-   */
-  private async ensureBaseDirectoryPermissions(): Promise<void> {
-    try {
-      // Create the base directory if it doesn't exist
-      await fs.mkdir(this.baseLocalRunDir, { recursive: true });
-
-      // Test write permissions by creating and removing a test file
-      const testFile = path.join(this.baseLocalRunDir, '.permission-test');
-      await fs.writeFile(testFile, 'test', { mode: 0o644 });
-      await fs.unlink(testFile);
-
-      this.logger.log(
-        `Base directory permissions verified: ${this.baseLocalRunDir}`,
-      );
-    } catch (error: any) {
-      this.logger.error(
-        `Failed to create or verify permissions for base directory ${this.baseLocalRunDir}: ${(error as Error).message}`,
-        (error as Error).stack,
-      );
-
-      // Try to fix permissions if possible (works when container has sufficient privileges)
-      // Skip on Windows as chmod doesn't exist
-      if (!isWindows) {
-        try {
-          execSync(`chmod -R 755 ${this.baseLocalRunDir}`, { stdio: 'ignore' });
-          this.logger.log(
-            `Attempted to fix permissions for ${this.baseLocalRunDir}`,
-          );
-        } catch (chmodError) {
-          this.logger.warn(
-            `Could not fix permissions: ${(chmodError as Error).message}`,
-          );
-        }
-      }
-    }
-  }
-
-  /**
-   * Creates a run directory with proper permissions and enhanced error handling
-   */
-  private async createRunDirectoryWithPermissions(
-    runDir: string,
-    entityId: string,
-  ): Promise<void> {
-    try {
-      await fs.mkdir(runDir, { recursive: true });
-      this.logger.debug(
-        `[${entityId}] Successfully created run directory: ${runDir}`,
-      );
-    } catch (error: unknown) {
-      if ((error as { code?: string }).code === 'EACCES') {
-        this.logger.error(
-          `[${entityId}] Permission denied when creating directory ${runDir}. ` +
-            `This usually happens when the mounted volume has incorrect ownership. ` +
-            `Container user: nodejs (UID 1001), Error: ${(error as Error).message}`,
-        );
-
-        // Try alternative approaches
-        try {
-          // Check if parent directory exists and is writable
-          const parentDir = path.dirname(runDir);
-          await fs.access(parentDir, fs.constants.F_OK | fs.constants.W_OK);
-
-          // Try creating with explicit permissions
-          await fs.mkdir(runDir, { recursive: true, mode: 0o755 });
-          this.logger.log(
-            `[${entityId}] Successfully created directory with explicit permissions`,
-          );
-        } catch (fallbackError: unknown) {
-          this.logger.error(
-            `[${entityId}] All attempts to create directory failed. ` +
-              `Please ensure the host directory has correct ownership (UID 1001) or is writable by the container. ` +
-              `Fallback error: ${(fallbackError as Error).message}`,
-          );
-          throw new Error(
-            `Unable to create test execution directory: ${(error as Error).message}. ` +
-              `Please check Docker volume mount permissions for playwright-reports directory.`,
-          );
-        }
-      } else {
-        this.logger.error(
-          `[${entityId}] Unexpected error creating directory ${runDir}: ${(error as Error).message}`,
-        );
-        throw error;
-      }
-    }
-  }
-
-  /**
    * Runs a single test defined by the task data.
-   * Adapted from the original test worker handler.
+   * Container-only execution: No host filesystem dependencies
    */
   async runSingleTest(
     task: TestExecutionTask,
@@ -416,11 +329,10 @@ export class ExecutionService implements OnModuleDestroy {
       );
     }
 
-    this.logger.log(`[${testId}] Starting single test execution.`);
+    this.logger.log(`[${testId}] Starting single test execution (container-only).`);
 
     // Generate unique ID for this run to avoid conflicts in parallel executions
     const uniqueRunId = `${testId}-${crypto.randomUUID().substring(0, 8)}`;
-    const runDir = path.join(this.baseLocalRunDir, uniqueRunId);
     // For monitor executions, use uniqueRunId to preserve historical reports and separate bucket
     // For regular test execution, use testId to maintain existing behavior (overwrite previous report)
     const executionId = isMonitorExecution ? uniqueRunId : testId;
@@ -428,6 +340,12 @@ export class ExecutionService implements OnModuleDestroy {
     const entityType = isMonitorExecution ? 'monitor' : 'test';
     let finalResult: TestResult;
     let s3Url: string | null = null;
+
+    // Create temp directory for extracted reports (OS-managed temp)
+    const extractedReportsDir = path.join(
+      process.env.TMPDIR || process.env.TEMP || '/tmp',
+      `supercheck-reports-${uniqueRunId}`,
+    );
 
     // Track this execution
     this.activeExecutions.set(uniqueRunId, {
@@ -450,28 +368,28 @@ export class ExecutionService implements OnModuleDestroy {
         reportPath: s3ReportKeyPrefix,
       });
 
-      // 3. Create test script and prepare runner
-      let testDirPath: string;
+      // 3. Prepare test script content (container-only, no host files)
+      let testScript: { scriptContent: string; fileName: string };
 
       try {
-        // Prepare the test script in the run directory
-        // Note: prepareSingleTest now returns the directory path, not the file path
-        testDirPath = await this.prepareSingleTest(testId, code, runDir);
+        testScript = await this.prepareSingleTest(testId, code);
       } catch (error) {
         throw new Error(`Failed to prepare test: ${(error as Error).message}`);
       }
 
-      // 4. Execute the test script using the native Playwright runner with timeout
+      // 4. Execute the test script using container-only execution with timeout
       // No wrapper span - processor already created span
       const activeSpan = trace.getActiveSpan();
       if (activeSpan) {
-        activeSpan.setAttribute('playwright.run_dir', runDir);
+        activeSpan.setAttribute('playwright.execution_id', uniqueRunId);
         activeSpan.setAttribute('playwright.is_monitor_execution', isMonitorExecution);
         activeSpan.setAttribute('playwright.test_id', testId ?? 'unknown');
+        activeSpan.setAttribute('playwright.extracted_reports_dir', extractedReportsDir);
       }
 
       const execResult = await this._executePlaywrightNativeRunner(
-        testDirPath,
+        testScript,
+        extractedReportsDir,
         false,
         telemetryCtx,
       );
@@ -492,7 +410,7 @@ export class ExecutionService implements OnModuleDestroy {
         // For other entity types: always upload reports
         if (!isMonitorExecution) {
           const uploadResult = await this.reportUploadService.uploadReport({
-            runDir,
+            runDir: extractedReportsDir, // Container-extracted reports in OS temp
             testId,
             executionId,
             s3ReportKeyPrefix,
@@ -558,9 +476,9 @@ export class ExecutionService implements OnModuleDestroy {
           );
         }
 
-        // Even on failure, attempt to upload the local report directory using centralized service
+        // Even on failure, attempt to upload the container-extracted report directory
         const uploadResult = await this.reportUploadService.uploadReport({
-          runDir,
+          runDir: extractedReportsDir, // Container-extracted reports in OS temp
           testId,
           executionId,
           s3ReportKeyPrefix,
@@ -652,8 +570,21 @@ export class ExecutionService implements OnModuleDestroy {
       // Remove from active executions
       this.activeExecutions.delete(uniqueRunId);
 
-      // Note: Local directory cleanup removed - execution now runs in containers
-      // Container cleanup is automatic and handles all temporary files
+      // Cleanup extracted reports directory from OS temp
+      // Container internals are automatically cleaned up on container destruction
+      // We only need to clean up the host-extracted reports after S3 upload
+      try {
+        if (extractedReportsDir && existsSync(extractedReportsDir)) {
+          await fs.rm(extractedReportsDir, { recursive: true, force: true });
+          this.logger.debug(
+            `[${testId}] Cleaned up extracted reports: ${extractedReportsDir}`,
+          );
+        }
+      } catch (cleanupErr) {
+        this.logger.warn(
+          `[${testId}] Failed to cleanup extracted reports ${extractedReportsDir}: ${(cleanupErr as Error).message}`,
+        );
+      }
     }
 
     return finalResult;
@@ -689,12 +620,11 @@ export class ExecutionService implements OnModuleDestroy {
 
     const entityType = 'job';
     this.logger.log(
-      `[${runId}] Starting job execution with ${testScripts.length} tests.`,
+      `[${runId}] Starting job execution with ${testScripts.length} tests (container-only).`,
     );
 
     // Generate unique ID for this run to avoid conflicts in parallel executions
     const uniqueRunId = `${runId}-${crypto.randomUUID().substring(0, 8)}`;
-    const runDir = path.join(this.baseLocalRunDir, uniqueRunId);
     const s3ReportKeyPrefix = `${runId}/report`;
     let finalResult: TestExecutionResult;
     let s3Url: string | null = null;
@@ -703,6 +633,12 @@ export class ExecutionService implements OnModuleDestroy {
     let overallSuccess = false; // Default to failure
     let stdout_log = '';
     let stderr_log = '';
+
+    // Create temp directory for extracted reports (OS-managed temp)
+    const extractedReportsDir = path.join(
+      process.env.TMPDIR || process.env.TEMP || '/tmp',
+      `supercheck-job-reports-${uniqueRunId}`,
+    );
 
     // Track this execution
     this.activeExecutions.set(uniqueRunId, {
@@ -717,12 +653,7 @@ export class ExecutionService implements OnModuleDestroy {
         throw new Error('No test scripts provided for job execution');
       }
 
-      // 2. Create necessary directories with enhanced error handling
-      await this.createRunDirectoryWithPermissions(runDir, runId);
-      // reportDir will be created by the copy operation later
-      this.logger.debug(`[${runId}] Created local run directory: ${runDir}`);
-
-      // Store initial metadata
+      // 2. Store initial metadata
       await this.dbService.storeReportMetadata({
         entityId: runId,
         entityType,
@@ -730,10 +661,14 @@ export class ExecutionService implements OnModuleDestroy {
         reportPath: s3ReportKeyPrefix,
       });
 
-      // Process each script, creating a Playwright test file for each
+      // 3. Prepare all test scripts as inline content (container-only, no host files)
       this.logger.log(
-        `[${runId}] Processing ${testScripts.length} test scripts`,
+        `[${runId}] Preparing ${testScripts.length} test scripts for container execution`,
       );
+
+      const preparedScripts: Record<string, string> = {}; // filename -> content
+      let mainTestFile: string | null = null;
+
       for (let i = 0; i < testScripts.length; i++) {
         const { id, script: originalScript, name } = testScripts[i];
         const testId = id;
@@ -778,14 +713,17 @@ export class ExecutionService implements OnModuleDestroy {
           // Ensure the script has proper trace configuration
           const script = ensureProperTraceConfiguration(decodedScript, testId);
 
-          // Create the test file with unique ID in filename (using .mjs for ES module support)
-          const testFilePath = path.join(runDir, `${testId}.spec.mjs`);
+          // Prepare script for inline container execution
+          const fileName = `${testId}.spec.mjs`;
+          preparedScripts[fileName] = script;
 
-          // Write the individual test script content
-          // No need to remove require/import as each is a standalone file
-          await fs.writeFile(testFilePath, script);
+          // Use the first script as the main test file
+          if (i === 0) {
+            mainTestFile = fileName;
+          }
+
           this.logger.debug(
-            `[Playwright Job] Test spec written: ${testName} -> ${testFilePath}`,
+            `[Playwright Job] Test spec prepared: ${testName} -> ${fileName}`,
           );
         } catch (error) {
           this.logger.error(
@@ -796,29 +734,48 @@ export class ExecutionService implements OnModuleDestroy {
         }
       }
 
-      if (testScripts.length === 0) {
+      if (!mainTestFile || Object.keys(preparedScripts).length === 0) {
         throw new Error('No valid test scripts found to execute for this job.');
       }
+
       this.logger.log(
-        `[${runId}] Prepared ${testScripts.length} individual test spec files.`,
+        `[${runId}] Prepared ${Object.keys(preparedScripts).length} test spec files for container execution.`,
       );
 
-      // 4. Execute ALL tests in the runDir using the native runner
+      // 4. Execute ALL tests using container-only execution
+      // For jobs, we use a wrapper directory approach: all scripts go in /tmp/tests/
+      // and we run playwright test /tmp/tests/ to execute all of them
       this.logger.log(
-        `[${runId}] Executing all test specs in directory via Playwright runner (timeout: ${this.jobExecutionTimeoutMs}ms)...`,
+        `[${runId}] Executing ${Object.keys(preparedScripts).length} test specs via Playwright runner (timeout: ${this.jobExecutionTimeoutMs}ms)...`,
       );
+
+      // Prepare additionalFiles with subdirectory structure
+      // Main script content becomes the first file, others are additional
+      const [mainFileName, mainContent] = Object.entries(preparedScripts)[0];
+      const additionalFiles: Record<string, string> = {};
+
+      // Add all other scripts as additional files (skip first one)
+      Object.entries(preparedScripts).slice(1).forEach(([fileName, content]) => {
+        additionalFiles[fileName] = content;
+      });
 
       // No wrapper span - processor already created span
       const activeSpan = trace.getActiveSpan();
       if (activeSpan) {
-        activeSpan.setAttribute('playwright.run_dir', runDir);
-        activeSpan.setAttribute('playwright.job_test_count', testScripts.length);
+        activeSpan.setAttribute('playwright.execution_id', uniqueRunId);
+        activeSpan.setAttribute('playwright.job_test_count', Object.keys(preparedScripts).length);
+        activeSpan.setAttribute('playwright.extracted_reports_dir', extractedReportsDir);
       }
 
       const execResult = await this._executePlaywrightNativeRunner(
-        runDir,
+        {
+          scriptContent: mainContent,
+          fileName: mainFileName,
+        },
+        extractedReportsDir,
         true,
         jobTelemetryCtx,
+        additionalFiles, // Pass additional test files to execute in container
       );
 
       overallSuccess = execResult.success;
@@ -832,9 +789,9 @@ export class ExecutionService implements OnModuleDestroy {
       s3Url =
         this.s3Service.getBaseUrlForEntity(entityType, runId) + '/index.html';
 
-      // Upload report using centralized service
+      // Upload report using centralized service (container-extracted reports)
       const uploadResult = await this.reportUploadService.uploadReport({
-        runDir,
+        runDir: extractedReportsDir, // Container-extracted reports in OS temp
         testId: uniqueRunId, // Use uniqueRunId for jobs to match report directory naming
         executionId: runId, // Use runId for S3 path consistency
         s3ReportKeyPrefix,
@@ -965,8 +922,21 @@ export class ExecutionService implements OnModuleDestroy {
       // Remove from active executions
       this.activeExecutions.delete(uniqueRunId);
 
-      // Note: Local directory cleanup removed - execution now runs in containers
-      // Container cleanup is automatic and handles all temporary files
+      // Cleanup extracted reports directory from OS temp
+      // Container internals are automatically cleaned up on container destruction
+      // We only need to clean up the host-extracted reports after S3 upload
+      try {
+        if (extractedReportsDir && existsSync(extractedReportsDir)) {
+          await fs.rm(extractedReportsDir, { recursive: true, force: true });
+          this.logger.debug(
+            `[${runId}] Cleaned up extracted reports: ${extractedReportsDir}`,
+          );
+        }
+      } catch (cleanupErr) {
+        this.logger.warn(
+          `[${runId}] Failed to cleanup extracted reports ${extractedReportsDir}: ${(cleanupErr as Error).message}`,
+        );
+      }
     }
 
     return finalResult;
@@ -978,154 +948,125 @@ export class ExecutionService implements OnModuleDestroy {
    * @param isJob Whether this is a job execution (multiple tests)
    * @param telemetryCtx Optional telemetry context - if provided, we're already in a span
    */
+  /**
+   * Executes Playwright test(s) in container-only mode
+   * @param testScript - Script content and filename for inline container execution
+   * @param extractedReportsDir - Host directory where container reports will be extracted
+   * @param isJob - Whether this is a job (multiple tests) or single test
+   * @param telemetryCtx - Optional telemetry context
+   * @param additionalFiles - Additional test files for job execution
+   */
   private async _executePlaywrightNativeRunner(
-    runDir: string,
+    testScript: { scriptContent: string; fileName: string },
+    extractedReportsDir: string,
     isJob: boolean = false,
     telemetryCtx?: any,
+    additionalFiles?: Record<string, string>,
   ): Promise<PlaywrightExecutionResult> {
     // If telemetryCtx provided, we're already in processor's span
     if (telemetryCtx) {
-      return this.executePlaywrightDirectly(runDir, isJob);
+      return this.executePlaywrightDirectly(testScript, extractedReportsDir, isJob, additionalFiles);
     }
 
     // No context - create fallback span for direct calls
     const spanName = isJob ? 'playwright.native.job' : 'playwright.native.single';
     return createSpan(spanName, async (span) => {
-      return this.executePlaywrightDirectly(runDir, isJob);
+      return this.executePlaywrightDirectly(testScript, extractedReportsDir, isJob, additionalFiles);
     });
   }
 
   /**
-   * Pure execution logic without span creation
-   * @param runDir The base directory for this specific run where test files are located
-   * @param isJob Whether this is a job execution (multiple tests)
+   * Pure execution logic without span creation - Container-only execution
+   * Test scripts passed inline, reports extracted from container /tmp
+   * @param testScript - Script content and filename for inline container execution
+   * @param extractedReportsDir - Host directory where container reports will be extracted
+   * @param isJob - Whether this is a job (multiple tests) or single test
+   * @param additionalFiles - Additional test files for job execution (all in /tmp/)
    */
   private async executePlaywrightDirectly(
-    runDir: string,
+    testScript: { scriptContent: string; fileName: string },
+    extractedReportsDir: string,
     isJob: boolean,
+    additionalFiles?: Record<string, string>,
   ): Promise<PlaywrightExecutionResult> {
-    const serviceRoot = process.cwd();
-    const playwrightConfigPath = path.join(serviceRoot, 'playwright.config.js'); // Get absolute path to config
-    // Use a subdirectory in the provided runDir for the standard playwright report
-    const playwrightReportDir = path.join(runDir, 'pw-report');
+    // Container paths - only node_modules is mounted (read-only)
+    const containerWorkspace = '/workspace';
+    // For jobs with multiple tests, run playwright test /tmp/ to execute all tests
+    // For single tests, target specific file
+    const containerTestPath = isJob ? '/tmp/' : `/tmp/${testScript.fileName}`;
+
+    // Reports go to /tmp inside container (NOT mounted, extracted via docker cp)
+    const containerReportsDir = '/tmp/playwright-reports';
+    const containerHtmlReport = path.join(containerReportsDir, 'html');
+    const containerJsonResults = path.join(containerReportsDir, 'results.json');
 
     // Create a unique ID for this execution to prevent conflicts in parallel runs
-    let executionId: string;
-
-    if (isJob) {
-      // For jobs, use the last part of the runDir path as the ID
-      const runDirParts = runDir.split(path.sep);
-      executionId = runDirParts[runDirParts.length - 1].substr(0, 8);
-    } else {
-      // For single tests, extract the testId from the directory name or file name
-      const dirName = path.basename(runDir);
-      const testId = dirName.split('-')[0]; // Take the part before the first hyphen
-      executionId = testId.substr(0, 8);
-    }
-
-    // Ensure we have an execution ID
-    if (!executionId) {
-      executionId = crypto.randomUUID().substring(0, 8);
-    }
+    const executionId = crypto.randomUUID().substring(0, 8);
 
     try {
-      let targetPath: string; // Path to run tests against (file or directory)
+      this.logger.log(
+        `[${isJob ? 'Job' : 'Test'} Execution ${executionId}] Running Playwright in container (${testScript.fileName})`,
+      );
 
-      if (isJob) {
-        // For jobs, run all tests in the runDir
-        targetPath = runDir;
-        this.logger.log(
-          `[Job Execution ${executionId}] Running tests in directory: ${targetPath}`,
-        );
-      } else {
-        // For single tests, find the specific test spec file (.mjs for ES module support)
-        const files = await fs.readdir(runDir);
-        const singleTestFile = files.find((file) => file.endsWith('.spec.mjs'));
-        if (!singleTestFile) {
-          throw new Error(
-            `No .spec.mjs file found in ${runDir} for single test execution. Files present: ${files.join(', ')}`,
-          );
-        }
-        targetPath = path.join(runDir, singleTestFile);
-        this.logger.log(
-          `[Single Test Execution ${executionId}] Running specific test file: ${targetPath}`,
-        );
-      }
-
-      // Add unique environment variables for this execution
-      // Set explicit JSON output path via env var for Playwright JSON reporter
-      const jsonResultsPath = path.join(runDir, 'test-results.json');
-      // NOTE: Network Events API auto-instrumentation is disabled because NODE_OPTIONS
-      // loads modules during Node.js initialization, before Playwright's test context
-      // exists. This causes test.beforeEach() to fail with "not expected to be called here".
-      // Future work: Implement network instrumentation via custom Playwright reporter or fixtures.
-
-      // Convert paths to container paths (relative to worker root, prefixed with /workspace)
-      // Normalize to POSIX format (forward slashes) for Linux container compatibility
-      const relativeRunDir = path.relative(serviceRoot, runDir).replace(/\\/g, '/');
-      const relativeJsonResultsPath = path.relative(serviceRoot, jsonResultsPath).replace(/\\/g, '/');
-      const relativePlaywrightReportDir = path.relative(serviceRoot, playwrightReportDir).replace(/\\/g, '/');
-
+      // Environment variables for container execution
+      // All paths point to container /tmp (test script + reports, nothing mounted)
       const envVars = {
-        PLAYWRIGHT_TEST_DIR: `/workspace/${relativeRunDir}`, // Container path
-        PLAYWRIGHT_JSON_OUTPUT: `/workspace/${relativeJsonResultsPath}`, // Container path for JSON reporter
+        PLAYWRIGHT_TEST_DIR: '/tmp', // Test script is in /tmp
+        PLAYWRIGHT_JSON_OUTPUT: containerJsonResults, // JSON results in container /tmp
         CI: 'true',
         PLAYWRIGHT_EXECUTION_ID: executionId,
-        // Create a unique artifacts folder for this execution
-        PLAYWRIGHT_ARTIFACTS_DIR: `/workspace/${relativeRunDir}/.artifacts-${executionId}`, // Container path
-        // Standard location for Playwright HTML report
-        PLAYWRIGHT_HTML_REPORT: `/workspace/${relativePlaywrightReportDir}`, // Container path
+        NODE_PATH: '/workspace/node_modules',
+        PLAYWRIGHT_OUTPUT_DIR: containerReportsDir,
+        // All artifacts and reports go to container /tmp (unmounted, extracted later)
+        PLAYWRIGHT_ARTIFACTS_DIR: `${containerReportsDir}/artifacts-${executionId}`,
+        PLAYWRIGHT_HTML_REPORT: containerHtmlReport,
         // Set compilation cache directory to /tmp (writable tmpfs in container)
-        // Prevents ENOENT errors when Playwright tries to cache compiled test transforms
         PLAYWRIGHT_CACHE_DIR: '/tmp/.playwright-cache',
-        // Set TMPDIR to container's /tmp to prevent Node from using host's temp directory
-        // This ensures Playwright compilation cache uses accessible paths inside container
+        // Set TMPDIR to container's /tmp
         TMPDIR: '/tmp',
         // Add timestamp to prevent caching issues
         PLAYWRIGHT_TIMESTAMP: Date.now().toString(),
+        // Set browsers path to pre-installed location in Docker image
+        PLAYWRIGHT_BROWSERS_PATH: '/ms-playwright',
       };
 
       this.logger.debug(
         `Executing playwright with execution ID: ${executionId}`,
       );
 
-      // Handle path differences between Windows and Unix-like systems
-      let command: string;
-      let args: string[];
-
-      // Use pre-installed playwright from node_modules for container execution
-      // The Playwright Docker image has browsers pre-installed at /ms-playwright
-      // We mount the worker root at /workspace, so paths are relative to that
-      // Note: relativeRunDir is already calculated above for envVars
-      command = '/workspace/node_modules/.bin/playwright';
-      args = [
+      // Playwright command for container-only execution
+      // Test file will be created in /tmp inside container via inline script
+      // Reporters are configured in playwright.config.js via environment variables
+      const command = '/workspace/node_modules/.bin/playwright';
+      const args = [
         'test',
-        `/workspace/${relativeRunDir}`, // Tests directory relative to worker root
-        '--config=/workspace/playwright.config.js', // Config at worker root
-        // Don't override reporters - let config file handle them with proper options
+        containerTestPath, // Test file path inside container /tmp
+        '--config=/workspace/playwright.config.js', // Config (read-only mount) handles reporters via env vars
+        `--output=${containerReportsDir}/output-${executionId}`, // Output to container /tmp
       ];
 
-      // Add unique output dir for this execution - using consistent naming across job and test
-      // Use container path for output directory
-      args.push(`--output=/workspace/${relativeRunDir}/report-${executionId}`);
-
-      // Execute the command with environment variables, ensuring correct CWD
-      // Use executeCommandSafely for defense-in-depth security (container isolation when enabled)
-      // Set PLAYWRIGHT_BROWSERS_PATH to use pre-installed browsers in the Docker image
-      // Forward worker process environment variables so tests have access to deployment-level secrets
+      // Execute in container with inline script and report extraction
       const execResult = await this.executeCommandSafely(command, args, {
         env: {
           ...process.env,
           ...envVars,
-          PLAYWRIGHT_BROWSERS_PATH: '/ms-playwright', // Use pre-installed browsers in Docker image
         },
-        cwd: serviceRoot, // Run playwright from service root
-        shell: isWindows, // Use shell on Windows for proper command execution
-        timeout: isJob
-          ? this.jobExecutionTimeoutMs
-          : this.testExecutionTimeoutMs, // Apply timeout
-        scriptPath: serviceRoot, // Mount worker root directory at /workspace in container
-        // workingDir defaults to /workspace in container
+        cwd: '/workspace', // Not used in inline mode, but set for consistency
+        shell: false,
+        timeout: isJob ? this.jobExecutionTimeoutMs : this.testExecutionTimeoutMs,
+        scriptPath: null, // No host path to mount - using inline script
+        workingDir: '/workspace',
+        // Inline script execution mode
+        inlineScriptContent: testScript.scriptContent,
+        inlineScriptFileName: testScript.fileName,
+        additionalFiles, // Additional test files for job execution
+        ensureDirectories: [
+          containerReportsDir,
+          path.join(containerReportsDir, 'html'),
+        ],
+        // Extract playwright-reports directory directly (not /tmp/. which doesn't copy subdirs reliably)
+        extractFromContainer: containerReportsDir,
+        extractToHost: path.join(extractedReportsDir, 'playwright-reports'),
       });
 
       // Improve error reporting
@@ -1162,7 +1103,33 @@ export class ExecutionService implements OnModuleDestroy {
       }
 
       // Create individual test spans from JSON results (for jobs with multiple tests)
-      // Note: jsonResultsPath is defined above in envVars section
+      // JSON results are in extracted reports directory after docker cp
+      let jsonResultsPath = this.mapTmpPathToExtracted(
+        containerJsonResults,
+        extractedReportsDir,
+      );
+
+      let hasJsonResults = await this.fileExists(jsonResultsPath);
+      if (!hasJsonResults) {
+        const fallbackJsonPath = await findFirstFileByNames(
+          extractedReportsDir,
+          ['results.json', 'test-results.json', 'report.json', 'playwright-report.json'],
+          { maxDepth: 12 },
+        );
+        if (fallbackJsonPath) {
+          this.logger.warn(
+            `[${executionId}] Playwright JSON results relocated to ${fallbackJsonPath}`,
+          );
+          jsonResultsPath = fallbackJsonPath;
+          hasJsonResults = true;
+        } else {
+          await this.logExtractedDirectory(
+            extractedReportsDir,
+            `[${executionId}] Unable to locate Playwright JSON results under extracted reports`,
+          );
+        }
+      }
+
       this.logger.log(
         `[${executionId}] DEBUG: isJob=${isJob}, activeSpan=${activeSpan ? 'present' : 'null'}, jsonResultsPath=${jsonResultsPath}`,
       );
@@ -1178,12 +1145,12 @@ export class ExecutionService implements OnModuleDestroy {
             '../../observability/playwright-test-spans'
           );
 
-          const hasResults = await hasPlaywrightJsonResults(jsonResultsPath);
+          const finalHasResults = await hasPlaywrightJsonResults(jsonResultsPath);
           this.logger.log(
-            `[${executionId}] JSON results file exists: ${hasResults}`,
+            `[${executionId}] JSON results file exists: ${finalHasResults}`,
           );
 
-          if (hasResults) {
+          if (finalHasResults) {
             // Extract telemetry context from active span attributes
             const attributes: any = {};
 
@@ -1359,8 +1326,14 @@ export class ExecutionService implements OnModuleDestroy {
       cwd?: string;
       shell?: boolean;
       timeout?: number;
-      scriptPath?: string; // Path to the script being executed (for container mounting)
+      scriptPath?: string | null; // Path to the script being executed (for container mounting), null for inline mode
       workingDir?: string; // Working directory inside container
+      extractFromContainer?: string; // Path inside container to extract
+      extractToHost?: string; // Host path where extracted files should be placed
+      inlineScriptContent?: string; // Inline script content for container-only execution
+      inlineScriptFileName?: string; // Filename for inline script
+      additionalFiles?: Record<string, string>; // Additional files for job execution
+      ensureDirectories?: string[]; // Directories to create inside container before execution
     } = {},
   ): Promise<{
     success: boolean;
@@ -1370,15 +1343,18 @@ export class ExecutionService implements OnModuleDestroy {
   }> {
     const startTime = Date.now();
 
-    // Validate that script path is provided
-    if (!options.scriptPath) {
+    // Validate execution mode: either scriptPath OR inlineScriptContent must be provided
+    const useInlineScript = !!options.inlineScriptContent;
+    const useMountedScript = !!options.scriptPath;
+
+    if (!useInlineScript && !useMountedScript) {
       this.logger.error(
-        '[Container] Script path is required for container execution',
+        '[Container] Either scriptPath or inlineScriptContent is required',
       );
       return {
         success: false,
         stdout: '',
-        stderr: 'Script path is required for secure container execution.',
+        stderr: 'Either scriptPath or inlineScriptContent must be provided for container execution.',
         executionTimeMs: Date.now() - startTime,
       };
     }
@@ -1390,16 +1366,23 @@ export class ExecutionService implements OnModuleDestroy {
     // Execute in container - this is the only execution path
     const containerResult =
       await this.containerExecutorService.executeInContainer(
-        options.scriptPath,
+        options.scriptPath || null,
         [command, ...args],
         {
           timeoutMs: options.timeout,
           env: options.env as Record<string, string>,
           workingDir: options.workingDir || '/workspace',
-          memoryLimitMb: 1024, // 1GB
-          cpuLimit: 1.0, // 100% of one CPU
+          memoryLimitMb: 2048, // 2GB for Playwright
+          cpuLimit: 2.0, // 2 CPUs
           networkMode: 'bridge', // Allow network for Playwright
-          autoRemove: true,
+          autoRemove: true, // Will be disabled automatically if extraction is requested
+          extractFromContainer: options.extractFromContainer,
+          extractToHost: options.extractToHost,
+          // Inline script options for container-only execution
+          inlineScriptContent: options.inlineScriptContent,
+          inlineScriptFileName: options.inlineScriptFileName,
+          additionalFiles: options.additionalFiles, // Additional test files for job execution
+          ensureDirectories: options.ensureDirectories,
         },
       );
 
@@ -1416,6 +1399,63 @@ export class ExecutionService implements OnModuleDestroy {
       stderr: containerResult.stderr,
       executionTimeMs: containerResult.duration,
     };
+  }
+
+  /**
+   * Maps a container /tmp path to the extracted host directory.
+   */
+  private mapTmpPathToExtracted(containerPath: string, extractedDir: string): string {
+    const relativePath = path.relative('/tmp', containerPath);
+    if (!relativePath || relativePath.startsWith('..')) {
+      return path.join(extractedDir, path.basename(containerPath));
+    }
+    return path.join(extractedDir, relativePath);
+  }
+
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async logExtractedDirectory(
+    rootDir: string,
+    heading: string,
+    maxDepth = 3,
+    maxEntries = 200,
+  ): Promise<void> {
+    try {
+      const entries: string[] = [];
+      const traverse = async (currentPath: string, depth: number) => {
+        if (entries.length >= maxEntries || depth > maxDepth) {
+          return;
+        }
+        const items = await fs.readdir(currentPath, { withFileTypes: true });
+        for (const item of items) {
+          const relativePath = path.relative(rootDir, path.join(currentPath, item.name));
+          entries.push(`${'  '.repeat(depth)}${item.isDirectory() ? '[D]' : '[F]'} ${relativePath || '.'}`);
+          if (entries.length >= maxEntries) {
+            break;
+          }
+          if (item.isDirectory()) {
+            await traverse(path.join(currentPath, item.name), depth + 1);
+          }
+        }
+      };
+      await traverse(rootDir, 0);
+      this.logger.warn(heading);
+      entries.forEach((entry) => this.logger.warn(entry));
+      if (entries.length >= maxEntries) {
+        this.logger.warn(`[artifact-debug] output truncated after ${maxEntries} entries`);
+      }
+    } catch (error) {
+      this.logger.debug(
+        `[artifact-debug] Failed to list ${rootDir}: ${(error as Error).message}`,
+      );
+    }
   }
 
   /**
@@ -1613,33 +1653,23 @@ export class ExecutionService implements OnModuleDestroy {
   }
 
   /**
-   * Inner function to handle test preparation
+   * Prepares test script content for container execution
+   * Returns the script content ready to be passed inline to container
+   * Container-only: No host filesystem access needed
    */
   private async prepareSingleTest(
     testId: string,
     testScript: string,
-    runDir: string,
-  ): Promise<string> {
+  ): Promise<{ scriptContent: string; fileName: string }> {
     try {
-      // Removed log - only log errors
-
       // Ensure proper trace configuration to avoid path issues
       const enhancedScript = ensureProperTraceConfiguration(testScript, testId);
 
-      // Use .mjs extension for ES module support in test files only
-      const testFilePath = path.join(runDir, `${testId}.spec.mjs`);
-
-      // Ensure the directory exists before writing to it
-      await this.createRunDirectoryWithPermissions(runDir, testId);
-
-      // Use the script exactly as provided - no conversion at all
-      const scriptForRunner = enhancedScript;
-
-      // Write the script to the test file exactly as provided
-      await fs.writeFile(testFilePath, scriptForRunner);
-      // Removed success log
-
-      return runDir; // Return the directory path similar to how _executePlaywrightNativeRunner is called
+      // Return script content for inline container execution
+      return {
+        scriptContent: enhancedScript,
+        fileName: `${testId}.spec.mjs`, // ES module extension
+      };
     } catch (error) {
       this.logger.error(
         `[${testId}] Failed to prepare test: ${(error as Error).message}`,

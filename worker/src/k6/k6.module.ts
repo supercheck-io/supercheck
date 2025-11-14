@@ -12,11 +12,16 @@ import {
 import { ExecutionModule } from '../execution.module';
 import { SecurityModule } from '../common/security/security.module';
 
+const k6MaxAttempts = Math.max(
+  parseInt(process.env.K6_BULL_ATTEMPTS || '1', 10) || 1,
+  1,
+);
+
 // Define job options with TTL settings
 const defaultJobOptions = {
   removeOnComplete: { count: 500, age: 24 * 3600 }, // Keep completed jobs for 24 hours (500 max)
   removeOnFail: { count: 1000, age: 7 * 24 * 3600 }, // Keep failed jobs for 7 days (1000 max)
-  attempts: 3,
+  attempts: k6MaxAttempts,
   backoff: { type: 'exponential', delay: 1000 },
 };
 

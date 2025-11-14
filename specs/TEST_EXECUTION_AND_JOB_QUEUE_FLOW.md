@@ -190,21 +190,20 @@ graph TB
 ```mermaid
 graph TB
     subgraph "Security Hardening"
-        S1[--read-only<br/>Read-only root filesystem]
-        S2[--security-opt=no-new-privileges<br/>Prevent privilege escalation]
-        S3[--cap-drop=ALL<br/>Drop all Linux capabilities]
-        S4[--memory=2048m<br/>Memory limit]
-        S5[--cpus=2<br/>CPU limit]
-        S6[--pids-limit=100<br/>Process limit]
-        S7[--network=bridge<br/>Network isolation]
-        S8[--tmpfs /tmp<br/>Writable temp space]
-        S9[--shm-size=512m<br/>Shared memory for browsers]
+        S1[--security-opt=no-new-privileges<br/>Prevent privilege escalation]
+        S2[--cap-drop=ALL<br/>Drop all Linux capabilities]
+        S3[--memory=2048m<br/>Memory limit]
+        S4[--cpus=2<br/>CPU limit]
+        S5[--pids-limit=100<br/>Process limit]
+        S6[--network=bridge<br/>Network isolation]
+        S7[Writable container /tmp<br/>For test scripts & reports]
+        S8[--shm-size=512m<br/>Shared memory for browsers]
     end
 
-    S1 & S2 & S3 --> SEC[Secure Execution Environment]
-    S4 & S5 & S6 --> RES[Resource Protection]
-    S7 --> NET[Network Isolation]
-    S8 & S9 --> TEMP[Temp File Support]
+    S1 & S2 --> SEC[Secure Execution Environment]
+    S3 & S4 & S5 --> RES[Resource Protection]
+    S6 --> NET[Network Isolation]
+    S7 & S8 --> TEMP[Temp File Support]
 
     SEC & RES & NET & TEMP --> SAFE[Isolated & Secure Test Execution]
 
@@ -212,47 +211,76 @@ graph TB
     classDef resource fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     classDef result fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
 
-    class S1,S2,S3,SEC security
-    class S4,S5,S6,S7,S8,S9,RES,NET,TEMP resource
+    class S1,S2,SEC security
+    class S3,S4,S5,S6,S7,S8,RES,NET,TEMP resource
     class SAFE result
 ```
 
 ### Path Mapping (Host → Container)
 
-| Host Path | Container Path | Purpose |
-|-----------|---------------|---------|
-| `/Users/..../worker` | `/workspace` | Worker root directory |
-| `/Users/..../worker/node_modules` | `/workspace/node_modules` | Playwright package & binary |
-| `/Users/..../worker/playwright-reports/xxx` | `/workspace/playwright-reports/xxx` | Test execution directory |
-| `/Users/..../worker/playwright.config.js` | `/workspace/playwright.config.js` | Playwright configuration |
-| N/A (Docker image) | `/ms-playwright` | Pre-installed browsers |
+**Container-Only Execution: Minimal Host Mounts (Read-Only)**
+
+| Host Path | Container Path | Mount Type | Purpose |
+|-----------|---------------|------------|---------|
+| `/Users/..../worker/node_modules` | `/workspace/node_modules` | Read-only | Playwright package & binary |
+| `/Users/..../worker/playwright.config.js` | `/workspace/playwright.config.js` | Read-only | Playwright configuration |
+| N/A (Docker image) | `/ms-playwright` | Built-in | Pre-installed browsers |
+| N/A (inline script) | `/tmp/*.spec.mjs` | In-container | Test scripts (base64-decoded) |
+| N/A (container) | `/tmp/playwright-reports/` | In-container | Test execution reports (regular filesystem) |
+
+**Key Changes:**
+- ✅ **No host directory mounts for test files** - Test scripts passed inline
+- ✅ **Read-only mounts** - Only node_modules and config (security hardening)
+- ✅ **Ephemeral test files** - All test scripts created inside container /tmp
+- ✅ **Writable container filesystem** - Allows test script and report generation in `/tmp/`
+- ✅ **Report extraction** - `docker cp` used to extract reports before container destruction
 
 ### Container Lifecycle Management
 
 ```mermaid
 stateDiagram-v2
     [*] --> Created: Worker spawns container
-    Created --> Running: docker start
-    Running --> Executing: Test runner starts
+    Created --> ScriptInject: Inline script injection
+    ScriptInject --> Running: Test runner starts
+    Running --> Executing: Test execution
     Executing --> Completed: Test finishes
     Executing --> Failed: Error/Timeout
-    Completed --> Cleanup: Upload artifacts
-    Failed --> Cleanup: Capture error logs
-    Cleanup --> Removed: docker rm -f
-    Removed --> [*]
+    Completed --> Extract: docker cp reports
+    Failed --> Extract: docker cp error logs
+    Extract --> Removed: docker rm (auto)
+    Removed --> Upload: Upload extracted reports
+    Upload --> [*]
+
+    note right of ScriptInject
+        Test scripts decoded
+        to /tmp/*.spec.mjs
+        No host files needed
+    end note
 
     note right of Running
         Security limits enforced
-        Resource monitoring active
+        Read-only mounts
         Network isolation applied
     end note
 
-    note right of Cleanup
+    note right of Extract
+        docker cp /tmp/playwright-reports/
+        → host OS temp directory
+        Container auto-deleted after
+    end note
+
+    note right of Upload
         Reports uploaded to S3
         Metadata saved to DB
-        Temporary files cleaned
+        OS temp directory cleaned
     end note
 ```
+
+**Container-Only Benefits:**
+- ✅ No host directory creation/cleanup
+- ✅ Automatic container destruction handles internal cleanup
+- ✅ Only extracted reports need cleanup (in OS temp)
+- ✅ True isolation - test files never touch host persistent storage
 
 
 
@@ -615,20 +643,19 @@ graph TB
 ```mermaid
 graph TB
     subgraph "Security Hardening"
-        S1[--read-only<br/>Read-only root filesystem]
-        S2[--security-opt=no-new-privileges<br/>Prevent privilege escalation]
-        S3[--cap-drop=ALL<br/>Drop all Linux capabilities]
-        S4[--memory=2048m<br/>Memory limit]
-        S5[--cpus=2<br/>CPU limit]
-        S6[--pids-limit=100<br/>Process limit]
-        S7[--network=bridge<br/>Network isolation]
-        S8[--tmpfs /tmp<br/>Writable temp space]
+        S1[--security-opt=no-new-privileges<br/>Prevent privilege escalation]
+        S2[--cap-drop=ALL<br/>Drop all Linux capabilities]
+        S3[--memory=2048m<br/>Memory limit]
+        S4[--cpus=2<br/>CPU limit]
+        S5[--pids-limit=100<br/>Process limit]
+        S6[--network=bridge<br/>Network isolation]
+        S7[Writable container filesystem<br/>For test scripts & reports]
     end
 
-    S1 & S2 & S3 --> SEC[Secure Execution Environment]
-    S4 & S5 & S6 --> RES[Resource Protection]
-    S7 --> NET[Network Isolation]
-    S8 --> TMP[Temp File Support]
+    S1 & S2 --> SEC[Secure Execution Environment]
+    S3 & S4 & S5 --> RES[Resource Protection]
+    S6 --> NET[Network Isolation]
+    S7 --> TMP[Temp File Support]
 
     SEC & RES & NET & TMP --> SAFE[Isolated & Secure Test Execution]
 
@@ -636,20 +663,29 @@ graph TB
     classDef resource fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     classDef result fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
 
-    class S1,S2,S3,SEC security
-    class S4,S5,S6,S7,S8,RES,NET,TMP resource
+    class S1,S2,SEC security
+    class S3,S4,S5,S6,S7,RES,NET,TMP resource
     class SAFE result
 ```
 
 ### Path Mapping (Host → Container)
 
-| Host Path | Container Path | Purpose |
-|-----------|---------------|---------|
-| `/Users/..../worker` | `/workspace` | Worker root directory |
-| `/Users/..../worker/node_modules` | `/workspace/node_modules` | Playwright package & binary |
-| `/Users/..../worker/playwright-reports/xxx` | `/workspace/playwright-reports/xxx` | Test execution directory |
-| `/Users/..../worker/playwright.config.js` | `/workspace/playwright.config.js` | Playwright configuration |
-| N/A (Docker image) | `/ms-playwright` | Pre-installed browsers |
+**Container-Only Execution: Minimal Host Mounts (Read-Only)**
+
+| Host Path | Container Path | Mount Type | Purpose |
+|-----------|---------------|------------|---------|
+| `/Users/..../worker/node_modules` | `/workspace/node_modules` | Read-only | Playwright package & binary |
+| `/Users/..../worker/playwright.config.js` | `/workspace/playwright.config.js` | Read-only | Playwright configuration |
+| N/A (Docker image) | `/ms-playwright` | Built-in | Pre-installed browsers |
+| N/A (inline script) | `/tmp/*.spec.mjs` | In-container | Test scripts (base64-decoded) |
+| N/A (container) | `/tmp/playwright-reports/` | In-container | Test execution reports (regular filesystem) |
+
+**Key Changes:**
+- ✅ **No host directory mounts for test files** - Test scripts passed inline
+- ✅ **Read-only mounts** - Only node_modules and config (security hardening)
+- ✅ **Ephemeral test files** - All test scripts created inside container /tmp
+- ✅ **Writable container filesystem** - Allows test script and report generation in `/tmp/`
+- ✅ **Report extraction** - `docker cp` used to extract reports before container destruction
 
 ### Why Package.json Still Needs Playwright
 
@@ -1135,7 +1171,8 @@ Container Security:
   cpus: 2                   # 2 vCPU limit
   pids-limit: 100           # Max 100 processes
   shm-size: 512m            # Shared memory for browsers
-  tmpfs: /tmp:rw,size=512m  # Temporary file storage
+  # /tmp uses regular container filesystem (no tmpfs)
+  # Allows test scripts and reports to be generated
 ```
 
 ### Resource Allocation Strategy
