@@ -11,7 +11,15 @@ const serviceRoot = path.resolve(__dirname);
 
 // Use environment variables or default values - no local test directory since tests are dynamically created
 const testDir = process.env.PLAYWRIGHT_TEST_DIR || '/tmp/playwright-tests';
-const relativeOutputDir = 'report';
+const defaultOutputDir = path.resolve(serviceRoot, 'playwright-report');
+const artifactOutputDir =
+  process.env.PLAYWRIGHT_OUTPUT_DIR || defaultOutputDir;
+const htmlReportDir =
+  process.env.PLAYWRIGHT_HTML_REPORT ||
+  path.join(artifactOutputDir, 'html');
+const jsonOutputFile =
+  process.env.PLAYWRIGHT_JSON_OUTPUT ||
+  path.join(artifactOutputDir, 'results.json');
 
 // Worker configuration aligned with execution service limits
 const getOptimalWorkerCount = () => {
@@ -32,8 +40,9 @@ const getOptimalWorkerCount = () => {
 console.log(`Playwright Config Loaded`);
 console.log(`Service Root: ${serviceRoot}`);
 console.log(`Test Directory: ${testDir}`);
-console.log(`Output Directory: ${relativeOutputDir}`);
-console.log(`JSON Output File: ${process.env.PLAYWRIGHT_JSON_OUTPUT || path.join(testDir, 'test-results.json')}`);
+console.log(`Output Directory: ${artifactOutputDir}`);
+console.log(`JSON Output File: ${jsonOutputFile}`);
+console.log(`HTML Report Directory: ${htmlReportDir}`);
 console.log(`Worker Count: ${getOptimalWorkerCount()}`);
 
 /**
@@ -63,12 +72,21 @@ module.exports = defineConfig({
 
   /* Reporter configuration optimized for artifact storage */
   reporter: [
-    ['html'], // Always generate HTML reports for S3 upload
+    [
+      'html',
+      {
+        outputFolder: htmlReportDir,
+        open: 'never',
+      },
+    ], // Always generate HTML reports for S3 upload
     ['list'], // Console output for debugging
-    ['json', {
-      // Use env var for dynamic output path set per execution
-      outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT || path.join(testDir, 'test-results.json')
-    }], // Generate JSON for observability spans
+    [
+      'json',
+      {
+        // Use env var for dynamic output path set per execution
+        outputFile: jsonOutputFile,
+      },
+    ], // Generate JSON for observability spans
   ],
 
   /* Timeouts aligned with execution service limits */
@@ -87,9 +105,12 @@ module.exports = defineConfig({
     navigationTimeout: 30000, // 30 seconds for page loads
 
     /* Artifact collection strategy - configurable via environment variables */
+    // Capture traces on failure for debugging
     trace: process.env.PLAYWRIGHT_TRACE || 'retain-on-failure',
-    screenshot: process.env.PLAYWRIGHT_SCREENSHOT || 'only-on-failure',
-    // Video recording enabled on test failures for debugging (with increased resource limits)
+    // Capture screenshots only on failure to avoid performance degradation
+    // Full screenshots for all tests can be enabled via PLAYWRIGHT_SCREENSHOT='all'
+    screenshot: process.env.PLAYWRIGHT_SCREENSHOT || 'on',
+    // Video recording for failed tests for debugging (with increased resource limits)
     video: process.env.PLAYWRIGHT_VIDEO || 'retain-on-failure',
 
     /* Browser optimization for resource efficiency - browser-specific args moved to projects */
@@ -107,7 +128,7 @@ module.exports = defineConfig({
   },
 
   /* Directory for test artifacts such as screenshots, videos, traces, etc. */
-  outputDir: relativeOutputDir, // Use the relative path
+  outputDir: artifactOutputDir, // Container passes /tmp path; fallback keeps local dev under repo
 
   /* Optimized browser projects for Supercheck execution */
   projects: [
