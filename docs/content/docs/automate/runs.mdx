@@ -1,59 +1,91 @@
 ---
 title: Runs
 description: View test and job execution history
-icon: History
+icon: ClipboardList
 ---
 
-# Runs
+Every test or job execution creates a run with complete results, logs, screenshots, and performance metrics. View historical data and debug failures efficiently.
 
-Every execution of a test or job creates a run with detailed results and diagnostics.
+## What is a Run?
 
-## Run List
+A run represents a single execution of a test or job, capturing:
+- Execution status (pass/fail/error)
+- Duration and performance metrics
+- Screenshots and videos (for browser tests)
+- Console logs and network requests
+- Error messages and stack traces
 
-View all executions with:
-- Run status (passed, failed, running)
-- Test/Job name
-- Start time and duration
-- Environment
-- Triggered by
+## Viewing Runs
+
+```mermaid
+flowchart LR
+    A[Navigate to Runs] --> B[Filter/Search]
+    B --> C[Select Run]
+    C --> D{View Details}
+    D --> E[Screenshots]
+    D --> F[Logs]
+    D --> G[Network]
+    D --> H[Trace]
+```
+
+## Run Status
+
+- **Passed**: All tests completed successfully
+- **Failed**: One or more tests failed
+- **Error**: Execution error (timeout, crash, etc.)
+- **Running**: Currently executing
+- **Queued**: Waiting to execute
 
 ## Run Details
 
-Click any run to see:
-- Execution status
-- Detailed logs
-- Screenshots (for browser tests)
-- Performance metrics
-- Error messages with stack traces
-- Variables used
+Each run includes:
 
-## Filtering
+**Test Results**
+```javascript
+{
+  "total": 10,
+  "passed": 8,
+  "failed": 2,
+  "duration": 45000  // milliseconds
+}
+```
 
-Filter runs by:
-- Status (passed/failed/running)
+**Artifacts**
+- HTML reports with full details
+- Screenshots at each step
+- Videos of browser tests
+- Network HAR files
+- Console logs
+
+**Metadata**
+- Trigger type (manual/scheduled/API)
+- Environment and variables used
+- User who triggered
+- Timestamp and duration
+
+## Filtering Runs
+
+Search and filter by:
+- Test/job name
+- Status (passed/failed/error)
 - Date range
-- Test or job name
-- Environment
-- Triggered by
+- Trigger type
+- User
 
-## Debug Failed Runs
+## Using Run Data
 
-For failed runs:
-- View error messages
-- See screenshots at point of failure
-- Review console logs
-- Check network requests
-- Analyze timing
+**Debugging Failures**
+<Steps>
+  <Step>Open failed run</Step>
+  <Step>Check error message</Step>
+  <Step>View screenshot at failure point</Step>
+  <Step>Review console logs</Step>
+  <Step>Check network requests</Step>
+  <Step>View execution trace</Step>
+</Steps>
 
-## Retention
-
-Runs are retained based on your plan:
-- Free: 7 days
-- Pro: 30 days
-- Enterprise: Custom retention
-
-## Next Steps
-
-- [Set up monitoring](/docs/monitor)
-- [Configure alerts](/docs/alerts)
-- [View dashboard](/docs/dashboard)
+**Performance Analysis**
+- Compare execution times across runs
+- Identify slow tests or operations
+- Track performance trends over time
+- Optimize based on metrics
