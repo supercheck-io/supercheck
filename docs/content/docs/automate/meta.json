@@ -4,13 +4,14 @@
   "defaultOpen": true,
   "pages": [
     {
-      "title": "Create",
+      "title": "Create Tests",
       "icon": "Plus",
       "pages": [
         "browser-test",
         "api-test",
         "database-test",
-        "custom-test"
+        "custom-test",
+        "performance-test"
       ]
     },
     "tests",
