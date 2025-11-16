@@ -1,0 +1,417 @@
+---
+title: API Integration
+description: Trigger jobs and access test results via REST API
+icon: Code
+---
+
+# API Integration
+
+Use Supercheck's REST API to trigger tests programmatically, retrieve results, and integrate with your custom workflows.
+
+## Authentication
+
+All API requests require authentication using Bearer tokens (API keys).
+
+### Creating an API Key
+
+<Steps>
+  <Step>Navigate to your Job's **API Keys** tab</Step>
+  <Step>Click **Create API Key**</Step>
+  <Step>Provide a descriptive name</Step>
+  <Step>Copy the generated key (shown only once!)</Step>
+  <Step>Store securely in your secrets manager</Step>
+</Steps>
+
+### Using API Keys
+
+Include the API key in the `Authorization` header:
+
+```bash
+Authorization: Bearer YOUR_API_KEY
+```
+
+## API Endpoints
+
+### Trigger Job
+
+Trigger a job execution remotely.
+
+**Endpoint**: `POST /api/jobs/{job_id}/trigger`
+
+**Headers**:
+```
+Authorization: Bearer YOUR_API_KEY
+Content-Type: application/json
+```
+
+**Request**:
+```bash
+curl -X POST https://app.supercheck.io/api/jobs/550e8400-e29b-41d4-a716-446655440000/trigger \
+  -H "Authorization: Bearer sk_live_abc123..." \
+  -H "Content-Type: application/json"
+```
+
+**Response** (202 Accepted):
+```json
+{
+  "success": true,
+  "run_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "pending",
+  "triggered_by": "api_key",
+  "created_at": "2024-01-15T10:30:00Z"
+}
+```
+
+**Error Response** (401 Unauthorized):
+```json
+{
+  "error": "Invalid or expired API key",
+  "code": "UNAUTHORIZED"
+}
+```
+
+### Get Run Status
+
+Check the status of a specific run.
+
+**Endpoint**: `GET /api/runs/{run_id}`
+
+**Request**:
+```bash
+curl https://app.supercheck.io/api/runs/7c9e6679-7425-40de-944b-e07fc1f90ae7 \
+  -H "Authorization: Bearer sk_live_abc123..."
+```
+
+**Response**:
+```json
+{
+  "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "completed",
+  "result": "passed",
+  "started_at": "2024-01-15T10:30:05Z",
+  "completed_at": "2024-01-15T10:32:45Z",
+  "duration_ms": 160000,
+  "tests": {
+    "total": 10,
+    "passed": 10,
+    "failed": 0,
+    "skipped": 0
+  },
+  "report_url": "https://app.supercheck.io/runs/7c9e6679-7425-40de-944b-e07fc1f90ae7"
+}
+```
+
+### List Runs
+
+Get a list of recent runs for a job.
+
+**Endpoint**: `GET /api/jobs/{job_id}/runs`
+
+**Query Parameters**:
+- `limit` (optional): Number of runs to return (default: 10, max: 100)
+- `offset` (optional): Offset for pagination (default: 0)
+- `status` (optional): Filter by status (`pending`, `running`, `completed`, `failed`)
+
+**Request**:
+```bash
+curl "https://app.supercheck.io/api/jobs/550e8400-e29b-41d4-a716-446655440000/runs?limit=5&status=failed" \
+  -H "Authorization: Bearer sk_live_abc123..."
+```
+
+**Response**:
+```json
+{
+  "runs": [
+    {
+      "id": "run-1",
+      "status": "failed",
+      "started_at": "2024-01-15T10:00:00Z",
+      "duration_ms": 45000
+    },
+    {
+      "id": "run-2",
+      "status": "failed",
+      "started_at": "2024-01-14T15:30:00Z",
+      "duration_ms": 52000
+    }
+  ],
+  "total": 2,
+  "limit": 5,
+  "offset": 0
+}
+```
+
+## Complete Integration Example
+
+### Trigger and Wait for Results
+
+```bash
+#!/bin/bash
+
+JOB_ID="550e8400-e29b-41d4-a716-446655440000"
+API_KEY="sk_live_abc123..."
+API_URL="https://app.supercheck.io/api"
+
+# Trigger the job
+echo "Triggering job..."
+RESPONSE=$(curl -s -X POST "${API_URL}/jobs/${JOB_ID}/trigger" \
+  -H "Authorization: Bearer ${API_KEY}" \
+  -H "Content-Type: application/json")
+
+RUN_ID=$(echo $RESPONSE | jq -r '.run_id')
+echo "Run ID: ${RUN_ID}"
+
+# Poll for completion
+echo "Waiting for completion..."
+while true; do
+  STATUS=$(curl -s "${API_URL}/runs/${RUN_ID}" \
+    -H "Authorization: Bearer ${API_KEY}" \
+    | jq -r '.status')
+
+  if [ "$STATUS" = "completed" ]; then
+    echo "Run completed successfully"
+    exit 0
+  elif [ "$STATUS" = "failed" ]; then
+    echo "Run failed"
+    exit 1
+  fi
+
+  echo "Status: ${STATUS}, waiting..."
+  sleep 5
+done
+```
+
+### Python Example
+
+```python
+import requests
+import time
+
+API_URL = "https://app.supercheck.io/api"
+API_KEY = "sk_live_abc123..."
+JOB_ID = "550e8400-e29b-41d4-a716-446655440000"
+
+headers = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Content-Type": "application/json"
+}
+
+# Trigger job
+response = requests.post(
+    f"{API_URL}/jobs/{JOB_ID}/trigger",
+    headers=headers
+)
+run_data = response.json()
+run_id = run_data["run_id"]
+
+print(f"Triggered run: {run_id}")
+
+# Poll for results
+while True:
+    response = requests.get(
+        f"{API_URL}/runs/{run_id}",
+        headers=headers
+    )
+    run = response.json()
+
+    if run["status"] == "completed":
+        print(f"Tests passed: {run['tests']['passed']}/{run['tests']['total']}")
+        break
+    elif run["status"] == "failed":
+        print("Run failed!")
+        break
+
+    print(f"Status: {run['status']}, waiting...")
+    time.sleep(5)
+```
+
+### Node.js Example
+
+```javascript
+const axios = require('axios');
+
+const API_URL = 'https://app.supercheck.io/api';
+const API_KEY = 'sk_live_abc123...';
+const JOB_ID = '550e8400-e29b-41d4-a716-446655440000';
+
+const headers = {
+  'Authorization': `Bearer ${API_KEY}`,
+  'Content-Type': 'application/json'
+};
+
+async function triggerAndWait() {
+  // Trigger job
+  const { data: runData } = await axios.post(
+    `${API_URL}/jobs/${JOB_ID}/trigger`,
+    {},
+    { headers }
+  );
+
+  console.log(`Triggered run: ${runData.run_id}`);
+
+  // Poll for completion
+  while (true) {
+    const { data: run } = await axios.get(
+      `${API_URL}/runs/${runData.run_id}`,
+      { headers }
+    );
+
+    if (run.status === 'completed') {
+      console.log(`Tests passed: ${run.tests.passed}/${run.tests.total}`);
+      return run.result === 'passed' ? 0 : 1;
+    } else if (run.status === 'failed') {
+      console.log('Run failed!');
+      return 1;
+    }
+
+    console.log(`Status: ${run.status}, waiting...`);
+    await new Promise(resolve => setTimeout(resolve, 5000));
+  }
+}
+
+triggerAndWait()
+  .then(code => process.exit(code))
+  .catch(err => {
+    console.error(err);
+    process.exit(1);
+  });
+```
+
+## Rate Limiting
+
+Protect against excessive API usage:
+
+- **Limit**: 100 requests per hour per API key
+- **Burst**: 10 requests per minute
+- **Headers**: Check remaining quota
+
+```bash
+curl -I https://app.supercheck.io/api/jobs/{job_id}/trigger \
+  -H "Authorization: Bearer YOUR_API_KEY"
+
+# Response headers
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 1642252800
+```
+
+### Handling Rate Limits
+
+Implement exponential backoff:
+
+```python
+import time
+
+def trigger_with_backoff(job_id, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(
+                f"{API_URL}/jobs/{job_id}/trigger",
+                headers=headers
+            )
+
+            if response.status_code == 429:
+                # Rate limited, wait and retry
+                wait_time = 2 ** attempt
+                print(f"Rate limited, waiting {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+
+            return response.json()
+        except Exception as e:
+            print(f"Error: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+
+    raise Exception("Max retries exceeded")
+```
+
+## Error Handling
+
+### Common Error Codes
+
+| Status Code | Description | Solution |
+|-------------|-------------|----------|
+| `400` | Bad Request | Check request payload |
+| `401` | Unauthorized | Verify API key is valid |
+| `403` | Forbidden | Check API key permissions |
+| `404` | Not Found | Verify job ID is correct |
+| `429` | Rate Limited | Implement backoff, reduce frequency |
+| `500` | Server Error | Retry with exponential backoff |
+
+### Error Response Format
+
+```json
+{
+  "error": "Human-readable error message",
+  "code": "ERROR_CODE",
+  "details": {
+    "field": "Additional context if applicable"
+  }
+}
+```
+
+## Best Practices
+
+### Security
+
+<Steps>
+  <Step>Store API keys in environment variables or secrets manager</Step>
+  <Step>Never commit keys to source control</Step>
+  <Step>Use different keys for different environments</Step>
+  <Step>Rotate keys regularly</Step>
+  <Step>Revoke compromised keys immediately</Step>
+</Steps>
+
+### Performance
+
+- Use webhooks instead of polling when possible
+- Implement caching for frequently accessed data
+- Batch requests when appropriate
+- Set reasonable timeouts
+- Handle rate limits gracefully
+
+### Reliability
+
+- Implement retry logic with exponential backoff
+- Log all API requests and responses
+- Monitor API usage and errors
+- Set up alerts for failures
+- Have fallback mechanisms
+
+## SDK Libraries
+
+Official SDKs coming soon:
+
+- **JavaScript/TypeScript**: `@supercheck/sdk`
+- **Python**: `supercheck-sdk`
+- **Go**: `github.com/supercheck/go-sdk`
+
+## Related Features
+
+<Cards>
+  <Card
+    title="CI/CD Integration"
+    description="Examples for popular CI/CD platforms"
+    href="./ci-cd"
+  />
+  <Card
+    title="Webhooks"
+    description="Receive real-time notifications"
+    href="./webhooks"
+  />
+  <Card
+    title="Jobs"
+    description="Learn about job configuration"
+    href="../automate/jobs"
+  />
+</Cards>
+
+## Need Help?
+
+- **API Issues**: Check error codes and retry with backoff
+- **Authentication**: Verify API key is valid and enabled
+- **Rate Limits**: Contact support for higher limits
+- **Support**: Email support@supercheck.io for API assistance

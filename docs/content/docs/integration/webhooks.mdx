@@ -1,0 +1,468 @@
+---
+title: Webhooks
+description: Receive real-time notifications via webhooks
+icon: Webhook
+---
+
+# Webhooks
+
+Receive real-time notifications about test results, monitor status, and incidents via webhooks to integrate with external systems.
+
+<Callout type="info">
+  Webhooks allow you to build custom integrations and automate responses to events in Supercheck.
+</Callout>
+
+## Overview
+
+Webhooks send HTTP POST requests to your specified URL when events occur:
+
+- **Job Completed**: When a job run finishes
+- **Job Failed**: When a job run fails
+- **Monitor Down**: When a monitor detects an outage
+- **Monitor Recovered**: When a monitor recovers
+- **Incident Created**: When a new incident is created
+- **Incident Updated**: When an incident status changes
+
+## Setting Up Webhooks
+
+### As a Notification Provider
+
+<Steps>
+  <Step>Navigate to **Settings → Notification Providers**</Step>
+  <Step>Click **Add Provider** and select **Webhook**</Step>
+  <Step>Enter webhook URL (e.g., `https://your-app.com/webhooks/supercheck`)</Step>
+  <Step>Configure authentication (optional)</Step>
+  <Step>Test the webhook</Step>
+  <Step>Save the provider</Step>
+</Steps>
+
+### Configure Alerts
+
+After creating a webhook provider, attach it to monitors or jobs:
+
+<Steps>
+  <Step>Edit your monitor or job</Step>
+  <Step>Go to **Alerts** section</Step>
+  <Step>Select the webhook provider</Step>
+  <Step>Choose which events to send</Step>
+  <Step>Save configuration</Step>
+</Steps>
+
+## Webhook Payload
+
+### Job Completed Event
+
+Sent when a job run completes (success or failure).
+
+**Event Type**: `job.completed`
+
+**Payload**:
+```json
+{
+  "event": "job.completed",
+  "timestamp": "2024-01-15T10:32:45Z",
+  "data": {
+    "job_id": "550e8400-e29b-41d4-a716-446655440000",
+    "job_name": "API Integration Tests",
+    "run_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "status": "completed",
+    "result": "passed",
+    "trigger_type": "scheduled",
+    "started_at": "2024-01-15T10:30:05Z",
+    "completed_at": "2024-01-15T10:32:45Z",
+    "duration_ms": 160000,
+    "tests": {
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    "run_url": "https://app.supercheck.io/runs/7c9e6679-7425-40de-944b-e07fc1f90ae7"
+  }
+}
+```
+
+### Job Failed Event
+
+Sent when a job run fails.
+
+**Event Type**: `job.failed`
+
+**Payload**:
+```json
+{
+  "event": "job.failed",
+  "timestamp": "2024-01-15T11:15:30Z",
+  "data": {
+    "job_id": "550e8400-e29b-41d4-a716-446655440000",
+    "job_name": "API Integration Tests",
+    "run_id": "8d0f7789-8536-51ef-c125-f18gd2g01bf8",
+    "status": "failed",
+    "result": "failed",
+    "trigger_type": "manual",
+    "started_at": "2024-01-15T11:12:00Z",
+    "completed_at": "2024-01-15T11:15:30Z",
+    "duration_ms": 210000,
+    "tests": {
+      "total": 10,
+      "passed": 7,
+      "failed": 3,
+      "skipped": 0
+    },
+    "error_summary": "3 tests failed: Login test, Checkout flow, Payment processing",
+    "run_url": "https://app.supercheck.io/runs/8d0f7789-8536-51ef-c125-f18gd2g01bf8"
+  }
+}
+```
+
+### Monitor Down Event
+
+Sent when a monitor detects a service outage.
+
+**Event Type**: `monitor.down`
+
+**Payload**:
+```json
+{
+  "event": "monitor.down",
+  "timestamp": "2024-01-15T12:00:00Z",
+  "data": {
+    "monitor_id": "660f9511-f3ac-52e5-b234-557766551111",
+    "monitor_name": "Production API Health Check",
+    "monitor_type": "http",
+    "url": "https://api.example.com/health",
+    "status": "down",
+    "consecutive_failures": 3,
+    "last_success_at": "2024-01-15T11:55:00Z",
+    "error_message": "HTTP 500 Internal Server Error",
+    "response_time_ms": 5000,
+    "status_code": 500,
+    "monitor_url": "https://app.supercheck.io/monitors/660f9511-f3ac-52e5-b234-557766551111"
+  }
+}
+```
+
+### Monitor Recovered Event
+
+Sent when a monitor recovers from an outage.
+
+**Event Type**: `monitor.recovered`
+
+**Payload**:
+```json
+{
+  "event": "monitor.recovered",
+  "timestamp": "2024-01-15T12:10:00Z",
+  "data": {
+    "monitor_id": "660f9511-f3ac-52e5-b234-557766551111",
+    "monitor_name": "Production API Health Check",
+    "monitor_type": "http",
+    "url": "https://api.example.com/health",
+    "status": "up",
+    "downtime_duration_ms": 600000,
+    "downtime_started_at": "2024-01-15T12:00:00Z",
+    "downtime_ended_at": "2024-01-15T12:10:00Z",
+    "response_time_ms": 234,
+    "status_code": 200,
+    "monitor_url": "https://app.supercheck.io/monitors/660f9511-f3ac-52e5-b234-557766551111"
+  }
+}
+```
+
+## Implementing a Webhook Endpoint
+
+### Node.js/Express Example
+
+```javascript
+const express = require('express');
+const app = express();
+
+app.use(express.json());
+
+app.post('/webhooks/supercheck', (req, res) => {
+  const { event, data } = req.body;
+
+  console.log(`Received event: ${event}`);
+
+  switch (event) {
+    case 'job.completed':
+      if (data.result === 'passed') {
+        console.log(`✓ Job ${data.job_name} passed`);
+        // Trigger deployment, send notification, etc.
+      } else {
+        console.log(`✗ Job ${data.job_name} failed`);
+        // Alert team, create incident, etc.
+      }
+      break;
+
+    case 'monitor.down':
+      console.log(`⚠ Monitor ${data.monitor_name} is down`);
+      // Create PagerDuty incident, send alert, etc.
+      break;
+
+    case 'monitor.recovered':
+      console.log(`✓ Monitor ${data.monitor_name} recovered`);
+      // Resolve incident, notify team, etc.
+      break;
+  }
+
+  // Acknowledge receipt
+  res.status(200).json({ received: true });
+});
+
+app.listen(3000, () => {
+  console.log('Webhook server listening on port 3000');
+});
+```
+
+### Python/Flask Example
+
+```python
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+@app.route('/webhooks/supercheck', methods=['POST'])
+def handle_webhook():
+    payload = request.json
+    event = payload.get('event')
+    data = payload.get('data')
+
+    print(f"Received event: {event}")
+
+    if event == 'job.completed':
+        if data['result'] == 'passed':
+            print(f"✓ Job {data['job_name']} passed")
+            # Trigger deployment
+        else:
+            print(f"✗ Job {data['job_name']} failed")
+            # Alert team
+
+    elif event == 'monitor.down':
+        print(f"⚠ Monitor {data['monitor_name']} is down")
+        # Create incident
+
+    elif event == 'monitor.recovered':
+        print(f"✓ Monitor {data['monitor_name']} recovered")
+        # Resolve incident
+
+    return jsonify({'received': True}), 200
+
+if __name__ == '__main__':
+    app.run(port=3000)
+```
+
+## Security
+
+### Webhook Signatures
+
+Supercheck signs webhook payloads to verify authenticity:
+
+**Header**: `X-Supercheck-Signature`
+
+**Algorithm**: HMAC SHA-256
+
+### Verifying Signatures
+
+```javascript
+const crypto = require('crypto');
+
+function verifyWebhook(payload, signature, secret) {
+  const hmac = crypto.createHmac('sha256', secret);
+  const digest = hmac.update(JSON.stringify(payload)).digest('hex');
+
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(digest)
+  );
+}
+
+app.post('/webhooks/supercheck', (req, res) => {
+  const signature = req.headers['x-supercheck-signature'];
+  const isValid = verifyWebhook(req.body, signature, process.env.WEBHOOK_SECRET);
+
+  if (!isValid) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  // Process webhook...
+});
+```
+
+### Best Practices
+
+<Steps>
+  <Step>Always verify webhook signatures</Step>
+  <Step>Use HTTPS endpoints only</Step>
+  <Step>Implement idempotency (handle duplicate events)</Step>
+  <Step>Process webhooks asynchronously</Step>
+  <Step>Return 200 status quickly to acknowledge receipt</Step>
+</Steps>
+
+## Retry Logic
+
+If your endpoint is unavailable or returns an error:
+
+- **Retry Attempts**: 3 retries with exponential backoff
+- **Backoff**: 2s, 4s, 8s
+- **Timeout**: 10 seconds per request
+- **Final Failure**: Logged and alerted in Supercheck
+
+## Common Use Cases
+
+### Automatic Deployment
+
+Deploy to production after successful tests:
+
+```javascript
+case 'job.completed':
+  if (data.result === 'passed' && data.job_name === 'Production Tests') {
+    console.log('Tests passed, triggering deployment...');
+    await triggerDeployment();
+  }
+  break;
+```
+
+### Incident Management
+
+Create PagerDuty incidents for monitor outages:
+
+```javascript
+case 'monitor.down':
+  await createPagerDutyIncident({
+    title: `${data.monitor_name} is down`,
+    description: data.error_message,
+    urgency: 'high'
+  });
+  break;
+```
+
+### Team Notifications
+
+Send custom Slack messages:
+
+```javascript
+case 'job.failed':
+  await sendSlackMessage({
+    channel: '#test-failures',
+    text: `🚨 Job "${data.job_name}" failed!\n${data.error_summary}\n${data.run_url}`
+  });
+  break;
+```
+
+### Analytics Tracking
+
+Track test metrics in your analytics platform:
+
+```javascript
+case 'job.completed':
+  await trackMetric({
+    event: 'test_run_completed',
+    properties: {
+      job_name: data.job_name,
+      duration_ms: data.duration_ms,
+      tests_total: data.tests.total,
+      tests_passed: data.tests.passed,
+      tests_failed: data.tests.failed
+    }
+  });
+  break;
+```
+
+## Testing Webhooks
+
+### Local Testing with ngrok
+
+```bash
+# Install ngrok
+brew install ngrok
+
+# Start your local server
+node webhook-server.js
+
+# Expose local server
+ngrok http 3000
+
+# Use ngrok URL in Supercheck
+# e.g., https://abc123.ngrok.io/webhooks/supercheck
+```
+
+### Manual Testing
+
+Trigger a test webhook from Supercheck UI:
+
+<Steps>
+  <Step>Go to **Notification Providers**</Step>
+  <Step>Select your webhook provider</Step>
+  <Step>Click **Test Webhook**</Step>
+  <Step>Verify payload received at your endpoint</Step>
+</Steps>
+
+## Troubleshooting
+
+### Webhook Not Received
+
+<Callout type="warning">
+  Check that your endpoint is publicly accessible and returns 200 status
+</Callout>
+
+**Common Issues**:
+- Firewall blocking incoming requests
+- HTTPS certificate issues
+- Endpoint returning error status
+- Request timing out (> 10s)
+
+**Solutions**:
+- Test endpoint with curl: `curl -X POST https://your-app.com/webhook -d '{"test": true}'`
+- Check server logs for errors
+- Verify HTTPS certificate is valid
+- Ensure endpoint responds within 10 seconds
+
+### Duplicate Events
+
+Webhooks may be delivered more than once. Implement idempotency:
+
+```javascript
+const processedEvents = new Set();
+
+app.post('/webhooks/supercheck', async (req, res) => {
+  const eventId = req.headers['x-supercheck-event-id'];
+
+  if (processedEvents.has(eventId)) {
+    return res.status(200).json({ received: true, duplicate: true });
+  }
+
+  processedEvents.add(eventId);
+
+  // Process event...
+
+  res.status(200).json({ received: true });
+});
+```
+
+## Related Features
+
+<Cards>
+  <Card
+    title="Alerts"
+    description="Configure alert notifications"
+    href="../communicate/alerts"
+  />
+  <Card
+    title="API Integration"
+    description="Trigger jobs via API"
+    href="./api-integration"
+  />
+  <Card
+    title="Monitors"
+    description="Set up 24/7 monitoring"
+    href="../monitor/monitors"
+  />
+</Cards>
+
+## Need Help?
+
+- **Webhook Issues**: Check endpoint logs and test with curl
+- **Signature Verification**: Contact support for webhook secret
+- **Custom Integrations**: Reach out for complex webhook scenarios
+- **Support**: Email support@supercheck.io with webhook questions

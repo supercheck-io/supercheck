@@ -1,0 +1,482 @@
+---
+title: CI/CD Integration
+description: Integrate with GitHub Actions, GitLab CI, Jenkins, and more
+icon: GitBranch
+---
+
+# CI/CD Integration
+
+Integrate Supercheck with your CI/CD pipeline to run automated tests on every deployment, ensuring quality before production.
+
+## Overview
+
+Supercheck integrates seamlessly with all major CI/CD platforms:
+
+- **GitHub Actions**
+- **GitLab CI/CD**
+- **Jenkins**
+- **CircleCI**
+- **Travis CI**
+- **Azure DevOps**
+- **Bitbucket Pipelines**
+
+## Quick Setup
+
+<Steps>
+  <Step>Create an API key for your job in Supercheck</Step>
+  <Step>Add the API key to your CI/CD secrets</Step>
+  <Step>Add a step to trigger the Supercheck job</Step>
+  <Step>Optionally wait for results and fail build on test failure</Step>
+</Steps>
+
+## GitHub Actions
+
+### Basic Integration
+
+```yaml
+name: Test with Supercheck
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build application
+        run: npm run build
+
+      - name: Deploy to staging
+        run: ./deploy-staging.sh
+
+      - name: Run Supercheck Tests
+        run: |
+          curl -X POST https://app.supercheck.io/api/jobs/${{ secrets.SUPERCHECK_JOB_ID }}/trigger \
+            -H "Authorization: Bearer ${{ secrets.SUPERCHECK_API_KEY }}" \
+            -H "Content-Type: application/json"
+```
+
+### Advanced: Wait for Results
+
+```yaml
+- name: Run Supercheck Tests
+  run: |
+    # Trigger job and capture run ID
+    RESPONSE=$(curl -s -X POST https://app.supercheck.io/api/jobs/${{ secrets.SUPERCHECK_JOB_ID }}/trigger \
+      -H "Authorization: Bearer ${{ secrets.SUPERCHECK_API_KEY }}" \
+      -H "Content-Type: application/json")
+
+    RUN_ID=$(echo $RESPONSE | jq -r '.run_id')
+    echo "Run ID: $RUN_ID"
+
+    # Poll for completion
+    for i in {1..60}; do
+      STATUS=$(curl -s https://app.supercheck.io/api/runs/$RUN_ID \
+        -H "Authorization: Bearer ${{ secrets.SUPERCHECK_API_KEY }}" \
+        | jq -r '.status')
+
+      echo "Status: $STATUS"
+
+      if [ "$STATUS" = "completed" ]; then
+        RESULT=$(curl -s https://app.supercheck.io/api/runs/$RUN_ID \
+          -H "Authorization: Bearer ${{ secrets.SUPERCHECK_API_KEY }}" \
+          | jq -r '.result')
+
+        if [ "$RESULT" = "passed" ]; then
+          echo "✓ All tests passed"
+          exit 0
+        else
+          echo "✗ Tests failed"
+          exit 1
+        fi
+      elif [ "$STATUS" = "failed" ]; then
+        echo "✗ Run failed"
+        exit 1
+      fi
+
+      sleep 10
+    done
+
+    echo "✗ Timeout waiting for results"
+    exit 1
+```
+
+## GitLab CI/CD
+
+### Basic Integration
+
+```yaml
+stages:
+  - build
+  - test
+  - deploy
+
+test-with-supercheck:
+  stage: test
+  script:
+    - |
+      curl -X POST https://app.supercheck.io/api/jobs/${SUPERCHECK_JOB_ID}/trigger \
+        -H "Authorization: Bearer ${SUPERCHECK_API_KEY}" \
+        -H "Content-Type: application/json"
+  only:
+    - main
+    - develop
+```
+
+### With Result Validation
+
+```yaml
+test-with-supercheck:
+  stage: test
+  script:
+    - apk add --no-cache curl jq
+    - |
+      # Trigger job
+      RESPONSE=$(curl -s -X POST https://app.supercheck.io/api/jobs/${SUPERCHECK_JOB_ID}/trigger \
+        -H "Authorization: Bearer ${SUPERCHECK_API_KEY}" \
+        -H "Content-Type: application/json")
+
+      RUN_ID=$(echo $RESPONSE | jq -r '.run_id')
+
+      # Wait for completion
+      for i in $(seq 1 60); do
+        STATUS=$(curl -s https://app.supercheck.io/api/runs/$RUN_ID \
+          -H "Authorization: Bearer ${SUPERCHECK_API_KEY}" \
+          | jq -r '.status')
+
+        if [ "$STATUS" = "completed" ]; then
+          RESULT=$(curl -s https://app.supercheck.io/api/runs/$RUN_ID \
+            -H "Authorization: Bearer ${SUPERCHECK_API_KEY}" \
+            | jq -r '.result')
+
+          [ "$RESULT" = "passed" ] && exit 0 || exit 1
+        fi
+
+        sleep 10
+      done
+
+      exit 1
+```
+
+## Jenkins
+
+### Pipeline Script
+
+```groovy
+pipeline {
+    agent any
+
+    environment {
+        SUPERCHECK_API_KEY = credentials('supercheck-api-key')
+        SUPERCHECK_JOB_ID = '550e8400-e29b-41d4-a716-446655440000'
+    }
+
+    stages {
+        stage('Build') {
+            steps {
+                sh 'npm run build'
+            }
+        }
+
+        stage('Deploy to Staging') {
+            steps {
+                sh './deploy-staging.sh'
+            }
+        }
+
+        stage('Run Supercheck Tests') {
+            steps {
+                script {
+                    // Trigger job
+                    def response = sh(
+                        script: """
+                            curl -s -X POST https://app.supercheck.io/api/jobs/${SUPERCHECK_JOB_ID}/trigger \
+                              -H "Authorization: Bearer ${SUPERCHECK_API_KEY}" \
+                              -H "Content-Type: application/json"
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    def json = readJSON text: response
+                    def runId = json.run_id
+
+                    echo "Triggered run: ${runId}"
+
+                    // Poll for results
+                    timeout(time: 30, unit: 'MINUTES') {
+                        waitUntil {
+                            def status = sh(
+                                script: """
+                                    curl -s https://app.supercheck.io/api/runs/${runId} \
+                                      -H "Authorization: Bearer ${SUPERCHECK_API_KEY}" \
+                                      | jq -r '.status'
+                                """,
+                                returnStdout: true
+                            ).trim()
+
+                            return status == 'completed' || status == 'failed'
+                        }
+                    }
+
+                    // Check result
+                    def result = sh(
+                        script: """
+                            curl -s https://app.supercheck.io/api/runs/${runId} \
+                              -H "Authorization: Bearer ${SUPERCHECK_API_KEY}" \
+                              | jq -r '.result'
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    if (result != 'passed') {
+                        error('Supercheck tests failed')
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to Production') {
+            steps {
+                sh './deploy-production.sh'
+            }
+        }
+    }
+}
+```
+
+## CircleCI
+
+```yaml
+version: 2.1
+
+jobs:
+  test:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - run:
+          name: Build
+          command: npm run build
+      - run:
+          name: Deploy to Staging
+          command: ./deploy-staging.sh
+      - run:
+          name: Run Supercheck Tests
+          command: |
+            curl -X POST https://app.supercheck.io/api/jobs/${SUPERCHECK_JOB_ID}/trigger \
+              -H "Authorization: Bearer ${SUPERCHECK_API_KEY}" \
+              -H "Content-Type: application/json"
+
+workflows:
+  test-and-deploy:
+    jobs:
+      - test
+```
+
+## Azure DevOps
+
+```yaml
+trigger:
+  - main
+  - develop
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: supercheck-credentials
+
+steps:
+  - task: Bash@3
+    displayName: 'Build Application'
+    inputs:
+      targetType: 'inline'
+      script: 'npm run build'
+
+  - task: Bash@3
+    displayName: 'Deploy to Staging'
+    inputs:
+      targetType: 'inline'
+      script: './deploy-staging.sh'
+
+  - task: Bash@3
+    displayName: 'Run Supercheck Tests'
+    inputs:
+      targetType: 'inline'
+      script: |
+        curl -X POST https://app.supercheck.io/api/jobs/$(SUPERCHECK_JOB_ID)/trigger \
+          -H "Authorization: Bearer $(SUPERCHECK_API_KEY)" \
+          -H "Content-Type: application/json"
+```
+
+## Bitbucket Pipelines
+
+```yaml
+pipelines:
+  default:
+    - step:
+        name: Build
+        script:
+          - npm run build
+
+    - step:
+        name: Deploy to Staging
+        script:
+          - ./deploy-staging.sh
+
+    - step:
+        name: Run Supercheck Tests
+        script:
+          - |
+            curl -X POST https://app.supercheck.io/api/jobs/${SUPERCHECK_JOB_ID}/trigger \
+              -H "Authorization: Bearer ${SUPERCHECK_API_KEY}" \
+              -H "Content-Type: application/json"
+```
+
+## Common Patterns
+
+### Post-Deployment Testing
+
+Run tests after deployment to verify success:
+
+```yaml
+- name: Deploy
+  run: ./deploy.sh
+
+- name: Verify Deployment
+  run: |
+    curl -X POST https://app.supercheck.io/api/jobs/${{ secrets.SMOKE_TESTS_JOB_ID }}/trigger \
+      -H "Authorization: Bearer ${{ secrets.SUPERCHECK_API_KEY }}"
+```
+
+### Environment-Specific Tests
+
+Run different tests for different environments:
+
+```yaml
+- name: Run Tests
+  run: |
+    if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+      JOB_ID="${{ secrets.PROD_JOB_ID }}"
+    else
+      JOB_ID="${{ secrets.STAGING_JOB_ID }}"
+    fi
+
+    curl -X POST https://app.supercheck.io/api/jobs/${JOB_ID}/trigger \
+      -H "Authorization: Bearer ${{ secrets.SUPERCHECK_API_KEY }}"
+```
+
+### Parallel Testing
+
+Run multiple test suites in parallel:
+
+```yaml
+- name: Run Smoke Tests
+  run: |
+    curl -X POST https://app.supercheck.io/api/jobs/${{ secrets.SMOKE_JOB_ID }}/trigger \
+      -H "Authorization: Bearer ${{ secrets.SUPERCHECK_API_KEY }}" &
+
+- name: Run Regression Tests
+  run: |
+    curl -X POST https://app.supercheck.io/api/jobs/${{ secrets.REGRESSION_JOB_ID }}/trigger \
+      -H "Authorization: Bearer ${{ secrets.SUPERCHECK_API_KEY }}" &
+
+- name: Wait for Tests
+  run: wait
+```
+
+## Best Practices
+
+### Secret Management
+
+<Steps>
+  <Step>Store API keys in CI/CD secrets, never in code</Step>
+  <Step>Use environment-specific API keys</Step>
+  <Step>Rotate keys regularly</Step>
+  <Step>Limit key permissions to specific jobs</Step>
+</Steps>
+
+### Error Handling
+
+- Implement timeouts for test execution
+- Fail the build if tests fail
+- Provide clear error messages
+- Retry transient failures
+
+### Performance
+
+- Run tests in parallel when possible
+- Use caching to speed up builds
+- Only run necessary tests per change
+- Consider test timing in your pipeline
+
+## Troubleshooting
+
+### API Key Issues
+
+<Callout type="warning">
+  Ensure API keys are correctly stored in CI/CD secrets
+</Callout>
+
+```bash
+# Test API key manually
+curl -X POST https://app.supercheck.io/api/jobs/{JOB_ID}/trigger \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -v
+```
+
+### Timeout Issues
+
+If tests timeout, increase polling duration:
+
+```bash
+# Increase iterations for longer tests
+for i in {1..120}; do  # 20 minutes max
+  # ... polling logic
+  sleep 10
+done
+```
+
+### Network Issues
+
+If CI can't reach Supercheck:
+
+- Check firewall rules
+- Verify DNS resolution
+- Test connectivity manually
+- Use webhooks as alternative
+
+## Related Features
+
+<Cards>
+  <Card
+    title="API Integration"
+    description="Complete API reference"
+    href="./api-integration"
+  />
+  <Card
+    title="Webhooks"
+    description="Real-time notifications"
+    href="./webhooks"
+  />
+  <Card
+    title="Jobs"
+    description="Configure jobs for CI/CD"
+    href="../automate/jobs"
+  />
+</Cards>
+
+## Need Help?
+
+- **CI/CD Specific**: Check your platform's documentation for secrets management
+- **Integration Issues**: Contact support with your CI/CD platform details
+- **Custom Workflows**: Reach out for complex pipeline requirements
+- **Support**: Email support@supercheck.io for CI/CD integration help

@@ -1,0 +1,9 @@
+{
+  "title": "Observe",
+  "icon": "GitBranch",
+  "defaultOpen": true,
+  "pages": [
+    "traces",
+    "debugging"
+  ]
+}
