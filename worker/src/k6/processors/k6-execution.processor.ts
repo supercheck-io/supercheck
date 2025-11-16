@@ -14,9 +14,6 @@ import {
   K6_JOB_EXECUTION_QUEUE,
   K6_TEST_EXECUTION_QUEUE,
 } from '../k6.constants';
-import { createSpanWithContext } from '../../observability/trace-helpers';
-import { emitTelemetryLog } from '../../observability/log-helpers';
-import { SeverityNumber } from '@opentelemetry/api-logs';
 
 type K6Task = K6ExecutionTask;
 
@@ -98,15 +95,6 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     const runId = taskData.runId;
     const isJobRun = Boolean(taskData.jobId);
     const testId = taskData.tests?.[0]?.id || taskData.testId || null;
-    const runType = isJobRun ? ('k6_job' as const) : ('k6_test' as const);
-    const telemetryCtx = {
-      runId,
-      testId: testId ?? undefined,
-      projectId: taskData.projectId,
-      organizationId: taskData.organizationId,
-      jobId: taskData.jobId ?? undefined,
-      runType,
-    };
 
     if (!testId) {
       this.logger.warn(
@@ -145,34 +133,11 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         .where(eq(schema.runs.id, runId));
 
       // Execute k6
-      const result = await createSpanWithContext(
-        `Trace ${runId.substring(0, 8)}`,
-        telemetryCtx,
-        async (span) => {
-          span.setAttribute('k6.location', effectiveJobLocation);
-          span.setAttribute('k6.is_job_run', isJobRun);
-          span.setAttribute('k6.run_id', runId);
-          span.setAttribute('sc.execution_type', isJobRun ? 'k6_job' : 'k6_test');
-          const executionResult =
-            await this.k6ExecutionService.runK6Test(taskData);
-          span.setAttribute('k6.success', executionResult.success);
-          span.setAttribute('k6.timed_out', executionResult.timedOut);
+      const result = await this.k6ExecutionService.runK6Test(taskData);
 
-          // Emit telemetry log INSIDE span context so trace_id is captured
-          emitTelemetryLog({
-            message: `[${isJobRun ? 'K6 Job' : 'K6 Test'}] ${runId} ${executionResult.success ? 'passed' : 'failed'}`,
-            ctx: telemetryCtx,
-            severity: executionResult.success ? SeverityNumber.INFO : SeverityNumber.ERROR,
-            attributes: {
-              'k6.duration_ms': executionResult.durationMs,
-              'k6.thresholds_passed': executionResult.thresholdsPassed,
-              'k6.location': effectiveJobLocation,
-            },
-            error: executionResult.success ? undefined : executionResult.error,
-          });
-
-          return executionResult;
-        },
+      // Log execution result
+      this.logger.log(
+        `[${isJobRun ? 'K6 Job' : 'K6 Test'}] ${runId} ${result.success ? 'passed' : 'failed'}`
       );
 
       // Extract metrics from summary
@@ -435,12 +400,11 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         });
       }
 
-      emitTelemetryLog({
-        message: `[${isJobRun ? 'K6 Job' : 'K6 Test'}] ${runId} crashed`,
-        ctx: telemetryCtx,
-        severity: SeverityNumber.ERROR,
-        error,
-      });
+      // Log error
+      this.logger.error(
+        `[${isJobRun ? 'K6 Job' : 'K6 Test'}] ${runId} crashed`,
+        error instanceof Error ? error.stack : undefined
+      );
 
       throw error;
     }

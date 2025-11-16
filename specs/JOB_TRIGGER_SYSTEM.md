@@ -14,7 +14,6 @@ The Supercheck Job Trigger System provides three distinct execution pathways: **
 6. [Database Schema](#database-schema)
 7. [API Endpoints](#api-endpoints)
 8. [Integration Patterns](#integration-patterns)
-9. [Monitoring & Observability](#monitoring--observability)
 
 ## System Architecture
 
@@ -43,8 +42,7 @@ graph TB
         CACHE[Redis<br/>Capacity Tracking]
     end
 
-    subgraph "📊 Observability"
-        OTEL[OpenTelemetry<br/>Distributed Tracing]
+    subgraph "📊 Real-time Updates"
         SSE[Server-Sent Events<br/>Real-time Updates]
     end
 
@@ -58,7 +56,6 @@ graph TB
     QUEUE --> WORKER
 
     WORKER --> DB
-    WORKER --> OTEL
     QUEUE --> SSE
 
     classDef source fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
@@ -71,7 +68,7 @@ graph TB
     class AUTH1,AUTH2,AUTH3 auth
     class VALIDATE,QUEUE,WORKER process
     class DB,CACHE data
-    class OTEL,SSE obs
+    class SSE obs
 ```
 
 ## Trigger Types
@@ -561,58 +558,6 @@ graph TB
     class F,G,H,I alert
 ```
 
-## Monitoring & Observability
-
-### Key Metrics
-
-```mermaid
-graph TB
-    subgraph "📊 Trigger Metrics"
-        M1[Manual Trigger Rate<br/>Jobs/min by user]
-        M2[Remote Trigger Rate<br/>Jobs/min by API key]
-        M3[Schedule Success Rate<br/>Percentage on-time]
-    end
-
-    subgraph "⚡ Performance Metrics"
-        P1[Queue Wait Time<br/>Time to worker pickup]
-        P2[Execution Duration<br/>Per trigger type]
-        P3[Capacity Utilization<br/>Running / Total capacity]
-    end
-
-    subgraph "🔍 Quality Metrics"
-        Q1[Success Rate<br/>Per trigger type]
-        Q2[Failure Patterns<br/>Error categorization]
-        Q3[Retry Rates<br/>Re-triggered jobs]
-    end
-
-    M1 & M2 & M3 --> DASH[Grafana Dashboard]
-    P1 & P2 & P3 --> DASH
-    Q1 & Q2 & Q3 --> DASH
-
-    classDef metric fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
-    class M1,M2,M3,P1,P2,P3,Q1,Q2,Q3 metric
-```
-
-### Distributed Tracing
-
-**OpenTelemetry Attributes:**
-- `sc.trigger_type` - manual/remote/schedule
-- `sc.run_id` - Unique run identifier
-- `sc.job_id` - Job identifier
-- `sc.user_id` - User ID (manual only)
-- `sc.api_key_id` - API key ID (remote only)
-- `sc.cron_id` - Cron schedule ID (schedule only)
-
-### Alerting Thresholds
-
-| Metric | Warning | Critical |
-|--------|---------|----------|
-| **Queue Wait Time** | > 2 min | > 5 min |
-| **Capacity Utilization** | > 80% | > 95% |
-| **Failed Triggers** | > 5% | > 10% |
-| **Schedule Misses** | > 1 | > 3 |
-| **API Rate Limit Hits** | > 10/hour | > 50/hour |
-
 ## Best Practices
 
 ### For Manual Triggers
@@ -638,7 +583,6 @@ graph TB
 - **API Keys:** See `API_KEY_SYSTEM.md` for detailed API key documentation
 - **Queue System:** See `TEST_EXECUTION_AND_JOB_QUEUE_FLOW.md` for queue details
 - **Authentication:** See `AUTHENTICATION.md` for auth mechanisms
-- **Observability:** See `OBSERVABILITY.md` for tracing details
 
 ## Revision History
 

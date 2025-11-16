@@ -129,7 +129,6 @@ All reviewed documentation provides comprehensive coverage of:
 - **`/scripts/`** - Deployment scripts, Docker builds, and utility tools
 - **`/specs/`** - Technical documentation and system specifications (this directory)
 - **`/docs/`** - Marketing site, public docs, and supporting assets
-- **`/otel/`** - Observability deployment templates and guidance
 - **`README.md`** - Main project documentation with quick start guide
 - **`CONTRIBUTING.md`** - Contribution workflow, code style, and review expectations
 
