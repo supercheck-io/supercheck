@@ -3,16 +3,11 @@
   "icon": "Workflow",
   "defaultOpen": true,
   "pages": [
-    {
-      "title": "Create",
-      "icon": "Plus",
-      "pages": [
-        "browser-test",
-        "api-test",
-        "database-test",
-        "custom-test"
-      ]
-    },
+    "browser-test",
+    "api-test",
+    "database-test",
+    "custom-test",
+    "performance-test",
     "tests",
     "jobs",
     "runs",

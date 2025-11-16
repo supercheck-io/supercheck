@@ -1,0 +1,10 @@
+{
+  "title": "Integration",
+  "icon": "Plug",
+  "defaultOpen": true,
+  "pages": [
+    "api-integration",
+    "ci-cd",
+    "webhooks"
+  ]
+}
