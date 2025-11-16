@@ -10,21 +10,19 @@ import { Input } from "~/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "~/components/ui/select";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu";
-import {
-  FileText,
   Search,
-  Filter,
   RefreshCw,
   Download,
   ExternalLink,
   Copy,
   Check
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 import type { Log } from "~/types/observability";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
@@ -43,7 +41,6 @@ export default function LogsPage() {
   const [levelFilter, setLevelFilter] = useState<string>("");
   const [serviceFilter, setServiceFilter] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [showFilters, setShowFilters] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [selectedLog, setSelectedLog] = useState<Log | null>(null);
   const [timeRange, setTimeRange] = useState(() => getTimeRangePreset(timePreset));
@@ -116,54 +113,8 @@ export default function LogsPage() {
   const services = Array.from(new Set(logsData?.data.map(l => l.serviceName).filter(Boolean))) as string[];
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
-      {/* Top bar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-background">
-        <div className="flex items-center gap-2">
-          <FileText className="h-5 w-5" />
-          <h1 className="text-lg font-semibold">Logs</h1>
-          <Badge variant="secondary" className="ml-2">
-            {logsData?.total || 0} logs
-          </Badge>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            <Filter className="h-4 w-4 mr-1" />
-            Filters
-          </Button>
-          <Button
-            variant={autoRefresh ? "default" : "outline"}
-            size="sm"
-            onClick={() => setAutoRefresh(!autoRefresh)}
-          >
-            <RefreshCw className={`h-4 w-4 mr-1 ${autoRefresh ? "animate-spin" : ""}`} />
-            Live
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-1" />
-                Export
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleExport('json')}>
-                Export as JSON
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExport('csv')}>
-                Export as CSV
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-      </div>
-    </div>
-
-    {logsError && (
-      <div className="px-4 py-3 border-b bg-muted/20">
+      {logsError && (
+      <div className="border-b bg-muted/20 px-4 py-3">
         <Alert variant="destructive">
           <AlertTitle>Failed to load logs</AlertTitle>
           <AlertDescription className="text-xs flex flex-wrap items-center gap-2">
@@ -180,66 +131,97 @@ export default function LogsPage() {
       </div>
     )}
 
-    {/* Filters bar */}
-      {showFilters && (
-        <div className="px-4 py-3 border-b bg-muted/30">
-          <div className="grid grid-cols-12 gap-2">
-            <div className="col-span-2">
-              <Select value={timePreset} onValueChange={setTimePreset}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="last_15m">Last 15m</SelectItem>
-                  <SelectItem value="last_1h">Last 1h</SelectItem>
-                  <SelectItem value="last_6h">Last 6h</SelectItem>
-                  <SelectItem value="last_24h">Last 24h</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+    {/* Unified Filters Bar */}
+    <div className="border-b bg-muted/30">
+      <div className="flex items-center gap-2 flex-wrap px-4 py-3">
+        {/* Count badge */}
+        <Badge variant="secondary" className="text-xs font-medium whitespace-nowrap">
+          {logsData?.total || 0} logs
+        </Badge>
 
-            <div className="col-span-2">
-              <Select value={levelFilter} onValueChange={setLevelFilter}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="All levels" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All levels</SelectItem>
-                  <SelectItem value="DEBUG">Debug</SelectItem>
-                  <SelectItem value="INFO">Info</SelectItem>
-                  <SelectItem value="WARN">Warning</SelectItem>
-                  <SelectItem value="ERROR">Error</SelectItem>
-                  <SelectItem value="FATAL">Fatal</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+        {/* Time range */}
+        <Select value={timePreset} onValueChange={setTimePreset}>
+          <SelectTrigger className="h-8 w-32 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="last_15m">Last 15m</SelectItem>
+            <SelectItem value="last_1h">Last 1h</SelectItem>
+            <SelectItem value="last_6h">Last 6h</SelectItem>
+            <SelectItem value="last_24h">Last 24h</SelectItem>
+            <SelectItem value="last_7d">Last 7d</SelectItem>
+          </SelectContent>
+        </Select>
 
-            <div className="col-span-2">
-              <Select value={serviceFilter} onValueChange={setServiceFilter}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="All services" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All services</SelectItem>
-                  {services.map(service => (
-                    <SelectItem key={service} value={service}>{service}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        {/* Log level filter */}
+        <Select value={levelFilter || "all"} onValueChange={(value) => setLevelFilter(value === "all" ? "" : value)}>
+          <SelectTrigger className="h-8 w-28 text-xs">
+            <SelectValue placeholder="Level" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All levels</SelectItem>
+            <SelectItem value="DEBUG">Debug</SelectItem>
+            <SelectItem value="INFO">Info</SelectItem>
+            <SelectItem value="WARN">Warning</SelectItem>
+            <SelectItem value="ERROR">Error</SelectItem>
+            <SelectItem value="FATAL">Fatal</SelectItem>
+          </SelectContent>
+        </Select>
 
-            <div className="col-span-6 relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Search logs by message, trace ID, or attributes..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-8 pl-8 text-xs"
-              />
-            </div>
-          </div>
+        {/* Service filter */}
+        <Select value={serviceFilter || "all"} onValueChange={(value) => setServiceFilter(value === "all" ? "" : value)}>
+          <SelectTrigger className="h-8 w-32 text-xs">
+            <SelectValue placeholder="Service" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All services</SelectItem>
+            {services.map(service => (
+              <SelectItem key={service} value={service}>{service}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Search input */}
+        <div className="relative flex-1 min-w-64">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Search logs..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-8 pl-8 text-xs"
+          />
         </div>
-      )}
+
+        {/* Action buttons - right aligned */}
+        <div className="flex items-center gap-1 ml-auto">
+          <Button
+            variant={autoRefresh ? "secondary" : "ghost"}
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            title={autoRefresh ? "Disable auto-refresh" : "Enable auto-refresh"}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${autoRefresh ? "animate-spin" : ""}`} />
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Export">
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-32">
+              <DropdownMenuItem onClick={() => handleExport("json")}>
+                Export as JSON
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport("csv")}>
+                Export as CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </div>
 
       {/* Logs display */}
       <div className="flex-1 flex overflow-hidden">

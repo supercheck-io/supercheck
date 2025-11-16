@@ -331,6 +331,43 @@ export interface EndpointMetrics extends ServiceMetrics {
   httpMethod?: string;
 }
 
+// ============================================================================
+// SERVICE MAP TYPES
+// ============================================================================
+
+export interface ServiceNode {
+  serviceName: string;
+  requestCount: number;
+  errorCount: number;
+  errorRate: number;
+  avgLatency: number;
+  p95Latency: number;
+}
+
+export interface ServiceEdge {
+  source: string;
+  target: string;
+  requestCount: number;
+  avgLatency: number;
+  errorRate: number;
+}
+
+export interface ServiceMapData {
+  nodes: ServiceNode[];
+  edges: ServiceEdge[];
+  timeRange: TimeRange;
+}
+
+export interface REDMetrics {
+  timestamp: string;
+  requestRate: number;
+  errorRate: number;
+  p50: number;
+  p95: number;
+  p99: number;
+  serviceName?: string;
+}
+
 export interface ContextualMetricsSummary {
   totalSamples: number;
   successRate: number;

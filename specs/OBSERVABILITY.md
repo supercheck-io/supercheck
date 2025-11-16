@@ -812,13 +812,139 @@ Demonstrate distributed tracing using an Express app.
 
 5. Create a Playwright test calling `http://host.docker.internal:3001/api/users/789` to observe a worker → external app → DB span chain.
 
+### Testing Instrumentation with Multiple Applications
+
+To verify distributed tracing across multiple services:
+
+**Scenario:** Worker executes Playwright test → External API → Database
+
+1. **Start external instrumented app** (from example above):
+   ```bash
+   node --require ./instrumentation.js app.js
+   ```
+
+2. **Create Playwright test** that calls external service:
+
+   `tests/distributed-trace.spec.ts`
+   ```typescript
+   import { test, expect } from '@playwright/test';
+
+   test('distributed tracing across services', async ({ page }) => {
+     // Call external instrumented service
+     const response = await page.goto('http://host.docker.internal:3001/api/users/123');
+     expect(response?.status()).toBe(200);
+   });
+   ```
+
+3. **Execute test via Supercheck** and observe traces:
+   ```bash
+   # Execute test through Supercheck worker
+   curl -X POST http://localhost:3001/api/jobs \
+     -H "Content-Type: application/json" \
+     -d '{"testPath": "tests/distributed-trace.spec.ts"}'
+   ```
+
+4. **Verify distributed trace**:
+   - Navigate to `http://localhost:3000/observability/traces`
+   - Filter by service: `supercheck-worker`
+   - Open trace and verify span chain:
+     ```
+     ├─ supercheck-worker: execute_playwright_job
+        ├─ supercheck-worker: test_execution
+           ├─ my-test-app: GET /api/users/123
+              ├─ my-test-app: fetch-user
+                 └─ my-test-app: db.query
+     ```
+
+5. **Verify trace context propagation**:
+   ```bash
+   # Check that traceId matches across services
+   docker-compose logs worker | grep -A5 "distributed-trace"
+   docker-compose logs | grep -A5 "my-test-app"
+
+   # Query ClickHouse to verify linked spans
+   docker exec clickhouse-observability clickhouse-client --query \
+     "SELECT traceID, serviceName, name FROM signoz_traces.signoz_index_v3 \
+      WHERE serviceName IN ('supercheck-worker', 'my-test-app') \
+      ORDER BY timestamp DESC LIMIT 10"
+   ```
+
+**Expected Result:** Single trace containing spans from both services, showing complete request flow.
+
+### Testing with Python/Go/Java Applications
+
+**Python Example** (`flask-app.py`):
+```python
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from flask import Flask
+
+# Configure OpenTelemetry
+trace.set_tracer_provider(TracerProvider())
+otlp_exporter = OTLPSpanExporter(endpoint="http://localhost:4317")
+trace.get_tracer_provider().add_span_processor(BatchSpanProcessor(otlp_exporter))
+
+app = Flask(__name__)
+FlaskInstrumentor().instrument_app(app)
+
+@app.route('/api/data')
+def get_data():
+    tracer = trace.get_tracer(__name__)
+    with tracer.start_as_current_span("fetch_data"):
+        # Your business logic
+        return {"status": "success"}
+
+if __name__ == '__main__':
+    app.run(port=5000)
+```
+
+**Go Example** (`main.go`):
+```go
+package main
+
+import (
+    "context"
+    "net/http"
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
+)
+
+func main() {
+    exporter, _ := otlptracegrpc.New(context.Background(),
+        otlptracegrpc.WithEndpoint("localhost:4317"),
+        otlptracegrpc.WithInsecure(),
+    )
+
+    tp := sdktrace.NewTracerProvider(
+        sdktrace.WithBatcher(exporter),
+    )
+    otel.SetTracerProvider(tp)
+
+    http.HandleFunc("/api/process", handleProcess)
+    http.ListenAndServe(":8080", nil)
+}
+
+func handleProcess(w http.ResponseWriter, r *http.Request) {
+    tracer := otel.Tracer("go-service")
+    ctx, span := tracer.Start(r.Context(), "process_request")
+    defer span.End()
+
+    // Business logic
+    w.Write([]byte("processed"))
+}
+```
+
 ## Viewing Traces & Logs
 
 UI lives at `http://localhost:3000/observability`:
 
 - **Traces** (`app/src/app/(main)/observability/traces/page.tsx`): timeline, flamegraph, table; filters for time, run type, status, search.
 - **Logs** (`.../logs/page.tsx`): virtualized table, severity/service filters, deep links to traces.
-- **Metrics**: placeholder page; metrics dashboard still TODO.
+- **Metrics** (`.../metrics/page.tsx`): Currently placeholder; see [UI/UX Improvements](#ui-ux-improvements) for implementation guide.
 
 Traces show duration, span count, service list, normalized `sc.run_type`, and core Supercheck IDs. Error badges appear whenever any span has `statusCode = 2`.
 
@@ -983,6 +1109,529 @@ docker exec clickhouse-observability clickhouse-client \
 ```
 
 Include the command outputs plus worker/app logs when escalating issues.
+
+## UI/UX Improvements
+
+### Overview
+
+The observability UI provides comprehensive visibility into system behavior through traces, logs, and metrics. This section outlines current capabilities and implementation guides for enhanced features.
+
+### Current UI Structure
+
+```
+/observability
+├── /traces          ✅ Fully implemented (timeline, flamegraph, table views)
+├── /logs            ✅ Fully implemented (virtualized log viewer)
+├── /metrics         ⚠️  Placeholder only (needs implementation)
+└── page.tsx         ❌ Missing (dashboard/overview)
+```
+
+**Additional Needed Pages:**
+```
+/observability
+├── page.tsx         ❌ Dashboard/Overview (recommended)
+└── /services        ❌ Service Map/Topology (recommended)
+```
+
+### Recommended Improvements
+
+#### 1. Dashboard/Overview Page
+
+**Route:** `/app/src/app/(main)/observability/page.tsx`
+
+**Purpose:** Landing page showing system-wide health and key metrics
+
+**Layout:**
+
+```typescript
+export default function ObservabilityDashboard() {
+  return (
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-4 gap-4">
+        <StatsCard title="Active Services" value={serviceCount} />
+        <StatsCard title="Total Traces (24h)" value={traceCount} />
+        <StatsCard title="Error Rate" value={errorRate} trend="down" />
+        <StatsCard title="P95 Latency" value={p95} unit="ms" trend="up" />
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-2 gap-6">
+        {/* Service Map Preview */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Service Topology</CardTitle>
+            <Link href="/observability/services">View Full Map →</Link>
+          </CardHeader>
+          <CardContent>
+            <ServiceMapPreview />
+          </CardContent>
+        </Card>
+
+        {/* RED Metrics Timeline */}
+        <Card>
+          <CardHeader>
+            <CardTitle>System RED Metrics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <REDMetricsChart data={metricsData} />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent Activity */}
+      <div className="grid grid-cols-3 gap-4">
+        <RecentTraces limit={5} />
+        <RecentErrors limit={5} />
+        <SlowRequests limit={5} />
+      </div>
+    </div>
+  );
+}
+```
+
+**Data Queries:**
+
+```typescript
+// app/src/lib/observability/dashboard-queries.ts
+export async function getDashboardMetrics(timeRange: TimeRange) {
+  const clickhouse = getClickHouseClient();
+
+  // Service count
+  const services = await clickhouse.query(`
+    SELECT uniq(serviceName) as count
+    FROM signoz_traces.signoz_index_v3
+    WHERE timestamp >= now() - INTERVAL ${timeRange}
+  `);
+
+  // Trace count and error rate
+  const stats = await clickhouse.query(`
+    SELECT
+      count() as total_traces,
+      sum(statusCode = 2) / count() as error_rate,
+      quantile(0.95)(durationNano / 1e6) as p95_latency
+    FROM signoz_traces.signoz_index_v3
+    WHERE timestamp >= now() - INTERVAL ${timeRange}
+      AND parentSpanID = ''  -- Root spans only
+  `);
+
+  // Recent errors
+  const recentErrors = await clickhouse.query(`
+    SELECT
+      traceID,
+      name,
+      serviceName,
+      timestamp,
+      stringTagMap['error.message'] as error_message
+    FROM signoz_traces.signoz_index_v3
+    WHERE timestamp >= now() - INTERVAL ${timeRange}
+      AND statusCode = 2
+    ORDER BY timestamp DESC
+    LIMIT 5
+  `);
+
+  return { services, stats, recentErrors };
+}
+```
+
+#### 2. Service Map Implementation
+
+**Route:** `/app/src/app/(main)/observability/services/page.tsx`
+
+**Purpose:** Interactive topology visualization of service dependencies
+
+**Dependencies:**
+```bash
+npm install reactflow @visx/network d3-force d3-hierarchy
+```
+
+**Implementation:**
+
+```typescript
+// app/src/app/(main)/observability/services/page.tsx
+'use client';
+
+import ReactFlow, {
+  Node,
+  Edge,
+  Background,
+  Controls,
+  MiniMap
+} from 'reactflow';
+import 'reactflow/dist/style.css';
+import { useServiceMap } from '@/hooks/useObservability';
+
+export default function ServiceMapPage() {
+  const { data, isLoading } = useServiceMap({ timeRange: '1h' });
+
+  if (isLoading) return <LoadingSkeleton />;
+
+  const { nodes, edges } = transformToReactFlow(data);
+
+  return (
+    <div className="h-screen w-full">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        fitView
+        nodeTypes={customNodeTypes}
+        edgeTypes={customEdgeTypes}
+      >
+        <Background />
+        <Controls />
+        <MiniMap />
+      </ReactFlow>
+    </div>
+  );
+}
+
+// Custom node component
+function ServiceNode({ data }: { data: ServiceNodeData }) {
+  const errorRate = (data.errors / data.requests) * 100;
+  const healthColor = getHealthColor(errorRate);
+
+  return (
+    <div
+      className={`px-4 py-2 rounded-lg border-2`}
+      style={{ borderColor: healthColor }}
+    >
+      <div className="font-semibold">{data.serviceName}</div>
+      <div className="text-xs text-muted-foreground">
+        {data.requests} req/min
+      </div>
+      <div className="text-xs">
+        <span className={`text-${errorRate > 5 ? 'red' : 'green'}-500`}>
+          {errorRate.toFixed(2)}% errors
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function getHealthColor(errorRate: number): string {
+  if (errorRate > 5) return '#ef4444'; // red
+  if (errorRate > 1) return '#f59e0b'; // amber
+  return '#22c55e'; // green
+}
+```
+
+**Backend Query:**
+
+```typescript
+// app/src/lib/observability/service-map.ts
+export async function getServiceMap(timeRange: string) {
+  const clickhouse = getClickHouseClient();
+
+  // Get service nodes with metrics
+  const nodes = await clickhouse.query(`
+    SELECT
+      serviceName,
+      count() as requests,
+      sum(statusCode = 2) as errors,
+      avg(durationNano / 1e6) as avg_latency_ms,
+      quantile(0.95)(durationNano / 1e6) as p95_latency_ms
+    FROM signoz_traces.signoz_index_v3
+    WHERE timestamp >= now() - INTERVAL ${timeRange}
+      AND parentSpanID = ''  -- Root spans only
+    GROUP BY serviceName
+  `);
+
+  // Get service dependencies (edges)
+  const edges = await clickhouse.query(`
+    WITH parent_child AS (
+      SELECT
+        p.serviceName as source_service,
+        c.serviceName as target_service,
+        c.traceID
+      FROM signoz_traces.signoz_index_v3 p
+      INNER JOIN signoz_traces.signoz_index_v3 c
+        ON p.spanID = c.parentSpanID
+        AND p.traceID = c.traceID
+      WHERE p.timestamp >= now() - INTERVAL ${timeRange}
+        AND p.serviceName != c.serviceName
+    )
+    SELECT
+      source_service,
+      target_service,
+      count() as request_count
+    FROM parent_child
+    GROUP BY source_service, target_service
+    HAVING request_count > 10  -- Filter noise
+  `);
+
+  return { nodes, edges };
+}
+
+// Transform to ReactFlow format
+export function transformToReactFlow(data: ServiceMapData) {
+  const nodes: Node[] = data.nodes.map((node, i) => ({
+    id: node.serviceName,
+    type: 'serviceNode',
+    position: calculatePosition(i, data.nodes.length), // Use force layout
+    data: {
+      serviceName: node.serviceName,
+      requests: node.requests,
+      errors: node.errors,
+      avgLatency: node.avg_latency_ms,
+      p95Latency: node.p95_latency_ms,
+    },
+  }));
+
+  const edges: Edge[] = data.edges.map((edge) => ({
+    id: `${edge.source_service}-${edge.target_service}`,
+    source: edge.source_service,
+    target: edge.target_service,
+    label: `${edge.request_count} req`,
+    style: {
+      strokeWidth: Math.log(edge.request_count + 1) * 2,
+    },
+  }));
+
+  return { nodes, edges };
+}
+```
+
+**Force-Directed Layout:**
+
+```typescript
+import { forceSimulation, forceLink, forceManyBody, forceCenter } from 'd3-force';
+
+function calculatePosition(index: number, total: number) {
+  // Use D3 force simulation for auto-layout
+  const simulation = forceSimulation(nodes)
+    .force('link', forceLink(edges).distance(200))
+    .force('charge', forceManyBody().strength(-1000))
+    .force('center', forceCenter(width / 2, height / 2))
+    .tick(300); // Run simulation to convergence
+
+  return { x: nodes[index].x, y: nodes[index].y };
+}
+```
+
+#### 3. Enhanced Metrics Page
+
+**Route:** Update `/app/src/app/(main)/observability/metrics/page.tsx`
+
+**Current State:** Empty placeholder
+**Target State:** Full RED metrics dashboard
+
+**Implementation:**
+
+```typescript
+'use client';
+
+import { useMetricsTimeseries } from '@/hooks/useObservability';
+import { LineChart, BarChart, AreaChart, Line, Bar, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+
+export default function MetricsPage() {
+  const { data: rateData } = useMetricsTimeseries({
+    metric: 'request_rate',
+    timeRange: '1h'
+  });
+
+  const { data: errorData } = useMetricsTimeseries({
+    metric: 'error_rate',
+    timeRange: '1h'
+  });
+
+  const { data: latencyData } = useMetricsTimeseries({
+    metric: 'latency',
+    timeRange: '1h'
+  });
+
+  return (
+    <div className="space-y-6">
+      {/* RED Metrics Grid */}
+      <div className="grid grid-cols-3 gap-4">
+        {/* Rate */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Request Rate</CardTitle>
+            <CardDescription>Requests per minute</CardDescription>
+          </CardHeader>
+          <CardContent className="h-64">
+            <LineChart data={rateData} width={400} height={250}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="timestamp" />
+              <YAxis />
+              <Tooltip />
+              <Line
+                type="monotone"
+                dataKey="requests_per_minute"
+                stroke="#3b82f6"
+                strokeWidth={2}
+              />
+            </LineChart>
+          </CardContent>
+        </Card>
+
+        {/* Errors */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Error Rate</CardTitle>
+            <CardDescription>Percentage of failed requests</CardDescription>
+          </CardHeader>
+          <CardContent className="h-64">
+            <AreaChart data={errorData} width={400} height={250}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="timestamp" />
+              <YAxis />
+              <Tooltip />
+              <Area
+                type="monotone"
+                dataKey="error_percentage"
+                stroke="#ef4444"
+                fill="#ef4444"
+                fillOpacity={0.3}
+              />
+            </AreaChart>
+          </CardContent>
+        </Card>
+
+        {/* Duration */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Latency Percentiles</CardTitle>
+            <CardDescription>Response time distribution</CardDescription>
+          </CardHeader>
+          <CardContent className="h-64">
+            <LineChart data={latencyData} width={400} height={250}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="timestamp" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey="p50"
+                stroke="#22c55e"
+                name="P50"
+                strokeWidth={2}
+              />
+              <Line
+                type="monotone"
+                dataKey="p95"
+                stroke="#f59e0b"
+                name="P95"
+                strokeWidth={2}
+              />
+              <Line
+                type="monotone"
+                dataKey="p99"
+                stroke="#ef4444"
+                name="P99"
+                strokeWidth={2}
+              />
+            </LineChart>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Service Breakdown */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Requests by Service</CardTitle>
+        </CardHeader>
+        <CardContent className="h-96">
+          <BarChart data={serviceBreakdown} width={1200} height={350}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="serviceName" />
+            <YAxis />
+            <Tooltip />
+            <Bar dataKey="requests" fill="#3b82f6" />
+          </BarChart>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+```
+
+**Backend Query:**
+
+```typescript
+// app/src/lib/observability/metrics-queries.ts
+export async function getREDMetrics(timeRange: string) {
+  const clickhouse = getClickHouseClient();
+
+  const metrics = await clickhouse.query(`
+    SELECT
+      toStartOfInterval(timestamp, INTERVAL 1 MINUTE) as time_bucket,
+      serviceName,
+      count() as requests,
+      sum(statusCode = 2) as errors,
+      avg(durationNano / 1e6) as avg_latency,
+      quantile(0.50)(durationNano / 1e6) as p50,
+      quantile(0.95)(durationNano / 1e6) as p95,
+      quantile(0.99)(durationNano / 1e6) as p99
+    FROM signoz_traces.signoz_index_v3
+    WHERE timestamp >= now() - INTERVAL ${timeRange}
+      AND parentSpanID = ''  -- Root spans only
+    GROUP BY time_bucket, serviceName
+    ORDER BY time_bucket ASC
+  `);
+
+  return {
+    rateData: metrics.map(m => ({
+      timestamp: m.time_bucket,
+      requests_per_minute: m.requests,
+    })),
+    errorData: metrics.map(m => ({
+      timestamp: m.time_bucket,
+      error_percentage: (m.errors / m.requests) * 100,
+    })),
+    latencyData: metrics.map(m => ({
+      timestamp: m.time_bucket,
+      p50: m.p50,
+      p95: m.p95,
+      p99: m.p99,
+    })),
+  };
+}
+```
+
+### Navigation Structure
+
+Update `/app/src/app/(main)/observability/layout.tsx`:
+
+```typescript
+const tabs = [
+  { name: 'Dashboard', href: '/observability', icon: LayoutDashboard },
+  { name: 'Traces', href: '/observability/traces', icon: GitBranch },
+  { name: 'Logs', href: '/observability/logs', icon: FileText },
+  { name: 'Metrics', href: '/observability/metrics', icon: BarChart3 },
+  { name: 'Services', href: '/observability/services', icon: Network },
+];
+```
+
+### Quick Wins
+
+1. **Add Summary Cards** to existing pages
+2. **Implement Loading Skeletons** (replace spinners)
+3. **Add Copy Buttons** for trace/span IDs
+4. **Keyboard Shortcuts** (/, Esc, arrows)
+5. **Export Functionality** (already implemented for traces/logs)
+6. **Dark Mode Optimization** for charts
+7. **Responsive Mobile Views**
+
+### Testing UI Changes
+
+```bash
+# Start dev server
+cd app && npm run dev
+
+# Navigate to observability pages
+open http://localhost:3000/observability
+open http://localhost:3000/observability/traces
+open http://localhost:3000/observability/services
+open http://localhost:3000/observability/metrics
+
+# Generate test data
+cd worker && npm run test:e2e
+
+# Verify traces appear in UI within 5-10 seconds
+```
+
 ### Deployment Architecture
 
 ```mermaid

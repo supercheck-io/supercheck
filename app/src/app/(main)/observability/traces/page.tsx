@@ -12,16 +12,8 @@ import { Tabs, TabsList, TabsTrigger } from "~/components/ui/tabs";
 import { Separator } from "~/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "~/components/ui/dropdown-menu";
-import {
-  Activity,
   Clock,
   Search,
-  Filter,
   RefreshCw,
   Download,
   ChevronRight,
@@ -29,6 +21,12 @@ import {
   List,
   LayoutGrid
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "~/components/ui/dropdown-menu";
 import type { Trace, Span, SpanStatus, SpanTreeNode } from "~/types/observability";
 
 export default function TracesPage() {
@@ -39,7 +37,6 @@ export default function TracesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [view, setView] = useState<"timeline" | "flamegraph" | "table">("timeline");
-  const [showFilters, setShowFilters] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [timeRange, setTimeRange] = useState(() => getTimeRangePreset(timePreset));
 
@@ -112,65 +109,10 @@ export default function TracesPage() {
 
   const { data: selectedTrace } = useTraceQuery(selectedTraceId);
 
-
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
-      {/* Top bar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-background">
-        <div className="flex items-center gap-2">
-          <Activity className="h-5 w-5" />
-          <h1 className="text-lg font-semibold">Traces</h1>
-          <Badge variant="secondary" className="ml-2">
-            {tracesData?.total || 0} results
-          </Badge>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            <Filter className="h-4 w-4 mr-1" />
-            Filters
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-          >
-            <RefreshCw className="h-4 w-4 mr-1" />
-            Refresh
-          </Button>
-          <Button
-            variant={autoRefresh ? "default" : "outline"}
-            size="sm"
-            onClick={() => setAutoRefresh(!autoRefresh)}
-          >
-            <RefreshCw className={`h-4 w-4 mr-1 ${autoRefresh ? "animate-spin" : ""}`} />
-            Auto-refresh
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-1" />
-                Export
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleExport('json')}>
-                Export as JSON
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExport('csv')}>
-                Export as CSV
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
       {tracesError && (
-        <div className="px-4 py-3 border-b bg-muted/20">
+        <div className="border-b bg-muted/20 px-4 py-3">
           <Alert variant="destructive">
             <AlertTitle>Failed to load traces</AlertTitle>
             <AlertDescription className="text-xs">
@@ -182,65 +124,105 @@ export default function TracesPage() {
         </div>
       )}
 
-      {/* Filters bar */}
-      {showFilters && (
-        <div className="px-4 py-3 border-b bg-muted/30">
-          <div className="grid grid-cols-12 gap-2">
-            <div className="col-span-2">
-              <Select value={timePreset} onValueChange={setTimePreset}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="last_15m">Last 15m</SelectItem>
-                  <SelectItem value="last_1h">Last 1h</SelectItem>
-                  <SelectItem value="last_6h">Last 6h</SelectItem>
-                  <SelectItem value="last_24h">Last 24h</SelectItem>
-                  <SelectItem value="last_7d">Last 7d</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+      {/* Unified Filters Bar */}
+      <div className="border-b bg-muted/30">
+        <div className="flex items-center gap-2 flex-wrap px-4 py-3">
+          {/* Count badge */}
+          <Badge variant="secondary" className="text-xs font-medium whitespace-nowrap">
+            {tracesData?.total || 0} traces
+          </Badge>
 
-            <div className="col-span-2">
-              <Select value={runTypeFilter} onValueChange={setRunTypeFilter}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="All run types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All types</SelectItem>
-                  <SelectItem value="playwright">Playwright</SelectItem>
-                  <SelectItem value="k6">K6</SelectItem>
-                  <SelectItem value="job">Job</SelectItem>
-                  <SelectItem value="monitor">Monitor</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Time range */}
+          <Select value={timePreset} onValueChange={setTimePreset}>
+            <SelectTrigger className="h-8 w-32 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="last_15m">Last 15m</SelectItem>
+              <SelectItem value="last_1h">Last 1h</SelectItem>
+              <SelectItem value="last_6h">Last 6h</SelectItem>
+              <SelectItem value="last_24h">Last 24h</SelectItem>
+              <SelectItem value="last_7d">Last 7d</SelectItem>
+            </SelectContent>
+          </Select>
 
-            <div className="col-span-2">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="All statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  <SelectItem value="1">Success</SelectItem>
-                  <SelectItem value="2">Error</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Run type filter */}
+          <Select value={runTypeFilter} onValueChange={setRunTypeFilter}>
+            <SelectTrigger className="h-8 w-28 text-xs">
+              <SelectValue placeholder="Run type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="playwright">Playwright</SelectItem>
+              <SelectItem value="k6">K6</SelectItem>
+              <SelectItem value="job">Job</SelectItem>
+              <SelectItem value="monitor">Monitor</SelectItem>
+            </SelectContent>
+          </Select>
 
-            <div className="col-span-6 relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Search traces by name, ID, or attributes..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-8 pl-8 text-xs"
-              />
-            </div>
+          {/* Status filter */}
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-8 w-28 text-xs">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="1">Success</SelectItem>
+              <SelectItem value="2">Error</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Search input */}
+          <div className="relative flex-1 min-w-64">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Search traces..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
+
+          {/* Action buttons - right aligned */}
+          <div className="flex items-center gap-1 ml-auto">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => refetch()}
+              title="Refresh"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </Button>
+
+            <Button
+              variant={autoRefresh ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              title={autoRefresh ? "Disable auto-refresh" : "Enable auto-refresh"}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${autoRefresh ? "animate-spin" : ""}`} />
+            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0" title="Export">
+                  <Download className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-32">
+                <DropdownMenuItem onClick={() => handleExport("json")}>
+                  Export as JSON
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport("csv")}>
+                  Export as CSV
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">

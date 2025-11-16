@@ -261,38 +261,12 @@ export class PlaywrightValidationService {
       };
     }
 
-    // 2. Screenshot detection - block all screenshot-related operations
-    const screenshotPatterns = [
-      {
-        pattern: /\.screenshot\s*\(/i,
-        message:
-          "Screenshot operations are not allowed as Playwright Traces have live screenshot capabilities.",
-      },
-      {
-        pattern: /toHaveScreenshot\s*\(/i,
-        message:
-          "Visual comparison screenshots (toHaveScreenshot) are not allowed.",
-      },
-      {
-        pattern: /expect\s*\([^)]*\)\s*\.toHaveScreenshot/i,
-        message: "Visual regression testing with screenshots is not allowed.",
-      },
-    ];
+    // 2. Screenshot operations are now allowed
+    // Screenshots are extracted from isolated containers via docker cp
+    // and stored in S3, making them safe in the container-based execution model.
+    // This enables visual validation and CI/CD reporting alongside trace debugging.
 
-    for (const { pattern, message } of screenshotPatterns) {
-      const match = pattern.exec(code);
-      if (match) {
-        const line = this.getLineNumber(code, match.index);
-        return {
-          valid: false,
-          error: `${message} Please remove screenshot related code to proceed.`,
-          line,
-          errorType: "pattern",
-        };
-      }
-    }
-
-    // 3. Enhanced dangerous patterns detection with balanced approach
+    // 3. Enhanced dangerous patterns detection with balanced approach (formerly step 3)
     const dangerousPatterns = [
       // Function constructors and eval
       { pattern: /\beval\s*\(/, message: "eval() is not allowed" },
