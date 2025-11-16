@@ -6,300 +6,100 @@ icon: Variable
 
 # Variables
 
-Store reusable values like URLs, credentials, and configuration data securely.
+Store reusable configuration values and sensitive data securely across your tests. Variables can be regular (plain text) or secrets (encrypted), providing flexibility while maintaining security.
 
-## Variable System Architecture
-
-```mermaid
-graph TB
-    A[Variables] --> B{Type}
-    B --> C[Regular Variables]
-    B --> D[Secrets]
-
-    C --> E[Plain Text Storage]
-    D --> F[AES-128-GCM Encryption]
-
-    E --> G[Project Scoped]
-    F --> G
-
-    G --> H[Access Control]
-    H --> I{Role}
-    I -->|Owner/Admin| J[Full Access]
-    I -->|Editor| K[Read/Write]
-    I -->|Viewer| L[No Access]
-
-    J --> M[getVariable]
-    K --> M
-    J --> N[getSecret]
-    K --> N
-
-    M --> O[Test Execution]
-    N --> O
-
-    O --> P{Usage}
-    P --> Q[Browser Tests]
-    P --> R[API Tests]
-    P --> S[Database Tests]
-    P --> T[Custom Scripts]
-
-    style A fill:#3b82f6,color:#fff
-    style C fill:#10b981,color:#fff
-    style D fill:#ef4444,color:#fff
-    style F fill:#f59e0b,color:#fff
-    style O fill:#8b5cf6,color:#fff
-```
-
-## Variable Types Comparison
-
-```mermaid
-graph LR
-    subgraph RegularVariables[Regular Variables]
-    V1[URLs]
-    V2[Timeouts]
-    V3[Config]
-    V4[Feature Flags]
-    end
-
-    subgraph Secrets[Secrets]
-    S1[API Keys]
-    S2[Passwords]
-    S3[Tokens]
-    S4[Credentials]
-    end
-
-    V1 --> A[Plain Text]
-    V2 --> A
-    V3 --> A
-    V4 --> A
-
-    S1 --> B[Encrypted]
-    S2 --> B
-    S3 --> B
-    S4 --> B
-
-    A --> C[Visible in UI]
-    B --> D[Masked in UI]
-
-    C --> E[Can Log]
-    D --> F[Cannot Log]
-
-    style RegularVariables fill:#10b981,color:#fff
-    style Secrets fill:#ef4444,color:#fff
-    style B fill:#f59e0b,color:#fff
-    style F fill:#ef4444,color:#fff
-```
-
-## Variable Lifecycle
+## How It Works
 
 ```mermaid
 sequenceDiagram
-    participant U as User
-    participant UI as Settings UI
-    participant API as API Server
-    participant DB as Database
-    participant E as Encryption Service
-    participant T as Test Execution
+    participant User
+    participant UI
+    participant Database
+    participant Test
 
-    U->>UI: Create Variable
-    UI->>U: Enter Key & Value
-    U->>UI: Mark as Secret
-    UI->>API: POST /variables
+    User->>UI: Create Variable
+    UI->>Database: Store (encrypted if secret)
 
-    alt Is Secret
-        API->>E: Encrypt Value
-        E-->>API: Encrypted Data
-        API->>DB: Store Encrypted
-    else Regular Variable
-        API->>DB: Store Plain Text
-    end
+    Note over Test: During test execution
 
-    DB-->>API: Saved
-    API-->>UI: Success
-    UI-->>U: Variable Created
-
-    Note over T: When test runs...
-
-    T->>API: Request Variables
-    API->>DB: Fetch Project Variables
-    DB-->>API: Variables Data
-
-    alt Is Secret
-        API->>E: Decrypt Value
-        E-->>API: Plain Value
-    end
-
-    API-->>T: Inject Variables
-    T->>T: Execute with Variables
+    Test->>Database: Request variables
+    Database->>Test: Return values (decrypted)
+    Test->>Test: Use in test script
 ```
 
-## Using Variables in Tests
+## Variable Types
+
+**Regular Variables** - Stored in plain text, visible in UI
+- URLs, timeouts, usernames
+- Configuration values, feature flags
+- Non-sensitive data
+
+**Secrets** - AES-256 encrypted, masked in UI
+- API keys, passwords, tokens
+- Database credentials
+- Any sensitive data
+
+## Using Variables
 
 ### Regular Variables
+
 ```javascript
-// Configuration values
+// Access configuration values
 const baseUrl = getVariable("BASE_URL");
-const timeout = getVariable("TIMEOUT", { type: "number" });
-const username = getVariable("TEST_USERNAME");
+const timeout = getVariable("TIMEOUT");
 
-// Use in your tests
+// Use in tests
 await page.goto(baseUrl + "/login");
-await page.fill("#username", username);
 ```
 
-### Secrets (Protected from Logging)
+### Secrets
+
 ```javascript
-// Sensitive data
+// Access sensitive data (automatically protected from logs)
 const apiKey = getSecret("API_KEY");
-const password = getSecret("DB_PASSWORD");
-const token = getSecret("AUTH_TOKEN");
+const password = getSecret("PASSWORD");
 
-// Safe usage - actual values hidden in logs
+// Use securely
 await page.fill("#password", password);
-await page.setExtraHTTPHeaders({
-  Authorization: `Bearer ${token}`
-});
 
-// Protected from logging
-console.log(apiKey); // Shows: "[SECRET]"
-console.log(`Key: ${apiKey}`); // Shows: "Key: [SECRET]"
-```
-
-## Secret Protection Flow
-
-```mermaid
-flowchart TB
-    A[getSecret Called] --> B{Context}
-
-    B -->|Console.log| C[Return '[SECRET]']
-    B -->|JSON.stringify| D[Return '[SECRET]']
-    B -->|String Template| E[Return '[SECRET]']
-    B -->|Playwright Action| F[Use Actual Value]
-    B -->|API Call| G[Use Actual Value]
-    B -->|Comparison| H[Use Actual Value]
-
-    F --> I[✓ Test Executes]
-    G --> I
-    H --> I
-
-    C --> J[✓ Logs Protected]
-    D --> J
-    E --> J
-
-    style A fill:#3b82f6,color:#fff
-    style F fill:#10b981,color:#fff
-    style G fill:#10b981,color:#fff
-    style H fill:#10b981,color:#fff
-    style C fill:#ef4444,color:#fff
-    style D fill:#ef4444,color:#fff
-    style E fill:#ef4444,color:#fff
-    style J fill:#f59e0b,color:#fff
-```
-
-## Best Practices
-
-```mermaid
-mindmap
-  root((Variable Best Practices))
-    Naming
-      UPPER_CASE
-      Descriptive names
-      Consistent prefixes
-      No special chars
-    Organization
-      Group by environment
-      Document purpose
-      Version control
-      Team access
-    Security
-      Mark sensitive as Secret
-      Rotate regularly
-      Limit access
-      Audit usage
-    Usage
-      Use getVariable for config
-      Use getSecret for sensitive
-      Validate existence
-      Provide defaults
-```
-
-## Access Control Matrix
-
-```mermaid
-graph TB
-    A[User Roles] --> B[Owner]
-    A --> C[Admin]
-    A --> D[Editor]
-    A --> E[Viewer]
-
-    B --> F[Create Variables]
-    B --> G[Update Variables]
-    B --> H[Delete Variables]
-    B --> I[View Secrets]
-
-    C --> F
-    C --> G
-    C --> H
-    C --> I
-
-    D --> F
-    D --> G
-    D --> J[View Public Only]
-
-    E --> K[No Access]
-
-    style B fill:#10b981,color:#fff
-    style C fill:#10b981,color:#fff
-    style D fill:#f59e0b,color:#fff
-    style E fill:#ef4444,color:#fff
-    style K fill:#ef4444,color:#fff
+// Logging is automatically masked
+console.log(apiKey); // Output: "***REDACTED***"
 ```
 
 ## Creating Variables
 
 <Steps>
-  <Step>Navigate to **Automate → Variables**</Step>
+  <Step>Go to **Automate → Variables**</Step>
   <Step>Click **Add Variable**</Step>
-  <Step>Enter variable key (e.g., `API_KEY`)</Step>
-  <Step>Enter variable value</Step>
-  <Step>Toggle **Secret** if sensitive data</Step>
-  <Step>Add optional description</Step>
-  <Step>Save variable</Step>
+  <Step>Enter key and value</Step>
+  <Step>Mark as **Secret** if sensitive</Step>
+  <Step>Save</Step>
 </Steps>
 
-## Common Use Cases
+## Common Patterns
 
-### Environment Configuration
 ```javascript
-const env = getVariable("ENVIRONMENT"); // "production"
-const apiUrl = getVariable(`${env.toUpperCase()}_API_URL`);
-const dbHost = getVariable(`${env.toUpperCase()}_DB_HOST`);
-```
+// Environment-specific configuration
+const env = getVariable("ENVIRONMENT");
+const apiUrl = getVariable(`${env}_API_URL`);
 
-### Feature Flags
-```javascript
-const featureEnabled = getVariable("NEW_FEATURE_ENABLED", {
-  type: "boolean",
-  default: false
-});
+// Database connection
+const dbConfig = {
+  host: getVariable("DB_HOST"),
+  port: getVariable("DB_PORT"),
+  password: getSecret("DB_PASSWORD")
+};
 
-if (featureEnabled) {
+// Feature flags
+const newFeatureEnabled = getVariable("FEATURE_X_ENABLED");
+if (newFeatureEnabled === "true") {
   // Test new feature
 }
 ```
 
-### Database Connections
-```javascript
-const dbConfig = {
-  host: getVariable("DB_HOST"),
-  port: getVariable("DB_PORT", { type: "number" }),
-  database: getVariable("DB_NAME"),
-  user: getVariable("DB_USER"),
-  password: getSecret("DB_PASSWORD")
-};
-```
+## Security
 
-## Next Steps
-
-- [Use variables in tests](./tests)
-- [Configure jobs with variables](./jobs)
-- [Set up environment-specific configs](./tests)
+- **Encryption**: Secrets use AES-256-GCM encryption
+- **Access Control**: Role-based permissions (Owner/Admin/Editor)
+- **Log Protection**: Secrets automatically redacted from logs and screenshots
+- **Audit Trail**: All variable access is logged
