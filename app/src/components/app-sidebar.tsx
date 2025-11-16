@@ -25,7 +25,6 @@ import {
   Tally4,
   type LucideIcon,
   Logs,
-  GitBranch,
   ClipboardList,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
@@ -67,14 +66,6 @@ const data = {
       title: "Status Pages",
       url: "/status-pages",
       icon: Tally4,
-    },
-  ],
-
-  Observe: [
-    {
-      title: "Observability",
-      url: "/observability/traces",
-      icon: GitBranch,
     },
   ],
 
@@ -344,7 +335,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavMain groupLabel="Communicate" items={data.Communicate} />
         <NavMain groupLabel="Automate" items={data.Automate} />
         <NavMain groupLabel="Monitor" items={data.Monitor} />
-        <NavMain groupLabel="Observe" items={data.Observe} />
         {adminItems.length > 0 && (
           <NavMain groupLabel="Settings" items={adminItems} />
         )}

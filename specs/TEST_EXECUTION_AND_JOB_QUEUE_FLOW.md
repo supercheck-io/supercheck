@@ -65,11 +65,6 @@ graph TB
         CACHE[Redis<br/>Capacity Tracking]
     end
 
-    subgraph "📊 Observability"
-        OTEL[OpenTelemetry Traces]
-        METRICS[Metrics Collection]
-        CLICK[(ClickHouse<br/>Time Series)]
-    end
 
     UI --> API1 & API2
     API1 & API2 --> API3
@@ -86,10 +81,8 @@ graph TB
 
     C1 & C2 & C3 & C4 --> S3
     C1 & C2 & C3 & C4 --> DB
-    C1 & C2 & C3 & C4 --> OTEL
 
     REDIS --> MONITOR
-    OTEL --> CLICK
     MONITOR --> UI
 
     classDef frontend fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
@@ -98,7 +91,6 @@ graph TB
     classDef worker fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
     classDef container fill:#ffebee,stroke:#d32f2f,stroke-width:2px
     classDef storage fill:#e0f2f1,stroke:#00796b,stroke-width:2px
-    classDef obs fill:#fce4ec,stroke:#c2185b,stroke-width:2px
 
     class UI,MONITOR frontend
     class API1,API2,API3 api
@@ -106,7 +98,6 @@ graph TB
     class W1,W2,W3,VALIDATION,CONTAINER worker
     class C1,C2,C3,C4 container
     class DB,S3,CACHE storage
-    class OTEL,METRICS,CLICK obs
 ```
 
 ## Container-Based Execution (Security Isolation)
@@ -1448,7 +1439,6 @@ services:
 
 - **Queue System:** See `REAL_TIME_STATUS_UPDATES_SSE.md` for SSE integration
 - **Job Triggers:** See `JOB_TRIGGER_SYSTEM.md` for trigger types
-- **Observability:** See `OBSERVABILITY.md` for tracing details
 - **API Keys:** See `API_KEY_SYSTEM.md` for remote triggers
 
 ## Revision History

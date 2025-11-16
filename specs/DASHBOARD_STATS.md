@@ -11,7 +11,6 @@
 - [Performance Considerations](#performance-considerations)
 - [Data Validation & Sanitization](#data-validation--sanitization)
 - [Accessibility](#accessibility)
-- [Monitoring & Observability](#monitoring--observability)
 - [Testing Strategy](#testing-strategy)
 - [Security Checklist](#security-checklist)
 - [Best Practices Applied](#best-practices-applied)
@@ -302,28 +301,6 @@ if (isNaN(runDate.getTime())) return false;
 - **Touch Friendly**: Adequate touch targets for mobile interaction
 - **Flexible Charts**: Responsive chart containers
 - **Readable Typography**: Appropriate font sizes across devices
-
-## Monitoring & Observability
-
-### Logging
-
-```typescript
-// Structured logging for debugging
-console.error(
-  "Dashboard API error:",
-  error instanceof Error ? error.message : "Unknown error"
-);
-console.log(
-  `[${jobId}/${runId}] Test ${testScript.name} uses ${usedVariables.length} variables`
-);
-```
-
-### Metrics
-
-- **Cache Hit Rate**: Monitor cache effectiveness
-- **Response Times**: Track API performance
-- **Error Rates**: Monitor failure rates
-- **User Engagement**: Track chart interaction
 
 ## Testing Strategy
 
