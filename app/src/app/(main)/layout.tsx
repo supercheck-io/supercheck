@@ -62,7 +62,7 @@ export default async function MainLayout({
            
               </div>
             </header>
-            <main className="flex-1 flex-col gap-4 p-2 overflow-y-auto">
+            <main className="flex-1 flex-col gap-4 overflow-y-auto">
               {children}
             </main>
           </SidebarInset>

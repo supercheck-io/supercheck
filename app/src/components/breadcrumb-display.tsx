@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -12,9 +13,16 @@ import {
 } from "@/components/ui/breadcrumb";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
 import { Home } from "lucide-react";
+import { ObservabilityNavTabs } from "@/components/observability/nav-tabs";
 
 export function BreadcrumbDisplay() {
   const { breadcrumbs } = useBreadcrumbs();
+  const pathname = usePathname();
+
+  // Show observability navigation tabs instead of breadcrumbs for observability pages
+  if (pathname.startsWith("/observability")) {
+    return <ObservabilityNavTabs />;
+  }
 
   if (!breadcrumbs || breadcrumbs.length === 0) {
     return (
