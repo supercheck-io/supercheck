@@ -11,10 +11,6 @@ import { RedisService } from './redis.service';
 import { ReportUploadService } from '../../common/services/report-upload.service';
 import { ContainerExecutorService } from '../../common/security/container-executor.service';
 import { findFirstFileByNames } from '../../common/utils/file-search';
-import { createSpan, createSpanWithContext } from '../../observability/trace-helpers';
-import { emitTelemetryLog } from '../../observability/log-helpers';
-import { SeverityNumber } from '@opentelemetry/api-logs';
-import { trace } from '@opentelemetry/api';
 import {
   TestResult,
   TestExecutionResult,
@@ -310,14 +306,6 @@ export class ExecutionService implements OnModuleDestroy {
     isMonitorExecution = false,
   ): Promise<TestResult> {
     const { testId, code } = task;
-    const telemetryCtx = {
-      runId: task.runId ?? undefined,
-      testId,
-      testName: task.testName, // ✅ Added testName
-      projectId: task.projectId,
-      organizationId: task.organizationId,
-      runType: isMonitorExecution ? 'monitor' : 'playwright_test',
-    } as const;
 
     // Check concurrency limits (unless bypassed for monitors)
     if (
@@ -378,26 +366,11 @@ export class ExecutionService implements OnModuleDestroy {
       }
 
       // 4. Execute the test script using container-only execution with timeout
-      // No wrapper span - processor already created span
-      const activeSpan = trace.getActiveSpan();
-      if (activeSpan) {
-        activeSpan.setAttribute('playwright.execution_id', uniqueRunId);
-        activeSpan.setAttribute('playwright.is_monitor_execution', isMonitorExecution);
-        activeSpan.setAttribute('playwright.test_id', testId ?? 'unknown');
-        activeSpan.setAttribute('playwright.extracted_reports_dir', extractedReportsDir);
-      }
-
       const execResult = await this._executePlaywrightNativeRunner(
         testScript,
         extractedReportsDir,
         false,
-        telemetryCtx,
       );
-
-      if (activeSpan && typeof execResult.executionTimeMs === 'number') {
-        activeSpan.setAttribute('playwright.execution_ms', execResult.executionTimeMs);
-        activeSpan.setAttribute('playwright.success', execResult.success);
-      }
 
       // 5. Process result and upload report
       let finalStatus: 'passed' | 'failed' = 'failed'; // Default to failed
@@ -447,14 +420,7 @@ export class ExecutionService implements OnModuleDestroy {
           error: null,
           executionTimeMs: execResult.executionTimeMs,
         };
-        emitTelemetryLog({
-          message: `[Playwright Test] ${testId} passed`,
-          ctx: telemetryCtx,
-          attributes: {
-            'playwright.execution_ms': execResult.executionTimeMs ?? 0,
-            'playwright.report_url': s3Url ?? '',
-          },
-        });
+        this.logger.log(`[Playwright Test] ${testId} passed (${execResult.executionTimeMs ?? 0}ms)`);
       } else {
         // Playwright execution failed
         const specificError =
@@ -514,16 +480,7 @@ export class ExecutionService implements OnModuleDestroy {
           stderr: execResult.stderr,
           executionTimeMs: execResult.executionTimeMs,
         };
-        emitTelemetryLog({
-          message: `[Playwright Test] ${testId} failed`,
-          ctx: telemetryCtx,
-          severity: SeverityNumber.ERROR,
-          attributes: {
-            'playwright.execution_ms': execResult.executionTimeMs ?? 0,
-            'playwright.report_url': s3Url ?? '',
-          },
-          error: specificError,
-        });
+        this.logger.error(`[Playwright Test] ${testId} failed: ${specificError} (${execResult.executionTimeMs ?? 0}ms)`);
 
         // <<< REMOVED: Do not throw error here; return the result object >>>
         // throw new Error(specificError); // OLD WAY
@@ -558,12 +515,7 @@ export class ExecutionService implements OnModuleDestroy {
         stdout: '',
         stderr: (error as Error).stack || (error as Error).message,
       };
-      emitTelemetryLog({
-        message: `[Playwright Test] ${testId} crashed`,
-        ctx: telemetryCtx,
-        severity: SeverityNumber.ERROR,
-        error,
-      });
+      this.logger.error(`[Playwright Test] ${testId} crashed: ${(error as Error).message}`);
       // Propagate the error to the BullMQ processor so the job is marked as failed
       throw error;
     } finally {
@@ -596,14 +548,6 @@ export class ExecutionService implements OnModuleDestroy {
    */
   async runJob(task: JobExecutionTask): Promise<TestExecutionResult> {
     const { runId, testScripts } = task;
-    const jobTelemetryCtx = {
-      runId,
-      jobId: task.jobId ?? undefined,
-      jobName: task.jobName, // ✅ Added jobName
-      projectId: task.projectId,
-      organizationId: task.organizationId,
-      runType: 'playwright_job' as const,
-    };
 
     if (task.jobType === 'k6') {
       throw new Error(
@@ -759,14 +703,6 @@ export class ExecutionService implements OnModuleDestroy {
         additionalFiles[fileName] = content;
       });
 
-      // No wrapper span - processor already created span
-      const activeSpan = trace.getActiveSpan();
-      if (activeSpan) {
-        activeSpan.setAttribute('playwright.execution_id', uniqueRunId);
-        activeSpan.setAttribute('playwright.job_test_count', Object.keys(preparedScripts).length);
-        activeSpan.setAttribute('playwright.extracted_reports_dir', extractedReportsDir);
-      }
-
       const execResult = await this._executePlaywrightNativeRunner(
         {
           scriptContent: mainContent,
@@ -774,7 +710,6 @@ export class ExecutionService implements OnModuleDestroy {
         },
         extractedReportsDir,
         true,
-        jobTelemetryCtx,
         additionalFiles, // Pass additional test files to execute in container
       );
 
@@ -866,17 +801,7 @@ export class ExecutionService implements OnModuleDestroy {
 
       // Store final run result
       await this.dbService.updateRunStatus(runId, finalStatus, durationStr);
-      emitTelemetryLog({
-        message: `[Playwright Job] ${runId} ${finalStatus}`,
-        ctx: jobTelemetryCtx,
-        severity: finalStatus === 'passed' ? SeverityNumber.INFO : SeverityNumber.ERROR,
-        attributes: {
-          'playwright.job_duration_ms': durationMs,
-          'playwright.job_report_url': s3Url ?? '',
-          'playwright.job_total_tests': testScripts.length,
-        },
-        error: finalError ?? undefined,
-      });
+      this.logger.log(`[Playwright Job] ${runId} ${finalStatus} (${durationMs}ms, ${testScripts.length} tests)`);
     } catch (error) {
       this.logger.error(
         `[${runId}] Unhandled error during job execution: ${(error as Error).message}`,
@@ -911,12 +836,7 @@ export class ExecutionService implements OnModuleDestroy {
         stdout: stdout_log,
         stderr: stderr_log + ((error as Error).stack || ''),
       };
-      emitTelemetryLog({
-        message: `[Playwright Job] ${runId} crashed`,
-        ctx: jobTelemetryCtx,
-        severity: SeverityNumber.ERROR,
-        error,
-      });
+      this.logger.error(`[Playwright Job] ${runId} crashed: ${(error as Error).message}`);
       throw error;
     } finally {
       // Remove from active executions
@@ -946,33 +866,21 @@ export class ExecutionService implements OnModuleDestroy {
    * Execute a Playwright test using the native binary
    * @param runDir The base directory for this specific run where test files are located
    * @param isJob Whether this is a job execution (multiple tests)
-   * @param telemetryCtx Optional telemetry context - if provided, we're already in a span
    */
   /**
    * Executes Playwright test(s) in container-only mode
    * @param testScript - Script content and filename for inline container execution
    * @param extractedReportsDir - Host directory where container reports will be extracted
    * @param isJob - Whether this is a job (multiple tests) or single test
-   * @param telemetryCtx - Optional telemetry context
    * @param additionalFiles - Additional test files for job execution
    */
   private async _executePlaywrightNativeRunner(
     testScript: { scriptContent: string; fileName: string },
     extractedReportsDir: string,
     isJob: boolean = false,
-    telemetryCtx?: any,
     additionalFiles?: Record<string, string>,
   ): Promise<PlaywrightExecutionResult> {
-    // If telemetryCtx provided, we're already in processor's span
-    if (telemetryCtx) {
-      return this.executePlaywrightDirectly(testScript, extractedReportsDir, isJob, additionalFiles);
-    }
-
-    // No context - create fallback span for direct calls
-    const spanName = isJob ? 'playwright.native.job' : 'playwright.native.single';
-    return createSpan(spanName, async (span) => {
-      return this.executePlaywrightDirectly(testScript, extractedReportsDir, isJob, additionalFiles);
-    });
+    return this.executePlaywrightDirectly(testScript, extractedReportsDir, isJob, additionalFiles);
   }
 
   /**
@@ -1092,111 +1000,6 @@ export class ExecutionService implements OnModuleDestroy {
         }
       }
 
-      // Add attributes to active span (processor's span)
-      const activeSpan = trace.getActiveSpan();
-      if (activeSpan) {
-        activeSpan.setAttribute('playwright.execution_id', executionId);
-        activeSpan.setAttribute('playwright.command', command);
-        activeSpan.setAttribute('playwright.success', execResult.success);
-        activeSpan.setAttribute('playwright.stdout_length', execResult.stdout.length);
-        activeSpan.setAttribute('playwright.stderr_length', execResult.stderr.length);
-      }
-
-      // Create individual test spans from JSON results (for jobs with multiple tests)
-      // JSON results are in extracted reports directory after docker cp
-      let jsonResultsPath = this.mapTmpPathToExtracted(
-        containerJsonResults,
-        extractedReportsDir,
-      );
-
-      let hasJsonResults = await this.fileExists(jsonResultsPath);
-      if (!hasJsonResults) {
-        const fallbackJsonPath = await findFirstFileByNames(
-          extractedReportsDir,
-          ['results.json', 'test-results.json', 'report.json', 'playwright-report.json'],
-          { maxDepth: 12 },
-        );
-        if (fallbackJsonPath) {
-          this.logger.warn(
-            `[${executionId}] Playwright JSON results relocated to ${fallbackJsonPath}`,
-          );
-          jsonResultsPath = fallbackJsonPath;
-          hasJsonResults = true;
-        } else {
-          await this.logExtractedDirectory(
-            extractedReportsDir,
-            `[${executionId}] Unable to locate Playwright JSON results under extracted reports`,
-          );
-        }
-      }
-
-      this.logger.log(
-        `[${executionId}] DEBUG: isJob=${isJob}, activeSpan=${activeSpan ? 'present' : 'null'}, jsonResultsPath=${jsonResultsPath}`,
-      );
-
-      if (isJob && activeSpan) {
-        try {
-          this.logger.log(
-            `[${executionId}] Attempting to create individual test spans from JSON results at: ${jsonResultsPath}`,
-          );
-
-          // Import dynamically to avoid circular dependencies
-          const { createSpansFromPlaywrightResults, hasPlaywrightJsonResults } = await import(
-            '../../observability/playwright-test-spans'
-          );
-
-          const finalHasResults = await hasPlaywrightJsonResults(jsonResultsPath);
-          this.logger.log(
-            `[${executionId}] JSON results file exists: ${finalHasResults}`,
-          );
-
-          if (finalHasResults) {
-            // Extract telemetry context from active span attributes
-            const attributes: any = {};
-
-            // Get Supercheck context from span attributes if available
-            const spanAttrs = (activeSpan as any).attributes || {};
-            attributes.runId = spanAttrs['sc.run_id'];
-            attributes.jobId = spanAttrs['sc.job_id'];
-            attributes.runType = spanAttrs['sc.run_type'];
-            attributes.projectId = spanAttrs['sc.project_id'];
-            attributes.organizationId = spanAttrs['sc.organization_id'];
-
-            this.logger.log(
-              `[${executionId}] Calling createSpansFromPlaywrightResults with parent span`,
-            );
-
-            // Pass the active span explicitly to ensure proper parent linkage
-            const spanCount = await createSpansFromPlaywrightResults(
-              jsonResultsPath,
-              attributes,
-              activeSpan,
-            );
-            this.logger.log(
-              `[${executionId}] ✅ Created ${spanCount} individual test spans from Playwright results`,
-            );
-
-            // NOTE: Network Events API span creation is disabled (see NODE_OPTIONS comment above)
-            // Network instrumentation requires a different approach that doesn't rely on
-            // test.beforeEach() in globally required modules.
-          } else {
-            this.logger.warn(
-              `[${executionId}] ❌ Playwright JSON results file not found at ${jsonResultsPath}`,
-            );
-          }
-        } catch (error) {
-          this.logger.error(
-            `[${executionId}] ❌ Failed to create individual test spans: ${(error as Error).message}`,
-            (error as Error).stack,
-          );
-          // Don't fail the execution if span creation fails
-        }
-      } else {
-        this.logger.log(
-          `[${executionId}] Skipping child span creation: isJob=${isJob}, activeSpan=${activeSpan ? 'present' : 'null'}`,
-        );
-      }
-
       return {
         success: execResult.success,
         error: extractedError, // Use the extracted error message
@@ -1205,12 +1008,6 @@ export class ExecutionService implements OnModuleDestroy {
         executionTimeMs: execResult.executionTimeMs,
       };
     } catch (error) {
-      const activeSpan = trace.getActiveSpan();
-      if (activeSpan) {
-        activeSpan.setAttribute('playwright.execution_id', executionId);
-        activeSpan.setAttribute('playwright.success', false);
-        activeSpan.setAttribute('error.message', (error as Error).message);
-      }
       return {
         success: false,
         error: (error as Error).message,

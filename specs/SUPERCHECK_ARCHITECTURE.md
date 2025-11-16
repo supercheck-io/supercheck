@@ -44,7 +44,7 @@ graph TB
 
     subgraph "💾 Data Layer"
         D1[🗄️ PostgreSQL<br/>• Primary Database<br/>• ACID Transactions<br/>• Complex Queries<br/>• Data Integrity<br/>• Status Page Tables]
-        D2[📦 MinIO/S3 Storage<br/>• Test Artifacts<br/>• HTML Reports<br/>• Screenshots/Videos<br/>• Trace Files<br/>• Status Page Assets]
+        D2[📦 MinIO/S3 Storage<br/>• Test Artifacts<br/>• HTML Reports<br/>• Screenshots/Videos<br/>• Status Page Assets]
         D3[🔍 Redis Cache<br/>• Query Results<br/>• Session Data<br/>• Temporary Storage<br/>• Performance Boost]
     end
 
@@ -54,7 +54,7 @@ graph TB
         AI3[🛡️ Security Validator<br/>• Code Safety Checks<br/>• Input Sanitization<br/>• Vulnerability Scan]
     end
 
-    subgraph "📊 Monitoring & Observability"
+    subgraph "📊 Monitoring"
         M1[📈 System Metrics<br/>• Performance Monitoring<br/>• Resource Usage<br/>• Error Tracking<br/>• Alerting]
         M2[📝 Audit Logs<br/>• User Actions<br/>• System Events<br/>• Security Monitoring<br/>• Compliance]
         M3[🚨 Health Checks<br/>• Service Status<br/>• Database Health<br/>• Queue Status<br/>• Auto-recovery]
@@ -685,7 +685,7 @@ graph TB
 - **📈 Horizontal Scalability**: Scale out rather than up for better performance
 - **🛡️ Security by Design**: Security considerations built into every layer
 - **🔧 DevOps Integration**: Infrastructure as code, automated deployments
-- **📊 Observability First**: Comprehensive monitoring, logging, and metrics
+- **📊 Monitoring First**: Comprehensive monitoring, logging, and metrics
 
 ### **⚡ Performance Principles**
 

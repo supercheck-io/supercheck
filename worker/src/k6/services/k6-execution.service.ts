@@ -215,10 +215,6 @@ export class K6ExecutionService {
     const { runId, testId, script, location } = task;
     const startTime = Date.now();
 
-    // Capture the active span at the start - this is the processor's span
-    const { trace } = await import('@opentelemetry/api');
-    const parentSpan = trace.getActiveSpan();
-
     const uniqueRunId = `${runId}-${crypto.randomUUID().substring(0, 8)}`;
 
     // Check concurrency and reserve a slot atomically to prevent race condition
@@ -374,100 +370,7 @@ export class K6ExecutionService {
         );
       }
 
-      // 5a. Create individual spans from K6 summary (HTTP requests, checks, VUs)
-      this.logger.log(
-        `[${runId}] DEBUG: summary=${summary ? 'present' : 'null'}, timedOut=${timedOut}, parentSpan=${parentSpan ? 'present' : 'null'}`,
-      );
-
-      if (summary && !timedOut && parentSpan) {
-        try {
-          this.logger.log(
-            `[${runId}] Attempting to create K6 internal spans from summary.json at ${summaryPath}`,
-          );
-
-          // Import dynamically to avoid circular dependencies
-          const { createSpansFromK6Summary, hasK6Summary } = await import(
-            '../../observability/k6-test-spans'
-          );
-
-          // Extract telemetry context from task data
-          const telemetryCtx = {
-            runId: task.runId,
-            testId: task.testId,
-            jobId: task.jobId ?? undefined,
-            projectId: task.projectId,
-            organizationId: task.organizationId,
-            runType: task.jobId ? 'k6_job' : 'k6_test',
-          };
-
-          this.logger.log(
-            `[${runId}] Calling createSpansFromK6Summary with parent span`,
-          );
-
-          // Pass the parent span and start time explicitly to ensure proper timing
-          const spanCount = await createSpansFromK6Summary(
-            summaryPath,
-            telemetryCtx,
-            parentSpan,
-            startTime, // Actual execution start time for accurate span timing
-          );
-          this.logger.log(
-            `[${runId}] ✅ Created ${spanCount} K6 internal spans from summary`,
-          );
-
-          // Create detailed network request spans from JSON output
-          try {
-            const { createSpansFromK6JSON } = await import(
-              '../../observability/k6-json-parser'
-            );
-
-            const jsonOutputPath = path.join(extractedReportsDir, jsonOutputFileName);
-            this.logger.log(
-              `[${runId}] Attempting to create detailed network spans from JSON output at ${jsonOutputPath}`,
-            );
-
-            const networkSpanCount = await createSpansFromK6JSON(
-              jsonOutputPath,
-              telemetryCtx,
-              parentSpan,
-              startTime,
-              {
-                aggregateByEndpoint: true, // Aggregate requests by endpoint pattern
-                includeScenarios: true, // Include scenario-level spans
-                includeChecks: true, // Include check result spans
-                sampleSlowRequests: 10, // Sample top 10 slowest requests
-                sampleFailedRequests: true, // Include all failed requests
-              },
-            );
-
-            if (networkSpanCount > 0) {
-              this.logger.log(
-                `[${runId}] ✅ Created ${networkSpanCount} detailed network spans from K6 JSON output`,
-              );
-            } else {
-              this.logger.debug(
-                `[${runId}] No network spans created from JSON output (file may be empty or not found)`,
-              );
-            }
-          } catch (jsonError) {
-            this.logger.warn(
-              `[${runId}] Failed to create network spans from K6 JSON: ${getErrorMessage(jsonError)}`,
-            );
-            // Don't fail the execution if JSON span creation fails
-          }
-        } catch (error) {
-          this.logger.error(
-            `[${runId}] ❌ Failed to create K6 internal spans: ${getErrorMessage(error)}`,
-          );
-          // Don't fail the execution if span creation fails
-        }
-      } else {
-        this.logger.log(
-          `[${runId}] Skipping K6 child span creation: summary=${summary ? 'present' : 'null'}, timedOut=${timedOut}, parentSpan=${parentSpan ? 'present' : 'null'}`,
-        );
-      }
-
-      // 5b. HTML report is extracted from container
+      // 5. HTML report is extracted from container
       // Verify that k6 generated the HTML report when execution finished normally
       const reportDir = path.join(extractedReportsDir, reportDirName);
       await fs.mkdir(reportDir, { recursive: true });
