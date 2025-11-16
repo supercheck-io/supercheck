@@ -24,10 +24,9 @@ import {
   UserCog,
   Tally4,
   type LucideIcon,
-  RefreshCw,
-  ChartNoAxesGantt,
-  ChartPie,
   Logs,
+  GitBranch,
+  ClipboardList,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -73,19 +72,9 @@ const data = {
 
   Observe: [
     {
-      title: "Traces",
+      title: "Observability",
       url: "/observability/traces",
-      icon: ChartNoAxesGantt,
-    },
-    {
-      title: "Logs",
-      url: "/observability/logs",
-      icon: Logs,
-    },
-    {
-      title: "Metrics",
-      url: "/observability/metrics",
-      icon: ChartPie,
+      icon: GitBranch,
     },
   ],
 
@@ -155,7 +144,7 @@ const data = {
     {
       title: "Runs",
       url: "/runs",
-      icon: RefreshCw,
+      icon: ClipboardList,
     },
     {
       title: "Variables",

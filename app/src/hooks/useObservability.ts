@@ -16,6 +16,8 @@ import type {
   ServiceMetrics,
   RunObservabilityResponse,
   ContextualMetricsResponse,
+  ServiceMapData,
+  TimeRange,
 } from "~/types/observability";
 
 // ============================================================================
@@ -336,6 +338,31 @@ export function useContextualMetrics(
     enabled: !!entityId && options?.enabled !== false,
     staleTime: 60000,
     refetchInterval: options?.refetchInterval,
+  });
+}
+
+/**
+ * Get service map data
+ */
+export function useServiceMap(timeRange: TimeRange, options?: { enabled?: boolean; refetchInterval?: number }) {
+  return useQuery({
+    queryKey: ["observability", "service-map", timeRange],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.append("start", timeRange.start);
+      params.append("end", timeRange.end);
+
+      const response = await fetch(`/api/observability/service-map?${params.toString()}`);
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch service map");
+      }
+
+      return response.json() as Promise<ServiceMapData>;
+    },
+    enabled: options?.enabled !== false,
+    refetchInterval: options?.refetchInterval,
+    staleTime: 60000, // 1 minute
   });
 }
 
