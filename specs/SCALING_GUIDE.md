@@ -545,4 +545,3 @@ WORKER_REPLICAS=4 MAX_CONCURRENT_EXECUTIONS=1 RUNNING_CAPACITY=4 docker-compose 
 For more information, see:
 - [Test Execution Flow](TEST_EXECUTION_AND_JOB_QUEUE_FLOW.md)
 - [Security Documentation](SECURITY_IMPLEMENTATION_PLAN.md)
-- [Observability Guide](OBSERVABILITY.md)

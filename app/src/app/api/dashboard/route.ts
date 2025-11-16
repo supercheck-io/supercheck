@@ -6,7 +6,6 @@ import { subDays, subHours } from "date-fns";
 import { getQueueStats } from "@/lib/queue-stats";
 import { hasPermission } from '@/lib/rbac/middleware';
 import { requireProjectContext } from '@/lib/project-context';
-import { buildProjectObservabilitySnapshot } from "~/lib/observability/analytics";
 
 export async function GET() {
   try {
@@ -320,12 +319,6 @@ export async function GET() {
       .groupBy(sql`DATE(${auditLogs.createdAt})`)
       .orderBy(sql`DATE(${auditLogs.createdAt})`);
 
-    const observabilitySnapshot = await buildProjectObservabilitySnapshot({
-      projectId: targetProjectId,
-      organizationId,
-      lookbackMinutes: 60,
-    });
-
     // Calculate total execution time with accuracy
     const totalExecutionTimeCalculation = (() => {
       const errors: string[] = [];
@@ -615,8 +608,6 @@ export async function GET() {
         playgroundExecutionsTrend: playgroundExecutionsTrend
       },
 
-      observability: observabilitySnapshot,
-      
       // System Health
       system: {
         timestamp: now.toISOString(),
