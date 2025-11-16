@@ -3,17 +3,11 @@
   "icon": "Activity",
   "defaultOpen": true,
   "pages": [
-    {
-      "title": "Create",
-      "icon": "Plus",
-      "pages": [
-        "http-monitor",
-        "website-monitor",
-        "ping-monitor",
-        "port-monitor",
-        "synthetic-monitor"
-      ]
-    },
+    "http-monitor",
+    "website-monitor",
+    "ping-monitor",
+    "port-monitor",
+    "synthetic-monitor",
     "monitors"
   ]
 }
