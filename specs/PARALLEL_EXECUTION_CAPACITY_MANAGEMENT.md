@@ -7,6 +7,7 @@
 - [Implementation Details](#implementation-details)
 - [Advanced Features](#advanced-features)
 - [Production Configuration](#production-configuration)
+- [Performance Monitoring](#performance-monitoring)
 - [Benefits](#benefits)
 
 This document outlines Supercheck's sophisticated parallel execution system that provides real-time visibility into test and job execution while enforcing configurable capacity limits to ensure system stability and optimal resource utilization.
@@ -237,7 +238,7 @@ Real-time updates through SSE connections:
 - Worker process optimization
 - Database connection pooling
 
-### Monitoring and Observability
+### Performance Monitoring
 
 **Metrics Collection:**
 - Capacity utilization metrics
