@@ -1,6 +1,6 @@
 /**
  * Service Map Page
- * Displays service topology and dependencies
+ * Displays service topology and dependencies with enhanced visualization
  */
 
 "use client";
@@ -19,11 +19,17 @@ import {
 import { useServiceMap } from "~/hooks/useObservability";
 import { ServiceMapSkeleton } from "~/components/observability/loading-skeleton";
 import { ServiceMapCytoscape } from "~/components/observability/service-map-cytoscape";
-import { Activity, RefreshCw } from "lucide-react";
+import { ServiceDetailsPanel } from "~/components/observability/service-details-panel";
+import { ServiceListView } from "~/components/observability/service-list-view";
+import { Activity, RefreshCw, Grid3x3, List } from "lucide-react";
 import type { TimeRange } from "~/types/observability";
+
+type ViewMode = "topology" | "list";
 
 export default function ServiceMapPage() {
   const [timeRangePreset, setTimeRangePreset] = useState("1h");
+  const [selectedService, setSelectedService] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("topology");
 
   const timeRange: TimeRange = useMemo(() => {
     const end = new Date();
@@ -57,8 +63,7 @@ export default function ServiceMapPage() {
   });
 
   const handleServiceClick = useCallback((serviceName: string) => {
-    // Can be used to navigate to service details or filter
-    console.log("Clicked service:", serviceName);
+    setSelectedService(serviceName);
   }, []);
 
   if (isLoading) {
@@ -70,17 +75,53 @@ export default function ServiceMapPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
-      {/* Unified Filters Bar - consistent with Traces and Logs */}
+      {/* Enhanced Filters Bar */}
       <div className="border-b bg-muted/30">
         <div className="flex items-center gap-2 flex-wrap px-4 py-3">
-          {/* Count badge */}
+          {/* Count badges */}
           <Badge variant="secondary" className="text-xs font-medium whitespace-nowrap">
             {nodes.length} services
           </Badge>
 
+          <Badge
+            variant="outline"
+            className="text-xs whitespace-nowrap"
+          >
+            {nodes.filter(n => n.errorRate >= 10).length} critical
+          </Badge>
+
+          <Badge
+            variant="outline"
+            className="text-xs whitespace-nowrap"
+          >
+            {nodes.filter(n => n.errorRate >= 1 && n.errorRate < 10).length} warning
+          </Badge>
+
+          {/* View mode toggle */}
+          <div className="flex gap-1 border rounded-lg p-1 ml-4 bg-white dark:bg-slate-950">
+            <Button
+              variant={viewMode === "topology" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 px-3 text-xs gap-1"
+              onClick={() => setViewMode("topology")}
+            >
+              <Grid3x3 className="h-3.5 w-3.5" />
+              Topology
+            </Button>
+            <Button
+              variant={viewMode === "list" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 px-3 text-xs gap-1"
+              onClick={() => setViewMode("list")}
+            >
+              <List className="h-3.5 w-3.5" />
+              List
+            </Button>
+          </div>
+
           {/* Time range */}
           <Select value={timeRangePreset} onValueChange={setTimeRangePreset}>
-            <SelectTrigger className="h-8 w-32 text-xs">
+            <SelectTrigger className="h-8 w-32 text-xs ml-4">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -104,9 +145,9 @@ export default function ServiceMapPage() {
         </div>
       </div>
 
-      {/* Main content area - Interactive Cytoscape Service Map */}
+      {/* Main content area */}
       {nodes.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center bg-white">
+        <div className="flex-1 flex items-center justify-center bg-white dark:bg-slate-950">
           <Card className="w-96">
             <CardContent className="flex flex-col items-center justify-center pt-8">
               <Activity className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -116,12 +157,28 @@ export default function ServiceMapPage() {
             </CardContent>
           </Card>
         </div>
+      ) : viewMode === "topology" ? (
+        <>
+          <ServiceMapCytoscape
+            nodes={nodes}
+            edges={edges}
+            onServiceClick={handleServiceClick}
+          />
+          <ServiceDetailsPanel
+            service={nodes.find(n => n.serviceName === selectedService) || null}
+            allServices={nodes}
+            edges={edges}
+            onClose={() => setSelectedService(null)}
+          />
+        </>
       ) : (
-        <ServiceMapCytoscape
-          nodes={nodes}
-          edges={edges}
-          onServiceClick={handleServiceClick}
-        />
+        <div className="flex-1 overflow-auto p-4">
+          <ServiceListView
+            services={nodes}
+            onServiceSelect={handleServiceClick}
+            selectedService={selectedService}
+          />
+        </div>
       )}
     </div>
   );
