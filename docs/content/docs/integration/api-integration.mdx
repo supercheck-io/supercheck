@@ -1,0 +1,133 @@
+---
+title: API Integration
+description: Trigger jobs and access test results via REST API
+icon: Code
+---
+
+Use Supercheck's REST API to trigger tests programmatically, retrieve results, and integrate with your custom workflows.
+
+## Authentication
+
+All API requests require authentication using Bearer tokens (API keys).
+
+### Creating an API Key
+
+<Steps>
+  <Step>Navigate to your Job's **API Keys** tab</Step>
+  <Step>Click **Create API Key**</Step>
+  <Step>Provide a descriptive name</Step>
+  <Step>Copy the generated key (shown only once!)</Step>
+  <Step>Store securely in your secrets manager</Step>
+</Steps>
+
+### Using API Keys
+
+Include the API key in the `Authorization` header:
+
+```bash
+Authorization: Bearer YOUR_API_KEY
+```
+
+## Trigger Job
+
+Trigger a job execution remotely.
+
+**Endpoint**: `POST /api/jobs/{job_id}/trigger`
+
+**Request**:
+```bash
+curl -X POST https://app.supercheck.io/api/jobs/{job-id}/trigger \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "run_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "status": "pending"
+}
+```
+
+## Get Run Status
+
+Check the status of a specific run.
+
+**Endpoint**: `GET /api/runs/{run_id}`
+
+**Request**:
+```bash
+curl https://app.supercheck.io/api/runs/{run-id} \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+**Response**:
+```json
+{
+  "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "status": "completed",
+  "result": "passed",
+  "duration_ms": 160000,
+  "tests": {
+    "total": 10,
+    "passed": 10,
+    "failed": 0
+  }
+}
+```
+
+## Example: Trigger and Wait
+
+```bash
+#!/bin/bash
+
+JOB_ID="your-job-id"
+API_KEY="your-api-key"
+
+# Trigger the job
+RESPONSE=$(curl -s -X POST "https://app.supercheck.io/api/jobs/${JOB_ID}/trigger" \
+  -H "Authorization: Bearer ${API_KEY}")
+
+RUN_ID=$(echo $RESPONSE | jq -r '.run_id')
+echo "Run ID: ${RUN_ID}"
+
+# Poll for completion
+while true; do
+  STATUS=$(curl -s "https://app.supercheck.io/api/runs/${RUN_ID}" \
+    -H "Authorization: Bearer ${API_KEY}" \
+    | jq -r '.status')
+
+  if [ "$STATUS" = "completed" ]; then
+    echo "Run completed successfully"
+    exit 0
+  elif [ "$STATUS" = "failed" ]; then
+    echo "Run failed"
+    exit 1
+  fi
+
+  echo "Status: ${STATUS}, waiting..."
+  sleep 5
+done
+```
+
+## Rate Limiting
+
+API requests are rate limited:
+- **Default Limit**: 100 requests per hour per API key
+- **Burst Limit**: 10 requests per minute
+
+Headers:
+```
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 1642252800
+```
+
+## Error Codes
+
+| Status Code | Description | Solution |
+|-------------|-------------|----------|
+| `401` | Unauthorized | Verify API key is valid |
+| `404` | Not Found | Check job ID is correct |
+| `429` | Rate Limited | Reduce request frequency |
+| `500` | Server Error | Retry with exponential backoff |
