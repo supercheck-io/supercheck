@@ -35,7 +35,6 @@ RUN --mount=type=cache,target=/root/.npm \
     npm ci --legacy-peer-deps --no-audit --no-fund
 
 # Build the Next.js application
-ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 ENV NODE_ENV=production
 
@@ -59,7 +58,6 @@ LABEL org.opencontainers.image.title="Supercheck App"
 LABEL org.opencontainers.image.description="Next.js frontend service for Supercheck - A comprehensive automation & monitoring platform for modern apps. Includes dashboard, job scheduling, test execution, and monitoring capabilities with multi-tenant support."
 
 ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
 
 # Create user
 RUN groupadd --system --gid 1001 nodejs && \

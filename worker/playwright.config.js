@@ -51,9 +51,6 @@ console.log(`Worker Count: ${getOptimalWorkerCount()}`);
 module.exports = defineConfig({
   testDir: testDir,
 
-  /* Global setup for Network Events API instrumentation */
-  globalSetup: require.resolve('./playwright-global-setup.js'),
-
   /* Optimized parallel execution aligned with execution service */
   fullyParallel: true,
 
@@ -86,7 +83,7 @@ module.exports = defineConfig({
         // Use env var for dynamic output path set per execution
         outputFile: jsonOutputFile,
       },
-    ], // Generate JSON for observability spans
+    ], 
   ],
 
   /* Timeouts aligned with execution service limits */
