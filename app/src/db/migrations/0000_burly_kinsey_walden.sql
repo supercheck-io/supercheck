@@ -591,99 +591,6 @@ CREATE TABLE "status_pages" (
 	CONSTRAINT "status_pages_subdomain_unique" UNIQUE("subdomain")
 );
 --> statement-breakpoint
-CREATE TABLE "observability_alert_incidents" (
-	"id" uuid PRIMARY KEY NOT NULL,
-	"alert_rule_id" uuid NOT NULL,
-	"organization_id" uuid NOT NULL,
-	"status" varchar(20) NOT NULL,
-	"triggered_value" jsonb,
-	"related_trace_ids" jsonb,
-	"metadata" jsonb,
-	"triggered_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"resolved_at" timestamp with time zone,
-	"notifications_sent" boolean DEFAULT false
-);
---> statement-breakpoint
-CREATE TABLE "observability_alert_rules" (
-	"id" uuid PRIMARY KEY NOT NULL,
-	"organization_id" uuid NOT NULL,
-	"project_id" uuid,
-	"created_by_user_id" uuid NOT NULL,
-	"name" varchar(255) NOT NULL,
-	"description" text,
-	"rule_type" varchar(50) NOT NULL,
-	"condition" jsonb NOT NULL,
-	"threshold" jsonb NOT NULL,
-	"evaluation_window" varchar(20) NOT NULL,
-	"notification_channels" jsonb,
-	"severity" varchar(20) NOT NULL,
-	"is_enabled" boolean DEFAULT true,
-	"last_evaluated_at" timestamp with time zone,
-	"last_triggered_at" timestamp with time zone,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
-CREATE TABLE "observability_dashboards" (
-	"id" uuid PRIMARY KEY NOT NULL,
-	"organization_id" uuid NOT NULL,
-	"project_id" uuid,
-	"created_by_user_id" uuid NOT NULL,
-	"name" varchar(255) NOT NULL,
-	"description" text,
-	"layout" jsonb NOT NULL,
-	"time_range" jsonb,
-	"refresh_interval" integer,
-	"is_default" boolean DEFAULT false,
-	"is_shared" boolean DEFAULT false,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
-CREATE TABLE "observability_saved_queries" (
-	"id" uuid PRIMARY KEY NOT NULL,
-	"organization_id" uuid NOT NULL,
-	"project_id" uuid,
-	"created_by_user_id" uuid NOT NULL,
-	"name" varchar(255) NOT NULL,
-	"description" text,
-	"query_type" varchar(50) NOT NULL,
-	"filters" jsonb NOT NULL,
-	"is_pinned" boolean DEFAULT false,
-	"is_shared" boolean DEFAULT false,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
-CREATE TABLE "observability_service_catalog" (
-	"id" uuid PRIMARY KEY NOT NULL,
-	"organization_id" uuid NOT NULL,
-	"project_id" uuid,
-	"service_name" varchar(255) NOT NULL,
-	"display_name" varchar(255),
-	"description" text,
-	"owner" varchar(255),
-	"repository_url" text,
-	"docs_url" text,
-	"metadata" jsonb,
-	"last_seen_at" timestamp with time zone,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
-CREATE TABLE "observability_trace_bookmarks" (
-	"id" uuid PRIMARY KEY NOT NULL,
-	"organization_id" uuid NOT NULL,
-	"project_id" uuid,
-	"user_id" uuid NOT NULL,
-	"trace_id" varchar(32) NOT NULL,
-	"notes" text,
-	"tags" jsonb,
-	"run_id" varchar(255),
-	"run_type" varchar(50),
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
 ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "account" ADD CONSTRAINT "account_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -766,22 +673,6 @@ ALTER TABLE "status_page_subscribers" ADD CONSTRAINT "status_page_subscribers_st
 ALTER TABLE "status_pages" ADD CONSTRAINT "status_pages_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "status_pages" ADD CONSTRAINT "status_pages_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "status_pages" ADD CONSTRAINT "status_pages_created_by_user_id_user_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_alert_incidents" ADD CONSTRAINT "observability_alert_incidents_alert_rule_id_observability_alert_rules_id_fk" FOREIGN KEY ("alert_rule_id") REFERENCES "public"."observability_alert_rules"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_alert_incidents" ADD CONSTRAINT "observability_alert_incidents_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_alert_rules" ADD CONSTRAINT "observability_alert_rules_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_alert_rules" ADD CONSTRAINT "observability_alert_rules_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_alert_rules" ADD CONSTRAINT "observability_alert_rules_created_by_user_id_user_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_dashboards" ADD CONSTRAINT "observability_dashboards_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_dashboards" ADD CONSTRAINT "observability_dashboards_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_dashboards" ADD CONSTRAINT "observability_dashboards_created_by_user_id_user_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_saved_queries" ADD CONSTRAINT "observability_saved_queries_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_saved_queries" ADD CONSTRAINT "observability_saved_queries_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_saved_queries" ADD CONSTRAINT "observability_saved_queries_created_by_user_id_user_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_service_catalog" ADD CONSTRAINT "observability_service_catalog_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_service_catalog" ADD CONSTRAINT "observability_service_catalog_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_trace_bookmarks" ADD CONSTRAINT "observability_trace_bookmarks_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_trace_bookmarks" ADD CONSTRAINT "observability_trace_bookmarks_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "observability_trace_bookmarks" ADD CONSTRAINT "observability_trace_bookmarks_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "account_user_id_idx" ON "account" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "account_provider_account_idx" ON "account" USING btree ("provider_id","account_id");--> statement-breakpoint
 CREATE INDEX "apikey_key_idx" ON "apikey" USING btree ("key");--> statement-breakpoint
@@ -824,18 +715,4 @@ CREATE INDEX "monitor_results_monitor_location_checked_idx" ON "monitor_results"
 CREATE UNIQUE INDEX "tags_project_name_idx" ON "tags" USING btree ("project_id","name");--> statement-breakpoint
 CREATE UNIQUE INDEX "reports_entity_type_id_idx" ON "reports" USING btree ("entity_type","entity_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "postmortems_incident_idx" ON "postmortems" USING btree ("incident_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "status_page_metrics_date_component_idx" ON "status_page_metrics" USING btree ("status_page_id","component_id","date");--> statement-breakpoint
-CREATE INDEX "obs_alert_incidents_rule_idx" ON "observability_alert_incidents" USING btree ("alert_rule_id");--> statement-breakpoint
-CREATE INDEX "obs_alert_incidents_status_idx" ON "observability_alert_incidents" USING btree ("status");--> statement-breakpoint
-CREATE INDEX "obs_alert_incidents_triggered_at_idx" ON "observability_alert_incidents" USING btree ("triggered_at");--> statement-breakpoint
-CREATE INDEX "obs_alert_rules_org_project_idx" ON "observability_alert_rules" USING btree ("organization_id","project_id");--> statement-breakpoint
-CREATE INDEX "obs_alert_rules_enabled_idx" ON "observability_alert_rules" USING btree ("is_enabled");--> statement-breakpoint
-CREATE INDEX "obs_dashboards_org_project_idx" ON "observability_dashboards" USING btree ("organization_id","project_id");--> statement-breakpoint
-CREATE INDEX "obs_dashboards_user_idx" ON "observability_dashboards" USING btree ("created_by_user_id");--> statement-breakpoint
-CREATE INDEX "obs_saved_queries_org_project_idx" ON "observability_saved_queries" USING btree ("organization_id","project_id");--> statement-breakpoint
-CREATE INDEX "obs_saved_queries_user_idx" ON "observability_saved_queries" USING btree ("created_by_user_id");--> statement-breakpoint
-CREATE INDEX "obs_saved_queries_type_idx" ON "observability_saved_queries" USING btree ("query_type");--> statement-breakpoint
-CREATE UNIQUE INDEX "obs_service_catalog_org_service_idx" ON "observability_service_catalog" USING btree ("organization_id","service_name");--> statement-breakpoint
-CREATE INDEX "obs_service_catalog_project_idx" ON "observability_service_catalog" USING btree ("project_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "obs_trace_bookmarks_user_trace_idx" ON "observability_trace_bookmarks" USING btree ("user_id","trace_id");--> statement-breakpoint
-CREATE INDEX "obs_trace_bookmarks_org_project_idx" ON "observability_trace_bookmarks" USING btree ("organization_id","project_id");
+CREATE UNIQUE INDEX "status_page_metrics_date_component_idx" ON "status_page_metrics" USING btree ("status_page_id","component_id","date");

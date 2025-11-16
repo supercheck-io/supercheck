@@ -1,7 +1,7 @@
-Docker Compose Infrastructure + Observability
+Docker Compose Infrastructure
 
-  # Start all infrastructure and observability services (everything except app and worker)
-  docker-compose up -d postgres redis minio clickhouse-observability schema-migrator otel-collector
+  # Start all infrastructure services (everything except app and worker)
+  docker-compose up -d postgres redis minio
 
   # Verify services are running
   docker-compose ps
@@ -10,9 +10,6 @@ Docker Compose Infrastructure + Observability
   - PostgreSQL on port 5432
   - Redis on port 6379
   - MinIO on port 9000 (UI) and 9001 (API)
-  - ClickHouse on port 8124 (HTTP interface for observability data)
-  - Schema Migrator (one-time setup for ClickHouse tables)
-  - OpenTelemetry Collector on ports 4317 (gRPC) and 4318 (HTTP)
 
   Local Development Setup
 
@@ -39,7 +36,6 @@ Docker Compose Infrastructure + Observability
   For /app/.env.local:
   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/supercheck
   REDIS_URL=redis://:supersecure-redis-password-change-this@localhost:6379
-  CLICKHOUSE_URL=http://localhost:8124
 
   For /worker/.env.local:
   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/supercheck
@@ -48,7 +44,7 @@ Docker Compose Infrastructure + Observability
   Useful Commands
 
   # View logs from all infrastructure
-  docker-compose logs -f postgres redis minio clickhouse-observability otel-collector
+  docker-compose logs -f postgres redis minio
 
   # Stop infrastructure (keeps data)
   docker-compose down
@@ -57,6 +53,6 @@ Docker Compose Infrastructure + Observability
   docker-compose down -v
 
   # Restart services
-  docker-compose restart postgres redis minio clickhouse-observability schema-migrator otel-collector
+  docker-compose restart postgres redis minio
 
-  This setup gives you hot reload for both services while all the infrastructure and observability stack stays stable in Docker.
+  This setup gives you hot reload for both services while all the infrastructure stays stable in Docker.
