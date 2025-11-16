@@ -355,11 +355,11 @@ graph LR
 
     classDef start fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     classDef process fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
-    classDef end fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
+    classDef finish fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
 
     class A,B start
     class C,D process
-    class E,F,G,H end
+    class E,F,G,H finish
 ```
 
 ### Span Context Propagation
@@ -1731,6 +1731,597 @@ LIMIT 10
 4. Verify attributes set
 5. Verify span ended
 6. Verify status set correctly
+
+## Distributed Tracing Test Guide
+
+### Complete End-to-End Testing Setup
+
+This section provides step-by-step instructions to test trace propagation between Supercheck and external instrumented applications.
+
+#### Prerequisites
+
+- Docker Desktop running
+- Node.js 20+ installed locally
+- `docker-compose` installed
+- Supercheck repo cloned and in working directory
+
+#### Step 1: Start Observability Infrastructure
+
+```bash
+# From project root
+docker-compose up -d clickhouse-observability schema-migrator otel-collector
+
+# Wait for schema migration to complete
+docker-compose logs -f schema-migrator
+
+# Expected output:
+# schema-migrator | ... Applied migrations successfully
+```
+
+Verify services are healthy:
+
+```bash
+# Check ClickHouse
+curl http://localhost:8124/ping
+# Expected: Ok.
+
+# Check OTel Collector
+curl http://localhost:13133/
+# Expected: 200 OK response
+
+# Check OTel gRPC endpoint
+telnet localhost 4317
+# Expected: Connection successful (Ctrl+C to exit)
+```
+
+#### Step 2: Configure Local Worker Service
+
+Create/update `worker/.env`:
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+ENABLE_WORKER_OBSERVABILITY=true
+OTEL_SERVICE_NAME=supercheck-worker
+OTEL_LOG_LEVEL=error
+OTEL_TRACE_SAMPLE_RATE=1.0
+CLICKHOUSE_URL=http://localhost:8124
+USE_CLICKHOUSE_DIRECT=true
+```
+
+#### Step 3: Configure Local App Service
+
+Create/update `app/.env`:
+
+```bash
+CLICKHOUSE_URL=http://localhost:8124
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+ENABLE_WORKER_OBSERVABILITY=true
+USE_CLICKHOUSE_DIRECT=true
+```
+
+#### Step 4: Create External Instrumented Application
+
+Create a new directory for the test application:
+
+```bash
+mkdir -p ~/test-otel-apps/express-app
+cd ~/test-otel-apps/express-app
+```
+
+**4a. Initialize Express app:**
+
+```bash
+npm init -y
+npm install express
+npm install @opentelemetry/api @opentelemetry/sdk-node \
+  @opentelemetry/auto-instrumentations-node \
+  @opentelemetry/exporter-trace-otlp-grpc \
+  @opentelemetry/resources @opentelemetry/semantic-conventions
+```
+
+**4b. Create `instrumentation.js`:**
+
+```javascript
+const { NodeSDK } = require('@opentelemetry/sdk-node');
+const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
+const { Resource } = require('@opentelemetry/resources');
+const { SEMRESATTRS_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
+
+const sdk = new NodeSDK({
+  resource: new Resource({
+    [SEMRESATTRS_SERVICE_NAME]: 'test-external-api',
+    'sc.organization_id': 'test-org-123',
+    'sc.project_id': 'test-project-456',
+  }),
+  traceExporter: new OTLPTraceExporter({
+    url: 'http://localhost:4317',
+  }),
+  instrumentations: [getNodeAutoInstrumentations()],
+});
+
+sdk.start();
+console.log('[OTel] SDK initialized');
+
+process.on('SIGTERM', () => {
+  sdk.shutdown().then(() => {
+    console.log('[OTel] SDK shut down successfully');
+    process.exit(0);
+  }).catch(err => {
+    console.error('[OTel] Shutdown failed:', err);
+    process.exit(1);
+  });
+});
+```
+
+**4c. Create `app.js`:**
+
+```javascript
+const express = require('express');
+const { trace } = require('@opentelemetry/api');
+const app = express();
+
+const tracer = trace.getTracer('test-external-api');
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
+app.get('/api/users', async (req, res) => {
+  await tracer.startActiveSpan('fetch-users', async (span) => {
+    try {
+      span.setAttribute('http.method', 'GET');
+      span.setAttribute('http.url', '/api/users');
+
+      // Simulate database query
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      span.setStatus({ code: 0 }); // OK
+      res.json({
+        users: [
+          { id: 1, name: 'Alice' },
+          { id: 2, name: 'Bob' },
+        ],
+      });
+    } catch (error) {
+      span.recordException(error);
+      span.setStatus({ code: 2, message: error.message });
+      res.status(500).json({ error: error.message });
+    } finally {
+      span.end();
+    }
+  });
+});
+
+app.get('/api/users/:id', async (req, res) => {
+  await tracer.startActiveSpan('fetch-user', async (span) => {
+    try {
+      span.setAttribute('user.id', req.params.id);
+      span.setAttribute('http.method', 'GET');
+      span.setAttribute('http.url', `/api/users/${req.params.id}`);
+
+      // Simulate DB lookup
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      if (req.params.id === 'fail') {
+        throw new Error('User not found');
+      }
+
+      span.setStatus({ code: 0 });
+      res.json({ userId: req.params.id, name: 'Test User' });
+    } catch (error) {
+      span.recordException(error);
+      span.setStatus({ code: 2, message: error.message });
+      res.status(404).json({ error: error.message });
+    } finally {
+      span.end();
+    }
+  });
+});
+
+app.listen(3100, () => {
+  console.log('✅ External API running on http://localhost:3100');
+  console.log('   - GET /health');
+  console.log('   - GET /api/users');
+  console.log('   - GET /api/users/:id');
+});
+```
+
+**4d. Start the external app:**
+
+```bash
+node --require ./instrumentation.js app.js
+
+# Expected output:
+# [OTel] SDK initialized
+# ✅ External API running on http://localhost:3100
+```
+
+Verify it's responding:
+
+```bash
+curl http://localhost:3100/health
+# Expected: {"status":"ok"}
+
+curl http://localhost:3100/api/users
+# Expected: {"users":[{"id":1,"name":"Alice"},{"id":2,"name":"Bob"}]}
+```
+
+#### Step 5: Create Playwright Test File
+
+Create `tests/distributed-tracing.spec.ts`:
+
+```typescript
+import { test, expect } from '@playwright/test';
+
+test.describe('Distributed Tracing Tests', () => {
+  const externalApiUrl = 'http://host.docker.internal:3100';
+
+  test('should trace external API call for users list', async ({ page }) => {
+    const response = await page.goto(
+      `${externalApiUrl}/api/users`,
+      { waitUntil: 'networkidle' }
+    );
+
+    expect(response?.status()).toBe(200);
+    const text = await page.textContent('body');
+    expect(text).toContain('Alice');
+  });
+
+  test('should trace external API call for single user', async ({ page }) => {
+    const response = await page.goto(
+      `${externalApiUrl}/api/users/123`,
+      { waitUntil: 'networkidle' }
+    );
+
+    expect(response?.status()).toBe(200);
+    const text = await page.textContent('body');
+    expect(text).toContain('userId');
+  });
+
+  test('should trace error in external API', async ({ page }) => {
+    const response = await page.goto(
+      `${externalApiUrl}/api/users/fail`,
+      { waitUntil: 'networkidle' }
+    );
+
+    expect(response?.status()).toBe(404);
+  });
+
+  test('should trace health check endpoint', async ({ page }) => {
+    const response = await page.goto(
+      `${externalApiUrl}/health`,
+      { waitUntil: 'networkidle' }
+    );
+
+    expect(response?.status()).toBe(200);
+  });
+});
+```
+
+#### Step 6: Start Supercheck Services Locally
+
+**Terminal 1 - Worker Service:**
+
+```bash
+cd worker
+npm install
+npm run dev
+
+# Expected output:
+# [Observability] Worker observability initialized successfully
+# [NestJS] Listening on port 3001
+```
+
+**Terminal 2 - App Service:**
+
+```bash
+cd app
+npm install
+npm run dev
+
+# Expected output:
+# ▲ Next.js running on http://localhost:3000
+```
+
+#### Step 7: Execute Tests
+
+**Option A: Using Playwright CLI:**
+
+```bash
+cd worker
+npx playwright test tests/distributed-tracing.spec.ts
+
+# This will:
+# 1. Run all distributed tracing tests
+# 2. Generate test results JSON
+# 3. Create trace data in ClickHouse
+```
+
+**Option B: Using Supercheck API (if implemented):**
+
+```bash
+curl -X POST http://localhost:3001/api/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "testPath": "tests/distributed-tracing.spec.ts",
+    "projectId": "test-project-456"
+  }'
+
+# Expected response:
+# {"jobId": "uuid-here", "status": "running"}
+```
+
+#### Step 8: Verify Traces in ClickHouse
+
+**Wait 5-10 seconds for trace export**, then run verification queries:
+
+**8a. Check total spans created:**
+
+```bash
+docker exec clickhouse-observability clickhouse-client --query \
+  "SELECT count() as total_spans FROM signoz_traces.signoz_index_v3"
+
+# Expected output: Should be > 0
+```
+
+**8b. View all services that created spans:**
+
+```bash
+docker exec clickhouse-observability clickhouse-client --query \
+  "SELECT DISTINCT serviceName, count() as span_count \
+   FROM signoz_traces.signoz_index_v3 \
+   GROUP BY serviceName \
+   ORDER BY span_count DESC"
+
+# Expected output:
+# supercheck-worker      | 15
+# test-external-api      | 12
+```
+
+**8c. View trace hierarchy (worker → external API):**
+
+```bash
+docker exec clickhouse-observability clickhouse-client --query \
+  "SELECT \
+     traceID, \
+     spanID, \
+     parentSpanID, \
+     serviceName, \
+     name, \
+     durationNano / 1e6 as duration_ms \
+   FROM signoz_traces.signoz_index_v3 \
+   WHERE serviceName IN ('supercheck-worker', 'test-external-api') \
+   ORDER BY traceID, timestamp ASC \
+   LIMIT 50" --format=PrettyCompact
+
+# Expected output:
+# Spans from both services with matching traceID and parent-child relationships
+```
+
+**8d. Verify trace context propagation:**
+
+```bash
+docker exec clickhouse-observability clickhouse-client --query \
+  "SELECT \
+     traceID, \
+     serviceName, \
+     name, \
+     stringTagMap['traceparent'] as traceparent_header \
+   FROM signoz_traces.signoz_index_v3 \
+   WHERE serviceName IN ('supercheck-worker', 'test-external-api') \
+   ORDER BY timestamp DESC \
+   LIMIT 20"
+
+# Expected output:
+# Same traceID across both services indicates successful propagation
+```
+
+**8e. Check for errors in traces:**
+
+```bash
+docker exec clickhouse-observability clickhouse-client --query \
+  "SELECT \
+     traceID, \
+     serviceName, \
+     name, \
+     statusCode, \
+     stringTagMap['error.message'] as error_message \
+   FROM signoz_traces.signoz_index_v3 \
+   WHERE statusCode = 2 \
+   ORDER BY timestamp DESC \
+   LIMIT 20"
+
+# Should show the /api/users/fail test error
+```
+
+#### Step 9: View Traces in UI
+
+Open browser and navigate to observability UI:
+
+```
+http://localhost:3000/observability/traces
+```
+
+**Expected observations:**
+
+1. **Traces List View:**
+   - Should see traces with multiple services
+   - Filter by `serviceName = supercheck-worker`
+   - Filter by `serviceName = test-external-api`
+   - Both should show in results
+
+2. **Trace Details View:**
+   - Click on a trace to see span waterfall
+   - Should show hierarchy:
+     ```
+     supercheck-worker: execute_playwright_job (root)
+     └─ supercheck-worker: test_execution
+        └─ supercheck-worker: HTTP Request (GET /api/users)
+           └─ test-external-api: fetch-users
+     ```
+   - Durations should accumulate correctly
+   - Both services should be listed in trace details
+
+3. **Span Details:**
+   - Click individual spans to see attributes
+   - Worker spans should have: `sc.run_id`, `sc.test_id`, `sc.job_id`
+   - External API spans should have: custom attributes set in instrumentation
+   - HTTP spans should show method, URL, status code
+
+#### Step 10: Troubleshooting
+
+**No traces appearing in UI after 30 seconds:**
+
+```bash
+# 1. Check worker logs for OTel errors
+docker-compose logs worker | grep -i "otel\|observable\|error"
+
+# 2. Check collector logs
+docker-compose logs otel-collector | tail -50
+
+# 3. Verify ClickHouse is receiving data
+docker exec clickhouse-observability clickhouse-client --query \
+  "SELECT count() FROM signoz_traces.signoz_index_v3"
+
+# 4. Check if external app is exporting spans
+docker logs $(docker ps | grep test-external | awk '{print $1}') | grep -i otel
+```
+
+**Traces show but no cross-service linking:**
+
+```bash
+# Verify trace context headers are being sent
+docker-compose logs worker | grep -i "traceparent\|tracestate"
+
+# Check collector is enriching spans
+docker-compose logs otel-collector | grep -i "resource\|attribute"
+
+# Verify external app is receiving and using context
+curl -v http://localhost:3100/api/users 2>&1 | grep -i "traceparent"
+```
+
+**Only worker spans visible, external API spans missing:**
+
+```bash
+# 1. Verify external app is connected to collector
+docker logs $(docker ps | grep test-external | awk '{print $1}') | grep -i "initialized\|error"
+
+# 2. Check collector accepts gRPC on 4317
+telnet localhost 4317
+
+# 3. Verify OTLP endpoint in external app is correct
+# Should be: http://localhost:4317 (for local dev)
+```
+
+#### Step 11: Advanced Testing Scenarios
+
+**Test 1: Measure end-to-end latency**
+
+```bash
+docker exec clickhouse-observability clickhouse-client --query \
+  "SELECT \
+     traceID, \
+     min(timestamp) as start_time, \
+     max(timestamp) + max(durationNano / 1e9) as end_time, \
+     (max(timestamp) + max(durationNano / 1e9) - min(timestamp)) * 1000 as total_duration_ms \
+   FROM signoz_traces.signoz_index_v3 \
+   WHERE serviceName IN ('supercheck-worker', 'test-external-api') \
+   GROUP BY traceID \
+   LIMIT 10"
+```
+
+**Test 2: Verify async span handling**
+
+Create a test that calls multiple endpoints in parallel:
+
+```typescript
+test('should trace concurrent external API calls', async ({ page }) => {
+  const promises = [
+    page.goto('http://host.docker.internal:3100/api/users'),
+    page.goto('http://host.docker.internal:3100/api/users/1'),
+    page.goto('http://host.docker.internal:3100/api/users/2'),
+  ];
+
+  const responses = await Promise.all(promises);
+  responses.forEach(r => expect(r?.status()).toBe(200));
+});
+```
+
+Query to verify concurrency:
+
+```bash
+docker exec clickhouse-observability clickhouse-client --query \
+  "SELECT \
+     traceID, \
+     count() as span_count, \
+     uniq(serviceName) as service_count, \
+     min(timestamp) as trace_start, \
+     max(timestamp) + max(durationNano / 1e9) as trace_end \
+   FROM signoz_traces.signoz_index_v3 \
+   WHERE serviceName IN ('supercheck-worker', 'test-external-api') \
+   GROUP BY traceID \
+   HAVING service_count = 2"
+```
+
+**Test 3: Error propagation across services**
+
+```typescript
+test('should trace errors across service boundary', async ({ page }) => {
+  const response = await page.goto(
+    'http://host.docker.internal:3100/api/users/fail',
+    { waitUntil: 'networkidle' }
+  );
+  expect(response?.status()).toBe(404);
+});
+```
+
+Query to verify error tracing:
+
+```bash
+docker exec clickhouse-observability clickhouse-client --query \
+  "SELECT \
+     traceID, \
+     serviceName, \
+     name, \
+     statusCode, \
+     stringTagMap['error.message'] as error_msg \
+   FROM signoz_traces.signoz_index_v3 \
+   WHERE statusCode = 2 \
+   ORDER BY timestamp DESC"
+```
+
+#### Step 12: Cleanup
+
+```bash
+# Stop external app
+# (Ctrl+C in the terminal where it's running)
+
+# Stop Supercheck services
+# (Ctrl+C in worker and app terminals)
+
+# Keep observability stack for later testing or stop it:
+docker-compose down
+
+# Or just stop observability stack:
+docker-compose stop clickhouse-observability otel-collector schema-migrator
+```
+
+### Summary Checklist
+
+- [ ] Observability infrastructure started (ClickHouse, Collector, Schema Migrator)
+- [ ] Worker and App services configured with correct OTEL endpoints
+- [ ] External instrumented app created and running
+- [ ] Playwright test file created with distributed tracing tests
+- [ ] Worker and App services started locally
+- [ ] Tests executed (via Playwright or Supercheck API)
+- [ ] Traces verified in ClickHouse (basic count query)
+- [ ] Cross-service trace linking verified (same traceID)
+- [ ] Traces visible in UI
+- [ ] Span hierarchy correct (parent-child relationships)
+- [ ] Error traces captured and visible
+- [ ] Advanced scenarios tested (concurrency, error propagation)
 
 ## Related Documentation
 
