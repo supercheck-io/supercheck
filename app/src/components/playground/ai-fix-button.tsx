@@ -122,6 +122,8 @@ export function AIFixButton({
     setIsProcessing(true);
     onAnalyzing?.(true);
 
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+
     try {
       const response = await fetch("/api/ai/fix-test-stream", {
         method: "POST",
@@ -140,7 +142,12 @@ export function AIFixButton({
       });
 
       if (!response.ok) {
-        const result = await response.json();
+        let result;
+        try {
+          result = await response.json();
+        } catch {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
 
         // Handle non-streaming error responses
         switch (response.status) {
@@ -177,51 +184,61 @@ export function AIFixButton({
             break;
         }
 
-        throw new Error(result.message || "Failed to generate AI fix");
+        throw new Error(result.message || `Failed to generate AI fix (${response.status})`);
       }
 
       // Handle streaming response
-      const reader = response.body?.getReader();
+      reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let fullText = "";
 
       if (!reader) {
-        throw new Error("No response body");
+        throw new Error("No response body received from server");
       }
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
 
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
 
-              if (data.type === "content") {
-                fullText += data.content;
-                onStreamingUpdate?.(fullText);
-              } else if (data.type === "done") {
-                // Streaming complete
-                console.log("AI Fix completed:", data);
-              } else if (data.type === "error") {
-                throw new Error(data.error);
+                if (data.type === "content") {
+                  fullText += data.content;
+                  onStreamingUpdate?.(fullText);
+                } else if (data.type === "done") {
+                  // Streaming complete
+                  console.log("AI Fix completed:", data);
+                } else if (data.type === "error") {
+                  throw new Error(data.error || "AI fix generation error");
+                }
+              } catch (parseError) {
+                // Only log if it's not a JSON parse error (empty lines are expected in SSE)
+                if (parseError instanceof SyntaxError && line.trim() === "") {
+                  continue;
+                }
+                console.error("Error parsing SSE data:", parseError, "Line:", line);
               }
-            } catch (parseError) {
-              console.error("Error parsing SSE data:", parseError);
             }
           }
         }
+      } finally {
+        // Always release the reader
+        reader.releaseLock();
+        reader = null;
       }
 
       // Parse the complete response
       const { script, explanation, confidence } = parseAIResponse(fullText);
 
       if (!script || script.length < 10) {
-        throw new Error("AI generated invalid or empty fix");
+        throw new Error("AI generated invalid or empty fix. The issue may require manual investigation.");
       }
 
       toast.success("AI fix generated successfully", {
@@ -232,11 +249,23 @@ export function AIFixButton({
     } catch (error) {
       console.error("AI fix request failed:", error);
 
+      // Provide specific error messages
+      let errorDescription = "Please try again in a few moments or investigate manually.";
+      if (error instanceof Error) {
+        if (error.message.includes("network") || error.message.includes("fetch")) {
+          errorDescription = "Network connection error. Please check your connection and try again.";
+        } else if (error.message.includes("timeout")) {
+          errorDescription = "Request timed out. Please try again.";
+        } else if (error.message.includes("manual investigation")) {
+          errorDescription = error.message;
+        } else {
+          errorDescription = error.message;
+        }
+      }
+
       toast.error("AI fix service unavailable", {
-        description:
-          error instanceof Error
-            ? error.message
-            : "Please try again in a few moments or investigate manually.",
+        description: errorDescription,
+        duration: 5000,
       });
 
       // Show fallback guidance
@@ -245,6 +274,14 @@ export function AIFixButton({
         "The AI fix service is currently unavailable or cannot fix the issue. Please try again in a few moments or proceed with manual investigation."
       );
     } finally {
+      // Cleanup: release reader if still locked
+      if (reader) {
+        try {
+          reader.releaseLock();
+        } catch {
+          // Ignore errors during cleanup
+        }
+      }
       setIsProcessing(false);
       onAnalyzing?.(false);
     }
