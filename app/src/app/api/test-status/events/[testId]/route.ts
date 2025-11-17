@@ -20,6 +20,37 @@ async function fetchReport(testId: string) {
 
 const terminalStatuses = new Set(["passed", "failed", "error", "completed"]);
 
+const deriveFinalStatus = (
+  queueStatus: string,
+  reportStatus?: string | null
+): string => {
+  const normalizedQueue = queueStatus.toLowerCase();
+  const normalizedReport = reportStatus?.toLowerCase?.() || null;
+
+  // Fail-fast if either source says failed/error
+  if (
+    normalizedQueue === "failed" ||
+    normalizedQueue === "error" ||
+    normalizedReport === "failed" ||
+    normalizedReport === "error"
+  ) {
+    return "failed";
+  }
+
+  // Only treat as passed when the report explicitly says passed
+  if (normalizedReport === "passed") {
+    return "passed";
+  }
+
+  // If queue claims passed but we lack report confirmation, degrade to failed-safe
+  if (normalizedQueue === "passed") {
+    return "failed";
+  }
+
+  // Otherwise return the queue status (running/completed/etc.)
+  return normalizedQueue;
+};
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const pathParts = url.pathname.split("/");
@@ -52,8 +83,10 @@ export async function GET(request: Request) {
         }
 
         const status = event.status;
+        let reportStatus: string | null = null;
         const payload: Record<string, unknown> = {
           status,
+          derivedStatus: status,
           testId,
           queueJobId: event.queueJobId,
         };
@@ -63,9 +96,12 @@ export async function GET(request: Request) {
           if (report) {
             payload.reportPath = report.reportPath;
             payload.s3Url = report.s3Url;
+            payload.reportStatus = report.status;
+            reportStatus = report.status;
           }
         }
 
+        payload.derivedStatus = deriveFinalStatus(status, reportStatus);
         controller.enqueue(encoder.encode(serialize(payload)));
       };
 
@@ -74,10 +110,13 @@ export async function GET(request: Request) {
 
       const initialReport = await fetchReport(testId);
       if (initialReport) {
+        const initStatus = initialReport.status ?? "running";
         controller.enqueue(
           encoder.encode(
             serialize({
-              status: initialReport.status ?? "running",
+              status: initStatus,
+              reportStatus: initStatus,
+              derivedStatus: deriveFinalStatus(initStatus, initStatus),
               testId,
               reportPath: initialReport.reportPath,
               s3Url: initialReport.s3Url,
@@ -86,7 +125,7 @@ export async function GET(request: Request) {
         );
       } else {
         controller.enqueue(
-          encoder.encode(serialize({ status: "waiting", testId }))
+          encoder.encode(serialize({ status: "waiting", derivedStatus: "waiting", testId }))
         );
       }
 

@@ -15,7 +15,7 @@ import { TestForm } from "./test-form";
 import { LoadingOverlay } from "./loading-overlay";
 import { ValidationError } from "./validation-error";
 import { TestPriority, TestType } from "@/db/schema";
-import { Loader2Icon, ZapIcon, Text, SquareCode } from "lucide-react";
+import { Loader2Icon, ZapIcon, Text, SquareCode, Code2 } from "lucide-react";
 import * as z from "zod";
 import type { editor } from "monaco-editor";
 import type { ScriptType } from "@/lib/script-service";
@@ -200,7 +200,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   // Test execution status tracking
   const [testExecutionStatus, setTestExecutionStatus] = useState<
     "none" | "passed" | "failed"
-  >("none"); // Track if last test run passed or failed
+  >("failed"); // Default to failed-safe until a passing run is confirmed
   const [lastExecutedScript, setLastExecutedScript] = useState<string>(""); // Track last executed script
   const [isAIAnalyzing, setIsAIAnalyzing] = useState(false); // Track AI Fix analyzing state
 
@@ -229,6 +229,13 @@ const Playground: React.FC<PlaygroundProps> = ({
   const isCurrentScriptReadyToSave =
     isCurrentScriptValidated && isCurrentScriptExecutedSuccessfully;
   const isPerformanceMode = testCase.type === "performance";
+  const aiFixVisible =
+    testExecutionStatus === "failed" &&
+    !isRunning &&
+    !isValidating &&
+    !isReportLoading &&
+    userCanRunTests &&
+    !!executionTestId;
 
   // Clear validation state when script changes
   const resetValidationState = () => {
@@ -243,7 +250,7 @@ const Playground: React.FC<PlaygroundProps> = ({
 
   // Clear test execution state when script changes
   const resetTestExecutionState = () => {
-    setTestExecutionStatus("none");
+    setTestExecutionStatus("failed");
     setExecutionTestId(null); // Clear execution test ID for new script
     // Don't reset lastExecutedScript here - only when test passes
     setPerformanceRunId(null);
@@ -710,19 +717,39 @@ const Playground: React.FC<PlaygroundProps> = ({
           try {
             const data = JSON.parse(event.data);
             if (data?.status) {
-              const normalizedStatus = data.status.toLowerCase();
-              if (
+              const normalizedStatus =
+                typeof data.status === "string"
+                  ? data.status.toLowerCase()
+                  : "running";
+              const derivedStatus =
+                typeof data.derivedStatus === "string"
+                  ? data.derivedStatus.toLowerCase()
+                  : normalizedStatus;
+              const reportStatus =
+                typeof data.reportStatus === "string"
+                  ? data.reportStatus.toLowerCase()
+                  : null;
+
+              const isTerminalStatus =
                 normalizedStatus === "completed" ||
                 normalizedStatus === "passed" ||
                 normalizedStatus === "failed" ||
-                normalizedStatus === "error"
-              ) {
+                normalizedStatus === "error" ||
+                derivedStatus === "completed" ||
+                derivedStatus === "passed" ||
+                derivedStatus === "failed" ||
+                derivedStatus === "error" ||
+                reportStatus === "completed" ||
+                reportStatus === "failed" ||
+                reportStatus === "error";
+
+              if (isTerminalStatus) {
                 setIsRunning(false);
                 setIsReportLoading(false);
 
-                // Only "passed" status indicates a successful test
-                // "completed", "failed", and "error" all indicate test did not pass
-                const testPassed = normalizedStatus === "passed";
+                // Only treat as passed when we explicitly see a passed/ok status
+                const testPassed =
+                  derivedStatus === "passed" || derivedStatus === "success";
                 setTestExecutionStatus(testPassed ? "passed" : "failed");
                 if (testPassed) {
                   setLastExecutedScript(editorContent);
@@ -752,7 +779,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                 }
 
                 // Only "passed" status indicates success
-                const isSuccess = normalizedStatus === "passed";
+                const isSuccess = testPassed;
 
                 toast[isSuccess ? "success" : "error"](
                   isSuccess
@@ -761,7 +788,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                   {
                     description: isSuccess
                       ? "All checks completed successfully."
-                      : "Test execution completed with failures or errors.",
+                      : "Test execution completed with failures or errors. Please review the report before saving.",
                     duration: 10000,
                   }
                 );
@@ -928,6 +955,10 @@ const Playground: React.FC<PlaygroundProps> = ({
     setStreamingFixContent(content);
   };
 
+  const handleAIFixStreamingEnd = () => {
+    setIsStreamingAIFix(false);
+  };
+
   const handleAIFixSuccess = (fixedScript: string, explanation: string) => {
     setIsStreamingAIFix(false);
     setAIFixedScript(fixedScript);
@@ -997,6 +1028,10 @@ const Playground: React.FC<PlaygroundProps> = ({
 
   const handleAICreateStreamingUpdate = (content: string) => {
     setStreamingCreateContent(content);
+  };
+
+  const handleAICreateStreamingEnd = () => {
+    setIsStreamingAICreate(false);
   };
 
   const handleAICreateSuccess = (generatedScript: string, explanation: string) => {
@@ -1097,14 +1132,14 @@ const Playground: React.FC<PlaygroundProps> = ({
                     </Tabs>
 
                     {/* Templates Button - next to Report tab but outside tabs */}
-                    <div className="-ml-6">
+                    <div className="flex items-center gap-3">
                       <Button
                         onClick={() => setTemplateDialogOpen(true)}
                         variant="outline"
                         size="sm"
-                        className="gap-2"
+                        className="gap-2 h-9 px-4"
                       >
-                        <SquareCode className="h-4 w-4" />
+                        <Code2 className="h-4 w-4" />
                         <span>Templates</span>
                       </Button>
                     </div>
@@ -1115,46 +1150,6 @@ const Playground: React.FC<PlaygroundProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {/* AI Fix Button - reserved space to prevent layout shift */}
-                    <div className="min-w-[80px]">
-                      <AIFixButton
-                        testId={executionTestId || ""}
-                        failedScript={editorContent}
-                        testType={testCase.type || "browser"}
-                        isVisible={
-                          // Show for all test types when execution is finished AND failed
-                          testExecutionStatus === "failed" &&
-                          !isRunning &&
-                          !isValidating &&
-                          !isReportLoading &&
-                          userCanRunTests &&
-                          !!executionTestId // Ensure we have an execution test ID
-                        }
-                        onAIFixSuccess={handleAIFixSuccess}
-                        onShowGuidance={handleShowGuidance}
-                        onAnalyzing={handleAIAnalyzing}
-                        onStreamingStart={handleAIFixStreamingStart}
-                        onStreamingUpdate={handleAIFixStreamingUpdate}
-                      />
-                    </div>
-
-                    {/* AI Create Button - next to Run button */}
-                    <AICreateButton
-                      currentScript={editorContent}
-                      testType={testCase.type || "browser"}
-                      isVisible={
-                        !isRunning &&
-                        !isValidating &&
-                        !isAIAnalyzing &&
-                        !isAICreating &&
-                        userCanRunTests
-                      }
-                      onAICreateSuccess={handleAICreateSuccess}
-                      onAnalyzing={handleAICreating}
-                      onStreamingStart={handleAICreateStreamingStart}
-                      onStreamingUpdate={handleAICreateStreamingUpdate}
-                    />
-
                     <Button
                       onClick={runTest}
                       disabled={
@@ -1277,10 +1272,46 @@ const Playground: React.FC<PlaygroundProps> = ({
               className="rounded-br-lg rounded-tr-lg"
             >
               <div className="flex h-full flex-col border rounded-tr-lg rounded-br-lg bg-card">
-                <div className="flex items-center justify-between border-b bg-card px-4 py-4 rounded-tr-lg">
+                <div className="flex items-center justify-between border-b bg-card px-4 py-3 rounded-tr-lg">
                   <div className="flex items-center">
                     <Text className="h-4 w-4 mr-2" />
                     <h3 className="text-sm font-medium mt-1">Test Details</h3>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {/* AI Fix Button - reserved space to prevent layout shift */}
+                    <div className="min-w-[80px]">
+                      <AIFixButton
+                        testId={executionTestId || ""}
+                        failedScript={editorContent}
+                        testType={testCase.type || "browser"}
+                        isVisible={aiFixVisible}
+                        onAIFixSuccess={handleAIFixSuccess}
+                        onShowGuidance={handleShowGuidance}
+                        onAnalyzing={handleAIAnalyzing}
+                        onStreamingStart={handleAIFixStreamingStart}
+                        onStreamingUpdate={handleAIFixStreamingUpdate}
+                        onStreamingEnd={handleAIFixStreamingEnd}
+                      />
+                    </div>
+                    {/* AI Create Button placed next to Test Details actions; hidden when Fix is available */}
+                    {!aiFixVisible && (
+                      <AICreateButton
+                        currentScript={editorContent}
+                        testType={testCase.type || "browser"}
+                        isVisible={
+                          !isRunning &&
+                          !isValidating &&
+                          !isAIAnalyzing &&
+                          !isAICreating &&
+                          userCanRunTests
+                        }
+                        onAICreateSuccess={handleAICreateSuccess}
+                        onAnalyzing={handleAICreating}
+                        onStreamingStart={handleAICreateStreamingStart}
+                        onStreamingUpdate={handleAICreateStreamingUpdate}
+                        onStreamingEnd={handleAICreateStreamingEnd}
+                      />
+                    )}
                   </div>
                 </div>
                 <ScrollArea className="flex-1">

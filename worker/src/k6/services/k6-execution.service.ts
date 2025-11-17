@@ -747,6 +747,17 @@ export class K6ExecutionService {
           networkMode: 'bridge', // k6 needs network access
           autoRemove: false, // Don't auto-remove - we need to extract files first
           image: this.k6DockerImage, // Use K6-specific Docker image
+          onStdoutChunk: async (chunk: string) => {
+            try {
+              await this.redisService
+                .getClient()
+                .publish(`k6:run:${runId}:console`, chunk);
+            } catch (err) {
+              this.logger.warn(
+                `[${runId}] Failed to publish streaming chunk: ${getErrorMessage(err)}`,
+              );
+            }
+          },
         },
       );
 
@@ -757,6 +768,19 @@ export class K6ExecutionService {
       const exitCode = containerResult.exitCode;
       const stdout = containerResult.stdout;
       const stderr = containerResult.stderr;
+
+      // Persist stdout to console.log so it can be fetched/archived later
+      try {
+        await fs.writeFile(
+          path.join(extractToHost, 'console.log'),
+          stdout || '',
+          'utf-8',
+        );
+      } catch (err) {
+        this.logger.warn(
+          `[${runId}] Failed to write console.log: ${getErrorMessage(err)}`,
+        );
+      }
 
       // Publish final output to Redis (since we can't stream from container)
       if (stdout) {
