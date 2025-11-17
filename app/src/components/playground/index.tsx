@@ -27,6 +27,8 @@ import RuntimeInfoPopover from "./runtime-info-popover";
 import { AIFixButton } from "./ai-fix-button";
 import { AIDiffViewer } from "./ai-diff-viewer";
 import { GuidanceModal } from "./guidance-modal";
+import { AICreateButton } from "./ai-create-button";
+import { AICreateViewer } from "./ai-create-viewer";
 import { PlaywrightLogo } from "../logo/playwright-logo";
 import { K6Logo } from "../logo/k6-logo";
 import { PerformanceTestReport } from "./performance-test-report";
@@ -208,6 +210,12 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [aiExplanation, setAIExplanation] = useState<string>("");
   const [showGuidanceModal, setShowGuidanceModal] = useState(false);
   const [guidanceMessage, setGuidanceMessage] = useState<string>("");
+
+  // AI Create functionality state
+  const [showAICreateDiff, setShowAICreateDiff] = useState(false);
+  const [aiGeneratedScript, setAIGeneratedScript] = useState<string>("");
+  const [aiCreateExplanation, setAICreateExplanation] = useState<string>("");
+  const [isAICreating, setIsAICreating] = useState(false);
 
   // Derived state: is current script validated and passed?
   const isCurrentScriptValidated =
@@ -951,6 +959,47 @@ const Playground: React.FC<PlaygroundProps> = ({
     setShowGuidanceModal(false);
   };
 
+  // AI Create handlers
+  const handleAICreateSuccess = (generatedScript: string, explanation: string) => {
+    setAIGeneratedScript(generatedScript);
+    setAICreateExplanation(explanation);
+    setShowAICreateDiff(true);
+  };
+
+  const handleAICreating = (creating: boolean) => {
+    setIsAICreating(creating);
+  };
+
+  const handleAcceptAICreate = (acceptedScript: string) => {
+    setEditorContent(acceptedScript);
+    setTestCase((prev) => ({ ...prev, script: acceptedScript }));
+    setShowAICreateDiff(false);
+
+    // Reset validation state since script has changed
+    setHasValidated(false);
+    setIsValid(false);
+    setValidationError(null);
+
+    // Reset test execution status since script changed
+    setTestExecutionStatus("none");
+
+    toast.success("AI-generated code applied", {
+      description:
+        "New script applied to editor. Please validate and test.",
+    });
+  };
+
+  const handleRejectAICreate = () => {
+    setShowAICreateDiff(false);
+    toast.info("AI-generated code discarded", {
+      description: "Original script remains unchanged.",
+    });
+  };
+
+  const handleCloseAICreateViewer = () => {
+    setShowAICreateDiff(false);
+  };
+
   return (
     <>
       <LoadingOverlay isVisible={pageLoading} />
@@ -1032,15 +1081,13 @@ const Playground: React.FC<PlaygroundProps> = ({
                         failedScript={editorContent}
                         testType={testCase.type || "browser"}
                         isVisible={
-                          // Always show when test execution is completely finished AND failed
-                          // But hide for performance tests (k6) since AI Fix is only for Playwright
+                          // Show for all test types when execution is finished AND failed
                           testExecutionStatus === "failed" &&
                           !isRunning &&
                           !isValidating &&
                           !isReportLoading &&
                           userCanRunTests &&
-                          !!executionTestId && // Ensure we have an execution test ID
-                          executionTestType !== "performance" // Hide AI Fix for k6 performance tests
+                          !!executionTestId // Ensure we have an execution test ID
                         }
                         onAIFixSuccess={handleAIFixSuccess}
                         onShowGuidance={handleShowGuidance}
@@ -1048,12 +1095,28 @@ const Playground: React.FC<PlaygroundProps> = ({
                       />
                     </div>
 
+                    {/* AI Create Button - next to Run button */}
+                    <AICreateButton
+                      currentScript={editorContent}
+                      testType={testCase.type || "browser"}
+                      isVisible={
+                        !isRunning &&
+                        !isValidating &&
+                        !isAIAnalyzing &&
+                        !isAICreating &&
+                        userCanRunTests
+                      }
+                      onAICreateSuccess={handleAICreateSuccess}
+                      onAnalyzing={handleAICreating}
+                    />
+
                     <Button
                       onClick={runTest}
                       disabled={
                         isRunning ||
                         isValidating ||
                         isAIAnalyzing ||
+                        isAICreating ||
                         !userCanRunTests
                       }
                       className="flex items-center gap-2 bg-[hsl(221.2,83.2%,53.3%)] text-white hover:bg-[hsl(221.2,83.2%,48%)] "
@@ -1251,6 +1314,17 @@ const Playground: React.FC<PlaygroundProps> = ({
         onAccept={handleAcceptAIFix}
         onReject={handleRejectAIFix}
         onClose={handleCloseDiffViewer}
+      />
+
+      {/* AI Create Viewer Modal */}
+      <AICreateViewer
+        currentScript={editorContent}
+        generatedScript={aiGeneratedScript}
+        explanation={aiCreateExplanation}
+        isVisible={showAICreateDiff}
+        onAccept={handleAcceptAICreate}
+        onReject={handleRejectAICreate}
+        onClose={handleCloseAICreateViewer}
       />
 
       {/* Guidance Modal */}
