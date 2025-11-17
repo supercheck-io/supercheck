@@ -716,9 +716,9 @@ const Playground: React.FC<PlaygroundProps> = ({
                 setIsRunning(false);
                 setIsReportLoading(false);
 
-                const testPassed =
-                  normalizedStatus === "completed" ||
-                  normalizedStatus === "passed";
+                // Only "passed" status indicates a successful test
+                // "completed", "failed", and "error" all indicate test did not pass
+                const testPassed = normalizedStatus === "passed";
                 setTestExecutionStatus(testPassed ? "passed" : "failed");
                 if (testPassed) {
                   setLastExecutedScript(editorContent);
@@ -747,9 +747,8 @@ const Playground: React.FC<PlaygroundProps> = ({
                   });
                 }
 
-                const isSuccess =
-                  normalizedStatus === "completed" ||
-                  normalizedStatus === "passed";
+                // Only "passed" status indicates success
+                const isSuccess = normalizedStatus === "passed";
 
                 toast[isSuccess ? "success" : "error"](
                   isSuccess
@@ -758,7 +757,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                   {
                     description: isSuccess
                       ? "All checks completed successfully."
-                      : "All checks did not complete successfully.",
+                      : "Test execution completed with failures or errors.",
                     duration: 10000,
                   }
                 );
