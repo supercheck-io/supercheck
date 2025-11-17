@@ -17,6 +17,8 @@ interface AIDiffViewerProps {
   onAccept: (acceptedScript: string) => void;
   onReject: () => void;
   onClose: () => void;
+  isStreaming?: boolean;
+  streamingContent?: string;
 }
 
 export function AIDiffViewer({
@@ -27,15 +29,22 @@ export function AIDiffViewer({
   onAccept,
   onReject,
   onClose,
+  isStreaming = false,
+  streamingContent = "",
 }: AIDiffViewerProps) {
   const [currentFixedScript, setCurrentFixedScript] = useState(fixedScript);
   const editorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
   const monaco = useMonaco();
   const isMountedRef = useRef(true);
 
+  // Update current fixed script from either streaming content or final fixed script
   useEffect(() => {
-    setCurrentFixedScript(fixedScript);
-  }, [fixedScript]);
+    if (isStreaming && streamingContent) {
+      setCurrentFixedScript(streamingContent);
+    } else if (!isStreaming && fixedScript) {
+      setCurrentFixedScript(fixedScript);
+    }
+  }, [fixedScript, isStreaming, streamingContent]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -267,14 +276,20 @@ export function AIDiffViewer({
         {/* Compact Header */}
         <div className="flex-shrink-0 bg-gray-900 border-b border-gray-700 px-4 py-3">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-base font-semibold text-white">
+            <h2 className="text-base font-semibold text-white flex items-center gap-2">
               AI Fix Review
+              {isStreaming && (
+                <span className="text-xs text-purple-400 font-normal animate-pulse">
+                  AI is generating...
+                </span>
+              )}
             </h2>
             <Button
               variant="ghost"
               size="sm"
               onClick={onClose}
               className="text-gray-400 hover:text-white hover:bg-gray-800 h-7 w-7 p-0"
+              disabled={isStreaming}
             >
               <X className="h-3 w-3" />
             </Button>
@@ -364,17 +379,19 @@ export function AIDiffViewer({
               <Button
                 variant="outline"
                 onClick={handleReject}
-                className="h-9 px-4 text-sm bg-transparent border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
+                disabled={isStreaming}
+                className="h-9 px-4 text-sm bg-transparent border-red-600 text-red-400 hover:bg-red-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <X className="h-4 w-4 mr-1" />
                 Reject
               </Button>
               <Button
                 onClick={handleAccept}
-                className="h-9 px-4 text-sm bg-green-600 hover:bg-green-700 text-white"
+                disabled={isStreaming}
+                className="h-9 px-4 text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Check className="h-4 w-4 mr-1" />
-                Accept & Apply
+                {isStreaming ? "Generating..." : "Accept & Apply"}
               </Button>
             </div>
           </div>

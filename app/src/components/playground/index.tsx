@@ -210,12 +210,16 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [aiExplanation, setAIExplanation] = useState<string>("");
   const [showGuidanceModal, setShowGuidanceModal] = useState(false);
   const [guidanceMessage, setGuidanceMessage] = useState<string>("");
+  const [isStreamingAIFix, setIsStreamingAIFix] = useState(false);
+  const [streamingFixContent, setStreamingFixContent] = useState<string>("");
 
   // AI Create functionality state
   const [showAICreateDiff, setShowAICreateDiff] = useState(false);
   const [aiGeneratedScript, setAIGeneratedScript] = useState<string>("");
   const [aiCreateExplanation, setAICreateExplanation] = useState<string>("");
   const [isAICreating, setIsAICreating] = useState(false);
+  const [isStreamingAICreate, setIsStreamingAICreate] = useState(false);
+  const [streamingCreateContent, setStreamingCreateContent] = useState<string>("");
 
   // Derived state: is current script validated and passed?
   const isCurrentScriptValidated =
@@ -912,9 +916,23 @@ const Playground: React.FC<PlaygroundProps> = ({
   };
 
   // AI Fix handlers
+  const handleAIFixStreamingStart = () => {
+    setIsStreamingAIFix(true);
+    setStreamingFixContent("");
+    setAIFixedScript("");
+    setAIExplanation("");
+    setShowAIDiff(true); // Show diff viewer immediately when streaming starts
+  };
+
+  const handleAIFixStreamingUpdate = (content: string) => {
+    setStreamingFixContent(content);
+  };
+
   const handleAIFixSuccess = (fixedScript: string, explanation: string) => {
+    setIsStreamingAIFix(false);
     setAIFixedScript(fixedScript);
     setAIExplanation(explanation);
+    setStreamingFixContent("");
     setShowAIDiff(true);
   };
 
@@ -969,9 +987,23 @@ const Playground: React.FC<PlaygroundProps> = ({
   };
 
   // AI Create handlers
+  const handleAICreateStreamingStart = () => {
+    setIsStreamingAICreate(true);
+    setStreamingCreateContent("");
+    setAIGeneratedScript("");
+    setAICreateExplanation("");
+    setShowAICreateDiff(true); // Show diff viewer immediately when streaming starts
+  };
+
+  const handleAICreateStreamingUpdate = (content: string) => {
+    setStreamingCreateContent(content);
+  };
+
   const handleAICreateSuccess = (generatedScript: string, explanation: string) => {
+    setIsStreamingAICreate(false);
     setAIGeneratedScript(generatedScript);
     setAICreateExplanation(explanation);
+    setStreamingCreateContent("");
     setShowAICreateDiff(true);
   };
 
@@ -1101,6 +1133,8 @@ const Playground: React.FC<PlaygroundProps> = ({
                         onAIFixSuccess={handleAIFixSuccess}
                         onShowGuidance={handleShowGuidance}
                         onAnalyzing={handleAIAnalyzing}
+                        onStreamingStart={handleAIFixStreamingStart}
+                        onStreamingUpdate={handleAIFixStreamingUpdate}
                       />
                     </div>
 
@@ -1117,6 +1151,8 @@ const Playground: React.FC<PlaygroundProps> = ({
                       }
                       onAICreateSuccess={handleAICreateSuccess}
                       onAnalyzing={handleAICreating}
+                      onStreamingStart={handleAICreateStreamingStart}
+                      onStreamingUpdate={handleAICreateStreamingUpdate}
                     />
 
                     <Button
@@ -1323,6 +1359,8 @@ const Playground: React.FC<PlaygroundProps> = ({
         onAccept={handleAcceptAIFix}
         onReject={handleRejectAIFix}
         onClose={handleCloseDiffViewer}
+        isStreaming={isStreamingAIFix}
+        streamingContent={streamingFixContent}
       />
 
       {/* AI Create Viewer Modal */}
@@ -1334,6 +1372,8 @@ const Playground: React.FC<PlaygroundProps> = ({
         onAccept={handleAcceptAICreate}
         onReject={handleRejectAICreate}
         onClose={handleCloseAICreateViewer}
+        isStreaming={isStreamingAICreate}
+        streamingContent={streamingCreateContent}
       />
 
       {/* Guidance Modal */}

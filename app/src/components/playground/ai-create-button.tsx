@@ -23,6 +23,8 @@ interface AICreateButtonProps {
     explanation: string
   ) => void;
   onAnalyzing?: (isAnalyzing: boolean) => void;
+  onStreamingStart?: () => void;
+  onStreamingUpdate?: (text: string) => void;
 }
 
 export function AICreateButton({
@@ -31,23 +33,22 @@ export function AICreateButton({
   isVisible,
   onAICreateSuccess,
   onAnalyzing,
+  onStreamingStart,
+  onStreamingUpdate,
 }: AICreateButtonProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [userRequest, setUserRequest] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [streamingText, setStreamingText] = useState("");
 
   const handleOpenDialog = () => {
     setIsDialogOpen(true);
     setUserRequest("");
-    setStreamingText("");
   };
 
   const handleCloseDialog = () => {
     if (!isProcessing) {
       setIsDialogOpen(false);
       setUserRequest("");
-      setStreamingText("");
     }
   };
 
@@ -56,7 +57,7 @@ export function AICreateButton({
     explanation: string;
   } => {
     try {
-      console.log("Parsing AI response, text length:", fullText.length);
+      console.log("Parsing AI Create response, text length:", fullText.length);
       console.log("First 200 chars:", fullText.substring(0, 200));
 
       // Try to extract GENERATED_SCRIPT and EXPLANATION sections
@@ -115,7 +116,7 @@ export function AICreateButton({
         explanation,
       };
     } catch (error) {
-      console.error("Error parsing AI response:", error);
+      console.error("Error parsing AI Create response:", error);
       console.error("Full text:", fullText);
       // Return empty to trigger error handling
       return {
@@ -141,8 +142,8 @@ export function AICreateButton({
     }
 
     setIsProcessing(true);
-    setStreamingText("");
     onAnalyzing?.(true);
+    onStreamingStart?.(); // Notify parent that streaming has started
 
     let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
@@ -212,7 +213,7 @@ export function AICreateButton({
 
                 if (data.type === "content") {
                   fullText += data.content;
-                  setStreamingText(fullText);
+                  onStreamingUpdate?.(fullText); // Update parent with streaming content
                 } else if (data.type === "done") {
                   // Streaming complete
                   console.log("AI Create completed:", data);
@@ -261,7 +262,6 @@ export function AICreateButton({
       onAICreateSuccess(script, explanation);
       setIsDialogOpen(false);
       setUserRequest("");
-      setStreamingText("");
     } catch (error) {
       console.error("AI create request failed:", error);
 
@@ -321,7 +321,7 @@ export function AICreateButton({
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Wand2 className="h-5 w-5 text-blue-500" />
+              <Wand2 className="h-5 w-5 text-purple-500" />
               AI Create Test
             </DialogTitle>
             <DialogDescription>
@@ -346,19 +346,6 @@ export function AICreateButton({
                 Be specific about the actions, verifications, and expected outcomes.
               </p>
             </div>
-
-            {streamingText && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  AI is generating code...
-                </label>
-                <div className="p-4 bg-muted rounded-lg max-h-[300px] overflow-y-auto">
-                  <pre className="text-xs whitespace-pre-wrap font-mono">
-                    {streamingText}
-                  </pre>
-                </div>
-              </div>
-            )}
           </div>
 
           <DialogFooter>
