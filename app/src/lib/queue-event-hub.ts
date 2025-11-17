@@ -236,12 +236,14 @@ class QueueEventHub extends EventEmitter {
         status = "running";
         break;
       case "completed":
+        // IMPORTANT: Only mark as "passed" if explicitly successful
+        // Default to "failed" for safety - failed tests should never be treated as passed
         status =
           payload?.returnvalue && typeof payload.returnvalue === "object" && "success" in payload.returnvalue
-            ? payload.returnvalue.success === false
-              ? "failed"
-              : "passed"
-            : "passed";
+            ? payload.returnvalue.success === true
+              ? "passed"
+              : "failed"
+            : "failed"; // Default to failed if no clear success indication
         break;
       case "failed":
       case "stalled":

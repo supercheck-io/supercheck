@@ -38,10 +38,16 @@ export function AICreateViewer({
   const isMountedRef = useRef(true);
 
   // Update current generated script from either streaming content or final generated script
+  // Debounce streaming updates to prevent flickering
   useEffect(() => {
     if (isStreaming && streamingContent) {
-      setCurrentGeneratedScript(streamingContent);
+      // Debounce streaming updates to prevent flickering (update every 150ms max)
+      const timerId = setTimeout(() => {
+        setCurrentGeneratedScript(streamingContent);
+      }, 150);
+      return () => clearTimeout(timerId);
     } else if (!isStreaming && generatedScript) {
+      // Immediately update when streaming completes
       setCurrentGeneratedScript(generatedScript);
     }
   }, [generatedScript, isStreaming, streamingContent]);

@@ -51,26 +51,12 @@ export async function POST(request: NextRequest) {
       const summaryErrors = K6LogParser.parseSummaryJSON(summaryJSON || "");
       const allErrors = [...consoleErrors, ...summaryErrors];
 
-      // Make fix decision
+      // ALWAYS attempt fix - no threshold checks
+      // Get error analysis for metrics but don't gate on it
       const fixDecision = K6FixDecisionEngine.shouldAttemptFix(allErrors);
-      shouldAttemptFix = fixDecision.shouldAttemptFix;
       confidence = fixDecision.confidence;
 
-      if (!shouldAttemptFix) {
-        return NextResponse.json({
-          success: false,
-          reason: "not_fixable",
-          decision: fixDecision,
-          guidance: AIPromptBuilder.generateGuidanceMessage(),
-          errorAnalysis: {
-            totalErrors: fixDecision.totalErrors,
-            fixableErrors: fixDecision.fixableErrors,
-            reasons: fixDecision.reasons,
-          },
-        });
-      }
-
-      // Build K6 fix prompt
+      // Build K6 fix prompt - always attempt to fix
       prompt = AIPromptBuilder.buildK6FixPrompt({
         failedScript,
         consoleLog: consoleLog || "",
@@ -141,40 +127,25 @@ export async function POST(request: NextRequest) {
         }));
       }
 
+      // ALWAYS attempt fix - no threshold checks
+      // Get error analysis for metrics but don't gate on it
       const fixDecision =
         AIFixDecisionEngine.shouldAttemptMarkdownFix(errorClassifications);
 
-      if (contextSource === "html" && fixDecision.shouldAttemptFix) {
+      if (contextSource === "html") {
         const errorQuality = calculateHTMLErrorConfidence(errorClassifications);
-        fixDecision.confidence = Math.max(fixDecision.confidence, errorQuality);
+        confidence = Math.max(fixDecision.confidence, errorQuality);
+      } else {
+        confidence = fixDecision.confidence;
       }
 
-      shouldAttemptFix = fixDecision.shouldAttemptFix;
-      confidence = fixDecision.confidence;
-
-      if (!shouldAttemptFix) {
-        if (errorClassifications.length === 0 && failedScript) {
-          prompt = AIPromptBuilder.buildBasicFixPrompt({
-            failedScript,
-            testType,
-            reason: "No detailed error report available",
-          });
-          shouldAttemptFix = true;
-          confidence = 0.6;
-        } else {
-          return NextResponse.json({
-            success: false,
-            reason: "not_fixable",
-            decision: fixDecision,
-            guidance: AIPromptBuilder.generateGuidanceMessage(),
-            errorAnalysis: {
-              totalErrors: errorClassifications.length,
-              categories: errorClassifications
-                .map((ec) => ec.classification?.category)
-                .filter(Boolean),
-            },
-          });
-        }
+      // Build appropriate prompt based on available error context - always attempt to fix
+      if (errorClassifications.length === 0 && failedScript) {
+        prompt = AIPromptBuilder.buildBasicFixPrompt({
+          failedScript,
+          testType,
+          reason: "No detailed error report available",
+        });
       } else {
         prompt = AIPromptBuilder.buildMarkdownContextPrompt({
           failedScript,
