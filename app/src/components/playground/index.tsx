@@ -779,6 +779,9 @@ const Playground: React.FC<PlaygroundProps> = ({
           setIsRunning(false);
           setIsReportLoading(false);
 
+          // Mark test as failed when SSE connection fails
+          setTestExecutionStatus("failed");
+
           toast.error("Script execution error", {
             description:
               "Connection to test status updates was lost. The test may still be running in the background.",
@@ -805,6 +808,9 @@ const Playground: React.FC<PlaygroundProps> = ({
       } else {
         setIsRunning(false);
         setIsReportLoading(false);
+
+        // Mark test as failed when execution fails
+        setTestExecutionStatus("failed");
 
         if (result.error) {
           console.error("Script execution error:", result.error);
@@ -837,12 +843,16 @@ const Playground: React.FC<PlaygroundProps> = ({
       }
     } catch (error) {
       console.error("Error running script:", error);
-      toast.error("Error running script", {
-        description: error instanceof Error ? error.message : "Unknown error",
-        duration: 5000,
-      });
       setIsRunning(false);
       setIsReportLoading(false);
+
+      // Mark test as failed when exception occurs
+      setTestExecutionStatus("failed");
+
+      toast.error("Error running script", {
+        description: error instanceof Error ? error.message : "Unknown error occurred during test execution",
+        duration: 5000,
+      });
     }
   };
 

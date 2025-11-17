@@ -131,6 +131,8 @@ export function AICreateButton({
     setStreamingText("");
     onAnalyzing?.(true);
 
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+
     try {
       const response = await fetch("/api/ai/create-test", {
         method: "POST",
@@ -145,7 +147,12 @@ export function AICreateButton({
       });
 
       if (!response.ok) {
-        const result = await response.json();
+        let result;
+        try {
+          result = await response.json();
+        } catch {
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
 
         switch (response.status) {
           case 401:
@@ -164,52 +171,62 @@ export function AICreateButton({
             });
             return;
           default:
-            throw new Error(result.message || "Failed to generate test code");
+            throw new Error(result.message || `Failed to generate test code (${response.status})`);
         }
       }
 
       // Handle streaming response
-      const reader = response.body?.getReader();
+      reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let fullText = "";
 
       if (!reader) {
-        throw new Error("No response body");
+        throw new Error("No response body received from server");
       }
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
 
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
 
-              if (data.type === "content") {
-                fullText += data.content;
-                setStreamingText(fullText);
-              } else if (data.type === "done") {
-                // Streaming complete
-                console.log("AI Create completed:", data);
-              } else if (data.type === "error") {
-                throw new Error(data.error);
+                if (data.type === "content") {
+                  fullText += data.content;
+                  setStreamingText(fullText);
+                } else if (data.type === "done") {
+                  // Streaming complete
+                  console.log("AI Create completed:", data);
+                } else if (data.type === "error") {
+                  throw new Error(data.error || "AI generation error");
+                }
+              } catch (parseError) {
+                // Only log if it's not a JSON parse error (empty lines are expected in SSE)
+                if (parseError instanceof SyntaxError && line.trim() === "") {
+                  continue;
+                }
+                console.error("Error parsing SSE data:", parseError, "Line:", line);
               }
-            } catch (parseError) {
-              console.error("Error parsing SSE data:", parseError);
             }
           }
         }
+      } finally {
+        // Always release the reader
+        reader.releaseLock();
+        reader = null;
       }
 
       // Parse the complete response
       const { script, explanation } = parseAIResponse(fullText);
 
       if (!script || script.length < 10) {
-        throw new Error("AI generated invalid or empty code");
+        throw new Error("AI generated invalid or empty code. Please try again with a more detailed description.");
       }
 
       toast.success("Test code generated successfully", {
@@ -223,13 +240,31 @@ export function AICreateButton({
     } catch (error) {
       console.error("AI create request failed:", error);
 
+      // Provide specific error messages
+      let errorDescription = "Please try again in a few moments.";
+      if (error instanceof Error) {
+        if (error.message.includes("network") || error.message.includes("fetch")) {
+          errorDescription = "Network connection error. Please check your connection and try again.";
+        } else if (error.message.includes("timeout")) {
+          errorDescription = "Request timed out. Please try again.";
+        } else {
+          errorDescription = error.message;
+        }
+      }
+
       toast.error("AI create service unavailable", {
-        description:
-          error instanceof Error
-            ? error.message
-            : "Please try again in a few moments.",
+        description: errorDescription,
+        duration: 5000,
       });
     } finally {
+      // Cleanup: release reader if still locked
+      if (reader) {
+        try {
+          reader.releaseLock();
+        } catch {
+          // Ignore errors during cleanup
+        }
+      }
       setIsProcessing(false);
       onAnalyzing?.(false);
     }
@@ -245,7 +280,7 @@ export function AICreateButton({
         size="sm"
         onClick={handleOpenDialog}
         disabled={isProcessing}
-        className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white border-0 shadow-lg transition-all duration-200"
+        className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg transition-all duration-200"
       >
         <Wand2 className="h-4 w-4" />
         AI Create
@@ -306,7 +341,7 @@ export function AICreateButton({
             <Button
               onClick={handleGenerate}
               disabled={isProcessing || !userRequest.trim()}
-              className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600"
+              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
             >
               {isProcessing ? (
                 <>
