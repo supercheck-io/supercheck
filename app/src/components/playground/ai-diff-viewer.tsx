@@ -38,10 +38,16 @@ export function AIDiffViewer({
   const isMountedRef = useRef(true);
 
   // Update current fixed script from either streaming content or final fixed script
+  // Debounce streaming updates to prevent flickering
   useEffect(() => {
     if (isStreaming && streamingContent) {
-      setCurrentFixedScript(streamingContent);
+      // Debounce streaming updates to prevent flickering (update every 150ms max)
+      const timerId = setTimeout(() => {
+        setCurrentFixedScript(streamingContent);
+      }, 150);
+      return () => clearTimeout(timerId);
     } else if (!isStreaming && fixedScript) {
+      // Immediately update when streaming completes
       setCurrentFixedScript(fixedScript);
     }
   }, [fixedScript, isStreaming, streamingContent]);
