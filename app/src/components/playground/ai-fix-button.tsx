@@ -21,6 +21,7 @@ interface AIFixButtonProps {
     errorAnalysis?: { totalErrors?: number; categories?: string[] }
   ) => void;
   onAnalyzing?: (isAnalyzing: boolean) => void;
+  onStreamingStart?: () => void;
   onStreamingUpdate?: (text: string) => void;
 }
 
@@ -32,6 +33,7 @@ export function AIFixButton({
   onAIFixSuccess,
   onShowGuidance,
   onAnalyzing,
+  onStreamingStart,
   onStreamingUpdate,
 }: AIFixButtonProps) {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -133,6 +135,7 @@ export function AIFixButton({
 
     setIsProcessing(true);
     onAnalyzing?.(true);
+    onStreamingStart?.(); // Notify parent that streaming has started
 
     let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 

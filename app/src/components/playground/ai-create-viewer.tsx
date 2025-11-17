@@ -13,6 +13,8 @@ interface AICreateViewerProps {
   onAccept: (script: string) => void;
   onReject: () => void;
   onClose: () => void;
+  isStreaming?: boolean;
+  streamingContent?: string;
 }
 
 export function AICreateViewer({
@@ -23,6 +25,8 @@ export function AICreateViewer({
   onAccept,
   onReject,
   onClose,
+  isStreaming = false,
+  streamingContent = "",
 }: AICreateViewerProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const diffEditorInstance = useRef<monaco.editor.IStandaloneDiffEditor | null>(
@@ -30,9 +34,14 @@ export function AICreateViewer({
   );
   const [editedScript, setEditedScript] = useState(generatedScript);
 
+  // Update edited script from either streaming content or final generated script
   useEffect(() => {
-    setEditedScript(generatedScript);
-  }, [generatedScript]);
+    if (isStreaming && streamingContent) {
+      setEditedScript(streamingContent);
+    } else if (!isStreaming && generatedScript) {
+      setEditedScript(generatedScript);
+    }
+  }, [generatedScript, isStreaming, streamingContent]);
 
   useEffect(() => {
     if (!isVisible || !editorRef.current) {
@@ -113,13 +122,19 @@ export function AICreateViewer({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-3 border-b border-gray-700">
           <div className="flex items-center gap-3">
-            <div className="text-lg font-semibold text-white">
+            <div className="text-lg font-semibold text-white flex items-center gap-2">
               AI Generated Test Code
+              {isStreaming && (
+                <span className="text-xs text-purple-400 font-normal animate-pulse">
+                  AI is generating...
+                </span>
+              )}
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
+            disabled={isStreaming}
+            className="text-gray-400 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
@@ -149,20 +164,22 @@ export function AICreateViewer({
           <div className="flex gap-3">
             <Button
               onClick={handleReject}
+              disabled={isStreaming}
               variant="outline"
               size="sm"
-              className="gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-600"
+              className="gap-2 bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <XCircle className="h-4 w-4" />
               Discard
             </Button>
             <Button
               onClick={handleAccept}
+              disabled={isStreaming}
               size="sm"
-              className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+              className="gap-2 bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Check className="h-4 w-4" />
-              Accept & Apply
+              {isStreaming ? "Generating..." : "Accept & Apply"}
             </Button>
           </div>
         </div>
