@@ -37,7 +37,7 @@ export const reports = pgTable(
       .notNull(),
     entityId: text("entity_id").notNull(), // Changed from uuid to support extended execution IDs
     reportPath: varchar("report_path", { length: 255 }).notNull(),
-    status: varchar("status", { length: 50 }).notNull().default("passed"),
+    status: varchar("status", { length: 50 }).notNull().default("running"),
     s3Url: varchar("s3_url", { length: 1024 }),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
