@@ -154,18 +154,31 @@ export function PerformanceTestReport({
 
     setConsoleFetchState("loading");
     try {
-      const response = await fetch(
-        `/api/test-results/${encodeURIComponent(
-          runId
-        )}/console.log?ts=${Date.now()}`,
-        { cache: "no-store" }
-      );
-      if (!response.ok) {
-        throw new Error(`Console fetch failed (${response.status})`);
+      const endpoints = [
+        `/api/test-results/${encodeURIComponent(runId)}/console.log?ts=${Date.now()}&archived=true`,
+        `/api/test-results/${encodeURIComponent(runId)}/console.log?ts=${Date.now()}`,
+      ];
+
+      let fetched = false;
+      for (const url of endpoints) {
+        try {
+          const response = await fetch(url, { cache: "no-store" });
+          if (!response.ok) {
+            continue;
+          }
+          const text = await response.text();
+          setCompletedConsoleLog(text);
+          setConsoleFetchState("loaded");
+          fetched = true;
+          break;
+        } catch {
+          // try next endpoint
+        }
       }
-      const text = await response.text();
-      setCompletedConsoleLog(text);
-      setConsoleFetchState("loaded");
+
+      if (!fetched) {
+        throw new Error("Console fetch failed");
+      }
     } catch (error) {
       console.error("Failed to fetch completed console log", error);
       setConsoleFetchState("error");

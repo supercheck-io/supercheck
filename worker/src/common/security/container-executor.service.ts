@@ -103,6 +103,12 @@ export interface ContainerExecutionOptions {
    * Useful for ensuring report/output paths exist
    */
   ensureDirectories?: string[];
+
+  /**
+   * Streaming hooks for stdout/stderr chunks (used for live log streaming)
+   */
+  onStdoutChunk?: (chunk: string) => void | Promise<void>;
+  onStderrChunk?: (chunk: string) => void | Promise<void>;
 }
 
 export interface ContainerExecutionResult {
@@ -422,11 +428,34 @@ export class ContainerExecutorService {
       );
 
       // Execute with timeout
-      const result = await execa('docker', dockerArgs, {
+      const child = execa('docker', dockerArgs, {
         timeout: validTimeout,
         reject: false, // Don't throw on non-zero exit
         all: true, // Combine stdout and stderr
       });
+
+      // Stream chunks if requested
+      if (options.onStdoutChunk && child.stdout) {
+        child.stdout.on('data', (chunk: Buffer) => {
+          try {
+            void options.onStdoutChunk?.(chunk.toString());
+          } catch {
+            /* ignore streaming errors */
+          }
+        });
+      }
+
+      if (options.onStderrChunk && child.stderr) {
+        child.stderr.on('data', (chunk: Buffer) => {
+          try {
+            void options.onStderrChunk?.(chunk.toString());
+          } catch {
+            /* ignore streaming errors */
+          }
+        });
+      }
+
+      const result = await child;
 
       const duration = Date.now() - startTime;
 

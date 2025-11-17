@@ -2,11 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { X, Check, XCircle } from "lucide-react";
-import { toast } from "sonner";
-
-// Import Monaco Editor properly for SSR compatibility
-import { DiffEditor, useMonaco } from "@monaco-editor/react";
+import { X, Check, XCircle, Loader2, Wand2 } from "lucide-react";
+import { Editor, useMonaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 
 interface AICreateViewerProps {
@@ -32,83 +29,47 @@ export function AICreateViewer({
   isStreaming = false,
   streamingContent = "",
 }: AICreateViewerProps) {
-  const [currentGeneratedScript, setCurrentGeneratedScript] = useState(generatedScript);
-  const editorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
+  const [currentGeneratedScript, setCurrentGeneratedScript] = useState(
+    generatedScript
+  );
+  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monaco = useMonaco();
   const isMountedRef = useRef(true);
-  const updateTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Update current generated script from either streaming content or final generated script
-  // Use throttled updates to prevent flickering
+  // Drive Monaco directly during streaming to avoid React re-render flicker
   useEffect(() => {
-    if (isStreaming && streamingContent) {
-      // Clear any existing timer
-      if (updateTimerRef.current) {
-        clearTimeout(updateTimerRef.current);
-      }
+    const model = editorRef.current?.getModel();
+    if (isStreaming && streamingContent && model) {
+      model.setValue(streamingContent);
+      return;
+    }
 
-      // Throttle updates to every 300ms to reduce flickering
-      updateTimerRef.current = setTimeout(() => {
-        if (isMountedRef.current) {
-          setCurrentGeneratedScript(streamingContent);
-        }
-      }, 300);
+    if (!isStreaming && generatedScript && model) {
+      model.setValue(generatedScript);
+      return;
+    }
 
-      return () => {
-        if (updateTimerRef.current) {
-          clearTimeout(updateTimerRef.current);
-        }
-      };
-    } else if (!isStreaming && generatedScript) {
-      // Clear any pending timer
-      if (updateTimerRef.current) {
-        clearTimeout(updateTimerRef.current);
-        updateTimerRef.current = null;
-      }
-      // Immediately update when streaming completes
+    if (!isStreaming && generatedScript) {
       setCurrentGeneratedScript(generatedScript);
     }
   }, [generatedScript, isStreaming, streamingContent]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
-      // Clean up editor models if they exist
-      if (editorRef.current) {
-        try {
-          const modifiedEditor = editorRef.current.getModifiedEditor?.();
-          const originalEditor = editorRef.current.getOriginalEditor?.();
-
-          if (modifiedEditor?.getModel) {
-            const model = modifiedEditor.getModel();
-            if (model) {
-              model.dispose();
-            }
-          }
-
-          if (originalEditor?.getModel) {
-            const model = originalEditor.getModel();
-            if (model) {
-              model.dispose();
-            }
-          }
-
-          // Dispose the editor itself
-          if (typeof editorRef.current.dispose === "function") {
-            editorRef.current.dispose();
-          }
-        } catch (error) {
-          console.warn("[AI Create Viewer] Error during editor cleanup:", error);
+      const instance = editorRef.current;
+      if (instance) {
+        const model = instance.getModel();
+        if (model) {
+          model.dispose();
         }
+        instance.dispose();
       }
     };
   }, []);
 
-  // Configure Monaco when available
   useEffect(() => {
     if (monaco) {
-      // Set JavaScript defaults similar to main editor
       monaco.languages.typescript.javascriptDefaults.setEagerModelSync(true);
       monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
         target: monaco.languages.typescript.ScriptTarget.ESNext,
@@ -121,214 +82,69 @@ export function AICreateViewer({
     }
   }, [monaco]);
 
-  const handleEditorDidMount = (editor: editor.IStandaloneDiffEditor) => {
-    // Check if component is still mounted before proceeding
-    if (!isMountedRef.current) {
-      return;
-    }
-
-    editorRef.current = editor;
-
-    try {
-      // Configure diff editor options properly
-      editor.updateOptions({
-        renderSideBySide: true,
-        enableSplitViewResizing: false,
-        renderOverviewRuler: false,
-        diffCodeLens: false,
-        originalEditable: false,
-        ignoreTrimWhitespace: false,
-        renderIndicators: true,
-        maxComputationTime: 5000,
-        maxFileSize: 20,
-      });
-
-      // Get both editors and configure them properly
-      const modifiedEditor = editor.getModifiedEditor();
-      const originalEditor = editor.getOriginalEditor();
-
-      // Configure scrollbar options for both editors
-      const scrollbarConfig = {
-        vertical: "auto" as const,
-        horizontal: "auto" as const,
-        verticalScrollbarSize: 12,
-        horizontalScrollbarSize: 12,
-        useShadows: true,
-        verticalHasArrows: false,
-        horizontalHasArrows: false,
-        alwaysConsumeMouseWheel: false,
-      };
-
-      if (modifiedEditor) {
-        modifiedEditor.updateOptions({
-          scrollbar: scrollbarConfig,
-          readOnly: false,
-          wordWrap: "off",
-          lineNumbers: "on",
-          glyphMargin: false,
-        });
-        // Set focus to modified editor after a short delay, only if still mounted
-        setTimeout(() => {
-          if (isMountedRef.current && modifiedEditor) {
-            modifiedEditor.focus();
-          }
-        }, 100);
-      }
-
-      if (originalEditor) {
-        originalEditor.updateOptions({
-          scrollbar: scrollbarConfig,
-          readOnly: true,
-          wordWrap: "off",
-          lineNumbers: "on",
-          glyphMargin: false,
-        });
-      }
-
-      // Force layout update, only if still mounted
-      setTimeout(() => {
-        if (isMountedRef.current && editor) {
-          editor.layout();
-        }
-      }, 200);
-    } catch (error) {
-      console.error("[AI Create Viewer] Error configuring editor:", error);
-    }
-  };
-
-  const handleAccept = () => {
-    // Check if component is still mounted
-    if (!isMountedRef.current) {
-      console.warn("[AI Create Viewer] Component unmounted, cannot accept");
-      return;
-    }
-
-    try {
-      let acceptedScript = currentGeneratedScript; // Default to the generated script
-
-      // Try to get content from the modified editor if available
-      if (editorRef.current) {
-        const modifiedEditor = editorRef.current.getModifiedEditor?.();
-        if (modifiedEditor && typeof modifiedEditor.getValue === "function") {
-          const editorContent = modifiedEditor.getValue();
-          if (editorContent && editorContent.trim()) {
-            acceptedScript = editorContent;
-          }
-        }
-      }
-
-      if (!acceptedScript || !acceptedScript.trim()) {
-        toast.error("Cannot accept empty script");
-        return;
-      }
-
-      // Let parent component handle success toast to avoid duplicates
-      onAccept(acceptedScript);
-    } catch (error) {
-      console.error("Error accepting AI generated code:", error);
-      // Let parent handle error toast, just fallback to the generated script
-      onAccept(currentGeneratedScript);
-    }
-  };
-
-  const handleReject = () => {
-    toast.info("AI generated code discarded", {
-      description: "Original script remains unchanged.",
-    });
-    onReject();
-  };
-
   if (!isVisible) {
     return null;
   }
 
-  // Convert explanation to clean, professional bullet points
   const getBulletPoints = (text: string): string[] => {
-    const fixes: string[] = [];
+    const points: string[] = [];
+    const raw =
+      text ||
+      "AI generated a updated script. Review and apply it if it matches your intent.";
 
-    if (!text || text.trim().length === 0) {
-      return ["AI-generated test code based on your request."];
+    const segments = raw
+      .split(/[.\n]/)
+      .map((s) => s.trim())
+      .filter((p) => p.length > 20)
+      .slice(0, 3);
+
+    if (segments.length === 0) {
+      return [raw];
     }
 
-    // Try to split by natural sentence boundaries or line breaks first
-    let points: string[] = [];
-
-    // Check if the text has numbered lists (1. 2. 3.)
-    if (text.match(/^\d+\./m)) {
-      points = text.split(/(?=\d+\.)/g).filter((p) => p.trim().length > 10);
-    }
-    // Check if the text has bullet points (- or •)
-    else if (text.match(/^[-•]/m)) {
-      points = text.split(/(?=[-•])/g).filter((p) => p.trim().length > 10);
-    }
-    // Otherwise split by sentences but be more conservative
-    else {
-      points = text.split(/[.\n]/).filter((p) => p.trim().length > 20);
-    }
-
-    // Clean up each point minimally
-    points.slice(0, 3).forEach((point) => {
-      let cleanPoint = point
-        .replace(/\*\*/g, "") // Remove markdown bold
-        .replace(/^\d+\.\s*/, "") // Remove numbering
-        .replace(/^[-•]\s*/, "") // Remove bullets
-        .trim();
-
-      // Only remove obvious action prefixes, keep the rest intact
-      cleanPoint = cleanPoint.replace(
-        /^(Created|Generated|Added|Built):\s*/i,
-        ""
-      );
-
-      // Ensure it starts with capital and ends properly
-      if (cleanPoint && cleanPoint.length > 8) {
-        cleanPoint = cleanPoint.charAt(0).toUpperCase() + cleanPoint.slice(1);
-
-        // Only add period if it doesn't already end with punctuation
-        if (!cleanPoint.match(/[.!?:]$/)) {
-          cleanPoint += ".";
-        }
-
-        fixes.push(cleanPoint);
-      }
+    segments.forEach((s) => {
+      let clean = s.replace(/\*\*/g, "");
+      if (!clean.match(/[.!?:]$/)) clean += ".";
+      points.push(clean);
     });
 
-    return fixes.length > 0 ? fixes : ["AI-generated test code based on your request."];
+    return points;
   };
 
   const bulletPoints = getBulletPoints(explanation);
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="w-full max-w-5xl max-h-[85vh] flex flex-col shadow-2xl bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
-        {/* Compact Header */}
-        <div className="flex-shrink-0 bg-gray-900 border-b border-gray-700 px-4 py-3">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-base font-semibold text-white flex items-center gap-2">
-              AI Create Review
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-card border rounded-lg shadow-xl w-[90vw] max-w-5xl max-h-[90vh] flex flex-col">
+        <div className="flex flex-col gap-3 p-4 border-b bg-gray-900">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-white">
+              <Wand2 className="h-5 w-5 text-indigo-400" />
+              <h3 className="text-lg font-semibold">AI Generated Script</h3>
               {isStreaming && (
-                <span className="text-xs text-purple-400 font-normal animate-pulse">
-                  AI is generating...
+                <span className="flex items-center text-xs text-purple-300 gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Generating…
                 </span>
               )}
-            </h2>
+            </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={onClose}
               className="text-gray-400 hover:text-white hover:bg-gray-800 h-7 w-7 p-0"
               disabled={isStreaming}
+              aria-label="Close"
             >
               <X className="h-3 w-3" />
             </Button>
           </div>
 
-          {/* Brief bullet points */}
           <div className="bg-gray-800 rounded px-3 py-3">
-            <div className="text-sm text-gray-300 space-y-2">
+            <div className="text-sm text-gray-200 space-y-2">
               {bulletPoints.map((point, index) => (
                 <div key={index} className="flex items-start gap-3">
-                  <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0"></div>
+                  <div className="w-2 h-2 bg-indigo-500 rounded-full mt-2 flex-shrink-0"></div>
                   <span className="leading-relaxed">{point}</span>
                 </div>
               ))}
@@ -336,90 +152,43 @@ export function AICreateViewer({
           </div>
         </div>
 
-        {/* Monaco Editor with fixed height */}
-        <div
-          className="bg-gray-900 relative overflow-hidden"
-          style={{ height: "500px" }}
-        >
-          <style jsx>{`
-            .monaco-diff-editor .editor.modified {
-              border-left: 1px solid #404040;
-            }
-          `}</style>
-          <DiffEditor
-            height="500px"
-            language="javascript"
-            original={currentScript || "// No existing script"}
-            modified={currentGeneratedScript}
-            onMount={handleEditorDidMount}
-            key={`${currentScript.length}-${currentGeneratedScript.length}`}
-            options={{
-              fontSize: 12,
-              fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
-              lineNumbers: "on",
-              renderSideBySide: true,
-              enableSplitViewResizing: false,
-              readOnly: false,
-              minimap: { enabled: false },
-              wordWrap: "off",
-              scrollBeyondLastLine: false,
-              automaticLayout: true,
-              renderOverviewRuler: false,
-              diffCodeLens: false,
-              renderIndicators: true,
-              originalEditable: false,
-              ignoreTrimWhitespace: false,
-              folding: false,
-              glyphMargin: false,
-              contextmenu: false,
-              scrollbar: {
-                vertical: "auto",
-                horizontal: "auto",
-                verticalScrollbarSize: 12,
-                horizontalScrollbarSize: 12,
-                useShadows: true,
-                verticalHasArrows: false,
-                horizontalHasArrows: false,
-                alwaysConsumeMouseWheel: false,
-              },
-              overviewRulerBorder: false,
-              hideCursorInOverviewRuler: true,
-            }}
-            theme="vs-dark"
-          />
-        </div>
-
-        {/* Compact Action Bar */}
-        <div className="flex-shrink-0 bg-gray-800 border-t border-gray-700 px-4 py-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4 text-sm text-gray-400">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-gray-500/60 rounded-full"></div>
-                <span>Current</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-blue-500/60 rounded-full"></div>
-                <span>AI Generated</span>
-              </div>
+        <div className="flex-1 grid grid-rows-[1fr_auto]">
+          <div className="h-full bg-[#1e1e1e]">
+            <Editor
+              height="65vh"
+              defaultLanguage="typescript"
+              theme="vs-dark"
+              value={currentGeneratedScript}
+              onChange={(value) => {
+                if (value !== undefined && !isStreaming) {
+                  setCurrentGeneratedScript(value);
+                }
+              }}
+              onMount={(instance) => {
+                editorRef.current = instance;
+              }}
+              options={{
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                wordWrap: "on",
+                fontSize: 13,
+                automaticLayout: true,
+                smoothScrolling: true,
+              }}
+            />
+          </div>
+          <div className="border-t p-4 bg-card flex items-center justify-between gap-3">
+            <div className="text-xs text-muted-foreground">
+              Original: {currentScript.length} chars · Generated:{" "}
+              {currentGeneratedScript.length} chars
             </div>
-
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                onClick={handleReject}
-                disabled={isStreaming}
-                className="h-9 px-4 text-sm bg-transparent border-red-600 text-red-400 hover:bg-red-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <X className="h-4 w-4 mr-1" />
+            <div className="flex justify-end items-center gap-2">
+              <Button variant="outline" onClick={onReject}>
                 Discard
               </Button>
-              <Button
-                onClick={handleAccept}
-                disabled={isStreaming}
-                className="h-9 px-4 text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Check className="h-4 w-4 mr-1" />
-                {isStreaming ? "Generating..." : "Accept & Apply"}
+              <Button onClick={() => onAccept(currentGeneratedScript)}>
+                <Check className="h-4 w-4 mr-2" />
+                Apply to Editor
               </Button>
             </div>
           </div>
