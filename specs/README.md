@@ -10,150 +10,96 @@ This documentation is organized into **logical folders** for easy navigation and
 
 ## 📂 Documentation Structure
 
-### [01-core/](01-core/) - Core System Documentation
-
-**Foundation:** System architecture, database design, and API structure
+### 01-core/ — Core System
 
 | File | Description |
 |------|-------------|
-| [supercheck-architecture.md](01-core/supercheck-architecture.md) | Complete system architecture with React 19, Next.js 15, AI services |
-| [erd-diagram.md](01-core/erd-diagram.md) | Database schema with 60+ tables and entity relationships |
-| [api-routes-analysis.md](01-core/api-routes-analysis.md) | Complete API structure with 60+ endpoints |
+| [SUPERCHECK_ARCHITECTURE.md](01-core/SUPERCHECK_ARCHITECTURE.md) | Complete platform architecture |
+| [ERD_DIAGRAM.md](01-core/ERD_DIAGRAM.md) | Database schema |
+| [API_ROUTES_ANALYSIS.md](01-core/API_ROUTES_ANALYSIS.md) | API route catalog |
 
 ---
 
-### [02-authentication/](02-authentication/) - Authentication & Security
-
-**Security:** User authentication, authorization, and secrets management
+### 02-authentication/ — Authentication & Security
 
 | File | Description |
 |------|-------------|
-| [authentication-system.md](02-authentication/authentication-system.md) | Better Auth 1.2.8 integration and OAuth providers |
-| [rbac-system.md](02-authentication/rbac-system.md) | Multi-level role-based access control (6 permission levels) |
-| [api-key-system.md](02-authentication/api-key-system.md) | API key management with token bucket rate limiting |
-| [project-variables-system.md](02-authentication/project-variables-system.md) | Variables & secrets with AES-128-GCM encryption |
+| [AUTHENTICATION_SYSTEM.md](02-authentication/AUTHENTICATION_SYSTEM.md) | Auth flows and providers |
+| [RBAC_SYSTEM.md](02-authentication/RBAC_SYSTEM.md) | Role-based access control |
+| [API_KEY_SYSTEM.md](02-authentication/API_KEY_SYSTEM.md) | API keys & rate limiting |
+| [PROJECT_VARIABLES_SYSTEM.md](02-authentication/PROJECT_VARIABLES_SYSTEM.md) | Secrets and project variables |
 
 ---
 
-### [03-execution/](03-execution/) - Testing & Execution
-
-**Execution:** Test orchestration, queue management, and container execution
+### 03-execution/ — Testing & Execution
 
 | File | Description |
 |------|-------------|
-| [execution-system.md](03-execution/execution-system.md) | **Complete execution architecture:**<br/>• BullMQ queue system (10 queues)<br/>• Container-based execution with Docker security<br/>• Multi-location execution (US, EU, APAC)<br/>• Scheduler system (jobs, monitors, K6)<br/>• Worker architecture and scaling<br/>• Resource management |
-| [job-trigger-system.md](03-execution/job-trigger-system.md) | Manual, remote (API), and cron-scheduled job triggers |
+| [EXECUTION_SYSTEM.md](03-execution/EXECUTION_SYSTEM.md) | Execution architecture and worker model |
+| [JOB_TRIGGER_SYSTEM.md](03-execution/JOB_TRIGGER_SYSTEM.md) | Manual, remote, and scheduled triggers |
 
 ---
 
-### [04-monitoring/](04-monitoring/) - Monitoring & Alerting
-
-**Monitoring:** Health checks, alerting, and notification delivery
+### 04-monitoring/ — Monitoring & Alerting
 
 | File | Description |
 |------|-------------|
-| [monitoring-system.md](04-monitoring/monitoring-system.md) | HTTP, HTTPS, Ping, Port monitoring with multi-location support |
-| [notifications-system.md](04-monitoring/notifications-system.md) | Multi-channel alerts (Email, Slack, Webhooks, Telegram, Discord, RSS) |
-| [alert-history-system.md](04-monitoring/alert-history-system.md) | Alert delivery tracking and failure diagnostics |
+| [MONITORING_SYSTEM.md](04-monitoring/MONITORING_SYSTEM.md) | Monitor types and health checks |
+| [NOTIFICATIONS_SYSTEM.md](04-monitoring/NOTIFICATIONS_SYSTEM.md) | Alert delivery channels |
+| [ALERT_HISTORY_SYSTEM.md](04-monitoring/ALERT_HISTORY_SYSTEM.md) | Alert tracking & diagnostics |
 
 ---
 
-### [05-features/](05-features/) - Platform Features
-
-**Features:** User-facing features and specialized functionality
+### 05-features/ — Platform Features
 
 | File | Description |
 |------|-------------|
-| [status-pages-system.md](05-features/status-pages-system.md) | **Public status communication:**<br/>• UUID-based subdomain routing<br/>• Incident management and timeline<br/>• Subscriber management (email, SMS, webhook)<br/>• Component organization and metrics |
-| [ai-fix-system.md](05-features/ai-fix-system.md) | **AI-powered test fixing:**<br/>• OpenAI GPT-4o-mini integration<br/>• Error classification (11 categories)<br/>• Intelligent code generation<br/>• Monaco diff viewer |
-| [tag-system.md](05-features/tag-system.md) | **Tag management:**<br/>• Project-scoped tags with color coding<br/>• Bulk operations and smart filtering<br/>• Usage analytics and RBAC integration |
-| [playground-system.md](05-features/playground-system.md) | **Interactive sandbox:**<br/>• Monaco code editor<br/>• Template library and AI fixes<br/>• Multi-location execution<br/>• 24-hour artifact retention |
+| [STATUS_PAGES_SYSTEM.md](05-features/STATUS_PAGES_SYSTEM.md) | Public status comms |
+| [AI_FIX_SYSTEM.md](05-features/AI_FIX_SYSTEM.md) | AI-assisted remediation |
+| [TAG_SYSTEM.md](05-features/TAG_SYSTEM.md) | Tagging engine |
+| [PLAYGROUND_SYSTEM.md](05-features/PLAYGROUND_SYSTEM.md) | Sandbox execution |
 
 ---
 
-### [06-data/](06-data/) - Data & Storage
-
-**Data:** Storage, lifecycle management, reporting, and audit logging
+### 06-data/ — Data & Storage
 
 | File | Description |
 |------|-------------|
-| [storage-system.md](06-data/storage-system.md) | **S3/MinIO artifact management:**<br/>• Multi-bucket organization (5 buckets)<br/>• Upload/download flows<br/>• Presigned URL generation<br/>• Security and access control |
-| [data-lifecycle-system.md](06-data/data-lifecycle-system.md) | **Cleanup and retention:**<br/>• Monitor results cleanup (30 days)<br/>• Job runs cleanup (90 days)<br/>• Playground cleanup (24 hours)<br/>• Automated scheduling and dry-run mode |
-| [dashboard-and-reports.md](06-data/dashboard-and-reports.md) | **Dashboard & reporting:**<br/>• Monitor uptime and availability<br/>• Job execution statistics<br/>• Test execution counts<br/>• Report retrieval and caching |
-| [audit-logging-system.md](06-data/audit-logging-system.md) | **Audit trail:**<br/>• User action tracking<br/>• System event logging<br/>• Security monitoring<br/>• Compliance-ready retention |
+| [STORAGE_SYSTEM.md](06-data/STORAGE_SYSTEM.md) | Artifact lifecycle and buckets |
+| [DATA_LIFECYCLE_SYSTEM.md](06-data/DATA_LIFECYCLE_SYSTEM.md) | Retention & cleanup |
+| [DASHBOARD_AND_REPORTS.md](06-data/DASHBOARD_AND_REPORTS.md) | Analytics dashboards |
+| [AUDID_LOGGING_SYSTEM.md](06-data/AUDID_LOGGING_SYSTEM.md) | Audit trail |
 
 ---
 
-### [07-admin/](07-admin/) - Administration & System Management
-
-**Admin:** Platform administration and system oversight
+### 07-admin/ — Administration
 
 | File | Description |
 |------|-------------|
-| [super-admin-system.md](07-admin/super-admin-system.md) | **Platform management:**<br/>• System statistics dashboard<br/>• User and organization management<br/>• Scheduler and queue control<br/>• Impersonation for debugging |
+| [SUPER_ADMIN_SYSTEM.md](07-admin/SUPER_ADMIN_SYSTEM.md) | Platform administration |
 
 ---
 
-### [08-operations/](08-operations/) - System Operations
-
-**Operations:** Operational concerns, performance, and scaling
+### 08-operations/ — Operations & Scaling
 
 | File | Description |
 |------|-------------|
-| [organization-and-project-implementation.md](08-operations/organization-and-project-implementation.md) | Multi-tenant organization structure |
-| [memory-management.md](08-operations/memory-management.md) | Production-ready memory management and optimization |
-| [real-time-status-updates-sse.md](08-operations/real-time-status-updates-sse.md) | Server-Sent Events for live test status streaming |
-| [scaling-guide.md](08-operations/scaling-guide.md) | Horizontal and vertical scaling strategies |
-| [improvement-suggestions.md](08-operations/improvement-suggestions.md) | Scalability and robustness recommendations |
+| [ORGANIZATION_AND_PROJECT_IMPLEMENTATION.md](08-operations/ORGANIZATION_AND_PROJECT_IMPLEMENTATION.md) | Multi-tenant org structure |
+| [MEMORY_MANAGEMENT.md](08-operations/MEMORY_MANAGEMENT.md) | Memory management |
+| [REAL_TIME_STATUS_UPDATES_SSE.md](08-operations/REAL_TIME_STATUS_UPDATES_SSE.md) | SSE live status |
+| [SCALING_GUIDE.md](08-operations/SCALING_GUIDE.md) | Scaling strategies |
+| [IMPROVEMENT_SUGGESTIONS.md](08-operations/IMPROVEMENT_SUGGESTIONS.md) | Ops recommendations |
 
 ---
 
-## 🎯 Quick Navigation by Role
+## 🎯 Quick Navigation
 
-### 🚀 For Platform Developers
-
-**Getting Started:**
-1. `01-core/supercheck-architecture.md` - System overview
-2. `01-core/erd-diagram.md` - Database design
-3. `03-execution/execution-system.md` - Execution pipeline
-4. `06-data/storage-system.md` - Artifact management
-
-**Feature Development:**
-- Authentication → `02-authentication/`
-- Testing & Execution → `03-execution/`
-- Monitoring → `04-monitoring/`
-- New Features → `05-features/`
-
----
-
-### 🔧 For System Administrators
-
-**Production Setup:**
-1. `01-core/supercheck-architecture.md` - Infrastructure
-2. `02-authentication/` - Security configuration
-3. `04-monitoring/` - System health monitoring
-4. `06-data/data-lifecycle-system.md` - Cleanup policies
-
-**Operations:**
-- Memory: `08-operations/memory-management.md`
-- Scaling: `08-operations/scaling-guide.md`
-- Monitoring: `08-operations/real-time-status-updates-sse.md`
-- Improvements: `08-operations/improvement-suggestions.md`
-
----
-
-### 📊 For Product Managers
-
-**Feature Overview:**
-- Core capabilities: `01-core/api-routes-analysis.md`
-- User features: `05-features/`
-- Monitoring & alerts: `04-monitoring/`
-- Admin tools: `07-admin/`
-
-**Analytics:**
-- Dashboard: `06-data/dashboard-and-reports.md`
-- Audit trail: `06-data/audit-logging-system.md`
-- Tags: `05-features/tag-system.md`
+- Architecture overview → `01-core/SUPERCHECK_ARCHITECTURE.md`
+- Database schema → `01-core/ERD_DIAGRAM.md`
+- Execution pipeline → `03-execution/EXECUTION_SYSTEM.md`
+- Monitoring setup → `04-monitoring/MONITORING_SYSTEM.md`
+- Data lifecycle → `06-data/DATA_LIFECYCLE_SYSTEM.md`
+- Admin controls → `07-admin/SUPER_ADMIN_SYSTEM.md`
 
 ---
 
@@ -178,63 +124,19 @@ Each specification includes:
 
 ---
 
-## ✅ Complete Feature Coverage
+## ✅ Coverage Summary
 
-### Core ✅
-Architecture • Database • API Routes
-
-### Security ✅
-Auth • RBAC • API Keys • Variables
-
-### Execution ✅
-Queues • Containers • Multi-Location • Schedulers • Workers
-
-### Monitoring ✅
-Monitors • Notifications • Alert History
-
-### Features ✅
-Status Pages • AI Fix • Tags • Playground
-
-### Data ✅
-Storage • Lifecycle • Reports • Audit Logs
-
-### Admin ✅
-Super Admin • User Management • Organization Management
-
-### Operations ✅
-Memory • SSE • Scaling • Organizations
+- **Core:** Architecture, database, API routes
+- **Security:** Authentication, RBAC, keys, variables
+- **Execution:** Queues, containers, schedulers, workers
+- **Monitoring:** Monitors, notifications, alert history
+- **Features:** Status pages, AI Fix, tags, playground
+- **Data:** Storage, retention, reports, audit logs
+- **Admin:** Super Admin, org management
+- **Operations:** Memory, SSE, scaling, org topology
 
 ---
 
-## 📞 Support
-
-For documentation questions:
-1. Navigate to the relevant folder
-2. Review the specification file
-3. Check cross-references to related specs
-
 ---
 
-**Documentation Version:** 3.0 (Folder-Organized)
-**Last Updated:** January 17, 2025
-**Total Files:** 26 specifications across 8 folders
-**Status:** Production Ready with 100% Feature Coverage
-
-```
-specs/
-├── 01-core/ (3 files)
-├── 02-authentication/ (4 files)
-├── 03-execution/ (2 files)
-├── 04-monitoring/ (3 files)
-├── 05-features/ (4 files)
-├── 06-data/ (4 files)
-├── 07-admin/ (1 file)
-└── 08-operations/ (5 files)
-```
-
-✅ **Logical grouping** by domain
-✅ **Easy navigation** with numbered folders
-✅ **Consistent naming** across all files
-✅ **Complete coverage** of all features
-✅ **Mermaid diagrams** exclusively
-✅ **Professional structure** for maintenance
+**Last Updated:** November 17, 2025
