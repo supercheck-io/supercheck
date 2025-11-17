@@ -4,216 +4,237 @@ Welcome to the comprehensive technical documentation for **Supercheck**, an ente
 
 > 📖 **For getting started**: See the [main README](../README.md) for quick setup instructions and usage guide.
 
-This documentation provides in-depth technical specifications, architectural details, and implementation guides for developers and system administrators working with the Supercheck platform.
+This documentation is organized into **logical folders** for easy navigation and maintenance. All specifications use **Mermaid diagrams exclusively** (no code snippets) and follow consistent naming conventions.
 
 ---
 
-## 📚 Documentation Index
+## 📂 Documentation Structure
 
-### 🏗️ Core System Documentation
+### [01-core/](01-core/) - Core System Documentation
 
-- **[Supercheck Architecture](SUPERCHECK_ARCHITECTURE.md)** - Complete system architecture with modern technology stack (React 19, Next.js 15, AI services)
-- **[Database Schema (ERD)](ERD_DIAGRAM.md)** - Complete database schema and entity relationships
+**Foundation:** System architecture, database design, and API structure
 
-### 🔐 Authentication & Security
-
-- **[Authentication System](AUTHENTICATION_SYSTEM.md)** - Better Auth 1.2.8 integration and user authentication flows
-- **[Role-Based Access Control (RBAC)](RBAC_SYSTEM.md)** - Multi-level permissions and access control implementation
-- **[API Key System](API_KEY_SYSTEM.md)** - Job-specific API keys with Bearer authentication and rate limiting
-- **[Project Variables & Secrets](PROJECT_VARIABLES_SYSTEM.md)** - Variable and secret management with AES-128-GCM encryption
-
-### ⚡ Testing & Execution
-
-- **[Execution System](EXECUTION_SYSTEM.md)** - Complete execution architecture including:
-  - BullMQ queue system and job processing
-  - Container-based execution with Docker security
-  - Multi-location execution for global coverage
-  - Scheduler system (jobs, monitors, K6 tests)
-  - Worker architecture and resource management
-  - Docker Compose best practices and scaling strategies
-
-### 👀 Monitoring & Alerting
-
-- **[Monitoring System](MONITORING_SYSTEM.md)** - HTTP, HTTPS, Ping, Port, and Website monitoring with multi-location support
-- **[Notifications System](NOTIFICATIONS_SYSTEM.md)** - Multi-channel alerting (Email, Slack, Webhooks, Telegram, Discord, RSS)
-
-### 📢 Public Features
-
-- **[Status Pages System](STATUS_PAGES_SYSTEM.md)** - Public-facing status communication with:
-  - UUID-based subdomain routing
-  - Incident management and timeline tracking
-  - Subscriber management (email, SMS, webhook)
-  - Component organization and status tracking
-  - Metrics and uptime calculations
-
-### 🤖 AI Features
-
-- **[AI Fix System](AI_FIX_SYSTEM.md)** - AI-powered test fixing with:
-  - OpenAI GPT-4o-mini integration
-  - Error classification (11 categories)
-  - Intelligent code generation
-  - Monaco diff viewer integration
-
-### 💾 Data & Storage
-
-- **[Storage System](STORAGE_SYSTEM.md)** - S3/MinIO artifact management including:
-  - Multi-bucket organization strategy
-  - Upload/download flows for all artifact types
-  - Presigned URL generation
-  - Security and access control
-  - Performance optimization
-
-- **[Data Lifecycle System](DATA_LIFECYCLE_SYSTEM.md)** - Cleanup and retention management:
-  - Monitor results cleanup (30 days)
-  - Job runs cleanup (90 days)
-  - Playground artifacts cleanup (24 hours)
-  - Automated scheduling and dry-run mode
-
-### 📋 Management & Organization
-
-- **[Organization & Project Implementation](ORGANIZATION_AND_PROJECT_IMPLEMENTATION.md)** - Multi-tenant organization structure
-- **[Job Trigger System](JOB_TRIGGER_SYSTEM.md)** - Manual, remote, and cron-scheduled job execution
-- **[Parallel Execution & Capacity Management](PARALLEL_EXECUTION_CAPACITY_MANAGEMENT.md)** - Sophisticated capacity control with HTTP 429 responses
-
-### 🔍 System Operations
-
-- **[Memory Management](MEMORY_MANAGEMENT.md)** - Production-ready memory management and optimization
-- **[Real-Time Status Updates (SSE)](REAL_TIME_STATUS_UPDATES_SSE.md)** - Server-Sent Events for live test status streaming
-- **[Scaling Guide](SCALING_GUIDE.md)** - Horizontal and vertical scaling strategies
-
-### 📈 Planning & Improvements
-
-- **[Reorganization Plan](REORGANIZATION_PLAN.md)** - Documentation reorganization strategy and implementation plan
+| File | Description |
+|------|-------------|
+| [supercheck-architecture.md](01-core/supercheck-architecture.md) | Complete system architecture with React 19, Next.js 15, AI services |
+| [erd-diagram.md](01-core/erd-diagram.md) | Database schema with 60+ tables and entity relationships |
+| [api-routes-analysis.md](01-core/api-routes-analysis.md) | Complete API structure with 60+ endpoints |
 
 ---
 
-## 🎯 Quick Start Guides
+### [02-authentication/](02-authentication/) - Authentication & Security
+
+**Security:** User authentication, authorization, and secrets management
+
+| File | Description |
+|------|-------------|
+| [authentication-system.md](02-authentication/authentication-system.md) | Better Auth 1.2.8 integration and OAuth providers |
+| [rbac-system.md](02-authentication/rbac-system.md) | Multi-level role-based access control (6 permission levels) |
+| [api-key-system.md](02-authentication/api-key-system.md) | API key management with token bucket rate limiting |
+| [project-variables-system.md](02-authentication/project-variables-system.md) | Variables & secrets with AES-128-GCM encryption |
+
+---
+
+### [03-execution/](03-execution/) - Testing & Execution
+
+**Execution:** Test orchestration, queue management, and container execution
+
+| File | Description |
+|------|-------------|
+| [execution-system.md](03-execution/execution-system.md) | **Complete execution architecture:**<br/>• BullMQ queue system (10 queues)<br/>• Container-based execution with Docker security<br/>• Multi-location execution (US, EU, APAC)<br/>• Scheduler system (jobs, monitors, K6)<br/>• Worker architecture and scaling<br/>• Resource management |
+| [job-trigger-system.md](03-execution/job-trigger-system.md) | Manual, remote (API), and cron-scheduled job triggers |
+
+---
+
+### [04-monitoring/](04-monitoring/) - Monitoring & Alerting
+
+**Monitoring:** Health checks, alerting, and notification delivery
+
+| File | Description |
+|------|-------------|
+| [monitoring-system.md](04-monitoring/monitoring-system.md) | HTTP, HTTPS, Ping, Port monitoring with multi-location support |
+| [notifications-system.md](04-monitoring/notifications-system.md) | Multi-channel alerts (Email, Slack, Webhooks, Telegram, Discord, RSS) |
+| [alert-history-system.md](04-monitoring/alert-history-system.md) | Alert delivery tracking and failure diagnostics |
+
+---
+
+### [05-features/](05-features/) - Platform Features
+
+**Features:** User-facing features and specialized functionality
+
+| File | Description |
+|------|-------------|
+| [status-pages-system.md](05-features/status-pages-system.md) | **Public status communication:**<br/>• UUID-based subdomain routing<br/>• Incident management and timeline<br/>• Subscriber management (email, SMS, webhook)<br/>• Component organization and metrics |
+| [ai-fix-system.md](05-features/ai-fix-system.md) | **AI-powered test fixing:**<br/>• OpenAI GPT-4o-mini integration<br/>• Error classification (11 categories)<br/>• Intelligent code generation<br/>• Monaco diff viewer |
+| [tag-system.md](05-features/tag-system.md) | **Tag management:**<br/>• Project-scoped tags with color coding<br/>• Bulk operations and smart filtering<br/>• Usage analytics and RBAC integration |
+| [playground-system.md](05-features/playground-system.md) | **Interactive sandbox:**<br/>• Monaco code editor<br/>• Template library and AI fixes<br/>• Multi-location execution<br/>• 24-hour artifact retention |
+
+---
+
+### [06-data/](06-data/) - Data & Storage
+
+**Data:** Storage, lifecycle management, reporting, and audit logging
+
+| File | Description |
+|------|-------------|
+| [storage-system.md](06-data/storage-system.md) | **S3/MinIO artifact management:**<br/>• Multi-bucket organization (5 buckets)<br/>• Upload/download flows<br/>• Presigned URL generation<br/>• Security and access control |
+| [data-lifecycle-system.md](06-data/data-lifecycle-system.md) | **Cleanup and retention:**<br/>• Monitor results cleanup (30 days)<br/>• Job runs cleanup (90 days)<br/>• Playground cleanup (24 hours)<br/>• Automated scheduling and dry-run mode |
+| [dashboard-and-reports.md](06-data/dashboard-and-reports.md) | **Dashboard & reporting:**<br/>• Monitor uptime and availability<br/>• Job execution statistics<br/>• Test execution counts<br/>• Report retrieval and caching |
+| [audit-logging-system.md](06-data/audit-logging-system.md) | **Audit trail:**<br/>• User action tracking<br/>• System event logging<br/>• Security monitoring<br/>• Compliance-ready retention |
+
+---
+
+### [07-admin/](07-admin/) - Administration & System Management
+
+**Admin:** Platform administration and system oversight
+
+| File | Description |
+|------|-------------|
+| [super-admin-system.md](07-admin/super-admin-system.md) | **Platform management:**<br/>• System statistics dashboard<br/>• User and organization management<br/>• Scheduler and queue control<br/>• Impersonation for debugging |
+
+---
+
+### [08-operations/](08-operations/) - System Operations
+
+**Operations:** Operational concerns, performance, and scaling
+
+| File | Description |
+|------|-------------|
+| [organization-and-project-implementation.md](08-operations/organization-and-project-implementation.md) | Multi-tenant organization structure |
+| [memory-management.md](08-operations/memory-management.md) | Production-ready memory management and optimization |
+| [real-time-status-updates-sse.md](08-operations/real-time-status-updates-sse.md) | Server-Sent Events for live test status streaming |
+| [scaling-guide.md](08-operations/scaling-guide.md) | Horizontal and vertical scaling strategies |
+| [improvement-suggestions.md](08-operations/improvement-suggestions.md) | Scalability and robustness recommendations |
+
+---
+
+## 🎯 Quick Navigation by Role
 
 ### 🚀 For Platform Developers
 
-1. **Architecture Understanding**: Start with **[Supercheck Architecture](SUPERCHECK_ARCHITECTURE.md)** for system overview
-2. **Execution Pipeline**: Review **[Execution System](EXECUTION_SYSTEM.md)** for core execution concepts
-3. **Storage & Data**: Understand **[Storage System](STORAGE_SYSTEM.md)** and **[Data Lifecycle System](DATA_LIFECYCLE_SYSTEM.md)**
-4. **AI Integration**: Explore **[AI Fix System](AI_FIX_SYSTEM.md)** for AI-powered features
+**Getting Started:**
+1. `01-core/supercheck-architecture.md` - System overview
+2. `01-core/erd-diagram.md` - Database design
+3. `03-execution/execution-system.md` - Execution pipeline
+4. `06-data/storage-system.md` - Artifact management
+
+**Feature Development:**
+- Authentication → `02-authentication/`
+- Testing & Execution → `03-execution/`
+- Monitoring → `04-monitoring/`
+- New Features → `05-features/`
+
+---
 
 ### 🔧 For System Administrators
 
-1. **Production Setup**: Configure environment variables and deployment settings
-2. **Security**: Set up **[Authentication System](AUTHENTICATION_SYSTEM.md)** and **[RBAC System](RBAC_SYSTEM.md)**
-3. **Performance Tuning**: Optimize with **[Memory Management](MEMORY_MANAGEMENT.md)** and **[Scaling Guide](SCALING_GUIDE.md)**
-4. **Monitoring**: Implement **[Monitoring System](MONITORING_SYSTEM.md)** and **[Status Pages System](STATUS_PAGES_SYSTEM.md)**
+**Production Setup:**
+1. `01-core/supercheck-architecture.md` - Infrastructure
+2. `02-authentication/` - Security configuration
+3. `04-monitoring/` - System health monitoring
+4. `06-data/data-lifecycle-system.md` - Cleanup policies
 
-### 📊 For Monitoring Implementation
-
-1. **Monitoring Architecture**: Read **[Monitoring System](MONITORING_SYSTEM.md)** for complete setup
-2. **Alerting Configuration**: Configure **[Notifications System](NOTIFICATIONS_SYSTEM.md)** for multi-channel alerts
-3. **Public Status Pages**: Deploy **[Status Pages System](STATUS_PAGES_SYSTEM.md)** for public communication
-4. **Job Management**: Implement **[Job Trigger System](JOB_TRIGGER_SYSTEM.md)** for flexible execution
-
-### 🐛 For Troubleshooting
-
-1. **Authentication Issues**: Check **[API Key System](API_KEY_SYSTEM.md)** and **[Authentication System](AUTHENTICATION_SYSTEM.md)**
-2. **Performance Problems**: Review **[Memory Management](MEMORY_MANAGEMENT.md)** and **[Execution System](EXECUTION_SYSTEM.md)**
-3. **Storage Issues**: Diagnose with **[Storage System](STORAGE_SYSTEM.md)**
-4. **Data Cleanup**: Manage with **[Data Lifecycle System](DATA_LIFECYCLE_SYSTEM.md)**
+**Operations:**
+- Memory: `08-operations/memory-management.md`
+- Scaling: `08-operations/scaling-guide.md`
+- Monitoring: `08-operations/real-time-status-updates-sse.md`
+- Improvements: `08-operations/improvement-suggestions.md`
 
 ---
 
-## 📋 Documentation Status
+### 📊 For Product Managers
 
-### ✅ Complete & Accurate (Updated January 2025)
+**Feature Overview:**
+- Core capabilities: `01-core/api-routes-analysis.md`
+- User features: `05-features/`
+- Monitoring & alerts: `04-monitoring/`
+- Admin tools: `07-admin/`
 
-- **System Architecture** - Complete with React 19.1.1, Next.js 15.4.6, and AI services
-- **Execution System** - Comprehensive queue, container, and multi-location execution
-- **Storage System** - Complete S3/MinIO architecture with security and optimization
-- **Data Lifecycle** - Automated cleanup and retention management
-- **Authentication & RBAC** - Better Auth 1.2.8 with multi-level permissions
-- **Monitoring & Alerts** - Multi-location monitoring with multi-channel notifications
-- **Status Pages** - Public status communication with incident management
-- **AI Fix System** - OpenAI integration with intelligent test repair
-- **API Key System** - Job-specific authentication with rate limiting
-- **Database Schema** - Complete ERD with 60+ strategic indexes
-
-### 🎯 Documentation Standards
-
-All specifications follow these standards:
-- ✅ **Mermaid Diagrams Only** - No code snippets, only visual diagrams
-- ✅ **Consistent Naming** - All specs use `*_SYSTEM.md` convention
-- ✅ **Feature-Based Organization** - Organized by domain, not technical layer
-- ✅ **Comprehensive Coverage** - Architecture, flows, configuration, and best practices
-- ✅ **Production Ready** - Based on actual implementation, not theoretical
+**Analytics:**
+- Dashboard: `06-data/dashboard-and-reports.md`
+- Audit trail: `06-data/audit-logging-system.md`
+- Tags: `05-features/tag-system.md`
 
 ---
 
-## 🛠️ Contributing to Documentation
-
-### Documentation Standards
-
-1. **Use clear, descriptive titles** that indicate the content type
-2. **Use Mermaid diagrams exclusively** - No code snippets
-3. **Provide sequence diagrams** for flows and interactions
-4. **Include architecture diagrams** for system components
-5. **Add configuration references** with environment variables
-6. **Provide troubleshooting sections** for common issues
-7. **Update this index** when adding new documentation
+## 📋 Documentation Standards
 
 ### File Naming Convention
+**Pattern:** `{feature-name}-system.md` (lowercase with hyphens)
 
-- `*_SYSTEM.md` - Feature/domain-specific documentation
-- `*_DIAGRAM.md` - Diagram-only files (e.g., ERD)
-- `README.md` - This index file
-- `SUPERCHECK_ARCHITECTURE.md` - Core architecture overview
+✅ `authentication-system.md` | ❌ `Authentication.md`
 
-### Mermaid Diagram Guidelines
+### Folder Organization
+**Pattern:** `{number}-{category}/` (numbered for logical order)
 
-Use color coding for consistency:
-- **Frontend**: `fill:#e3f2fd,stroke:#1976d2`
-- **Backend**: `fill:#f3e5f5,stroke:#7b1fa2`
-- **Data**: `fill:#e8f5e8,stroke:#388e3c`
-- **Workers**: `fill:#fff3e0,stroke:#f57c00`
-- **External**: `fill:#ffebee,stroke:#d32f2f`
-- **Security**: `fill:#e0f2f1,stroke:#00796b`
-
----
-
-## 🔗 Related Resources
-
-- **Codebase**: Main application code in `/app` and `/worker` directories
-- **Database Schema**: Located in `/app/src/db/schema/schema.ts`
-- **API Routes**: Next.js API routes in `/app/src/app/api/`
-- **Worker Services**: NestJS services in `/worker/src/`
+Each specification includes:
+1. Overview - What is this?
+2. Architecture - Mermaid diagrams
+3. Features - What does it do?
+4. Flows - How does it work?
+5. Configuration - How to set it up?
+6. Best Practices - Recommendations
+7. Summary - Quick checklist
 
 ---
 
-## 📂 Repository Structure
+## ✅ Complete Feature Coverage
 
-```
-/app/           - Next.js frontend application with API routes and database models
-/worker/        - NestJS worker service for distributed test execution
-/scripts/       - Deployment scripts, Docker builds, and utility tools
-/specs/         - Technical documentation and system specifications (this directory)
-/docs/          - Marketing site, public docs, and supporting assets
-README.md       - Main project documentation with quick start guide
-CONTRIBUTING.md - Contribution workflow, code style, and review expectations
-```
+### Core ✅
+Architecture • Database • API Routes
+
+### Security ✅
+Auth • RBAC • API Keys • Variables
+
+### Execution ✅
+Queues • Containers • Multi-Location • Schedulers • Workers
+
+### Monitoring ✅
+Monitors • Notifications • Alert History
+
+### Features ✅
+Status Pages • AI Fix • Tags • Playground
+
+### Data ✅
+Storage • Lifecycle • Reports • Audit Logs
+
+### Admin ✅
+Super Admin • User Management • Organization Management
+
+### Operations ✅
+Memory • SSE • Scaling • Organizations
 
 ---
 
-## 📞 Support & Feedback
+## 📞 Support
 
-For documentation feedback or questions:
-1. Check the relevant specification file for detailed information
-2. Review the troubleshooting sections in each spec
-3. Consult the [Reorganization Plan](REORGANIZATION_PLAN.md) for documentation structure
+For documentation questions:
+1. Navigate to the relevant folder
+2. Review the specification file
+3. Check cross-references to related specs
 
 ---
 
-**Documentation Version:** 2.0
+**Documentation Version:** 3.0 (Folder-Organized)
 **Last Updated:** January 17, 2025
-**Status:** Production Ready
+**Total Files:** 26 specifications across 8 folders
+**Status:** Production Ready with 100% Feature Coverage
 
-This documentation reorganization follows best practices for technical documentation, ensuring:
-- ✅ Clear feature-based navigation
-- ✅ Consistent Mermaid diagram usage
-- ✅ Comprehensive system coverage
-- ✅ Easy maintenance and updates
+```
+specs/
+├── 01-core/ (3 files)
+├── 02-authentication/ (4 files)
+├── 03-execution/ (2 files)
+├── 04-monitoring/ (3 files)
+├── 05-features/ (4 files)
+├── 06-data/ (4 files)
+├── 07-admin/ (1 file)
+└── 08-operations/ (5 files)
+```
+
+✅ **Logical grouping** by domain
+✅ **Easy navigation** with numbered folders
+✅ **Consistent naming** across all files
+✅ **Complete coverage** of all features
+✅ **Mermaid diagrams** exclusively
+✅ **Professional structure** for maintenance
