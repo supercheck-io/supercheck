@@ -56,6 +56,9 @@ export function AICreateButton({
     explanation: string;
   } => {
     try {
+      console.log("Parsing AI response, text length:", fullText.length);
+      console.log("First 200 chars:", fullText.substring(0, 200));
+
       // Try to extract GENERATED_SCRIPT and EXPLANATION sections
       const scriptMatch = fullText.match(
         /GENERATED_SCRIPT:\s*```(?:javascript|typescript|js|ts)?\s*([\s\S]*?)```/i
@@ -66,10 +69,13 @@ export function AICreateButton({
 
       // If standard format fails, try to find any code block
       if (!scriptMatch) {
+        console.log("Standard format not found, looking for code blocks...");
         const codeBlocks = fullText.match(
           /```(?:javascript|typescript|js|ts)?\s*([\s\S]*?)```/gi
         );
+
         if (codeBlocks && codeBlocks.length > 0) {
+          console.log("Found", codeBlocks.length, "code blocks");
           // Find the largest code block (most likely the full script)
           let largestBlock = "";
           for (const block of codeBlocks) {
@@ -82,6 +88,8 @@ export function AICreateButton({
             }
           }
 
+          console.log("Largest code block length:", largestBlock.length);
+
           const explanation = explanationMatch
             ? explanationMatch[1].trim()
             : "AI-generated test code based on your request.";
@@ -90,7 +98,11 @@ export function AICreateButton({
             script: largestBlock,
             explanation,
           };
+        } else {
+          console.log("No code blocks found in response");
         }
+      } else {
+        console.log("Found script in standard format, length:", scriptMatch[1].trim().length);
       }
 
       const script = scriptMatch ? scriptMatch[1].trim() : "";
@@ -104,10 +116,11 @@ export function AICreateButton({
       };
     } catch (error) {
       console.error("Error parsing AI response:", error);
-      // Return the full text if parsing fails
+      console.error("Full text:", fullText);
+      // Return empty to trigger error handling
       return {
-        script: fullText,
-        explanation: "Generated code",
+        script: "",
+        explanation: "Failed to parse AI response",
       };
     }
   };
@@ -203,7 +216,9 @@ export function AICreateButton({
                 } else if (data.type === "done") {
                   // Streaming complete
                   console.log("AI Create completed:", data);
+                  console.log("Total text received:", fullText.length, "characters");
                 } else if (data.type === "error") {
+                  console.error("Stream error:", data.error);
                   throw new Error(data.error || "AI generation error");
                 }
               } catch (parseError) {
@@ -222,12 +237,22 @@ export function AICreateButton({
         reader = null;
       }
 
+      // Check if we received any content
+      if (!fullText || fullText.trim().length === 0) {
+        throw new Error("No output generated from AI. Please try again.");
+      }
+
       // Parse the complete response
       const { script, explanation } = parseAIResponse(fullText);
 
       if (!script || script.length < 10) {
-        throw new Error("AI generated invalid or empty code. Please try again with a more detailed description.");
+        console.error("Parsing failed. Full text received:", fullText);
+        throw new Error(
+          `AI generated invalid or empty code. Received ${fullText.length} characters but could not extract valid code. Please try again with a more detailed description.`
+        );
       }
+
+      console.log("Successfully parsed script, length:", script.length);
 
       toast.success("Test code generated successfully", {
         description: "Review and apply the generated code to your editor.",
@@ -247,10 +272,16 @@ export function AICreateButton({
           errorDescription = "Network connection error. Please check your connection and try again.";
         } else if (error.message.includes("timeout")) {
           errorDescription = "Request timed out. Please try again.";
+        } else if (error.message.includes("No output generated")) {
+          errorDescription = "AI did not generate any output. Please try again or rephrase your request.";
+        } else if (error.message.includes("invalid or empty code")) {
+          errorDescription = error.message;
         } else {
           errorDescription = error.message;
         }
       }
+
+      console.error("AI Create final error:", errorDescription);
 
       toast.error("AI create service unavailable", {
         description: errorDescription,
