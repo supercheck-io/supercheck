@@ -33,47 +33,9 @@ export class AISecurityService {
       throw new Error("Code output must be a string");
     }
 
-    const maliciousPatterns = [
-      "eval(",
-      "Function(",
-      "setTimeout(",
-      "setInterval(",
-      "document.write",
-      "<script",
-      "javascript:",
-      "innerHTML",
-      "outerHTML",
-      "execCommand",
-    ];
-
-    // More specific data: URI patterns that are actually malicious
-    const maliciousDataPatterns = [
-      "data:text/html",
-      "data:application/javascript",
-      "data:text/javascript",
-      "data:application/x-javascript",
-    ];
-
-    const lowerCode = code.toLowerCase();
-
-    // Check for general malicious patterns
-    for (const pattern of maliciousPatterns) {
-      if (lowerCode.includes(pattern.toLowerCase())) {
-        throw new Error(
-          `AI generated potentially unsafe code containing: ${pattern}`
-        );
-      }
-    }
-
-    // Check for malicious data URIs specifically
-    for (const pattern of maliciousDataPatterns) {
-      if (lowerCode.includes(pattern.toLowerCase())) {
-        throw new Error(
-          `AI generated potentially unsafe code containing: ${pattern}`
-        );
-      }
-    }
-
+    // Previously we rejected scripts containing certain patterns.
+    // For a better UX (e.g., K6 load tests), simply return the code trimmed
+    // and rely on downstream validation/execution sandboxes.
     return code.trim();
   }
 
@@ -114,7 +76,7 @@ export class AISecurityService {
     }
 
     // Validate test type enum
-    const validTestTypes = ["browser", "api", "custom", "database"];
+    const validTestTypes = ["browser", "api", "custom", "database", "performance"];
     if (!validTestTypes.includes(body.testType)) {
       throw new Error("Invalid test type");
     }

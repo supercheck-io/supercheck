@@ -372,11 +372,12 @@ export class ExecutionService implements OnModuleDestroy {
         false,
       );
 
-      // 5. Process result and upload report
-      let finalStatus: 'passed' | 'failed' = 'failed'; // Default to failed
+      // 5. Process result and upload report (default to failed unless we can prove pass)
+      const reportOutcome = await this.evaluatePlaywrightReport(extractedReportsDir);
+      let finalStatus: 'passed' | 'failed' =
+        execResult.success && !reportOutcome.hasFailures ? 'passed' : 'failed';
 
-      if (execResult.success) {
-        finalStatus = 'passed';
+      if (finalStatus === 'passed') {
         // Removed success log - only log errors and completion summary
 
         // For synthetic monitors: only upload reports on failure (not on success)
@@ -755,11 +756,15 @@ export class ExecutionService implements OnModuleDestroy {
       const durationStr = this.formatDuration(durationMs);
       const durationSeconds = this.getDurationSeconds(durationMs);
 
+      // Evaluate report contents to determine real outcome; default to failed if unknown
+      const reportOutcome = await this.evaluatePlaywrightReport(extractedReportsDir);
+      overallSuccess = overallSuccess && !reportOutcome.hasFailures;
+
       // Update the finalResult to include duration
       finalResult = {
         jobId: runId,
         success: overallSuccess,
-        error: finalError,
+        error: overallSuccess ? null : finalError,
         reportUrl: s3Url,
         // Individual results are less meaningful with a combined report,
         // but we can pass overall status for now.
@@ -1015,6 +1020,95 @@ export class ExecutionService implements OnModuleDestroy {
         stderr: (error as Error).stack || '',
       };
     }
+  }
+
+  /**
+   * Inspect the extracted Playwright results.json to determine if any failures occurred.
+   * Defaults to "hasFailures=true" when the report is missing or unreadable to stay fail-safe.
+   */
+  private async evaluatePlaywrightReport(
+    extractedReportsDir: string,
+  ): Promise<{ hasFailures: boolean; foundReport: boolean }> {
+    const resultsPath = path.join(
+      extractedReportsDir,
+      'playwright-reports',
+      'results.json',
+    );
+
+    try {
+      const raw = await fs.readFile(resultsPath, 'utf-8');
+      const parsed = JSON.parse(raw);
+
+      // Quick checks for common summary fields
+      if (parsed?.stats) {
+        const failed =
+          parsed.stats.failed ??
+          parsed.stats.failures ??
+          parsed.stats.failure ??
+          0;
+        if (typeof failed === 'number' && failed > 0) {
+          return { hasFailures: true, foundReport: true };
+        }
+      }
+
+      if (parsed?.summary && typeof parsed.summary.failed === 'number') {
+        if (parsed.summary.failed > 0) {
+          return { hasFailures: true, foundReport: true };
+        }
+      }
+
+      if (typeof parsed?.status === 'string') {
+        const status = parsed.status.toLowerCase();
+        if (status === 'failed' || status === 'timedout') {
+          return { hasFailures: true, foundReport: true };
+        }
+        if (status === 'passed' || status === 'success') {
+          return { hasFailures: false, foundReport: true };
+        }
+      }
+
+      // Deep scan for any failed status or errors
+      const deepFailure = this.detectPlaywrightFailure(parsed);
+      return { hasFailures: deepFailure, foundReport: true };
+    } catch (error) {
+      this.logger.warn(
+        `[Playwright Report] Could not evaluate results at ${resultsPath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return { hasFailures: true, foundReport: false };
+    }
+  }
+
+  private detectPlaywrightFailure(node: unknown): boolean {
+    if (!node) return false;
+
+    if (Array.isArray(node)) {
+      return node.some((child) => this.detectPlaywrightFailure(child));
+    }
+
+    if (typeof node === 'object') {
+      const obj = node as Record<string, unknown>;
+
+      if (
+        typeof obj.status === 'string' &&
+        ['failed', 'timedout', 'skipped'].includes(
+          obj.status.toLowerCase(),
+        )
+      ) {
+        return true;
+      }
+
+      if (Array.isArray(obj.errors) && obj.errors.length > 0) {
+        return true;
+      }
+
+      return Object.values(obj).some((value) =>
+        this.detectPlaywrightFailure(value),
+      );
+    }
+
+    return false;
   }
 
   /**

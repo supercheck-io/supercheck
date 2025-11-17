@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Check, X } from "lucide-react";
+import { Check, Wand2, X } from "lucide-react";
 import { toast } from "sonner";
 
 // Import Monaco Editor properly
@@ -39,33 +39,23 @@ export function AIDiffViewer({
   const updateTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update current fixed script from either streaming content or final fixed script
-  // Use throttled updates to prevent flickering
+  // No throttling to keep the stream real-time; rely on React batching to avoid flicker
+  // Drive Monaco directly during streaming to avoid React re-render flicker
   useEffect(() => {
-    if (isStreaming && streamingContent) {
-      // Clear any existing timer
-      if (updateTimerRef.current) {
-        clearTimeout(updateTimerRef.current);
-      }
+    const modifiedModel = editorRef.current
+      ?.getModifiedEditor?.()
+      ?.getModel?.();
+    if (isStreaming && streamingContent && modifiedModel) {
+      modifiedModel.setValue(streamingContent);
+      return;
+    }
 
-      // Throttle updates to every 300ms to reduce flickering
-      updateTimerRef.current = setTimeout(() => {
-        if (isMountedRef.current) {
-          setCurrentFixedScript(streamingContent);
-        }
-      }, 300);
+    if (!isStreaming && fixedScript && modifiedModel) {
+      modifiedModel.setValue(fixedScript);
+      return;
+    }
 
-      return () => {
-        if (updateTimerRef.current) {
-          clearTimeout(updateTimerRef.current);
-        }
-      };
-    } else if (!isStreaming && fixedScript) {
-      // Clear any pending timer
-      if (updateTimerRef.current) {
-        clearTimeout(updateTimerRef.current);
-        updateTimerRef.current = null;
-      }
-      // Immediately update when streaming completes
+    if (!isStreaming && fixedScript) {
       setCurrentFixedScript(fixedScript);
     }
   }, [fixedScript, isStreaming, streamingContent]);
@@ -300,6 +290,8 @@ export function AIDiffViewer({
         {/* Compact Header */}
         <div className="flex-shrink-0 bg-gray-900 border-b border-gray-700 px-4 py-3">
           <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+            <Wand2 className="h-5 w-5 text-white" />
             <h2 className="text-base font-semibold text-white flex items-center gap-2">
               AI Fix Review
               {isStreaming && (
@@ -308,6 +300,7 @@ export function AIDiffViewer({
                 </span>
               )}
             </h2>
+            </div>
             <Button
               variant="ghost"
               size="sm"
