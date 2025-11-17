@@ -36,17 +36,35 @@ export function AICreateViewer({
   const editorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
   const monaco = useMonaco();
   const isMountedRef = useRef(true);
+  const updateTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update current generated script from either streaming content or final generated script
-  // Debounce streaming updates to prevent flickering
+  // Use throttled updates to prevent flickering
   useEffect(() => {
     if (isStreaming && streamingContent) {
-      // Debounce streaming updates to prevent flickering (update every 150ms max)
-      const timerId = setTimeout(() => {
-        setCurrentGeneratedScript(streamingContent);
-      }, 150);
-      return () => clearTimeout(timerId);
+      // Clear any existing timer
+      if (updateTimerRef.current) {
+        clearTimeout(updateTimerRef.current);
+      }
+
+      // Throttle updates to every 300ms to reduce flickering
+      updateTimerRef.current = setTimeout(() => {
+        if (isMountedRef.current) {
+          setCurrentGeneratedScript(streamingContent);
+        }
+      }, 300);
+
+      return () => {
+        if (updateTimerRef.current) {
+          clearTimeout(updateTimerRef.current);
+        }
+      };
     } else if (!isStreaming && generatedScript) {
+      // Clear any pending timer
+      if (updateTimerRef.current) {
+        clearTimeout(updateTimerRef.current);
+        updateTimerRef.current = null;
+      }
       // Immediately update when streaming completes
       setCurrentGeneratedScript(generatedScript);
     }
