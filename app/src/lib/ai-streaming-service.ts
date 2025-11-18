@@ -1,5 +1,5 @@
 import { openai } from "@ai-sdk/openai";
-import { streamText, StreamTextResult } from "ai";
+import { streamText } from "ai";
 
 interface AIStreamRequest {
   prompt: string;
@@ -165,9 +165,20 @@ export class AIStreamingService {
 
             // Get usage information after streaming completes
             const usage = await result.usage;
-            const promptTokens = usage?.promptTokens || 0;
-            const completionTokens = usage?.completionTokens || 0;
-            totalTokens = usage?.totalTokens || promptTokens + completionTokens;
+            // LanguageModelV2Usage may not expose prompt/completion tokens; fall back to input/output
+            const promptTokens = ("promptTokens" in (usage || {}))
+              ? (usage as Record<string, number>).promptTokens
+              : ("inputTokens" in (usage || {}))
+                ? (usage as Record<string, number>).inputTokens
+                : 0;
+            const completionTokens = ("completionTokens" in (usage || {}))
+              ? (usage as Record<string, number>).completionTokens
+              : ("outputTokens" in (usage || {}))
+                ? (usage as Record<string, number>).outputTokens
+                : 0;
+            totalTokens = ("totalTokens" in (usage || {}))
+              ? (usage as Record<string, number>).totalTokens
+              : promptTokens + completionTokens;
 
             // Send completion message with metadata
             const duration = Date.now() - startTime;
@@ -291,9 +302,9 @@ export class AIStreamingService {
       });
 
       // Consume the stream to complete the health check
-      for await (const _ of result.textStream) {
-        // Just consume the stream
-        break; // Exit after first chunk for quick health check
+      for await (const chunk of result.textStream) {
+        void chunk; // consume the first chunk for a quick health check
+        break;
       }
 
       clearTimeout(timeoutId);

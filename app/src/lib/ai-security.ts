@@ -178,18 +178,25 @@ export class AISecurityService {
       // Convert the stream to text
       const content = await response.Body.transformToString();
 
-      // Size validation
-      if (content.length > 100000) {
-        // 100KB max
-        throw new Error("Markdown report too large");
+      // Size validation with graceful truncation for very large reports
+      const MAX_MARKDOWN_LENGTH = 100_000; // 100KB of markdown context is plenty for prompting
+      let sanitizedContent = content;
+
+      if (sanitizedContent.length > MAX_MARKDOWN_LENGTH) {
+        console.warn(
+          `[AI Security] Markdown report exceeded ${MAX_MARKDOWN_LENGTH} chars. Truncating to safe limit.`
+        );
+        sanitizedContent =
+          sanitizedContent.slice(0, MAX_MARKDOWN_LENGTH) +
+          "\n\n<!-- Report truncated for safety -->";
       }
 
       // Basic content validation - relax this since Playwright .md files might have different formats
-      if (!content.trim()) {
+      if (!sanitizedContent.trim()) {
         throw new Error("Empty markdown report");
       }
 
-      return content;
+      return sanitizedContent;
     } catch (error) {
       console.error("[AI Security] Error fetching markdown report:", error);
       throw new Error(

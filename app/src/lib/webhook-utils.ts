@@ -4,8 +4,28 @@
  * Helper functions for webhook management, validation, and testing
  */
 
+import crypto from "crypto";
 import { z } from "zod";
-import { randomBytes } from "crypto";
+
+function getRandomBytes(size: number): Uint8Array {
+  if (crypto?.randomBytes) {
+    return crypto.randomBytes(size);
+  }
+
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    const arr = new Uint8Array(size);
+    globalThis.crypto.getRandomValues(arr);
+    return arr;
+  }
+
+  throw new Error("No cryptographically secure random source available");
+}
+
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    ""
+  );
+}
 
 /**
  * Validation schema for webhook URLs
@@ -75,7 +95,7 @@ export type WebhookSubscription = z.infer<typeof webhookSubscriptionSchema>;
  * Used for HMAC signature verification
  */
 export function generateWebhookSecret(): string {
-  return randomBytes(32).toString("hex");
+  return toHex(getRandomBytes(32));
 }
 
 /**

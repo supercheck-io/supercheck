@@ -107,9 +107,9 @@ export function encryptSecret(
 
   const payload = encodeEnvelope({
     v: 1,
-    iv: iv.toString("base64"),
-    tag: authTag.toString("base64"),
-    data: ciphertext.toString("base64"),
+    iv: Buffer.from(iv).toString("base64"),
+    tag: Buffer.from(authTag).toString("base64"),
+    data: Buffer.from(ciphertext).toString("base64"),
   });
 
   return {

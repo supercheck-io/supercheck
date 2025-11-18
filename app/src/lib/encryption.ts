@@ -1,5 +1,4 @@
 import { decryptSecret, encryptSecret, type SecretEnvelope } from "@/lib/security/secret-crypto";
-import crypto from "node:crypto";
 
 const ENCRYPTED_PREFIX = "enc:v1:";
 
@@ -31,7 +30,9 @@ export function decryptValue(encryptedValue: string, projectId: string): string 
 }
 
 export function generateEncryptionKey(): string {
-  return crypto.randomBytes(32).toString("hex");
+  // Use Web Crypto for runtime compatibility (Edge/Node)
+  const keyBytes = crypto.getRandomValues(new Uint8Array(32));
+  return Array.from(keyBytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export function validateEncryptionKey(key: string): boolean {
