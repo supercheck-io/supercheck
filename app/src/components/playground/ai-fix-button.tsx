@@ -10,6 +10,7 @@ interface AIFixButtonProps {
   failedScript: string;
   testType: string;
   isVisible: boolean;
+  disabled?: boolean;
   onAIFixSuccess: (
     fixedScript: string,
     explanation: string,
@@ -23,6 +24,7 @@ interface AIFixButtonProps {
   onAnalyzing?: (isAnalyzing: boolean) => void;
   onStreamingStart?: () => void;
   onStreamingUpdate?: (text: string) => void;
+  onStreamingEnd?: () => void;
 }
 
 export function AIFixButton({
@@ -30,11 +32,13 @@ export function AIFixButton({
   failedScript,
   testType,
   isVisible,
+  disabled,
   onAIFixSuccess,
   onShowGuidance,
   onAnalyzing,
   onStreamingStart,
   onStreamingUpdate,
+  onStreamingEnd,
 }: AIFixButtonProps) {
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -135,9 +139,21 @@ export function AIFixButton({
 
     setIsProcessing(true);
     onAnalyzing?.(true);
-    onStreamingStart?.(); // Notify parent that streaming has started
 
-    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    let hasStreamingStarted = false;
+    let hasStreamingEnded = false;
+
+    const endStreamingSafely = () => {
+      if (hasStreamingStarted && !hasStreamingEnded) {
+        onStreamingEnd?.();
+        hasStreamingEnded = true;
+      }
+    };
+
+    onStreamingStart?.(); // Notify parent that streaming has started
+    hasStreamingStarted = true;
+
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null | undefined = null;
 
     try {
       const response = await fetch("/api/ai/fix-test-stream", {
@@ -231,6 +247,7 @@ export function AIFixButton({
                   // Streaming complete
                   console.log("AI Fix completed:", data);
                   console.log("Total text received:", fullText.length, "characters");
+                  endStreamingSafely();
                 } else if (data.type === "error") {
                   console.error("Stream error:", data.error);
                   throw new Error(data.error || "AI fix generation error");
@@ -274,6 +291,7 @@ export function AIFixButton({
 
       onAIFixSuccess(script, explanation, confidence);
     } catch (error) {
+      endStreamingSafely();
       console.error("AI fix request failed:", error);
 
       // Provide specific error messages
@@ -313,6 +331,7 @@ export function AIFixButton({
           // Ignore errors during cleanup
         }
       }
+      endStreamingSafely();
       setIsProcessing(false);
       onAnalyzing?.(false);
     }
@@ -326,7 +345,7 @@ export function AIFixButton({
     <Button
       size="sm"
       onClick={handleAIFix}
-      disabled={isProcessing || !failedScript?.trim()}
+      disabled={disabled || isProcessing || !failedScript?.trim()}
       className="flex items-center gap-2 mr-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg transition-all duration-200"
     >
       {isProcessing ? (

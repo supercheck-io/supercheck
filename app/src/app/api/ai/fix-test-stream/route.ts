@@ -38,7 +38,6 @@ export async function POST(request: NextRequest) {
     await AuthService.checkRateLimit();
 
     let prompt: string;
-    let shouldAttemptFix = true;
     let confidence = 0.7;
 
     // Step 3: Handle different test types

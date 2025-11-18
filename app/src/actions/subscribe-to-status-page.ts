@@ -4,7 +4,6 @@ import { db } from "@/utils/db";
 import { statusPages, statusPageSubscribers } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { EmailService } from "@/lib/email-service";
 import { renderStatusPageVerificationEmail } from "@/lib/email-renderer";
@@ -39,6 +38,12 @@ const subscribeSchema = z.union([
 ]);
 
 type SubscribeInput = z.infer<typeof subscribeSchema>;
+
+const generateHexToken = (byteLength = 32) =>
+  Array.from(
+    crypto.getRandomValues(new Uint8Array(byteLength)),
+    (byte) => byte.toString(16).padStart(2, "0")
+  ).join("");
 
 // Helper function to send verification email
 async function sendVerificationEmail(params: {
@@ -191,8 +196,8 @@ async function handleEmailSubscription(
       };
     } else {
       // If exists but not verified, update the verification token and resend
-      const newVerificationToken = randomBytes(32).toString("hex");
-      const newUnsubscribeToken = randomBytes(32).toString("hex");
+      const newVerificationToken = generateHexToken();
+      const newUnsubscribeToken = generateHexToken();
 
       await db
         .update(statusPageSubscribers)
@@ -225,8 +230,8 @@ async function handleEmailSubscription(
   }
 
   // Generate secure tokens
-  const verificationToken = randomBytes(32).toString("hex");
-  const unsubscribeToken = randomBytes(32).toString("hex");
+  const verificationToken = generateHexToken();
+  const unsubscribeToken = generateHexToken();
 
   // Create subscriber
   const [subscriber] = await db
@@ -306,7 +311,7 @@ async function handleWebhookSubscription(
       await db
         .update(statusPageSubscribers)
         .set({
-          unsubscribeToken: randomBytes(32).toString("hex"),
+          unsubscribeToken: generateHexToken(),
           updatedAt: new Date(),
         })
         .where(eq(statusPageSubscribers.id, existingSubscriber.id));
@@ -319,7 +324,7 @@ async function handleWebhookSubscription(
     }
 
     // Generate secure tokens
-    const unsubscribeToken = randomBytes(32).toString("hex");
+    const unsubscribeToken = generateHexToken();
     const webhookSecret = generateWebhookSecret();
 
     // Create webhook subscriber (immediately verified - no email verification needed)
@@ -413,7 +418,7 @@ async function handleSlackSubscription(
       await db
         .update(statusPageSubscribers)
         .set({
-          unsubscribeToken: randomBytes(32).toString("hex"),
+          unsubscribeToken: generateHexToken(),
           verifiedAt: new Date(),
           updatedAt: new Date(),
         })
@@ -427,7 +432,7 @@ async function handleSlackSubscription(
     }
 
     // Generate secure tokens
-    const unsubscribeToken = randomBytes(32).toString("hex");
+    const unsubscribeToken = generateHexToken();
 
     // Create Slack subscriber (immediately verified - no email verification needed)
     const [subscriber] = await db

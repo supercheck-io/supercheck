@@ -106,9 +106,11 @@ export async function resendVerificationEmail(subscriberId: string) {
       };
     }
 
-    // Generate new verification token
-    const { randomBytes } = await import("crypto");
-    const newVerificationToken = randomBytes(32).toString("hex");
+    // Generate new verification token without relying on Node-specific crypto types
+    const newVerificationToken = Array.from(
+      crypto.getRandomValues(new Uint8Array(32)),
+      (byte) => byte.toString(16).padStart(2, "0")
+    ).join("");
 
     await db
       .update(statusPageSubscribers)

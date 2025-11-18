@@ -19,7 +19,12 @@
 
 ## Overview
 
-The AI Fix feature analyzes failed Playwright tests and automatically suggests intelligent fixes using OpenAI's advanced language models. Supports multiple **OpenAI models** with GPT-4o-mini as the recommended default, featuring comprehensive error classification, security validation, and an intuitive Monaco-based diff interface.
+The AI Fix system now offers two complementary capabilities:
+
+1. **AI Fix** – analyzes failed Playwright/K6 tests and streams intelligent fixes from OpenAI models directly into the Monaco diff viewer.
+2. **AI Create** – generates net-new Playwright or K6 scripts from a natural-language description via the same secure pipeline.
+
+Both features support multiple **OpenAI models** (GPT-4o-mini default) with comprehensive error classification, security validation, SSE streaming, and editor integrations that preserve user control.
 
 ## Architecture
 
@@ -145,13 +150,18 @@ sequenceDiagram
 - **Prompt Builder** (`/app/src/lib/ai-prompts.ts`) - Test type-specific prompt optimization with comment preservation
 - **HTML Parser** (`/app/src/lib/html-report-parser.ts`) - JSDOM-based fallback HTML report processing
 - **API Route** (`/app/src/app/api/ai/fix-test/route.ts`) - RESTful endpoint with comprehensive error handling and fallback strategies
+- **Streaming API Route** (`/app/src/app/api/ai/fix-test-stream/route.ts`) - SSE endpoint that always attempts a fix and streams responses for instant diff previews
+- **AI Streaming Service** (`/app/src/lib/ai-streaming-service.ts`) - Shared streaming abstraction with token tracking and safety checks
+- **AI Create API Route** (`/app/src/app/api/ai/create-test/route.ts`) - Streaming endpoint for prompt-based code generation
 
 #### UI Components
 
 - **AI Fix Button** (`/app/src/components/playground/ai-fix-button.tsx`) - Gradient purple-to-pink button with loading states
 - **Diff Viewer** (`/app/src/components/playground/ai-diff-viewer.tsx`) - Monaco Editor side-by-side comparison
 - **Guidance Modal** (`/app/src/components/playground/guidance-modal.tsx`) - Professional guidance for non-fixable issues
-- **Playground Integration** (`/app/src/components/playground/index.tsx`) - Main integration point with permission checking
+- **AI Create Button** (`/app/src/components/playground/ai-create-button.tsx`) - Prompt-driven dialog that streams generated code
+- **AI Create Viewer** (`/app/src/components/playground/ai-create-viewer.tsx`) - Monaco editor surface for reviewing generated scripts
+- **Playground Integration** (`/app/src/components/playground/index.tsx`) - Main integration point with permission checking and streaming orchestration
 
 ### Key Features
 
@@ -159,9 +169,11 @@ sequenceDiagram
 - **Intelligent Error Classification** - 11-category system distinguishing AI-fixable vs manual investigation issues
 - **Security-First Design** - Comprehensive input sanitization, output validation, and AWS SDK integration
 - **Multi-Source Analysis** - Markdown reports (preferred), HTML fallback, and basic script analysis
+- **Real-Time Streaming** - SSE pipeline keeps the diff viewer updated while the model is still generating output
 - **Production Ready** - Rate limiting, monitoring, cost control, token usage tracking, and comprehensive error handling
 - **Comment Preservation** - Strict requirement to maintain all original code comments
 - **Flexible Parsing** - Handles various AI response formats with robust error recovery
+- **AI Create Companion** - Dedicated workflow for generating entirely new tests when no baseline exists
 
 ## Quick Setup
 
@@ -329,6 +341,33 @@ export class AIFixService {
 - Configurable timeout (10-120 seconds) and retry logic (1-5 attempts)
 - Temperature control for response consistency (0.0-2.0)
 
+### AI Streaming Service
+
+```typescript
+export class AIStreamingService {
+  static async generateStreamingResponse(request: AIStreamRequest): Promise<AIStreamResponse>;
+  private static validateConfiguration(): void;
+  private static getModel();
+  private static async logAIUsage(usage: AIUsageLog): Promise<void>;
+}
+```
+
+**Highlights:**
+
+- Enforces API key presence before any streaming request
+- Shares timeout/temperature/rate-limit logic with the non-streaming service
+- Wraps Vercel AI SDK `streamText` output into SSE-friendly `data: { type: "content" }` events for the client diff viewers
+- Emits `data: { type: "done" }` or `data: { type: "error" }` markers to simplify client-side cleanup
+- Logs token metrics for both fix and create pipelines
+
+### AI Create Pipeline
+
+- **Entry Point:** `POST /api/ai/create-test` streams responses using `AIStreamingService`
+- **Inputs:** `userRequest` (10-2000 chars), `testType`, optional `currentScript`
+- **Prompting:** Uses `AIPromptBuilder.buildCreatePrompt` to inject contextual instructions and ensure well-commented scripts
+- **Client UX:** `AICreateButton` opens a dialog for the natural-language brief, then streams updates into `AICreateViewer` for review/apply flows inside the playground
+- **Error Handling:** Mirrors AI Fix toasts with granular 400/401/429 responses plus manual fallback guidance
+
 ### Security Framework
 
 ```typescript
@@ -490,6 +529,41 @@ buildBasicFixPrompt({
 }
 ```
 
+### POST `/api/ai/fix-test-stream`
+
+Server-Sent Events (SSE) endpoint that always attempts to generate an AI fix (including K6 performance tests).
+
+**Request Body:** identical to `/api/ai/fix-test`.
+
+**Response:** `Content-Type: text/event-stream` with events shaped as:
+
+```
+data: { "type": "content", "content": "partial text chunk" }
+data: { "type": "done" }
+```
+
+On the client, `AIFixButton` accumulates chunks, updates the diff viewer in real time, and handles `type: "error"` events for resilience.
+
+### POST `/api/ai/create-test`
+
+Streaming endpoint that turns a natural-language brief into a complete Playwright or K6 script.
+
+**Request Body:**
+
+```json
+{
+  "userRequest": "Describe desired test (10-2000 chars)",
+  "testType": "browser|api|custom|database|performance",
+  "currentScript": "optional context"
+}
+```
+
+**Response:** SSE stream with the same chunk format as `/api/ai/fix-test-stream`, plus headers `X-AI-Model` and `X-Operation: create` for telemetry.
+
+### GET `/api/ai/create-test` (Health Check)
+
+Returns health information for the AI Create streaming route using `AIStreamingService.healthCheck()`.
+
 ## User Interface
 
 ### AI Fix Button
@@ -527,6 +601,9 @@ buildBasicFixPrompt({
 - Actionable next steps with specific recommendations
 - Context information (test type, analysis source)
 - Quick access to detailed reports
+
+- **AI Create Button & Dialog** – Collects the user request, enforces validation, and starts streaming generation straight into the playground when AI Fix isn’t available.
+- **AI Create Viewer** – Reuses Monaco to preview streamed content, allows inline edits, and offers Accept/Reject controls similar to AI Fix for consistency.
 
 ## Testing the Setup
 

@@ -497,10 +497,11 @@ export class ContainerExecutorService {
           await fs.mkdir(extractToHost, { recursive: true });
 
           // Use docker cp to extract files from container
-          // Format: docker cp <container>:<src_path> <dest_path>
+          // Format: docker cp <container>:<src_path>/. <dest_path>
+          // The trailing /. extracts the CONTENTS of the directory, not the directory itself
           await execa('docker', [
             'cp',
-            `${containerName}:${extractFromContainer}`,
+            `${containerName}:${extractFromContainer}/.`,
             extractToHost,
           ]);
 

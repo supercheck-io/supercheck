@@ -24,7 +24,6 @@ import {
   UserCog,
   Tally4,
   type LucideIcon,
-  Logs,
   ClipboardList,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
