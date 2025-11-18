@@ -798,9 +798,9 @@ export async function addMonitorExecutionJobToQueue(
         )
       ) as MonitoringLocation[];
 
-      const executionGroupId = `${task.monitorId}-${Date.now()}-${crypto
-        .randomBytes(6)
-        .toString("hex")}`;
+      const executionGroupId = `${task.monitorId}-${Date.now()}-${Buffer.from(
+        crypto.randomBytes(6)
+      ).toString("hex")}`;
 
       const locationsToSchedule =
         expectedLocations.length > 0 ? expectedLocations : getEffectiveLocations(null);

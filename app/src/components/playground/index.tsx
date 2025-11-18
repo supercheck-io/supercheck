@@ -14,11 +14,10 @@ import { CodeEditor } from "./code-editor";
 import { TestForm } from "./test-form";
 import { LoadingOverlay } from "./loading-overlay";
 import { ValidationError } from "./validation-error";
-import { TestPriority, TestType } from "@/db/schema";
-import { Loader2Icon, ZapIcon, Text, SquareCode, Code2 } from "lucide-react";
+import { Loader2Icon, ZapIcon, Text, Code2 } from "lucide-react";
 import * as z from "zod";
 import type { editor } from "monaco-editor";
-import type { ScriptType } from "@/lib/script-service";
+import { ScriptType } from "@/lib/script-service";
 import { ReportViewer } from "@/components/shared/report-viewer";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canRunTests } from "@/lib/rbac/client-permissions";
@@ -37,6 +36,34 @@ import {
   PerformanceLocation,
 } from "./location-selection-dialog";
 import { TemplateDialog } from "./template-dialog";
+import type { TestPriority, TestType } from "@/db/schema/types";
+
+const extractCodeFromResponse = (rawText: string): string => {
+  if (!rawText) {
+    return "";
+  }
+
+  const fencedBlockMatch = rawText.match(/```(?:[\w+-]+)?\s*([\s\S]*?)```/);
+  if (fencedBlockMatch) {
+    return fencedBlockMatch[1].trimStart();
+  }
+
+  const fenceStartIndex = rawText.indexOf("```");
+  if (fenceStartIndex !== -1) {
+    const afterFence = rawText.slice(fenceStartIndex + 3);
+    const withoutLang = afterFence.replace(/^(?:[\w+-]+\s*)?/, "");
+    return withoutLang.trimStart();
+  }
+
+  const sectionMatch = rawText.match(
+    /(?:GENERATED_SCRIPT|FIXED_SCRIPT):\s*([\s\S]*)/i
+  );
+  if (sectionMatch) {
+    return sectionMatch[1].trimStart();
+  }
+
+  return rawText.trimStart();
+};
 
 const VALID_TEST_TYPES: TestType[] = [
   "browser",
@@ -952,7 +979,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   };
 
   const handleAIFixStreamingUpdate = (content: string) => {
-    setStreamingFixContent(content);
+    setStreamingFixContent(extractCodeFromResponse(content));
   };
 
   const handleAIFixStreamingEnd = () => {
@@ -961,7 +988,7 @@ const Playground: React.FC<PlaygroundProps> = ({
 
   const handleAIFixSuccess = (fixedScript: string, explanation: string) => {
     setIsStreamingAIFix(false);
-    setAIFixedScript(fixedScript);
+    setAIFixedScript(extractCodeFromResponse(fixedScript));
     setAIExplanation(explanation);
     setStreamingFixContent("");
     setShowAIDiff(true);
@@ -1027,16 +1054,19 @@ const Playground: React.FC<PlaygroundProps> = ({
   };
 
   const handleAICreateStreamingUpdate = (content: string) => {
-    setStreamingCreateContent(content);
+    setStreamingCreateContent(extractCodeFromResponse(content));
   };
 
   const handleAICreateStreamingEnd = () => {
     setIsStreamingAICreate(false);
   };
 
-  const handleAICreateSuccess = (generatedScript: string, explanation: string) => {
+  const handleAICreateSuccess = (
+    generatedScript: string,
+    explanation: string
+  ) => {
     setIsStreamingAICreate(false);
-    setAIGeneratedScript(generatedScript);
+    setAIGeneratedScript(extractCodeFromResponse(generatedScript));
     setAICreateExplanation(explanation);
     setStreamingCreateContent("");
     setShowAICreateDiff(true);
@@ -1137,6 +1167,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                         onClick={() => setTemplateDialogOpen(true)}
                         variant="outline"
                         size="sm"
+                        disabled={isRunning}
                         className="gap-2 h-9 px-4"
                       >
                         <Code2 className="h-4 w-4" />
@@ -1285,6 +1316,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                         failedScript={editorContent}
                         testType={testCase.type || "browser"}
                         isVisible={aiFixVisible}
+                        disabled={isRunning || isValidating || isAIAnalyzing}
                         onAIFixSuccess={handleAIFixSuccess}
                         onShowGuidance={handleShowGuidance}
                         onAnalyzing={handleAIAnalyzing}
@@ -1299,12 +1331,11 @@ const Playground: React.FC<PlaygroundProps> = ({
                         currentScript={editorContent}
                         testType={testCase.type || "browser"}
                         isVisible={
-                          !isRunning &&
-                          !isValidating &&
                           !isAIAnalyzing &&
                           !isAICreating &&
                           userCanRunTests
                         }
+                        disabled={isRunning || isValidating}
                         onAICreateSuccess={handleAICreateSuccess}
                         onAnalyzing={handleAICreating}
                         onStreamingStart={handleAICreateStreamingStart}

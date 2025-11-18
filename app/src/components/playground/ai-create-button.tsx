@@ -18,6 +18,7 @@ interface AICreateButtonProps {
   currentScript: string;
   testType: string;
   isVisible: boolean;
+  disabled?: boolean;
   onAICreateSuccess: (
     generatedScript: string,
     explanation: string
@@ -25,16 +26,19 @@ interface AICreateButtonProps {
   onAnalyzing?: (isAnalyzing: boolean) => void;
   onStreamingStart?: () => void;
   onStreamingUpdate?: (text: string) => void;
+  onStreamingEnd?: () => void;
 }
 
 export function AICreateButton({
   currentScript,
   testType,
   isVisible,
+  disabled,
   onAICreateSuccess,
   onAnalyzing,
   onStreamingStart,
   onStreamingUpdate,
+  onStreamingEnd,
 }: AICreateButtonProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [userRequest, setUserRequest] = useState("");
@@ -145,7 +149,7 @@ export function AICreateButton({
     onAnalyzing?.(true);
     onStreamingStart?.(); // Notify parent that streaming has started
 
-    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null | undefined = null;
 
     try {
       const response = await fetch("/api/ai/create-test", {
@@ -218,6 +222,7 @@ export function AICreateButton({
                   // Streaming complete
                   console.log("AI Create completed:", data);
                   console.log("Total text received:", fullText.length, "characters");
+                  onStreamingEnd?.();
                 } else if (data.type === "error") {
                   console.error("Stream error:", data.error);
                   throw new Error(data.error || "AI generation error");
@@ -310,7 +315,7 @@ export function AICreateButton({
       <Button
         size="sm"
         onClick={handleOpenDialog}
-        disabled={isProcessing}
+        disabled={disabled || isProcessing}
         className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg transition-all duration-200"
       >
         <Wand2 className="h-4 w-4" />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Check, Wand2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import { toast } from "sonner";
 // Import Monaco Editor properly
 import { DiffEditor, useMonaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
+import { useTheme } from "next-themes";
 
 interface AIDiffViewerProps {
   originalScript: string;
@@ -36,29 +37,52 @@ export function AIDiffViewer({
   const editorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
   const monaco = useMonaco();
   const isMountedRef = useRef(true);
-  const updateTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const { resolvedTheme } = useTheme();
+  const isDarkTheme = resolvedTheme !== "light";
+  const editorTheme = isDarkTheme ? "vs-dark" : "warm-light";
 
-  // Update current fixed script from either streaming content or final fixed script
-  // No throttling to keep the stream real-time; rely on React batching to avoid flicker
-  // Drive Monaco directly during streaming to avoid React re-render flicker
-  useEffect(() => {
-    const modifiedModel = editorRef.current
-      ?.getModifiedEditor?.()
-      ?.getModel?.();
-    if (isStreaming && streamingContent && modifiedModel) {
-      modifiedModel.setValue(streamingContent);
-      return;
+  const scrollEditorsToTop = useCallback(() => {
+    if (!editorRef.current) return;
+    const modifiedEditor = editorRef.current.getModifiedEditor?.();
+    const originalEditor = editorRef.current.getOriginalEditor?.();
+    modifiedEditor?.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
+    originalEditor?.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
+  }, []);
+
+  const updateModifiedEditorValue = useCallback((value: string) => {
+    const modifiedEditor = editorRef.current?.getModifiedEditor?.();
+    if (modifiedEditor) {
+      const model = modifiedEditor.getModel();
+      model?.setValue(value);
+      modifiedEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
     }
+  }, []);
 
-    if (!isStreaming && fixedScript && modifiedModel) {
-      modifiedModel.setValue(fixedScript);
+  useEffect(() => {
+    if (isStreaming && streamingContent) {
+      updateModifiedEditorValue(streamingContent);
+      setCurrentFixedScript(streamingContent);
       return;
     }
 
     if (!isStreaming && fixedScript) {
+      updateModifiedEditorValue(fixedScript);
       setCurrentFixedScript(fixedScript);
+      scrollEditorsToTop();
     }
-  }, [fixedScript, isStreaming, streamingContent]);
+  }, [
+    fixedScript,
+    isStreaming,
+    streamingContent,
+    scrollEditorsToTop,
+    updateModifiedEditorValue,
+  ]);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      scrollEditorsToTop();
+    }
+  }, [isStreaming, scrollEditorsToTop]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -110,6 +134,12 @@ export function AIDiffViewer({
       });
     }
   }, [monaco]);
+
+  useEffect(() => {
+    if (monaco && editorTheme) {
+      monaco.editor.setTheme(editorTheme);
+    }
+  }, [monaco, editorTheme]);
 
   const handleEditorDidMount = (editor: editor.IStandaloneDiffEditor) => {
     // Check if component is still mounted before proceeding
@@ -283,41 +313,67 @@ export function AIDiffViewer({
   };
 
   const bulletPoints = getBulletPoints(explanation);
+  const containerClasses = isDarkTheme
+    ? "bg-gray-900 border border-gray-700"
+    : "bg-white border border-gray-200";
+  const headerClasses = isDarkTheme
+    ? "bg-gray-900 border-b border-gray-700 text-white"
+    : "bg-white border-b border-gray-200 text-gray-900";
+  const summaryClasses = isDarkTheme
+    ? "bg-gray-800 text-gray-300"
+    : "bg-slate-100 text-gray-700";
+  const footerClasses = isDarkTheme
+    ? "bg-gray-800 border-t border-gray-700 text-gray-400"
+    : "bg-slate-100 border-t border-gray-200 text-gray-600";
+  const badgeOriginal = isDarkTheme ? "bg-red-500/70" : "bg-red-500/40";
+  const badgeFixed = isDarkTheme ? "bg-green-500/70" : "bg-green-500/40";
+  const rejectButtonClasses = isDarkTheme
+    ? "h-9 px-4 text-sm bg-transparent border-red-600 text-red-400 hover:bg-red-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+    : "h-9 px-4 text-sm bg-transparent border-red-500 text-red-600 hover:bg-red-500 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed";
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="w-full max-w-5xl max-h-[85vh] flex flex-col shadow-2xl bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
-        {/* Compact Header */}
-        <div className="flex-shrink-0 bg-gray-900 border-b border-gray-700 px-4 py-3">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div
+        className={`w-full max-w-5xl max-h-[85vh] flex flex-col shadow-2xl rounded-lg overflow-hidden ${containerClasses}`}
+      >
+        <div className={`flex-shrink-0 px-4 py-3 ${headerClasses}`}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-            <Wand2 className="h-5 w-5 text-white" />
-            <h2 className="text-base font-semibold text-white flex items-center gap-2">
-              AI Fix Review
-              {isStreaming && (
-                <span className="text-xs text-purple-400 font-normal animate-pulse">
-                  AI is generating...
-                </span>
-              )}
-            </h2>
+              <Wand2
+                className={`h-5 w-5 ${isDarkTheme ? "text-white" : "text-gray-900"}`}
+              />
+              <h2 className="text-base font-semibold flex items-center gap-2">
+                AI Fix Review
+                {isStreaming && (
+                  <span className="text-xs text-purple-500 font-normal animate-pulse">
+                    AI is generating...
+                  </span>
+                )}
+              </h2>
             </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={onClose}
-              className="text-gray-400 hover:text-white hover:bg-gray-800 h-7 w-7 p-0"
+              className={`h-7 w-7 p-0 ${
+                isDarkTheme
+                  ? "text-gray-400 hover:text-white hover:bg-gray-800"
+                  : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+              }`}
               disabled={isStreaming}
+              aria-label="Close"
             >
               <X className="h-3 w-3" />
             </Button>
           </div>
 
-          {/* Brief bullet points */}
-          <div className="bg-gray-800 rounded px-3 py-3">
-            <div className="text-sm text-gray-300 space-y-2">
+          <div className={`rounded px-3 py-3 ${summaryClasses}`}>
+            <div className="text-sm space-y-2">
               {bulletPoints.map((point, index) => (
                 <div key={index} className="flex items-start gap-3">
-                  <div className="w-2 h-2 bg-green-600 rounded-full mt-2 flex-shrink-0"></div>
+                  <div
+                    className={`w-2 h-2 rounded-full mt-2 flex-shrink-0 ${badgeFixed}`}
+                  />
                   <span className="leading-relaxed">{point}</span>
                 </div>
               ))}
@@ -325,14 +381,13 @@ export function AIDiffViewer({
           </div>
         </div>
 
-        {/* Monaco Editor with fixed height */}
         <div
-          className="bg-gray-900 relative overflow-hidden"
+          className={`${isDarkTheme ? "bg-gray-900" : "bg-white"} relative overflow-hidden`}
           style={{ height: "500px" }}
         >
           <style jsx>{`
             .monaco-diff-editor .editor.modified {
-              border-left: 1px solid #404040;
+              border-left: 1px solid ${isDarkTheme ? "#404040" : "#e5e7eb"};
             }
           `}</style>
           <DiffEditor
@@ -341,7 +396,6 @@ export function AIDiffViewer({
             original={originalScript}
             modified={currentFixedScript}
             onMount={handleEditorDidMount}
-            key={`${originalScript.length}-${currentFixedScript.length}`}
             options={{
               fontSize: 12,
               fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
@@ -374,30 +428,28 @@ export function AIDiffViewer({
               overviewRulerBorder: false,
               hideCursorInOverviewRuler: true,
             }}
-            theme="vs-dark"
+            theme={editorTheme}
           />
         </div>
 
-        {/* Compact Action Bar */}
-        <div className="flex-shrink-0 bg-gray-800 border-t border-gray-700 px-4 py-2">
+        <div className={`flex-shrink-0 px-4 py-2 ${footerClasses}`}>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4 text-sm text-gray-400">
+            <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-red-500/60 rounded-full"></div>
+                <div className={`w-3 h-3 rounded-full ${badgeOriginal}`} />
                 <span>Original</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-green-500/60 rounded-full"></div>
+                <div className={`w-3 h-3 rounded-full ${badgeFixed}`} />
                 <span>AI Fixed</span>
               </div>
             </div>
-
             <div className="flex items-center gap-3">
               <Button
                 variant="outline"
                 onClick={handleReject}
                 disabled={isStreaming}
-                className="h-9 px-4 text-sm bg-transparent border-red-600 text-red-400 hover:bg-red-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                className={rejectButtonClasses}
               >
                 <X className="h-4 w-4 mr-1" />
                 Reject
