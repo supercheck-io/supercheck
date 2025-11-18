@@ -983,6 +983,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   };
 
   const handleAIFixStreamingEnd = () => {
+    console.log("[Playground] handleAIFixStreamingEnd called - setting isStreamingAIFix to false");
     setIsStreamingAIFix(false);
   };
 

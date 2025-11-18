@@ -1,5 +1,5 @@
 {
-  "id": "bc2cdd76-1b1e-4d5d-aa8f-e016a4a04e24",
+  "id": "03826730-dc1a-410a-ae74-97032e6edfe5",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -3692,7 +3692,7 @@
           "type": "varchar(50)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'passed'"
+          "default": "'running'"
         },
         "s3_url": {
           "name": "s3_url",

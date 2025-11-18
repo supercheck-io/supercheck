@@ -384,7 +384,7 @@ CREATE TABLE "reports" (
 	"entity_type" varchar(50) NOT NULL,
 	"entity_id" text NOT NULL,
 	"report_path" varchar(255) NOT NULL,
-	"status" varchar(50) DEFAULT 'passed' NOT NULL,
+	"status" varchar(50) DEFAULT 'running' NOT NULL,
 	"s3_url" varchar(1024),
 	"created_at" timestamp DEFAULT now(),
 	"updated_at" timestamp DEFAULT now()
