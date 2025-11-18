@@ -1,1 +1,0 @@
-ALTER TABLE "reports" ALTER COLUMN "status" SET DEFAULT 'running';

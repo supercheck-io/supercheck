@@ -33,6 +33,7 @@ export function AIDiffViewer({
   isStreaming = false,
   streamingContent = "",
 }: AIDiffViewerProps) {
+  console.log("[AIDiffViewer] isStreaming prop:", isStreaming, "fixedScript length:", fixedScript.length);
   const [currentFixedScript, setCurrentFixedScript] = useState(fixedScript);
   const editorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
   const monaco = useMonaco();
@@ -334,7 +335,7 @@ export function AIDiffViewer({
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div
-        className={`w-full max-w-5xl max-h-[85vh] flex flex-col shadow-2xl rounded-lg overflow-hidden ${containerClasses}`}
+        className={`w-full max-w-5xl max-h-[95vh] flex flex-col shadow-2xl rounded-lg ${containerClasses}`}
       >
         <div className={`flex-shrink-0 px-4 py-3 ${headerClasses}`}>
           <div className="flex items-center justify-between mb-2">
@@ -432,7 +433,7 @@ export function AIDiffViewer({
           />
         </div>
 
-        <div className={`flex-shrink-0 px-4 py-2 ${footerClasses}`}>
+        <div className={`flex-shrink-0 px-4 py-2 ${footerClasses} relative z-40`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2">
@@ -444,9 +445,10 @@ export function AIDiffViewer({
                 <span>AI Fixed</span>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 relative z-50">
               <Button
                 variant="outline"
+                type="button"
                 onClick={handleReject}
                 disabled={isStreaming}
                 className={rejectButtonClasses}
@@ -454,14 +456,14 @@ export function AIDiffViewer({
                 <X className="h-4 w-4 mr-1" />
                 Reject
               </Button>
-              <Button
+              <button
+                type="button"
                 onClick={handleAccept}
-                disabled={isStreaming}
-                className="h-9 px-4 text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-9 px-4 text-sm bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-all pointer-events-auto relative z-50"
               >
-                <Check className="h-4 w-4 mr-1" />
+                <Check className="h-4 w-4 mr-1 inline" />
                 {isStreaming ? "Generating..." : "Accept & Apply"}
-              </Button>
+              </button>
             </div>
           </div>
         </div>
