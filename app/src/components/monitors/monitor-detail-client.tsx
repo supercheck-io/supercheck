@@ -1579,6 +1579,7 @@ export function MonitorDetailClient({
           </div>
         </div>
       )}
+      </div>
     </>
   );
 }

@@ -373,10 +373,13 @@ export class ExecutionService implements OnModuleDestroy {
       );
 
       // 5. Process result and upload report
-      let finalStatus: 'passed' | 'failed' = 'failed'; // Default to failed
+      // The report evaluation is the authoritative source for test status
+      // It correctly handles flaky tests (which pass on retry)
+      const reportOutcome = await this.evaluatePlaywrightReport(extractedReportsDir);
+      let finalStatus: 'passed' | 'failed' =
+        !reportOutcome.hasFailures ? 'passed' : 'failed';
 
-      if (execResult.success) {
-        finalStatus = 'passed';
+      if (finalStatus === 'passed') {
         // Removed success log - only log errors and completion summary
 
         // For synthetic monitors: only upload reports on failure (not on success)
@@ -755,11 +758,15 @@ export class ExecutionService implements OnModuleDestroy {
       const durationStr = this.formatDuration(durationMs);
       const durationSeconds = this.getDurationSeconds(durationMs);
 
+      // Evaluate report contents to determine real outcome; default to failed if unknown
+      const reportOutcome = await this.evaluatePlaywrightReport(extractedReportsDir);
+      overallSuccess = overallSuccess && !reportOutcome.hasFailures;
+
       // Update the finalResult to include duration
       finalResult = {
         jobId: runId,
         success: overallSuccess,
-        error: finalError,
+        error: overallSuccess ? null : finalError,
         reportUrl: s3Url,
         // Individual results are less meaningful with a combined report,
         // but we can pass overall status for now.
@@ -972,9 +979,9 @@ export class ExecutionService implements OnModuleDestroy {
           containerReportsDir,
           path.join(containerReportsDir, 'html'),
         ],
-        // Extract playwright-reports directory directly (not /tmp/. which doesn't copy subdirs reliably)
-        extractFromContainer: containerReportsDir,
-        extractToHost: path.join(extractedReportsDir, 'playwright-reports'),
+        // Extract playwright-reports directory contents (trailing /. copies contents, not the directory itself)
+        extractFromContainer: `${containerReportsDir}/.`,
+        extractToHost: extractedReportsDir,
       });
 
       // Improve error reporting
@@ -1015,6 +1022,250 @@ export class ExecutionService implements OnModuleDestroy {
         stderr: (error as Error).stack || '',
       };
     }
+  }
+
+  /**
+   * Inspect the extracted Playwright results.json to determine if any failures occurred.
+   * Defaults to "hasFailures=true" when the report is missing or unreadable to stay fail-safe.
+   */
+  private async evaluatePlaywrightReport(
+    extractedReportsDir: string,
+  ): Promise<{ hasFailures: boolean; foundReport: boolean }> {
+    const resultsPath = path.join(
+      extractedReportsDir,
+      'results.json',
+    );
+
+    try {
+      const raw = await fs.readFile(resultsPath, 'utf-8');
+      const parsed = JSON.parse(raw);
+
+      const collectedTests = this.collectPlaywrightTests(parsed);
+      this.logger.debug(
+        `[Playwright Report] Parsed results.json - detected ${collectedTests.length} tests`,
+      );
+
+      if (collectedTests.length > 0) {
+        const summarized = collectedTests.slice(0, 5).map((test: any) => ({
+          title:
+            Array.isArray(test?.titlePath) && test.titlePath.length > 0
+              ? test.titlePath.join(' › ')
+              : test?.title ?? test?.name ?? 'unknown',
+          outcome: this.determinePlaywrightTestOutcome(test),
+          attempts: Array.isArray(test?.results)
+            ? test.results.map((result: any) => result?.status)
+            : undefined,
+        }));
+        this.logger.debug(
+          `[Playwright Report] Sample test outcomes: ${JSON.stringify(summarized)}`,
+        );
+
+        const hasActualFailures = collectedTests.some((test) =>
+          this.isPlaywrightTestFailure(test),
+        );
+
+        if (hasActualFailures) {
+          this.logger.debug(
+            `[Playwright Report] At least one test has only failing attempts`,
+          );
+          return { hasFailures: true, foundReport: true };
+        }
+
+        this.logger.debug(
+          `[Playwright Report] All tests either passed or were flaky (passed on retry)`,
+        );
+        return { hasFailures: false, foundReport: true };
+      }
+
+      // Fallback: Check summary fields if tests array is not available
+      if (parsed?.summary && typeof parsed.summary.failed === 'number') {
+        if (parsed.summary.failed > 0) {
+          this.logger.debug(
+            `[Playwright Report] Found ${parsed.summary.failed} failed tests in summary`,
+          );
+          return { hasFailures: true, foundReport: true };
+        }
+      }
+
+      if (typeof parsed?.status === 'string') {
+        const status = parsed.status.toLowerCase();
+        if (status === 'failed' || status === 'timedout') {
+          return { hasFailures: true, foundReport: true };
+        }
+        if (status === 'passed' || status === 'success') {
+          return { hasFailures: false, foundReport: true };
+        }
+      }
+
+      // Deep scan for any failed status or errors (last resort fallback)
+      const deepFailure = this.detectPlaywrightFailure(parsed);
+      return { hasFailures: deepFailure, foundReport: true };
+    } catch (error) {
+      this.logger.warn(
+        `[Playwright Report] Could not evaluate results at ${resultsPath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return { hasFailures: true, foundReport: false };
+    }
+  }
+
+  private detectPlaywrightFailure(node: unknown): boolean {
+    if (!node) return false;
+
+    if (Array.isArray(node)) {
+      // For test results array, check if ANY test has a final status of 'failed' or 'timedout'
+      // Flaky tests will have status 'passed' (the final retry result), so they won't be flagged
+      return node.some((child) => {
+        if (typeof child === 'object' && child !== null) {
+          const obj = child as Record<string, unknown>;
+          // Check the test's final status
+          if (
+            typeof obj.status === 'string' &&
+            ['failed', 'timedout'].includes(obj.status.toLowerCase())
+          ) {
+            return true;
+          }
+        }
+        return this.detectPlaywrightFailure(child);
+      });
+    }
+
+    if (typeof node === 'object') {
+      const obj = node as Record<string, unknown>;
+
+      // Only flag as failure if status is 'failed' or 'timedout' (not 'skipped')
+      // For flaky tests, the final status in results.json is 'passed', so this won't trigger
+      if (
+        typeof obj.status === 'string' &&
+        ['failed', 'timedout'].includes(obj.status.toLowerCase())
+      ) {
+        return true;
+      }
+
+      // Check for actual errors (not just attempts with errors)
+      if (Array.isArray(obj.errors) && obj.errors.length > 0) {
+        // Only flag as failure if this is a test-level error, not an attempt-level error
+        // Test-level errors indicate the test ultimately failed
+        if (obj.status !== 'passed') {
+          return true;
+        }
+      }
+
+      return Object.values(obj).some((value) =>
+        this.detectPlaywrightFailure(value),
+      );
+    }
+
+    return false;
+  }
+
+  private collectPlaywrightTests(report: unknown): any[] {
+    const collected: any[] = [];
+
+    const visit = (node: unknown) => {
+      if (!node || typeof node !== 'object') {
+        return;
+      }
+
+      const obj = node as Record<string, unknown>;
+
+      if (Array.isArray(obj.tests)) {
+        for (const test of obj.tests) {
+          if (test) {
+            collected.push(test);
+          }
+        }
+      }
+
+      const nestedCollections: Array<unknown> = [];
+      if (Array.isArray(obj.suites)) {
+        nestedCollections.push(...obj.suites);
+      }
+      if (Array.isArray(obj.projects)) {
+        nestedCollections.push(...obj.projects);
+      }
+      if (Array.isArray(obj.specs)) {
+        nestedCollections.push(...obj.specs);
+      }
+
+      if (nestedCollections.length > 0) {
+        nestedCollections.forEach(visit);
+      }
+    };
+
+    visit(report);
+    return collected;
+  }
+
+  private determinePlaywrightTestOutcome(test: any): 'passed' | 'flaky' | 'failed' | 'unknown' {
+    const statuses = this.extractPlaywrightAttemptStatuses(test);
+    const hasPassed = statuses.includes('passed');
+    const hasFailure = statuses.some((status) => this.isTerminalPlaywrightFailure(status));
+
+    if (hasPassed && hasFailure) {
+      return 'flaky';
+    }
+    if (hasPassed) {
+      return 'passed';
+    }
+    if (hasFailure) {
+      return 'failed';
+    }
+    return 'unknown';
+  }
+
+  private isPlaywrightTestFailure(test: any): boolean {
+    const statuses = this.extractPlaywrightAttemptStatuses(test);
+    const hasPassed = statuses.includes('passed');
+    const hasFailure = statuses.some((status) => this.isTerminalPlaywrightFailure(status));
+
+    // Treat as failure only if there is no passing attempt
+    if (!hasPassed && hasFailure) {
+      return true;
+    }
+
+    const topLevelStatus = this.normalizePlaywrightStatus(test?.status);
+    if (!hasPassed && topLevelStatus && this.isTerminalPlaywrightFailure(topLevelStatus)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private extractPlaywrightAttemptStatuses(test: any): string[] {
+    const statuses: string[] = [];
+
+    if (Array.isArray(test?.results)) {
+      for (const result of test.results) {
+        const normalized = this.normalizePlaywrightStatus(result?.status);
+        if (normalized) {
+          statuses.push(normalized);
+        }
+      }
+    }
+
+    const normalized = this.normalizePlaywrightStatus(test?.status);
+    if (normalized) {
+      statuses.push(normalized);
+    }
+
+    return statuses;
+  }
+
+  private normalizePlaywrightStatus(status: unknown): string | null {
+    if (!status || typeof status !== 'string') {
+      return null;
+    }
+    return status.toLowerCase();
+  }
+
+  private isTerminalPlaywrightFailure(status: string | null): boolean {
+    if (!status) {
+      return false;
+    }
+
+    return ['failed', 'timedout', 'interrupted', 'crashed'].includes(status);
   }
 
   /**

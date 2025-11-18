@@ -14,11 +14,10 @@ import { CodeEditor } from "./code-editor";
 import { TestForm } from "./test-form";
 import { LoadingOverlay } from "./loading-overlay";
 import { ValidationError } from "./validation-error";
-import { TestPriority, TestType } from "@/db/schema";
-import { Loader2Icon, ZapIcon, Text, SquareCode } from "lucide-react";
+import { Loader2Icon, ZapIcon, Text, Code2 } from "lucide-react";
 import * as z from "zod";
 import type { editor } from "monaco-editor";
-import type { ScriptType } from "@/lib/script-service";
+import { ScriptType } from "@/lib/script-service";
 import { ReportViewer } from "@/components/shared/report-viewer";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canRunTests } from "@/lib/rbac/client-permissions";
@@ -27,6 +26,8 @@ import RuntimeInfoPopover from "./runtime-info-popover";
 import { AIFixButton } from "./ai-fix-button";
 import { AIDiffViewer } from "./ai-diff-viewer";
 import { GuidanceModal } from "./guidance-modal";
+import { AICreateButton } from "./ai-create-button";
+import { AICreateViewer } from "./ai-create-viewer";
 import { PlaywrightLogo } from "../logo/playwright-logo";
 import { K6Logo } from "../logo/k6-logo";
 import { PerformanceTestReport } from "./performance-test-report";
@@ -35,6 +36,34 @@ import {
   PerformanceLocation,
 } from "./location-selection-dialog";
 import { TemplateDialog } from "./template-dialog";
+import type { TestPriority, TestType } from "@/db/schema/types";
+
+const extractCodeFromResponse = (rawText: string): string => {
+  if (!rawText) {
+    return "";
+  }
+
+  const fencedBlockMatch = rawText.match(/```(?:[\w+-]+)?\s*([\s\S]*?)```/);
+  if (fencedBlockMatch) {
+    return fencedBlockMatch[1].trimStart();
+  }
+
+  const fenceStartIndex = rawText.indexOf("```");
+  if (fenceStartIndex !== -1) {
+    const afterFence = rawText.slice(fenceStartIndex + 3);
+    const withoutLang = afterFence.replace(/^(?:[\w+-]+\s*)?/, "");
+    return withoutLang.trimStart();
+  }
+
+  const sectionMatch = rawText.match(
+    /(?:GENERATED_SCRIPT|FIXED_SCRIPT):\s*([\s\S]*)/i
+  );
+  if (sectionMatch) {
+    return sectionMatch[1].trimStart();
+  }
+
+  return rawText.trimStart();
+};
 
 const VALID_TEST_TYPES: TestType[] = [
   "browser",
@@ -198,7 +227,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   // Test execution status tracking
   const [testExecutionStatus, setTestExecutionStatus] = useState<
     "none" | "passed" | "failed"
-  >("none"); // Track if last test run passed or failed
+  >("failed"); // Default to failed-safe until a passing run is confirmed
   const [lastExecutedScript, setLastExecutedScript] = useState<string>(""); // Track last executed script
   const [isAIAnalyzing, setIsAIAnalyzing] = useState(false); // Track AI Fix analyzing state
 
@@ -208,6 +237,16 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [aiExplanation, setAIExplanation] = useState<string>("");
   const [showGuidanceModal, setShowGuidanceModal] = useState(false);
   const [guidanceMessage, setGuidanceMessage] = useState<string>("");
+  const [isStreamingAIFix, setIsStreamingAIFix] = useState(false);
+  const [streamingFixContent, setStreamingFixContent] = useState<string>("");
+
+  // AI Create functionality state
+  const [showAICreateDiff, setShowAICreateDiff] = useState(false);
+  const [aiGeneratedScript, setAIGeneratedScript] = useState<string>("");
+  const [aiCreateExplanation, setAICreateExplanation] = useState<string>("");
+  const [isAICreating, setIsAICreating] = useState(false);
+  const [isStreamingAICreate, setIsStreamingAICreate] = useState(false);
+  const [streamingCreateContent, setStreamingCreateContent] = useState<string>("");
 
   // Derived state: is current script validated and passed?
   const isCurrentScriptValidated =
@@ -217,6 +256,13 @@ const Playground: React.FC<PlaygroundProps> = ({
   const isCurrentScriptReadyToSave =
     isCurrentScriptValidated && isCurrentScriptExecutedSuccessfully;
   const isPerformanceMode = testCase.type === "performance";
+  const aiFixVisible =
+    testExecutionStatus === "failed" &&
+    !isRunning &&
+    !isValidating &&
+    !isReportLoading &&
+    userCanRunTests &&
+    !!executionTestId;
 
   // Clear validation state when script changes
   const resetValidationState = () => {
@@ -231,7 +277,7 @@ const Playground: React.FC<PlaygroundProps> = ({
 
   // Clear test execution state when script changes
   const resetTestExecutionState = () => {
-    setTestExecutionStatus("none");
+    setTestExecutionStatus("failed");
     setExecutionTestId(null); // Clear execution test ID for new script
     // Don't reset lastExecutedScript here - only when test passes
     setPerformanceRunId(null);
@@ -698,19 +744,39 @@ const Playground: React.FC<PlaygroundProps> = ({
           try {
             const data = JSON.parse(event.data);
             if (data?.status) {
-              const normalizedStatus = data.status.toLowerCase();
-              if (
+              const normalizedStatus =
+                typeof data.status === "string"
+                  ? data.status.toLowerCase()
+                  : "running";
+              const derivedStatus =
+                typeof data.derivedStatus === "string"
+                  ? data.derivedStatus.toLowerCase()
+                  : normalizedStatus;
+              const reportStatus =
+                typeof data.reportStatus === "string"
+                  ? data.reportStatus.toLowerCase()
+                  : null;
+
+              const isTerminalStatus =
                 normalizedStatus === "completed" ||
                 normalizedStatus === "passed" ||
                 normalizedStatus === "failed" ||
-                normalizedStatus === "error"
-              ) {
+                normalizedStatus === "error" ||
+                derivedStatus === "completed" ||
+                derivedStatus === "passed" ||
+                derivedStatus === "failed" ||
+                derivedStatus === "error" ||
+                reportStatus === "completed" ||
+                reportStatus === "failed" ||
+                reportStatus === "error";
+
+              if (isTerminalStatus) {
                 setIsRunning(false);
                 setIsReportLoading(false);
 
+                // Only treat as passed when we explicitly see a passed/ok status
                 const testPassed =
-                  normalizedStatus === "completed" ||
-                  normalizedStatus === "passed";
+                  derivedStatus === "passed" || derivedStatus === "success";
                 setTestExecutionStatus(testPassed ? "passed" : "failed");
                 if (testPassed) {
                   setLastExecutedScript(editorContent);
@@ -739,9 +805,8 @@ const Playground: React.FC<PlaygroundProps> = ({
                   });
                 }
 
-                const isSuccess =
-                  normalizedStatus === "completed" ||
-                  normalizedStatus === "passed";
+                // Only "passed" status indicates success
+                const isSuccess = testPassed;
 
                 toast[isSuccess ? "success" : "error"](
                   isSuccess
@@ -750,7 +815,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                   {
                     description: isSuccess
                       ? "All checks completed successfully."
-                      : "All checks did not complete successfully.",
+                      : "Test execution completed with failures or errors. Please review the report before saving.",
                     duration: 10000,
                   }
                 );
@@ -770,6 +835,9 @@ const Playground: React.FC<PlaygroundProps> = ({
           console.error("SSE connection error:", e);
           setIsRunning(false);
           setIsReportLoading(false);
+
+          // Mark test as failed when SSE connection fails
+          setTestExecutionStatus("failed");
 
           toast.error("Script execution error", {
             description:
@@ -797,6 +865,9 @@ const Playground: React.FC<PlaygroundProps> = ({
       } else {
         setIsRunning(false);
         setIsReportLoading(false);
+
+        // Mark test as failed when execution fails
+        setTestExecutionStatus("failed");
 
         if (result.error) {
           console.error("Script execution error:", result.error);
@@ -829,12 +900,16 @@ const Playground: React.FC<PlaygroundProps> = ({
       }
     } catch (error) {
       console.error("Error running script:", error);
-      toast.error("Error running script", {
-        description: error instanceof Error ? error.message : "Unknown error",
-        duration: 5000,
-      });
       setIsRunning(false);
       setIsReportLoading(false);
+
+      // Mark test as failed when exception occurs
+      setTestExecutionStatus("failed");
+
+      toast.error("Error running script", {
+        description: error instanceof Error ? error.message : "Unknown error occurred during test execution",
+        duration: 5000,
+      });
     }
   };
 
@@ -895,9 +970,27 @@ const Playground: React.FC<PlaygroundProps> = ({
   };
 
   // AI Fix handlers
+  const handleAIFixStreamingStart = () => {
+    setIsStreamingAIFix(true);
+    setStreamingFixContent("");
+    setAIFixedScript("");
+    setAIExplanation("");
+    setShowAIDiff(true); // Show diff viewer immediately when streaming starts
+  };
+
+  const handleAIFixStreamingUpdate = (content: string) => {
+    setStreamingFixContent(extractCodeFromResponse(content));
+  };
+
+  const handleAIFixStreamingEnd = () => {
+    setIsStreamingAIFix(false);
+  };
+
   const handleAIFixSuccess = (fixedScript: string, explanation: string) => {
-    setAIFixedScript(fixedScript);
+    setIsStreamingAIFix(false);
+    setAIFixedScript(extractCodeFromResponse(fixedScript));
     setAIExplanation(explanation);
+    setStreamingFixContent("");
     setShowAIDiff(true);
   };
 
@@ -949,6 +1042,68 @@ const Playground: React.FC<PlaygroundProps> = ({
 
   const handleCloseGuidanceModal = () => {
     setShowGuidanceModal(false);
+  };
+
+  // AI Create handlers
+  const handleAICreateStreamingStart = () => {
+    setIsStreamingAICreate(true);
+    setStreamingCreateContent("");
+    setAIGeneratedScript("");
+    setAICreateExplanation("");
+    setShowAICreateDiff(true); // Show diff viewer immediately when streaming starts
+  };
+
+  const handleAICreateStreamingUpdate = (content: string) => {
+    setStreamingCreateContent(extractCodeFromResponse(content));
+  };
+
+  const handleAICreateStreamingEnd = () => {
+    setIsStreamingAICreate(false);
+  };
+
+  const handleAICreateSuccess = (
+    generatedScript: string,
+    explanation: string
+  ) => {
+    setIsStreamingAICreate(false);
+    setAIGeneratedScript(extractCodeFromResponse(generatedScript));
+    setAICreateExplanation(explanation);
+    setStreamingCreateContent("");
+    setShowAICreateDiff(true);
+  };
+
+  const handleAICreating = (creating: boolean) => {
+    setIsAICreating(creating);
+  };
+
+  const handleAcceptAICreate = (acceptedScript: string) => {
+    setEditorContent(acceptedScript);
+    setTestCase((prev) => ({ ...prev, script: acceptedScript }));
+    setShowAICreateDiff(false);
+
+    // Reset validation state since script has changed
+    setHasValidated(false);
+    setIsValid(false);
+    setValidationError(null);
+
+    // Reset test execution status since script changed
+    setTestExecutionStatus("none");
+
+    toast.success("AI-generated code applied", {
+      description:
+        "New script applied to editor. Please validate and test.",
+    });
+  };
+
+  const handleRejectAICreate = () => {
+    setShowAICreateDiff(false);
+    toast.info("AI-generated code discarded", {
+      description: "Original script remains unchanged.",
+    });
+  };
+
+  const handleCloseAICreateViewer = () => {
+    setShowAICreateDiff(false);
   };
 
   return (
@@ -1007,14 +1162,15 @@ const Playground: React.FC<PlaygroundProps> = ({
                     </Tabs>
 
                     {/* Templates Button - next to Report tab but outside tabs */}
-                    <div className="-ml-6">
+                    <div className="flex items-center gap-3">
                       <Button
                         onClick={() => setTemplateDialogOpen(true)}
                         variant="outline"
                         size="sm"
-                        className="gap-2"
+                        disabled={isRunning}
+                        className="gap-2 h-9 px-4"
                       >
-                        <SquareCode className="h-4 w-4" />
+                        <Code2 className="h-4 w-4" />
                         <span>Templates</span>
                       </Button>
                     </div>
@@ -1025,35 +1181,13 @@ const Playground: React.FC<PlaygroundProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {/* AI Fix Button - reserved space to prevent layout shift */}
-                    <div className="min-w-[80px]">
-                      <AIFixButton
-                        testId={executionTestId || ""}
-                        failedScript={editorContent}
-                        testType={testCase.type || "browser"}
-                        isVisible={
-                          // Always show when test execution is completely finished AND failed
-                          // But hide for performance tests (k6) since AI Fix is only for Playwright
-                          testExecutionStatus === "failed" &&
-                          !isRunning &&
-                          !isValidating &&
-                          !isReportLoading &&
-                          userCanRunTests &&
-                          !!executionTestId && // Ensure we have an execution test ID
-                          executionTestType !== "performance" // Hide AI Fix for k6 performance tests
-                        }
-                        onAIFixSuccess={handleAIFixSuccess}
-                        onShowGuidance={handleShowGuidance}
-                        onAnalyzing={handleAIAnalyzing}
-                      />
-                    </div>
-
                     <Button
                       onClick={runTest}
                       disabled={
                         isRunning ||
                         isValidating ||
                         isAIAnalyzing ||
+                        isAICreating ||
                         !userCanRunTests
                       }
                       className="flex items-center gap-2 bg-[hsl(221.2,83.2%,53.3%)] text-white hover:bg-[hsl(221.2,83.2%,48%)] "
@@ -1169,10 +1303,46 @@ const Playground: React.FC<PlaygroundProps> = ({
               className="rounded-br-lg rounded-tr-lg"
             >
               <div className="flex h-full flex-col border rounded-tr-lg rounded-br-lg bg-card">
-                <div className="flex items-center justify-between border-b bg-card px-4 py-4 rounded-tr-lg">
+                <div className="flex items-center justify-between border-b bg-card px-4 py-3 rounded-tr-lg">
                   <div className="flex items-center">
                     <Text className="h-4 w-4 mr-2" />
                     <h3 className="text-sm font-medium mt-1">Test Details</h3>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {/* AI Fix Button - reserved space to prevent layout shift */}
+                    <div className="min-w-[80px]">
+                      <AIFixButton
+                        testId={executionTestId || ""}
+                        failedScript={editorContent}
+                        testType={testCase.type || "browser"}
+                        isVisible={aiFixVisible}
+                        disabled={isRunning || isValidating || isAIAnalyzing}
+                        onAIFixSuccess={handleAIFixSuccess}
+                        onShowGuidance={handleShowGuidance}
+                        onAnalyzing={handleAIAnalyzing}
+                        onStreamingStart={handleAIFixStreamingStart}
+                        onStreamingUpdate={handleAIFixStreamingUpdate}
+                        onStreamingEnd={handleAIFixStreamingEnd}
+                      />
+                    </div>
+                    {/* AI Create Button placed next to Test Details actions; hidden when Fix is available */}
+                    {!aiFixVisible && (
+                      <AICreateButton
+                        currentScript={editorContent}
+                        testType={testCase.type || "browser"}
+                        isVisible={
+                          !isAIAnalyzing &&
+                          !isAICreating &&
+                          userCanRunTests
+                        }
+                        disabled={isRunning || isValidating}
+                        onAICreateSuccess={handleAICreateSuccess}
+                        onAnalyzing={handleAICreating}
+                        onStreamingStart={handleAICreateStreamingStart}
+                        onStreamingUpdate={handleAICreateStreamingUpdate}
+                        onStreamingEnd={handleAICreateStreamingEnd}
+                      />
+                    )}
                   </div>
                 </div>
                 <ScrollArea className="flex-1">
@@ -1251,6 +1421,21 @@ const Playground: React.FC<PlaygroundProps> = ({
         onAccept={handleAcceptAIFix}
         onReject={handleRejectAIFix}
         onClose={handleCloseDiffViewer}
+        isStreaming={isStreamingAIFix}
+        streamingContent={streamingFixContent}
+      />
+
+      {/* AI Create Viewer Modal */}
+      <AICreateViewer
+        currentScript={editorContent}
+        generatedScript={aiGeneratedScript}
+        explanation={aiCreateExplanation}
+        isVisible={showAICreateDiff}
+        onAccept={handleAcceptAICreate}
+        onReject={handleRejectAICreate}
+        onClose={handleCloseAICreateViewer}
+        isStreaming={isStreamingAICreate}
+        streamingContent={streamingCreateContent}
       />
 
       {/* Guidance Modal */}

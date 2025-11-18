@@ -2,24 +2,26 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Sparkles, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Wand2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-interface AIFixButtonProps {
-  testId: string;
-  failedScript: string;
+interface AICreateButtonProps {
+  currentScript: string;
   testType: string;
   isVisible: boolean;
   disabled?: boolean;
-  onAIFixSuccess: (
-    fixedScript: string,
-    explanation: string,
-    confidence: number
-  ) => void;
-  onShowGuidance: (
-    reason: string,
-    guidance: string,
-    errorAnalysis?: { totalErrors?: number; categories?: string[] }
+  onAICreateSuccess: (
+    generatedScript: string,
+    explanation: string
   ) => void;
   onAnalyzing?: (isAnalyzing: boolean) => void;
   onStreamingStart?: () => void;
@@ -27,38 +29,48 @@ interface AIFixButtonProps {
   onStreamingEnd?: () => void;
 }
 
-export function AIFixButton({
-  testId,
-  failedScript,
+export function AICreateButton({
+  currentScript,
   testType,
   isVisible,
   disabled,
-  onAIFixSuccess,
-  onShowGuidance,
+  onAICreateSuccess,
   onAnalyzing,
   onStreamingStart,
   onStreamingUpdate,
   onStreamingEnd,
-}: AIFixButtonProps) {
+}: AICreateButtonProps) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [userRequest, setUserRequest] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleOpenDialog = () => {
+    setIsDialogOpen(true);
+    setUserRequest("");
+  };
+
+  const handleCloseDialog = () => {
+    if (!isProcessing) {
+      setIsDialogOpen(false);
+      setUserRequest("");
+    }
+  };
 
   const parseAIResponse = (fullText: string): {
     script: string;
     explanation: string;
-    confidence: number;
   } => {
     try {
-      console.log("Parsing AI Fix response, text length:", fullText.length);
+      console.log("Parsing AI Create response, text length:", fullText.length);
       console.log("First 200 chars:", fullText.substring(0, 200));
 
-      // Try to extract FIXED_SCRIPT, EXPLANATION, and CONFIDENCE sections
+      // Try to extract GENERATED_SCRIPT and EXPLANATION sections
       const scriptMatch = fullText.match(
-        /FIXED_SCRIPT:\s*```(?:javascript|typescript|js|ts)?\s*([\s\S]*?)```/i
+        /GENERATED_SCRIPT:\s*```(?:javascript|typescript|js|ts)?\s*([\s\S]*?)```/i
       );
       const explanationMatch = fullText.match(
-        /EXPLANATION:\s*([\s\S]*?)(?:CONFIDENCE:|$)/i
+        /EXPLANATION:\s*([\s\S]*?)(?:$)/i
       );
-      const confidenceMatch = fullText.match(/CONFIDENCE:\s*([\d.]+)/i);
 
       // If standard format fails, try to find any code block
       if (!scriptMatch) {
@@ -66,6 +78,7 @@ export function AIFixButton({
         const codeBlocks = fullText.match(
           /```(?:javascript|typescript|js|ts)?\s*([\s\S]*?)```/gi
         );
+
         if (codeBlocks && codeBlocks.length > 0) {
           console.log("Found", codeBlocks.length, "code blocks");
           // Find the largest code block (most likely the full script)
@@ -84,15 +97,11 @@ export function AIFixButton({
 
           const explanation = explanationMatch
             ? explanationMatch[1].trim()
-            : "Script has been fixed to resolve the reported issues.";
-          const confidence = confidenceMatch
-            ? parseFloat(confidenceMatch[1])
-            : 0.7;
+            : "AI-generated test code based on your request.";
 
           return {
             script: largestBlock,
             explanation,
-            confidence,
           };
         } else {
           console.log("No code blocks found in response");
@@ -104,71 +113,54 @@ export function AIFixButton({
       const script = scriptMatch ? scriptMatch[1].trim() : "";
       const explanation = explanationMatch
         ? explanationMatch[1].trim()
-        : "Script has been fixed to resolve the reported issues.";
-      const confidence = confidenceMatch
-        ? parseFloat(confidenceMatch[1])
-        : 0.7;
+        : "AI-generated test code based on your request.";
 
       return {
         script,
         explanation,
-        confidence,
       };
     } catch (error) {
-      console.error("Error parsing AI Fix response:", error);
+      console.error("Error parsing AI Create response:", error);
       console.error("Full text:", fullText);
       // Return empty to trigger error handling
       return {
         script: "",
         explanation: "Failed to parse AI response",
-        confidence: 0.5,
       };
     }
   };
 
-  const handleAIFix = async () => {
-    if (!failedScript?.trim()) {
-      toast.error("Cannot generate AI fix", {
-        description: "A test script is required for AI analysis.",
+  const handleGenerate = async () => {
+    if (!userRequest.trim()) {
+      toast.error("Please describe what you want", {
+        description: "Enter a description of the test you want to create.",
       });
       return;
     }
 
-    // Use provided testId or generate a playground ID
-    const currentTestId = testId || `playground-${Date.now()}`;
+    if (userRequest.trim().length < 10) {
+      toast.error("Description too short", {
+        description: "Please provide a more detailed description (at least 10 characters).",
+      });
+      return;
+    }
 
     setIsProcessing(true);
     onAnalyzing?.(true);
-
-    let hasStreamingStarted = false;
-    let hasStreamingEnded = false;
-
-    const endStreamingSafely = () => {
-      if (hasStreamingStarted && !hasStreamingEnded) {
-        onStreamingEnd?.();
-        hasStreamingEnded = true;
-      }
-    };
-
     onStreamingStart?.(); // Notify parent that streaming has started
-    hasStreamingStarted = true;
 
     let reader: ReadableStreamDefaultReader<Uint8Array> | null | undefined = null;
 
     try {
-      const response = await fetch("/api/ai/fix-test-stream", {
+      const response = await fetch("/api/ai/create-test", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          failedScript: failedScript.trim(),
+          userRequest: userRequest.trim(),
           testType,
-          testId: currentTestId,
-          executionContext: {
-            timestamp: new Date().toISOString(),
-            userAgent: navigator.userAgent,
-          },
+          currentScript: currentScript || "",
         }),
       });
 
@@ -180,42 +172,25 @@ export function AIFixButton({
           throw new Error(`Server error: ${response.status} ${response.statusText}`);
         }
 
-        // Handle non-streaming error responses
         switch (response.status) {
           case 401:
             toast.error("Authentication required", {
-              description: "Please log in to use AI fix feature.",
+              description: "Please log in to use AI create feature.",
             });
             return;
           case 429:
             toast.error("Rate limit exceeded", {
-              description: "Please wait before making another AI fix request.",
+              description: "Please wait before making another AI create request.",
             });
             return;
           case 400:
-            if (result.reason === "security_violation") {
-              toast.error("Security check failed", {
-                description:
-                  "Please ensure your test script follows security guidelines.",
-              });
-              return;
-            } else if (result.reason === "not_fixable") {
-              toast.info("Manual investigation required", {
-                description: "AI analysis suggests this issue needs human attention.",
-              });
-              onShowGuidance(
-                result.reason,
-                result.guidance || "Manual investigation required.",
-                result.errorAnalysis
-              );
-              return;
-            }
-            break;
+            toast.error("Invalid request", {
+              description: result.message || "Please check your input and try again.",
+            });
+            return;
           default:
-            break;
+            throw new Error(result.message || `Failed to generate test code (${response.status})`);
         }
-
-        throw new Error(result.message || `Failed to generate AI fix (${response.status})`);
       }
 
       // Handle streaming response
@@ -242,15 +217,15 @@ export function AIFixButton({
 
                 if (data.type === "content") {
                   fullText += data.content;
-                  onStreamingUpdate?.(fullText);
+                  onStreamingUpdate?.(fullText); // Update parent with streaming content
                 } else if (data.type === "done") {
                   // Streaming complete
-                  console.log("AI Fix completed:", data);
+                  console.log("AI Create completed:", data);
                   console.log("Total text received:", fullText.length, "characters");
-                  endStreamingSafely();
+                  onStreamingEnd?.();
                 } else if (data.type === "error") {
                   console.error("Stream error:", data.error);
-                  throw new Error(data.error || "AI fix generation error");
+                  throw new Error(data.error || "AI generation error");
                 }
               } catch (parseError) {
                 // Only log if it's not a JSON parse error (empty lines are expected in SSE)
@@ -274,54 +249,49 @@ export function AIFixButton({
       }
 
       // Parse the complete response
-      const { script, explanation, confidence } = parseAIResponse(fullText);
+      const { script, explanation } = parseAIResponse(fullText);
 
       if (!script || script.length < 10) {
         console.error("Parsing failed. Full text received:", fullText);
         throw new Error(
-          `AI generated invalid or empty fix. Received ${fullText.length} characters but could not extract valid code. The issue may require manual investigation.`
+          `AI generated invalid or empty code. Received ${fullText.length} characters but could not extract valid code. Please try again with a more detailed description.`
         );
       }
 
-      console.log("Successfully parsed fix script, length:", script.length);
+      console.log("Successfully parsed script, length:", script.length);
 
-      toast.success("AI fix generated successfully", {
-        description: `Confidence: ${Math.round(confidence * 100)}%`,
+      toast.success("Test code generated successfully", {
+        description: "Review and apply the generated code to your editor.",
       });
 
-      onAIFixSuccess(script, explanation, confidence);
+      onAICreateSuccess(script, explanation);
+      setIsDialogOpen(false);
+      setUserRequest("");
     } catch (error) {
-      endStreamingSafely();
-      console.error("AI fix request failed:", error);
+      console.error("AI create request failed:", error);
 
       // Provide specific error messages
-      let errorDescription = "Please try again in a few moments or investigate manually.";
+      let errorDescription = "Please try again in a few moments.";
       if (error instanceof Error) {
         if (error.message.includes("network") || error.message.includes("fetch")) {
           errorDescription = "Network connection error. Please check your connection and try again.";
         } else if (error.message.includes("timeout")) {
           errorDescription = "Request timed out. Please try again.";
         } else if (error.message.includes("No output generated")) {
-          errorDescription = "AI did not generate any output. Please try again.";
-        } else if (error.message.includes("manual investigation") || error.message.includes("invalid or empty fix")) {
+          errorDescription = "AI did not generate any output. Please try again or rephrase your request.";
+        } else if (error.message.includes("invalid or empty code")) {
           errorDescription = error.message;
         } else {
           errorDescription = error.message;
         }
       }
 
-      console.error("AI Fix final error:", errorDescription);
+      console.error("AI Create final error:", errorDescription);
 
-      toast.error("AI fix service unavailable", {
+      toast.error("AI create service unavailable", {
         description: errorDescription,
         duration: 5000,
       });
-
-      // Show fallback guidance
-      onShowGuidance(
-        "api_error",
-        "The AI fix service is currently unavailable or cannot fix the issue. Please try again in a few moments or proceed with manual investigation."
-      );
     } finally {
       // Cleanup: release reader if still locked
       if (reader) {
@@ -331,7 +301,6 @@ export function AIFixButton({
           // Ignore errors during cleanup
         }
       }
-      endStreamingSafely();
       setIsProcessing(false);
       onAnalyzing?.(false);
     }
@@ -342,23 +311,76 @@ export function AIFixButton({
   }
 
   return (
-    <Button
-      size="sm"
-      onClick={handleAIFix}
-      disabled={disabled || isProcessing || !failedScript?.trim()}
-      className="flex items-center gap-2 mr-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg transition-all duration-200"
-    >
-      {isProcessing ? (
-        <>
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Analyzing...
-        </>
-      ) : (
-        <>
-          <Sparkles className="h-4 w-4" />
-          AI Fix
-        </>
-      )}
-    </Button>
+    <>
+      <Button
+        size="sm"
+        onClick={handleOpenDialog}
+        disabled={disabled || isProcessing}
+        className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg transition-all duration-200"
+      >
+        <Wand2 className="h-4 w-4" />
+        AI Create
+      </Button>
+
+      <Dialog open={isDialogOpen} onOpenChange={handleCloseDialog}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="h-5 w-5 text-purple-500" />
+              AI Create Test
+            </DialogTitle>
+            <DialogDescription>
+              Describe what you want to test, and AI will generate a complete test script for you.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label htmlFor="user-request" className="text-sm font-medium">
+                What do you want to test?
+              </label>
+              <Textarea
+                id="user-request"
+                placeholder={`Example: "Create a test that logs into the application, navigates to the user profile page, and verifies the user's email is displayed correctly"`}
+                value={userRequest}
+                onChange={(e) => setUserRequest(e.target.value)}
+                disabled={isProcessing}
+                className="min-h-[120px] resize-none"
+              />
+              <p className="text-xs text-muted-foreground">
+                Be specific about the actions, verifications, and expected outcomes.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={handleCloseDialog}
+              disabled={isProcessing}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleGenerate}
+              disabled={isProcessing || !userRequest.trim()}
+              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Generate
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

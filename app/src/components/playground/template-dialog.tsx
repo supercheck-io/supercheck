@@ -16,7 +16,7 @@ import { Editor } from "@monaco-editor/react";
 import { useTheme } from "next-themes";
 import { TestType } from "@/db/schema/types";
 import { CodeTemplate, getTemplatesByType } from "./template-data";
-import { Code2, SquareCode, Check } from "lucide-react";
+import { Code2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TemplateDialogProps {
@@ -75,7 +75,7 @@ export function TemplateDialog({
       <DialogContent className="max-w-[95vw] h-[85vh] p-0 gap-0 min-w-[1300px]">
         <DialogHeader className="px-6 pt-6 pb-4 border-b">
           <div className="flex items-center gap-2">
-            <SquareCode className="h-5 w-5 text-primary" />
+         
             <DialogTitle className="text-2xl">Code Templates</DialogTitle>
           </div>
           <DialogDescription className="text-base">
