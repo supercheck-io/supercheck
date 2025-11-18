@@ -3,7 +3,27 @@
  * Implements secure session token handling and validation
  */
 
-import { createHash, randomBytes } from "crypto";
+import crypto from "crypto";
+
+function getRandomBytes(size: number): Uint8Array {
+  if (crypto?.randomBytes) {
+    return crypto.randomBytes(size);
+  }
+
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    const arr = new Uint8Array(size);
+    globalThis.crypto.getRandomValues(arr);
+    return arr;
+  }
+
+  throw new Error("No cryptographically secure random source available");
+}
+
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    ""
+  );
+}
 
 /**
  * Hash a session token for secure storage
@@ -13,10 +33,13 @@ export function hashSessionToken(
   token: string,
   salt?: string
 ): { hash: string; salt: string } {
-  const tokenSalt = salt || randomBytes(32).toString("hex");
-  const hash = createHash("sha256")
-    .update(token + tokenSalt)
-    .digest("hex");
+  const tokenSalt = salt || toHex(getRandomBytes(32));
+
+  if (!crypto?.createHash) {
+    throw new Error("Hashing requires Node.js crypto");
+  }
+
+  const hash = crypto.createHash("sha256").update(token + tokenSalt).digest("hex");
 
   return { hash, salt: tokenSalt };
 }
@@ -37,7 +60,7 @@ export function verifySessionToken(
  * Generate a cryptographically secure session token
  */
 export function generateSecureToken(): string {
-  return randomBytes(64).toString("hex");
+  return toHex(getRandomBytes(64));
 }
 
 /**

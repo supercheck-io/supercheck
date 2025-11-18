@@ -33,47 +33,9 @@ export class AISecurityService {
       throw new Error("Code output must be a string");
     }
 
-    const maliciousPatterns = [
-      "eval(",
-      "Function(",
-      "setTimeout(",
-      "setInterval(",
-      "document.write",
-      "<script",
-      "javascript:",
-      "innerHTML",
-      "outerHTML",
-      "execCommand",
-    ];
-
-    // More specific data: URI patterns that are actually malicious
-    const maliciousDataPatterns = [
-      "data:text/html",
-      "data:application/javascript",
-      "data:text/javascript",
-      "data:application/x-javascript",
-    ];
-
-    const lowerCode = code.toLowerCase();
-
-    // Check for general malicious patterns
-    for (const pattern of maliciousPatterns) {
-      if (lowerCode.includes(pattern.toLowerCase())) {
-        throw new Error(
-          `AI generated potentially unsafe code containing: ${pattern}`
-        );
-      }
-    }
-
-    // Check for malicious data URIs specifically
-    for (const pattern of maliciousDataPatterns) {
-      if (lowerCode.includes(pattern.toLowerCase())) {
-        throw new Error(
-          `AI generated potentially unsafe code containing: ${pattern}`
-        );
-      }
-    }
-
+    // Previously we rejected scripts containing certain patterns.
+    // For a better UX (e.g., K6 load tests), simply return the code trimmed
+    // and rely on downstream validation/execution sandboxes.
     return code.trim();
   }
 
@@ -114,7 +76,7 @@ export class AISecurityService {
     }
 
     // Validate test type enum
-    const validTestTypes = ["browser", "api", "custom", "database"];
+    const validTestTypes = ["browser", "api", "custom", "database", "performance"];
     if (!validTestTypes.includes(body.testType)) {
       throw new Error("Invalid test type");
     }
@@ -216,18 +178,25 @@ export class AISecurityService {
       // Convert the stream to text
       const content = await response.Body.transformToString();
 
-      // Size validation
-      if (content.length > 100000) {
-        // 100KB max
-        throw new Error("Markdown report too large");
+      // Size validation with graceful truncation for very large reports
+      const MAX_MARKDOWN_LENGTH = 100_000; // 100KB of markdown context is plenty for prompting
+      let sanitizedContent = content;
+
+      if (sanitizedContent.length > MAX_MARKDOWN_LENGTH) {
+        console.warn(
+          `[AI Security] Markdown report exceeded ${MAX_MARKDOWN_LENGTH} chars. Truncating to safe limit.`
+        );
+        sanitizedContent =
+          sanitizedContent.slice(0, MAX_MARKDOWN_LENGTH) +
+          "\n\n<!-- Report truncated for safety -->";
       }
 
       // Basic content validation - relax this since Playwright .md files might have different formats
-      if (!content.trim()) {
+      if (!sanitizedContent.trim()) {
         throw new Error("Empty markdown report");
       }
 
-      return content;
+      return sanitizedContent;
     } catch (error) {
       console.error("[AI Security] Error fetching markdown report:", error);
       throw new Error(

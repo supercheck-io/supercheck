@@ -236,12 +236,36 @@ class QueueEventHub extends EventEmitter {
         status = "running";
         break;
       case "completed":
+        // IMPORTANT: Only mark as "passed" if explicitly successful
+        // Default to "failed" for safety - failed tests should never be treated as passed
+
+        // Log the actual payload for debugging
+        const returnValue = payload?.returnvalue;
+        const hasSuccessField =
+          returnValue !== null &&
+          typeof returnValue === "object" &&
+          "success" in returnValue;
+
+        eventHubLogger.info({
+          queueJobId,
+          event,
+          hasReturnvalue: !!returnValue,
+          returnvalueType: typeof returnValue,
+          hasSuccessField,
+          successValue: hasSuccessField ? (returnValue as { success?: unknown }).success : undefined,
+        }, "Processing completed event");
+
         status =
-          payload?.returnvalue && typeof payload.returnvalue === "object" && "success" in payload.returnvalue
-            ? payload.returnvalue.success === false
-              ? "failed"
-              : "passed"
-            : "passed";
+          hasSuccessField
+            ? (returnValue as { success?: unknown }).success === true
+              ? "passed"
+              : "failed"
+            : "failed"; // Default to failed if no clear success indication
+
+        eventHubLogger.info({
+          queueJobId,
+          mappedStatus: status,
+        }, `Mapped completed event to status: ${status}`);
         break;
       case "failed":
       case "stalled":
