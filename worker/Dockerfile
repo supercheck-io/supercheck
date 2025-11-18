@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y \
 ##############################################
 # k6 + xk6-dashboard BUILDER 
 ##############################################
-FROM golang:1.21 AS k6-builder
+FROM golang:1.24 AS k6-builder
 WORKDIR /k6src
 
 RUN go install go.k6.io/xk6/cmd/xk6@latest
