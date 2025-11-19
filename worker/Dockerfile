@@ -46,7 +46,7 @@ RUN --mount=type=cache,target=/root/.npm \
 
 # Install Playwright browsers directly to /ms-playwright (production location)
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN npx playwright install --with-deps
+RUN npx playwright install --with-deps chromium
 
 RUN npm run build
 
