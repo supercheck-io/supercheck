@@ -276,13 +276,11 @@ services:
         delay: 15s
         window: 120s
 
-    # Security constraints
+    # Security constraints for Docker-in-Docker
     security_opt:
       - no-new-privileges:true # Prevent privilege escalation
-    cap_drop:
-      - ALL # Drop all capabilities by default
-    # Note: SYS_ADMIN capability removed - not needed for container execution
-    # Browsers run in separate containers with their own capabilities
+    # Note: Running as root with docker socket access requires careful capability management
+    # We do NOT drop all caps because docker socket access needs some privileges
 
   # PostgreSQL Database
   postgres:
