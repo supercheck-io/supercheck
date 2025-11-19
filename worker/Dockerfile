@@ -83,21 +83,16 @@ LABEL org.opencontainers.image.description="Worker service for Supercheck - Hand
 
 ENV NODE_ENV=production
 
-# Create non-root user with explicit UID/GID for security
-RUN groupadd --system --gid 1001 nodejs && \
-    useradd --system --uid 1001 --gid nodejs nodejs
-
-COPY --from=deps --chown=nodejs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
-COPY --from=builder --chown=nodejs:nodejs /app/playwright.config.js ./
-COPY --from=browser-builder --chown=nodejs:nodejs /ms-playwright /ms-playwright
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/playwright.config.js ./
+COPY --from=browser-builder /ms-playwright /ms-playwright
 COPY --from=k6-builder /k6src/k6 /usr/local/bin/k6
 
 RUN chmod +x /usr/local/bin/k6
 
 # Create writable directories for reports
-RUN mkdir -p /app/playwright-reports /app/k6-reports /app/report \
-    && chown -R nodejs:nodejs /app
+RUN mkdir -p /app/playwright-reports /app/k6-reports /app/report
 
 # Playwright browsers are pre-installed in /ms-playwright
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
@@ -108,15 +103,4 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:3001/health || exit 1
 
-##############################################
-# ENTRYPOINT: Handle docker.sock permissions and start app as root
-# Note: Runs as root to ensure docker.sock access works in all environments
-##############################################
-ENTRYPOINT ["sh", "-c", " \
-    set -e; \
-    if [ -S /var/run/docker.sock ]; then \
-        chmod 666 /var/run/docker.sock 2>/dev/null || true; \
-        chown nodejs:nodejs /var/run/docker.sock 2>/dev/null || true; \
-    fi; \
-    exec node dist/src/main.js \
-"]
+CMD ["node", "dist/src/main.js"]
