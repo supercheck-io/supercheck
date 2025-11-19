@@ -263,11 +263,11 @@ services:
       replicas: 3 # Default footprint for an 8 vCPU / 16 GB host; add replicas to scale horizontally
       resources:
         limits:
-          cpus: "2.0" # Cap each worker at 2 vCPU
-          memory: 2G # Reduced from 4G - browsers run in separate containers now
+          cpus: "5.0" # Increased to support 4GB/4CPU container executions (Playwright + K6)
+          memory: 6G # Increased from 2G - worker orchestrates 4GB containers
         reservations:
-          cpus: "0.5"
-          memory: 1G
+          cpus: "1.0" # Increased - worker manages high-resource containers
+          memory: 2G # Increased - overhead for container orchestration
 
       # Container Restart Protection (handles stuck/crashed containers)
       restart_policy:

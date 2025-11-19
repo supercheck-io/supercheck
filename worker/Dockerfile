@@ -44,12 +44,9 @@ COPY . .
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --legacy-peer-deps --no-audit --no-fund
 
-RUN --mount=type=cache,target=/root/.cache/ms-playwright \
-    npx playwright install --with-deps
-
-# Copy Playwright browsers (fallback to final stage if cache missing)
-RUN mkdir -p /app/playwright-browsers && \
-    cp -r /root/.cache/ms-playwright /app/playwright-browsers 2>/dev/null || true
+# Install Playwright browsers directly to /ms-playwright (production location)
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx playwright install --with-deps
 
 RUN npm run build
 
@@ -72,7 +69,7 @@ RUN groupadd --system nodejs && useradd --system --gid nodejs nodejs
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/playwright.config.js ./
-COPY --from=builder /app/playwright-browsers ./playwright-browsers
+COPY --from=builder /ms-playwright /ms-playwright
 COPY --from=k6-builder /k6src/k6 /usr/local/bin/k6
 
 RUN chmod +x /usr/local/bin/k6
@@ -81,8 +78,7 @@ RUN chmod +x /usr/local/bin/k6
 RUN mkdir -p /app/playwright-reports /app/k6-reports /app/report \
     && chown -R nodejs:nodejs /app
 
-ENV PLAYWRIGHT_BROWSERS_PATH=/app/playwright-browsers/ms-playwright
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 USER nodejs
 
