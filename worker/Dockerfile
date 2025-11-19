@@ -4,7 +4,7 @@
 FROM node:20-slim AS base
 
 RUN apt-get update && apt-get install -y \
-    curl tar gosu \
+    curl tar \
     libglib2.0-0 libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libdbus-1-3 libxcb1 libxkbcommon0 libx11-6 libxcomposite1 libxdamage1 \
     libxext6 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 \
@@ -99,15 +99,15 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:3001/health || exit 1
 
 ##############################################
-# ENTRYPOINT: Configure docker.sock permissions and start app
-# Note: Runs as root initially to fix docker socket permissions,
-# then switches to nodejs user for the main application
+# ENTRYPOINT: Handle docker.sock permissions and start app
+# Note: Works with both Docker Compose (with docker.sock) and Kubernetes (without it)
 ##############################################
 ENTRYPOINT ["sh", "-c", " \
+    set -e; \
     if [ -S /var/run/docker.sock ]; then \
-        sock_gid=$(stat -c %g /var/run/docker.sock); \
-        addgroup --gid $sock_gid dockergroup 2>/dev/null || true; \
-        adduser nodejs dockergroup 2>/dev/null || true; \
+        chmod 666 /var/run/docker.sock 2>/dev/null || true; \
     fi; \
-    gosu nodejs node dist/src/main.js \
+    exec node dist/src/main.js \
 "]
+
+USER nodejs

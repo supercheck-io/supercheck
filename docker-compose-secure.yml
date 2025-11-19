@@ -21,7 +21,7 @@ x-common-env: &common-env # Database Configuration
   BETTER_AUTH_URL: https://demo.supercheck.io
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
-  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-6} # 3 worker replicas × 2 concurrent runs (keep env + replicas in sync)
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-2} # 3 worker replicas × 2 concurrent runs (keep env + replicas in sync)
   QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10} # Max queued jobs before backpressure (default: 10)
   MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-2} # Two Playwright runs per worker; scale replicas before raising this
   TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-120000}
@@ -148,7 +148,7 @@ services:
 
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.1.7-beta.1
+    image: ghcr.io/supercheck-io/supercheck/app:1.1.7-beta.7
     expose:
       - "3000"
     environment:
@@ -223,7 +223,7 @@ services:
   # Worker (NestJS Runner) - Container-based test execution
   # Tests run in isolated Docker containers (Playwright/K6), not inside worker
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.1.7-beta.1
+    image: ghcr.io/supercheck-io/supercheck/worker:1.1.7-beta.7
     environment:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)
@@ -231,10 +231,12 @@ services:
     volumes:
       # Mount Docker socket for container-based execution
       # Worker spawns isolated containers for Playwright and K6 tests
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/run/docker.sock:/var/run/docker.sock:rw
       - worker-playwright-reports:/app/playwright-reports
       - worker-k6-reports:/app/k6-reports
       - worker-reports:/app/report
+    # Allow user namespace remapping for better security
+    userns_mode: "host"
     depends_on:
       postgres:
         condition: service_healthy
@@ -260,14 +262,14 @@ services:
     networks:
       - supercheck-network
     deploy:
-      replicas: 3 # Default footprint for an 8 vCPU / 16 GB host; add replicas to scale horizontally
+      replicas: 1 # 1 worker for 4-CPU machines
       resources:
         limits:
-          cpus: "5.0" # Increased to support 4GB/4CPU container executions (Playwright + K6)
-          memory: 6G # Increased from 2G - worker orchestrates 4GB containers
+          cpus: "3.5" # Allows worker + one 4GB/4CPU container execution
+          memory: 3.5G
         reservations:
-          cpus: "1.0" # Increased - worker manages high-resource containers
-          memory: 2G # Increased - overhead for container orchestration
+          cpus: "1.0"
+          memory: 2G
 
       # Container Restart Protection (handles stuck/crashed containers)
       restart_policy:
