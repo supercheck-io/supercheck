@@ -47,8 +47,9 @@ RUN --mount=type=cache,target=/root/.npm \
 RUN --mount=type=cache,target=/root/.cache/ms-playwright \
     npx playwright install --with-deps
 
+# Copy Playwright browsers (fallback to final stage if cache missing)
 RUN mkdir -p /app/playwright-browsers && \
-    cp -r /root/.cache/ms-playwright /app/playwright-browsers
+    cp -r /root/.cache/ms-playwright /app/playwright-browsers 2>/dev/null || true
 
 RUN npm run build
 
@@ -88,7 +89,7 @@ USER nodejs
 EXPOSE 3001
 
 ##############################################
-# ⭐ ENTRYPOINT: FIX docker.sock group at runtime
+# ENTRYPOINT: FIX docker.sock group at runtime
 ##############################################
 ENTRYPOINT ["sh", "-c", " \
     if [ -S /var/run/docker.sock ]; then \
