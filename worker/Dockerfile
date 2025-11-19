@@ -109,15 +109,14 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:3001/health || exit 1
 
 ##############################################
-# ENTRYPOINT: Handle docker.sock permissions and start app
-# Note: Works with both Docker Compose (with docker.sock) and Kubernetes (without it)
+# ENTRYPOINT: Handle docker.sock permissions and start app as root
+# Note: Runs as root to ensure docker.sock access works in all environments
 ##############################################
 ENTRYPOINT ["sh", "-c", " \
     set -e; \
     if [ -S /var/run/docker.sock ]; then \
         chmod 666 /var/run/docker.sock 2>/dev/null || true; \
+        chown nodejs:nodejs /var/run/docker.sock 2>/dev/null || true; \
     fi; \
     exec node dist/src/main.js \
 "]
-
-USER nodejs
