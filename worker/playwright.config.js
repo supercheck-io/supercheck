@@ -23,17 +23,23 @@ const jsonOutputFile =
 
 // Worker configuration aligned with execution service limits
 const getOptimalWorkerCount = () => {
+  // Allow override via environment variable
+  if (process.env.PLAYWRIGHT_WORKERS) {
+    return parseInt(process.env.PLAYWRIGHT_WORKERS, 10);
+  }
+
   // Check if we're in a resource-constrained environment
   const isCI = !!process.env.CI;
   const isDevelopment = process.env.NODE_ENV === 'development';
   const isProduction = process.env.NODE_ENV === 'production';
 
-  // Align with execution service maxConcurrentExecutions = 1
+  // Use 2 workers for better performance
+  // Container has 2GB RAM and 2 CPUs - can handle 2 parallel browser instances
   if (isProduction || isCI) {
-    return 1; // Conservative for production/CI to prevent resource exhaustion
+    return 2; // Optimized for container resources (2 CPUs, 2GB RAM)
   }
 
-  // For development, allow slightly more parallelism but still conservative
+  // For development, allow slightly more parallelism
   return isDevelopment ? 2 : 1;
 };
 
@@ -87,7 +93,8 @@ module.exports = defineConfig({
   ],
 
   /* Timeouts aligned with execution service limits */
-  timeout: 110000, // 110 seconds - slightly less than execution service timeout (120s) for cleanup time
+  // Increased to handle slower browser operations and network requests
+  timeout: 240000, // 4 minutes per test - well below 5min execution timeout
   expect: {
     timeout: 15000, // 15 seconds for assertions
   },

@@ -124,8 +124,8 @@ export interface ContainerExecutionResult {
 @Injectable()
 export class ContainerExecutorService {
   private readonly logger = new Logger(ContainerExecutorService.name);
-  // Hardcoded Playwright Docker image for security and consistency
-  private readonly defaultImage = 'mcr.microsoft.com/playwright:v1.56.1-noble';
+  // Use custom worker image with Playwright browsers and k6 pre-installed
+  private readonly defaultImage = 'ghcr.io/supercheck-io/supercheck/worker:latest';
 
   constructor(private configService: ConfigService) {
     this.logger.log(
@@ -256,7 +256,7 @@ export class ContainerExecutorService {
         // Resource limits
         `--memory=${memoryLimitMb}m`,
         `--cpus=${cpuLimit}`,
-        '--pids-limit=100', // Limit number of processes
+        '--pids-limit=256', // Increased for parallel browser instances
         // Network
         `--network=${networkMode}`,
       ];
@@ -307,8 +307,8 @@ export class ContainerExecutorService {
       // preventing docker cp extraction. Use regular container filesystem instead - it's
       // still isolated and cleaned up when container is removed.
 
-      // Allocate shared memory for Playwright/Chromium browsers
-      dockerArgs.push('--shm-size=1024m');
+      // Allocate shared memory for Playwright/Chromium browsers (2GB for multiple instances)
+      dockerArgs.push('--shm-size=2048m');
 
       // Add environment variables
       for (const [key, value] of Object.entries(env)) {
@@ -464,8 +464,12 @@ export class ContainerExecutorService {
 
       if (timedOut) {
         this.logger.warn(`Container execution timed out: ${containerName}`);
-        // Force remove the container
-        await this.forceRemoveContainer(containerName);
+        // Don't remove container yet if extraction is requested
+        // Extraction logic will handle cleanup in finally block
+        if (!extractFromContainer && !extractToHost) {
+          // No extraction needed, safe to remove immediately
+          await this.forceRemoveContainer(containerName);
+        }
       }
 
       // Log detailed execution information for debugging

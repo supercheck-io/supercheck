@@ -220,11 +220,11 @@ services:
       replicas: ${WORKER_REPLICAS:-1} # Single worker for local development, configurable for testing
       resources:
         limits:
-          cpus: "1.0" # Lower limits for local dev
-          memory: 1G # Reduced - browsers run in separate containers now
+          cpus: "5.0" # Increased to support 4GB/4CPU container executions
+          memory: 6G # Increased from 1G - worker orchestrates 4GB containers
         reservations:
-          cpus: "0.5"
-          memory: 512M
+          cpus: "1.0"
+          memory: 2G
     # Security constraints - maintain production security locally
     security_opt:
       - no-new-privileges:true # Prevent privilege escalation

@@ -952,8 +952,9 @@ export class ExecutionService implements OnModuleDestroy {
       // Playwright command for container-only execution
       // Test file will be created in /tmp inside container via inline script
       // Reporters are configured in playwright.config.js via environment variables
-      const command = '/workspace/node_modules/.bin/playwright';
+      const command = 'npx';
       const args = [
+        'playwright',
         'test',
         containerTestPath, // Test file path inside container /tmp
         '--config=/workspace/playwright.config.js', // Config (read-only mount) handles reporters via env vars
@@ -1420,8 +1421,8 @@ export class ExecutionService implements OnModuleDestroy {
           timeoutMs: options.timeout,
           env: options.env as Record<string, string>,
           workingDir: options.workingDir || '/workspace',
-          memoryLimitMb: 2048, // 2GB for Playwright
-          cpuLimit: 2.0, // 2 CPUs
+          memoryLimitMb: 4096, // 4GB for Playwright (supports 2 parallel workers)
+          cpuLimit: 4.0, // 4 CPUs
           networkMode: 'bridge', // Allow network for Playwright
           autoRemove: true, // Will be disabled automatically if extraction is requested
           extractFromContainer: options.extractFromContainer,

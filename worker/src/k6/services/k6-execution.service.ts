@@ -63,8 +63,8 @@ export interface K6ExecutionResult {
 export class K6ExecutionService {
   private readonly logger = new Logger(K6ExecutionService.name);
   private readonly k6BinaryPath: string;
-  // Hardcoded K6 Docker image for container execution
-  private readonly k6DockerImage = 'grafana/k6:latest';
+  // Use custom worker image with xk6-dashboard pre-installed for consistency and performance
+  private readonly k6DockerImage = 'ghcr.io/supercheck-io/supercheck/worker:latest';
   private readonly maxConcurrentK6Runs: number;
   private readonly testExecutionTimeoutMs: number;
   private readonly jobExecutionTimeoutMs: number;
@@ -742,8 +742,8 @@ export class K6ExecutionService {
             K6_NO_COLOR: '1', // Disable ANSI colors
           },
           workingDir: '/tmp',
-          memoryLimitMb: 2048, // 2GB for k6 (may need more for large tests)
-          cpuLimit: 2.0, // 200% of one CPU
+          memoryLimitMb: 4096, // 4GB for k6 (large load tests with multiple VUs)
+          cpuLimit: 4.0, // 4 CPUs for high-concurrency load testing
           networkMode: 'bridge', // k6 needs network access
           autoRemove: false, // Don't auto-remove - we need to extract files first
           image: this.k6DockerImage, // Use K6-specific Docker image

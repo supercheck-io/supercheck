@@ -434,24 +434,23 @@ graph TB
 
 ### Docker Images Used
 
-**Playwright Container:**
-- Image: `mcr.microsoft.com/playwright:v1.56.1-noble`
-- Size: ~1.9 GB (cached after first pull)
-- Includes:
-  - Pre-installed browsers (Chromium, Firefox, WebKit) at `/ms-playwright`
+**Both Playwright & K6 - Unified Worker Image:**
+- Image: `ghcr.io/supercheck-io/supercheck/worker:latest`
+- Size: ~3.26 GB (cached after first pull)
+- **Includes Both:**
+  - **Playwright**: Pre-installed browsers (Chromium, Firefox, WebKit) at `/ms-playwright`
+  - **K6**: Custom binary with xk6-dashboard extension at `/usr/local/bin/k6`
+  - Node.js 20 runtime
   - All browser dependencies (fonts, libraries, codecs)
-  - Node.js runtime
-- Volume Mount: Worker directory → `/workspace`
-- Binary: Uses `/workspace/node_modules/.bin/playwright`
+- **Why Unified Image:**
+  - ✅ Single image for both test types (consistency)
+  - ✅ Pre-installed browsers & k6 (no runtime installations)
+  - ✅ No network dependency during execution (faster, more secure)
+  - ✅ Guaranteed version consistency across all environments
+  - ✅ Simplified deployment (one image to manage)
+- Volume Mount: Worker node_modules → `/workspace/node_modules` (read-only)
 - Environment: `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`
-
-**K6 Container:**
-- Image: `grafana/k6:latest`
-- Size: ~109 MB (cached after first pull)
-- Includes:
-  - K6 binary as ENTRYPOINT
-  - xk6-dashboard extension for HTML reports
-- Volume Mount: Script directory → `/workspace`
+- **Test Execution Mode:** Inline scripts injected, no host filesystem dependency
 
 ### Container Security Configuration
 
@@ -1269,10 +1268,41 @@ graph TB
 
 | Scenario | Handling | Reason |
 |----------|----------|--------|
-| Container timeout | Fail job, don't retry | Timeout is fatal, indicates resource issue |
+| Container timeout | Extract reports, fail job, don't retry | Partial reports preserve execution history for debugging |
 | Network error | Retry with exponential backoff | Transient error, likely to succeed on retry |
 | Database error | Retry with exponential backoff | Transient error, database may recover |
 | Invalid script | Fail immediately, don't retry | Code error, retries won't help |
+
+### Timeout Handling & Report Extraction
+
+**Critical Improvement (v1.1.7+):**
+- **Before**: Container removed immediately on timeout → reports lost
+- **After**: Reports extracted even on timeout → debugging enabled
+
+**Execution Flow on Timeout:**
+```
+Timeout detected
+    ↓
+Container kept alive (NOT removed)
+    ↓
+Extract reports from container
+    ↓
+Container cleaned up
+    ↓
+Partial reports available for analysis
+```
+
+**Benefits:**
+- ✅ **Debugging**: See what test accomplished before timeout
+- ✅ **History**: Report shows progress, failures, screenshots
+- ✅ **Investigation**: Identify slow operations, flaky tests
+- ✅ **Proper Cleanup**: Container always removed after extraction
+
+**Timeout Configuration:**
+- `TEST_EXECUTION_TIMEOUT_MS=300000` (5 minutes per test)
+- `JOB_EXECUTION_TIMEOUT_MS=900000` (15 minutes per job)
+- `K6_TEST_EXECUTION_TIMEOUT_MS=3600000` (60 minutes for k6)
+
 | Out of memory | Fail job, don't retry | Resource issue, needs manual intervention |
 | Location unavailable | Fail for that location, continue others | Multi-location: other locations may succeed |
 
@@ -1327,28 +1357,72 @@ graph TB
 
 ### Capacity Tuning
 
+**Container Resource Allocation (per execution container):**
+
+| Type | Memory | CPUs | Notes |
+|------|--------|------|-------|
+| **Playwright** | 4GB | 4.0 | Supports 2 parallel workers with stable execution |
+| **K6** | 4GB | 4.0 | For high-concurrency load tests (multiple VUs) |
+| **Process Limits** | — | — | `--pids-limit=256` for parallel browser instances |
+| **Shared Memory** | 2GB | — | `--shm-size=2048m` for browser/ffmpeg operations |
+
+**Worker Container Resource Allocation (docker-compose deployment):**
+
+| Environment | CPU Limits | Memory Limits | CPU Reservations | Memory Reservations |
+|-------------|-----------|---------------|------------------|-------------------|
+| **Production** (docker-compose.yml) | 5.0 | 6GB | 1.0 | 2GB |
+| **Staging/Secure** (docker-compose-secure.yml) | 5.0 | 6GB | 1.0 | 2GB |
+| **External** (docker-compose-external.yml) | 5.0 | 6GB | 1.0 | 2GB |
+| **Local Dev** (docker-compose-local.yml) | 5.0 | 6GB | 1.0 | 2GB |
+
+Worker container resources provide overhead for:
+- Docker socket communication with execution containers
+- Report extraction and processing
+- Redis/Database connections
+- Concurrent container orchestration
+
 **Environment variables to tune:**
-- RUNNING_CAPACITY: 5 (increase for more parallelism)
-- QUEUED_CAPACITY: 50 (increase to allow more queuing)
-- REDIS_HOST: localhost (Redis connection)
-- REDIS_PORT: 6379
+- `TEST_EXECUTION_TIMEOUT_MS=300000` (Test timeout in milliseconds, default 5 min)
+- `MAX_CONCURRENT_EXECUTIONS=2` (Parallel Playwright container executions per worker)
+- `PLAYWRIGHT_WORKERS=2` (Parallel test execution within container)
+- `K6_MAX_CONCURRENCY=3` (Parallel k6 test containers)
+- `RUNNING_CAPACITY=6` (Global queue system parallelism, 3 replicas × 2 concurrent)
+- `QUEUED_CAPACITY=50` (Queue depth limit)
+
+**Playwright Performance Tuning:**
+- **Test Timeout**: 240s per individual test (global timeout 5 minutes)
+- **Worker Count**: 2 workers run tests in parallel inside container
+- **Retry Strategy**: 1 retry on failure
+- **Expected throughput**: 2 parallel workers × multiple tests = 1.5-2x faster execution
+- **Container Resources**: 4GB RAM, 4 CPUs per execution container (increased from 2GB/2CPU)
+
+**K6 Performance Tuning:**
+- **VU Limit**: 100-500 concurrent virtual users depending on endpoint complexity
+- **Container Resources**: 4GB RAM, 4 CPUs per execution container
+- **Expected throughput**: Can handle high-concurrency load tests efficiently
+- **Shared Memory**: 2GB for dashboard exports and data processing
 
 **Tuning Guidelines:**
-- Increase RUNNING_CAPACITY if system has spare resources
-- Increase QUEUED_CAPACITY if jobs are being rejected
+- Increase `MAX_CONCURRENT_EXECUTIONS` if worker has spare resources (CPU/RAM)
+- Increase `PLAYWRIGHT_WORKERS` for faster test execution (requires more memory)
+- Increase `TEST_EXECUTION_TIMEOUT_MS` if tests consistently timeout
+- Adjust `RUNNING_CAPACITY` based on available system resources (scale horizontally with replicas)
 - Monitor queue depth to detect bottlenecks
-- Adjust based on container resource limits
+- Each worker replica requires: 5 CPUs limit, 6GB memory limit (for orchestration)
 
 ### Key Performance Metrics
 
-| Metric | Target | Current | Status |
-|--------|--------|---------|--------|
-| Queue Wait Time | < 30s | 15s avg | ✅ |
-| Test Execution Time | < 2 min | 1.5 min avg | ✅ |
-| Artifact Upload Time | < 10s | 8s avg | ✅ |
-| Worker Utilization | 70-80% | 75% avg | ✅ |
-| Memory per Test | < 500MB | 380MB avg | ✅ |
-| Concurrent Tests | 5 (default global limit) | 5 | ✅ |
+| Metric | Target | Current | Status | Notes |
+|--------|--------|---------|--------|-------|
+| Queue Wait Time | < 30s | 15s avg | ✅ | BullMQ with efficient queue processing |
+| Test Execution Time (Playwright) | < 2 min | 1.0-1.5 min avg | ✅ | 2 parallel workers per container |
+| Test Execution Time (K6) | < 10 min | 5-8 min avg | ✅ | High-concurrency load testing |
+| Artifact Upload Time | < 10s | 8s avg | ✅ | S3/MinIO transfer with optimized chunks |
+| Worker Utilization | 70-80% | 75% avg | ✅ | 3 replicas with balanced load |
+| Memory per Container | 4GB | 4GB (Playwright/K6) | ✅ | Increased from 2GB for stable execution |
+| CPU per Container | 4.0 | 4.0 (Playwright/K6) | ✅ | Increased from 2.0 for parallel workers |
+| Concurrent Executions | 2 per worker | 2 | ✅ | Scale horizontally with replicas |
+| Global Throughput (3 replicas) | 6 concurrent | 6 | ✅ | 3 workers × 2 concurrent executions |
 
 ### Redis Memory Management
 
