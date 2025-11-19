@@ -52,8 +52,10 @@ COPY . .
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --legacy-peer-deps --no-audit --no-fund
 
-RUN npm run build && \
-    rm -rf /root/.npm /root/.cache /app/node_modules
+RUN npm run build
+
+# Clean up to reduce layer size (node_modules will be copied from deps stage)
+RUN rm -rf /root/.npm /root/.cache /app/node_modules
 
 ##############################################
 # BROWSER BUILDER (separate stage to optimize disk usage)
@@ -91,8 +93,11 @@ COPY --from=k6-builder /k6src/k6 /usr/local/bin/k6
 
 RUN chmod +x /usr/local/bin/k6
 
-# Create writable directories for reports
-RUN mkdir -p /app/playwright-reports /app/k6-reports /app/report
+# Create writable directories and ensure clean npm/cache for spawned containers
+# This prevents EACCES errors when containers run npm commands as root
+RUN mkdir -p /app/playwright-reports /app/k6-reports /app/report && \
+    rm -rf /root/.npm /root/.cache /tmp/* && \
+    npm cache clean --force 2>/dev/null || true
 
 # Playwright browsers are pre-installed in /ms-playwright
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
@@ -100,7 +105,8 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 EXPOSE 3001
 
 # Health check for container orchestration
+# Note: Uses node HTTP check instead of curl to handle dynamic port from env
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:3001/health || exit 1
+    CMD node -e "const http = require('http'); const port = process.env.PORT || 3001; const req = http.request({hostname: 'localhost', port: port, path: '/health', timeout: 5000}, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();"
 
 CMD ["node", "dist/src/main.js"]
