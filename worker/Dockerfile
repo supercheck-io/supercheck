@@ -58,8 +58,8 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 
-# Lightweight Docker CLI
-RUN apt-get update && apt-get install -y moby-cli && rm -rf /var/lib/apt/lists/*
+# Lightweight Docker CLI (official binary only)
+COPY --from=docker:cli /usr/local/bin/docker /usr/local/bin/docker
 
 LABEL org.opencontainers.image.source="https://github.com/supercheck-io/supercheck"
 
