@@ -397,19 +397,8 @@ export class ContainerExecutorService {
       // Join main commands with && (each must succeed)
       const mainScript = shellCommands.join(' && ');
 
-      // Add debug commands that run regardless of main command success/failure
-      // Using ; instead of && so they run even if playwright/k6 fails
-      const debugCommands = [
-        'echo "=== DEBUG: /tmp contents after execution ==="',
-        'ls -la /tmp/ 2>/dev/null || echo "Cannot list /tmp"',
-        'echo "=== DEBUG: checking for playwright-reports ==="',
-        'ls -la /tmp/playwright-reports/ 2>/dev/null || echo "No playwright-reports directory"',
-        'echo "=== DEBUG: checking for k6 reports ==="',
-        'find /tmp -name "*.html" -o -name "summary.json" 2>/dev/null || echo "No HTML or summary files found"',
-      ].join('; ');
-
-      // Combine: run main script, then debug (use ; so debug runs even if main fails)
-      const shellScript = `${mainScript}; ${debugCommands}`;
+      // Use main script directly
+      const shellScript = mainScript;
 
       this.logger.debug(
         `[Container-Only] Generated shell wrapper for inline script execution`,

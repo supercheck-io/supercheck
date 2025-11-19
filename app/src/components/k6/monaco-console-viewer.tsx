@@ -42,13 +42,9 @@ const classifyLine = (line: string): LineStyle | null => {
 
 const filterAndProcessLogs = (content: string): string => {
   const lines = content.split(/\r?\n/);
-  const processedLines = lines.map((line) => {
-    // Replace dashboard URLs with NA
-    if (line.includes("web dashboard: http://127.0.0.1:")) {
-      return line.replace(/http:\/\/127\.0\.0\.1:\d+/g, "NA");
-    }
-    return line;
-  });
+  const processedLines = lines.filter(
+    (line) => !line.includes("web dashboard:")
+  );
   return processedLines.join("\n");
 };
 
