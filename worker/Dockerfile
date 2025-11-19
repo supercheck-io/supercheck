@@ -14,15 +14,22 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean
 
 ##############################################
-# k6 + xk6-dashboard BUILDER 
+# k6 + xk6-dashboard BUILDER
 ##############################################
-FROM golang:1.24 AS k6-builder
+FROM golang:1.24-slim AS k6-builder
 WORKDIR /k6src
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN go install go.k6.io/xk6/cmd/xk6@latest
 
-# Explicit output path prevents ambiguity
+# Build k6 and aggressively clean up to save space
 RUN xk6 build --with github.com/grafana/xk6-dashboard@latest --output /k6src/k6
+
+# Aggressive cleanup to save CI/CD runner disk space
+RUN rm -rf /go/pkg /go/src /root/.cache /go/bin /usr/local/go/pkg/mod
 
 ##############################################
 # DEPS
@@ -45,7 +52,8 @@ COPY . .
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --legacy-peer-deps --no-audit --no-fund
 
-RUN npm run build
+RUN npm run build && \
+    rm -rf /root/.npm /root/.cache /app/node_modules
 
 ##############################################
 # BROWSER BUILDER (separate stage to optimize disk usage)
@@ -56,7 +64,9 @@ WORKDIR /ms-playwright
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 # Install only Chromium browser with dependencies
-RUN npx playwright install --with-deps chromium
+# Clean up npm cache after installation to save space
+RUN npx playwright install --with-deps chromium && \
+    rm -rf /root/.npm /root/.cache
 
 ##############################################
 # RUNNER (FINAL STAGE)
