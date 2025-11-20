@@ -213,7 +213,7 @@ export class ContainerExecutorService {
       memoryLimitMb = 512,
       cpuLimit = 0.5,
       env = {},
-      workingDir = '/workspace',
+      workingDir = '/worker',
       image = this.defaultImage,
       networkMode = 'none',
       autoRemove = true,
@@ -271,37 +271,13 @@ export class ContainerExecutorService {
 
       // Container-only execution: Only mount node_modules (read-only)
       // Test scripts will be created inside container via shell commands
-      const workerRoot = process.cwd();
-      const nodeModulesPath = path.join(workerRoot, 'node_modules');
-      const playwrightConfigPath = path.join(workerRoot, 'playwright.config.js');
-
-      // Mount node_modules as read-only (contains playwright binary)
-      dockerArgs.push('-v', `${nodeModulesPath}:/workspace/node_modules:ro`);
-
-      // Mount playwright config if it exists
-      if (fsSync.existsSync(playwrightConfigPath)) {
-        dockerArgs.push(
-          '-v',
-          `${playwrightConfigPath}:/workspace/playwright.config.js:ro`,
-        );
-      }
-
-      // Mount Playwright support files that the config loads directly
-      const supportFiles = [
-        'playwright-global-setup.js',
-        'playwright-test-setup.js',
-      ];
-
-      for (const fileName of supportFiles) {
-        const hostPath = path.join(workerRoot, fileName);
-        if (fsSync.existsSync(hostPath)) {
-          dockerArgs.push('-v', `${hostPath}:/workspace/${fileName}:ro`);
-        }
-      }
-
-      this.logger.debug(
-        '[Container-Only] Mounting only node_modules and config (read-only)',
-      );
+      // NOTE: Do NOT bind-mount /worker/node_modules or config files here.
+      // In containerized deployments (Dokploy/Kubernetes/Docker Compose) the worker
+      // runs inside a container and the Docker daemon on the host cannot access the
+      // worker's filesystem paths. Binding a non-existent host path would mask the
+      // baked-in node_modules inside the execution image, forcing npm to try fetching
+      // Playwright at runtime and fail with EACCES. We rely on the dependencies
+      // already baked into the worker image instead.
 
       // NOTE: Do NOT use --tmpfs for /tmp because tmpfs is destroyed when container exits,
       // preventing docker cp extraction. Use regular container filesystem instead - it's
@@ -352,9 +328,9 @@ export class ContainerExecutorService {
         }
       }
 
-      // Ensure specs can resolve dependencies by linking /tmp/node_modules -> /workspace/node_modules
+      // Ensure specs can resolve dependencies by linking /tmp/node_modules -> /worker/node_modules
       shellCommands.push(
-        '[ -d /workspace/node_modules ] && [ ! -e /tmp/node_modules ] && ln -s /workspace/node_modules /tmp/node_modules || true',
+        '[ -d /worker/node_modules ] && [ ! -e /tmp/node_modules ] && ln -s /worker/node_modules /tmp/node_modules || true',
       );
 
       // Write main script file (using printf for better compatibility)

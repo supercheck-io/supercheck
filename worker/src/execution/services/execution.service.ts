@@ -904,8 +904,6 @@ export class ExecutionService implements OnModuleDestroy {
     isJob: boolean,
     additionalFiles?: Record<string, string>,
   ): Promise<PlaywrightExecutionResult> {
-    // Container paths - only node_modules is mounted (read-only)
-    const containerWorkspace = '/workspace';
     // For jobs with multiple tests, run playwright test /tmp/ to execute all tests
     // For single tests, target specific file
     const containerTestPath = isJob ? '/tmp/' : `/tmp/${testScript.fileName}`;
@@ -930,7 +928,7 @@ export class ExecutionService implements OnModuleDestroy {
         PLAYWRIGHT_JSON_OUTPUT: containerJsonResults, // JSON results in container /tmp
         CI: 'true',
         PLAYWRIGHT_EXECUTION_ID: executionId,
-        NODE_PATH: '/workspace/node_modules',
+        NODE_PATH: '/worker/node_modules',
         PLAYWRIGHT_OUTPUT_DIR: containerReportsDir,
         // All artifacts and reports go to container /tmp (unmounted, extracted later)
         PLAYWRIGHT_ARTIFACTS_DIR: `${containerReportsDir}/artifacts-${executionId}`,
@@ -957,7 +955,7 @@ export class ExecutionService implements OnModuleDestroy {
         'playwright',
         'test',
         containerTestPath, // Test file path inside container /tmp
-        '--config=/workspace/playwright.config.js', // Config (read-only mount) handles reporters via env vars
+        '--config=/worker/playwright.config.js', // Config baked into worker image
         `--output=${containerReportsDir}/output-${executionId}`, // Output to container /tmp
       ];
 
@@ -967,11 +965,11 @@ export class ExecutionService implements OnModuleDestroy {
           ...process.env,
           ...envVars,
         },
-        cwd: '/workspace', // Not used in inline mode, but set for consistency
+        cwd: '/worker', // Not used in inline mode, but set for consistency
         shell: false,
         timeout: isJob ? this.jobExecutionTimeoutMs : this.testExecutionTimeoutMs,
         scriptPath: null, // No host path to mount - using inline script
-        workingDir: '/workspace',
+        workingDir: '/worker',
         // Inline script execution mode
         inlineScriptContent: testScript.scriptContent,
         inlineScriptFileName: testScript.fileName,
@@ -1420,7 +1418,7 @@ export class ExecutionService implements OnModuleDestroy {
         {
           timeoutMs: options.timeout,
           env: options.env as Record<string, string>,
-          workingDir: options.workingDir || '/workspace',
+          workingDir: options.workingDir || '/worker',
           memoryLimitMb: 4096, // 4GB for Playwright (supports 2 parallel workers)
           cpuLimit: 4.0, // 4 CPUs
           networkMode: 'bridge', // Allow network for Playwright

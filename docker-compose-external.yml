@@ -192,9 +192,9 @@ services:
     volumes:
       # CRITICAL: Mount Docker socket for container-based test execution
       - /var/run/docker.sock:/var/run/docker.sock
-      - worker-playwright-reports:/app/playwright-reports
-      - worker-k6-reports:/app/k6-reports
-      - worker-reports:/app/report
+      - worker-playwright-reports:/worker/playwright-reports
+      - worker-k6-reports:/worker/k6-reports
+      - worker-reports:/worker/report
     depends_on:
       app:
         condition: service_healthy # Wait for app to complete migrations
