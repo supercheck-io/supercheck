@@ -154,7 +154,7 @@ if [ -S /var/run/docker.sock ]; then\n\
   fi\n\
 fi\n\
 # Run as nodejs user\n\
-exec su nodejs -s /bin/bash -c "exec \\"\\$@\\"" -- "$@"' > /docker-entrypoint.sh && \
+exec su -s /bin/bash nodejs -c '"'"'exec "$@"'"'"' sh "$@"' > /docker-entrypoint.sh && \
     chmod +x /docker-entrypoint.sh
 
 EXPOSE 8000
