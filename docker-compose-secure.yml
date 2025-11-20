@@ -148,7 +148,7 @@ services:
 
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.1.7-beta.12
+    image: ghcr.io/supercheck-io/supercheck/app:1.1.7-beta.13
     expose:
       - "3000"
     environment:
@@ -223,7 +223,7 @@ services:
   # Worker (NestJS Runner) - Container-based test execution
   # Tests run in isolated Docker containers (Playwright/K6), not inside worker
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.1.7-beta.12
+    image: ghcr.io/supercheck-io/supercheck/worker:1.1.7-beta.13
     environment:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)
