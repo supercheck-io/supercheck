@@ -49,37 +49,16 @@ RUN chmod +x k6
 FROM docker:27-cli AS docker-cli
 
 
-# Dependencies stage
-FROM base AS deps
-WORKDIR /app
-
-# Copy package files
-COPY package.json package-lock.json* ./
-
-# Install production dependencies with caching
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund
-
 # Build stage with dev dependencies
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY package.json package-lock.json* ./
 
-# Install dev dependencies for build with caching
+# Install all dependencies for build with caching
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --legacy-peer-deps --no-audit --no-fund
 
-# Install Playwright browsers with proper caching
-RUN --mount=type=cache,target=/root/.cache/ms-playwright \
-    npm exec playwright install --with-deps
-
-# Copy Playwright browsers to a known location for the final stage
-RUN mkdir -p /app/playwright-browsers && \
-    cp -r /root/.cache/ms-playwright/* /app/playwright-browsers/ 2>/dev/null || \
-    (echo "Browser cache not found, will be downloaded in final stage" && \
-     cp -r /root/.cache/ms-playwright /app/playwright-browsers/ 2>/dev/null || \
-     echo "Browser cache completely missing")
+COPY . .
 
 # Build the NestJS application
 RUN npm run build
@@ -110,12 +89,13 @@ RUN groupadd --system --gid 1001 nodejs && \
 
 # Copy only necessary files with proper ownership
 COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
-COPY --from=deps --chown=nodejs:nodejs /app/node_modules ./node_modules
+
+# Install production dependencies with caching and memory limits
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund --max-old-space-size=4096
+
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nodejs:nodejs /app/playwright.config.js ./
-
-# Copy Playwright browsers from builder stage
-COPY --from=builder --chown=nodejs:nodejs /app/playwright-browsers /app/playwright-browsers
 
 # Create directories for test execution with proper permissions
 # Create video output directory for recording on test failures
@@ -140,8 +120,10 @@ ENV NPM_CONFIG_CACHE=/home/nodejs/.npm
 # Set Playwright browser cache path to standard location
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Install only Chromium browser for Playwright tests
-RUN npx playwright install chromium --with-deps
+# Install only Chromium browser for Playwright tests with cleanup
+RUN npx playwright install chromium --with-deps && \
+    npm cache clean --force && \
+    rm -rf /tmp/*
 
 # Add health check with dynamic port support
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

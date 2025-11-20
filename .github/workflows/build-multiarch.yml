@@ -30,6 +30,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Clean up disk space
+        run: |
+          echo "=== Before cleanup ==="
+          df -h
+          docker system df
+          
+          # Clean up Docker system to reclaim space
+          docker system prune -af --volumes
+          
+          # Clean up npm cache
+          npm cache clean --force || true
+          
+          # Clean up temp directories
+          rm -rf /tmp/* || true
+          rm -rf /var/tmp/* || true
+          
+          echo "=== After cleanup ==="
+          df -h
+          docker system df
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
