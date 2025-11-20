@@ -140,24 +140,6 @@ RUN if [ ! -d "/app/playwright-browsers/ms-playwright" ]; then \
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD node -e "const http = require('http'); const port = process.env.PORT || 3001; const req = http.request({hostname: 'localhost', port: port, path: '/health', timeout: 5000}, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();"
 
-# Create entrypoint to handle docker.sock permissions
-RUN echo '#!/bin/bash\n\
-set -e\n\
-# Add nodejs user to docker group if socket exists\n\
-if [ -S /var/run/docker.sock ]; then\n\
-  DOCKER_GID=$(stat -c "%g" /var/run/docker.sock 2>/dev/null || echo "0")\n\
-  if [ "$DOCKER_GID" != "0" ]; then\n\
-    if ! getent group $DOCKER_GID >/dev/null 2>&1; then\n\
-      groupadd -g $DOCKER_GID docker 2>/dev/null || true\n\
-    fi\n\
-    usermod -aG $DOCKER_GID nodejs 2>/dev/null || true\n\
-  fi\n\
-fi\n\
-# Run as nodejs user\n\
-exec su -s /bin/bash nodejs -c '"'"'exec "$@"'"'"' sh "$@"' > /docker-entrypoint.sh && \
-    chmod +x /docker-entrypoint.sh
-
 EXPOSE 8000
 
-ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["node", "--max-http-header-size=16384", "dist/src/main.js"]
