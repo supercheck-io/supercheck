@@ -36,17 +36,18 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Install k6 (v1.3.0 - latest stable release)
-RUN curl -L https://github.com/grafana/k6/releases/download/v1.3.0/k6-v1.3.0-linux-amd64.tar.gz | tar -xz && \
-    mv k6-v1.3.0-linux-amd64/k6 /usr/local/bin/ && \
-    rm -rf k6-v1.3.0-linux-amd64 && \
-    chmod +x /usr/local/bin/k6
+# Build k6 with xk6-dashboard extension
+FROM golang:1.23-alpine AS k6-builder
+RUN apk add --no-cache git
+# Enable Go toolchain auto-download for Go 1.24 requirement
+ENV GOTOOLCHAIN=auto
+RUN go install go.k6.io/xk6/cmd/xk6@latest
+RUN xk6 build --with github.com/grafana/xk6-dashboard@latest
+RUN chmod +x k6
 
-# Verify k6 installation
-RUN k6 version
+# Get Docker CLI
+FROM docker:27-cli AS docker-cli
 
-# Set k6 binary path environment variable
-ENV K6_BIN_PATH=/usr/local/bin/k6
 
 # Dependencies stage
 FROM base AS deps
@@ -91,6 +92,15 @@ LABEL org.opencontainers.image.title="Supercheck Worker"
 LABEL org.opencontainers.image.description="NestJS worker service for Supercheck - Executes Playwright tests, monitors endpoints, and processes background jobs with parallel execution capabilities. Includes all Playwright browsers (Chromium, Firefox, WebKit) and supports multi-architecture deployment."
 
 ENV NODE_ENV=production
+
+# Copy k6 binary with xk6-dashboard extension
+COPY --from=k6-builder /go/k6 /usr/local/bin/k6
+RUN chmod +x /usr/local/bin/k6
+ENV K6_BIN_PATH=/usr/local/bin/k6
+
+# Copy Docker CLI
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
+RUN chmod +x /usr/local/bin/docker
 
 # Create app user
 RUN groupadd --system --gid 1001 nodejs && \
