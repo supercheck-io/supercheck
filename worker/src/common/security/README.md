@@ -59,7 +59,7 @@ interface ContainerExecutionOptions {
   memoryLimitMb?: number;    // Memory limit (default: 512MB)
   cpuLimit?: number;         // CPU fraction (default: 0.5 = 50%)
   env?: Record<string, string>; // Environment variables
-  workingDir?: string;       // Working directory (default: /workspace)
+  workingDir?: string;       // Working directory (default: /worker)
   image?: string;            // Docker image override
   networkMode?: 'none' | 'bridge' | 'host'; // Network mode (default: none)
   autoRemove?: boolean;      // Auto-remove container (default: true)

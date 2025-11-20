@@ -51,7 +51,7 @@ FROM docker:27-cli AS docker-cli
 
 # Build stage with dev dependencies
 FROM base AS builder
-WORKDIR /app
+WORKDIR /worker
 COPY package.json package-lock.json* ./
 
 # Install all dependencies for build with caching
@@ -65,7 +65,7 @@ RUN npm run build
 
 # Production image using the same base with dependencies already installed
 FROM base AS runner
-WORKDIR /app
+WORKDIR /worker
 
 # Add OCI labels to link package to repository
 LABEL org.opencontainers.image.source=https://github.com/supercheck-io/supercheck
@@ -88,14 +88,14 @@ RUN groupadd --system --gid 1001 nodejs && \
     useradd --system --uid 1001 --gid nodejs nodejs
 
 # Copy only necessary files with proper ownership
-COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
+COPY --from=builder --chown=nodejs:nodejs /worker/package*.json ./
 
 # Install production dependencies with caching and memory limits
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund --max-old-space-size=4096
 
-COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
-COPY --from=builder --chown=nodejs:nodejs /app/playwright.config.js ./
+COPY --from=builder --chown=nodejs:nodejs /worker/dist ./dist
+COPY --from=builder --chown=nodejs:nodejs /worker/playwright.config.js ./
 
 # Create directories for test execution with proper permissions
 # Create video output directory for recording on test failures
@@ -108,7 +108,7 @@ RUN mkdir -p playwright-reports report \
     /tmp/.npm \
     /tmp/playwright-tests \
     /tmp/playwright-videos && \
-    chown -R nodejs:nodejs playwright-reports report k6-reports /app /home/nodejs /root/.npm /tmp/.npm /tmp/playwright-tests /tmp/playwright-videos && \
+    chown -R nodejs:nodejs playwright-reports report k6-reports /worker /home/nodejs /root/.npm /tmp/.npm /tmp/playwright-tests /tmp/playwright-videos && \
     chmod -R 755 playwright-reports report k6-reports && \
     chmod -R 777 /home/nodejs/.npm /home/nodejs/.cache /root/.npm /tmp/.npm /tmp/playwright-tests /tmp/playwright-videos
 

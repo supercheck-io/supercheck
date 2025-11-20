@@ -187,11 +187,11 @@ services:
       # Mount Docker socket for container-based execution
       # Worker spawns isolated containers for Playwright and K6 tests
       - /var/run/docker.sock:/var/run/docker.sock:ro # Read-only for security
-      - worker-playwright-reports:/app/playwright-reports
-      - worker-k6-reports:/app/k6-reports
-      - worker-reports:/app/report
+      - worker-playwright-reports:/worker/playwright-reports
+      - worker-k6-reports:/worker/k6-reports
+      - worker-reports:/worker/report
       # Development: Mount source for hot reload (remove in production)
-      - ./worker/src:/app/src:ro
+      - ./worker/src:/worker/src:ro
     depends_on:
       postgres:
         condition: service_healthy
