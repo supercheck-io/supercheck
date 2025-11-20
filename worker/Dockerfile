@@ -76,8 +76,10 @@ RUN --mount=type=cache,target=/root/.cache/ms-playwright \
 
 # Copy Playwright browsers to a known location for the final stage
 RUN mkdir -p /app/playwright-browsers && \
-    cp -r /root/.cache/ms-playwright /app/playwright-browsers/ 2>/dev/null || \
-    echo "Browser cache not found, will be downloaded in final stage"
+    cp -r /root/.cache/ms-playwright/* /app/playwright-browsers/ 2>/dev/null || \
+    (echo "Browser cache not found, will be downloaded in final stage" && \
+     cp -r /root/.cache/ms-playwright /app/playwright-browsers/ 2>/dev/null || \
+     echo "Browser cache completely missing")
 
 # Build the NestJS application
 RUN npm run build
@@ -135,16 +137,11 @@ ENV HOME=/home/nodejs
 ENV npm_config_cache=/home/nodejs/.npm
 ENV NPM_CONFIG_CACHE=/home/nodejs/.npm
 
-# Set Playwright browser cache path
-ENV PLAYWRIGHT_BROWSERS_PATH=/app/playwright-browsers/ms-playwright
-# Fallback to system installation if browsers not found
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
+# Set Playwright browser cache path to standard location
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Install browsers if not copied from builder (fallback)
-RUN if [ ! -d "/app/playwright-browsers/ms-playwright" ]; then \
-    echo "Installing Playwright browsers as fallback..." && \
-    npx playwright install --with-deps; \
-    fi
+# Install only Chromium browser for Playwright tests
+RUN npx playwright install chromium --with-deps
 
 # Add health check with dynamic port support
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
