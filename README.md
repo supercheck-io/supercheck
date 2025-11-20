@@ -58,7 +58,7 @@ Supercheck delivers comprehensive test automation, real-time monitoring, intelli
 └────────┘ └─────┘ └──────┘ └────────────┘
 ```
 
-**Stack**: Next.js 16 · React 19 · NestJS · PostgreSQL 18 · Redis · MinIO · Playwright
+**Stack**: Next.js · React · NestJS · PostgreSQL · Redis · MinIO · Playwright
 
 ## Quick Start
 
@@ -77,26 +77,14 @@ Access at `http://localhost:3000`
 
 ## Development
 
-**Prerequisites**: Node.js 20+ · Docker · PostgreSQL 18+ · Redis · Go 1.23+ (for k6)
-
-**k6 Setup** (required for performance testing features):
-```bash
-# Install xk6 (k6 extension builder)
-go install go.k6.io/xk6/cmd/xk6@latest
-
-# Build k6 with web-dashboard extension
-xk6 build --with github.com/grafana/xk6-dashboard@latest
-
-# Install to system path
-sudo mv k6 /usr/local/bin/k6
-```
+**Prerequisites**: Node.js 20+ · Docker
 
 **Local Development**:
 ```bash
 # App service
 cd app && npm install && npm run db:migrate && npm run dev
 
-# Worker service (requires k6 with web-dashboard extension)
+# Worker service
 cd worker && npm install && npm run dev
 ```
 
@@ -105,6 +93,7 @@ cd worker && npm install && npm run dev
 supercheck/
 ├── app/          # Next.js frontend & API
 ├── worker/       # NestJS worker service
+├── docs/         # Documentation site
 └── docker-compose.yml
 ```
 
