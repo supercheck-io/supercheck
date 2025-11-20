@@ -1,112 +1,163 @@
-##############################################
-# BASE STAGE
-##############################################
+# Use platform-agnostic base image with LTS version for better availability
 FROM node:20-slim AS base
 
+# Install base system dependencies for Playwright browsers and k6
+# Note: Playwright's --with-deps will install additional required packages including fonts
 RUN apt-get update && apt-get install -y \
-    curl tar \
-    libglib2.0-0 libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-    libdbus-1-3 libxcb1 libxkbcommon0 libx11-6 libxcomposite1 libxdamage1 \
-    libxext6 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2 \
-    libatspi2.0-0 libgtk-3-0 libgdk-pixbuf2.0-0 libxss1 libxshmfence1 \
-    ca-certificates iputils-ping \
+    curl \
+    tar \
+    libglib2.0-0 \
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libdbus-1-3 \
+    libxcb1 \
+    libxkbcommon0 \
+    libx11-6 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2 \
+    libatspi2.0-0 \
+    libgtk-3-0 \
+    libgdk-pixbuf2.0-0 \
+    libxss1 \
+    libxshmfence1 \
+    ca-certificates \
+    iputils-ping \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-##############################################
-# k6 + xk6-dashboard BUILDER
-##############################################
-FROM golang:1.25 AS k6-builder
-WORKDIR /k6src
+# Install k6 (v1.3.0 - latest stable release)
+RUN curl -L https://github.com/grafana/k6/releases/download/v1.3.0/k6-v1.3.0-linux-amd64.tar.gz | tar -xz && \
+    mv k6-v1.3.0-linux-amd64/k6 /usr/local/bin/ && \
+    rm -rf k6-v1.3.0-linux-amd64 && \
+    chmod +x /usr/local/bin/k6
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Verify k6 installation
+RUN k6 version
 
-RUN go install go.k6.io/xk6/cmd/xk6@latest
+# Set k6 binary path environment variable
+ENV K6_BIN_PATH=/usr/local/bin/k6
 
-# Build k6 and aggressively clean up to save space
-RUN xk6 build --with github.com/grafana/xk6-dashboard@latest --output /k6src/k6
-
-# Aggressive cleanup to save CI/CD runner disk space
-RUN rm -rf /go/pkg /go/src /root/.cache /go/bin /usr/local/go/pkg/mod
-
-##############################################
-# DEPS
-##############################################
+# Dependencies stage
 FROM base AS deps
 WORKDIR /app
+
+# Copy package files
 COPY package.json package-lock.json* ./
+
+# Install production dependencies with caching
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --omit=dev --legacy-peer-deps --no-audit --no-fund
 
-##############################################
-# BUILD
-##############################################
+# Build stage with dev dependencies
 FROM base AS builder
 WORKDIR /app
-
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Install dev dependencies for build with caching
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --legacy-peer-deps --no-audit --no-fund
 
+# Install Playwright browsers with proper caching
+RUN --mount=type=cache,target=/root/.cache/ms-playwright \
+    npm exec playwright install --with-deps
+
+# Copy Playwright browsers to a known location for the final stage
+RUN mkdir -p /app/playwright-browsers && \
+    cp -r /root/.cache/ms-playwright /app/playwright-browsers/ 2>/dev/null || \
+    echo "Browser cache not found, will be downloaded in final stage"
+
+# Build the NestJS application
 RUN npm run build
 
-# Clean up to reduce layer size (node_modules will be copied from deps stage)
-RUN rm -rf /root/.npm /root/.cache /app/node_modules
-
-##############################################
-# BROWSER BUILDER (separate stage to optimize disk usage)
-##############################################
-FROM base AS browser-builder
-WORKDIR /ms-playwright
-
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-
-# Install only Chromium browser with dependencies
-# Clean up npm cache after installation to save space
-RUN npx playwright install --with-deps chromium && \
-    rm -rf /root/.npm /root/.cache
-
-##############################################
-# RUNNER (FINAL STAGE)
-##############################################
+# Production image using the same base with dependencies already installed
 FROM base AS runner
 WORKDIR /app
 
-# Lightweight Docker CLI (official binary only)
-COPY --from=docker:cli /usr/local/bin/docker /usr/local/bin/docker
-
-LABEL org.opencontainers.image.source="https://github.com/supercheck-io/supercheck"
+# Add OCI labels to link package to repository
+LABEL org.opencontainers.image.source=https://github.com/supercheck-io/supercheck
 LABEL org.opencontainers.image.title="Supercheck Worker"
-LABEL org.opencontainers.image.description="Worker service for Supercheck - Handles test execution (Playwright, k6), job processing, and monitoring with containerized isolation."
+LABEL org.opencontainers.image.description="NestJS worker service for Supercheck - Executes Playwright tests, monitors endpoints, and processes background jobs with parallel execution capabilities. Includes all Playwright browsers (Chromium, Firefox, WebKit) and supports multi-architecture deployment."
 
 ENV NODE_ENV=production
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/playwright.config.js ./
-COPY --from=browser-builder /ms-playwright /ms-playwright
-COPY --from=k6-builder /k6src/k6 /usr/local/bin/k6
+# Create app user
+RUN groupadd --system --gid 1001 nodejs && \
+    useradd --system --uid 1001 --gid nodejs nodejs
 
-RUN chmod +x /usr/local/bin/k6
+# Copy only necessary files with proper ownership
+COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
+COPY --from=deps --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+COPY --from=builder --chown=nodejs:nodejs /app/playwright.config.js ./
 
-# Create writable directories and ensure clean npm/cache for spawned containers
-# This prevents EACCES errors when containers run npm commands as root
-RUN mkdir -p /app/playwright-reports /app/k6-reports /app/report && \
-    rm -rf /root/.npm /root/.cache /tmp/* && \
-    npm cache clean --force 2>/dev/null || true
+# Copy Playwright browsers from builder stage
+COPY --from=builder --chown=nodejs:nodejs /app/playwright-browsers /app/playwright-browsers
 
-# Playwright browsers are pre-installed in /ms-playwright
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+# Create directories for test execution with proper permissions
+# Create video output directory for recording on test failures
+# Create k6-reports directory for k6 performance test artifacts
+RUN mkdir -p playwright-reports report \
+    k6-reports \
+    /home/nodejs/.npm \
+    /home/nodejs/.cache \
+    /root/.npm \
+    /tmp/.npm \
+    /tmp/playwright-tests \
+    /tmp/playwright-videos && \
+    chown -R nodejs:nodejs playwright-reports report k6-reports /app /home/nodejs /root/.npm /tmp/.npm /tmp/playwright-tests /tmp/playwright-videos && \
+    chmod -R 755 playwright-reports report k6-reports && \
+    chmod -R 777 /home/nodejs/.npm /home/nodejs/.cache /root/.npm /tmp/.npm /tmp/playwright-tests /tmp/playwright-videos
 
-EXPOSE 3001
+# Set node home + npm cache to ensure Playwright/k6 sandboxes can write to npm cache directory
+ENV HOME=/home/nodejs
+ENV npm_config_cache=/home/nodejs/.npm
+ENV NPM_CONFIG_CACHE=/home/nodejs/.npm
 
-# Health check for container orchestration
-# Note: Uses node HTTP check instead of curl to handle dynamic port from env
+# Set Playwright browser cache path
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/playwright-browsers/ms-playwright
+# Fallback to system installation if browsers not found
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
+
+# Install browsers if not copied from builder (fallback)
+RUN if [ ! -d "/app/playwright-browsers/ms-playwright" ]; then \
+    echo "Installing Playwright browsers as fallback..." && \
+    npx playwright install --with-deps; \
+    fi
+
+# Add health check with dynamic port support
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD node -e "const http = require('http'); const port = process.env.PORT || 3001; const req = http.request({hostname: 'localhost', port: port, path: '/health', timeout: 5000}, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();"
 
-CMD ["node", "dist/src/main.js"]
+# Create entrypoint to handle docker.sock permissions
+RUN echo '#!/bin/bash\n\
+set -e\n\
+# Add nodejs user to docker group if socket exists\n\
+if [ -S /var/run/docker.sock ]; then\n\
+  DOCKER_GID=$(stat -c "%g" /var/run/docker.sock 2>/dev/null || echo "0")\n\
+  if [ "$DOCKER_GID" != "0" ]; then\n\
+    if ! getent group $DOCKER_GID >/dev/null 2>&1; then\n\
+      groupadd -g $DOCKER_GID docker 2>/dev/null || true\n\
+    fi\n\
+    usermod -aG $DOCKER_GID nodejs 2>/dev/null || true\n\
+  fi\n\
+fi\n\
+# Run as nodejs user\n\
+exec su nodejs -s /bin/bash -c "exec \\"\\$@\\"" -- "$@"' > /docker-entrypoint.sh && \
+    chmod +x /docker-entrypoint.sh
+
+EXPOSE 8000
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["node", "--max-http-header-size=16384", "dist/src/main.js"]

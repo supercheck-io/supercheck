@@ -27,7 +27,7 @@ This module provides secure execution of user-supplied scripts using Docker cont
 
 4. **Automatic Cleanup**
    - Containers auto-removed after execution
-   - Orphaned container detection and cleanup
+   - No local file accumulation (container-based cleanup)
    - Graceful timeout handling
 
 ### 🛡️ Defense in Depth
@@ -45,38 +45,11 @@ The module implements multiple security layers:
    - Network isolation options
 
 3. **Mandatory Container Execution**
-   - Container execution is required for all Playwright and K6 tests
-   - No fallback to direct execution (removed for security)
+   - Container execution is required for all tests
+   - No fallback to direct execution
    - Clear error messages when Docker is unavailable
 
 ## Usage
-
-### Basic Setup
-
-#### 1. Install Docker
-
-```bash
-# Ubuntu/Debian
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-
-# Verify installation
-docker --version
-```
-
-#### 2. Pull Required Images
-
-The system uses the following Docker images for container execution:
-
-```bash
-# For Playwright tests (hardcoded)
-docker pull mcr.microsoft.com/playwright:v1.56.1-noble
-
-# For K6 performance tests (hardcoded)
-docker pull grafana/k6:latest
-```
-
-**Note**: Docker images are automatically pulled on first use if not already present.
 
 ### Container Execution Options
 
@@ -269,7 +242,7 @@ sudo usermod -aG docker $USER
 
 ### Container Execution is Mandatory
 
-Container execution is now mandatory for all Playwright and K6 tests. Execution will fail with a clear error message if:
+Container execution is now mandatory for all tests. Execution will fail with a clear error message if:
 - Docker is not installed or not running
 - Docker permissions are insufficient
 - Required Docker image is not available
@@ -312,7 +285,7 @@ npm run start:dev
 
 ## Security Best Practices
 
-1. **Always use container execution in production** when possible
+1. **Always use container execution in production**
 2. **Regularly update Docker images** to patch vulnerabilities
 3. **Monitor resource usage** to detect anomalies
 4. **Review container logs** for suspicious activity
