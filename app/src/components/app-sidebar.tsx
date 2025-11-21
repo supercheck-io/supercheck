@@ -208,7 +208,7 @@ const data = {
       title: "Docs",
       url: "https://github.com/supercheck-io/supercheck",
       icon: BookOpenText,
-      badge: "v1.1.8-beta.3",
+      badge: "v1.1.8-beta.4",
     },
     // {
     //   title: "Changelog",
@@ -301,10 +301,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
     const baseSettings: AdminItem[] = [];
 
+    if (isOrgAdmin) {
+      baseSettings.push(...(data.OrgAdmin as AdminItem[]));
+    }
+
     if (isAdmin) {
       baseSettings.push(...(data.SuperAdmin as AdminItem[]));
-    } else if (isOrgAdmin) {
-      baseSettings.push(...(data.OrgAdmin as AdminItem[]));
     }
 
     return baseSettings;

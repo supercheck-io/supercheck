@@ -142,9 +142,10 @@ interface NotificationProviderFormProps {
     config: NotificationProviderConfig;
     maskedFields?: string[];
   };
+  defaultType?: NotificationProviderType;
 }
 
-export function NotificationProviderForm({ onSuccess, onCancel, initialData }: NotificationProviderFormProps) {
+export function NotificationProviderForm({ onSuccess, onCancel, initialData, defaultType }: NotificationProviderFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
 
@@ -171,7 +172,7 @@ export function NotificationProviderForm({ onSuccess, onCancel, initialData }: N
         discordWebhookUrl: ((initialData.config as Record<string, unknown>).discordWebhookUrl as string) || "",
       },
     } : {
-      type: "email",
+      type: defaultType || "email",
       config: {
         name: "",
         emails: "",

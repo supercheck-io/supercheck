@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatsCard } from "@/components/admin/stats-card";
+import { Card, CardContent} from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -403,78 +404,42 @@ export default function OrgAdminDashboard() {
             </div>
           </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Projects</CardTitle>
-                <FolderOpen className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.projects}</div>
-                <p className="text-xs text-muted-foreground">
-                  Active projects
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Members</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.members}</div>
-                <p className="text-xs text-muted-foreground">
-                  Organization members
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Jobs</CardTitle>
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.jobs}</div>
-                <p className="text-xs text-muted-foreground">
-                  Scheduled jobs
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Tests</CardTitle>
-                <Activity className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.tests}</div>
-                <p className="text-xs text-muted-foreground">
-                  Test cases
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Monitors</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.monitors}</div>
-                <p className="text-xs text-muted-foreground">
-                  Active monitors
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Runs</CardTitle>
-                <Activity className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.runs}</div>
-                <p className="text-xs text-muted-foreground">
-                  Test executions
-                </p>
-              </CardContent>
-            </Card>
+            <StatsCard
+              title="Projects"
+              value={stats.projects}
+              description="Active projects"
+              icon={FolderOpen}
+            />
+            <StatsCard
+              title="Members"
+              value={stats.members}
+              description="Organization members"
+              icon={Users}
+            />
+            <StatsCard
+              title="Jobs"
+              value={stats.jobs}
+              description="Scheduled jobs"
+              icon={Calendar}
+            />
+            <StatsCard
+              title="Tests"
+              value={stats.tests}
+              description="Test cases"
+              icon={Activity}
+            />
+            <StatsCard
+              title="Monitors"
+              value={stats.monitors}
+              description="Active monitors"
+              icon={TrendingUp}
+            />
+            <StatsCard
+              title="Total Runs"
+              value={stats.runs}
+              description="Test executions"
+              icon={Activity}
+            />
           </div>
         </TabsContent>
 

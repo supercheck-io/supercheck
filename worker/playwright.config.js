@@ -109,12 +109,8 @@ module.exports = defineConfig({
     navigationTimeout: 30000, // 30 seconds for page loads
 
     /* Artifact collection strategy - configurable via environment variables */
-    // Capture traces on failure for debugging
     trace: process.env.PLAYWRIGHT_TRACE || 'retain-on-failure',
-    // Capture screenshots only on failure to avoid performance degradation
-    // Full screenshots for all tests can be enabled via PLAYWRIGHT_SCREENSHOT='all'
     screenshot: process.env.PLAYWRIGHT_SCREENSHOT || 'on',
-    // Video recording for failed tests for debugging (with increased resource limits)
     video: process.env.PLAYWRIGHT_VIDEO || 'retain-on-failure',
 
     /* Browser optimization for resource efficiency - browser-specific args moved to projects */
@@ -138,55 +134,23 @@ module.exports = defineConfig({
   projects: [
     {
       name: 'chromium',
-      // Ignore mobile, firefox, and webkit tests to avoid duplicate execution
-      grepInvert: /@mobile|@iPhone|@firefox|@webkit|@safari/,
+      grepInvert: /@(mobile|iPhone|firefox|webkit|safari)\b/,
       use: {
         ...devices['Desktop Chrome'],
         // Override with optimized settings
         viewport: { width: 1280, height: 720 }, // Standard viewport for consistent results
         // Enable headless mode for better performance
         headless: true,
-        // Chrome-specific launch options - optimized for containerized environments
         launchOptions: {
-          args: [
-            // CRITICAL: Core container compatibility flags
-            // '--disable-dev-shm-usage', // Prevent /dev/shm issues in containers (Causes WebKit failure in mixed mode)
-            // '--disable-gpu', // Reduce GPU memory usage
-            // '--no-sandbox', // Required for containerized environments
-            // '--disable-setuid-sandbox',
-            // '--disable-web-security', // Allow cross-origin requests for testing
-
-            // REMOVED --single-process: Causes "Target page closed" errors and browser instability
-            // Let browser manage processes naturally for better stability
-
-            // Font rendering fixes (prevents fontconfig errors)
-            // '--font-render-hinting=none',
-            // '--disable-font-subpixel-positioning',
-
-            // Memory and resource optimization (kept minimal for stability)
-            // '--disable-features=TranslateUI,AudioServiceOutOfProcess',
-            // '--disable-background-networking',
-            // '--disable-default-apps',
-            // '--disable-extensions',
-            // '--disable-sync',
-            // '--disable-translate',
-            // '--no-first-run',
-            // '--no-default-browser-check',
-
-            // Additional stability flags
-            // '--disable-gpu-sandbox',
-            // '--disable-accelerated-2d-canvas',
-            // '--disable-dev-shm-usage', // Re-enable for Chromium only if needed, but safe to omit if stable
-          ],
+          args: [],
         },
       },
     },
 
-    // Additional browsers can be enabled via environment variables
     // Additional browsers
     {
       name: 'firefox',
-      grep: /@firefox/,
+      grep: /@firefox\b/,
       use: {
         ...devices['Desktop Firefox'],
         viewport: { width: 1280, height: 720 },
@@ -201,8 +165,8 @@ module.exports = defineConfig({
     },
 
     {
-      name: 'webkit',
-      grep: /@webkit|@safari/,
+      name: 'safari',
+      grep: /@(webkit|safari)\b/,
       use: {
         ...devices['Desktop Safari'],
         viewport: { width: 1280, height: 720 },
@@ -219,10 +183,10 @@ module.exports = defineConfig({
     // Mobile testing projects (opt-in via @mobile tag)
     {
       name: 'mobile-safari',
-      // Only run tests tagged with @mobile
-      grep: /@mobile|@iPhone/,
+      // Only run tests tagged with @mobile or @iPhone
+      grep: /@(mobile|iPhone)\b/,
       use: {
-        ...devices['iPhone 16'],
+        ...devices['iPhone 13'],
         headless: true,
       },
     },
@@ -231,17 +195,4 @@ module.exports = defineConfig({
   /* Performance and cleanup optimizations */
   maxFailures: process.env.CI ? 5 : undefined, // Stop after 5 failures in CI
 
-  /* Metadata for execution tracking */
-  // metadata: {
-  //   executionEnvironment: process.env.NODE_ENV || 'development',
-  //   workerCapacity: getOptimalWorkerCount(),
-  //   configVersion: '2.0.0', // Track config changes
-  // },
-
-  /* Run your local dev server before starting the tests */
-  // webServer: {
-  //   command: 'npm run start',
-  //   url: 'http://127.0.0.1:3000',
-  //   reuseExistingServer: !process.env.CI,
-  // },
 });

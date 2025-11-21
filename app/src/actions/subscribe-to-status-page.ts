@@ -217,7 +217,11 @@ async function handleEmailSubscription(
       });
 
       if (!emailResult.success) {
-        console.warn("Email sending failed but subscription updated:", emailResult.error);
+        console.error("Email sending failed:", emailResult.error);
+        return {
+          success: false,
+          message: "Failed to send verification email. Please try again later or contact support.",
+        };
       }
 
       return {
@@ -269,7 +273,11 @@ async function handleEmailSubscription(
   });
 
   if (!emailResult.success) {
-    console.warn("Email sending failed but subscription created:", emailResult.error);
+    console.error("Email sending failed:", emailResult.error);
+    return {
+      success: false,
+      message: "Failed to send verification email. Please try again later or contact support.",
+    };
   }
 
   // Revalidate the public page
