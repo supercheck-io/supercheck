@@ -250,6 +250,249 @@ export default function () {
 }
 `,
   },
+  {
+    id: "k6-checks-assertions",
+    name: "Checks & Assertions",
+    description: "Comprehensive checks and assertions for response validation",
+    category: "API Coverage",
+    testType: "performance",
+    tags: ["k6", "checks", "assertions", "validation"],
+    code: `/**
+ * k6 checks and assertions guide.
+ * Coverage: status checks, header validation, body assertions, timing checks.
+ * Demonstrates check() patterns and custom metrics.
+ * @requires k6 binary
+ */
+
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+import { Rate, Trend } from 'k6/metrics';
+
+// Custom metrics for tracking specific checks
+const errorRate = new Rate('custom_error_rate');
+const customDuration = new Trend('custom_duration');
+
+export const options = {
+  vus: 10,
+  duration: '30s',
+  thresholds: {
+    'http_req_failed': ['rate<0.01'],
+    'http_req_duration': ['p(95)<500', 'p(99)<1000'],
+    'custom_error_rate': ['rate<0.05'],
+    'custom_duration': ['avg<300', 'p(90)<400'],
+    'checks': ['rate>0.95'],
+  },
+};
+
+export default function () {
+  const baseUrl = __ENV.TARGET_URL || 'https://jsonplaceholder.typicode.com';
+  const res = http.get(baseUrl + '/posts/1');
+  
+  const checkResult = check(res, {
+    'status is 200': (r) => r.status === 200,
+    'content-type is JSON': (r) => r.headers['Content-Type']?.includes('application/json'),
+    'body is valid JSON': (r) => {
+      try { JSON.parse(r.body); return true; } catch { return false; }
+    },
+    'has expected fields': (r) => {
+      const data = JSON.parse(r.body);
+      return data.id !== undefined && data.title !== undefined;
+    },
+    'response time < 500ms': (r) => r.timings.duration < 500,
+    'response size < 10KB': (r) => r.body.length < 10240,
+  });
+  
+  errorRate.add(!checkResult);
+  customDuration.add(res.timings.duration);
+  
+  sleep(1);
+}
+`,
+  },
+  {
+    id: "k6-thresholds-advanced",
+    name: "Advanced Thresholds",
+    description: "Comprehensive threshold configurations with custom metrics",
+    category: "Load Profiles",
+    testType: "performance",
+    tags: ["k6", "thresholds", "slo", "performance"],
+    code: `/**
+ * Advanced k6 thresholds for SLO enforcement.
+ * Coverage: complex thresholds, custom metrics, tagged metrics.
+ * Uses jsonplaceholder for reliable demo endpoint.
+ * @requires k6 binary
+ */
+
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+import { Counter, Rate, Trend } from 'k6/metrics';
+
+const apiCalls = new Counter('api_calls');
+const successRate = new Rate('success_rate');
+const apiLatency = new Trend('api_latency');
+
+export const options = {
+  stages: [
+    { duration: '30s', target: 20 },
+    { duration: '1m', target: 50 },
+    { duration: '30s', target: 0 },
+  ],
+  
+  thresholds: {
+    'http_req_failed': ['rate<0.01'],
+    'http_req_duration': [
+      'avg<300',
+      'p(50)<200',
+      'p(90)<500',
+      'p(95)<700',
+      'p(99)<1000',
+    ],
+    'checks': ['rate>0.95'],
+    'success_rate': ['rate>0.98'],
+    'api_latency': ['p(95)<300', 'p(99)<500'],
+    'http_req_duration{endpoint:read}': ['p(95)<400'],
+    'http_req_duration{endpoint:write}': ['p(95)<500'],
+  },
+};
+
+export default function () {
+  const baseUrl = __ENV.TARGET_URL || 'https://jsonplaceholder.typicode.com';
+  
+  // Read operation
+  const getRes = http.get(baseUrl + '/posts/1', {
+    tags: { endpoint: 'read' },
+  });
+  
+  apiCalls.add(1);
+  const getSuccess = check(getRes, { 
+    'GET successful': (r) => r.status === 200,
+    'has content': (r) => r.body && r.body.length > 0,
+  });
+  successRate.add(getSuccess);
+  apiLatency.add(getRes.timings.duration);
+  
+  // Write operation
+  const postRes = http.post(
+    baseUrl + '/posts',
+    JSON.stringify({ title: 'Test', body: 'Load test', userId: 1 }),
+    {
+      headers: { 'Content-Type': 'application/json' },
+      tags: { endpoint: 'write' },
+    }
+  );
+  
+  apiCalls.add(1);
+  const postSuccess = check(postRes, { 
+    'POST successful': (r) => r.status === 201,
+  });
+  successRate.add(postSuccess);
+  apiLatency.add(postRes.timings.duration);
+  
+  sleep(1);
+}
+`,
+  },
+  {
+    id: "k6-stress-test",
+    name: "Stress Test",
+    description: "Pushes system beyond normal capacity to find breaking points",
+    category: "Resilience",
+    testType: "performance",
+    tags: ["k6", "stress", "capacity"],
+    code: `/**
+ * Stress test to find system breaking points.
+ * Coverage: gradual load increase, find max capacity, monitor degradation.
+ * @requires k6 binary
+ */
+
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+import { Rate } from 'k6/metrics';
+
+const errorRate = new Rate('errors');
+
+export const options = {
+  stages: [
+    { duration: '2m', target: 100 },
+    { duration: '5m', target: 100 },
+    { duration: '2m', target: 200 },
+    { duration: '5m', target: 200 },
+    { duration: '2m', target: 300 },
+    { duration: '5m', target: 300 },
+    { duration: '5m', target: 0 },
+  ],
+  
+  thresholds: {
+    'http_req_failed': ['rate<0.1'],
+    'http_req_duration': ['p(95)<5000'],
+    'errors': ['rate<0.15'],
+  },
+};
+
+export default function () {
+  const baseUrl = __ENV.TARGET_URL || 'https://test-api.k6.io';
+  
+  const responses = http.batch([
+    ['GET', baseUrl + '/public/crocodiles/'],
+    ['GET', baseUrl + '/public/crocodiles/1/'],
+    ['GET', baseUrl + '/public/crocodiles/2/'],
+  ]);
+  
+  responses.forEach((res) => {
+    const passed = check(res, {
+      'status 200': (r) => r.status === 200,
+      'response time acceptable': (r) => r.timings.duration < 3000,
+    });
+    errorRate.add(!passed);
+  });
+  
+  sleep(1);
+}
+`,
+  },
+  {
+    id: "k6-breakpoint-test",
+    name: "Breakpoint Test",
+    description: "Gradually increases load until system breaks",
+    category: "Resilience",
+    testType: "performance",
+    tags: ["k6", "breakpoint", "capacity"],
+    code: `/**
+ * Breakpoint test to identify exact system limits.
+ * Coverage: incremental load increase, precise capacity measurement.
+ * @requires k6 binary
+ */
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+export const options = {
+  executor: 'ramping-arrival-rate',
+  startRate: 50,
+  timeUnit: '1s',
+  preAllocatedVUs: 500,
+  maxVUs: 1000,
+  stages: [
+    { target: 200, duration: '10m' },
+    { target: 500, duration: '10m' },
+    { target: 1000, duration: '10m' },
+  ],
+  
+  thresholds: {
+    'http_req_failed': [{ threshold: 'rate<0.05', abortOnFail: true }],
+    'http_req_duration': [{ threshold: 'p(99)<3000', abortOnFail: true }],
+  },
+};
+
+export default function () {
+  const res = http.get(__ENV.TARGET_URL || 'https://test-api.k6.io/public/crocodiles/');
+  check(res, {
+    'status 200': (r) => r.status === 200,
+    'latency acceptable': (r) => r.timings.duration < 2000,
+  });
+}
+`,
+  },
 
   // =========================
   // Playwright Browser Templates
@@ -556,28 +799,34 @@ import { test as base, expect } from '@playwright/test';
 
 const APP_URL = 'https://demo.playwright.dev/todomvc';
 
-// Define a TodoPage class (Page Object)
-class TodoPage {
-  constructor(public page: any) {}
-
-  async goto() {
-    await this.page.goto(APP_URL);
-  }
-
-  async addTodo(text: string) {
-    await this.page.getByPlaceholder('What needs to be done?').fill(text);
-    await this.page.keyboard.press('Enter');
-  }
-
-  async getTodoText(index: number) {
-    return await this.page.getByRole('listitem').nth(index).textContent();
-  }
-}
+// Define a page object interface
+type TodoPage = {
+  goto: () => Promise<void>;
+  addTodo: (text: string) => Promise<void>;
+  getTodoText: (index: number) => Promise<string>;
+};
 
 // Extend base test with custom fixtures
-const test = base.extend<{ todoPage: TodoPage }>({
+const test = base.extend({
   todoPage: async ({ page }, use) => {
-    const todoPage = new TodoPage(page);
+    // Create page object methods
+    const todoPage = {
+      goto: async () => {
+        await page.goto(APP_URL);
+      },
+      
+      addTodo: async (text: string) => {
+        await page.getByPlaceholder('What needs to be done?').fill(text);
+        await page.keyboard.press('Enter');
+      },
+      
+      getTodoText: async (index: number) => {
+        const text = await page.getByRole('listitem').nth(index).textContent();
+        return text || '';
+      },
+    };
+    
+    // Navigate to app before each test
     await todoPage.goto();
     await use(todoPage);
   },

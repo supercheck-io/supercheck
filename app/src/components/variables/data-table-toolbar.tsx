@@ -14,8 +14,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { VariableDialog } from "./variable-dialog";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { useSearchParams } from "next/navigation";
 
 interface DataTableToolbarProps<TData> {
   table: Table<TData>;
@@ -37,6 +38,22 @@ export function DataTableToolbar<TData>({
   const meta = table.options.meta as TableMeta;
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const searchParams = useSearchParams();
+  const [defaultIsSecret, setDefaultIsSecret] = useState(false);
+
+  useEffect(() => {
+    const create = searchParams.get("create");
+    const type = searchParams.get("type");
+
+    if (create === "true") {
+      if (type === "secret") {
+        setDefaultIsSecret(true);
+      } else {
+        setDefaultIsSecret(false);
+      }
+      setDialogOpen(true);
+    }
+  }, [searchParams]);
 
   const handleCopyCode = async (code: string) => {
     try {
@@ -206,6 +223,7 @@ await page.fill('#password', apiKey);
                   meta.onSuccess?.();
                   setDialogOpen(false);
                 }}
+                defaultIsSecret={defaultIsSecret}
               />
             )}
           </>

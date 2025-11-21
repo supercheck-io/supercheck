@@ -34,6 +34,7 @@ interface VariableDialogProps {
   projectId: string;
   variable?: Variable | null;
   onSuccess: () => void;
+  defaultIsSecret?: boolean;
 }
 
 export function VariableDialog({
@@ -41,13 +42,14 @@ export function VariableDialog({
   onOpenChange,
   projectId,
   variable,
-  onSuccess
+  onSuccess,
+  defaultIsSecret = false
 }: VariableDialogProps) {
   const [formData, setFormData] = useState<VariableFormData>({
     key: '',
     value: '',
     description: '',
-    isSecret: false
+    isSecret: defaultIsSecret
   });
   const [loading, setLoading] = useState(false);
   const [fetchingData, setFetchingData] = useState(false);
@@ -108,12 +110,12 @@ export function VariableDialog({
         key: '',
         value: '',
         description: '',
-        isSecret: false
+        isSecret: defaultIsSecret
       });
       setFetchingData(false);
     }
     setErrors({});
-  }, [variable, open, projectId]);
+  }, [variable, open, projectId, defaultIsSecret]);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};

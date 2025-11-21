@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useSearchParams } from "next/navigation";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { NotificationProviderForm } from "@/components/alerts/notification-provider-form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -33,7 +34,7 @@ type NotificationProvider = {
   maskedFields?: string[];
 };
 
-export default function AlertsPage() {
+function AlertsPage() {
   const [providers, setProviders] = useState<NotificationProvider[]>([]);
   const [alertHistory, setAlertHistory] = useState<AlertHistory[]>([]);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -48,6 +49,20 @@ export default function AlertsPage() {
   const [editingProvider, setEditingProvider] = useState<NotificationProvider | null>(null);
   const [deletingProvider, setDeletingProvider] = useState<NotificationProvider | null>(null);
   const [loading, setLoading] = useState(true);
+  const searchParams = useSearchParams();
+  const [preselectedType, setPreselectedType] = useState<NotificationProviderType | undefined>(undefined);
+
+  useEffect(() => {
+    const create = searchParams.get("create");
+    const type = searchParams.get("type");
+
+    if (create === "true") {
+      if (type && ["email", "slack", "webhook", "telegram", "discord"].includes(type)) {
+        setPreselectedType(type as NotificationProviderType);
+      }
+      setIsCreateDialogOpen(true);
+    }
+  }, [searchParams]);
 
   const breadcrumbs = [
     { label: "Home", href: "/" },
@@ -311,6 +326,7 @@ export default function AlertsPage() {
                         <NotificationProviderForm
                           onSuccess={handleCreateProvider}
                           onCancel={() => setIsCreateDialogOpen(false)}
+                          defaultType={preselectedType}
                         />
                       </DialogContent>
                     </Dialog>
@@ -435,5 +451,13 @@ export default function AlertsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AlertsPageWrapper() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <AlertsPage />
+    </Suspense>
   );
 }
