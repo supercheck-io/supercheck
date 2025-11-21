@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { apikey, jobs, user } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { auth } from "@/utils/auth";
-import { headers } from "next/headers";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { hasPermission, requireAuth } from "@/lib/rbac/middleware";
 
 // Validation schemas
 const createApiKeySchema = z.object({
@@ -34,23 +33,30 @@ export async function GET(
     }
 
     // Verify user is authenticated
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session || !session.user || !session.user.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    await requireAuth();
 
     // Verify job exists
     const job = await db
-      .select({ id: jobs.id })
+      .select({
+        id: jobs.id,
+        organizationId: jobs.organizationId,
+        projectId: jobs.projectId,
+      })
       .from(jobs)
       .where(eq(jobs.id, jobId))
       .limit(1);
 
     if (job.length === 0) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
+
+    const isAuthorized = await hasPermission("job", "view", {
+      organizationId: job[0].organizationId || undefined,
+      projectId: job[0].projectId || undefined,
+    });
+
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     // Get API keys that belong to this job, including creator name
@@ -112,13 +118,7 @@ export async function POST(
     }
 
     // Verify user is authenticated
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-
-    if (!session || !session.user || !session.user.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const { userId } = await requireAuth();
 
     // Parse and validate request body
     let requestBody;
@@ -152,13 +152,27 @@ export async function POST(
 
     // Verify job exists
     const job = await db
-      .select({ id: jobs.id })
+      .select({
+        id: jobs.id,
+        organizationId: jobs.organizationId,
+        projectId: jobs.projectId,
+        name: jobs.name,
+      })
       .from(jobs)
       .where(eq(jobs.id, jobId))
       .limit(1);
 
     if (job.length === 0) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
+
+    const canCreate = await hasPermission("apiKey", "create", {
+      organizationId: job[0].organizationId || undefined,
+      projectId: job[0].projectId || undefined,
+    });
+
+    if (!canCreate) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     // Check for duplicate names within the same job
@@ -218,7 +232,7 @@ export async function POST(
       start: apiKeyStart,
       prefix: "job",
       key: apiKeyValue,
-      userId: session.user.id,
+      userId,
       jobId: jobId,
       enabled: true,
       expiresAt: expiresAt,
@@ -227,7 +241,7 @@ export async function POST(
       permissions: JSON.stringify({
         jobs: [`trigger:${jobId}`],
         scope: "job-specific",
-        createdBy: session.user.id
+        createdBy: userId
       }),
     }).returning();
 
@@ -238,31 +252,25 @@ export async function POST(
     const apiKey = newApiKey[0];
 
     // Get job info for audit logging
-    const jobInfo = await db
-      .select({ organizationId: jobs.organizationId, projectId: jobs.projectId, name: jobs.name })
-      .from(jobs)
-      .where(eq(jobs.id, jobId))
-      .limit(1);
-
     // Log API key creation for audit purposes
     await logAuditEvent({
-      userId: session.user.id,
-      organizationId: jobInfo[0]?.organizationId || undefined,
+      userId,
+      organizationId: job[0].organizationId || undefined,
       action: 'api_key_created',
       resource: 'api_key',
       resourceId: apiKey.id,
       metadata: {
         apiKeyName: apiKey.name,
         jobId: jobId,
-        jobName: jobInfo[0]?.name,
-        projectId: jobInfo[0]?.projectId,
+        jobName: job[0]?.name,
+        projectId: job[0]?.projectId,
         expiresAt: expiresAt?.toISOString(),
         hasExpiry: !!expiresAt
       },
       success: true
     });
 
-    console.log(`API key created: ${apiKey.name} (${apiKey.id}) for job ${jobId} by user ${session.user.id}`);
+    console.log(`API key created: ${apiKey.name} (${apiKey.id}) for job ${jobId} by user ${userId}`);
 
     return NextResponse.json({
       success: true,

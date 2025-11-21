@@ -1,0 +1,140 @@
+{{- $useDind := eq (lower .Values.worker.executor.mode) "dind" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "supercheck.worker.fullname" . }}
+  labels:
+    {{- include "supercheck.labels" . | nindent 4 }}
+    {{- include "supercheck.selectorLabels" . | nindent 4 }}
+    {{- include "supercheck.componentLabels" "worker" | nindent 4 }}
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "supercheck.selectorLabels" . | nindent 6 }}
+      {{- include "supercheck.componentLabels" "worker" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "supercheck.selectorLabels" . | nindent 8 }}
+        {{- include "supercheck.componentLabels" "worker" | nindent 8 }}
+        {{- with .Values.worker.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.worker.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "supercheck.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.worker.podSecurityContext | nindent 8 }}
+      containers:
+        - name: worker
+          image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
+          imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.worker.containerSecurityContext | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "supercheck.fullname" . }}-config
+            - secretRef:
+                name: {{ include "supercheck.secretName" . }}
+            {{- if .Values.worker.extraEnvFrom }}
+            {{- toYaml .Values.worker.extraEnvFrom | nindent 12 }}
+            {{- end }}
+          env:
+            - name: PORT
+              value: {{ .Values.worker.service.port | quote }}
+            - name: DOCKER_HOST
+              value: {{ if $useDind }}"tcp://localhost:2375"{{ else }}"unix:///var/run/docker.sock"{{ end }}
+            {{- with .Values.worker.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.worker.service.port }}
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+          volumeMounts:
+            {{- if and (not $useDind) (eq (lower .Values.worker.executor.mode) "hostdocker") }}
+            - name: docker-socket
+              mountPath: /var/run/docker.sock
+              readOnly: true
+            {{- end }}
+            {{- with .Values.worker.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        {{- if $useDind }}
+        - name: docker
+          image: "{{ .Values.worker.executor.dind.image }}"
+          imagePullPolicy: {{ .Values.worker.executor.dind.pullPolicy }}
+          args:
+            - --host=tcp://0.0.0.0:2375
+            - --storage-driver=overlay2
+            - --log-level=error
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: ""
+          securityContext:
+            privileged: {{ .Values.worker.executor.dind.privileged }}
+          ports:
+            - name: docker
+              containerPort: 2375
+          volumeMounts:
+            - name: docker-graph
+              mountPath: /var/lib/docker
+          resources:
+            {{- toYaml .Values.worker.executor.dind.resources | nindent 12 }}
+        {{- end }}
+      volumes:
+        {{- if and (not $useDind) (eq (lower .Values.worker.executor.mode) "hostdocker") }}
+        - name: docker-socket
+          hostPath:
+            path: {{ .Values.worker.executor.hostSocketPath }}
+            type: Socket
+        {{- end }}
+        {{- if $useDind }}
+        - name: docker-graph
+          {{- if .Values.worker.executor.dind.hostPathForStorage }}
+          hostPath:
+            path: {{ .Values.worker.executor.dind.hostPathForStorage }}
+            type: DirectoryOrCreate
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}
+        {{- with .Values.worker.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

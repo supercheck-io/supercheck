@@ -641,10 +641,17 @@ graph TB
 
 #### **Input Validation & Sanitization**
 
+- **Comprehensive Input Sanitization**: Multi-layer sanitization utility preventing XSS, SQL injection, and script injection
+  - Removes HTML tags, script tags, iframes, and event handlers
+  - Sanitizes dangerous protocols (javascript:, data:text/html, vbscript:)
+  - Type-specific sanitization for URLs, hostnames, credentials, and JSON
+- **Client-Side Sanitization**: All monitor form inputs sanitized before API submission
+- **Server-Side Sanitization**: Defense-in-depth with API-layer sanitization of all incoming data
 - **SSRF Protection**: Blocks access to internal/private networks with configurable overrides
 - **Command Injection Prevention**: Comprehensive filtering of dangerous characters and patterns
-- **URL Validation**: Protocol validation, hostname verification, and suspicious pattern detection
+- **URL Validation**: Protocol validation (HTTP/HTTPS only), hostname verification, and suspicious pattern detection
 - **Configuration Validation**: Validates all monitor parameters including timeouts, status codes, and headers
+- **Safe Authentication**: Special handling for credentials with control character removal
 
 #### **Credential Security**
 
@@ -773,19 +780,65 @@ graph TD
 
 ```mermaid
 graph TD
-    A[Input Received] --> B[URL/Target Validation]
-    B --> C[SSRF Protection Check]
-    C --> D[Command Injection Prevention]
-    D --> E[Configuration Validation]
-    E --> F[Credential Security Check]
-    F --> G{All Validations Pass?}
-    G -->|No| H[Standardized Error Response]
-    G -->|Yes| I[Proceed with Execution]
+    A[Input Received] --> B[Input Sanitization]
+    B --> C[URL/Target Validation]
+    C --> D[SSRF Protection Check]
+    D --> E[Command Injection Prevention]
+    E --> F[Configuration Validation]
+    F --> G[Credential Security Check]
+    G --> H{All Validations Pass?}
+    H -->|No| I[Standardized Error Response]
+    H -->|Yes| J[Proceed with Execution]
 
     style A fill:#f0f0f0
-    style H fill:#ffebee
-    style I fill:#e8f5e8
+    style I fill:#ffebee
+    style J fill:#e8f5e8
 ```
+
+### Input Sanitization Library (`/lib/input-sanitizer.ts`)
+
+The monitoring system uses a comprehensive sanitization utility that provides defense-in-depth security:
+
+#### **Core Sanitization Functions**
+
+- **`sanitizeString()`**: General-purpose string sanitization
+  - Removes null bytes and control characters
+  - Strips script tags, iframes, objects, and embeds
+  - Removes event handlers (onclick, onerror, etc.)
+  - Blocks dangerous protocols (javascript:, vbscript:, data:text/html)
+
+- **`sanitizeUrl()`**: URL-specific validation
+  - Ensures valid URL structure
+  - Restricts to HTTP/HTTPS protocols only
+  - Validates and normalizes URL components
+
+- **`sanitizeHostname()`**: Hostname/IP validation
+  - Removes invalid characters
+  - Validates hostname and IP address formats
+  - Prevents hostname-based injection attacks
+
+- **`sanitizeJson()`**: JSON input validation
+  - Verifies valid JSON structure
+  - Re-stringifies to prevent injection
+  - Returns empty string for invalid JSON
+
+- **`sanitizeCredential()`**: Authentication data sanitization
+  - More permissive for credential formats
+  - Removes HTML and script content
+  - Preserves special characters needed for passwords/tokens
+
+- **`sanitizeMonitorFormData()`**: Comprehensive form-level sanitization
+  - Applies type-specific sanitization based on monitor type
+  - Sanitizes all configuration fields
+  - Validates and cleans authentication credentials
+
+#### **Implementation Layers**
+
+1. **Client-Side**: Monitor form applies sanitization before API submission
+2. **API Layer**: Server-side sanitization in `/api/monitors/route.ts`
+3. **Service Layer**: Additional validation in monitor service handlers
+
+This multi-layer approach ensures security even if one layer is bypassed.
 
 ### Database Interaction Pattern
 

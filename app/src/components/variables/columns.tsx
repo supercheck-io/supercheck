@@ -119,7 +119,7 @@ export const columns: ColumnDef<Variable>[] = [
   {
     accessorKey: "key",
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title="Name" />
+      <DataTableColumnHeader column={column} title="Name" className="ml-2" />
     ),
     cell: ({ row }) => {
       const key = row.getValue("key") as string;

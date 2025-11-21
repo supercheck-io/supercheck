@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CreateJob } from "./create-job";
 import { AlertSettings } from "@/components/alerts/alert-settings";
 
@@ -16,6 +17,13 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Test } from "./schema";
 
+interface FormData {
+  name: string;
+  description: string;
+  cronSchedule: string;
+  tests: Test[];
+}
+
 interface JobAlertConfig {
   enabled: boolean;
   notificationProviders: string[];
@@ -28,31 +36,109 @@ interface JobAlertConfig {
 }
 
 export function JobCreationWizard() {
-  const [currentStep, setCurrentStep] = useState<"job" | "alerts">("job");
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    cronSchedule: "",
-    tests: [] as Test[],
-  });
-  const [alertConfig, setAlertConfig] = useState<JobAlertConfig>({
-    enabled: false,
-    notificationProviders: [],
-    alertOnFailure: true,
-    alertOnSuccess: false,
-    alertOnTimeout: true,
-    failureThreshold: 1,
-    recoveryThreshold: 1,
-  });
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const stepFromUrl = searchParams.get('step') as "job" | "alerts" | null;
+
+  // Restore form data from sessionStorage if available (survives page refresh)
+  const getInitialFormData = () => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('playwright-job-draft');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return { name: "", description: "", cronSchedule: "", tests: [] as Test[] };
+        }
+      }
+    }
+    return { name: "", description: "", cronSchedule: "", tests: [] as Test[] };
+  };
+
+  const getInitialAlertConfig = () => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('playwright-job-alert-draft');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return {
+            enabled: false,
+            notificationProviders: [],
+            alertOnFailure: true,
+            alertOnSuccess: false,
+            alertOnTimeout: true,
+            failureThreshold: 1,
+            recoveryThreshold: 1,
+          };
+        }
+      }
+    }
+    return {
+      enabled: false,
+      notificationProviders: [],
+      alertOnFailure: true,
+      alertOnSuccess: false,
+      alertOnTimeout: true,
+      failureThreshold: 1,
+      recoveryThreshold: 1,
+    };
+  };
+
+  const [currentStep, setCurrentStep] = useState<"job" | "alerts">(stepFromUrl || "job");
+  const [formData, setFormData] = useState<FormData>(getInitialFormData());
+  const [alertConfig, setAlertConfig] = useState<JobAlertConfig>(getInitialAlertConfig());
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Persist form data to sessionStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('playwright-job-draft', JSON.stringify(formData));
+    }
+  }, [formData]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('playwright-job-alert-draft', JSON.stringify(alertConfig));
+    }
+  }, [alertConfig]);
+
+  // Clear sessionStorage on successful submission
+  const clearDraft = () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('playwright-job-draft');
+      sessionStorage.removeItem('playwright-job-alert-draft');
+    }
+  };
+
+  // Sync URL with current step
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (currentStep === "job") {
+      params.delete('step');
+    } else {
+      params.set('step', currentStep);
+    }
+    const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [currentStep, router]);
+
   const handleJobNext = (data: Record<string, unknown>) => {
+    // Validate that at least one test is selected
+    const tests = Array.isArray(data.tests) ? data.tests : [];
+    if (tests.length === 0) {
+      toast.error("Validation Error", {
+        description: "Please select at least one test for the job"
+      });
+      return;
+    }
+
     setFormData({
       name: (data.name as string) || "",
       description: (data.description as string) || "",
       cronSchedule: (data.cronSchedule as string) || "",
-      tests: Array.isArray(data.tests) ? data.tests : [],
+      tests: tests,
     });
     setCurrentStep("alerts");
   };
@@ -130,8 +216,12 @@ export function JobCreationWizard() {
       if (response.ok && result.success) {
         toast.success("Success", {
           description: `Job "${finalData.name}" has been created.`,
+          duration: 3000,
         });
-        window.location.href = "/jobs";
+        // Clear draft data from sessionStorage
+        clearDraft();
+        // Use router.push for proper navigation
+        router.push("/jobs");
       } else {
         const errorMessage =
           result.error || result.message || "Failed to create job";
@@ -158,7 +248,7 @@ export function JobCreationWizard() {
     return (
       <CreateJob
         onSave={handleJobNext}
-        onCancel={() => window.history.back()}
+        onCancel={() => router.push("/jobs/create")}
         hideAlerts={true}
         initialValues={formData}
         selectedTests={formData.tests}

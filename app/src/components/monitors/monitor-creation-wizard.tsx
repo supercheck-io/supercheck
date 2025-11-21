@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { MonitorForm } from "./monitor-form";
 import { AlertSettings } from "@/components/alerts/alert-settings";
 import { LocationConfigSection } from "./location-config-section";
@@ -23,28 +23,140 @@ type WizardStep = "monitor" | "location" | "alerts";
 
 export function MonitorCreationWizard() {
   const router = useRouter();
-  const [currentStep, setCurrentStep] = useState<WizardStep>("monitor");
-  const [monitorData, setMonitorData] = useState<FormValues | undefined>(
-    undefined
-  );
-  const [apiData, setApiData] = useState<Record<string, unknown> | undefined>(
-    undefined
-  );
-  const [locationConfig, setLocationConfig] = useState<LocationConfig>(
-    DEFAULT_LOCATION_CONFIG
-  );
-  const [alertConfig, setAlertConfig] = useState<AlertConfig>({
-    enabled: false,
-    notificationProviders: [],
-    alertOnFailure: true,
-    alertOnRecovery: true,
-    alertOnSslExpiration: false,
-    failureThreshold: 1,
-    recoveryThreshold: 1,
-  });
+  const searchParams = useSearchParams();
+  const stepFromUrl = searchParams?.get('wizardStep') as WizardStep | null;
+
+  // Restore draft data from sessionStorage
+  const getInitialMonitorData = () => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('monitor-draft-data');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return undefined;
+        }
+      }
+    }
+    return undefined;
+  };
+
+  const getInitialApiData = () => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('monitor-draft-api');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return undefined;
+        }
+      }
+    }
+    return undefined;
+  };
+
+  const getInitialLocationConfig = () => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('monitor-draft-location');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return DEFAULT_LOCATION_CONFIG;
+        }
+      }
+    }
+    return DEFAULT_LOCATION_CONFIG;
+  };
+
+  const getInitialAlertConfig = () => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('monitor-draft-alert');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return {
+            enabled: false,
+            notificationProviders: [],
+            alertOnFailure: true,
+            alertOnRecovery: true,
+            alertOnSslExpiration: false,
+            failureThreshold: 1,
+            recoveryThreshold: 1,
+          };
+        }
+      }
+    }
+    return {
+      enabled: false,
+      notificationProviders: [],
+      alertOnFailure: true,
+      alertOnRecovery: true,
+      alertOnSslExpiration: false,
+      failureThreshold: 1,
+      recoveryThreshold: 1,
+    };
+  };
+
+  const [currentStep, setCurrentStep] = useState<WizardStep>(stepFromUrl || "monitor");
+  const [monitorData, setMonitorData] = useState<FormValues | undefined>(getInitialMonitorData());
+  const [apiData, setApiData] = useState<Record<string, unknown> | undefined>(getInitialApiData());
+  const [locationConfig, setLocationConfig] = useState<LocationConfig>(getInitialLocationConfig());
+  const [alertConfig, setAlertConfig] = useState<AlertConfig>(getInitialAlertConfig());
+
+  // Persist data to sessionStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (monitorData) {
+        sessionStorage.setItem('monitor-draft-data', JSON.stringify(monitorData));
+      }
+    }
+  }, [monitorData]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (apiData) {
+        sessionStorage.setItem('monitor-draft-api', JSON.stringify(apiData));
+      }
+    }
+  }, [apiData]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('monitor-draft-location', JSON.stringify(locationConfig));
+    }
+  }, [locationConfig]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('monitor-draft-alert', JSON.stringify(alertConfig));
+    }
+  }, [alertConfig]);
+
+  // Sync URL with current step
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (currentStep === "monitor") {
+      params.delete('wizardStep');
+    } else {
+      params.set('wizardStep', currentStep);
+    }
+    const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [currentStep, router]);
+
+  // Clear draft data
+  const clearDraft = () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('monitor-draft-data');
+      sessionStorage.removeItem('monitor-draft-api');
+      sessionStorage.removeItem('monitor-draft-location');
+      sessionStorage.removeItem('monitor-draft-alert');
+    }
+  };
 
   // Get monitor type from URL for dynamic title
-  const searchParams = useSearchParams();
   const urlType = searchParams?.get("type") || "http_request";
   const validTypes: MonitorType[] = [
     "http_request",
@@ -160,6 +272,9 @@ export function MonitorCreationWizard() {
 
       if (response.ok) {
         toast.success("Monitor created successfully");
+
+        // Clear draft data
+        clearDraft();
 
         // Redirect to monitors list using router
         router.push("/monitors");

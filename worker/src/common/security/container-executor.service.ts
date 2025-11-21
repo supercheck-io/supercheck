@@ -254,9 +254,14 @@ export class ContainerExecutorService {
         '--security-opt=no-new-privileges', // Prevent privilege escalation
         '--cap-drop=ALL', // Drop all Linux capabilities
         // Resource limits
+        // Memory limits: Set both memory and memory-swap to same value to disable swap
+        // This ensures containers are bounded to actual physical memory only
         `--memory=${memoryLimitMb}m`,
+        `--memory-swap=${memoryLimitMb}m`, // Equal to --memory disables swap usage
         `--cpus=${cpuLimit}`,
         '--pids-limit=256', // Increased for parallel browser instances
+        // Out-of-memory behavior
+        '--oom-kill-disable=false', // Kill container if it exceeds memory limit instead of kernel panic
         // Network
         `--network=${networkMode}`,
       ];
@@ -389,7 +394,7 @@ export class ContainerExecutorService {
       const validTimeout = typeof timeout === 'number' && !isNaN(timeout) && timeout > 0 ? timeout : undefined;
 
       this.logger.log(
-        `Executing in container: ${containerName} with timeout ${validTimeout || 'none'}ms`,
+        `Executing in container: ${containerName} with timeout ${validTimeout || 'none'}ms, memory limit ${memoryLimitMb}MB (no swap), CPU limit ${cpuLimit}`,
       );
 
       // Execute with timeout

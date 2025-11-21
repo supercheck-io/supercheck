@@ -49,6 +49,7 @@ import { MonitorTypesPopover } from "./monitor-types-popover";
 import { LocationConfigSection } from "./location-config-section";
 import { DEFAULT_LOCATION_CONFIG } from "@/lib/location-service";
 import type { LocationConfig } from "@/lib/location-service";
+import { sanitizeMonitorFormData } from "@/lib/input-sanitizer";
 
 import {
   Card,
@@ -334,6 +335,30 @@ const creationDefaultValues: FormValues = {
   syntheticConfig_testId: "", // Default for synthetic monitors
 };
 
+const mapApiTestToTest = (testData: Record<string, unknown>): Test => {
+  const validTypes: Test["type"][] = [
+    "browser",
+    "api",
+    "custom",
+    "database",
+    "performance",
+  ];
+  const validTestType: Test["type"] = validTypes.includes(testData.type as Test["type"])
+    ? (testData.type as Test["type"])
+    : "browser";
+
+  return {
+    id: testData.id as string,
+    name: (testData.title || testData.name || testData.id) as string,
+    description: (testData.description as string) || null,
+    type: validTestType,
+    status: "running",
+    lastRunAt: testData.updatedAt as string | undefined,
+    duration: null,
+    tags: (Array.isArray(testData.tags) ? testData.tags : []) as Array<{ id: string; name: string; color: string | null }>,
+  };
+};
+
 // Add AlertConfiguration type
 interface AlertConfiguration {
   enabled: boolean;
@@ -476,6 +501,7 @@ export function MonitorForm({
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema) as Resolver<FormValues>,
+    mode: "onSubmit", // Only validate on submit, not on every change
     defaultValues: {
       ...getDefaultValues(),
       type: currentMonitorType, // Ensure type is set correctly from URL
@@ -486,6 +512,7 @@ export function MonitorForm({
   const httpMethod = form.watch("httpConfig_method");
   const authType = form.watch("httpConfig_authType");
   const expectedStatusCodes = form.watch("httpConfig_expectedStatusCodes");
+  const syntheticTestId = form.watch("syntheticConfig_testId");
 
   // Auto-adjust interval when switching to synthetic monitor
   useEffect(() => {
@@ -558,26 +585,7 @@ export function MonitorForm({
           );
           if (response.ok) {
             const testData = await response.json();
-            // Map API response to Test type
-            const validTestType: Test["type"] = (
-              ["browser", "api", "custom", "database", "performance"].includes(
-                testData.type
-              )
-                ? testData.type
-                : "browser"
-            ) as Test["type"];
-
-            const mappedTest: Test = {
-              id: testData.id,
-              name: testData.title,
-              description: testData.description || null,
-              type: validTestType,
-              status: "running" as const,
-              lastRunAt: testData.updatedAt,
-              duration: null,
-              tags: testData.tags || [],
-            };
-            setSelectedTests([mappedTest]);
+            setSelectedTests([mapApiTestToTest(testData)]);
           }
         } catch (error) {
           console.error("Error fetching test for edit mode:", error);
@@ -587,6 +595,44 @@ export function MonitorForm({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editMode, initialData?.syntheticConfig_testId]);
+
+  // Hydrate selected test when a synthetic test id is already present (e.g., deep-link from tests)
+  useEffect(() => {
+    if (type !== "synthetic_test") {
+      // Clear stale selections when switching away from synthetic monitors
+      if (selectedTests.length > 0) {
+        setSelectedTests([]);
+      }
+      return;
+    }
+
+    const trimmedTestId = syntheticTestId?.trim();
+    if (!trimmedTestId) return;
+    if (selectedTests.some((test) => test.id === trimmedTestId)) return;
+
+    const controller = new AbortController();
+    const hydrate = async () => {
+      try {
+        const response = await fetch(`/api/tests/${trimmedTestId}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          console.error(
+            `Failed to hydrate synthetic test ${trimmedTestId}: ${response.statusText}`
+          );
+          return;
+        }
+        const testData = await response.json();
+        setSelectedTests([mapApiTestToTest(testData)]);
+      } catch (error) {
+        if ((error as Error).name === "AbortError") return;
+        console.error("Error hydrating synthetic test:", error);
+      }
+    };
+
+    void hydrate();
+    return () => controller.abort();
+  }, [syntheticTestId, selectedTests, type]);
 
   const targetPlaceholders: Record<FormValues["type"], string> = {
     http_request: "e.g., https://example.com or https://api.example.com/health",
@@ -599,30 +645,34 @@ export function MonitorForm({
   async function onSubmit(data: FormValues) {
     setIsSubmitting(true);
 
+    // Sanitize all input data before processing
+    const sanitizedData = sanitizeMonitorFormData(data);
+
     // Convert form data to API format
-    const apiData = {
-      name: data.name,
-      target: data.target || "",
-      type: data.type,
+    let config: Record<string, unknown> = {};
+    const apiData: Record<string, unknown> = {
+      name: sanitizedData.name,
+      target: sanitizedData.target || "",
+      type: sanitizedData.type,
       // Convert interval from seconds to minutes
-      frequencyMinutes: Math.round(parseInt(data.interval, 10) / 60),
-      config: {} as Record<string, unknown>,
+      frequencyMinutes: Math.round(parseInt(sanitizedData.interval || "1800", 10) / 60),
+      config,
     };
 
     // Build config based on monitor type
-    if (data.type === "http_request") {
-      apiData.config = {
-        method: data.httpConfig_method || "GET",
-        expectedStatusCodes: data.httpConfig_expectedStatusCodes || "200-299",
+    if (sanitizedData.type === "http_request") {
+      config = {
+        method: sanitizedData.httpConfig_method || "GET",
+        expectedStatusCodes: sanitizedData.httpConfig_expectedStatusCodes || "200-299",
         timeoutSeconds: 30, // Default timeout
       };
 
       // Add headers if provided
-      if (data.httpConfig_headers && data.httpConfig_headers.trim()) {
+      if (sanitizedData.httpConfig_headers && sanitizedData.httpConfig_headers.trim()) {
         try {
-          const parsedHeaders = JSON.parse(data.httpConfig_headers);
+          const parsedHeaders = JSON.parse(sanitizedData.httpConfig_headers);
           if (typeof parsedHeaders === "object" && parsedHeaders !== null) {
-            apiData.config.headers = parsedHeaders;
+            config.headers = parsedHeaders;
           }
         } catch (e) {
           console.warn("Failed to parse headers as JSON:", e);
@@ -633,130 +683,129 @@ export function MonitorForm({
       }
 
       // Add body if provided
-      if (data.httpConfig_body && data.httpConfig_body.trim()) {
-        apiData.config.body = data.httpConfig_body;
+      if (sanitizedData.httpConfig_body && sanitizedData.httpConfig_body.trim()) {
+        config.body = sanitizedData.httpConfig_body;
       }
 
       // Add auth if configured
-      if (data.httpConfig_authType && data.httpConfig_authType !== "none") {
-        if (data.httpConfig_authType === "basic") {
-          if (!data.httpConfig_authUsername || !data.httpConfig_authPassword) {
+      if (sanitizedData.httpConfig_authType && sanitizedData.httpConfig_authType !== "none") {
+        if (sanitizedData.httpConfig_authType === "basic") {
+          if (!sanitizedData.httpConfig_authUsername || !sanitizedData.httpConfig_authPassword) {
             throw new Error(
               "Username and password are required for Basic Auth"
             );
           }
-          apiData.config.auth = {
+          config.auth = {
             type: "basic",
-            username: data.httpConfig_authUsername,
-            password: data.httpConfig_authPassword,
+            username: sanitizedData.httpConfig_authUsername,
+            password: sanitizedData.httpConfig_authPassword,
           };
-        } else if (data.httpConfig_authType === "bearer") {
-          if (!data.httpConfig_authToken) {
+        } else if (sanitizedData.httpConfig_authType === "bearer") {
+          if (!sanitizedData.httpConfig_authToken) {
             throw new Error("Token is required for Bearer Auth");
           }
-          apiData.config.auth = {
+          config.auth = {
             type: "bearer",
-            token: data.httpConfig_authToken,
+            token: sanitizedData.httpConfig_authToken,
           };
         }
       }
 
       // Add keyword checking if configured, or explicitly remove if empty
       if (
-        data.httpConfig_keywordInBody &&
-        data.httpConfig_keywordInBody.trim()
+        sanitizedData.httpConfig_keywordInBody &&
+        sanitizedData.httpConfig_keywordInBody.trim()
       ) {
-        apiData.config.keywordInBody = data.httpConfig_keywordInBody;
-        apiData.config.keywordInBodyShouldBePresent =
-          data.httpConfig_keywordShouldBePresent !== false;
+        config.keywordInBody = sanitizedData.httpConfig_keywordInBody;
+        config.keywordInBodyShouldBePresent =
+          sanitizedData.httpConfig_keywordShouldBePresent !== false;
       } else {
         // Explicitly remove keyword validation if field is empty
-        delete apiData.config.keywordInBody;
-        delete apiData.config.keywordInBodyShouldBePresent;
+        delete config.keywordInBody;
+        delete config.keywordInBodyShouldBePresent;
       }
-    } else if (data.type === "website") {
+    } else if (sanitizedData.type === "website") {
       // Website monitoring is essentially HTTP GET with simplified config
-      apiData.config = {
+      config = {
         method: "GET",
-        expectedStatusCodes: data.httpConfig_expectedStatusCodes || "200-299",
+        expectedStatusCodes: sanitizedData.httpConfig_expectedStatusCodes || "200-299",
         timeoutSeconds: 30, // Default timeout
       };
 
       // Add auth if configured
-      if (data.httpConfig_authType && data.httpConfig_authType !== "none") {
+      if (sanitizedData.httpConfig_authType && sanitizedData.httpConfig_authType !== "none") {
         if (data.httpConfig_authType === "basic") {
-          if (!data.httpConfig_authUsername || !data.httpConfig_authPassword) {
+          if (!sanitizedData.httpConfig_authUsername || !sanitizedData.httpConfig_authPassword) {
             throw new Error(
               "Username and password are required for Basic Auth"
             );
           }
-          apiData.config.auth = {
+          config.auth = {
             type: "basic",
-            username: data.httpConfig_authUsername,
-            password: data.httpConfig_authPassword,
+            username: sanitizedData.httpConfig_authUsername,
+            password: sanitizedData.httpConfig_authPassword,
           };
-        } else if (data.httpConfig_authType === "bearer") {
-          if (!data.httpConfig_authToken) {
+        } else if (sanitizedData.httpConfig_authType === "bearer") {
+          if (!sanitizedData.httpConfig_authToken) {
             throw new Error("Token is required for Bearer Auth");
           }
-          apiData.config.auth = {
+          config.auth = {
             type: "bearer",
-            token: data.httpConfig_authToken,
+            token: sanitizedData.httpConfig_authToken,
           };
         }
       }
 
       // Add keyword checking if configured
       if (
-        data.httpConfig_keywordInBody &&
-        data.httpConfig_keywordInBody.trim()
+        sanitizedData.httpConfig_keywordInBody &&
+        sanitizedData.httpConfig_keywordInBody.trim()
       ) {
-        apiData.config.keywordInBody = data.httpConfig_keywordInBody;
-        apiData.config.keywordInBodyShouldBePresent =
-          data.httpConfig_keywordShouldBePresent !== false;
+        config.keywordInBody = sanitizedData.httpConfig_keywordInBody;
+        config.keywordInBodyShouldBePresent =
+          sanitizedData.httpConfig_keywordShouldBePresent !== false;
       } else {
         // Explicitly remove keyword validation if field is empty
-        delete apiData.config.keywordInBody;
-        delete apiData.config.keywordInBodyShouldBePresent;
+        delete config.keywordInBody;
+        delete config.keywordInBodyShouldBePresent;
       }
 
       // Add SSL checking configuration - handle boolean properly
-      const sslCheckEnabled = Boolean(data.websiteConfig_enableSslCheck);
-      apiData.config.enableSslCheck = sslCheckEnabled;
+      const sslCheckEnabled = Boolean(sanitizedData.websiteConfig_enableSslCheck);
+      config.enableSslCheck = sslCheckEnabled;
 
       if (sslCheckEnabled) {
-        apiData.config.sslDaysUntilExpirationWarning =
-          data.websiteConfig_sslDaysUntilExpirationWarning || 30;
+        config.sslDaysUntilExpirationWarning =
+          sanitizedData.websiteConfig_sslDaysUntilExpirationWarning || 30;
       } else {
         // When SSL is disabled, still set the field explicitly but remove the warning days to clean up config
-        delete apiData.config.sslDaysUntilExpirationWarning;
+        delete config.sslDaysUntilExpirationWarning;
       }
-    } else if (data.type === "port_check") {
-      apiData.config = {
-        port: data.portConfig_port,
-        protocol: data.portConfig_protocol || "tcp",
+    } else if (sanitizedData.type === "port_check") {
+      config = {
+        port: sanitizedData.portConfig_port,
+        protocol: sanitizedData.portConfig_protocol || "tcp",
         timeoutSeconds: 10, // Default timeout for port checks
       };
     } else if (data.type === "ping_host") {
-      apiData.config = {
+      config = {
         timeoutSeconds: 5, // Default timeout for ping
       };
-    } else if (data.type === "synthetic_test") {
+    } else if (sanitizedData.type === "synthetic_test") {
       // Synthetic monitor configuration
-      if (!data.syntheticConfig_testId) {
+      if (!sanitizedData.syntheticConfig_testId) {
         throw new Error("Please select a test to monitor");
       }
 
       // Get the selected test details from selectedTests array
-      const selectedTest = selectedTests[0];
-      if (!selectedTest) {
-        throw new Error("Selected test details not available");
-      }
+      const selectedTest = selectedTests.find(
+        (test) => test.id === sanitizedData.syntheticConfig_testId
+      );
 
-      apiData.target = data.syntheticConfig_testId; // Use testId as target
-      apiData.config = {
-        testId: data.syntheticConfig_testId,
-        testTitle: selectedTest.name || "Test",
+      apiData.target = sanitizedData.syntheticConfig_testId; // Use testId as target
+      config = {
+        testId: sanitizedData.syntheticConfig_testId,
+        testTitle: selectedTest?.name || sanitizedData.syntheticConfig_testId,
         playwrightOptions: {
           headless: true,
           timeout: 120000, // 2 minutes default
@@ -766,7 +815,8 @@ export function MonitorForm({
     }
 
     // Add location config to all monitor types
-    apiData.config.locationConfig = locationConfig;
+    config.locationConfig = locationConfig;
+    apiData.config = config;
 
     try {
       // If onSave callback is provided (wizard mode), pass the form data and API data
@@ -943,7 +993,7 @@ export function MonitorForm({
               onChange={setLocationConfig}
               disabled={isSubmitting}
             />
-            <div className="flex justify-end space-x-4">
+            <div className="flex justify-end gap-4">
               <Button
                 type="button"
                 variant="outline"
@@ -1003,7 +1053,7 @@ export function MonitorForm({
                 type === "website" && form.watch("websiteConfig_enableSslCheck")
               }
             />
-            <div className="flex justify-end space-x-4">
+            <div className="flex justify-end gap-4">
               <Button
                 type="button"
                 variant="outline"
@@ -2134,7 +2184,7 @@ export function MonitorForm({
                 </div>
               )}
 
-              <div className="flex justify-end space-x-4">
+              <div className="flex justify-end gap-4">
                 <Button
                   type="button"
                   variant="outline"

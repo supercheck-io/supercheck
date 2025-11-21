@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/utils/db";
-import { runs } from "@/db/schema";
+import { jobs, runs } from "@/db/schema";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
+import { requireProjectContext } from "@/lib/project-context";
 
 const encoder = new TextEncoder();
 
@@ -49,6 +50,44 @@ export async function GET(request: Request) {
 
   if (!runId) {
     return NextResponse.json({ error: "Missing runId" }, { status: 400 });
+  }
+
+  let projectContext: { project: { id: string }; organizationId: string };
+  try {
+    const context = await requireProjectContext();
+    projectContext = { project: context.project, organizationId: context.organizationId };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Authentication required";
+    const status = message.includes("Authentication") ? 401 : 404;
+    return NextResponse.json({ error: message }, { status });
+  }
+
+  const runRecord = await db
+    .select({
+      runId: runs.id,
+      runProjectId: runs.projectId,
+      jobId: runs.jobId,
+      jobOrgId: jobs.organizationId,
+      jobProjectId: jobs.projectId,
+    })
+    .from(runs)
+    .leftJoin(jobs, eq(jobs.id, runs.jobId))
+    .where(eq(runs.id, runId))
+    .limit(1);
+
+  if (!runRecord.length) {
+    return NextResponse.json({ error: "Run not found" }, { status: 404 });
+  }
+
+  const record = runRecord[0];
+  const runProjectId = record.runProjectId ?? record.jobProjectId;
+
+  if (
+    !runProjectId ||
+    runProjectId !== projectContext.project.id ||
+    (record.jobOrgId && record.jobOrgId !== projectContext.organizationId)
+  ) {
+    return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
   }
 
   const headers = {

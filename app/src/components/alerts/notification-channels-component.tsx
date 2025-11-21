@@ -23,11 +23,15 @@ interface NotificationProvider {
 interface NotificationChannelsComponentProps {
   onEditChannel?: (channel: NotificationChannel) => void;
   onDeleteChannel?: (channel: NotificationChannel) => void;
+  providersData?: NotificationChannel[];
+  refreshTrigger?: number;
 }
 
-export function NotificationChannelsComponent({ 
-  onEditChannel, 
-  onDeleteChannel 
+export function NotificationChannelsComponent({
+  onEditChannel,
+  onDeleteChannel,
+  providersData,
+  refreshTrigger
 }: NotificationChannelsComponentProps) {
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -61,6 +65,13 @@ export function NotificationChannelsComponent({
   }, [mounted]);
 
   const fetchChannels = useCallback(async () => {
+    // If providersData is provided from parent, use it instead of fetching
+    if (providersData) {
+      safeSetChannels(providersData);
+      safeSetIsLoading(false);
+      return;
+    }
+
     safeSetIsLoading(true);
     try {
       const response = await fetch('/api/notification-providers');
@@ -88,11 +99,11 @@ export function NotificationChannelsComponent({
     } finally {
       safeSetIsLoading(false);
     }
-  }, [safeSetChannels, safeSetIsLoading]);
+  }, [safeSetChannels, safeSetIsLoading, providersData]);
 
   useEffect(() => {
     fetchChannels();
-  }, [fetchChannels]);
+  }, [fetchChannels, refreshTrigger]);
 
   // Don't render until component is mounted
   if (!mounted) {

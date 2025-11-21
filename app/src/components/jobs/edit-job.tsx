@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Test } from "./schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,24 +80,41 @@ interface EditJobProps {
 
 export default function EditJob({ jobId }: EditJobProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const stepFromUrl = searchParams.get('step') as 'job' | 'alerts' | 'cicd' | null;
+
   const [selectedTests, setSelectedTests] = useState<Test[]>([]);
-  const [originalSelectedTests, setOriginalSelectedTests] = useState<Test[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [submissionAttempted, setSubmissionAttempted] = useState(false);
+  const [isPerformanceJob, setIsPerformanceJob] = useState(false);
 
   // Check permissions for job deletion
   const { currentProject } = useProjectContext();
   const userRole = currentProject?.userRole ? normalizeRole(currentProject.userRole) : null;
   const canDeleteJob = userRole ? canDeleteJobs(userRole) : false;
   const [formChanged, setFormChanged] = useState(false);
-  const [initialValues, setInitialValues] = useState({
+
+  // Single source of truth for initial form state
+  const [initialFormState, setInitialFormState] = useState({
     name: "",
     description: "",
-    cronSchedule: ""
+    cronSchedule: "",
+    tests: [] as Test[],
+    alertConfig: {
+      enabled: false,
+      notificationProviders: [],
+      alertOnFailure: true,
+      alertOnSuccess: false,
+      alertOnTimeout: true,
+      failureThreshold: 1,
+      recoveryThreshold: 1,
+      customMessage: "",
+    } as AlertConfiguration
   });
+
   const [alertConfig, setAlertConfig] = useState<AlertConfiguration>({
     enabled: false,
     notificationProviders: [],
@@ -108,23 +125,38 @@ export default function EditJob({ jobId }: EditJobProps) {
     recoveryThreshold: 1,
     customMessage: "",
   });
-  const [currentStep, setCurrentStep] = useState<'job' | 'alerts' | 'cicd'>('job');
-
-  const [initialAlertConfig, setInitialAlertConfig] = useState<AlertConfiguration>({
-    enabled: false,
-    notificationProviders: [],
-    alertOnFailure: true,
-    alertOnSuccess: false,
-    alertOnTimeout: true,
-    failureThreshold: 1,
-    recoveryThreshold: 1,
-    customMessage: "",
-  });
+  const [currentStep, setCurrentStep] = useState<'job' | 'alerts' | 'cicd'>(stepFromUrl || 'job');
   const [apiKeysChanged, setApiKeysChanged] = useState(false);
+
+  // Sync URL with current step
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (currentStep === "job") {
+      params.delete('step');
+    } else {
+      params.set('step', currentStep);
+    }
+    const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [currentStep, router]);
+
+  // Warn user before leaving with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (formChanged) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [formChanged]);
 
 
   const form = useForm<FormData>({
     resolver: zodResolver(jobFormSchema),
+    mode: "onSubmit", // Only validate on submit, not on every change
     defaultValues: {
       name: "",
       description: "",
@@ -136,10 +168,10 @@ export default function EditJob({ jobId }: EditJobProps) {
   const watchedValues = form.watch();
 
   // Load job data
-  const loadJob = useCallback(async () => {
+  const loadJob = useCallback(async (signal?: AbortSignal) => {
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/jobs/${jobId}`);
+      const response = await fetch(`/api/jobs/${jobId}`, { signal });
       const data = await response.json();
 
       if (!response.ok || data.error) {
@@ -153,25 +185,22 @@ export default function EditJob({ jobId }: EditJobProps) {
       }
 
       const jobData = data;
-      
+
       // Set form values
       const formValues = {
         name: jobData.name,
         description: jobData.description || "",
         cronSchedule: jobData.cronSchedule || "",
       };
-      
+
       form.reset(formValues);
-      
-      // Store initial values for comparison
-      setInitialValues(formValues);
 
       // Map the tests to the format expected by TestSelector
       const tests = jobData.tests.map((test: Record<string, unknown>) => ({
         id: test.id,
         name: test.name,
         description: test.description || null,
-        type: test.type as "browser" | "api" | "custom" | "database",
+        type: test.type as "browser" | "api" | "custom" | "database" | "performance",
         status: "running" as const,
         lastRunAt: null,
         duration: null,
@@ -179,7 +208,11 @@ export default function EditJob({ jobId }: EditJobProps) {
       }));
 
       setSelectedTests(tests);
-      setOriginalSelectedTests(tests);
+
+      // Detect if this is a k6 (performance) job or Playwright job
+      // If all tests are performance type, it's a k6 job
+      const allPerformanceTests = tests.length > 0 && tests.every((test: Test) => test.type === "performance");
+      setIsPerformanceJob(allPerformanceTests);
 
       // Load alert configuration if it exists
       const alertConfigData: AlertConfiguration = {
@@ -206,14 +239,24 @@ export default function EditJob({ jobId }: EditJobProps) {
       }
 
       setAlertConfig(alertConfigData);
-      setInitialAlertConfig(alertConfigData);
 
+      // Store complete initial state for change detection
+      setInitialFormState({
+        name: formValues.name,
+        description: formValues.description,
+        cronSchedule: formValues.cronSchedule,
+        tests: tests,
+        alertConfig: alertConfigData
+      });
 
-      
       // Reset form changed state after successful load
       setFormChanged(false);
       setApiKeysChanged(false);
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        // Request was cancelled, ignore
+        return;
+      }
       console.error("Error loading job:", error);
       toast.error("Error", {
         description: "Failed to load job details. Please try again later.",
@@ -225,7 +268,12 @@ export default function EditJob({ jobId }: EditJobProps) {
   }, [jobId, router, form]);
 
   useEffect(() => {
-    loadJob();
+    const abortController = new AbortController();
+    loadJob(abortController.signal);
+
+    return () => {
+      abortController.abort();
+    };
   }, [loadJob]);
 
   // Handle form submission for job details
@@ -329,7 +377,7 @@ export default function EditJob({ jobId }: EditJobProps) {
     setSelectedTests(tests);
   };
 
-  // Check if the form has changed
+  // Simplified form change detection using single initial state
   useEffect(() => {
     if (isLoading) return;
 
@@ -337,37 +385,29 @@ export default function EditJob({ jobId }: EditJobProps) {
     const currentDescription = watchedValues.description || "";
     const currentCronSchedule = watchedValues.cronSchedule || "";
 
+    // Check form field changes
     const formFieldsChanged =
-      currentName !== initialValues.name ||
-      currentDescription !== initialValues.description ||
-      currentCronSchedule !== initialValues.cronSchedule;
+      currentName !== initialFormState.name ||
+      currentDescription !== initialFormState.description ||
+      currentCronSchedule !== initialFormState.cronSchedule;
 
-    const testsChanged = !(
-      selectedTests.length === originalSelectedTests.length &&
-      selectedTests.every(test =>
-        originalSelectedTests.some(origTest => origTest.id === test.id)
-      ) &&
-      originalSelectedTests.every(origTest =>
-        selectedTests.some(test => test.id === origTest.id)
-      )
-    );
+    // Check tests changes by comparing IDs
+    const currentTestIds = selectedTests.map(t => t.id).sort().join(',');
+    const initialTestIds = initialFormState.tests.map(t => t.id).sort().join(',');
+    const testsChanged = currentTestIds !== initialTestIds;
 
-    const alertConfigChanged = (
-      initialAlertConfig.enabled !== alertConfig.enabled ||
-      JSON.stringify(initialAlertConfig.notificationProviders.sort()) !== JSON.stringify(alertConfig.notificationProviders.sort()) ||
-      initialAlertConfig.alertOnFailure !== alertConfig.alertOnFailure ||
-      initialAlertConfig.alertOnSuccess !== alertConfig.alertOnSuccess ||
-      initialAlertConfig.alertOnTimeout !== alertConfig.alertOnTimeout ||
-      initialAlertConfig.failureThreshold !== alertConfig.failureThreshold ||
-      initialAlertConfig.recoveryThreshold !== alertConfig.recoveryThreshold ||
-      (initialAlertConfig.customMessage || "") !== (alertConfig.customMessage || "")
-    );
+    // Check alert config changes using JSON comparison
+    const alertConfigChanged = JSON.stringify({
+      ...alertConfig,
+      notificationProviders: [...alertConfig.notificationProviders].sort()
+    }) !== JSON.stringify({
+      ...initialFormState.alertConfig,
+      notificationProviders: [...initialFormState.alertConfig.notificationProviders].sort()
+    });
 
     const hasChanges = formFieldsChanged || testsChanged || alertConfigChanged || apiKeysChanged;
-    if (formChanged !== hasChanges) {
-      setFormChanged(hasChanges);
-    }
-  }, [watchedValues, selectedTests, originalSelectedTests, alertConfig, initialAlertConfig, initialValues, isLoading, formChanged, apiKeysChanged]);
+    setFormChanged(hasChanges);
+  }, [watchedValues, selectedTests, alertConfig, initialFormState, isLoading, apiKeysChanged]);
 
   // Handle job deletion
   const handleDeleteJob = async () => {
@@ -606,6 +646,7 @@ export default function EditJob({ jobId }: EditJobProps) {
                 onTestsSelected={handleTestsSelected}
                 emptyStateMessage="No tests selected"
                 required={submissionAttempted && selectedTests.length === 0}
+                performanceMode={isPerformanceJob}
               />
 
               <div className="flex justify-end space-x-4 mt-6">

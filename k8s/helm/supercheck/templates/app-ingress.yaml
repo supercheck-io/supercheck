@@ -1,0 +1,42 @@
+{{- if .Values.app.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "supercheck.app.fullname" . }}
+  labels:
+    {{- include "supercheck.labels" . | nindent 4 }}
+    {{- include "supercheck.componentLabels" "app" | nindent 4 }}
+  {{- with .Values.app.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.app.ingress.className }}
+  ingressClassName: {{ .Values.app.ingress.className }}
+  {{- end }}
+  rules:
+    {{- range .Values.app.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "supercheck.app.fullname" $ }}
+                port:
+                  number: {{ $.Values.app.service.port }}
+          {{- end }}
+    {{- end }}
+  {{- if .Values.app.ingress.tls }}
+  tls:
+    {{- range .Values.app.ingress.tls }}
+    - secretName: {{ .secretName }}
+      hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}

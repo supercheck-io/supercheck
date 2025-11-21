@@ -37,7 +37,8 @@ export default function AlertsPage() {
   const [providers, setProviders] = useState<NotificationProvider[]>([]);
   const [alertHistory, setAlertHistory] = useState<AlertHistory[]>([]);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
   // Get user permissions
   const { currentProject } = useProjectContext();
   const normalizedRole = normalizeRole(currentProject?.userRole);
@@ -125,6 +126,7 @@ export default function AlertsPage() {
         const createdProvider = await response.json();
         setProviders(prev => [...prev, createdProvider]);
         setIsCreateDialogOpen(false);
+        setRefreshTrigger(prev => prev + 1);
         toast.success("Notification channel created successfully");
       } else {
         const errorData = await response.json();
@@ -169,6 +171,7 @@ export default function AlertsPage() {
           setProviders(prev => prev.map(p => p.id === editingProvider.id ? updated : p));
           setIsEditDialogOpen(false);
           setEditingProvider(null);
+          setRefreshTrigger(prev => prev + 1);
           toast.success("Notification channel updated successfully");
         } else {
           const errorData = await response.json();
@@ -196,6 +199,7 @@ export default function AlertsPage() {
         setProviders(prev => prev.filter(p => p.id !== providerId));
         setIsDeleteDialogOpen(false);
         setDeletingProvider(null);
+        setRefreshTrigger(prev => prev + 1);
         toast.success("Notification channel deleted successfully");
       } else {
         const errorData = await response.json();
@@ -386,6 +390,17 @@ export default function AlertsPage() {
                       <NotificationChannelsComponent
                         onEditChannel={handleEditChannel}
                         onDeleteChannel={handleDeleteChannel}
+                        providersData={providers.map(p => ({
+                          id: p.id,
+                          name: p.name,
+                          type: p.type,
+                          config: p.config,
+                          isEnabled: p.isEnabled,
+                          createdAt: p.createdAt,
+                          updatedAt: p.updatedAt || p.createdAt,
+                          lastUsed: p.lastUsed,
+                        }))}
+                        refreshTrigger={refreshTrigger}
                       />
                     )}
                   </div>

@@ -312,7 +312,7 @@ export default function TestSelector({
 
   const selectedTestsDescription = performanceMode
     ? "Only one performance test can be attached to k6 job."
-    : "Manage the tests associated with this job";
+    : "Manage the associated test";
 
   const pageHeaderNote = performanceMode ? undefined : headerNote;
 
