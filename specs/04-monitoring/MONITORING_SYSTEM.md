@@ -1235,6 +1235,8 @@ Monitor Status: DOWN → UP (Recovery Alert: Always sent)
 graph TB
     subgraph "Performance Metrics"
         A[Response Time Tracking]
+        A1[Average Response Time]
+        A2[P95 Response Time]
         B[Resource Usage Monitoring]
         C[Connection Pool Statistics]
         D[Error Rate Analysis]
@@ -1294,6 +1296,16 @@ graph TB
 - **Status Change Preservation**: Important monitoring events retained indefinitely for audit and analysis
 - **Performance Benefits**: 95%+ reduction in initial page load times for monitors with extensive history
 - **Scalability**: Handles monitors with thousands of check results without performance degradation
+
+#### **Monitor Metrics Calculation**
+
+- **Uptime Tracking**: Calculated for both 24-hour and 30-day periods with location-aware filtering
+- **Average Response Time**: Computed from successful checks only, excluding failed requests
+- **P95 Response Time**: 95th percentile response time calculated for both 24h and 30d periods
+  - Provides insight into tail latency and worst-case performance scenarios
+  - Calculated using sorted response times with proper bounds checking
+  - Displayed alongside average metrics for comprehensive performance visibility
+- **Location-Based Metrics**: All metrics support filtering by geographic location for multi-location monitors
 
 #### **Execution Efficiency**
 
@@ -1672,4 +1684,5 @@ docker service create \
 
 ## Review & Changes
 
+- 2025-11-22: Added P95 (95th percentile) response time metrics for 24h and 30d periods in monitor detail UI and metrics calculation documentation.
 - 2025-10-25: Documented distributed multi-location execution, Hetzner deployment defaults, and queue behavior; added execution sequence diagram and production readiness assessment.
