@@ -257,14 +257,14 @@ export default function () {
   {
     id: "pw-browser-smoke",
     name: "UI Smoke (navigation)",
-    description: "Loads the app and confirms core UI renders",
+    description: "Loads the app and confirms core UI renders (Chromium)",
     category: "Browser fundamentals",
     testType: "browser",
-    tags: ["playwright", "smoke", "ui"],
+    tags: ["playwright", "smoke", "ui", "chromium"],
     code: `/**
  * Playwright UI smoke for a Todo-style app.
  * Coverage: navigation, title, primary input, add item.
- * Config: headless default; swap APP_URL for your target.
+ * Default: Runs in Chromium (no tag needed).
  * @requires @playwright/test
  */
 
@@ -272,6 +272,7 @@ import { expect, test } from '@playwright/test';
 
 const APP_URL = 'https://demo.playwright.dev/todomvc';
 
+// No tag = Chromium (default)
 test('home page renders primary UI', async ({ page }) => {
   await page.goto(APP_URL);
 
@@ -368,24 +369,23 @@ test('submits contact form with stubbed API', async ({ page }) => {
   {
     id: "pw-browser-responsive",
     name: "Mobile / responsive layout",
-    description: "Emulates a mobile device and checks key controls",
+    description: "Emulates iPhone 16 and checks key controls",
     category: "Responsive & devices",
     testType: "browser",
     tags: ["playwright", "mobile", "responsive"],
     code: `/**
- * Mobile viewport check using device emulation.
+ * Mobile viewport check using @mobile tag.
  * Coverage: viewport size, key controls, mobile menu.
- * Swap APP_URL/selectors to match your app's responsive UI.
+ * Tag: @mobile or @iPhone → Runs in mobile-safari project (iPhone 16).
  * @requires @playwright/test
  */
 
-import { devices, expect, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 const APP_URL = 'https://demo.playwright.dev/todomvc';
 
-test.use({ ...devices['iPhone 13'] });
-
-test('mobile layout exposes key actions', async ({ page }) => {
+// Use @mobile tag to run on iPhone 16
+test('mobile layout exposes key actions @mobile', async ({ page }) => {
   await page.goto(APP_URL);
 
   const viewport = page.viewportSize();
@@ -395,6 +395,207 @@ test('mobile layout exposes key actions', async ({ page }) => {
 
   await page.getByRole('button', { name: /menu/i }).click();
   await expect(page.getByRole('navigation')).toBeVisible();
+});
+
+// Alternative: Use @iPhone tag (same as @mobile)
+test('touch gestures work @iPhone', async ({ page }) => {
+  await page.goto(APP_URL);
+  await page.getByPlaceholder('What needs to be done?').fill('Mobile task');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('listitem').first()).toContainText('Mobile task');
+});
+`,
+  },
+  {
+    id: "pw-browser-firefox",
+    name: "Firefox compatibility",
+    description: "Tests Firefox-specific rendering and behavior",
+    category: "Browser fundamentals",
+    testType: "browser",
+    tags: ["playwright", "firefox", "compatibility"],
+    code: `/**
+ * Firefox-specific browser test.
+ * Coverage: Firefox rendering, user agent, browser behavior.
+ * Tag: @firefox → Runs in firefox project (Desktop Firefox).
+ * @requires @playwright/test
+ */
+
+import { expect, test } from '@playwright/test';
+
+const APP_URL = 'https://demo.playwright.dev/todomvc';
+
+// Use @firefox tag to run in Firefox
+test('firefox rendering check @firefox', async ({ page }) => {
+  await page.goto(APP_URL);
+
+  await expect(page).toHaveTitle(/TodoMVC/);
+  
+  // Verify we're running in Firefox
+  const userAgent = await page.evaluate(() => navigator.userAgent);
+  expect(userAgent).toContain('Firefox');
+  
+  // Test Firefox-specific features or workarounds
+  await page.getByPlaceholder('What needs to be done?').fill('Firefox task');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('listitem').first()).toContainText('Firefox task');
+});
+`,
+  },
+  {
+    id: "pw-browser-webkit",
+    name: "WebKit / Safari compatibility",
+    description: "Tests WebKit-specific rendering (Safari)",
+    category: "Browser fundamentals",
+    testType: "browser",
+    tags: ["playwright", "webkit", "safari"],
+    code: `/**
+ * WebKit/Safari-specific browser test.
+ * Coverage: Safari rendering, user agent, browser behavior.
+ * Tag: @webkit or @safari → Runs in webkit project (Desktop Safari).
+ * @requires @playwright/test
+ */
+
+import { expect, test } from '@playwright/test';
+
+const APP_URL = 'https://demo.playwright.dev/todomvc';
+
+// Use @safari tag to run in WebKit (Safari)
+test('safari compatibility check @safari', async ({ page }) => {
+  await page.goto(APP_URL);
+
+  await expect(page).toHaveTitle(/TodoMVC/);
+  
+  // Verify we're running in WebKit
+  const userAgent = await page.evaluate(() => navigator.userAgent);
+  expect(userAgent).toContain('Safari');
+  
+  // Test Safari-specific features
+  await page.getByPlaceholder('What needs to be done?').fill('Safari task');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('listitem').first()).toContainText('Safari task');
+});
+
+// Alternative: Use @webkit tag (same as @safari)
+test('webkit rendering @webkit', async ({ page }) => {
+  await page.goto(APP_URL);
+  await page.getByPlaceholder('What needs to be done?').fill('WebKit task');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('listitem').first()).toContainText('WebKit task');
+});
+`,
+  },
+  {
+    id: "pw-browser-emulation",
+    name: "Device emulation (geo, locale, timezone)",
+    description: "Emulates location, language, and timezone settings",
+    category: "Responsive & devices",
+    testType: "browser",
+    tags: ["playwright", "emulation", "geolocation"],
+    code: `/**
+ * Device emulation with geolocation, locale, and timezone.
+ * Coverage: GPS coordinates, language preferences, time zones.
+ * Useful for testing location-based features and i18n.
+ * @requires @playwright/test
+ */
+
+import { expect, test } from '@playwright/test';
+
+const APP_URL = 'https://demo.playwright.dev/todomvc';
+
+test.use({
+  // Set geolocation
+  geolocation: { longitude: 12.492507, latitude: 41.889938 }, // Rome, Italy
+  permissions: ['geolocation'],
+  
+  // Set locale and timezone
+  locale: 'it-IT',
+  timezoneId: 'Europe/Rome',
+});
+
+test('app responds to geolocation and locale', async ({ page }) => {
+  await page.goto(APP_URL);
+  
+  // Verify geolocation is available
+  const position = await page.evaluate(() => {
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        resolve({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        });
+      });
+    });
+  });
+  
+  expect(position).toMatchObject({
+    latitude: 41.889938,
+    longitude: 12.492507,
+  });
+  
+  // Verify locale
+  const locale = await page.evaluate(() => navigator.language);
+  expect(locale).toBe('it-IT');
+});
+`,
+  },
+  {
+    id: "pw-browser-fixtures",
+    name: "Custom test fixtures",
+    description: "Creates reusable page objects and test data",
+    category: "Browser fundamentals",
+    testType: "browser",
+    tags: ["playwright", "fixtures", "page-object"],
+    code: `/**
+ * Custom fixtures for reusable test components.
+ * Coverage: page objects, test data, authentication state.
+ * Demonstrates the fixtures pattern for maintainable tests.
+ * @requires @playwright/test
+ */
+
+import { test as base, expect } from '@playwright/test';
+
+const APP_URL = 'https://demo.playwright.dev/todomvc';
+
+// Define a TodoPage class (Page Object)
+class TodoPage {
+  constructor(public page: any) {}
+
+  async goto() {
+    await this.page.goto(APP_URL);
+  }
+
+  async addTodo(text: string) {
+    await this.page.getByPlaceholder('What needs to be done?').fill(text);
+    await this.page.keyboard.press('Enter');
+  }
+
+  async getTodoText(index: number) {
+    return await this.page.getByRole('listitem').nth(index).textContent();
+  }
+}
+
+// Extend base test with custom fixtures
+const test = base.extend<{ todoPage: TodoPage }>({
+  todoPage: async ({ page }, use) => {
+    const todoPage = new TodoPage(page);
+    await todoPage.goto();
+    await use(todoPage);
+  },
+});
+
+// Use the fixture in tests
+test('add todo using fixture', async ({ todoPage }) => {
+  await todoPage.addTodo('Buy groceries');
+  const text = await todoPage.getTodoText(0);
+  expect(text).toContain('Buy groceries');
+});
+
+test('add multiple todos', async ({ todoPage }) => {
+  await todoPage.addTodo('Task 1');
+  await todoPage.addTodo('Task 2');
+  
+  expect(await todoPage.getTodoText(0)).toContain('Task 1');
+  expect(await todoPage.getTodoText(1)).toContain('Task 2');
 });
 `,
   },

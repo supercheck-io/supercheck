@@ -48,9 +48,6 @@ data:
   PLAYWRIGHT_TRACE: "retain-on-failure"
   PLAYWRIGHT_SCREENSHOT: "only-on-failure"
   PLAYWRIGHT_VIDEO: "retain-on-failure"
-  ENABLE_FIREFOX: "false"
-  ENABLE_WEBKIT: "false"
-  ENABLE_MOBILE: "false"
 
   MONITOR_CLEANUP_ENABLED: "true"
   MONITOR_CLEANUP_CRON: "0 2 * * *"

@@ -38,7 +38,7 @@ x-common-env: &common-env # Database Configuration
   # - WORKER_REPLICAS: Number of worker replicas (default: 1 for local)
   # - RUNNING_CAPACITY: Total concurrent test capacity (default: 2)
   # - QUEUED_CAPACITY: Maximum queue size (default: 10)
-  # 
+  #
   # Local Scaling Examples:
   #   Development: WORKER_REPLICAS=1 RUNNING_CAPACITY=2
   #   Heavy Testing: WORKER_REPLICAS=2 RUNNING_CAPACITY=4
@@ -72,16 +72,11 @@ x-common-env: &common-env # Database Configuration
   NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS: 10
 
   # Playwright Configuration
-  PLAYWRIGHT_HEADLESS: true
+  # PLAYWRIGHT_HEADLESS: true
   PLAYWRIGHT_RETRIES: 1
   PLAYWRIGHT_TRACE: retain-on-failure
   PLAYWRIGHT_SCREENSHOT: only-on-failure
   PLAYWRIGHT_VIDEO: retain-on-failure
-
-  # Browser support
-  ENABLE_FIREFOX: false
-  ENABLE_WEBKIT: false
-  ENABLE_MOBILE: false
 
   # Monitor Results Cleanup
   MONITOR_CLEANUP_ENABLED: true

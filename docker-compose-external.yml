@@ -48,17 +48,12 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS: ${NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS:-10}
 
   # Playwright Configuration - Optimized for Supercheck execution service
-  PLAYWRIGHT_HEADLESS: ${PLAYWRIGHT_HEADLESS:-true}
+  # PLAYWRIGHT_HEADLESS: ${PLAYWRIGHT_HEADLESS:-true}
   PLAYWRIGHT_RETRIES: ${PLAYWRIGHT_RETRIES:-1}
   PLAYWRIGHT_TRACE: ${PLAYWRIGHT_TRACE:-retain-on-failure}
   PLAYWRIGHT_SCREENSHOT: ${PLAYWRIGHT_SCREENSHOT:-only-on-failure}
   # Video recording enabled on test failures for debugging (with increased resource limits)
   PLAYWRIGHT_VIDEO: ${PLAYWRIGHT_VIDEO:-retain-on-failure}
-
-  # Browser support (disabled by default for performance)
-  ENABLE_FIREFOX: ${ENABLE_FIREFOX:-false}
-  ENABLE_WEBKIT: ${ENABLE_WEBKIT:-false}
-  ENABLE_MOBILE: ${ENABLE_MOBILE:-false}
 
   # Monitor Results Cleanup
   MONITOR_CLEANUP_ENABLED: ${MONITOR_CLEANUP_ENABLED:-true}
