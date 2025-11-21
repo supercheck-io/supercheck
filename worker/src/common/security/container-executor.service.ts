@@ -125,7 +125,7 @@ export interface ContainerExecutionResult {
 export class ContainerExecutorService {
   private readonly logger = new Logger(ContainerExecutorService.name);
   // Use custom worker image with Playwright browsers and k6 pre-installed
-  private readonly defaultImage = 'ghcr.io/supercheck-io/supercheck/worker:latest';
+  private readonly defaultImage = process.env.WORKER_IMAGE || 'ghcr.io/supercheck-io/supercheck/worker:latest';
 
   constructor(private configService: ConfigService) {
     this.logger.log(

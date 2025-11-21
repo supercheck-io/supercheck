@@ -178,10 +178,12 @@ services:
     build:
       context: ./worker
       dockerfile: Dockerfile
+    image: supercheck-worker:latest
     env_file:
       - .env.local
     environment:
       <<: *common-env
+      WORKER_IMAGE: supercheck-worker:latest
       MAX_CONCURRENT_EXECUTIONS: 2 # Keep low for local development
     volumes:
       # Mount Docker socket for container-based execution

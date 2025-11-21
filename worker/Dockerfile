@@ -120,8 +120,8 @@ ENV NPM_CONFIG_CACHE=/home/nodejs/.npm
 # Set Playwright browser cache path to standard location
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Install only Chromium browser for Playwright tests with cleanup
-RUN npx playwright install chromium --with-deps && \
+# Install all Playwright browsers (Chromium, Firefox, WebKit) for full support
+RUN npx playwright install --with-deps && \
     npm cache clean --force && \
     rm -rf /tmp/*
 
