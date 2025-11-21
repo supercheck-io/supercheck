@@ -138,98 +138,94 @@ module.exports = defineConfig({
   projects: [
     {
       name: 'chromium',
+      // Ignore mobile, firefox, and webkit tests to avoid duplicate execution
+      grepInvert: /@mobile|@iPhone|@firefox|@webkit|@safari/,
       use: {
         ...devices['Desktop Chrome'],
         // Override with optimized settings
         viewport: { width: 1280, height: 720 }, // Standard viewport for consistent results
         // Enable headless mode for better performance
-        headless: process.env.PLAYWRIGHT_HEADLESS !== 'false',
+        headless: true,
         // Chrome-specific launch options - optimized for containerized environments
         launchOptions: {
           args: [
             // CRITICAL: Core container compatibility flags
-            '--disable-dev-shm-usage', // Prevent /dev/shm issues in containers
-            '--disable-gpu', // Reduce GPU memory usage
-            '--no-sandbox', // Required for containerized environments
-            '--disable-setuid-sandbox',
-            '--disable-web-security', // Allow cross-origin requests for testing
+            // '--disable-dev-shm-usage', // Prevent /dev/shm issues in containers (Causes WebKit failure in mixed mode)
+            // '--disable-gpu', // Reduce GPU memory usage
+            // '--no-sandbox', // Required for containerized environments
+            // '--disable-setuid-sandbox',
+            // '--disable-web-security', // Allow cross-origin requests for testing
 
             // REMOVED --single-process: Causes "Target page closed" errors and browser instability
             // Let browser manage processes naturally for better stability
 
             // Font rendering fixes (prevents fontconfig errors)
-            '--font-render-hinting=none',
-            '--disable-font-subpixel-positioning',
+            // '--font-render-hinting=none',
+            // '--disable-font-subpixel-positioning',
 
             // Memory and resource optimization (kept minimal for stability)
-            '--disable-features=TranslateUI,AudioServiceOutOfProcess',
-            '--disable-background-networking',
-            '--disable-default-apps',
-            '--disable-extensions',
-            '--disable-sync',
-            '--disable-translate',
-            '--no-first-run',
-            '--no-default-browser-check',
+            // '--disable-features=TranslateUI,AudioServiceOutOfProcess',
+            // '--disable-background-networking',
+            // '--disable-default-apps',
+            // '--disable-extensions',
+            // '--disable-sync',
+            // '--disable-translate',
+            // '--no-first-run',
+            // '--no-default-browser-check',
 
             // Additional stability flags
-            '--disable-gpu-sandbox',
-            '--disable-accelerated-2d-canvas',
+            // '--disable-gpu-sandbox',
+            // '--disable-accelerated-2d-canvas',
+            // '--disable-dev-shm-usage', // Re-enable for Chromium only if needed, but safe to omit if stable
           ],
         },
       },
     },
 
     // Additional browsers can be enabled via environment variables
-    ...(process.env.ENABLE_FIREFOX === 'true'
-      ? [
-          {
-            name: 'firefox',
-            use: {
-              ...devices['Desktop Firefox'],
-              viewport: { width: 1280, height: 720 },
-              headless: process.env.PLAYWRIGHT_HEADLESS !== 'false',
-              // Firefox-specific launch options (minimal args)
-              launchOptions: {
-                args: [
-                  '--no-sandbox', // Required for containerized environments
-                ],
-              },
-            },
-          },
-        ]
-      : []),
+    // Additional browsers
+    {
+      name: 'firefox',
+      grep: /@firefox/,
+      use: {
+        ...devices['Desktop Firefox'],
+        viewport: { width: 1280, height: 720 },
+        headless: true,
+        // Firefox-specific launch options (minimal args)
+        launchOptions: {
+          args: [
+            '--no-sandbox', // Required for containerized environments
+          ],
+        },
+      },
+    },
 
-    ...(process.env.ENABLE_WEBKIT === 'true'
-      ? [
-          {
-            name: 'webkit',
-            use: {
-              ...devices['Desktop Safari'],
-              viewport: { width: 1280, height: 720 },
-              headless: process.env.PLAYWRIGHT_HEADLESS !== 'false',
-              // WebKit-specific launch options (very minimal - WebKit is picky)
-              launchOptions: {
-                args: [
-                  // WebKit doesn't support most Chrome flags, keep minimal
-                ],
-              },
-            },
-          },
-        ]
-      : []),
+    {
+      name: 'webkit',
+      grep: /@webkit|@safari/,
+      use: {
+        ...devices['Desktop Safari'],
+        viewport: { width: 1280, height: 720 },
+        headless: true,
+        // WebKit-specific launch options (very minimal - WebKit is picky)
+        launchOptions: {
+          args: [
+            // WebKit doesn't support most Chrome flags, keep minimal
+          ],
+        },
+      },
+    },
 
-    // Mobile testing projects (opt-in)
-    ...(process.env.ENABLE_MOBILE === 'true'
-      ? [
-          {
-            name: 'mobile',
-            use: {
-              ...devices['iPhone 13'],
-              headless: process.env.PLAYWRIGHT_HEADLESS !== 'false',
-            },
-          },
-        ]
-      : []),
+    // Mobile testing projects (opt-in via @mobile tag)
+    {
+      name: 'mobile-safari',
+      // Only run tests tagged with @mobile
+      grep: /@mobile|@iPhone/,
+      use: {
+        ...devices['iPhone 16'],
+        headless: true,
+      },
+    },
   ],
 
   /* Performance and cleanup optimizations */

@@ -1,40 +1,6 @@
-# Use platform-agnostic base image with LTS version for better availability
-FROM node:20-slim AS base
-
-# Install base system dependencies for Playwright browsers and k6
-# Note: Playwright's --with-deps will install additional required packages including fonts
-RUN apt-get update && apt-get install -y \
-    curl \
-    tar \
-    libglib2.0-0 \
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libdbus-1-3 \
-    libxcb1 \
-    libxkbcommon0 \
-    libx11-6 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxext6 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libasound2 \
-    libatspi2.0-0 \
-    libgtk-3-0 \
-    libgdk-pixbuf2.0-0 \
-    libxss1 \
-    libxshmfence1 \
-    ca-certificates \
-    iputils-ping \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+# Use official Playwright image which includes all browsers and dependencies
+# This avoids the heavy "npx playwright install" step that causes OOM on runners
+FROM mcr.microsoft.com/playwright:v1.56.1-noble AS base
 
 # Build k6 with xk6-dashboard extension
 FROM golang:1.23-alpine AS k6-builder
@@ -84,8 +50,10 @@ COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 RUN chmod +x /usr/local/bin/docker
 
 # Create app user
-RUN groupadd --system --gid 1001 nodejs && \
-    useradd --system --uid 1001 --gid nodejs nodejs
+# Note: Playwright image usually has a 'pwuser', but we'll stick to our 'nodejs' convention or use root if needed.
+# The official image runs as root by default. Let's create our user but ensure they have access.
+RUN groupadd --system --gid 1002 nodejs && \
+    useradd --system --uid 1002 --gid nodejs nodejs
 
 # Copy only necessary files with proper ownership
 COPY --from=builder --chown=nodejs:nodejs /worker/package*.json ./
@@ -117,18 +85,14 @@ ENV HOME=/home/nodejs
 ENV npm_config_cache=/home/nodejs/.npm
 ENV NPM_CONFIG_CACHE=/home/nodejs/.npm
 
-# Set Playwright browser cache path to standard location
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-
-# Install all Playwright browsers (Chromium, Firefox, WebKit) for full support
-RUN npx playwright install --with-deps && \
-    npm cache clean --force && \
-    rm -rf /tmp/*
+# Set Playwright browser cache path to standard location - ALREADY SET in base image but good to be explicit if we wanted to override
+# The base image sets PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+# We don't need to install browsers as they are already in the base image!
 
 # Add health check with dynamic port support
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD node -e "const http = require('http'); const port = process.env.PORT || 3001; const req = http.request({hostname: 'localhost', port: port, path: '/health', timeout: 5000}, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();"
 
-EXPOSE 8000
+# EXPOSE 8000 # disabled per user request
 
 CMD ["node", "--max-http-header-size=16384", "dist/src/main.js"]
