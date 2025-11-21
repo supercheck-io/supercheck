@@ -49,12 +49,10 @@ graph TB
 
     subgraph "💾 Data Layer"
         DB[(PostgreSQL)]
-        CACHE[Redis Session Cache]
     end
 
     subgraph "📧 External Services"
         SMTP[SMTP Email Service]
-        RESEND[Resend.com API]
     end
 
     UI1 & UI2 & UI3 & UI4 --> CLIENT
@@ -67,9 +65,7 @@ graph TB
     MW2 --> MW3
 
     SERVER --> DB
-    MW1 --> CACHE
     SERVER --> SMTP
-    SERVER --> RESEND
 
     classDef frontend fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     classDef auth fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
@@ -80,8 +76,8 @@ graph TB
     class UI1,UI2,UI3,UI4,CLIENT frontend
     class SERVER,PLUGINS,ORG,ADMIN,APIKEY auth
     class MW1,MW2,MW3 middleware
-    class DB,CACHE data
-    class SMTP,RESEND external
+    class DB data
+    class SMTP external
 ```
 
 ## Authentication Flows
@@ -229,7 +225,7 @@ sequenceDiagram
 
 **Key Features:**
 - Email/password authentication
-- Organization plugin with automatic org creation
+- Organization plugin with org creation handled in the API layer (`/api/auth/setup-defaults` + invitations)
 - Admin plugin with impersonation support
 - API key plugin for programmatic access
 - Session duration: 7 days
@@ -244,7 +240,7 @@ graph TB
     A --> C[Admin Plugin]
     A --> D[API Key Plugin]
 
-    B --> B1[Auto-create org on signup]
+    B --> B1[Default org creation via /api/auth/setup-defaults]
     B --> B2[Multi-org support]
     B --> B3[Invitation system]
     B --> B4[Member management]
@@ -462,27 +458,22 @@ graph TB
 
 ```mermaid
 graph TB
-    A[Email Request] --> B{Email Service Type}
+    A[Email Request] --> B[SMTP Service]
 
-    B -->|Production| C[Resend.com API]
-    B -->|Development| D[SMTP Service]
-
-    C --> E[Professional Email Delivery]
-    D --> F[Local SMTP Server]
+    B --> E[Outbound email via nodemailer/SMTP]
 
     G[Template Engine] --> H[React Email]
     H --> I[HTML Generation]
     I --> J[Inline CSS]
 
     E --> K[Send Email]
-    F --> K
     K --> L[Delivery Confirmation]
 
     classDef service fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
     classDef template fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     classDef delivery fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
 
-    class C,D,E,F service
+    class B,E service
     class G,H,I,J template
     class K,L delivery
 ```
@@ -505,7 +496,6 @@ graph TB
 - `SMTP_PASSWORD` - SMTP password
 - `SMTP_SECURE` - Use TLS/SSL (true/false)
 - `SMTP_FROM_EMAIL` - Sender email address
-- `RESEND_API_KEY` - Resend.com API key (production)
 
 ## Organization Management
 
@@ -516,21 +506,18 @@ sequenceDiagram
     participant User
     participant System
     participant Database
-    participant OrgPlugin
 
-    User->>System: Sign Up
-    System->>Database: Create user account
-    Database-->>System: User created
+    User->>System: Sign in or sign up
+    System->>Database: Check existing memberships
+    Database-->>System: Memberships (if any)
 
-    System->>OrgPlugin: Trigger auto-org creation
-    OrgPlugin->>OrgPlugin: Generate org name from email
-    OrgPlugin->>Database: Create organization
-    Database-->>OrgPlugin: Organization created
-
-    OrgPlugin->>Database: Add user as owner
-    Database-->>OrgPlugin: Member role assigned
-    OrgPlugin-->>System: Org setup complete
-    System-->>User: Registration successful
+    alt Already in org or pending invite
+        System-->>User: Skip default org creation
+    else No org and no pending invites
+        System->>/api/auth/setup-defaults: Create org + default project
+        Database-->>System: Org and project created
+        System-->>User: Default org ready
+    end
 ```
 
 ### Invitation System
@@ -570,25 +557,16 @@ sequenceDiagram
 
 ### Authentication Endpoints
 
-**User Authentication:**
-- `POST /api/auth/sign-in/email` - Email/password sign-in
-- `POST /api/auth/sign-up/email` - User registration
-- `POST /api/auth/sign-out` - Session termination
-- `GET /api/auth/get-session` - Current session info
+**Better Auth handlers (App Router):**
+- `/api/auth/[...all]` and `/api/auth` handle sign-in, sign-up, sign-out, password reset, and session retrieval.
+- `/api/auth/sign-in/email` and `/api/auth/sign-up/email` are dedicated email/password entrypoints used by the auth pages.
+- `/api/auth/impersonation-status`, `/api/admin/stop-impersonation` surface impersonation state/stop controls.
+- `/api/auth/user` returns the current session’s user.
+- `/api/auth/setup-defaults` creates a default org/project when the user has no memberships and no pending invites.
+- `/api/auth/verify-key` validates job-scoped API keys.
 
-**Password Management:**
-- `POST /api/auth/forget-password` - Request password reset
-- `POST /api/auth/reset-password` - Execute password reset
-
-**Organization Management:**
-- `POST /api/auth/organization/create` - Create new organization
-- `POST /api/auth/organization/invite-member` - Send invitation
-- `GET /api/auth/organization/members` - List organization members
-- `DELETE /api/auth/organization/remove-member` - Remove member
-
-**Admin Functions:**
-- `POST /api/auth/admin/impersonate` - Impersonate user
-- `POST /api/auth/admin/stop-impersonating` - Stop impersonation
+**Organization & membership APIs (outside Better Auth):**
+- `/api/organizations/*` and `/api/projects/*` manage orgs, projects, members, invitations, and variables; access is enforced via RBAC middleware rather than Better Auth plugins.
 
 ### Client SDK Methods
 
@@ -599,10 +577,13 @@ sequenceDiagram
 - `authClient.forgetPassword(email)` - Request reset
 - `authClient.resetPassword(data)` - Reset password
 
+**Organizations & Admin (Better Auth client plugins):**
+- `organization.create/list/setActive(...)` - Manage org membership context
+- `organization.inviteMember(...)`, `organization.removeMember(...)`, `organization.updateMemberRole(...)` - Org membership controls
+- `admin.listUsers/createUser/banUser/unbanUser/impersonateUser/removeUser` - Super-admin actions
+
 **React Hooks:**
 - `useSession()` - Get current session
-- `useActiveOrganization()` - Get active org
-- `useOrganizations()` - List all user orgs
 
 ## Database Schema
 

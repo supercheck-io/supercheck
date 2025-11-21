@@ -1,0 +1,270 @@
+# Global settings
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+global:
+  storageClass: ""
+  appUrl: "http://supercheck.local"
+  statusPageDomain: "supercheck.io"
+  nodeEnv: "production"
+  logLevel: "info"
+  demoMode: false
+
+# Common configuration shared by app and worker
+config:
+  # External backing services (recommended: managed DB/Redis and R2/S3)
+  database:
+    host: "postgres.example.com" # REQUIRED when postgres.enabled=false
+    port: 5432
+    name: "supercheck"
+    user: "supercheck"
+  redis:
+    host: "redis.example.com"    # REQUIRED when redis.enabled=false
+    port: 6379
+  s3:
+    endpoint: "https://r2.example.com" # REQUIRED when minio.enabled=false (e.g., Cloudflare R2 endpoint)
+    region: "us-east-1"
+    forcePathStyle: true                  # R2 supports path-style; set false for virtual-hosted
+    operationTimeout: 10000
+    maxRetries: 3
+    bucketNames:
+      job: "playwright-job-artifacts"
+      test: "playwright-test-artifacts"
+      monitor: "playwright-monitor-artifacts"
+      status: "supercheck-status-artifacts"
+      performance: "supercheck-performance-artifacts"
+  execution:
+    runningCapacity: 6
+    queuedCapacity: 50
+    maxConcurrentExecutions: 2
+    timeouts:
+      test: 120000
+      job: 900000
+      k6Test: 3600000
+      k6Job: 3600000
+  monitoringCleanup:
+    enabled: true
+    cron: "0 2 * * *"
+    retentionDays: 30
+    batchSize: 1000
+    preserveStatusChanges: true
+    safetyLimit: 1000000
+  jobCleanup:
+    enabled: false
+    cron: "0 3 * * *"
+    retentionDays: 90
+    batchSize: 100
+    safetyLimit: 10000
+  playgroundCleanup:
+    enabled: true
+    cron: "0 */12 * * *"
+    maxAgeHours: 24
+  playwright:
+    headless: true
+    retries: 1
+    trace: "retain-on-failure"
+    screenshot: "only-on-failure"
+    video: "retain-on-failure"
+    enableFirefox: false
+    enableWebkit: false
+    enableMobile: false
+  notificationLimits:
+    jobs: 10
+    monitors: 10
+  auth:
+    betterAuthUrl: ""          # Defaults to global.appUrl
+  smtp:
+    host: "smtp.resend.com"
+    port: 587
+    user: "resend"
+    secure: false
+    fromEmail: "notification@example.com"
+  ai:
+    provider: "openai"
+    model: "gpt-4o-mini"
+    timeoutMs: 90000
+    maxRetries: 2
+    temperature: 0.1
+  featureFlags:
+    multiLocationDistributed: false
+    workerLocation: "local"
+
+# Sensitive values (consider using external secrets in production)
+secrets:
+  create: true
+  name: ""
+  databasePassword: "supercheck"
+  redisPassword: "supersecure-redis-password-change-this"
+  s3AccessKey: "minioadmin"
+  s3SecretKey: "minioadmin"
+  betterAuthSecret: ""                 # REQUIRED: set a strong random value
+  variablesEncryptionKey: ""           # REQUIRED: 64-char hex key
+  credentialEncryptionKey: ""          # REQUIRED
+  smtpPassword: ""
+  openaiApiKey: ""
+  extra: {}                            # Additional secret key/value pairs
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+app:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/supercheck-io/supercheck/app
+    tag: "1.1.3-beta"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: "supercheck.local"
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+  podAnnotations: {}
+  podLabels: {}
+  podSecurityContext:
+    fsGroup: 1001
+    runAsUser: 1001
+    runAsGroup: 1001
+    runAsNonRoot: true
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+  resources:
+    requests:
+      cpu: 300m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []
+  extraEnvFrom: []
+  extraVolumeMounts: []
+  extraVolumes: []
+
+worker:
+  replicaCount: 2
+  image:
+    repository: ghcr.io/supercheck-io/supercheck/worker
+    tag: "1.1.3-beta"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8000
+  podAnnotations: {}
+  podLabels: {}
+  podSecurityContext:
+    fsGroup: 1001
+    runAsUser: 1001
+    runAsGroup: 1001
+    runAsNonRoot: true
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop:
+        - ALL
+  executor:
+    mode: "dind"                      # dind | hostDocker
+    hostSocketPath: "/var/run/docker.sock"
+    dind:
+      image: "docker:27-dind"
+      pullPolicy: IfNotPresent
+      privileged: true
+      resources:
+        requests:
+          cpu: 500m
+          memory: 512Mi
+        limits:
+          cpu: "2"
+          memory: 2Gi
+      storageSize: 20Gi
+      hostPathForStorage: ""          # Optional: set to persist on host, else emptyDir
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "4"
+      memory: 6Gi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []
+  extraEnvFrom: []
+  extraVolumeMounts: []
+  extraVolumes: []
+
+postgres:
+  enabled: false
+  image:
+    repository: postgres
+    tag: "16"
+    pullPolicy: IfNotPresent
+  service:
+    port: 5432
+  persistence:
+    enabled: true
+    size: 8Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+redis:
+  enabled: false
+  image:
+    repository: redis
+    tag: "7.2"
+    pullPolicy: IfNotPresent
+  service:
+    port: 6379
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 512Mi
+
+minio:
+  enabled: false
+  image:
+    repository: minio/minio
+    tag: "RELEASE.2024-08-17T01-24-54Z"
+    pullPolicy: IfNotPresent
+  service:
+    apiPort: 9000
+    consolePort: 9001
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1
+      memory: 2Gi

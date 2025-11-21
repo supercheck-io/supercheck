@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CreateJob } from "./create-job";
 import { AlertSettings } from "@/components/alerts/alert-settings";
 import { Button } from "@/components/ui/button";
@@ -14,34 +15,135 @@ import {
 import { toast } from "sonner";
 import { Test } from "./schema";
 import { type AlertConfig } from "@/db/schema";
-import { useRouter } from "next/navigation";
 
 type JobAlertConfig = AlertConfig;
 
 export function JobCreationWizardK6() {
   const router = useRouter();
-  const [currentStep, setCurrentStep] = useState<"job" | "alerts">("job");
-  const [selectedTest, setSelectedTest] = useState<Test | null>(null);
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    cronSchedule: "",
-    tests: [] as Test[],
-  });
-  const [alertConfig, setAlertConfig] = useState<JobAlertConfig>({
-    enabled: false,
-    notificationProviders: [],
-    alertOnFailure: true,
-    alertOnRecovery: true,
-    alertOnSuccess: false,
-    alertOnTimeout: true,
-    failureThreshold: 1,
-    recoveryThreshold: 1,
-  });
+  const searchParams = useSearchParams();
+  const stepFromUrl = searchParams.get('step') as "job" | "alerts" | null;
+
+  // Restore form data from sessionStorage if available (survives page refresh)
+  const getInitialFormData = () => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('k6-job-draft');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return { name: "", description: "", cronSchedule: "", tests: [] as Test[] };
+        }
+      }
+    }
+    return { name: "", description: "", cronSchedule: "", tests: [] as Test[] };
+  };
+
+  const getInitialTest = () => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('k6-job-test-draft');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return null;
+        }
+      }
+    }
+    return null;
+  };
+
+  const getInitialAlertConfig = () => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('k6-job-alert-draft');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          return {
+            enabled: false,
+            notificationProviders: [],
+            alertOnFailure: true,
+            alertOnRecovery: true,
+            alertOnSuccess: false,
+            alertOnTimeout: true,
+            failureThreshold: 1,
+            recoveryThreshold: 1,
+          };
+        }
+      }
+    }
+    return {
+      enabled: false,
+      notificationProviders: [],
+      alertOnFailure: true,
+      alertOnRecovery: true,
+      alertOnSuccess: false,
+      alertOnTimeout: true,
+      failureThreshold: 1,
+      recoveryThreshold: 1,
+    };
+  };
+
+  const [currentStep, setCurrentStep] = useState<"job" | "alerts">(stepFromUrl || "job");
+  const [selectedTest, setSelectedTest] = useState<Test | null>(getInitialTest());
+  const [formData, setFormData] = useState(getInitialFormData());
+  const [alertConfig, setAlertConfig] = useState<JobAlertConfig>(getInitialAlertConfig());
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Persist form data to sessionStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('k6-job-draft', JSON.stringify(formData));
+    }
+  }, [formData]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (selectedTest) {
+        sessionStorage.setItem('k6-job-test-draft', JSON.stringify(selectedTest));
+      } else {
+        sessionStorage.removeItem('k6-job-test-draft');
+      }
+    }
+  }, [selectedTest]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('k6-job-alert-draft', JSON.stringify(alertConfig));
+    }
+  }, [alertConfig]);
+
+  // Clear sessionStorage on successful submission
+  const clearDraft = () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('k6-job-draft');
+      sessionStorage.removeItem('k6-job-test-draft');
+      sessionStorage.removeItem('k6-job-alert-draft');
+    }
+  };
+
+  // Sync URL with current step
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (currentStep === "job") {
+      params.delete('step');
+    } else {
+      params.set('step', currentStep);
+    }
+    const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [currentStep, router]);
+
   const handleJobNext = (data: Record<string, unknown>) => {
+    // Validate that a test is selected (required for k6 jobs)
+    if (!selectedTest) {
+      toast.error("Validation Error", {
+        description: "Please select a performance test for the job"
+      });
+      return;
+    }
+
     // For K6 jobs, only allow single performance test
     const tests = selectedTest ? [selectedTest] : [];
 
@@ -127,8 +229,12 @@ export function JobCreationWizardK6() {
       if (response.ok && result.success) {
         toast.success("Success", {
           description: `Job "${finalData.name}" has been created.`,
+          duration: 3000,
         });
-        window.location.href = "/jobs";
+        // Clear draft data from sessionStorage
+        clearDraft();
+        // Use router.push for proper navigation
+        router.push("/jobs");
       } else {
         const errorMessage =
           result.error || result.message || "Failed to create job";
