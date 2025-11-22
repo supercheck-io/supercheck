@@ -4,73 +4,29 @@ description: View detailed execution traces for every test run
 icon: Activity
 ---
 
-Explore detailed execution traces to understand test performance, debug failures, and optimize your automation.
+Explore end-to-end execution traces with spans, timings, and artifacts to see exactly what happened in every run.
 
 ## Viewing Traces
 
 ### Accessing the Traces Page
 
 <Steps>
-  <Step>Navigate to **Observe → Traces** from the sidebar</Step>
-  <Step>View list of recent test executions with trace data</Step>
-  <Step>Filter by project, test type, status, or time range</Step>
-  <Step>Click any trace to view detailed execution timeline</Step>
+  <Step>Go to **Observe → Traces**.</Step>
+  <Step>Filter by project, test type, status, or time range.</Step>
+  <Step>Select a trace to open its timeline and spans.</Step>
 </Steps>
 
 ## Trace List View
 
-The traces page shows all test executions with key information:
-
-| Column | Description |
-|--------|-------------|
-| **Trace ID** | Unique identifier for this execution |
-| **Test Name** | Name of the test that was executed |
-| **Status** | Pass/Fail status |
-| **Duration** | Total execution time |
-| **Timestamp** | When the test ran |
-| **Span Count** | Number of operations in the trace |
-
-### Filtering Traces
-
-Use filters to find specific traces:
-
-- **Project**: Filter by project name
-- **Test Type**: Browser, API, Database, Custom, Performance
-- **Status**: Passed, Failed, Error
-- **Time Range**: Last hour, 24 hours, 7 days, 30 days, custom
-- **Search**: Search by test name or trace ID
+Each row shows status, duration, timestamp, and span count with quick filters for project, type, status, and time.
 
 ## Trace Detail View
 
-Click any trace to see the complete execution timeline with all operations.
-
-### Timeline Visualization
-
-```mermaid
-gantt
-    title Test Execution Timeline
-    dateFormat  HH:mm:ss
-    axisFormat %H:%M:%S
-
-    section Test
-    Test Execution         :active, root, 00:00:00, 15s
-
-    section Browser
-    Navigate to Page       :nav, 00:00:01, 2s
-    Wait for Load          :load, 00:00:03, 1s
-
-    section Network
-    API Request 1          :api1, 00:00:04, 0.5s
-    API Request 2          :api2, 00:00:05, 0.3s
-
-    section Actions
-    Click Button           :btn_click, 00:00:08, 0.2s
-    Fill Form              :fill, 00:00:09, 0.5s
-
-    section Assertions
-    Validate Response      :assert1, 00:00:12, 0.1s
-    Check Element Visible  :assert2, 00:00:13, 0.1s
-```
+Open a trace to view:
+- Timeline of spans with durations and statuses.
+- Network calls (method, URL, status code).
+- Browser actions and assertions (for Playwright).
+- Attachments: screenshots, console/network logs, videos, traces.
 
 ## Understanding Spans
 
@@ -84,11 +40,10 @@ Each span in the timeline represents an operation with:
 ## Analyzing Performance
 
 <Steps>
-  <Step>Sort spans by duration (longest first)</Step>
-  <Step>Look for unexpectedly slow operations</Step>
-  <Step>Check network requests for slow APIs</Step>
-  <Step>Identify sequential operations that could be parallel</Step>
-  <Step>Review wait times and timeouts</Step>
+  <Step>Sort spans by duration to spot slow steps.</Step>
+  <Step>Check network spans for 4xx/5xx or high latency.</Step>
+  <Step>Review waits/timeouts—long waits often hide flakiness.</Step>
+  <Step>Identify sequential steps that could be parallelized.</Step>
 </Steps>
 
 ## Exporting Traces
@@ -96,8 +51,7 @@ Each span in the timeline represents an operation with:
 Export trace data for analysis:
 
 <Steps>
-  <Step>Open trace detail view</Step>
-  <Step>Click **Export** button</Step>
-  <Step>Choose format: JSON, CSV, or OTLP</Step>
-  <Step>Download trace data</Step>
+  <Step>Open a trace detail view.</Step>
+  <Step>Click **Export**.</Step>
+  <Step>Choose JSON, CSV, or OTLP and download.</Step>
 </Steps>

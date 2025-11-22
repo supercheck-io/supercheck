@@ -32,8 +32,7 @@ type RunResponse = {
 };
 
 export async function getRun(
-  runId: string,
-  isNotificationView: boolean = false
+  runId: string
 ): Promise<RunResponse | null> {
   try {
     if (!runId) {
@@ -83,16 +82,13 @@ export async function getRun(
     const run = result[0];
 
     // Check if user has access to this run's organization
-    // Skip org access checks for notification views (read-only access)
-    if (!isNotificationView) {
-      const userRole = await getUserRole(userId);
+    const userRole = await getUserRole(userId);
 
-      if (userRole !== Role.SUPER_ADMIN && run.organizationId) {
-        const orgRole = await getUserOrgRole(userId, run.organizationId);
+    if (userRole !== Role.SUPER_ADMIN && run.organizationId) {
+      const orgRole = await getUserOrgRole(userId, run.organizationId);
 
-        if (!orgRole) {
-          throw new Error("Access denied: Not a member of this organization");
-        }
+      if (!orgRole) {
+        throw new Error("Access denied: Not a member of this organization");
       }
     }
 

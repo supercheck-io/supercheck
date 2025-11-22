@@ -372,8 +372,8 @@ export function SubscribeDialog({
                     </ul>
                   </div>
 
-                  <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-3">
-                    <p className="text-xs text-blue-900 dark:text-blue-100">
+                  <div className="bg-muted/30 border border-border rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground">
                       <strong>How to set up:</strong><br/>
                       1. Go to your Slack workspace settings<br/>
                       2. Create an Incoming Webhook for your channel<br/>
@@ -540,8 +540,8 @@ export function SubscribeDialog({
                     </ul>
                   </div>
 
-                  <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-3">
-                    <p className="text-xs text-blue-900 dark:text-blue-100">
+                  <div className="bg-muted/30 border border-border rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground">
                       <strong>How to use:</strong><br/>
                       1. Copy the RSS feed URL above<br/>
                       2. Add it to your favorite RSS reader (Feedly, Inoreader, etc.)<br/>

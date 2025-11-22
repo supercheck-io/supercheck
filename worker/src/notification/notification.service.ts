@@ -302,11 +302,12 @@ export class NotificationService {
       short: true,
     });
 
-    // Response time
+    // Response Time
     if (payload.metadata?.responseTime !== undefined) {
+      const responseTimeSeconds = (payload.metadata.responseTime / 1000).toFixed(2);
       fields.push({
         title: 'Response Time',
-        value: `${payload.metadata.responseTime}ms`,
+        value: `${responseTimeSeconds}s`,
         short: true,
       });
     }
@@ -344,7 +345,7 @@ export class NotificationService {
       message: enhancedMessage,
       fields,
       color: this.getColorForSeverity(payload.severity),
-      footer: 'sent by supercheck',
+      footer: '',
       timestamp: Math.floor(payload.timestamp.getTime() / 1000),
     };
   }

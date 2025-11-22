@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: supercheck-worker
+  namespace: supercheck
+  labels:
+    app.kubernetes.io/name: supercheck
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: supercheck
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: supercheck
+        app.kubernetes.io/component: worker
+    spec:
+      serviceAccountName: supercheck
+      securityContext:
+        fsGroup: 1001
+        runAsUser: 1001
+        runAsGroup: 1001
+        runAsNonRoot: true
+      containers:
+        - name: worker
+          image: ghcr.io/supercheck-io/supercheck/worker:1.1.3-beta
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          envFrom:
+            - configMapRef:
+                name: supercheck-config
+            - secretRef:
+                name: supercheck-secret
+          env:
+            - name: PORT
+              value: "8000"
+            - name: DOCKER_HOST
+              value: "tcp://localhost:2375"
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "4"
+              memory: 6Gi
+          volumeMounts:
+            - name: docker-graph
+              mountPath: /var/lib/docker
+        - name: dind
+          image: docker:27-dind
+          imagePullPolicy: IfNotPresent
+          args:
+            - --host=tcp://0.0.0.0:2375
+            - --storage-driver=overlay2
+            - --log-level=error
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: ""
+          securityContext:
+            privileged: true
+          ports:
+            - name: docker
+              containerPort: 2375
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          volumeMounts:
+            - name: docker-graph
+              mountPath: /var/lib/docker
+      volumes:
+        - name: docker-graph
+          emptyDir: {}

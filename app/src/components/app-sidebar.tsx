@@ -22,6 +22,7 @@ import {
   EthernetPort,
   Variable,
   UserCog,
+  UserPlus,
   Tally4,
   type LucideIcon,
   ClipboardList,
@@ -192,7 +193,7 @@ const data = {
     {
       title: "Super Admin",
       url: "/super-admin",
-      icon: UserCog,
+      icon: UserPlus,
     },
   ],
   OrgAdmin: [
@@ -208,7 +209,7 @@ const data = {
       title: "Docs",
       url: "https://github.com/supercheck-io/supercheck",
       icon: BookOpenText,
-      badge: "v1.1.7-beta.17",
+      badge: "v1.1.8-beta.4",
     },
     // {
     //   title: "Changelog",
@@ -301,10 +302,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
     const baseSettings: AdminItem[] = [];
 
+    if (isOrgAdmin) {
+      baseSettings.push(...(data.OrgAdmin as AdminItem[]));
+    }
+
     if (isAdmin) {
       baseSettings.push(...(data.SuperAdmin as AdminItem[]));
-    } else if (isOrgAdmin) {
-      baseSettings.push(...(data.OrgAdmin as AdminItem[]));
     }
 
     return baseSettings;

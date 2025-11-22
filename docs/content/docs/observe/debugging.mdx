@@ -4,8 +4,6 @@ description: Debug test failures with comprehensive execution context
 icon: Bug
 ---
 
-# Debugging with Traces
-
 Use distributed tracing to quickly identify and fix test failures with detailed execution context.
 
 <Callout type="info">
@@ -33,9 +31,8 @@ Trace-based debugging provides:
 
 <Steps>
   <Step>Navigate to **Observe → Traces**</Step>
-  <Step>Filter by **Status: Failed** or **Status: Error**</Step>
-  <Step>Filter by time range when failure occurred</Step>
-  <Step>Click the failed trace to open details</Step>
+  <Step>Filter by **Status: Failed**/**Error** and the time range</Step>
+  <Step>Open a failed trace to investigate</Step>
 </Steps>
 
 ### Step 2: Identify the Failure Point
@@ -72,7 +69,7 @@ Check what happened before the failure:
 1. Were there slow operations?
 2. Did any network requests fail?
 3. Was there unusual timing?
-4. Were there errors in earlier spans?
+4. Did earlier spans already show degraded behavior?
 
 ### Step 5: Compare with Successful Run
 
@@ -98,11 +95,10 @@ Duration: 30.0s (timeout)
 
 **Debugging Steps**:
 <Steps>
-  <Step>Check screenshot at time of failure</Step>
-  <Step>Review previous navigation - did page load?</Step>
-  <Step>Check network spans - were there failed requests?</Step>
-  <Step>Look for timing issues - did element load after timeout?</Step>
-  <Step>Verify selector is correct</Step>
+  <Step>Check screenshot at time of failure.</Step>
+  <Step>Review navigation/network spans for load failures.</Step>
+  <Step>Verify selector and wait conditions.</Step>
+  <Step>Adjust timeouts only if required by real user behavior.</Step>
 </Steps>
 
 **Common Causes**:
@@ -126,11 +122,10 @@ Duration: 2.3s
 
 **Debugging Steps**:
 <Steps>
-  <Step>Check status code (4xx vs 5xx)</Step>
-  <Step>Review request payload in span attributes</Step>
-  <Step>Check response body for error message</Step>
-  <Step>Review prior spans - was authentication successful?</Step>
-  <Step>Check if API is down (other tests failing?)</Step>
+  <Step>Check status code and response body.</Step>
+  <Step>Inspect request payload/headers in span attributes.</Step>
+  <Step>Confirm auth spans succeeded.</Step>
+  <Step>See if other tests to same API failed (system issue vs test issue).</Step>
 </Steps>
 
 **Common Causes**:
@@ -154,11 +149,10 @@ Duration: 30.0s
 
 **Debugging Steps**:
 <Steps>
-  <Step>Review timeline - what was happening during timeout?</Step>
-  <Step>Check if network requests were stuck</Step>
-  <Step>Look for infinite loading states</Step>
-  <Step>Verify element selector and conditions</Step>
-  <Step>Check for performance issues in prior spans</Step>
+  <Step>Review timeline—what else ran during the wait?</Step>
+  <Step>Check pending network requests.</Step>
+  <Step>Confirm selector/condition is correct and reachable.</Step>
+  <Step>Spot performance regressions earlier in the run.</Step>
 </Steps>
 
 **Common Causes**:
@@ -183,11 +177,10 @@ actual: "Welcome, Guest"
 
 **Debugging Steps**:
 <Steps>
-  <Step>Review expected vs actual values</Step>
-  <Step>Check prior operations - did login succeed?</Step>
-  <Step>Look for data issues in network responses</Step>
-  <Step>Verify test data setup was successful</Step>
-  <Step>Check for timing issues (data not loaded yet)</Step>
+  <Step>Compare expected vs actual from the span payload.</Step>
+  <Step>Verify setup steps (login/data seeding) succeeded.</Step>
+  <Step>Check response data for mismatches.</Step>
+  <Step>Confirm timing—was data loaded before asserting?</Step>
 </Steps>
 
 **Common Causes**:

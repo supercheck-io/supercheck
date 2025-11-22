@@ -26,6 +26,7 @@ import {
   BellOff,
   FolderOpen,
   Copy,
+  ChartNoAxesCombined,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { ReportViewer } from "@/components/shared/report-viewer";
@@ -439,7 +440,9 @@ export function MonitorDetailClient({
         uptime24h: "N/A",
         uptime30d: "N/A",
         avgResponse24h: "N/A",
+        p95Response24h: "N/A",
         avgResponse30d: "N/A",
+        p95Response30d: "N/A",
       };
     }
 
@@ -510,15 +513,53 @@ export function MonitorDetailClient({
           )
         : null;
 
+    // Calculate P95 response time for 24h
+    let p95Response24hMs: number | null = null;
+    if (validResponseTimes24h.length > 0) {
+      // Sort response times in ascending order
+      const sortedTimes = [...validResponseTimes24h].sort((a, b) => a - b);
+      // Calculate the index for the 95th percentile with proper bounds checking
+      const index = Math.min(
+        Math.floor(0.95 * sortedTimes.length),
+        sortedTimes.length - 1
+      );
+      p95Response24hMs = sortedTimes[index];
+    }
+
+    // Calculate P95 response time for 30d
+    let p95Response30dMs: number | null = null;
+    if (validResponseTimes30d.length > 0) {
+      // Sort response times in ascending order
+      const sortedTimes = [...validResponseTimes30d].sort((a, b) => a - b);
+      // Calculate the index for the 95th percentile with proper bounds checking
+      const index = Math.min(
+        Math.floor(0.95 * sortedTimes.length),
+        sortedTimes.length - 1
+      );
+      p95Response30dMs = sortedTimes[index];
+    }
+
     return {
       uptime24h:
         results24h.length > 0 ? `${uptime24hPercent.toFixed(1)}%` : "N/A",
       uptime30d:
         results30d.length > 0 ? `${uptime30dPercent.toFixed(1)}%` : "N/A",
       avgResponse24h:
-        avgResponse24hMs !== null ? `${avgResponse24hMs} ms` : "N/A",
+        avgResponse24hMs !== null
+          ? `${(avgResponse24hMs / 1000).toFixed(2)} s`
+          : "N/A",
+      p95Response24h:
+        p95Response24hMs !== null
+          ? `${(p95Response24hMs / 1000).toFixed(2)} s`
+          : "N/A",
       avgResponse30d:
-        avgResponse30dMs !== null ? `${avgResponse30dMs} ms` : "N/A",
+        avgResponse30dMs !== null
+          ? `${(avgResponse30dMs / 1000).toFixed(2)} s`
+          : "N/A",
+      p95Response30d:
+        p95Response30dMs !== null
+          ? `${(p95Response30dMs / 1000).toFixed(2)} s`
+          : "N/A",
     };
   }, [monitor.recentResults, selectedLocation]);
 
@@ -632,7 +673,7 @@ export function MonitorDetailClient({
     latestResult &&
     latestResult.responseTimeMs !== undefined &&
     latestResult.responseTimeMs !== null
-      ? `${latestResult.responseTimeMs} ms`
+      ? `${(latestResult.responseTimeMs / 1000).toFixed(2)} s`
       : "N/A";
 
   // Prepare data for AvailabilityBarChart (single location or filtered)
@@ -1048,16 +1089,16 @@ export function MonitorDetailClient({
         </div>
 
         {/* Location Filter */}
-        <div className="grid gap-4 mt-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 m-2">
+        <div className="grid gap-4 mt-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-9 m-2">
           <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
             <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
               <StatusHeaderIcon status={currentActualStatus} />
-              <CardTitle className="text-sm font-medium text-muted-foreground">
+              <CardTitle className="text-xs font-semibold text-muted-foreground">
                 Status
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-4 px-4">
-              <div className="text-xl font-semibold">
+              <div className="text-lg font-semibold">
                 {statusInfo?.label ??
                   (currentActualStatus
                     ? currentActualStatus.charAt(0).toUpperCase() +
@@ -1070,12 +1111,12 @@ export function MonitorDetailClient({
           <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
             <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
               <Clock className="h-5 w-5 text-purple-500" />
-              <CardTitle className="text-sm font-medium text-muted-foreground">
+              <CardTitle className="text-xs font-semibold text-muted-foreground">
                 Interval
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-4 px-4">
-              <div className="text-xl font-semibold">
+              <div className="text-lg font-semibold">
                 {monitor.frequencyMinutes
                   ? `${monitor.frequencyMinutes}m`
                   : "N/A"}
@@ -1086,25 +1127,28 @@ export function MonitorDetailClient({
           <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
             <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
               <Activity className="h-5 w-5 text-blue-500" />
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Response Time
+              <CardTitle className="text-xs font-semibold text-muted-foreground">
+                Resp Time
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-4 px-4">
-              <div className="text-xl font-semibold">{currentResponseTime}</div>
+              <div className="text-lg font-semibold">{currentResponseTime}</div>
             </CardContent>
           </Card>
 
           <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
             <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
               <TrendingUp className="h-5 w-5 text-green-400" />
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Uptime (24h)
+              <CardTitle className="text-xs font-semibold text-muted-foreground">
+                Uptime
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-4 px-4">
-              <div className="text-xl font-semibold">
+              <div className="text-lg font-semibold flex items-center gap-2">
                 {calculatedMetrics.uptime24h}
+                <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
+                  24h
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -1112,13 +1156,33 @@ export function MonitorDetailClient({
           <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
             <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
               <Zap className="h-5 w-5 text-sky-500" />
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Avg Resp (24h)
+              <CardTitle className="text-xs font-semibold text-muted-foreground">
+                Avg Resp
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-4 px-4">
-              <div className="text-xl font-semibold">
+              <div className="text-lg font-semibold flex items-center gap-2">
                 {calculatedMetrics.avgResponse24h}
+                <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
+                  24h
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
+            <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
+              <ChartNoAxesCombined className="h-5 w-5 text-orange-500" />
+              <CardTitle className="text-xs font-semibold text-muted-foreground">
+                P95 Resp
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pb-4 px-4">
+              <div className="text-lg font-semibold flex items-center gap-2">
+                {calculatedMetrics.p95Response24h}
+                <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
+                  24h
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -1126,13 +1190,16 @@ export function MonitorDetailClient({
           <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
             <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
               <TrendingUp className="h-5 w-5 text-green-400" />
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Uptime (30d)
+              <CardTitle className="text-xs font-semibold text-muted-foreground">
+                Uptime
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-4 px-4">
-              <div className="text-xl font-semibold">
+              <div className="text-lg font-semibold flex items-center gap-2">
                 {calculatedMetrics.uptime30d}
+                <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
+                  30d
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -1140,13 +1207,33 @@ export function MonitorDetailClient({
           <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
             <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
               <Zap className="h-5 w-5 text-sky-500" />
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Avg Resp (30d)
+              <CardTitle className="text-xs font-semibold text-muted-foreground">
+                Avg Resp
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-4 px-4">
-              <div className="text-xl font-semibold">
+              <div className="text-lg font-semibold flex items-center gap-2">
                 {calculatedMetrics.avgResponse30d}
+                <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
+                  30d
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
+            <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
+              <ChartNoAxesCombined className="h-5 w-5 text-orange-500" />
+              <CardTitle className="text-xs font-semibold text-muted-foreground">
+                P95 Resp
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pb-4 px-4">
+              <div className="text-lg font-semibold flex items-center gap-2">
+                {calculatedMetrics.p95Response30d}
+                <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
+                  30d
+                </span>
               </div>
             </CardContent>
           </Card>
@@ -1268,7 +1355,7 @@ export function MonitorDetailClient({
                         scope="col"
                         className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-60"
                       >
-                        Response Time (ms)
+                        Response Time
                       </th>
                       <th
                         scope="col"
@@ -1373,7 +1460,7 @@ export function MonitorDetailClient({
                             <td className="px-4 py-[11.5px] whitespace-nowrap text-sm text-muted-foreground">
                               {result.responseTimeMs !== null &&
                               result.responseTimeMs !== undefined
-                                ? result.responseTimeMs
+                                ? `${(result.responseTimeMs / 1000).toFixed(2)} s`
                                 : "N/A"}
                             </td>
                             <td className="px-4 py-[11.5px] text-sm text-muted-foreground">

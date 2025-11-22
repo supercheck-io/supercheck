@@ -34,6 +34,7 @@ interface VariableDialogProps {
   projectId: string;
   variable?: Variable | null;
   onSuccess: () => void;
+  defaultIsSecret?: boolean;
 }
 
 export function VariableDialog({
@@ -41,15 +42,17 @@ export function VariableDialog({
   onOpenChange,
   projectId,
   variable,
-  onSuccess
+  onSuccess,
+  defaultIsSecret = false
 }: VariableDialogProps) {
   const [formData, setFormData] = useState<VariableFormData>({
     key: '',
     value: '',
     description: '',
-    isSecret: false
+    isSecret: defaultIsSecret
   });
   const [loading, setLoading] = useState(false);
+  const [fetchingData, setFetchingData] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const isEditing = !!variable;
@@ -58,6 +61,7 @@ export function VariableDialog({
     if (variable && open) {
       // Fetch the variable from API to get decrypted value for secrets
       const fetchVariable = async () => {
+        setFetchingData(true);
         try {
           const response = await fetch(
             `/api/projects/${projectId}/variables/${variable.id}`
@@ -95,6 +99,8 @@ export function VariableDialog({
               ? variable.isSecret === 'true'
               : variable.isSecret
           });
+        } finally {
+          setFetchingData(false);
         }
       };
 
@@ -104,17 +110,20 @@ export function VariableDialog({
         key: '',
         value: '',
         description: '',
-        isSecret: false
+        isSecret: defaultIsSecret
       });
+      setFetchingData(false);
     }
     setErrors({});
-  }, [variable, open, projectId]);
+  }, [variable, open, projectId, defaultIsSecret]);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.key.trim()) {
       newErrors.key = "Variable name is required";
+    } else if (formData.key.length < 4 || formData.key.length > 20) {
+      newErrors.key = "Variable name must be between 4 and 20 characters";
     } else if (!/^[A-Z][A-Z0-9_]*$/.test(formData.key)) {
       newErrors.key = "Variable name must start with a letter and contain only uppercase letters, numbers, and underscores";
     }
@@ -123,8 +132,12 @@ export function VariableDialog({
       newErrors.value = "Value is required";
     }
 
-    if (formData.description && formData.description.length > 500) {
-      newErrors.description = "Description must be less than 500 characters";
+    if (!formData.description.trim()) {
+      newErrors.description = "Description is required";
+    } else if (formData.description.length < 20) {
+      newErrors.description = "Description must be at least 20 characters";
+    } else if (formData.description.length > 300) {
+      newErrors.description = "Description must be less than 300 characters";
     }
 
     setErrors(newErrors);
@@ -216,7 +229,7 @@ export function VariableDialog({
                 placeholder="e.g., API_KEY, DB_URL (4-20 chars)"
                 value={formData.key}
                 onChange={handleKeyChange}
-                disabled={loading}
+                disabled={loading || fetchingData}
                 className={errors.key ? "border-destructive" : ""}
               />
               {errors.key && (
@@ -228,21 +241,21 @@ export function VariableDialog({
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="value" className="text-sm font-medium">Value</Label>
+              <Label htmlFor="value" className="text-sm font-medium">Value *</Label>
               <Input
                 id="value"
                 type={formData.isSecret ? "password" : "text"}
                 placeholder={formData.isSecret ? "Enter secret value" : "Enter value"}
                 value={formData.value}
                 onChange={(e) => setFormData({ ...formData, value: e.target.value })}
-                disabled={loading}
+                disabled={loading || fetchingData}
                 className={errors.value ? "border-destructive" : ""}
               />
               {errors.value && (
                 <p className="text-sm text-destructive">{errors.value}</p>
               )}
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="description" className="text-sm font-medium">Description *</Label>
               <Textarea
@@ -251,7 +264,7 @@ export function VariableDialog({
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={3}
-                disabled={loading}
+                disabled={loading || fetchingData}
                 className={errors.description ? "border-destructive" : ""}
               />
               {errors.description && (
@@ -268,7 +281,7 @@ export function VariableDialog({
                   id="secret"
                   checked={formData.isSecret}
                   onCheckedChange={(checked) => setFormData({ ...formData, isSecret: !!checked })}
-                  disabled={loading}
+                  disabled={loading || fetchingData}
                 />
                 <Label htmlFor="secret" className="text-sm font-medium cursor-pointer">
                   Mark as secret
@@ -294,20 +307,30 @@ export function VariableDialog({
   
           
           <DialogFooter>
-            <Button 
-              type="button" 
-              variant="outline" 
+            <Button
+              type="button"
+              variant="outline"
               onClick={() => onOpenChange(false)}
-              disabled={loading}
+              disabled={loading || fetchingData}
             >
               Cancel
             </Button>
-            <Button 
+            <Button
               type="submit"
-              disabled={loading || !formData.key.trim() || !formData.value.trim() || !formData.description.trim()}
+              disabled={
+                loading ||
+                fetchingData ||
+                !formData.key.trim() ||
+                !formData.value.trim() ||
+                !formData.description.trim() ||
+                formData.key.length < 4 ||
+                formData.description.length < 20
+              }
             >
-              {loading 
+              {loading
                 ? (isEditing ? 'Updating...' : 'Creating...')
+                : fetchingData
+                ? 'Loading...'
                 : (isEditing ? 'Update Variable' : 'Add Variable')
               }
             </Button>
