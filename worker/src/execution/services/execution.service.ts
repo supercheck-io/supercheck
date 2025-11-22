@@ -113,6 +113,8 @@ export class ExecutionService implements OnModuleDestroy {
   private readonly jobExecutionTimeoutMs: number;
   private readonly playwrightConfigPath: string;
   private readonly maxConcurrentExecutions: number; // Configurable via MAX_CONCURRENT_EXECUTIONS env var
+  private readonly containerCpuLimit: number;
+  private readonly containerMemoryLimitMb: number;
   private readonly memoryThresholdMB = 2048; // 2GB memory threshold
   private activeExecutions: Map<
     string,
@@ -152,6 +154,15 @@ export class ExecutionService implements OnModuleDestroy {
       ? Math.max(1, parsedConcurrency)
       : 5; // Default to 5 concurrent executions if not provided
 
+    // Container resource limits
+    this.containerCpuLimit = parseFloat(
+      this.configService.get<string>('CONTAINER_CPU_LIMIT', '1.0'),
+    );
+    this.containerMemoryLimitMb = parseInt(
+      this.configService.get<string>('CONTAINER_MEMORY_LIMIT_MB', '1536'),
+      10,
+    );
+
     // Determine Playwright config path
     const configPath = path.join(process.cwd(), 'playwright.config.js');
     if (!existsSync(configPath)) {
@@ -181,6 +192,9 @@ export class ExecutionService implements OnModuleDestroy {
     // Log configuration
     this.logger.log(
       `Max concurrent executions: ${this.maxConcurrentExecutions}`,
+    );
+    this.logger.log(
+      `Container limits: CPU=${this.containerCpuLimit}, Memory=${this.containerMemoryLimitMb}MB`,
     );
     this.logger.log(`Memory threshold: ${this.memoryThresholdMB}MB`);
 
@@ -1419,8 +1433,8 @@ export class ExecutionService implements OnModuleDestroy {
           timeoutMs: options.timeout,
           env: options.env as Record<string, string>,
           workingDir: options.workingDir || '/worker',
-          memoryLimitMb: 1536, // 1.5GB for Playwright (reduced for 2 concurrent executions)
-          cpuLimit: 1.0, // 1.0 CPU (reduced for 2 concurrent executions)
+          memoryLimitMb: this.containerMemoryLimitMb,
+          cpuLimit: this.containerCpuLimit,
           networkMode: 'bridge', // Allow network for Playwright
           autoRemove: true, // Will be disabled automatically if extraction is requested
           extractFromContainer: options.extractFromContainer,

@@ -338,6 +338,10 @@ Optimized Docker configuration for memory management:
 - Garbage collection enabled
 - Max old space size: 2048MB
 
+**Container Execution:**
+- Memory limit: 2048MB (Configurable via `CONTAINER_MEMORY_LIMIT_MB`)
+- CPU limit: 1.5 cores (Configurable via `CONTAINER_CPU_LIMIT`)
+
 ### Redis Configuration
 
 Memory-limited Redis with proper resource constraints:

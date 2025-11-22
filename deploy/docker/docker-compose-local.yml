@@ -48,6 +48,8 @@ x-common-env: &common-env # Database Configuration
   RUNNING_CAPACITY: 1 # Single worker replica × 1 concurrent run for local dev
   QUEUED_CAPACITY: 10
   MAX_CONCURRENT_EXECUTIONS: 1 # One Playwright run per worker; bump replicas instead of this value
+  CONTAINER_CPU_LIMIT: 1.5 # Increased for 2 CPU nodes
+  CONTAINER_MEMORY_LIMIT_MB: 2048 # Increased for 4GB nodes
   TEST_EXECUTION_TIMEOUT_MS: 120000
   JOB_EXECUTION_TIMEOUT_MS: 900000
   K6_TEST_EXECUTION_TIMEOUT_MS: 3600000

@@ -24,6 +24,8 @@ x-common-env: &common-env # Database Configuration
   RUNNING_CAPACITY: ${RUNNING_CAPACITY:-4} # 4 worker replicas × 1 concurrent run (keep env + replicas in sync)
   QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10} # Max queued jobs before backpressure (default: 10)
   MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-1} # One Playwright run per worker for Medium instances; scale replicas for concurrency
+  CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5} # Increased for 2 CPU nodes
+  CONTAINER_MEMORY_LIMIT_MB: ${CONTAINER_MEMORY_LIMIT_MB:-2048} # Increased for 4GB nodes
   TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-120000}
   JOB_EXECUTION_TIMEOUT_MS: ${JOB_EXECUTION_TIMEOUT_MS:-900000}
   K6_TEST_EXECUTION_TIMEOUT_MS: ${K6_TEST_EXECUTION_TIMEOUT_MS:-3600000}
@@ -141,10 +143,9 @@ services:
       - supercheck-network
     restart: unless-stopped
 
-  
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.1.7-beta.17
+    image: ghcr.io/supercheck-io/supercheck/app:1.1.8-beta.6
     expose:
       - "3000"
     environment:
@@ -219,7 +220,7 @@ services:
   # Worker (NestJS Runner) - Container-based test execution
   # Tests run in isolated Docker containers (Playwright/K6), not inside worker
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.1.7-beta.17
+    image: ghcr.io/supercheck-io/supercheck/worker:1.1.8-beta.6
     environment:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)
