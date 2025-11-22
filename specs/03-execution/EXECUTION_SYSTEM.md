@@ -1169,6 +1169,8 @@ graph LR
 
 ### Scaling Docker Compose Deployments
 
+> **Note:** For Kubernetes deployments, we use **KEDA** for event-driven autoscaling based on BullMQ queue depth. See [SCALING_GUIDE.md](../08-operations/SCALING_GUIDE.md#kubernetes-autoscaling-keda) for details.
+
 **Horizontal Scaling Strategy:**
 
 ```mermaid

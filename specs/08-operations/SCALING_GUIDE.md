@@ -539,6 +539,51 @@ WORKER_REPLICAS=4 MAX_CONCURRENT_EXECUTIONS=1 RUNNING_CAPACITY=4 docker-compose 
 1. **Monitor your deployment** using the provided scripts
 2. **Adjust scaling parameters** based on your workload
 3. **Implement automated scaling** if needed
+
+## Kubernetes Autoscaling (KEDA)
+
+For Kubernetes deployments, Supercheck supports **KEDA (Kubernetes Event-driven Autoscaling)** to automatically scale worker pods based on the number of jobs waiting in the BullMQ queues.
+
+### Configuration
+
+The autoscaling configuration is defined in `deploy/k8s/keda-scaledobject.yaml`. It uses the Redis scaler to monitor the length of the following Redis lists:
+
+-   `bull:job-execution:wait`: Jobs waiting for general execution
+-   `bull:test-execution:wait`: Jobs waiting for test execution
+
+### ScaledObject Details
+
+```yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: supercheck-worker-scaler
+spec:
+  scaleTargetRef:
+    name: supercheck-worker
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  triggers:
+    - type: redis
+      metadata:
+        listName: bull:job-execution:wait
+        listLength: "5"
+```
+
+-   **minReplicaCount**: Minimum number of worker pods (default: 1).
+-   **maxReplicaCount**: Maximum number of worker pods (default: 10).
+-   **listLength**: Target number of waiting jobs per pod. If the queue length exceeds this value, KEDA will scale up the workers.
+
+### Deployment
+
+To enable KEDA autoscaling:
+
+1.  Ensure KEDA is installed in your Kubernetes cluster.
+2.  Apply the KEDA manifests along with the rest of the deployment:
+    ```bash
+    kubectl apply -k deploy/k8s
+    ```
+
 4. **Set up monitoring and alerting** for production
 5. **Review performance metrics** regularly
 
