@@ -24,52 +24,55 @@ export const OrganizationInvitationEmail = ({
     <BaseLayout
       preview={`You're invited to join ${organizationName} on Supercheck`}
       title="Team Invitation"
+      headerColor="#16a34a" // Green-600
     >
-      {/* Main Content */}
-      <Text style={heading}>You&apos;re Invited!</Text>
+      <Section style={contentSection}>
+        {/* Main Content */}
+        <Text style={heading}>You&apos;re Invited!</Text>
 
-      <Text style={paragraph}>
-        You&apos;ve been invited to join <strong>{organizationName}</strong> on
-        Supercheck.
-      </Text>
+        <Text style={paragraph}>
+          You&apos;ve been invited to join <strong>{organizationName}</strong> on
+          Supercheck.
+        </Text>
 
-      <Section style={roleBox}>
-        <Text style={roleLabel}>Your Role</Text>
-        <Text style={roleValue}>{role.toUpperCase()}</Text>
-      </Section>
-
-      {projectInfo && (
-        <Section style={infoBox}>
-          <Text style={infoTitle}>Project Access</Text>
-          <Text
-            style={infoText}
-            dangerouslySetInnerHTML={{ __html: projectInfo }}
-          />
+        <Section style={roleBox}>
+          <Text style={roleLabel}>Your Role</Text>
+          <Text style={roleValue}>{role.toUpperCase()}</Text>
         </Section>
-      )}
 
-      <Text style={paragraph}>
-        Click the button below to accept your invitation and get started:
-      </Text>
+        {projectInfo && (
+          <Section style={infoBox}>
+            <Text style={infoTitle}>Project Access</Text>
+            <Text
+              style={infoText}
+              dangerouslySetInnerHTML={{ __html: projectInfo }}
+            />
+          </Section>
+        )}
 
-      {/* CTA Button */}
-      <Section style={buttonContainer}>
-        <Button style={button} href={inviteUrl}>
-          Accept Invitation
-        </Button>
-      </Section>
-
-      <Hr style={hr} />
-
-      {/* Expiry Notice */}
-      <Section style={noticeBox}>
-        <Text style={noticeText}>
-          This invitation expires in <strong>7 days</strong>.
+        <Text style={paragraph}>
+          Click the button below to accept your invitation and get started:
         </Text>
-        <Text style={noticeText}>
-          If you didn&apos;t expect this invitation, you can safely ignore this
-          email.
-        </Text>
+
+        {/* CTA Button */}
+        <Section style={buttonContainer}>
+          <Button style={button} href={inviteUrl}>
+            Accept Invitation
+          </Button>
+        </Section>
+
+        <Hr style={hr} />
+
+        {/* Expiry Notice */}
+        <Section style={noticeBox}>
+          <Text style={noticeText}>
+            This invitation expires in <strong>7 days</strong>.
+          </Text>
+          <Text style={noticeText}>
+            If you didn&apos;t expect this invitation, you can safely ignore this
+            email.
+          </Text>
+        </Section>
       </Section>
     </BaseLayout>
   );
@@ -79,6 +82,10 @@ export const OrganizationInvitationEmail = ({
 // TEXT STYLES
 // ============================================================================
 
+const contentSection = {
+  padding: "32px 32px 0",
+};
+
 const heading = {
   color: "#111827",
   fontSize: "24px",
@@ -86,6 +93,7 @@ const heading = {
   lineHeight: "1.3",
   margin: "0 0 24px",
   textAlign: "center" as const,
+  letterSpacing: "-0.025em",
 };
 
 const paragraph = {
@@ -103,24 +111,24 @@ const paragraph = {
 const roleBox = {
   backgroundColor: "#f9fafb",
   border: "1px solid #e5e7eb",
-  borderRadius: "6px",
-  padding: "16px",
+  borderRadius: "8px",
+  padding: "20px",
   margin: "0 0 24px",
   textAlign: "center" as const,
 };
 
 const roleLabel = {
   color: "#6b7280",
-  fontSize: "11px",
+  fontSize: "12px",
   fontWeight: "700" as const,
   textTransform: "uppercase" as const,
-  letterSpacing: "0.5px",
-  margin: "0 0 6px",
+  letterSpacing: "0.05em",
+  margin: "0 0 8px",
 };
 
 const roleValue = {
   color: "#111827",
-  fontSize: "16px",
+  fontSize: "18px",
   fontWeight: "600" as const,
   margin: "0",
 };
@@ -132,7 +140,7 @@ const roleValue = {
 const infoBox = {
   backgroundColor: "#f8fafc",
   border: "1px solid #e2e8f0",
-  borderRadius: "6px",
+  borderRadius: "8px",
   padding: "20px",
   margin: "0 0 24px",
 };
@@ -142,6 +150,8 @@ const infoTitle = {
   fontSize: "14px",
   fontWeight: "700" as const,
   margin: "0 0 12px",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.05em",
 };
 
 const infoText = {
@@ -182,18 +192,19 @@ const hr = {
 // ============================================================================
 
 const noticeBox = {
-  backgroundColor: "#fef3c7",
-  border: "1px solid #fbbf24",
-  borderRadius: "6px",
+  backgroundColor: "#fffbeb",
+  border: "1px solid #fcd34d",
+  borderRadius: "8px",
   padding: "16px 20px",
-  margin: "0",
+  margin: "0 0 32px",
 };
 
 const noticeText = {
   color: "#92400e",
   fontSize: "13px",
   lineHeight: "1.6",
-  margin: "0 0 6px",
+  margin: "0 0 4px",
+  textAlign: "center" as const,
 };
 
 export default OrganizationInvitationEmail;

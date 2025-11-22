@@ -28,6 +28,12 @@ import {
 let emailTemplateWorker: Worker<EmailTemplateJob, RenderedEmailResult> | null =
   null;
 
+// Standardized colors matching Job templates
+const COLOR_SUCCESS = "#10b981"; // Green
+const COLOR_FAILURE = "#dc2626"; // Red
+const COLOR_WARNING = "#f59e0b"; // Amber
+const COLOR_INFO = "#10b981";    // Green (using Success color for Info/Transactional to maintain consistency)
+
 /**
  * Process an email template rendering job
  */
@@ -41,31 +47,32 @@ async function processEmailTemplateJob(
   );
 
   try {
-    // Dynamic import in development to pick up hot-reloaded changes
-    const isDev = process.env.NODE_ENV !== 'production';
-    const emailRenderer = isDev
-      ? await import('../email-renderer')
-      : {
-          renderMonitorAlertEmail,
-          renderPasswordResetEmail,
-          renderOrganizationInvitationEmail,
-          renderStatusPageVerificationEmail,
-          renderStatusPageWelcomeEmail,
-          renderIncidentNotificationEmail,
-          renderTestEmail,
-        };
+    // Use static imports for email renderer
+    const emailRenderer = {
+      renderMonitorAlertEmail,
+      renderPasswordResetEmail,
+      renderOrganizationInvitationEmail,
+      renderStatusPageVerificationEmail,
+      renderStatusPageWelcomeEmail,
+      renderIncidentNotificationEmail,
+      renderTestEmail,
+    };
 
     let result: RenderedEmailResult;
 
     switch (template) {
       case "monitor-alert":
+        const type = (data.type as "failure" | "success" | "warning") || "failure";
+        // Enforce consistent colors based on type, ignoring data.color to ensure uniformity
+        const color = type === 'success' ? COLOR_SUCCESS : type === 'warning' ? COLOR_WARNING : COLOR_FAILURE;
+        
         result = await emailRenderer.renderMonitorAlertEmail({
           title: data.title || "Monitor Alert",
           message: data.message || "",
           fields: data.fields || [],
           footer: data.footer || "Supercheck Monitoring System",
-          type: (data.type as "failure" | "success" | "warning") || "failure",
-          color: data.color || "#dc2626",
+          type: type,
+          color: color,
         });
         break;
 
@@ -76,7 +83,7 @@ async function processEmailTemplateJob(
           errorMessage: data.errorMessage,
           runId: data.runId,
           dashboardUrl: data.dashboardUrl,
-        });
+        }, emailRenderer.renderMonitorAlertEmail);
         break;
 
       case "job-success":
@@ -85,7 +92,7 @@ async function processEmailTemplateJob(
           duration: data.duration || 0,
           runId: data.runId,
           dashboardUrl: data.dashboardUrl,
-        });
+        }, emailRenderer.renderMonitorAlertEmail);
         break;
 
       case "job-timeout":
@@ -94,7 +101,7 @@ async function processEmailTemplateJob(
           duration: data.duration || 0,
           runId: data.runId,
           dashboardUrl: data.dashboardUrl,
-        });
+        }, emailRenderer.renderMonitorAlertEmail);
         break;
 
       case "status-page-verification":
@@ -176,13 +183,16 @@ async function processEmailTemplateJob(
  * Render job failure email template
  * Generic template without test statistics (users can view full details in dashboard)
  */
-async function renderJobFailureEmail(params: {
-  jobName: string;
-  duration: number;
-  errorMessage?: string;
-  runId?: string;
-  dashboardUrl?: string;
-}): Promise<RenderedEmailResult> {
+async function renderJobFailureEmail(
+  params: {
+    jobName: string;
+    duration: number;
+    errorMessage?: string;
+    runId?: string;
+    dashboardUrl?: string;
+  },
+  renderFn: typeof renderMonitorAlertEmail
+): Promise<RenderedEmailResult> {
   const fields: Array<{ title: string; value: string }> = [
     { title: "Job Name", value: params.jobName },
     { title: "Status", value: "Failed" },
@@ -197,15 +207,17 @@ async function renderJobFailureEmail(params: {
     fields.push({ title: "Run ID", value: params.runId });
   }
 
-  return renderMonitorAlertEmail({
+  if (params.dashboardUrl) {
+    fields.push({ title: "🔗 Job Details", value: params.dashboardUrl });
+  }
+
+  return renderFn({
     title: `Job Failed - ${params.jobName}`,
     message: `Job "${params.jobName}" has failed. Please review the details below.`,
     fields,
-    footer: params.dashboardUrl
-      ? `View details: ${params.dashboardUrl}`
-      : "Supercheck Job Monitoring",
+    footer: "Supercheck Job Monitoring",
     type: "failure",
-    color: "#dc2626",
+    color: COLOR_FAILURE,
   });
 }
 
@@ -213,12 +225,15 @@ async function renderJobFailureEmail(params: {
  * Render job success email template
  * Generic template without test statistics (users can view full details in dashboard)
  */
-async function renderJobSuccessEmail(params: {
-  jobName: string;
-  duration: number;
-  runId?: string;
-  dashboardUrl?: string;
-}): Promise<RenderedEmailResult> {
+async function renderJobSuccessEmail(
+  params: {
+    jobName: string;
+    duration: number;
+    runId?: string;
+    dashboardUrl?: string;
+  },
+  renderFn: typeof renderMonitorAlertEmail
+): Promise<RenderedEmailResult> {
   const fields: Array<{ title: string; value: string }> = [
     { title: "Job Name", value: params.jobName },
     { title: "Status", value: "Success" },
@@ -229,27 +244,32 @@ async function renderJobSuccessEmail(params: {
     fields.push({ title: "Run ID", value: params.runId });
   }
 
-  return renderMonitorAlertEmail({
+  if (params.dashboardUrl) {
+    fields.push({ title: "🔗 Job Details", value: params.dashboardUrl });
+  }
+
+  return renderFn({
     title: `Job Completed - ${params.jobName}`,
     message: `Job "${params.jobName}" has completed successfully.`,
     fields,
-    footer: params.dashboardUrl
-      ? `View details: ${params.dashboardUrl}`
-      : "Supercheck Job Monitoring",
+    footer: "Supercheck Job Monitoring",
     type: "success",
-    color: "#10b981",
+    color: COLOR_SUCCESS,
   });
 }
 
 /**
  * Render job timeout email template
  */
-async function renderJobTimeoutEmail(params: {
-  jobName: string;
-  duration: number;
-  runId?: string;
-  dashboardUrl?: string;
-}): Promise<RenderedEmailResult> {
+async function renderJobTimeoutEmail(
+  params: {
+    jobName: string;
+    duration: number;
+    runId?: string;
+    dashboardUrl?: string;
+  },
+  renderFn: typeof renderMonitorAlertEmail
+): Promise<RenderedEmailResult> {
   const fields: Array<{ title: string; value: string }> = [
     { title: "Job Name", value: params.jobName },
     { title: "Status", value: "Timeout" },
@@ -260,15 +280,17 @@ async function renderJobTimeoutEmail(params: {
     fields.push({ title: "Run ID", value: params.runId });
   }
 
-  return renderMonitorAlertEmail({
+  if (params.dashboardUrl) {
+    fields.push({ title: "🔗 Job Details", value: params.dashboardUrl });
+  }
+
+  return renderFn({
     title: `Job Timeout - ${params.jobName}`,
     message: `Job "${params.jobName}" timed out after ${params.duration} seconds. No ping received within expected interval.`,
     fields,
-    footer: params.dashboardUrl
-      ? `View details: ${params.dashboardUrl}`
-      : "Supercheck Job Monitoring",
+    footer: "Supercheck Job Monitoring",
     type: "warning",
-    color: "#f59e0b",
+    color: COLOR_WARNING,
   });
 }
 
@@ -486,10 +508,13 @@ function getTemplateConfig(template: string, data: EmailTemplateData): {
 } {
   switch (template) {
     case "monitor-alert":
+      const type = (data.type as "failure" | "success" | "warning") || "failure";
+      const color = type === 'success' ? COLOR_SUCCESS : type === 'warning' ? COLOR_WARNING : COLOR_FAILURE;
+      
       return {
         title: data.title || "Monitor Alert",
         message: data.message || "",
-        color: data.color || "#dc2626",
+        color: color,
         fields: data.fields || [],
         footer: data.footer || "Supercheck Monitoring System",
       };
@@ -498,56 +523,53 @@ function getTemplateConfig(template: string, data: EmailTemplateData): {
       return {
         title: `Job Failed - ${data.jobName || "Unknown Job"}`,
         message: `Job "${data.jobName || "Unknown Job"}" has failed. Please review the details below.`,
-        color: "#dc2626",
+        color: COLOR_FAILURE,
         fields: [
           { title: "Job Name", value: data.jobName || "Unknown Job" },
           { title: "Status", value: "Failed" },
           { title: "Duration", value: `${data.duration || 0} seconds` },
           ...(data.errorMessage ? [{ title: "Error", value: data.errorMessage }] : []),
           ...(data.runId ? [{ title: "Run ID", value: data.runId }] : []),
+          ...(data.dashboardUrl ? [{ title: "🔗 Job Details", value: data.dashboardUrl }] : []),
         ],
-        footer: data.dashboardUrl 
-          ? `View details: ${data.dashboardUrl}` 
-          : "Supercheck Job Monitoring",
+        footer: "Supercheck Job Monitoring",
       };
 
     case "job-success":
       return {
         title: `Job Completed - ${data.jobName || "Unknown Job"}`,
         message: `Job "${data.jobName || "Unknown Job"}" has completed successfully.`,
-        color: "#10b981",
+        color: COLOR_SUCCESS,
         fields: [
           { title: "Job Name", value: data.jobName || "Unknown Job" },
           { title: "Status", value: "Success" },
           { title: "Duration", value: `${data.duration || 0} seconds` },
           ...(data.runId ? [{ title: "Run ID", value: data.runId }] : []),
+          ...(data.dashboardUrl ? [{ title: "🔗 Job Details", value: data.dashboardUrl }] : []),
         ],
-        footer: data.dashboardUrl 
-          ? `View details: ${data.dashboardUrl}` 
-          : "Supercheck Job Monitoring",
+        footer: "Supercheck Job Monitoring",
       };
 
     case "job-timeout":
       return {
         title: `Job Timeout - ${data.jobName || "Unknown Job"}`,
         message: `Job "${data.jobName || "Unknown Job"}" timed out after ${data.duration || 0} seconds. No ping received within expected interval.`,
-        color: "#f59e0b",
+        color: COLOR_WARNING,
         fields: [
           { title: "Job Name", value: data.jobName || "Unknown Job" },
           { title: "Status", value: "Timeout" },
           { title: "Duration", value: `${data.duration || 0} seconds` },
           ...(data.runId ? [{ title: "Run ID", value: data.runId }] : []),
+          ...(data.dashboardUrl ? [{ title: "🔗 Job Details", value: data.dashboardUrl }] : []),
         ],
-        footer: data.dashboardUrl 
-          ? `View details: ${data.dashboardUrl}` 
-          : "Supercheck Job Monitoring",
+        footer: "Supercheck Job Monitoring",
       };
 
     case "password-reset":
       return {
         title: "Password Reset Request",
         message: "You requested to reset your password. Click the link below to reset it.",
-        color: "#3b82f6",
+        color: COLOR_INFO,
         fields: [
           { title: "Reset Link", value: data.resetUrl || "" },
           { title: "Email", value: data.userEmail || "" },
@@ -559,7 +581,7 @@ function getTemplateConfig(template: string, data: EmailTemplateData): {
       return {
         title: `Invitation to Join ${data.organizationName || "Organization"}`,
         message: `You've been invited to join ${data.organizationName || "an organization"}`,
-        color: "#3b82f6",
+        color: COLOR_INFO,
         fields: [
           { title: "Organization", value: data.organizationName || "" },
           { title: "Role", value: data.role || "Member" },
@@ -572,7 +594,7 @@ function getTemplateConfig(template: string, data: EmailTemplateData): {
       return {
         title: "Verify Your Status Page",
         message: `Please verify your ownership of ${data.statusPageName || "your status page"}`,
-        color: "#3b82f6",
+        color: COLOR_INFO,
         fields: [
           { title: "Status Page", value: data.statusPageName || "" },
           { title: "Verification URL", value: data.verificationUrl || "" },
@@ -584,7 +606,7 @@ function getTemplateConfig(template: string, data: EmailTemplateData): {
       return {
         title: `Welcome to ${data.statusPageName || "Your Status Page"}`,
         message: "Your status page has been successfully created and is ready to use.",
-        color: "#10b981",
+        color: COLOR_SUCCESS,
         fields: [
           { title: "Status Page", value: data.statusPageName || "" },
           { title: "Status Page URL", value: data.statusPageUrl || "" },
@@ -598,7 +620,7 @@ function getTemplateConfig(template: string, data: EmailTemplateData): {
       return {
         title: `Incident ${data.incidentStatus || "Update"}: ${data.incidentName || "System Incident"}`,
         message: data.incidentDescription || "An incident has been reported.",
-        color: data.incidentStatus === "resolved" ? "#10b981" : "#dc2626",
+        color: data.incidentStatus === "resolved" ? COLOR_SUCCESS : COLOR_FAILURE,
         fields: [
           { title: "Incident", value: data.incidentName || "" },
           { title: "Status", value: data.incidentStatus || "" },
@@ -613,7 +635,7 @@ function getTemplateConfig(template: string, data: EmailTemplateData): {
       return {
         title: "Supercheck Test Email",
         message: data.testMessage || "This is a test email from Supercheck to verify your email configuration.",
-        color: "#10b981",
+        color: COLOR_SUCCESS,
         fields: [],
         footer: "If you received this email, your notification system is working correctly.",
       };
@@ -622,7 +644,7 @@ function getTemplateConfig(template: string, data: EmailTemplateData): {
       return {
         title: "Supercheck Notification",
         message: "A notification has been sent from Supercheck.",
-        color: "#3b82f6",
+        color: COLOR_INFO,
         fields: Object.entries(data).map(([key, value]) => ({
           title: key.charAt(0).toUpperCase() + key.slice(1),
           value: String(value),
