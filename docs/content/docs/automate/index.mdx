@@ -3,22 +3,20 @@ title: Automate
 description: Create and manage automated tests with scheduling and execution
 icon: Workflow
 ---
-Automate your testing workflow with powerful test creation, scheduling, and execution capabilities. Create browser, API, database, and custom tests, then run them automatically on schedules or via CI/CD integration.
+Design, schedule, and run browser, API, database, performance, and custom tests—locally, on a schedule, or from CI/CD.
 
 <Callout type="info">
-  Automate supports Playwright-based browser tests, REST/GraphQL API tests, database queries, and custom scripts.
+  Use Playwright for browser flows, REST/GraphQL for APIs, SQL for databases, and k6 for performance tests. Keep Playwright and k6 scripts separate for predictable runs.
 </Callout>
 
 ## Overview
 
-Supercheck's automation features provide:
-
-- **Multiple Test Types**: Browser, API, Database, Custom, and Performance (k6) tests
-- **Flexible Scheduling**: Cron-based job scheduling with timezone support
-- **Variable Management**: Secure storage for API keys, URLs, and configuration
-- **Execution History**: Detailed run logs with screenshots and traces
-- **Parallel Execution**: Run multiple tests concurrently with capacity controls
-- **CI/CD Integration**: Remote triggers via API for external automation
+What you can do:
+- **Mix Test Types**: Browser, API, DB, custom, and performance (k6).
+- **Schedule & Retry**: Cron jobs with timezones, retries, and alerts.
+- **Use Variables & Secrets**: Project-scoped values with RBAC.
+- **Go Parallel Safely**: Capacity controls prevent noisy neighbors.
+- **Integrate Easily**: Trigger jobs/tests from CI/CD or API.
 
 ## Test Types
 
@@ -89,30 +87,25 @@ Secure storage for reusable configuration:
 ### Step 1: Create Your First Test
 
 <Steps>
-  <Step>Navigate to **Automate → Create** and choose a test type</Step>
-  <Step>Write your test in the playground editor</Step>
-  <Step>Click **Run Test** to validate it works</Step>
-  <Step>Save the test for reuse in jobs</Step>
+  <Step>Go to **Automate → Create** and pick a test type.</Step>
+  <Step>Author the test in the playground; validate with **Run Test**.</Step>
+  <Step>Save it for reuse in jobs and monitors.</Step>
 </Steps>
 
 ### Step 2: Create a Job
 
 <Steps>
-  <Step>Navigate to **Automate → Jobs**</Step>
-  <Step>Click **Create Job** and give it a name</Step>
-  <Step>Select the tests to include in this job</Step>
-  <Step>Configure job settings (timeout, retries, etc.)</Step>
-  <Step>Save the job</Step>
+  <Step>Open **Automate → Jobs** and choose **Create Job**.</Step>
+  <Step>Select tests (mix types if needed) and set timeouts/retries.</Step>
+  <Step>Save and run once to verify the combined report.</Step>
 </Steps>
 
 ### Step 3: Schedule Automatic Execution
 
 <Steps>
-  <Step>Edit your job and enable scheduling</Step>
-  <Step>Set cron schedule (e.g., `0 0 * * *` for daily at midnight)</Step>
-  <Step>Configure timezone for accurate scheduling</Step>
-  <Step>Enable alerts to get notified of failures</Step>
-  <Step>Save and your job will run automatically</Step>
+  <Step>Edit the job and enable scheduling (cron with timezone).</Step>
+  <Step>Attach alerts (Slack/email/webhook) for failures and recoveries.</Step>
+  <Step>Save—your job now runs hands-free.</Step>
 </Steps>
 
 ## Execution Flow
@@ -146,8 +139,8 @@ flowchart LR
 Supercheck manages execution capacity to ensure system stability:
 
 ### Capacity Limits
-- **Running Capacity**: Maximum concurrent test executions (default: 5)
-- **Queued Capacity**: Maximum queued executions (default: 50)
+- **Running Capacity**: Max concurrent executions (default: 5)
+- **Queued Capacity**: Max queued submissions (default: 50)
 
 ### Execution States
 - **Running**: Currently executing tests
@@ -155,7 +148,7 @@ Supercheck manages execution capacity to ensure system stability:
 - **Completed**: Finished executions
 
 <Callout type="warning">
-  When capacity limits are reached, new submissions will be queued. If queue is full, submissions will be rejected with a 429 error.
+  When limits are reached, jobs queue. If the queue is full, requests return **429 (Too Many Requests)**—retry with backoff.
 </Callout>
 
 ## Variables and Secrets
@@ -189,15 +182,10 @@ console.log(`Key: ${apiKey}`); // Shows: "Key: [SECRET]"
 JSON.stringify({ key: apiKey }); // Shows: {"key":"[SECRET]"}
 ```
 
-## Trigger Types
-
-### Manual Trigger
-User-initiated execution from the web UI.
-
-**Use Cases**:
-- Ad-hoc testing
-- Manual verification
-- Debugging test failures
+## Job Triggers at a Glance
+- **Manual**: Ad-hoc runs from the UI for debugging and verification.
+- **Scheduled**: Cron-based runs for continuous coverage.
+- **Remote**: API-triggered for CI/CD and external workflows.
 
 ### Schedule Trigger
 Automatic execution based on cron schedules.

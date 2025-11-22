@@ -1,6 +1,6 @@
-import { Metadata } from "next"; 
+import { Metadata } from "next";
+import { AlertCircle } from "lucide-react";
 import { MonitorDetailClient, MonitorWithResults, MonitorResultItem } from "@/components/monitors/monitor-detail-client";
-import { notFound } from "next/navigation";
 import { db } from "@/utils/db";
 import { 
     monitors, 
@@ -12,6 +12,8 @@ import {
     MonitorConfig
 } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
+import { getCurrentUser } from "@/lib/session";
+import { getUserOrgRole, requireAuth } from "@/lib/rbac/middleware";
 
 // Limit for chart data only - keep small for performance
 const chartResultsLimit = 100;
@@ -25,6 +27,13 @@ type MonitorDetailsPageProps = {
 // Direct server-side data fetching function
 async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults | null> {
   try {
+    // Ensure user is authenticated
+    await requireAuth();
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return null;
+    }
+
     const monitorData = await db
       .select({
         id: monitors.id,
@@ -53,6 +62,14 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
     }
 
     const monitor = monitorData[0];
+
+    // Enforce organization membership for access
+    if (monitor.organizationId) {
+      const orgRole = await getUserOrgRole(currentUser.id, monitor.organizationId);
+      if (!orgRole) {
+        return null;
+      }
+    }
 
     const recentResultsData = await db
       .select()
@@ -123,15 +140,40 @@ export async function generateMetadata({ params }: MonitorDetailsPageProps): Pro
 
 export default async function NotificationMonitorDetailsPage({ params }: MonitorDetailsPageProps) {
   const { id } = await params;
-  const monitorWithData = await getMonitorDetailsDirectly(id);
+  try {
+    const monitorWithData = await getMonitorDetailsDirectly(id);
 
-  if (!monitorWithData) {
-    notFound();
+    if (!monitorWithData) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
+          <div className="flex flex-col items-center text-center">
+            <AlertCircle className="h-16 w-16 text-amber-500 mb-4" />
+            <h1 className="text-3xl font-bold mb-2">Monitor Not Found</h1>
+            <p className="text-muted-foreground mb-6">
+              This monitor is unavailable or you do not have access to view it.
+            </p>
+          </div>
+        </div>
+      );
+    }
+    
+    return (
+      <div className="w-full max-w-full">
+        <MonitorDetailClient monitor={monitorWithData} isNotificationView={true} />
+      </div>
+    );
+  } catch (error) {
+    console.error("Error loading notification monitor:", error);
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
+        <div className="flex flex-col items-center text-center">
+          <AlertCircle className="h-16 w-16 text-red-500 mb-4" />
+          <h1 className="text-3xl font-bold mb-2">Error Loading Monitor</h1>
+          <p className="text-muted-foreground">
+            Unable to load this monitor. It may not exist or you may not have permission to view it.
+          </p>
+        </div>
+      </div>
+    );
   }
-  
-  return (
-    <div className="w-full max-w-full">
-      <MonitorDetailClient monitor={monitorWithData} isNotificationView={true} />
-    </div>
-  );
 }

@@ -24,45 +24,44 @@ export const StatusPageWelcomeEmail = ({
       title="You're All Set!"
       headerColor="#16a34a"
       footer={
-        <>
-          <Text style={footerText}>
-            You&apos;re now subscribed to <strong>{statusPageName}</strong> status updates
-          </Text>
-          <Text style={footerSmall}>
-            <Link href={unsubscribeUrl} style={footerLink}>
-              Unsubscribe
-            </Link>{" "}
-            •{" "}
-            <Link href="https://supercheck.io" style={footerLink}>
-              Powered by Supercheck
-            </Link>
-          </Text>
-        </>
+        <Text style={footerText}>
+          You&apos;re now subscribed to <strong>{statusPageName}</strong> status updates.
+          <br />
+          <Link href={unsubscribeUrl} style={footerLink}>
+            Unsubscribe
+          </Link>
+        </Text>
       }
     >
-      <Text style={paragraph}>
-        Your subscription to{" "}
-        <strong style={{ color: "#1f2937" }}>{statusPageName}</strong> has been confirmed.
-      </Text>
+      <Section style={contentSection}>
+        <Text style={paragraph}>
+          Your subscription to{" "}
+          <strong style={{ color: "#1f2937" }}>{statusPageName}</strong> has been confirmed.
+        </Text>
 
-      <Section style={infoBox}>
-        <Text style={infoTitle}>You&apos;ll receive notifications for:</Text>
-        <ul style={list}>
-          <li style={listItem}>Service incidents and outages</li>
-          <li style={listItem}>Scheduled maintenance windows</li>
-          <li style={listItem}>Incident updates and resolutions</li>
-        </ul>
-      </Section>
+        <Section style={infoBox}>
+          <Text style={infoTitle}>You&apos;ll receive notifications for:</Text>
+          <ul style={list}>
+            <li style={listItem}>Service incidents and outages</li>
+            <li style={listItem}>Scheduled maintenance windows</li>
+            <li style={listItem}>Incident updates and resolutions</li>
+          </ul>
+        </Section>
 
-      <Text style={paragraph}>You can view the current status at any time:</Text>
+        <Text style={paragraph}>You can view the current status at any time:</Text>
 
-      <Section style={buttonContainer}>
-        <Button style={button} href={statusPageUrl}>
-          View Status Page
-        </Button>
+        <Section style={buttonContainer}>
+          <Button style={button} href={statusPageUrl}>
+            View Status Page
+          </Button>
+        </Section>
       </Section>
     </BaseLayout>
   );
+};
+
+const contentSection = {
+  padding: "32px 32px 0",
 };
 
 const paragraph = {
@@ -101,7 +100,7 @@ const listItem = {
 
 const buttonContainer = {
   textAlign: "center" as const,
-  margin: "16px 0",
+  margin: "32px 0",
 };
 
 const button = {
@@ -120,18 +119,12 @@ const footerText = {
   color: "#6b7280",
   fontSize: "13px",
   lineHeight: "1.5",
-  margin: "0 0 8px 0",
-};
-
-const footerSmall = {
-  color: "#9ca3af",
-  fontSize: "12px",
-  margin: "0",
+  margin: "0 0 16px",
 };
 
 const footerLink = {
-  color: "#9ca3af",
-  textDecoration: "none",
+  color: "#4b5563",
+  textDecoration: "underline",
 };
 
 export default StatusPageWelcomeEmail;

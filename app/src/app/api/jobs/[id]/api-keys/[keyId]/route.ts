@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
-import { headers } from "next/headers";
 import { db } from "@/utils/db";
-import { apikey } from "@/db/schema";
+import { apikey, jobs } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { hasPermission, requireAuth } from "@/lib/rbac/middleware";
 
 // PATCH /api/jobs/[id]/api-keys/[keyId] - Update API key settings
 export async function PATCH(
@@ -11,16 +10,40 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; keyId: string }> }
 ) {
   try {
-    const { keyId } = await params;
+    const { id: jobId, keyId } = await params;
     const { enabled, name } = await request.json();
 
     // Verify user is authenticated
-    const session = await auth.api.getSession({
-      headers: await headers(),
+    await requireAuth();
+
+    const keyRecord = await db
+      .select({
+        id: apikey.id,
+        jobId: apikey.jobId,
+        organizationId: jobs.organizationId,
+        projectId: jobs.projectId,
+      })
+      .from(apikey)
+      .leftJoin(jobs, eq(jobs.id, apikey.jobId))
+      .where(eq(apikey.id, keyId))
+      .limit(1);
+
+    if (!keyRecord.length) {
+      return NextResponse.json({ error: "API key not found" }, { status: 404 });
+    }
+
+    if (keyRecord[0].jobId !== jobId) {
+      // Avoid leaking key existence across jobs
+      return NextResponse.json({ error: "API key not found" }, { status: 404 });
+    }
+
+    const canUpdate = await hasPermission("apiKey", "update", {
+      organizationId: keyRecord[0].organizationId || undefined,
+      projectId: keyRecord[0].projectId || undefined,
     });
 
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!canUpdate) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     // Update the API key directly in database
@@ -54,15 +77,38 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; keyId: string }> }
 ) {
   try {
-    const { keyId } = await params;
+    const { id: jobId, keyId } = await params;
 
     // Verify user is authenticated
-    const session = await auth.api.getSession({
-      headers: await headers(),
+    await requireAuth();
+
+    const keyRecord = await db
+      .select({
+        id: apikey.id,
+        jobId: apikey.jobId,
+        organizationId: jobs.organizationId,
+        projectId: jobs.projectId,
+      })
+      .from(apikey)
+      .leftJoin(jobs, eq(jobs.id, apikey.jobId))
+      .where(eq(apikey.id, keyId))
+      .limit(1);
+
+    if (!keyRecord.length) {
+      return NextResponse.json({ error: "API key not found" }, { status: 404 });
+    }
+
+    if (keyRecord[0].jobId !== jobId) {
+      return NextResponse.json({ error: "API key not found" }, { status: 404 });
+    }
+
+    const canDelete = await hasPermission("apiKey", "delete", {
+      organizationId: keyRecord[0].organizationId || undefined,
+      projectId: keyRecord[0].projectId || undefined,
     });
 
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!canDelete) {
+      return NextResponse.json({ error: "Insufficient permissions" }, { status: 403 });
     }
 
     // Delete the API key directly from database

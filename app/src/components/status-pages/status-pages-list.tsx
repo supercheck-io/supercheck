@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { getStatusPages } from "@/actions/get-status-pages";
 import { deleteStatusPage } from "@/actions/delete-status-page";
 import { CreateStatusPageForm } from "./create-status-page-form";
@@ -59,6 +60,7 @@ export default function StatusPagesList() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingPage, setDeletingPage] = useState<StatusPage | null>(null);
+  const searchParams = useSearchParams();
 
   // Get user permissions
   const { currentProject } = useProjectContext();
@@ -69,6 +71,13 @@ export default function StatusPagesList() {
   useEffect(() => {
     loadStatusPages();
   }, []);
+
+  useEffect(() => {
+    const create = searchParams.get("create");
+    if (create === "true") {
+      setIsCreateDialogOpen(true);
+    }
+  }, [searchParams]);
 
   const loadStatusPages = async () => {
     try {

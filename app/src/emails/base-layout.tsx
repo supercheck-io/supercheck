@@ -4,8 +4,10 @@ import {
   Head,
   Heading,
   Html,
+  Link,
   Preview,
   Section,
+  Text,
 } from "@react-email/components";
 import * as React from "react";
 
@@ -15,6 +17,7 @@ interface BaseLayoutProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   headerColor?: string;
+  showStandardFooter?: boolean;
 }
 
 export const BaseLayout = ({
@@ -23,6 +26,7 @@ export const BaseLayout = ({
   children,
   footer,
   headerColor = "#52c41a",
+  showStandardFooter = true,
 }: BaseLayoutProps) => {
   return (
     <Html>
@@ -42,9 +46,28 @@ export const BaseLayout = ({
           <Section style={content}>{children}</Section>
 
           {/* Footer */}
-          {footer && (
+          {(footer || showStandardFooter) && (
             <Section style={footerSection}>
               {footer}
+              {showStandardFooter && (
+                <Text style={standardFooterText}>
+                  <Link href="https://supercheck.io" style={footerLink}>
+                    Supercheck
+                  </Link>
+                  {" • "}
+                  <Link href="https://supercheck.io/privacy" style={footerLink}>
+                    Privacy Policy
+                  </Link>
+                  {" • "}
+                  <Link href="https://supercheck.io/terms" style={footerLink}>
+                    Terms of Service
+                  </Link>
+                  <br />
+                  <span style={{ color: "#9ca3af" }}>
+                    © {new Date().getFullYear()} Supercheck. All rights reserved.
+                  </span>
+                </Text>
+              )}
             </Section>
           )}
         </Container>
@@ -61,10 +84,10 @@ export const BaseLayout = ({
 // ============================================================================
 
 const main = {
-  backgroundColor: "#f5f5f5",
+  backgroundColor: "#f3f4f6",
   fontFamily:
-    'Arial, Helvetica, sans-serif',
-  padding: "0",
+    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',
+  padding: "20px 0",
   margin: "0",
 };
 
@@ -72,7 +95,9 @@ const container = {
   backgroundColor: "#ffffff",
   margin: "0 auto",
   maxWidth: "600px",
-  border: "1px solid #e0e0e0",
+  borderRadius: "8px",
+  boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+  overflow: "hidden" as const,
 };
 
 // ============================================================================
@@ -80,7 +105,7 @@ const container = {
 // ============================================================================
 
 const header = {
-  padding: "40px 30px",
+  padding: "32px 24px",
   textAlign: "center" as const,
   background: "#52c41a",
 };
@@ -88,9 +113,10 @@ const header = {
 const headerTitle = {
   color: "#ffffff",
   fontSize: "24px",
-  fontWeight: "normal" as const,
+  fontWeight: "700" as const,
   margin: "0",
-  lineHeight: "1.4",
+  lineHeight: "1.3",
+  letterSpacing: "-0.025em",
 };
 
 // ============================================================================
@@ -106,14 +132,27 @@ const content = {
 // ============================================================================
 
 const footerSection = {
-  padding: "20px 30px",
-  textAlign: "left" as const,
-  backgroundColor: "#ffffff",
-  borderTop: "1px solid #e0e0e0",
+  padding: "32px 24px",
+  textAlign: "center" as const,
+  backgroundColor: "#f9fafb",
+  borderTop: "1px solid #e5e7eb",
+};
+
+const standardFooterText = {
+  color: "#9ca3af",
+  fontSize: "12px",
+  lineHeight: "1.6",
+  margin: "16px 0 0",
+};
+
+const footerLink = {
+  color: "#6b7280",
+  textDecoration: "none",
+  fontWeight: "500" as const,
 };
 
 const bottomSpacer = {
-  height: "0",
+  height: "20px",
 };
 
 export default BaseLayout;

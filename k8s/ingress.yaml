@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: supercheck
+  namespace: supercheck
+  labels:
+    app.kubernetes.io/name: supercheck
+    app.kubernetes.io/component: ingress
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  tls:
+    - hosts:
+        - app.supercheck.example.com
+      secretName: supercheck-tls
+  rules:
+    - host: app.supercheck.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: supercheck-app
+                port:
+                  number: 3000

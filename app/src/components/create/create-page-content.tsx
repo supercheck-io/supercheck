@@ -46,12 +46,12 @@ export function CreatePageContent() {
     {
       icon: <Variable size={20} className="text-cyan-500" />,
       title: "Variable",
-      onClick: () => router.push("/variables"),
+      onClick: () => router.push("/variables?create=true"),
     },
     {
       icon: <Shield size={20} className="text-red-500" />,
       title: "Secret",
-      onClick: () => router.push("/variables?filter=secrets"),
+      onClick: () => router.push("/variables?create=true&type=secret"),
     },
   ];
 
@@ -59,7 +59,7 @@ export function CreatePageContent() {
     {
       icon: <Tally4 size={20} className="text-green-600" />,
       title: "Status Page",
-      onClick: () => router.push("/status-pages"),
+      onClick: () => router.push("/status-pages?create=true"),
     },
   ];
 
@@ -68,7 +68,7 @@ export function CreatePageContent() {
     return {
       icon: <IconComponent size={20} className={provider.color} />,
       title: provider.label,
-      onClick: () => router.push("/alerts"),
+      onClick: () => router.push(`/alerts?create=true&type=${provider.type}`),
     };
   });
 

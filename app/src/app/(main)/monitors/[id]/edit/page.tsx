@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   MonitorForm,
   type FormValues,
@@ -9,6 +10,8 @@ import { MonitorFormSkeleton } from "@/components/monitors/monitor-form-skeleton
 import { Monitor } from "@/components/monitors/schema";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { monitorTypes } from "@/components/monitors/data";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 
 // Can't use metadata in client components, remove this
 // export const metadata: Metadata = {
@@ -21,6 +24,7 @@ export default function EditMonitorPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const router = useRouter();
   const [id, setId] = useState<string>("");
   const [monitor, setMonitor] = useState<Monitor | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,18 +35,25 @@ export default function EditMonitorPage({
     params.then(({ id }) => setId(id));
   }, [params]);
 
-  // Fetch monitor data
+  // Fetch monitor data with AbortController
   useEffect(() => {
     if (!id) return;
+
+    const abortController = new AbortController();
 
     async function fetchMonitor() {
       try {
         setLoading(true);
-        const response = await fetch(`/api/monitors/${id}`);
+        const response = await fetch(`/api/monitors/${id}`, {
+          signal: abortController.signal
+        });
 
         if (!response.ok) {
           if (response.status === 404) {
             setError("Monitor not found");
+            toast.error("Monitor Not Found", {
+              description: "The monitor you're looking for doesn't exist or has been deleted."
+            });
             return;
           }
           setError(`Failed to fetch monitor: ${response.statusText}`);
@@ -51,7 +62,12 @@ export default function EditMonitorPage({
 
         const data = await response.json();
         setMonitor(data);
+        setError(null);
       } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          // Request was cancelled, ignore
+          return;
+        }
         console.error("Error fetching monitor:", error);
         setError(
           error instanceof Error ? error.message : "Failed to fetch monitor"
@@ -62,6 +78,10 @@ export default function EditMonitorPage({
     }
 
     fetchMonitor();
+
+    return () => {
+      abortController.abort();
+    };
   }, [id]);
 
   if (loading) {
@@ -81,17 +101,35 @@ export default function EditMonitorPage({
 
   if (error || !monitor) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <p className="text-destructive mb-4">
-            {error || "Monitor not found"}
-          </p>
-          <button
-            onClick={() => window.history.back()}
-            className="text-primary hover:underline"
-          >
-            Go back
-          </button>
+      <div>
+        <PageBreadcrumbs
+          items={[
+            { label: "Home", href: "/" },
+            { label: "Monitors", href: "/monitors" },
+            { label: "Error", isCurrentPage: true },
+          ]}
+        />
+        <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
+          <div className="text-center space-y-2">
+            <h2 className="text-2xl font-semibold text-destructive">Failed to Load Monitor</h2>
+            <p className="text-muted-foreground">
+              {error || "Monitor not found"}
+            </p>
+          </div>
+          <div className="flex gap-4">
+            <Button
+              onClick={() => window.location.reload()}
+              variant="default"
+            >
+              Retry
+            </Button>
+            <Button
+              onClick={() => router.push("/monitors")}
+              variant="secondary"
+            >
+              Back to Monitors
+            </Button>
+          </div>
         </div>
       </div>
     );

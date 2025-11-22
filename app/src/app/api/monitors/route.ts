@@ -6,6 +6,7 @@ import { requireAuth, hasPermission } from '@/lib/rbac/middleware';
 import { requireProjectContext } from '@/lib/project-context';
 import { createMonitorHandler, updateMonitorHandler } from "@/lib/monitor-service";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { sanitizeString, sanitizeUrl, sanitizeHostname } from "@/lib/input-sanitizer";
 
 export async function GET(request: Request) {
   try {
@@ -104,7 +105,38 @@ export async function POST(req: NextRequest) {
 
     const rawData = await req.json();
     console.log("[MONITOR_CREATE] Raw data received:", rawData);
-    
+
+    // Sanitize input data
+    rawData.name = sanitizeString(rawData.name);
+    if (rawData.target) {
+      // Sanitize target based on type
+      if (rawData.type === 'http_request' || rawData.type === 'website') {
+        rawData.target = sanitizeUrl(rawData.target);
+      } else if (rawData.type === 'ping_host' || rawData.type === 'port_check') {
+        rawData.target = sanitizeHostname(rawData.target);
+      } else {
+        rawData.target = sanitizeString(rawData.target);
+      }
+    }
+
+    // Sanitize auth credentials if present
+    if (rawData.config?.auth) {
+      if (rawData.config.auth.username) {
+        rawData.config.auth.username = sanitizeString(rawData.config.auth.username);
+      }
+      if (rawData.config.auth.password) {
+        rawData.config.auth.password = sanitizeString(rawData.config.auth.password);
+      }
+      if (rawData.config.auth.token) {
+        rawData.config.auth.token = sanitizeString(rawData.config.auth.token);
+      }
+    }
+
+    // Sanitize custom message in alertConfig
+    if (rawData.alertConfig?.customMessage) {
+      rawData.alertConfig.customMessage = sanitizeString(rawData.alertConfig.customMessage);
+    }
+
     // Special logging for heartbeat monitors
     if (rawData.type === "heartbeat") {
       console.log("[MONITOR_CREATE] Processing heartbeat monitor with config:", rawData.config);
@@ -112,9 +144,9 @@ export async function POST(req: NextRequest) {
 
     // Validate required fields
     if (!rawData.name || !rawData.type) {
-      return NextResponse.json({ 
-        error: "Missing required fields", 
-        details: "name and type are required" 
+      return NextResponse.json({
+        error: "Missing required fields",
+        details: "name and type are required"
       }, { status: 400 });
     }
 

@@ -109,12 +109,8 @@ module.exports = defineConfig({
     navigationTimeout: 30000, // 30 seconds for page loads
 
     /* Artifact collection strategy - configurable via environment variables */
-    // Capture traces on failure for debugging
     trace: process.env.PLAYWRIGHT_TRACE || 'retain-on-failure',
-    // Capture screenshots only on failure to avoid performance degradation
-    // Full screenshots for all tests can be enabled via PLAYWRIGHT_SCREENSHOT='all'
     screenshot: process.env.PLAYWRIGHT_SCREENSHOT || 'on',
-    // Video recording for failed tests for debugging (with increased resource limits)
     video: process.env.PLAYWRIGHT_VIDEO || 'retain-on-failure',
 
     /* Browser optimization for resource efficiency - browser-specific args moved to projects */
@@ -138,114 +134,65 @@ module.exports = defineConfig({
   projects: [
     {
       name: 'chromium',
+      grepInvert: /@(mobile|iphone|firefox|webkit|safari)\b/i,
       use: {
         ...devices['Desktop Chrome'],
         // Override with optimized settings
         viewport: { width: 1280, height: 720 }, // Standard viewport for consistent results
         // Enable headless mode for better performance
-        headless: process.env.PLAYWRIGHT_HEADLESS !== 'false',
-        // Chrome-specific launch options - optimized for containerized environments
+        headless: true,
+        launchOptions: {
+          args: [],
+        },
+      },
+    },
+
+    // Additional browsers
+    {
+      name: 'firefox',
+      grep: /@firefox\b/i,
+      use: {
+        ...devices['Desktop Firefox'],
+        viewport: { width: 1280, height: 720 },
+        headless: true,
+        // Firefox-specific launch options (minimal args)
         launchOptions: {
           args: [
-            // CRITICAL: Core container compatibility flags
-            '--disable-dev-shm-usage', // Prevent /dev/shm issues in containers
-            '--disable-gpu', // Reduce GPU memory usage
             '--no-sandbox', // Required for containerized environments
-            '--disable-setuid-sandbox',
-            '--disable-web-security', // Allow cross-origin requests for testing
-
-            // REMOVED --single-process: Causes "Target page closed" errors and browser instability
-            // Let browser manage processes naturally for better stability
-
-            // Font rendering fixes (prevents fontconfig errors)
-            '--font-render-hinting=none',
-            '--disable-font-subpixel-positioning',
-
-            // Memory and resource optimization (kept minimal for stability)
-            '--disable-features=TranslateUI,AudioServiceOutOfProcess',
-            '--disable-background-networking',
-            '--disable-default-apps',
-            '--disable-extensions',
-            '--disable-sync',
-            '--disable-translate',
-            '--no-first-run',
-            '--no-default-browser-check',
-
-            // Additional stability flags
-            '--disable-gpu-sandbox',
-            '--disable-accelerated-2d-canvas',
           ],
         },
       },
     },
 
-    // Additional browsers can be enabled via environment variables
-    ...(process.env.ENABLE_FIREFOX === 'true'
-      ? [
-          {
-            name: 'firefox',
-            use: {
-              ...devices['Desktop Firefox'],
-              viewport: { width: 1280, height: 720 },
-              headless: process.env.PLAYWRIGHT_HEADLESS !== 'false',
-              // Firefox-specific launch options (minimal args)
-              launchOptions: {
-                args: [
-                  '--no-sandbox', // Required for containerized environments
-                ],
-              },
-            },
-          },
-        ]
-      : []),
+    {
+      name: 'safari',
+      grep: /@(webkit|safari)\b/i,
+      use: {
+        ...devices['Desktop Safari'],
+        viewport: { width: 1280, height: 720 },
+        headless: true,
+        // WebKit-specific launch options (very minimal - WebKit is picky)
+        launchOptions: {
+          args: [
+            // WebKit doesn't support most Chrome flags, keep minimal
+          ],
+        },
+      },
+    },
 
-    ...(process.env.ENABLE_WEBKIT === 'true'
-      ? [
-          {
-            name: 'webkit',
-            use: {
-              ...devices['Desktop Safari'],
-              viewport: { width: 1280, height: 720 },
-              headless: process.env.PLAYWRIGHT_HEADLESS !== 'false',
-              // WebKit-specific launch options (very minimal - WebKit is picky)
-              launchOptions: {
-                args: [
-                  // WebKit doesn't support most Chrome flags, keep minimal
-                ],
-              },
-            },
-          },
-        ]
-      : []),
-
-    // Mobile testing projects (opt-in)
-    ...(process.env.ENABLE_MOBILE === 'true'
-      ? [
-          {
-            name: 'mobile',
-            use: {
-              ...devices['iPhone 13'],
-              headless: process.env.PLAYWRIGHT_HEADLESS !== 'false',
-            },
-          },
-        ]
-      : []),
+    // Mobile testing projects (opt-in via @mobile tag)
+    {
+      name: 'mobile-safari',
+      // Only run tests tagged with @mobile or @iPhone
+      grep: /@(mobile|iphone)\b/i,
+      use: {
+        ...devices['iPhone 13'],
+        headless: true,
+      },
+    },
   ],
 
   /* Performance and cleanup optimizations */
   maxFailures: process.env.CI ? 5 : undefined, // Stop after 5 failures in CI
 
-  /* Metadata for execution tracking */
-  // metadata: {
-  //   executionEnvironment: process.env.NODE_ENV || 'development',
-  //   workerCapacity: getOptimalWorkerCount(),
-  //   configVersion: '2.0.0', // Track config changes
-  // },
-
-  /* Run your local dev server before starting the tests */
-  // webServer: {
-  //   command: 'npm run start',
-  //   url: 'http://127.0.0.1:3000',
-  //   reuseExistingServer: !process.env.CI,
-  // },
 });

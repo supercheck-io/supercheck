@@ -2,68 +2,94 @@
 title: Quick Start
 description: Get up and running with Supercheck in 5 minutes
 ---
-Get your first test running in under 5 minutes.
+Launch your first passing test and alert in minutes. This guide keeps you focused on what matters.
 
-## Create Your Account
+## What You Need
+
+- A Supercheck account and workspace
+- A target URL or API endpoint to test
+- Slack or email for notifications (optional but recommended)
+
+<Callout type="info">
+  Prefer self-hosting? Follow the deployment guide in the repository, then return here.
+</Callout>
+
+## Step 1 — Create Your Workspace
 
 <Steps>
-  <Step>Sign up at [supercheck.io](https://supercheck.io)</Step>
-  <Step>Verify your email address</Step>
-  <Step>Create your first workspace</Step>
+  <Step>Sign up at [supercheck.io](https://supercheck.io) and create a workspace.</Step>
+  <Step>Add at least one project (e.g., “Production” or “Staging”).</Step>
+  <Step>Invite a teammate so you can share results and alerts.</Step>
 </Steps>
 
-## Run Your First Test
+## Step 2 — Run Your First Test
+
+Choose the quickest path for you:
 
 <Tabs items={['Browser Test', 'API Test', 'Database Test']}>
   <Tab value="Browser Test">
+    1. Create a **Browser** test and paste your app URL.  
+    2. Add a simple assertion:
     ```typescript
-    // Navigate to your application
-    await page.goto('https://your-app.com');
-
-    // Interact with the page
+    await page.goto('https://your-app.com/login');
+    await page.fill('#email', 'demo@example.com');
     await page.click('button[type="submit"]');
-
-    // Verify the result
-    await expect(page.locator('.success')).toBeVisible();
+    await expect(page.getByText('Welcome')).toBeVisible();
     ```
+    3. Run the test and open the report (screenshots, console, network).
   </Tab>
   <Tab value="API Test">
+    1. Create an **API** test against your endpoint.  
+    2. Add a status and payload check:
     ```typescript
-    // Make an API request
-    const response = await fetch('https://api.example.com/users');
-
-    // Check the response
+    const response = await fetch('https://api.example.com/users', {
+      headers: { Authorization: `Bearer ${process.env.API_TOKEN}` },
+    });
     expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.users).toHaveLength(10);
+    expect(Array.isArray(data.users)).toBe(true);
     ```
+    3. Run and confirm the JSON response in the report.
   </Tab>
   <Tab value="Database Test">
+    1. Create a **Database** test and connect via your read-only credentials.  
+    2. Use a guardrail query:
     ```sql
-    -- Query your database
-    SELECT COUNT(*) as user_count FROM users WHERE active = true;
-
-    -- Expected: user_count > 0
+    SELECT COUNT(*) AS active_users FROM users WHERE active = true;
     ```
+    3. Set an assertion (e.g., `active_users > 0`) and run.
   </Tab>
 </Tabs>
 
-## What's Next?
+## Step 3 — Get Notified
+
+<Steps>
+  <Step>Open **Integrations → Notifications** and connect Slack or email.</Step>
+  <Step>Set an alert policy (e.g., notify on first failure, resolve on first pass).</Step>
+  <Step>Re-run your test to see a live notification.</Step>
+</Steps>
+
+## Step 4 — Schedule or Monitor
+
+- **Schedule a Job**: Group tests into a job and run on a cron (hourly/daily) from multiple regions.
+- **Create a Monitor**: Turn a test into a synthetic monitor for always-on checks with uptime tracking.
+
+## Next Steps
 
 <Cards>
   <Card
-    title="Core Concepts"
-    description="Understand tests, monitors, jobs, and runs"
-    href="./concepts"
+    title="Automate"
+    description="Chain tests into jobs with retries, environments, and variables."
+    href="./automate"
   />
   <Card
-    title="Testing Guide"
-    description="Deep dive into browser, API, and database testing"
-    href="./testing"
+    title="Monitor"
+    description="Enable continuous, multi-location checks with alerting and SSL tracking."
+    href="./monitor"
   />
   <Card
-    title="Set Up Monitoring"
-    description="Configure 24/7 monitoring and alerts"
-    href="./monitoring"
+    title="Communicate"
+    description="Configure alerts, incidents, and status pages for stakeholders."
+    href="./communicate"
   />
 </Cards>

@@ -8,6 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2 } from "lucide-react";
 import { createStatusPage, type CreateStatusPageData } from "@/actions/create-status-page";
 import { toast } from "sonner";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 
 type StatusPageResult = {
   id: string;
@@ -26,20 +29,33 @@ type CreateStatusPageFormProps = {
   onCancel: () => void;
 };
 
+const createStatusPageSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100, "Name is too long"),
+  headline: z.string().max(100, "Headline is too long").optional(),
+  pageDescription: z.string().max(500, "Description is too long").optional(),
+});
+
 export function CreateStatusPageForm({ onSuccess, onCancel }: CreateStatusPageFormProps) {
   const [isCreating, setIsCreating] = useState(false);
-  const [formData, setFormData] = useState<CreateStatusPageData>({
-    name: "",
-    headline: "",
-    pageDescription: "",
+  
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<CreateStatusPageData>({
+    resolver: zodResolver(createStatusPageSchema),
+    defaultValues: {
+      name: "",
+      headline: "",
+      pageDescription: "",
+    },
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (data: CreateStatusPageData) => {
     setIsCreating(true);
 
     try {
-      const result = await createStatusPage(formData);
+      const result = await createStatusPage(data);
 
       if (result.success && result.statusPage) {
         onSuccess(result.statusPage);
@@ -59,17 +75,18 @@ export function CreateStatusPageForm({ onSuccess, onCancel }: CreateStatusPageFo
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div className="space-y-2">
         <Label htmlFor="name">Status Page Name *</Label>
         <Input
           id="name"
           placeholder="My Service Status"
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          required
+          {...register("name")}
           disabled={isCreating}
         />
+        {errors.name && (
+          <p className="text-sm text-red-500">{errors.name.message}</p>
+        )}
         <p className="text-sm text-muted-foreground">
           This is the internal name for your status page
         </p>
@@ -80,10 +97,12 @@ export function CreateStatusPageForm({ onSuccess, onCancel }: CreateStatusPageFo
         <Input
           id="headline"
           placeholder="Service Status Dashboard"
-          value={formData.headline}
-          onChange={(e) => setFormData({ ...formData, headline: e.target.value })}
+          {...register("headline")}
           disabled={isCreating}
         />
+        {errors.headline && (
+          <p className="text-sm text-red-500">{errors.headline.message}</p>
+        )}
         <p className="text-sm text-muted-foreground">
           This headline will be displayed at the top of your public status page
         </p>
@@ -94,11 +113,13 @@ export function CreateStatusPageForm({ onSuccess, onCancel }: CreateStatusPageFo
         <Textarea
           id="description"
           placeholder="Stay updated on the status of our services"
-          value={formData.pageDescription}
-          onChange={(e) => setFormData({ ...formData, pageDescription: e.target.value })}
+          {...register("pageDescription")}
           rows={3}
           disabled={isCreating}
         />
+        {errors.pageDescription && (
+          <p className="text-sm text-red-500">{errors.pageDescription.message}</p>
+        )}
         <p className="text-sm text-muted-foreground">
           A brief description of what this status page is for
         </p>

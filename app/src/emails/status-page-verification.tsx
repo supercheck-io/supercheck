@@ -23,55 +23,54 @@ export const StatusPageVerificationEmail = ({
       title="Verify Your Subscription"
       headerColor="#1f2937"
       footer={
-        <>
-          <Text style={footerText}>
-            This email was sent because you subscribed to status updates from{" "}
-            <strong>{statusPageName}</strong>.
-          </Text>
-          <Text style={footerSmall}>
-            Powered by{" "}
-            <Link href="https://supercheck.io" style={footerLink}>
-              Supercheck
-            </Link>
-          </Text>
-        </>
+        <Text style={footerText}>
+          This email was sent because you subscribed to status updates from{" "}
+          <strong>{statusPageName}</strong>.
+        </Text>
       }
     >
-      <Text style={paragraph}>
-        Thank you for subscribing to{" "}
-        <strong style={{ color: "#1f2937" }}>{statusPageName}</strong> status updates!
-      </Text>
+      <Section style={contentSection}>
+        <Text style={paragraph}>
+          Thank you for subscribing to{" "}
+          <strong style={{ color: "#1f2937" }}>{statusPageName}</strong> status updates!
+        </Text>
 
-      <Text style={paragraph}>
-        To complete your subscription and start receiving notifications about incidents and
-        maintenance, please verify your email address:
-      </Text>
+        <Text style={paragraph}>
+          To complete your subscription and start receiving notifications about incidents and
+          maintenance, please verify your email address:
+        </Text>
 
-      <Section style={buttonContainer}>
-        <Button style={button} href={verificationUrl}>
-          Verify Email Address
-        </Button>
+        <Section style={buttonContainer}>
+          <Button style={button} href={verificationUrl}>
+            Verify Email Address
+          </Button>
+        </Section>
+
+        <Text style={smallText}>
+          Or copy and paste this URL into your browser:
+        </Text>
+        <Text style={urlText}>
+          <Link href={verificationUrl} style={link}>
+            {verificationUrl}
+          </Link>
+        </Text>
+
+        <Hr style={hr} />
+
+        <Text style={warningText}>
+          <strong>Note:</strong> This verification link will expire in 24 hours.
+        </Text>
+
+        <Text style={warningText}>
+          If you did not request this subscription, you can safely ignore this email.
+        </Text>
       </Section>
-
-      <Text style={smallText}>
-        Or copy and paste this URL into your browser:
-        <br />
-        <Link href={verificationUrl} style={link}>
-          {verificationUrl}
-        </Link>
-      </Text>
-
-      <Hr style={hr} />
-
-      <Text style={warningText}>
-        <strong>Note:</strong> This verification link will expire in 24 hours.
-      </Text>
-
-      <Text style={warningText}>
-        If you did not request this subscription, you can safely ignore this email.
-      </Text>
     </BaseLayout>
   );
+};
+
+const contentSection = {
+  padding: "32px 32px 0",
 };
 
 const paragraph = {
@@ -100,15 +99,22 @@ const button = {
 
 const smallText = {
   color: "#6b7280",
-  fontSize: "14px",
+  fontSize: "13px",
   lineHeight: "1.5",
-  margin: "24px 0 0",
+  margin: "24px 0 8px",
+  textAlign: "center" as const,
+};
+
+const urlText = {
+  margin: "0 0 32px",
+  textAlign: "center" as const,
 };
 
 const link = {
   color: "#1f2937",
-  textDecoration: "none",
+  textDecoration: "underline",
   wordBreak: "break-all" as const,
+  fontSize: "13px",
 };
 
 const hr = {
@@ -127,18 +133,7 @@ const footerText = {
   color: "#6b7280",
   fontSize: "13px",
   lineHeight: "1.5",
-  margin: "0 0 8px 0",
-};
-
-const footerSmall = {
-  color: "#9ca3af",
-  fontSize: "12px",
-  margin: "0",
-};
-
-const footerLink = {
-  color: "#1f2937",
-  textDecoration: "none",
+  margin: "0 0 16px",
 };
 
 export default StatusPageVerificationEmail;

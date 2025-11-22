@@ -11,40 +11,7 @@ Monitor your services, APIs, and infrastructure 24/7 with real-time health check
 
 ## Overview
 
-Supercheck's monitoring system provides comprehensive 24/7 monitoring with enterprise-grade reliability, security, and multi-location support for your services and infrastructure.
-
-```mermaid
-graph LR
-    A[Monitors] --> B{Monitor Types}
-    B --> C[HTTP Monitor]
-    B --> D[Website Monitor]
-    B --> E[Ping Monitor]
-    B --> F[Port Monitor]
-    B --> G[Synthetic Monitor]
-
-    C --> H[Multi-Location]
-    D --> H
-    E --> H
-    F --> H
-    G --> H
-
-    H --> I[US East]
-    H --> J[EU Central]
-    H --> K[Asia Pacific]
-
-    I --> L{Health Status}
-    J --> L
-    K --> L
-
-    L --> M[Alerts]
-    L --> N[Status Pages]
-    L --> O[Dashboard]
-
-    style A fill:#3b82f6,color:#fff
-    style H fill:#10b981,color:#fff
-    style L fill:#f59e0b,color:#fff
-    style M fill:#ef4444,color:#fff
-```
+Supercheck’s monitoring covers HTTP, website, ping, port, and synthetic user journeys with multi-region checks, SSL expiry tracking, and alerting.
 
 ## Monitor Types
 
@@ -58,10 +25,10 @@ graph LR
 
 ## Key Features
 
-- **Multi-Location Monitoring**: Check from US East, EU Central, and Asia Pacific
-- **Real-time Alerts**: Instant notifications via multiple channels
-- **SSL Certificate Tracking**: Automatic expiration monitoring
-- **Smart Thresholds**: Prevent alert fatigue with consecutive failure logic
+- **Multi-Location**: US East, EU Central, APAC with majority/any/all strategies.
+- **Instant Alerts**: Slack, email, webhook, or custom channels with retries.
+- **SSL Tracking**: Expiry and validity checks to avoid surprises.
+- **Smart Thresholds**: Consecutive failure logic to cut noise.
 
 ## Quick Start
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Test } from "./schema";
 import { Button } from "@/components/ui/button";
@@ -69,12 +69,22 @@ export function CreateJob({
 
   const form = useForm<FormData>({
     resolver: zodResolver(jobFormSchema),
+    mode: "onSubmit", // Only validate on submit, not on every change
     defaultValues: {
       name: initialValues.name || "",
       description: initialValues.description || "",
       cronSchedule: initialValues.cronSchedule || "",
     },
   });
+
+  // Sync form with initialValues when they change (e.g., navigating back in wizard)
+  useEffect(() => {
+    form.reset({
+      name: initialValues.name || "",
+      description: initialValues.description || "",
+      cronSchedule: initialValues.cronSchedule || "",
+    });
+  }, [initialValues.name, initialValues.description, initialValues.cronSchedule, form]);
 
   // Handle form submission
   const onSubmit = form.handleSubmit(async (values: FormData) => {

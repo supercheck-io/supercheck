@@ -48,17 +48,12 @@ x-common-env: &common-env # Database Configuration
   NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS: ${NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS:-10}
 
   # Playwright Configuration - Optimized for Supercheck execution service
-  PLAYWRIGHT_HEADLESS: ${PLAYWRIGHT_HEADLESS:-true}
+  # PLAYWRIGHT_HEADLESS: ${PLAYWRIGHT_HEADLESS:-true}
   PLAYWRIGHT_RETRIES: ${PLAYWRIGHT_RETRIES:-1}
   PLAYWRIGHT_TRACE: ${PLAYWRIGHT_TRACE:-retain-on-failure}
   PLAYWRIGHT_SCREENSHOT: ${PLAYWRIGHT_SCREENSHOT:-on}
   # Video recording enabled on test failures for debugging (with increased resource limits)
   PLAYWRIGHT_VIDEO: ${PLAYWRIGHT_VIDEO:-retain-on-failure}
-
-  # Browser support (disabled by default for performance)
-  ENABLE_FIREFOX: ${ENABLE_FIREFOX:-false}
-  ENABLE_WEBKIT: ${ENABLE_WEBKIT:-false}
-  ENABLE_MOBILE: ${ENABLE_MOBILE:-false}
 
   # Monitor Results Cleanup
   MONITOR_CLEANUP_ENABLED: ${MONITOR_CLEANUP_ENABLED:-true}
@@ -148,7 +143,7 @@ services:
 
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.1.7-beta.13
+    image: ghcr.io/supercheck-io/supercheck/app:1.1.7-beta.17
     expose:
       - "3000"
     environment:
@@ -223,7 +218,7 @@ services:
   # Worker (NestJS Runner) - Container-based test execution
   # Tests run in isolated Docker containers (Playwright/K6), not inside worker
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.1.7-beta.13
+    image: ghcr.io/supercheck-io/supercheck/worker:1.1.7-beta.17
     environment:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)

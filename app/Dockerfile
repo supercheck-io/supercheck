@@ -8,11 +8,21 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     cron \
     curl \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && rm -rf /var/lib/apt/lists/*
 
-# Install dependencies only when needed
-FROM base AS deps
+# Install all dependencies (including dev) needed for building
+FROM base AS deps-all
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Install all dependencies with better caching
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps --no-audit --no-fund
+
+# Install production dependencies only for runtime
+FROM base AS deps-prod
 WORKDIR /app
 
 # Copy package files
@@ -25,14 +35,10 @@ RUN --mount=type=cache,target=/root/.npm \
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps-all /app/node_modules ./node_modules
 COPY . .
 
 # Accept build arguments for NEXT_PUBLIC variables
-
-# Install dev dependencies for build with caching
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --legacy-peer-deps --no-audit --no-fund
 
 # Build the Next.js application
 ENV NODE_OPTIONS="--max-old-space-size=4096"
@@ -69,7 +75,7 @@ RUN mkdir -p /home/nextjs/.npm && \
     chown -R nextjs:nodejs /app
 
 # Copy only necessary files for execution with proper ownership
-COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=deps-prod --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 # Copy standalone build
@@ -88,12 +94,6 @@ COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./tsconfig.json
 
 # Make scripts executable
 RUN chmod +x ./scripts/start.sh ./scripts/db-migrate.js
-
-# Verify critical files are copied correctly
-RUN echo "=== Verifying Scripts ===" && ls -la ./scripts/ && \
-    echo "=== Verifying DB Migrations ===" && ls -la ./src/db/migrations/ && \
-    echo "=== Verifying DB Files ===" && ls -la ./src/db/ && \
-    echo "=== Verification Complete ==="
 
 # Set npm to not use cache and set proper environment
 RUN mkdir -p /tmp/.npm && \

@@ -14,13 +14,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Loader2, Save, RotateCcw, CheckCircle2 } from "lucide-react";
+import { Loader2, Save, RotateCcw, CheckCircle2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
   updateStatusPageSettings,
   resetBrandingToDefaults,
 } from "@/actions/update-status-page-settings";
+import { verifyStatusPageDomain } from "@/actions/verify-status-page-domain";
 import { useRouter } from "next/navigation";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 
 type StatusPage = {
   id: string;
@@ -51,10 +55,27 @@ type SettingsTabProps = {
   canUpdate: boolean;
 };
 
+const settingsSchema = z.object({
+  name: z.string().min(1, "Name is required").max(255),
+  headline: z.string().max(255).optional(),
+  pageDescription: z.string().optional(),
+  supportUrl: z.string().url("Invalid URL").optional().or(z.literal("")),
+  customDomain: z.string().max(255).optional().or(z.literal("")),
+  allowPageSubscribers: z.boolean(),
+  allowEmailSubscribers: z.boolean(),
+  cssGreens: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid color code"),
+  cssYellows: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid color code"),
+  cssOranges: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid color code"),
+  cssBlues: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid color code"),
+  cssReds: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Invalid color code"),
+});
+
+type SettingsFormValues = z.infer<typeof settingsSchema>;
+
 export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
   const router = useRouter();
-  const [isSaving, setIsSaving] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [isVerifyingDNS, setIsVerifyingDNS] = useState(false);
 
   // Upload states
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -62,71 +83,42 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
   const [logoUrl, setLogoUrl] = useState(statusPage.transactionalLogo || null);
   const [faviconUrl, setFaviconUrl] = useState(statusPage.faviconLogo || null);
 
-  // General settings
-  const [name, setName] = useState(statusPage.name);
-  const [headline, setHeadline] = useState(statusPage.headline || "");
-  const [description, setDescription] = useState(
-    statusPage.pageDescription || ""
-  );
-  const [supportUrl, setSupportUrl] = useState(statusPage.supportUrl || "");
+  const {
+    register,
+    handleSubmit,
+    control,
+    watch,
+    setValue,
+    formState: { isSubmitting, isDirty, errors },
+  } = useForm<SettingsFormValues>({
+    resolver: zodResolver(settingsSchema),
+    defaultValues: {
+      name: statusPage.name,
+      headline: statusPage.headline || "",
+      pageDescription: statusPage.pageDescription || "",
+      supportUrl: statusPage.supportUrl || "",
+      customDomain: statusPage.customDomain || "",
+      allowPageSubscribers: statusPage.allowPageSubscribers ?? true,
+      allowEmailSubscribers: statusPage.allowEmailSubscribers ?? true,
+      cssGreens: statusPage.cssGreens || "#2ecc71",
+      cssYellows: statusPage.cssYellows || "#f1c40f",
+      cssOranges: statusPage.cssOranges || "#e67e22",
+      cssBlues: statusPage.cssBlues || "#3498db",
+      cssReds: statusPage.cssReds || "#e74c3c",
+    },
+  });
 
-  // Custom domain
-  const [customDomain, setCustomDomain] = useState(
-    statusPage.customDomain || ""
-  );
+  const customDomainValue = watch("customDomain");
 
-  // Subscriber settings
-  const [allowPageSubscribers, setAllowPageSubscribers] = useState(
-    statusPage.allowPageSubscribers ?? true
-  );
-  const [allowEmailSubscribers, setAllowEmailSubscribers] = useState(
-    statusPage.allowEmailSubscribers ?? true
-  );
-
-  // Branding colors
-  const [cssGreens, setCssGreens] = useState(statusPage.cssGreens || "#2ecc71");
-  const [cssYellows, setCssYellows] = useState(
-    statusPage.cssYellows || "#f1c40f"
-  );
-  const [cssOranges, setCssOranges] = useState(
-    statusPage.cssOranges || "#e67e22"
-  );
-  const [cssBlues, setCssBlues] = useState(statusPage.cssBlues || "#3498db");
-  const [cssReds, setCssReds] = useState(statusPage.cssReds || "#e74c3c");
-
-  // Check if form has changes
-  const hasChanges =
-    name !== statusPage.name ||
-    headline !== (statusPage.headline || "") ||
-    description !== (statusPage.pageDescription || "") ||
-    supportUrl !== (statusPage.supportUrl || "") ||
-    customDomain !== (statusPage.customDomain || "") ||
-    allowPageSubscribers !== (statusPage.allowPageSubscribers ?? true) ||
-    allowEmailSubscribers !== (statusPage.allowEmailSubscribers ?? true) ||
-    cssGreens !== (statusPage.cssGreens || "#2ecc71") ||
-    cssYellows !== (statusPage.cssYellows || "#f1c40f") ||
-    cssOranges !== (statusPage.cssOranges || "#e67e22") ||
-    cssBlues !== (statusPage.cssBlues || "#3498db") ||
-    cssReds !== (statusPage.cssReds || "#e74c3c");
-
-  const handleSave = async () => {
-    setIsSaving(true);
-
+  const onSubmit = async (data: SettingsFormValues) => {
     try {
       const result = await updateStatusPageSettings({
         statusPageId: statusPage.id,
-        name,
-        headline: headline || undefined,
-        pageDescription: description || undefined,
-        supportUrl: supportUrl || undefined,
-        customDomain: customDomain || undefined,
-        allowPageSubscribers,
-        allowEmailSubscribers,
-        cssGreens,
-        cssYellows,
-        cssOranges,
-        cssBlues,
-        cssReds,
+        ...data,
+        headline: data.headline || undefined,
+        pageDescription: data.pageDescription || undefined,
+        supportUrl: data.supportUrl || undefined,
+        customDomain: data.customDomain || undefined,
       });
 
       if (result.success) {
@@ -140,8 +132,27 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
     } catch (error) {
       console.error("Error saving settings:", error);
       toast.error("An unexpected error occurred");
+    }
+  };
+
+  const handleVerifyDNS = async () => {
+    if (!customDomainValue) return;
+    setIsVerifyingDNS(true);
+    try {
+      const result = await verifyStatusPageDomain(statusPage.id);
+      if (result.success) {
+        toast.success(result.message);
+        router.refresh();
+      } else {
+        toast.error("Verification failed", {
+          description: result.message,
+        });
+      }
+    } catch (error) {
+      console.error("Error verifying DNS:", error);
+      toast.error("An unexpected error occurred");
     } finally {
-      setIsSaving(false);
+      setIsVerifyingDNS(false);
     }
   };
 
@@ -153,12 +164,13 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
 
       if (result.success) {
         toast.success("Branding reset to defaults");
-        // Reset local state
-        setCssGreens("#2ecc71");
-        setCssYellows("#f1c40f");
-        setCssOranges("#e67e22");
-        setCssBlues("#3498db");
-        setCssReds("#e74c3c");
+        // Reset form values
+        setValue("cssGreens", "#2ecc71", { shouldDirty: true });
+        setValue("cssYellows", "#f1c40f", { shouldDirty: true });
+        setValue("cssOranges", "#e67e22", { shouldDirty: true });
+        setValue("cssBlues", "#3498db", { shouldDirty: true });
+        setValue("cssReds", "#e74c3c", { shouldDirty: true });
+        
         // Reset logo and favicon URLs
         setLogoUrl(null);
         setFaviconUrl(null);
@@ -254,17 +266,17 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
       {/* Save Button */}
       <div className="absolute -top-8 right-6">
         <Button
-          onClick={handleSave}
-          disabled={isSaving || !canUpdate || !hasChanges}
+          onClick={handleSubmit(onSubmit)}
+          disabled={isSubmitting || !canUpdate || !isDirty}
           title={
             !canUpdate
               ? "You don't have permission to save settings"
-              : !hasChanges
+              : !isDirty
                 ? "No changes to save"
                 : ""
           }
         >
-          {isSaving ? (
+          {isSubmitting ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
           ) : (
             <Save className="h-4 w-4 mr-2" />
@@ -292,11 +304,13 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                 </Label>
                 <Input
                   id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  {...register("name")}
                   placeholder="My Status Page"
                   disabled={!canUpdate}
                 />
+                {errors.name && (
+                  <p className="text-xs text-red-500">{errors.name.message}</p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Internal name for your reference (not visible to public)
                 </p>
@@ -309,13 +323,15 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                 </Label>
                 <Textarea
                   id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  {...register("pageDescription")}
                   placeholder="Describe your services and what this status page tracks..."
                   disabled={!canUpdate}
                   className="resize-none"
                   rows={3}
                 />
+                {errors.pageDescription && (
+                  <p className="text-xs text-red-500">{errors.pageDescription.message}</p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Shown to users visiting your status page
                 </p>
@@ -331,12 +347,14 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                 </Label>
                 <Input
                   id="headline"
-                  value={headline}
-                  onChange={(e) => setHeadline(e.target.value)}
+                  {...register("headline")}
                   placeholder="System Status"
                   maxLength={255}
                   disabled={!canUpdate}
                 />
+                {errors.headline && (
+                  <p className="text-xs text-red-500">{errors.headline.message}</p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Display heading on your public status page
                 </p>
@@ -350,11 +368,13 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                 <Input
                   id="supportUrl"
                   type="url"
-                  value={supportUrl}
-                  onChange={(e) => setSupportUrl(e.target.value)}
+                  {...register("supportUrl")}
                   placeholder="https://support.example.com"
                   disabled={!canUpdate}
                 />
+                {errors.supportUrl && (
+                  <p className="text-xs text-red-500">{errors.supportUrl.message}</p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Link to your support page or contact info
                 </p>
@@ -384,23 +404,55 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                     Use your own domain for the status page
                   </p>
                 </div>
-                <Input
-                  placeholder="status.yourcompany.com"
-                  value={customDomain}
-                  onChange={(e) => setCustomDomain(e.target.value)}
-                  disabled={!canUpdate}
-                  className="font-mono text-sm"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="status.yourcompany.com"
+                    {...register("customDomain")}
+                    disabled={!canUpdate}
+                    className="font-mono text-sm"
+                  />
+                  {customDomainValue && customDomainValue !== statusPage.customDomain && (
+                     <Button 
+                       type="button" 
+                       size="sm" 
+                       variant="outline"
+                       disabled={true}
+                       title="Save changes first"
+                     >
+                       Save First
+                     </Button>
+                  )}
+                  {customDomainValue && customDomainValue === statusPage.customDomain && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleVerifyDNS}
+                      disabled={isVerifyingDNS || !canUpdate}
+                    >
+                      {isVerifyingDNS ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        "Verify DNS"
+                      )}
+                    </Button>
+                  )}
+                </div>
+                {errors.customDomain && (
+                  <p className="text-xs text-red-500">{errors.customDomain.message}</p>
+                )}
+
                 {statusPage.customDomainVerified &&
-                  customDomain === statusPage.customDomain && (
+                  customDomainValue === statusPage.customDomain && (
                     <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 dark:bg-green-950 p-2 rounded">
                       <CheckCircle2 className="h-4 w-4" />
                       Domain verified and active
                     </div>
                   )}
-                {!statusPage.customDomainVerified && customDomain && (
-                  <div className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950 p-2 rounded">
-                    ⏳ Waiting for DNS verification...
+                {!statusPage.customDomainVerified && customDomainValue && customDomainValue === statusPage.customDomain && (
+                  <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 dark:bg-amber-950 p-2 rounded">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span>Waiting for DNS verification...</span>
                   </div>
                 )}
 
@@ -416,8 +468,7 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                   </p>
                   <p>
                     <span className="font-medium">3.</span> Wait for DNS
-                    propagation (usually 15-30 minutes. We&apos;ll verify
-                    automatically.)
+                    propagation (usually 15-30 minutes) and click Verify DNS.
                   </p>
                 </div>
               </div>
@@ -438,10 +489,16 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                         Let users subscribe for updates
                       </p>
                     </div>
-                    <Switch
-                      checked={allowPageSubscribers}
-                      onCheckedChange={setAllowPageSubscribers}
-                      disabled={!canUpdate}
+                    <Controller
+                      control={control}
+                      name="allowPageSubscribers"
+                      render={({ field }) => (
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          disabled={!canUpdate}
+                        />
+                      )}
                     />
                   </div>
 
@@ -452,10 +509,16 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                         Send updates via email
                       </p>
                     </div>
-                    <Switch
-                      checked={allowEmailSubscribers}
-                      onCheckedChange={setAllowEmailSubscribers}
-                      disabled={!canUpdate}
+                    <Controller
+                      control={control}
+                      name="allowEmailSubscribers"
+                      render={({ field }) => (
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          disabled={!canUpdate}
+                        />
+                      )}
                     />
                   </div>
                 </div>
@@ -625,17 +688,18 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                   <Input
                     id="cssGreens"
                     type="color"
-                    value={cssGreens}
-                    onChange={(e) => setCssGreens(e.target.value)}
+                    {...register("cssGreens")}
                     className="w-14 h-9 p-1"
                   />
                   <Input
-                    value={cssGreens}
-                    onChange={(e) => setCssGreens(e.target.value)}
+                    {...register("cssGreens")}
                     placeholder="#2ecc71"
                     className="flex-1"
                   />
                 </div>
+                {errors.cssGreens && (
+                  <p className="text-xs text-red-500">{errors.cssGreens.message}</p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -646,17 +710,18 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                   <Input
                     id="cssYellows"
                     type="color"
-                    value={cssYellows}
-                    onChange={(e) => setCssYellows(e.target.value)}
+                    {...register("cssYellows")}
                     className="w-14 h-9 p-1"
                   />
                   <Input
-                    value={cssYellows}
-                    onChange={(e) => setCssYellows(e.target.value)}
+                    {...register("cssYellows")}
                     placeholder="#f1c40f"
                     className="flex-1"
                   />
                 </div>
+                {errors.cssYellows && (
+                  <p className="text-xs text-red-500">{errors.cssYellows.message}</p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -667,17 +732,18 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                   <Input
                     id="cssOranges"
                     type="color"
-                    value={cssOranges}
-                    onChange={(e) => setCssOranges(e.target.value)}
+                    {...register("cssOranges")}
                     className="w-14 h-9 p-1"
                   />
                   <Input
-                    value={cssOranges}
-                    onChange={(e) => setCssOranges(e.target.value)}
+                    {...register("cssOranges")}
                     placeholder="#e67e22"
                     className="flex-1"
                   />
                 </div>
+                {errors.cssOranges && (
+                  <p className="text-xs text-red-500">{errors.cssOranges.message}</p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -688,17 +754,18 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                   <Input
                     id="cssBlues"
                     type="color"
-                    value={cssBlues}
-                    onChange={(e) => setCssBlues(e.target.value)}
+                    {...register("cssBlues")}
                     className="w-14 h-9 p-1"
                   />
                   <Input
-                    value={cssBlues}
-                    onChange={(e) => setCssBlues(e.target.value)}
+                    {...register("cssBlues")}
                     placeholder="#3498db"
                     className="flex-1"
                   />
                 </div>
+                {errors.cssBlues && (
+                  <p className="text-xs text-red-500">{errors.cssBlues.message}</p>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -709,17 +776,18 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                   <Input
                     id="cssReds"
                     type="color"
-                    value={cssReds}
-                    onChange={(e) => setCssReds(e.target.value)}
+                    {...register("cssReds")}
                     className="w-14 h-9 p-1"
                   />
                   <Input
-                    value={cssReds}
-                    onChange={(e) => setCssReds(e.target.value)}
+                    {...register("cssReds")}
                     placeholder="#e74c3c"
                     className="flex-1"
                   />
                 </div>
+                {errors.cssReds && (
+                  <p className="text-xs text-red-500">{errors.cssReds.message}</p>
+                )}
               </div>
             </div>
           </div>

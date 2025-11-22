@@ -1,7 +1,7 @@
 # Status Pages - Complete Specification & Implementation Guide
 
-**Version:** 2.7
-**Last Updated:** 2025-10-22
+**Version:** 2.8
+**Last Updated:** 2025-11-22
 **Status:** Phase 3 Complete ✅ - Production Ready 🚀
 
 ---
@@ -119,6 +119,10 @@ CREATE TABLE status_pages (
   support_url VARCHAR(500),
   timezone VARCHAR(50) DEFAULT 'UTC',
 
+  -- Custom Domain Configuration
+  custom_domain VARCHAR(255),  -- Custom domain (e.g., status.example.com)
+  custom_domain_verified BOOLEAN DEFAULT FALSE,  -- Whether CNAME is verified
+
   -- Subscriber Settings
   allow_page_subscribers BOOLEAN DEFAULT TRUE,
   allow_incident_subscribers BOOLEAN DEFAULT TRUE,
@@ -126,6 +130,7 @@ CREATE TABLE status_pages (
   allow_sms_subscribers BOOLEAN DEFAULT TRUE,
   allow_rss_atom_feeds BOOLEAN DEFAULT TRUE,
   allow_webhook_subscribers BOOLEAN DEFAULT TRUE,
+  allow_slack_subscribers BOOLEAN DEFAULT TRUE,
 
   -- Notification Settings
   notifications_from_email VARCHAR(255),
@@ -163,14 +168,17 @@ CREATE TABLE status_pages (
 
 CREATE INDEX idx_status_pages_subdomain ON status_pages(subdomain);
 CREATE INDEX idx_status_pages_organization ON status_pages(organization_id);
+CREATE INDEX idx_status_pages_custom_domain ON status_pages(custom_domain);
 ```
 
 **Key Fields:**
 
 - `subdomain`: UUID v4 without dashes (e.g., `f47ac10b58cc4372a5670e02b2c3d479`)
+- `custom_domain`: Optional custom domain for white-label status pages
+- `custom_domain_verified`: Boolean flag indicating CNAME verification status
 - `status`: Controls visibility (`draft` = not public, `published` = public)
 - `css_*`: Customizable colors for branding
-- `allow_*`: Feature toggles for subscribers
+- `allow_*`: Feature toggles for subscribers (email, SMS, webhook, Slack)
 
 #### 2. `status_page_component_groups`
 
@@ -424,7 +432,7 @@ CREATE TABLE incident_template_components (
 
 #### 9. `status_page_subscribers`
 
-Email/SMS/webhook subscribers with webhook secret storage.
+Email/SMS/webhook/Slack subscribers with webhook secret storage.
 
 ```sql
 CREATE TABLE status_page_subscribers (
@@ -435,9 +443,9 @@ CREATE TABLE status_page_subscribers (
   email VARCHAR(255),
   phone_number VARCHAR(50),
   phone_country VARCHAR(2) DEFAULT 'US',
-  endpoint VARCHAR(500),  -- For webhook subscribers
+  endpoint VARCHAR(500),  -- For webhook and Slack subscribers
 
-  mode VARCHAR(50) NOT NULL,  -- email | sms | webhook
+  mode VARCHAR(50) NOT NULL,  -- email | sms | webhook | slack
 
   -- Webhook Security
   webhook_secret VARCHAR(255),  -- HMAC secret for webhook signature verification
@@ -447,6 +455,8 @@ CREATE TABLE status_page_subscribers (
 
   -- Verification & Status
   verified_at TIMESTAMP,
+  verification_token VARCHAR(255),  -- Token for email verification
+  unsubscribe_token VARCHAR(255),  -- Token for unsubscribe links
   skip_confirmation_notification BOOLEAN DEFAULT FALSE,
   quarantined_at TIMESTAMP,
   purge_at TIMESTAMP,
@@ -456,6 +466,9 @@ CREATE TABLE status_page_subscribers (
 );
 
 CREATE INDEX idx_subscribers_status_page ON status_page_subscribers(status_page_id);
+CREATE INDEX idx_subscribers_email ON status_page_subscribers(email);
+CREATE INDEX idx_subscribers_verification_token ON status_page_subscribers(verification_token);
+CREATE INDEX idx_subscribers_unsubscribe_token ON status_page_subscribers(unsubscribe_token);
 ```
 
 #### 10. `status_page_component_subscriptions`
@@ -624,11 +637,17 @@ Deletes a status page and all related data via database cascade.
 
 #### 8. Subscription System
 
-- [`subscribe-to-status-page.ts`](app/src/actions/subscribe-to-status-page.ts) - Handle new subscriptions (email and webhook)
+- [`subscribe-to-status-page.ts`](app/src/actions/subscribe-to-status-page.ts) - Handle new subscriptions (email, webhook, and Slack)
 - [`verify-subscriber.ts`](app/src/actions/verify-subscriber.ts) - Verify email subscriptions
 - [`unsubscribe-from-status-page.ts`](app/src/actions/unsubscribe-from-status-page.ts) - Handle unsubscribes
 - [`get-status-page-subscribers.ts`](app/src/actions/get-status-page-subscribers.ts) - List subscribers with stats
 - [`test-webhook.ts`](app/src/actions/test-webhook.ts) - Test webhook endpoints
+
+**Subscription Modes:**
+
+1. **Email Subscriptions**: Require email verification via token-based workflow
+2. **Webhook Subscriptions**: Immediately verified with HMAC secret generation
+3. **Slack Subscriptions**: Immediately verified, validates slack.com domain
 
 ### Settings and Publishing
 
@@ -636,6 +655,34 @@ Deletes a status page and all related data via database cascade.
 
 - [`update-status-page-settings.ts`](app/src/actions/update-status-page-settings.ts) - Update page settings
 - [`publish-status-page.ts`](app/src/actions/publish-status-page.ts) - Publish/unpublish status page
+- [`verify-status-page-domain.ts`](app/src/actions/verify-status-page-domain.ts) - Verify custom domain CNAME configuration
+
+**Custom Domain Verification:**
+
+The `verify-status-page-domain` action performs DNS CNAME verification:
+
+1. Checks that a custom domain is configured
+2. Resolves CNAME records for the domain
+3. Validates that CNAME points to valid targets (supercheck.io, cname.supercheck.io, or ingress.supercheck.io)
+4. Updates `custom_domain_verified` flag on success
+5. Returns detailed error messages for troubleshooting
+
+**Implementation:**
+
+```typescript
+import { resolveCname } from "node:dns/promises";
+
+export async function verifyStatusPageDomain(statusPageId: string) {
+  // Permission checks and status page lookup
+  const cnames = await resolveCname(statusPage.customDomain);
+  const validTargets = ["supercheck.io", "cname.supercheck.io", "ingress.supercheck.io"];
+  const isValid = cnames.some(cname => validTargets.some(target => cname.includes(target)));
+  
+  if (isValid) {
+    // Update custom_domain_verified to true
+  }
+}
+```
 
 #### 10. Monitor Integration
 
@@ -986,6 +1033,19 @@ status-pages/{statusPageId}/{uploadType}/{uniqueId}.{extension}
 - Success state with confirmation message
 - Loading states and error handling
 
+#### URL Parameter Pre-filling
+
+**Feature:** Direct linking to creation forms with pre-selected types
+
+**Supported Pages:**
+
+**Status Pages** (Future implementation)
+- Pattern: `/status-pages?create=true`
+- Opens the status page creation dialog
+
+
+
+
 **Routes:**
 
 - [`/status-pages/[id]/public/page.tsx`](<app/src/app/(main)/status-pages/[id]/public/page.tsx>) - Public status page route
@@ -1163,7 +1223,7 @@ canManageStatusPages(role: Role): boolean
 
 **Week 2: Enterprise Features**
 
-- [ ] Custom domains (CNAME)
+- [x] Custom domains (CNAME) - ✅ Completed
 - [ ] Advanced branding options
 - [ ] Multi-language support
 - [ ] SLA tracking and reporting
@@ -1194,7 +1254,7 @@ canManageStatusPages(role: Role): boolean
 - [x] Added aggregation methods and failure thresholds for multi-monitor components
 - [x] Successfully applied migrations to database
 
-#### Server Actions (23/23 Complete)
+#### Server Actions (24/24 Complete)
 
 - [x] `create-status-page.ts` - Create new status pages with UUID subdomain generation
 - [x] `get-status-pages.ts` - List all status pages for organization
@@ -1206,6 +1266,7 @@ canManageStatusPages(role: Role): boolean
 - [x] Incident management (5 actions including get-incident-detail)
 - [x] Subscriber management (4 actions)
 - [x] `publish-status-page.ts` - Publish/unpublish status pages
+- [x] `verify-status-page-domain.ts` - Custom domain CNAME verification
 - [x] `send-incident-notifications.ts` - Automatic email notifications for incidents
 - [x] `send-webhook-notifications.ts` - Automatic webhook notifications for incidents
 - [x] `test-webhook.ts` - Webhook testing endpoint
@@ -1244,6 +1305,8 @@ canManageStatusPages(role: Role): boolean
 
 - [x] Email subscription form with verification
 - [x] Email verification workflow with professional templates
+- [x] Webhook subscription support with HMAC secret generation
+- [x] Slack subscription support with domain validation
 - [x] Component-specific subscriptions (database ready)
 - [x] Incident-specific subscriptions (database ready)
 - [x] Unsubscribe functionality with token-based security
@@ -1278,10 +1341,27 @@ canManageStatusPages(role: Role): boolean
 
 - [x] Automatic email notifications for incident creation
 - [x] Automatic email notifications for incident status updates
+- [x] Automatic webhook notifications with HMAC signatures
+- [x] Automatic Slack notifications with formatted messages
 - [x] Verified subscriber filtering
 - [x] Parallel email delivery with error handling
 - [x] Published status page validation
 - [x] Professional email templates with impact-based styling
+
+#### Custom Domain Support
+
+- [x] Custom domain configuration in database schema
+- [x] CNAME verification with DNS resolution
+- [x] Domain validation against approved targets
+- [x] Verification status tracking
+- [x] Error handling and troubleshooting messages
+
+#### URL Parameter Pre-filling
+
+- [x] Query parameter support for direct linking (`?create=true&type=<type>`)
+- [x] Implementation in Alerts/Notification Channels page
+- [x] Pre-selection of notification channel types
+- [x] Extensible pattern for other creation forms
 
 ### 🚧 In Progress (Phase 4)
 
@@ -1300,19 +1380,21 @@ canManageStatusPages(role: Role): boolean
 - [ ] Scheduled maintenance support (database ready, UI pending)
 - [ ] Real-time updates (SSE)
 - [ ] Uptime charts (90-day)
-- [ ] Custom domains (CNAME)
 - [ ] RSS/Atom feeds
 
 ### 📊 Progress Metrics
 
-- **Database Schema**: 100% complete (14/14 tables)
-- **Server Actions**: 100% complete (23/23 planned)
+- **Database Schema**: 100% complete (14/14 tables with custom domain support)
+- **Server Actions**: 100% complete (24/24 planned)
 - **Core UI**: 100% complete (15/15 components)
 - **Public Features**: 100% complete (subdomain routing + public pages + subscriptions + email templates)
+- **Subscription Modes**: 100% complete (Email + Webhook + Slack)
+- **Custom Domains**: 100% complete (CNAME verification + DNS validation)
 - **Asset Management**: 100% complete (upload service + S3 integration)
 - **Performance**: 100% complete (caching + rate limiting + connection pooling)
-- **Incident Notifications**: 100% complete (automatic email delivery + professional templates)
-- **Overall Progress**: ~100% complete (Phase 3)
+- **Incident Notifications**: 100% complete (automatic email/webhook/Slack delivery + professional templates)
+- **URL Pre-filling**: 100% complete (query parameter support for direct linking)
+- **Overall Progress**: ~100% complete
 
 ---
 

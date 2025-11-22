@@ -1,10 +1,129 @@
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { reports } from "@/db/schema";
+import {
+  jobs,
+  k6PerformanceRuns,
+  monitors,
+  monitorResults,
+  reports,
+  runs,
+  tests,
+} from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { fetchFromS3 } from "@/lib/s3-proxy";
 import { notFound } from "next/navigation";
-import { requireAuth } from "@/lib/rbac/middleware";
+import { hasPermission, requireAuth } from "@/lib/rbac/middleware";
+import { requireProjectContext } from "@/lib/project-context";
+
+type AccessContext = {
+  organizationId: string | null;
+  projectId: string | null;
+};
+
+function getPermissionResource(entityType: string): "test" | "monitor" | "run" | null {
+  if (entityType === "test") return "test";
+  if (entityType === "monitor") return "monitor";
+  if (entityType === "job" || entityType === "k6_performance") return "run";
+  return null;
+}
+
+async function resolveAccessContext(
+  entityType: string,
+  entityId: string
+): Promise<AccessContext | null> {
+  try {
+    if (entityType === "test") {
+      const result = await db
+        .select({
+          organizationId: tests.organizationId,
+          projectId: tests.projectId,
+        })
+        .from(tests)
+        .where(eq(tests.id, entityId))
+        .limit(1);
+
+      if (!result.length) return null;
+      return {
+        organizationId: result[0].organizationId,
+        projectId: result[0].projectId,
+      };
+    }
+
+    if (entityType === "job") {
+      const result = await db
+        .select({
+          organizationId: jobs.organizationId,
+          projectId: runs.projectId,
+        })
+        .from(runs)
+        .leftJoin(jobs, eq(jobs.id, runs.jobId))
+        .where(eq(runs.id, entityId))
+        .limit(1);
+
+      if (!result.length) return null;
+      return {
+        organizationId: result[0].organizationId,
+        projectId: result[0].projectId,
+      };
+    }
+
+    if (entityType === "k6_performance") {
+      const result = await db
+        .select({
+          organizationId: k6PerformanceRuns.organizationId,
+          projectId: k6PerformanceRuns.projectId,
+        })
+        .from(k6PerformanceRuns)
+        .where(eq(k6PerformanceRuns.runId, entityId))
+        .limit(1);
+
+      if (!result.length) return null;
+      return {
+        organizationId: result[0].organizationId,
+        projectId: result[0].projectId,
+      };
+    }
+
+    if (entityType === "monitor") {
+      const result = await db
+        .select({
+          organizationId: monitors.organizationId,
+          projectId: monitors.projectId,
+        })
+        .from(monitorResults)
+        .leftJoin(monitors, eq(monitors.id, monitorResults.monitorId))
+        .where(eq(monitorResults.testExecutionId, entityId))
+        .limit(1);
+
+      if (result.length) {
+        return {
+          organizationId: result[0].organizationId,
+          projectId: result[0].projectId,
+        };
+      }
+
+      const monitorRecord = await db
+        .select({
+          organizationId: monitors.organizationId,
+          projectId: monitors.projectId,
+        })
+        .from(monitors)
+        .where(eq(monitors.id, entityId))
+        .limit(1);
+
+      if (!monitorRecord.length) return null;
+      return {
+        organizationId: monitorRecord[0].organizationId,
+        projectId: monitorRecord[0].projectId,
+      };
+    }
+
+    return null;
+  } catch (error) {
+    console.error("[TEST-RESULTS] Error resolving access context:", error);
+    return null;
+  }
+}
 
 export async function GET(request: Request) {
   // Require authentication
@@ -74,6 +193,44 @@ export async function GET(request: Request) {
     const reportResult =
       reportRows.find((row) => row.entityType === "k6_performance") ??
       reportRows[0];
+
+    const permissionResource = getPermissionResource(reportResult.entityType);
+    let accessContext = await resolveAccessContext(
+      reportResult.entityType,
+      entityId
+    );
+
+    // Fallback for ad-hoc playground tests that don’t have a persisted test record
+    if (
+      (!accessContext?.organizationId || !accessContext.projectId) &&
+      permissionResource === "test"
+    ) {
+      try {
+        const projectContext = await requireProjectContext();
+        accessContext = {
+          organizationId: projectContext.organizationId,
+          projectId: projectContext.project.id,
+        };
+      } catch (error) {
+        console.warn("[TEST-RESULTS] Failed to resolve project context:", error);
+      }
+    }
+
+    if (!permissionResource || !accessContext?.organizationId || !accessContext.projectId) {
+      return notFound();
+    }
+
+    const authorized = await hasPermission(permissionResource, "view", {
+      organizationId: accessContext.organizationId,
+      projectId: accessContext.projectId,
+    });
+
+    if (!authorized) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to view this report" },
+        { status: 403 }
+      );
+    }
 
     if (!reportResult.s3Url) {
       if (reportResult.status === "running") {

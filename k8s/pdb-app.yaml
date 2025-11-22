@@ -1,0 +1,14 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: supercheck-app
+  namespace: supercheck
+  labels:
+    app.kubernetes.io/name: supercheck
+    app.kubernetes.io/component: app
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: supercheck
+      app.kubernetes.io/component: app

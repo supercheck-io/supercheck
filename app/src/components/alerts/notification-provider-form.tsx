@@ -142,9 +142,10 @@ interface NotificationProviderFormProps {
     config: NotificationProviderConfig;
     maskedFields?: string[];
   };
+  defaultType?: NotificationProviderType;
 }
 
-export function NotificationProviderForm({ onSuccess, onCancel, initialData }: NotificationProviderFormProps) {
+export function NotificationProviderForm({ onSuccess, onCancel, initialData, defaultType }: NotificationProviderFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
 
@@ -154,6 +155,7 @@ export function NotificationProviderForm({ onSuccess, onCancel, initialData }: N
 
   const form = useForm<FormValues>({
     resolver: zodResolver(notificationProviderSchema),
+    mode: "onSubmit", // Only validate on submit, not on every change
     defaultValues: initialData ? {
       type: initialData.type,
       config: {
@@ -170,7 +172,7 @@ export function NotificationProviderForm({ onSuccess, onCancel, initialData }: N
         discordWebhookUrl: ((initialData.config as Record<string, unknown>).discordWebhookUrl as string) || "",
       },
     } : {
-      type: "email",
+      type: defaultType || "email",
       config: {
         name: "",
         emails: "",
@@ -261,7 +263,7 @@ export function NotificationProviderForm({ onSuccess, onCancel, initialData }: N
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Channel Type</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting || isTesting}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select channel type" />
@@ -287,7 +289,7 @@ export function NotificationProviderForm({ onSuccess, onCancel, initialData }: N
                   <FormItem>
                     <FormLabel>Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="My Email Alerts" {...field} />
+                      <Input placeholder="My Email Alerts" {...field} disabled={isSubmitting || isTesting} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -306,11 +308,12 @@ export function NotificationProviderForm({ onSuccess, onCancel, initialData }: N
                     <FormItem>
                       <FormLabel>Email Addresses</FormLabel>
                       <FormControl>
-                        <Textarea 
+                        <Textarea
                           placeholder="admin@yourcompany.com, team@yourcompany.com, alerts@yourcompany.com"
                           className="min-h-[80px] max-h-[150px] resize-y"
                           maxLength={CHARACTER_LIMITS.emails}
-                          {...field} 
+                          disabled={isSubmitting || isTesting}
+                          {...field}
                         />
                       </FormControl>
                       <div className="text-sm text-muted-foreground">
@@ -336,7 +339,7 @@ export function NotificationProviderForm({ onSuccess, onCancel, initialData }: N
                     <FormItem>
                       <FormLabel>Webhook URL</FormLabel>
                       <FormControl>
-                        <Input placeholder="https://hooks.slack.com/services/..." {...field} />
+                        <Input placeholder="https://hooks.slack.com/services/..." {...field} disabled={isSubmitting || isTesting} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -349,7 +352,7 @@ export function NotificationProviderForm({ onSuccess, onCancel, initialData }: N
                     <FormItem>
                       <FormLabel>Channel (optional)</FormLabel>
                       <FormControl>
-                        <Input placeholder="#alerts" {...field} />
+                        <Input placeholder="#alerts" {...field} disabled={isSubmitting || isTesting} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -370,7 +373,7 @@ export function NotificationProviderForm({ onSuccess, onCancel, initialData }: N
                       <FormItem>
                         <FormLabel>URL</FormLabel>
                         <FormControl>
-                          <Input placeholder="https://api.yourservice.com/alerts" {...field} />
+                          <Input placeholder="https://api.yourservice.com/alerts" {...field} disabled={isSubmitting || isTesting} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -382,7 +385,7 @@ export function NotificationProviderForm({ onSuccess, onCancel, initialData }: N
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Method</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting || isTesting}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select method" />
@@ -406,9 +409,10 @@ export function NotificationProviderForm({ onSuccess, onCancel, initialData }: N
                     <FormItem>
                       <FormLabel>Body Template <span className="text-xs text-muted-foreground bg-muted rounded-sm px-1.5 py-0.5">Optional</span></FormLabel>
                       <FormControl>
-                        <Textarea 
+                        <Textarea
                           placeholder='{"message": "Monitor {{monitorName}} is {{status}}"}'
-                          {...field} 
+                          disabled={isSubmitting || isTesting}
+                          {...field}
                         />
                       </FormControl>
                       <FormMessage />
@@ -430,7 +434,7 @@ export function NotificationProviderForm({ onSuccess, onCancel, initialData }: N
                       <FormItem>
                         <FormLabel>Bot Token</FormLabel>
                         <FormControl>
-                          <Input type="password" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" {...field} />
+                          <Input type="password" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" {...field} disabled={isSubmitting || isTesting} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -443,7 +447,7 @@ export function NotificationProviderForm({ onSuccess, onCancel, initialData }: N
                       <FormItem>
                         <FormLabel>Chat ID</FormLabel>
                         <FormControl>
-                          <Input placeholder="-123456789" {...field} />
+                          <Input placeholder="-123456789" {...field} disabled={isSubmitting || isTesting} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -464,7 +468,7 @@ export function NotificationProviderForm({ onSuccess, onCancel, initialData }: N
                     <FormItem>
                       <FormLabel>Webhook URL</FormLabel>
                       <FormControl>
-                        <Input placeholder="https://discord.com/api/webhooks/..." {...field} />
+                        <Input placeholder="https://discord.com/api/webhooks/..." {...field} disabled={isSubmitting || isTesting} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

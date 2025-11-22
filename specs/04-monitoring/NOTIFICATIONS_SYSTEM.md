@@ -103,7 +103,7 @@ graph TB
 **Key Components:**
 - **React Email Templates** (`/app/src/emails`): Professional email templates built with react-email
 - **Email Renderer Service** (`/app/src/lib/email-renderer.ts`): Direct template rendering for app usage
-- **Email Template Processor** (`/app/src/lib/processors/email-template-processor.ts`): BullMQ worker that processes template rendering requests from the worker
+- **Email Template Processor**: Worker that processes email jobs using `react-email` templates. It handles rendering, fallback generation, and sending via SMTP.
 - **Job Scheduler** (`/app/src/lib/job-scheduler.ts`): Schedules periodic test executions based on cron expressions
 - **Monitor Scheduler** (`/app/src/lib/monitor-scheduler.ts`): Schedules monitor checks based on frequency
 
@@ -223,7 +223,7 @@ sequenceDiagram
 1. **Cache Check**: Worker first checks its in-memory cache (5-minute TTL)
 2. **Queue Job**: If not cached, worker adds a rendering job to the `email-template-render` queue
 3. **Template Processing**: App's email template processor picks up the job and routes to appropriate renderer
-4. **React Rendering**: Template is rendered using react-email components with BaseLayout
+4. **React Rendering**: Template is rendered using react-email components with `BaseLayout` (includes standard header/footer)
 5. **Result Return**: Rendered HTML, text, and subject are returned via queue
 6. **Caching**: Worker caches the result to avoid repeated rendering
 7. **Fallback**: If queue fails or times out, worker generates basic HTML as fallback
@@ -368,7 +368,7 @@ sequenceDiagram
 - Monitor name and type
 - Project name
 - Status (up/down)
-- Response time (for HTTP monitors)
+- Response time (in seconds, e.g., "0.45s")
 - Error message (for failures)
 - Target URL
 - Dashboard link (direct link to monitor details page)
@@ -498,7 +498,7 @@ sequenceDiagram
 - Execution status (Success/Failed/Timeout)
 - Duration (in seconds)
 - Run ID (unique identifier)
-- Dashboard URL (direct link to full results and test statistics)
+- Dashboard URL (included in details table)
 - Trigger type (scheduled/manual)
 - Error message (for failures only)
 
@@ -711,9 +711,9 @@ graph LR
 - Professional header with branding
 - Alert status badge
 - Color-coded alert sections
-- Detailed information table
-- Dashboard action button
-- Footer with branding and disclaimer
+- Detailed information table (includes Dashboard Link)
+- Dashboard action button (optional)
+- Standardized footer with company info, copyright, and unsubscribe link
 
 ### Slack Provider (Webhook)
 
@@ -723,7 +723,7 @@ graph LR
 **Features:**
 - Rich message formatting with attachments
 - Color-coded message borders
-- Field-based data display (short/long fields)
+- Field-based data display (consistent with email)
 - Footer with timestamp
 - Link support in messages
 - Emoji support
