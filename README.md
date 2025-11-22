@@ -6,7 +6,7 @@
 
 Supercheck delivers comprehensive test automation, real-time monitoring, intelligent job orchestration, and parallel execution capabilities for development and SRE teams.
 
-[![Deploy](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-blue?logo=docker)](./docker-compose.yml)
+[![Deploy](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-blue?logo=docker)](./deploy/docker/docker-compose.yml)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Website](https://img.shields.io/badge/Website-supercheck.io-orange?logo=firefox)](https://supercheck.io)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey?logo=docker)](https://supercheck.io)
@@ -69,6 +69,7 @@ cd supercheck
 cp .env.example .env
 
 # Start with Docker
+cd deploy/docker
 docker-compose up -d
 docker-compose exec app npm run setup:admin admin@example.com
 ```
@@ -94,7 +95,7 @@ supercheck/
 ├── app/          # Next.js frontend & API
 ├── worker/       # NestJS worker service
 ├── docs/         # Documentation site
-└── docker-compose.yml
+└── deploy/docker/docker-compose.yml
 ```
 
 ## Documentation

@@ -1,0 +1,38 @@
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-redis-auth
+  namespace: supercheck
+spec:
+  secretTargetRef:
+    - parameter: password
+      name: supercheck-secret
+      key: REDIS_PASSWORD
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: supercheck-worker-scaler
+  namespace: supercheck
+spec:
+  scaleTargetRef:
+    name: supercheck-worker
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  pollingInterval: 30
+  cooldownPeriod: 300
+  triggers:
+    - type: redis
+      metadata:
+        address: redis.example.com:6379
+        listName: bull:job-execution:wait
+        listLength: "5"
+      authenticationRef:
+        name: keda-redis-auth
+    - type: redis
+      metadata:
+        address: redis.example.com:6379
+        listName: bull:test-execution:wait
+        listLength: "5"
+      authenticationRef:
+        name: keda-redis-auth

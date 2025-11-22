@@ -7,7 +7,6 @@ metadata:
     app.kubernetes.io/name: supercheck
     app.kubernetes.io/component: worker
 spec:
-  replicas: 2
   revisionHistoryLimit: 3
   selector:
     matchLabels:
@@ -27,7 +26,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: worker
-          image: ghcr.io/supercheck-io/supercheck/worker:1.1.3-beta
+          image: ghcr.io/supercheck-io/supercheck/worker:latest
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false

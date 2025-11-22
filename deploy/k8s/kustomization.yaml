@@ -10,6 +10,7 @@ resources:
   - app-service.yaml
   - worker-deployment.yaml
   - worker-service.yaml
+  - keda-scaledobject.yaml
   - ingress.yaml
   - pdb-app.yaml
   - pdb-worker.yaml

@@ -27,7 +27,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: app
-          image: ghcr.io/supercheck-io/supercheck/app:1.1.3-beta
+          image: ghcr.io/supercheck-io/supercheck/app:latest
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
