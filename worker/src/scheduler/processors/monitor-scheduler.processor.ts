@@ -99,7 +99,7 @@ export class MonitorSchedulerProcessor extends WorkerHost {
               removeOnComplete:
                 MonitorSchedulerProcessor.COMPLETED_JOB_RETENTION,
               removeOnFail: MonitorSchedulerProcessor.FAILED_JOB_RETENTION,
-              priority: 1,
+              priority: 10,
             },
           ),
         ),
@@ -117,6 +117,7 @@ export class MonitorSchedulerProcessor extends WorkerHost {
       backoff: { type: 'exponential', delay: 5000 },
       removeOnComplete: MonitorSchedulerProcessor.COMPLETED_JOB_RETENTION,
       removeOnFail: MonitorSchedulerProcessor.FAILED_JOB_RETENTION,
+      priority: 10,
     });
   }
 

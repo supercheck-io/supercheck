@@ -472,7 +472,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
   }
 }
 
-@Processor(K6_TEST_EXECUTION_QUEUE, { concurrency: 3 })
+@Processor(K6_TEST_EXECUTION_QUEUE, { concurrency: 1 })
 export class K6TestExecutionProcessor extends BaseK6ExecutionProcessor {
   constructor(
     k6ExecutionService: K6ExecutionService,
@@ -524,7 +524,7 @@ export class K6TestExecutionProcessor extends BaseK6ExecutionProcessor {
   }
 }
 
-@Processor(K6_JOB_EXECUTION_QUEUE, { concurrency: 3 })
+@Processor(K6_JOB_EXECUTION_QUEUE, { concurrency: 1 })
 export class K6JobExecutionProcessor extends BaseK6ExecutionProcessor {
   constructor(
     k6ExecutionService: K6ExecutionService,

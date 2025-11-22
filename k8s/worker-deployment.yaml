@@ -63,11 +63,11 @@ spec:
             timeoutSeconds: 5
           resources:
             requests:
-              cpu: 500m
-              memory: 1Gi
+              cpu: 800m
+              memory: 1.6Gi
             limits:
-              cpu: "4"
-              memory: 6Gi
+              cpu: "1.5"
+              memory: 2Gi
           volumeMounts:
             - name: docker-graph
               mountPath: /var/lib/docker
@@ -89,11 +89,11 @@ spec:
               protocol: TCP
           resources:
             requests:
-              cpu: 500m
+              cpu: 400m
               memory: 512Mi
             limits:
-              cpu: "2"
-              memory: 2Gi
+              cpu: "1"
+              memory: 1Gi
           volumeMounts:
             - name: docker-graph
               mountPath: /var/lib/docker

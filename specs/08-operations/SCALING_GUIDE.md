@@ -513,7 +513,7 @@ WORKER_REPLICAS=8 RUNNING_CAPACITY=16 docker-compose up -d
 
 ```bash
 # Optimized for many small tests
-WORKER_REPLICAS=8 MAX_CONCURRENT_EXECUTIONS=3 RUNNING_CAPACITY=24 docker-compose up -d
+WORKER_REPLICAS=8 MAX_CONCURRENT_EXECUTIONS=1 RUNNING_CAPACITY=8 docker-compose up -d
 ```
 
 ### Memory-Intensive Setup
@@ -532,7 +532,7 @@ WORKER_REPLICAS=4 MAX_CONCURRENT_EXECUTIONS=1 RUNNING_CAPACITY=4 docker-compose 
 | `WORKER_MEMORY_LIMIT` | 2G | Memory limit per worker |
 | `RUNNING_CAPACITY` | 6 | Total concurrent test capacity |
 | `QUEUED_CAPACITY` | 50 | Maximum queue size |
-| `MAX_CONCURRENT_EXECUTIONS` | 2 | Concurrent tests per worker |
+| `MAX_CONCURRENT_EXECUTIONS` | 1 | Concurrent tests per worker |
 
 ## Next Steps
 

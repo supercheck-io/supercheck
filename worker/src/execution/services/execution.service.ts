@@ -1419,8 +1419,8 @@ export class ExecutionService implements OnModuleDestroy {
           timeoutMs: options.timeout,
           env: options.env as Record<string, string>,
           workingDir: options.workingDir || '/worker',
-          memoryLimitMb: 4096, // 4GB for Playwright (supports 2 parallel workers)
-          cpuLimit: 4.0, // 4 CPUs
+          memoryLimitMb: 1536, // 1.5GB for Playwright (reduced for 2 concurrent executions)
+          cpuLimit: 1.0, // 1.0 CPU (reduced for 2 concurrent executions)
           networkMode: 'bridge', // Allow network for Playwright
           autoRemove: true, // Will be disabled automatically if extraction is requested
           extractFromContainer: options.extractFromContainer,

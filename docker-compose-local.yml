@@ -40,14 +40,14 @@ x-common-env: &common-env # Database Configuration
   # - QUEUED_CAPACITY: Maximum queue size (default: 10)
   #
   # Local Scaling Examples:
-  #   Development: WORKER_REPLICAS=1 RUNNING_CAPACITY=2
-  #   Heavy Testing: WORKER_REPLICAS=2 RUNNING_CAPACITY=4
+  #   Development: WORKER_REPLICAS=1 RUNNING_CAPACITY=1
+  #   Heavy Testing: WORKER_REPLICAS=2 RUNNING_CAPACITY=2
   #
   # Usage: WORKER_REPLICAS=2 docker-compose -f docker-compose-local.yml up -d
 
-  RUNNING_CAPACITY: 2 # Single worker replica × 2 concurrent runs for local dev
+  RUNNING_CAPACITY: 1 # Single worker replica × 1 concurrent run for local dev
   QUEUED_CAPACITY: 10
-  MAX_CONCURRENT_EXECUTIONS: 2 # Mirrors production default; bump replicas instead of this value
+  MAX_CONCURRENT_EXECUTIONS: 1 # One Playwright run per worker; bump replicas instead of this value
   TEST_EXECUTION_TIMEOUT_MS: 120000
   JOB_EXECUTION_TIMEOUT_MS: 900000
   K6_TEST_EXECUTION_TIMEOUT_MS: 3600000
@@ -179,7 +179,7 @@ services:
     environment:
       <<: *common-env
       WORKER_IMAGE: supercheck-worker:latest
-      MAX_CONCURRENT_EXECUTIONS: 2 # Keep low for local development
+      MAX_CONCURRENT_EXECUTIONS: 1 # Keep low for local development
     volumes:
       # Mount Docker socket for container-based execution
       # Worker spawns isolated containers for Playwright and K6 tests
@@ -214,14 +214,14 @@ services:
     networks:
       - supercheck-network
     deploy:
-      replicas: ${WORKER_REPLICAS:-1} # Single worker for local development, configurable for testing
+      replicas: ${WORKER_REPLICAS:-1} # Single worker for local development, optimized for Medium instances
       resources:
         limits:
-          cpus: "5.0" # Increased to support 4GB/4CPU container executions
-          memory: 6G # Increased from 1G - worker orchestrates 4GB containers
+          cpus: "1.8" # Optimized for Medium instances (allows worker + 2GB/1.5CPU container)
+          memory: 3.0G # Reduced from 6G - optimized for Medium instances
         reservations:
-          cpus: "1.0"
-          memory: 2G
+          cpus: "0.5"
+          memory: 1.5G
     # Security constraints - maintain production security locally
     security_opt:
       - no-new-privileges:true # Prevent privilege escalation

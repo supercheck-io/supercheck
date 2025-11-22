@@ -58,8 +58,8 @@ export class LocationService {
     [MONITORING_LOCATIONS.ASIA_PACIFIC]: {
       code: MONITORING_LOCATIONS.ASIA_PACIFIC,
       name: 'Asia Pacific',
-      region: 'Singapore',
-      coordinates: { lat: 1.3521, lon: 103.8198 },
+      region: 'Mumbai',
+      coordinates: { lat: 19.0760, lon: 72.8777 },
     },
   };
 

@@ -130,8 +130,8 @@ The distributed multi-location pipeline is available but currently **opt-in**. T
 | Region | Worker Location Code | Description |
 |--------|----------------------|-------------|
 | US East | `us-east` (Ashburn) | Primary North American vantage point with low-latency access to US-based services. |
-| EU Central | `eu-central` (Falkenstein) | Core European vantage point ensuring GDPR-compliant monitoring coverage. |
-| Asia Pacific | `asia-pacific` (Singapore) | High-availability APAC vantage point for latency-sensitive checks. |
+| EU Central | `eu-central` (Frankfurt) | Core European vantage point ensuring GDPR-compliant monitoring coverage. |
+| Asia Pacific | `asia-pacific` (Mumbai) | High-availability APAC vantage point for latency-sensitive checks. |
 
 > **Local Development:** When you do not run dedicated regional workers, all locations execute sequentially on the same worker without any simulated delay. Results still carry their location code so the UI behaves consistently.
 
@@ -148,20 +148,20 @@ sequenceDiagram
     participant MQ as monitor-execution Queue
     participant W_US as Worker (ash)
     participant W_DE as Worker (fsn1)
-    participant W_SG as Worker (sg)
+    participant W_IN as Worker (in)
     participant DB as PostgreSQL
 
     App->>MQ: enqueue monitor job (ash) + groupId
     App->>MQ: enqueue monitor job (fsn1) + groupId
-    App->>MQ: enqueue monitor job (sg) + groupId
+    App->>MQ: enqueue monitor job (in) + groupId
 
     MQ->>W_US: deliver job (ash)
     MQ->>W_DE: deliver job (fsn1)
-    MQ->>W_SG: deliver job (sg)
+    MQ->>W_IN: deliver job (in)
 
     W_US->>DB: insert ash result (includes groupId)
     W_DE->>DB: insert fsn1 result (includes groupId)
-    W_SG->>DB: insert sg result (includes groupId)
+    W_IN->>DB: insert in result (includes groupId)
 
     W_US->>W_US: aggregate when all expected locations reported
     W_US-->>DB: update monitor status + alerts
@@ -1106,8 +1106,8 @@ interface MonitorConfig {
 
 type MonitoringLocation =
   | "us-east"      // Ashburn, USA
-  | "eu-central"   // Falkenstein, Germany
-  | "asia-pacific"; // Singapore
+  | "eu-central"   // Frankfurt, Germany
+  | "asia-pacific"; // Mumbai
 ```
 
 ### Security Configuration
@@ -1382,7 +1382,7 @@ Hetzner Cloud Regions:
 ├── ASH (Ashburn, Virginia, USA)
 │   └── Worker Nodes (2 × cx51) - Real execution
 │
-└── SG (Singapore)
+└── IN (Mumbai)
     └── Worker Nodes (2 × cx51) - Real execution
 ```
 
@@ -1420,10 +1420,10 @@ hcloud server create --type cx51 --image ubuntu-22.04 --location ash \
   --name supercheck-worker-ash-1
 hcloud server create --type cx51 --image ubuntu-22.04 --location ash \
   --name supercheck-worker-ash-2
-hcloud server create --type cx51 --image ubuntu-22.04 --location sg \
-  --name supercheck-worker-sg-1
-hcloud server create --type cx51 --image ubuntu-22.04 --location sg \
-  --name supercheck-worker-sg-2
+hcloud server create --type cx51 --image ubuntu-22.04 --location nbg1 \
+  --name supercheck-worker-in-1
+hcloud server create --type cx51 --image ubuntu-22.04 --location nbg1 \
+  --name supercheck-worker-in-2
 ```
 
 #### Step 3: Install Docker on All Servers
@@ -1457,8 +1457,8 @@ docker node update --label-add location=fsn1 <fsn1-worker-1-id>
 # Other regions
 docker node update --label-add service=worker <ash-worker-1-id>
 docker node update --label-add location=ash <ash-worker-1-id>
-docker node update --label-add service=worker <sg-worker-1-id>
-docker node update --label-add location=sg <sg-worker-1-id>
+docker node update --label-add service=worker <in-worker-1-id>
+docker node update --label-add location=in <in-worker-1-id>
 ```
 
 #### Step 6: Configure Environment
@@ -1564,13 +1564,13 @@ curl -X POST http://supercheck.local:3000/api/monitors \
 # Monitor execution from each location
 docker service logs supercheck_worker_fsn1 -f | grep "response.*ms"
 docker service logs supercheck_worker_ash -f | grep "response.*ms"
-docker service logs supercheck_worker_sg -f | grep "response.*ms"
+docker service logs supercheck_worker_in -f | grep "response.*ms"
 
 # Should show REAL latency across regions
 # Example:
 # [FSN1/eu-central] Response time: 125ms (Falkenstein)
 # [ASH/us-east] Response time: 245ms (Ashburn)
-# [SG/asia-pacific] Response time: 320ms (Singapore)
+# [IN/asia-pacific] Response time: 320ms (Mumbai)
 ```
 
 ### Scaling Recommendations
@@ -1584,7 +1584,7 @@ docker service logs supercheck_worker_sg -f | grep "response.*ms"
 
 ### Cost Optimization Tips
 
-1. **Reduce Locations**: 3 regions (FSN1, ASH, SG) covers most use cases
+1. **Reduce Locations**: 3 regions (FSN1, ASH, IN) covers most use cases
    - Saves: €0.208/hour × 730 hours = €152/month
 
 2. **Right-size Workers**: Scale down during off-peak hours

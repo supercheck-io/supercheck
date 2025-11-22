@@ -742,8 +742,8 @@ export class K6ExecutionService {
             K6_NO_COLOR: '1', // Disable ANSI colors
           },
           workingDir: '/tmp',
-          memoryLimitMb: 4096, // 4GB for k6 (large load tests with multiple VUs)
-          cpuLimit: 4.0, // 4 CPUs for high-concurrency load testing
+          memoryLimitMb: 1536, // 1.5GB for k6 (reduced for 2 concurrent executions)
+          cpuLimit: 1.0, // 1.0 CPU for load testing on Medium instances
           networkMode: 'bridge', // k6 needs network access
           autoRemove: false, // Don't auto-remove - we need to extract files first
           image: this.k6DockerImage, // Use K6-specific Docker image

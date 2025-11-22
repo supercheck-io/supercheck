@@ -506,6 +506,7 @@ export default function () {
  * Playwright UI smoke for a Todo-style app.
  * Coverage: navigation, title, primary input, add item.
  * Default: Runs in Chromium (no tag needed).
+ * 
  * @requires @playwright/test
  */
 
@@ -514,15 +515,17 @@ import { expect, test } from '@playwright/test';
 const APP_URL = 'https://demo.playwright.dev/todomvc';
 
 // No tag = Chromium (default)
-test('home page renders primary UI', async ({ page }) => {
-  await page.goto(APP_URL);
+test.describe('UI smoke test', () => {
+  test('home page renders primary UI', async ({ page }) => {
+    await page.goto(APP_URL);
 
-  await expect(page).toHaveTitle(/TodoMVC/);
-  await expect(page.getByPlaceholder('What needs to be done?')).toBeVisible();
+    await expect(page).toHaveTitle(/TodoMVC/);
+    await expect(page.getByPlaceholder('What needs to be done?')).toBeVisible();
 
-  await page.getByPlaceholder('What needs to be done?').fill('Smoke task');
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('listitem').first()).toContainText('Smoke task');
+    await page.getByPlaceholder('What needs to be done?').fill('Smoke task');
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('listitem').first()).toContainText('Smoke task');
+  });
 });
 `,
   },
@@ -545,79 +548,36 @@ import { expect, test } from '@playwright/test';
 const APP_URL = 'https://the-internet.herokuapp.com';
 const CREDENTIALS = { username: 'tomsmith', password: 'SuperSecretPassword!' };
 
-test('user can sign in and sign out', async ({ page }) => {
-  await page.goto(APP_URL + '/login');
+test.describe('authentication flow', () => {
+  test('user can sign in and sign out', async ({ page }) => {
+    await page.goto(APP_URL + '/login');
 
-  await page.getByLabel('Username').fill(CREDENTIALS.username);
-  await page.getByLabel('Password').fill(CREDENTIALS.password);
-  await page.getByRole('button', { name: 'Login' }).click();
+    await page.getByLabel('Username').fill(CREDENTIALS.username);
+    await page.getByLabel('Password').fill(CREDENTIALS.password);
+    await page.getByRole('button', { name: 'Login' }).click();
 
-  await expect(page.getByText('You logged into a secure area!')).toBeVisible();
-  await page.getByRole('link', { name: 'Logout' }).click();
-  await expect(page).toHaveURL(APP_URL + '/login');
-});
-`,
-  },
-  {
-    id: "pw-browser-form",
-    name: "Form with stubbed API",
-    description: "Submits a form while stubbing the backend response",
-    category: "Forms",
-    testType: "browser",
-    tags: ["playwright", "forms", "stubbing"],
-    code: `/**
- * Form submission with network stubbing.
- * Coverage: label-based fields, POST stub, success message.
- * Keeps test hermetic by fulfilling the request client-side.
- * @requires @playwright/test
- */
-
-import { expect, test } from '@playwright/test';
-
-const APP_URL = 'https://example.com/contact';
-
-test('submits contact form with stubbed API', async ({ page }) => {
-  await page.route('**/contact', async (route) => {
-    if (route.request().method() !== 'POST') {
-      return route.continue();
-    }
-
-    let body = {};
-    try {
-      body = route.request().postDataJSON() || {};
-    } catch {
-      body = {};
-    }
-
-    await route.fulfill({
-      status: 201,
-      contentType: 'application/json',
-      body: JSON.stringify({ ...body, id: 42 }),
-    });
+    await expect(page.getByText('You logged into a secure area!')).toBeVisible();
+    await page.getByRole('link', { name: 'Logout' }).click();
+    await expect(page).toHaveURL(APP_URL + '/login');
   });
-
-  await page.goto(APP_URL);
-
-  await page.getByLabel('Full name').fill('Playwright User');
-  await page.getByLabel('Email address').fill('qa@example.com');
-  await page.getByLabel('Message').fill('Checking the happy path');
-  await page.getByRole('button', { name: /send/i }).click();
-
-  await expect(page.getByText('Thanks')).toBeVisible();
 });
 `,
   },
   {
     id: "pw-browser-responsive",
     name: "Mobile / responsive layout",
-    description: "Emulates iPhone 16 and checks key controls",
+    description: "Emulates mobile devices and checks responsive behavior",
     category: "Responsive & devices",
     testType: "browser",
     tags: ["playwright", "mobile", "responsive"],
     code: `/**
- * Mobile viewport check using @mobile tag.
- * Coverage: viewport size, key controls, mobile menu.
- * Tag: @mobile or @iPhone → Runs in mobile-safari project (iPhone 16).
+ * Mobile viewport testing using device-specific projects.
+ * Coverage: viewport size, touch interactions, mobile-optimized UI.
+ * 
+ * Available mobile browser projects:
+ * - Mobile Chrome: Pixel 8 viewport (393x851) - Android Chrome
+ * - Mobile Safari: iPhone 13 viewport (390x844) - iOS Safari
+ * 
  * @requires @playwright/test
  */
 
@@ -625,103 +585,42 @@ import { expect, test } from '@playwright/test';
 
 const APP_URL = 'https://demo.playwright.dev/todomvc';
 
-// Use @mobile tag to run on iPhone 16
-test('mobile layout exposes key actions @mobile', async ({ page }) => {
-  await page.goto(APP_URL);
+// Test mobile Chrome (Pixel 8)
+test.describe('Mobile Chrome layout', () => {
+  test('mobile Chrome viewport exposes key actions', async ({ page }) => {
+    await page.goto(APP_URL);
 
-  const viewport = page.viewportSize();
-  expect(viewport?.width).toBe(390);
+    // Verify Pixel 8 viewport dimensions
+    const viewport = page.viewportSize();
+    expect(viewport?.width).toBe(393);
+    expect(viewport?.height).toBe(851);
 
-  await expect(page.getByPlaceholder('What needs to be done?')).toBeVisible();
+    await expect(page.getByPlaceholder('What needs to be done?')).toBeVisible();
 
-  await page.getByRole('button', { name: /menu/i }).click();
-  await expect(page.getByRole('navigation')).toBeVisible();
+    // Test mobile-specific interactions
+    await page.getByPlaceholder('What needs to be done?').fill('Mobile Chrome task');
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('listitem').first()).toContainText('Mobile Chrome task');
+  });
 });
 
-// Alternative: Use @iPhone tag (same as @mobile)
-test('touch gestures work @iPhone', async ({ page }) => {
-  await page.goto(APP_URL);
-  await page.getByPlaceholder('What needs to be done?').fill('Mobile task');
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('listitem').first()).toContainText('Mobile task');
-});
-`,
-  },
-  {
-    id: "pw-browser-firefox",
-    name: "Firefox compatibility",
-    description: "Tests Firefox-specific rendering and behavior",
-    category: "Browser fundamentals",
-    testType: "browser",
-    tags: ["playwright", "firefox", "compatibility"],
-    code: `/**
- * Firefox-specific browser test.
- * Coverage: Firefox rendering, user agent, browser behavior.
- * Tag: @firefox → Runs in firefox project (Desktop Firefox).
- * @requires @playwright/test
- */
+// Test mobile Safari (iPhone 13)
+test.describe('Mobile Safari layout', () => {
+  test('mobile Safari viewport and interactions', async ({ page }) => {
+    await page.goto(APP_URL);
 
-import { expect, test } from '@playwright/test';
+    // Verify iPhone 13 viewport dimensions
+    const viewport = page.viewportSize();
+    expect(viewport?.width).toBe(390);
+    expect(viewport?.height).toBe(844);
 
-const APP_URL = 'https://demo.playwright.dev/todomvc';
+    await expect(page.getByPlaceholder('What needs to be done?')).toBeVisible();
 
-// Use @firefox tag to run in Firefox
-test('firefox rendering check @firefox', async ({ page }) => {
-  await page.goto(APP_URL);
-
-  await expect(page).toHaveTitle(/TodoMVC/);
-  
-  // Verify we're running in Firefox
-  const userAgent = await page.evaluate(() => navigator.userAgent);
-  expect(userAgent).toContain('Firefox');
-  
-  // Test Firefox-specific features or workarounds
-  await page.getByPlaceholder('What needs to be done?').fill('Firefox task');
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('listitem').first()).toContainText('Firefox task');
-});
-`,
-  },
-  {
-    id: "pw-browser-webkit",
-    name: "WebKit / Safari compatibility",
-    description: "Tests WebKit-specific rendering (Safari)",
-    category: "Browser fundamentals",
-    testType: "browser",
-    tags: ["playwright", "webkit", "safari"],
-    code: `/**
- * WebKit/Safari-specific browser test.
- * Coverage: Safari rendering, user agent, browser behavior.
- * Tag: @webkit or @safari → Runs in webkit project (Desktop Safari).
- * @requires @playwright/test
- */
-
-import { expect, test } from '@playwright/test';
-
-const APP_URL = 'https://demo.playwright.dev/todomvc';
-
-// Use @safari tag to run in WebKit (Safari)
-test('safari compatibility check @safari', async ({ page }) => {
-  await page.goto(APP_URL);
-
-  await expect(page).toHaveTitle(/TodoMVC/);
-  
-  // Verify we're running in WebKit
-  const userAgent = await page.evaluate(() => navigator.userAgent);
-  expect(userAgent).toContain('Safari');
-  
-  // Test Safari-specific features
-  await page.getByPlaceholder('What needs to be done?').fill('Safari task');
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('listitem').first()).toContainText('Safari task');
-});
-
-// Alternative: Use @webkit tag (same as @safari)
-test('webkit rendering @webkit', async ({ page }) => {
-  await page.goto(APP_URL);
-  await page.getByPlaceholder('What needs to be done?').fill('WebKit task');
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('listitem').first()).toContainText('WebKit task');
+    // Test iOS Safari specific behavior
+    await page.getByPlaceholder('What needs to be done?').fill('Mobile Safari task');
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('listitem').first()).toContainText('Mobile Safari task');
+  });
 });
 `,
   },
@@ -736,6 +635,12 @@ test('webkit rendering @webkit', async ({ page }) => {
  * Device emulation with geolocation, locale, and timezone.
  * Coverage: GPS coordinates, language preferences, time zones.
  * Useful for testing location-based features and i18n.
+ * 
+ * Browser compatibility: Works across all browser projects
+ * - chromium, firefox, webkit: Full emulation support
+ * - Mobile Chrome/Mobile Safari: Mobile-specific emulation
+ * - Microsoft Edge/Google Chrome: Full emulation support
+ * 
  * @requires @playwright/test
  */
 
@@ -748,101 +653,92 @@ test.use({
   geolocation: { longitude: 12.492507, latitude: 41.889938 }, // Rome, Italy
   permissions: ['geolocation'],
   
-  // Set locale and timezone
-  locale: 'it-IT',
-  timezoneId: 'Europe/Rome',
+  // Set locale and timezone (configured globally in playwright.config.js)
+  // locale: 'en-US',
+  // timezoneId: 'UTC',
 });
 
-test('app responds to geolocation and locale', async ({ page }) => {
-  await page.goto(APP_URL);
-  
-  // Verify geolocation is available
-  const position = await page.evaluate(() => {
-    return new Promise((resolve) => {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        resolve({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
+test.describe('geolocation and locale emulation', () => {
+  test('app responds to geolocation and locale', async ({ page }) => {
+    await page.goto(APP_URL);
+    
+    // Verify geolocation is available
+    const position = await page.evaluate(() => {
+      return new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition((pos) => {
+          resolve({
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+          });
         });
       });
     });
+    
+    expect(position).toMatchObject({
+      latitude: 41.889938,
+      longitude: 12.492507,
+    });
+    
+    // Verify locale (matches global config: en-US)
+    const locale = await page.evaluate(() => navigator.language);
+    expect(locale).toBe('en-US');
   });
-  
-  expect(position).toMatchObject({
-    latitude: 41.889938,
-    longitude: 12.492507,
-  });
-  
-  // Verify locale
-  const locale = await page.evaluate(() => navigator.language);
-  expect(locale).toBe('it-IT');
 });
 `,
   },
+
   {
-    id: "pw-browser-fixtures",
-    name: "Custom test fixtures",
-    description: "Creates reusable page objects and test data",
+    id: "pw-browser-tag-selection",
+    name: "Browser selection with tags",
+    description: "Demonstrates how to target specific browsers using tags",
     category: "Browser fundamentals",
     testType: "browser",
-    tags: ["playwright", "fixtures", "page-object"],
+    tags: ["playwright", "tags", "browser-selection"],
     code: `/**
- * Custom fixtures for reusable test components.
- * Coverage: page objects, test data, authentication state.
- * Demonstrates the fixtures pattern for maintainable tests.
+ * Browser selection using tags and project targeting.
+ * Coverage: demonstrates browser project concepts and tag-based selection.
+ * 
+ * Available browser projects:
+ * - chromium: Default Chrome-based browser (no tag needed)
+ * - firefox: Firefox browser (use @firefox tag)
+ * - webkit: Safari/WebKit browser (use @webkit or @safari tag)
+ * - Mobile Chrome: Pixel 8 mobile viewport (use project name directly)
+ * - Mobile Safari: iPhone 13 mobile viewport (use project name directly)
+ * - Microsoft Edge: Edge browser (use project name directly)
+ * - Google Chrome: Chrome browser (use project name directly)
+ * 
+ * Tag usage examples:
+ * // Firefox specific test
+ * test.describe('Firefox test', { tag: ['@firefox'] }, () => {
+ *   test('firefox behavior', async ({ page }) => { ... });
+ * });
+ * 
+ * // WebKit/Safari specific test  
+ * test.describe('WebKit test', { tag: ['@webkit'] }, () => {
+ *   test('webkit behavior', async ({ page }) => { ... });
+ * });
+ * 
  * @requires @playwright/test
  */
 
-import { test as base, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 const APP_URL = 'https://demo.playwright.dev/todomvc';
 
-// Define a page object interface
-type TodoPage = {
-  goto: () => Promise<void>;
-  addTodo: (text: string) => Promise<void>;
-  getTodoText: (index: number) => Promise<string>;
-};
-
-// Extend base test with custom fixtures
-const test = base.extend({
-  todoPage: async ({ page }, use) => {
-    // Create page object methods
-    const todoPage = {
-      goto: async () => {
-        await page.goto(APP_URL);
-      },
-      
-      addTodo: async (text: string) => {
-        await page.getByPlaceholder('What needs to be done?').fill(text);
-        await page.keyboard.press('Enter');
-      },
-      
-      getTodoText: async (index: number) => {
-        const text = await page.getByRole('listitem').nth(index).textContent();
-        return text || '';
-      },
-    };
+// WebKit test with @webkit tag
+test.describe('Browser Selection Demo - WebKit', { tag: ['@webkit'] }, () => {
+  test('webkit basic functionality', async ({ page }) => {
+    await page.goto(APP_URL);
+    await expect(page).toHaveTitle(/TodoMVC/);
     
-    // Navigate to app before each test
-    await todoPage.goto();
-    await use(todoPage);
-  },
-});
-
-// Use the fixture in tests
-test('add todo using fixture', async ({ todoPage }) => {
-  await todoPage.addTodo('Buy groceries');
-  const text = await todoPage.getTodoText(0);
-  expect(text).toContain('Buy groceries');
-});
-
-test('add multiple todos', async ({ todoPage }) => {
-  await todoPage.addTodo('Task 1');
-  await todoPage.addTodo('Task 2');
-  
-  expect(await todoPage.getTodoText(0)).toContain('Task 1');
-  expect(await todoPage.getTodoText(1)).toContain('Task 2');
+    const userAgent = await page.evaluate(() => navigator.userAgent);
+    expect(userAgent).toContain('Safari');
+    
+    // Add a todo to verify basic functionality
+    await page.getByPlaceholder('What needs to be done?').fill('WebKit browser demo');
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('listitem').first()).toContainText('WebKit browser demo');
+  });
 });
 `,
   },
@@ -868,16 +764,18 @@ import { expect, test } from '@playwright/test';
 
 const API_URL = 'https://jsonplaceholder.typicode.com';
 
-test('health endpoint responds with expected payload', async ({ request }) => {
-  const response = await request.get(API_URL + '/posts/1');
+test.describe('API health check', () => {
+  test('health endpoint responds with expected payload', async ({ request }) => {
+    const response = await request.get(API_URL + '/posts/1');
 
-  expect(response.ok()).toBeTruthy();
-  expect(response.status()).toBe(200);
-  expect(response.headers()['content-type']).toContain('application/json');
+    expect(response.ok()).toBeTruthy();
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toContain('application/json');
 
-  const body = await response.json();
-  expect(body).toMatchObject({ id: 1 });
-  expect(typeof body.title).toBe('string');
+    const body = await response.json();
+    expect(body).toMatchObject({ id: 1 });
+    expect(typeof body.title).toBe('string');
+  });
 });
 `,
   },
@@ -900,7 +798,7 @@ import { expect, test } from '@playwright/test';
 const API_URL = 'https://jsonplaceholder.typicode.com';
 
 test.describe.serial('posts CRUD', () => {
-  let createdId: number | undefined;
+  let createdId;
 
   test('creates a post', async ({ request }) => {
     const response = await request.post(API_URL + '/posts', {
@@ -947,20 +845,22 @@ import { expect, test } from '@playwright/test';
 const API_URL = 'https://api.example.com';
 const API_TOKEN = 'replace-with-token';
 
-test('authenticated profile request', async ({ request }) => {
-  const api = await request.newContext({
-    baseURL: API_URL,
-    extraHTTPHeaders: { Authorization: 'Bearer ' + API_TOKEN },
+test.describe('authenticated API request', () => {
+  test('authenticated profile request', async ({ request }) => {
+    const api = await request.newContext({
+      baseURL: API_URL,
+      extraHTTPHeaders: { Authorization: 'Bearer ' + API_TOKEN },
+    });
+
+    const response = await api.get('/user/profile');
+    expect(response.status()).toBe(200);
+
+    const body = await response.json();
+    expect(body).toHaveProperty('email');
+    expect(body).toHaveProperty('id');
+
+    await api.dispose();
   });
-
-  const response = await api.get('/user/profile');
-  expect(response.status()).toBe(200);
-
-  const body = await response.json();
-  expect(body).toHaveProperty('email');
-  expect(body).toHaveProperty('id');
-
-  await api.dispose();
 });
 `,
   },
@@ -994,10 +894,12 @@ test.afterAll(async () => {
 });
 
 // Cheap heartbeat query to ensure the database is reachable.
-test('users table returns expected columns', async () => {
-  const result = await pool.query('SELECT id, email FROM users LIMIT 1');
-  expect(result.rowCount).toBeGreaterThan(0);
-  expect(result.rows[0]).toHaveProperty('email');
+test.describe('database read health check', () => {
+  test('users table returns expected columns', async () => {
+    const result = await pool.query('SELECT id, email FROM users LIMIT 1');
+    expect(result.rowCount).toBeGreaterThan(0);
+    expect(result.rows[0]).toHaveProperty('email');
+  });
 });
 `,
   },
@@ -1027,7 +929,8 @@ test.afterAll(async () => {
 });
 
 // Use transactions so test data never leaks into production.
-test('insert + rollback keeps DB clean', async () => {
+test.describe('database transaction with rollback', () => {
+  test('insert + rollback keeps DB clean', async () => {
   const client = await pool.connect();
 
   try {
@@ -1051,6 +954,7 @@ test('insert + rollback keeps DB clean', async () => {
   } finally {
     client.release();
   }
+  });
 });
 `,
   },
@@ -1080,7 +984,8 @@ test.afterAll(async () => {
 });
 
 // Example update: always scope by id and assert row count.
-test('updates a user safely', async () => {
+test.describe('safe database update', () => {
+  test('updates a user safely', async () => {
   const result = await pool.query(
     'UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name',
     ['Updated Name', 1]
@@ -1089,13 +994,253 @@ test('updates a user safely', async () => {
   expect(result.rowCount).toBe(1);
   expect(result.rows[0].id).toBe(1);
   expect(result.rows[0].name).toBe('Updated Name');
+  });
 });
 `,
   },
 
-  // =========================
-  // Cross-layer Custom Template
-  // =========================
+  {
+    id: "pw-custom-fixtures",
+    name: "Custom test fixtures",
+    description: "Creates reusable page objects and test data",
+    category: "Cross-layer",
+    testType: "custom",
+    tags: ["playwright", "fixtures", "page-object"],
+    code: `/**
+ * Custom fixtures for reusable test components.
+ * Coverage: page objects, test data, authentication state.
+ * Demonstrates the fixtures pattern for maintainable tests.
+ * @requires @playwright/test
+ */
+
+import { test as base, expect } from '@playwright/test';
+
+const APP_URL = 'https://demo.playwright.dev/todomvc';
+
+// Extend base test with custom fixtures
+const test = base.extend({
+  todoPage: async ({ page }, use) => {
+    // Create page object methods
+    const todoPage = {
+      goto: async () => {
+        await page.goto(APP_URL);
+      },
+      
+      addTodo: async (text) => {
+        await page.getByPlaceholder('What needs to be done?').fill(text);
+        await page.keyboard.press('Enter');
+      },
+      
+      getTodoText: async (index) => {
+        const text = await page.getByRole('listitem').nth(index).textContent();
+        return text || '';
+      },
+    };
+    
+    // Navigate to app before each test
+    await todoPage.goto();
+    await use(todoPage);
+  },
+});
+
+// Use the fixture in tests
+test.describe('custom fixtures and page objects', () => {
+  test('add todo using fixture', async ({ todoPage }) => {
+    await todoPage.addTodo('Buy groceries');
+    const text = await todoPage.getTodoText(0);
+    expect(text).toContain('Buy groceries');
+  });
+
+  test('add multiple todos', async ({ todoPage }) => {
+    await todoPage.addTodo('Task 1');
+    await todoPage.addTodo('Task 2');
+    
+    expect(await todoPage.getTodoText(0)).toContain('Task 1');
+    expect(await todoPage.getTodoText(1)).toContain('Task 2');
+  });
+});
+`,
+  },
+
+  {
+    id: "pw-custom-form-stubbing",
+    name: "Form with API stubbing",
+    description: "Submits a form while stubbing the backend response",
+    category: "Cross-layer",
+    testType: "custom",
+    tags: ["playwright", "forms", "stubbing", "api"],
+    code: `/**
+ * Form submission with network stubbing.
+ * Coverage: form interactions, POST API stub, success validation.
+ * Demonstrates how to intercept and mock API responses for hermetic testing.
+ * @requires @playwright/test
+ */
+
+import { expect, test } from '@playwright/test';
+
+const APP_URL = 'https://demo.playwright.dev/todomvc';
+
+test.describe('form submission with API stubbing', () => {
+  test('stubs todo creation API and validates UI response', async ({ page }) => {
+    // Stub the todo creation API call
+    await page.route('**/todos', async (route) => {
+      if (route.request().method() !== 'POST') {
+        return route.continue();
+      }
+
+      let body = {};
+      try {
+        body = route.request().postDataJSON() || {};
+      } catch {
+        body = {};
+      }
+
+      // Mock successful API response
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ 
+          id: 999, 
+          title: body.title || 'Stubbed todo',
+          completed: false,
+          userId: 1 
+        }),
+      });
+    });
+
+    await page.goto(APP_URL);
+
+    // Fill and submit the "form" (todo input)
+    await page.getByPlaceholder('What needs to be done?').fill('API stubbed todo');
+    await page.keyboard.press('Enter');
+
+    // Verify the todo appears in the UI (would normally come from real API)
+    await expect(page.getByRole('listitem').first()).toContainText('API stubbed todo');
+  });
+});
+`,
+  },
+
+  {
+    id: "pw-custom-device-emulation",
+    name: "Device emulation showcase",
+    description: "Demonstrates various device emulation options and capabilities",
+    category: "Cross-layer",
+    testType: "custom",
+    tags: ["playwright", "devices", "emulation", "mobile"],
+    code: `/**
+ * Device emulation capabilities showcase.
+ * Coverage: mobile devices, tablets, desktop viewports, touch interactions.
+ * Demonstrates how to use test.use() with devices for full device emulation.
+ * 
+ * Available device presets include:
+ * - Mobile: iPhone 13, iPhone 12, Pixel 5, Pixel 8
+ * - Tablet: iPad, iPad Pro, Surface Pro
+ * - Desktop: Desktop Chrome, Desktop Firefox, Desktop Safari
+ * 
+ * Usage: Run with specific project or uncomment device preset below
+ * @requires @playwright/test
+ */
+
+import { test, expect, devices } from '@playwright/test';
+
+const APP_URL = 'https://playwright.dev/';
+
+// Uncomment one of these to test specific device emulation:
+// test.use({ ...devices['iPhone 13'] });        // Mobile: 390x844
+// test.use({ ...devices['iPhone 12'] });        // Mobile: 390x844  
+// test.use({ ...devices['Pixel 5'] });          // Mobile: 393x851
+// test.use({ ...devices['Pixel 8'] });          // Mobile: 393x851
+// test.use({ ...devices['iPad'] });             // Tablet: 768x1024
+// test.use({ ...devices['iPad Pro'] });         // Tablet: 1024x1366
+// test.use({ ...devices['Desktop Chrome'] });   // Desktop: 1280x720
+// test.use({ ...devices['Desktop Safari'] });   // Desktop: 1280x720
+
+test.describe('device emulation capabilities', () => {
+  test('viewport and device characteristics', async ({ page }) => {
+    await page.goto(APP_URL);
+    
+    // Get current viewport dimensions
+    const viewport = page.viewportSize();
+    console.log('Current viewport:', viewport);
+    
+    // Verify device-specific user agent
+    const userAgent = await page.evaluate(() => navigator.userAgent);
+    console.log('User Agent:', userAgent);
+    
+    // Check if mobile device (touch support)
+    const isTouch = await page.evaluate(() => 'ontouchstart' in window);
+    console.log('Touch capable:', isTouch);
+    
+    // Verify page loads correctly on current device
+    await expect(page).toHaveTitle(/Playwright/);
+  });
+
+  test('mobile-specific interactions', async ({ page }) => {
+    await page.goto(APP_URL);
+    
+    // Test mobile navigation (hamburger menu if present)
+    const mobileMenu = page.getByRole('button', { name: /menu/i }).first();
+    
+    if (await mobileMenu.isVisible()) {
+      await mobileMenu.click();
+      console.log('✅ Mobile menu interaction successful');
+    } else {
+      console.log('ℹ️ No mobile menu detected on current viewport');
+    }
+    
+    // Test touch-friendly element interaction
+    await page.getByRole('link', { name: 'Get started' }).click();
+    await expect(page.getByRole('heading', { name: 'Installation' })).toBeVisible();
+    console.log('✅ Touch-friendly navigation successful');
+  });
+
+  test('responsive layout verification', async ({ page }) => {
+    await page.goto(APP_URL);
+    
+    // Check if layout adapts to current viewport
+    const header = page.locator('header');
+    await expect(header).toBeVisible();
+    
+    // Test scrolling behavior on mobile/tablet
+    const pageHeight = await page.evaluate(() => document.body.scrollHeight);
+    const currentViewport = page.viewportSize();
+    const viewportHeight = currentViewport?.height || 0;
+    
+    if (pageHeight > viewportHeight) {
+      await page.evaluate(() => window.scrollTo(0, 500));
+      console.log('✅ Scrolling behavior verified');
+    }
+    
+    console.log('✅ Responsive layout verified for current device');
+  });
+});
+
+// Example: Device-specific verification
+test.describe('device verification example', () => {
+  test('shows current device information', async ({ page }) => {
+    await page.goto(APP_URL);
+    
+    // Get current device information
+    const viewport = page.viewportSize();
+    const userAgent = await page.evaluate(() => navigator.userAgent);
+    const isTouch = await page.evaluate(() => 'ontouchstart' in window);
+    
+    console.log('Current viewport:', viewport);
+    console.log('User Agent:', userAgent);
+    console.log('Touch capable:', isTouch);
+    
+    // Educational: Show what iPhone would look like
+    console.log('iPhone 13 viewport would be: { width: 390, height: 844 }');
+    console.log('To test iPhone: uncomment test.use({ ...devices[\"iPhone 13\"] }) above');
+    
+    // Verify basic functionality works on any device
+    await expect(page).toHaveTitle(/Playwright/);
+    console.log('✅ Basic functionality verified on current device');
+  });
+});
+`,
+  },
   {
     id: "pw-custom-e2e",
     name: "API + UI end-to-end",
@@ -1115,7 +1260,8 @@ import { expect, test } from '@playwright/test';
 const API_URL = 'https://jsonplaceholder.typicode.com';
 const APP_URL = 'https://demo.playwright.dev/todomvc';
 
-test('creates data via API and checks UI', async ({ page, request }) => {
+test.describe('API + UI end-to-end test', () => {
+  test('creates data via API and checks UI', async ({ page, request }) => {
   const createResponse = await request.post(API_URL + '/posts', {
     data: { title: 'Full-stack check', body: 'Seeded by API', userId: 1 },
   });
@@ -1129,6 +1275,7 @@ test('creates data via API and checks UI', async ({ page, request }) => {
   await expect(page.getByRole('listitem').first()).toContainText(payload.title);
 
   await request.delete(API_URL + '/posts/' + payload.id);
+  });
 });
 `,
   },

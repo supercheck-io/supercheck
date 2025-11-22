@@ -28,16 +28,15 @@ x-common-env: &common-env # Database Configuration
   # - QUEUED_CAPACITY: Maximum queue size (default: 50)
   #
   # Scaling Examples:
-  #   Small (4 vCPU): WORKER_REPLICAS=2 RUNNING_CAPACITY=4
-  #   Medium (8 vCPU): WORKER_REPLICAS=3 RUNNING_CAPACITY=6
-  #   Large (16 vCPU): WORKER_REPLICAS=6 RUNNING_CAPACITY=12
-  #   X-Large (32 vCPU): WORKER_REPLICAS=12 RUNNING_CAPACITY=24
+  #   Medium (4GB/2CPU): WORKER_REPLICAS=4 RUNNING_CAPACITY=4
+  #   Large (8GB/4CPU): WORKER_REPLICAS=8 RUNNING_CAPACITY=8
+  #   X-Large (16GB/8CPU): WORKER_REPLICAS=16 RUNNING_CAPACITY=16
   #
   # Usage: WORKER_REPLICAS=4 docker-compose up -d
 
-  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-6} # 3 worker replicas × 2 concurrent runs (keep env + replicas in sync)
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-4} # 4 worker replicas × 1 concurrent run (keep env + replicas in sync)
   QUEUED_CAPACITY: ${QUEUED_CAPACITY:-50}
-  MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-2} # Two Playwright runs per worker; prefer more replicas over a larger single worker
+  MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-1} # One Playwright run per worker for Medium instances; scale replicas for concurrency
   TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-120000}
   JOB_EXECUTION_TIMEOUT_MS: ${JOB_EXECUTION_TIMEOUT_MS:-900000}
   K6_TEST_EXECUTION_TIMEOUT_MS: ${K6_TEST_EXECUTION_TIMEOUT_MS:-3600000}
@@ -163,7 +162,7 @@ services:
     environment:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)
-      MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-2} # Keep low, scale horizontally
+      MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-1} # One per worker, scale horizontally
     volumes:
       # Mount Docker socket for container-based execution
       # Worker spawns isolated containers for Playwright and K6 tests
@@ -196,14 +195,14 @@ services:
     networks:
       - supercheck-network
     deploy:
-      replicas: ${WORKER_REPLICAS:-3} # Scale horizontally, not vertically
+      replicas: ${WORKER_REPLICAS:-4} # Scale horizontally for 4 Medium instances
       resources:
         limits:
-          cpus: "5.0" # Increased to support 4GB/4CPU container executions (Playwright + K6)
-          memory: 6G # Increased from 2G - worker orchestrates 4GB containers
+          cpus: "1.8" # Optimized for Medium instances (allows worker + 2GB/1.5CPU container)
+          memory: 3.0G # Reduced from 6G - optimized for Medium instances
         reservations:
-          cpus: "1.0"
-          memory: 2G
+          cpus: "0.5"
+          memory: 1.5G
 
       # Container Restart Protection (handles stuck/crashed containers)
       restart_policy:
