@@ -22,6 +22,7 @@ import {
   EthernetPort,
   Variable,
   UserCog,
+  UserPlus,
   Tally4,
   type LucideIcon,
   ClipboardList,
@@ -192,7 +193,7 @@ const data = {
     {
       title: "Super Admin",
       url: "/super-admin",
-      icon: UserCog,
+      icon: UserPlus,
     },
   ],
   OrgAdmin: [
