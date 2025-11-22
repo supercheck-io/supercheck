@@ -288,8 +288,8 @@ export class ContainerExecutorService {
       // preventing docker cp extraction. Use regular container filesystem instead - it's
       // still isolated and cleaned up when container is removed.
 
-      // Allocate shared memory for Playwright/Chromium browsers (2GB for multiple instances)
-      dockerArgs.push('--shm-size=2048m');
+      // Allocate shared memory for Playwright/Chromium browsers (512MB for Medium instances)
+      dockerArgs.push('--shm-size=512m');
 
       // Add environment variables
       for (const [key, value] of Object.entries(env)) {

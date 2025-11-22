@@ -1383,9 +1383,9 @@ Worker container resources provide overhead for:
 
 **Environment variables to tune:**
 - `TEST_EXECUTION_TIMEOUT_MS=300000` (Test timeout in milliseconds, default 5 min)
-- `MAX_CONCURRENT_EXECUTIONS=2` (Parallel Playwright container executions per worker)
+- `MAX_CONCURRENT_EXECUTIONS=1` (Single Playwright container execution per worker)
 - `PLAYWRIGHT_WORKERS=2` (Parallel test execution within container)
-- `K6_MAX_CONCURRENCY=3` (Parallel k6 test containers)
+- `K6_MAX_CONCURRENCY=1` (Single k6 test container per worker)
 - `RUNNING_CAPACITY=6` (Global queue system parallelism, 3 replicas × 2 concurrent)
 - `QUEUED_CAPACITY=50` (Queue depth limit)
 
@@ -1507,7 +1507,7 @@ graph TB
 **Capacity Configuration:**
 - `RUNNING_CAPACITY` - Maximum concurrent executions (default: 5)
 - `QUEUED_CAPACITY` - Maximum queued jobs (default: 50)
-- `MAX_CONCURRENT_EXECUTIONS` - Per-worker concurrency (default: 2)
+- `MAX_CONCURRENT_EXECUTIONS` - Per-worker concurrency (default: 1)
 
 > **Note:** These defaults are placeholders. When subscription-aware capacity management ships, limits will be derived from organization settings stored in the database.
 

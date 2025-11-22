@@ -108,6 +108,10 @@ module.exports = defineConfig({
     actionTimeout: 20000, // 20 seconds - balanced for real-world conditions
     navigationTimeout: 30000, // 30 seconds for page loads
 
+    /* Timezone and locale settings */
+    locale: 'en-US',
+    timezoneId: 'UTC',
+
     /* Artifact collection strategy - configurable via environment variables */
     trace: process.env.PLAYWRIGHT_TRACE || 'retain-on-failure',
     screenshot: process.env.PLAYWRIGHT_SCREENSHOT || 'on',
@@ -134,7 +138,6 @@ module.exports = defineConfig({
   projects: [
     {
       name: 'chromium',
-      grepInvert: /@(mobile|iphone|firefox|webkit|safari)\b/i,
       use: {
         ...devices['Desktop Chrome'],
         // Override with optimized settings
@@ -147,10 +150,8 @@ module.exports = defineConfig({
       },
     },
 
-    // Additional browsers
     {
       name: 'firefox',
-      grep: /@firefox\b/i,
       use: {
         ...devices['Desktop Firefox'],
         viewport: { width: 1280, height: 720 },
@@ -165,8 +166,7 @@ module.exports = defineConfig({
     },
 
     {
-      name: 'safari',
-      grep: /@(webkit|safari)\b/i,
+      name: 'webkit',
       use: {
         ...devices['Desktop Safari'],
         viewport: { width: 1280, height: 720 },
@@ -180,13 +180,36 @@ module.exports = defineConfig({
       },
     },
 
-    // Mobile testing projects (opt-in via @mobile tag)
+    /* Test against mobile viewports. */
     {
-      name: 'mobile-safari',
-      // Only run tests tagged with @mobile or @iPhone
-      grep: /@(mobile|iphone)\b/i,
-      use: {
+      name: 'Mobile Chrome',
+      use: { 
+        ...devices['Pixel 8'],
+        headless: true,
+      },
+    },
+    {
+      name: 'Mobile Safari',
+      use: { 
         ...devices['iPhone 13'],
+        headless: true,
+      },
+    },
+
+    /* Test against branded browsers. */
+    {
+      name: 'Microsoft Edge',
+      use: {
+        ...devices['Desktop Edge'],
+        channel: 'msedge',
+        headless: true,
+      },
+    },
+    {
+      name: 'Google Chrome',
+      use: {
+        ...devices['Desktop Chrome'],
+        channel: 'chrome',
         headless: true,
       },
     },

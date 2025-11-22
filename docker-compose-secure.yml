@@ -21,9 +21,9 @@ x-common-env: &common-env # Database Configuration
   BETTER_AUTH_URL: https://demo.supercheck.io
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
-  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-2} # 3 worker replicas × 2 concurrent runs (keep env + replicas in sync)
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-4} # 4 worker replicas × 1 concurrent run (keep env + replicas in sync)
   QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10} # Max queued jobs before backpressure (default: 10)
-  MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-2} # Two Playwright runs per worker; scale replicas before raising this
+  MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-1} # One Playwright run per worker for Medium instances; scale replicas for concurrency
   TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-120000}
   JOB_EXECUTION_TIMEOUT_MS: ${JOB_EXECUTION_TIMEOUT_MS:-900000}
   K6_TEST_EXECUTION_TIMEOUT_MS: ${K6_TEST_EXECUTION_TIMEOUT_MS:-3600000}
@@ -141,6 +141,7 @@ services:
       - supercheck-network
     restart: unless-stopped
 
+  
   # App (Next.js Frontend) - Handles migrations internally
   app:
     image: ghcr.io/supercheck-io/supercheck/app:1.1.7-beta.17
@@ -255,14 +256,14 @@ services:
     networks:
       - supercheck-network
     deploy:
-      replicas: 1 # 1 worker for 4-CPU machines
+      replicas: 3 # 3 monitor workers for critical monitoring (1 spare node for tests)
       resources:
         limits:
-          cpus: "3.5" # Allows worker + one 4GB/4CPU container execution
-          memory: 3.5G
+          cpus: "1.8" # Allows worker + one 2GB/1.5CPU container execution
+          memory: 3.0G
         reservations:
-          cpus: "1.0"
-          memory: 2G
+          cpus: "0.5"
+          memory: 1.5G
 
       # Container Restart Protection (handles stuck/crashed containers)
       restart_policy:

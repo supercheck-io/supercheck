@@ -16,167 +16,95 @@ export enum ScriptType {
 // Sample scripts content
 const scripts: Record<ScriptType, string> = {
   [ScriptType.Browser]: `/**
- * Sample Browser Automation Test Script
- * 
- * This script demonstrates comprehensive browser testing using Playwright framework.
- * It covers essential web application testing patterns including page navigation,
- * title verification, link interaction, form handling, and DOM element validation.
- * 
- * Test Coverage:
- * - Page loading and title verification
- * - Navigation flow and link interaction  
- * - Form input and submission handling
- * - Element visibility and accessibility testing
- * 
- * Target Websites:
- * - https://playwright.dev/ - Official Playwright documentation
- * - https://demo.playwright.dev/todomvc - TodoMVC demo application
- * 
- * @requires '@playwright/test' package
+ * Browser automation tests with Playwright
+ * Demonstrates web page navigation, element interaction, and form testing
+ * @requires '@playwright/test'
  */
 
 import { test, expect } from '@playwright/test';
 
-test('Browser check - Page title verification', async ({ page }) => {
-  // Navigate to the website
-  await page.goto('https://playwright.dev/');
+test.describe('browser automation tests', () => {
+  test('page title verification', async ({ page }) => {
+    // Navigate to Playwright docs and verify page title
+    await page.goto('https://playwright.dev/');
+    await expect(page).toHaveTitle(/Playwright/);
+    console.log('✅ Page title verified successfully');
+  });
 
-  // Verify the page title contains the expected text
-  await expect(page).toHaveTitle(/Playwright/);
-  
-  console.log('✅ Page title verified successfully');
+  test('navigation and element visibility', async ({ page }) => {
+    // Test navigation flow and element interaction
+    await page.goto('https://playwright.dev/');
+    await page.getByRole('link', { name: 'Get started' }).click();
+    await expect(page.getByRole('heading', { name: 'Installation' })).toBeVisible();
+    console.log('✅ Navigation and element visibility verified');
+  });
+
+  test('form interaction', async ({ page }) => {
+    // Test form input and submission in TodoMVC app
+    await page.goto('https://demo.playwright.dev/todomvc');
+    await page.getByPlaceholder('What needs to be done?').fill('Test automation with Playwright');
+    await page.getByPlaceholder('What needs to be done?').press('Enter');
+    await expect(page.getByTestId('todo-title')).toHaveText(['Test automation with Playwright']);
+    console.log('✅ Form interaction verified');
+  });
 });
-
-test('Browser check - Navigation and element visibility', async ({ page }) => {
-  // Navigate to the website
-  await page.goto('https://playwright.dev/');
-
-  // Click the get started link
-  await page.getByRole('link', { name: 'Get started' }).click();
-
-  // Verify that the expected heading is visible after navigation
-  await expect(page.getByRole('heading', { name: 'Installation' })).toBeVisible();
-  
-  console.log('✅ Navigation and element visibility verified');
-});
-
-test('Browser check - Form interaction', async ({ page }) => {
-  // Navigate to the website with a form
-  await page.goto('https://demo.playwright.dev/todomvc');
-
-  // Type into the new todo input
-  await page.getByPlaceholder('What needs to be done?').fill('Test automation with Playwright');
-  await page.getByPlaceholder('What needs to be done?').press('Enter');
-
-  // Verify the todo item was added
-  await expect(page.getByTestId('todo-title')).toHaveText(['Test automation with Playwright']);
-  
-  console.log('✅ Form interaction verified');
-})
 `,
 
   [ScriptType.API]: `/**
- * Sample REST API Testing Script
- * 
- * This script demonstrates comprehensive API endpoint testing using Playwright's
- * built-in HTTP client. It covers essential API testing patterns including CRUD
- * operations, response validation, data integrity checks, and error handling.
- * 
- * Test Coverage:
- * - GET requests with response validation
- * - POST requests with request body handling
- * - HTTP status code verification
- * - JSON response structure validation
- * - Error handling for non-existent resources
- * 
- * Target API: JSONPlaceholder - Free fake REST API for testing
- * Base URL: https://jsonplaceholder.typicode.com/
- * Documentation: https://jsonplaceholder.typicode.com/guide/
- * 
- * @requires '@playwright/test' package
+ * REST API testing with Playwright
+ * Tests HTTP methods, response validation, and error handling
+ * @requires '@playwright/test'
  */
 
 import { test, expect } from '@playwright/test';
 
-test('API check - GET request with status and data validation', async ({ request }) => {
-  // Send a GET request to a sample API endpoint
-  const response = await request.get('https://jsonplaceholder.typicode.com/todos/1');
-  
-  // Verify the response status is 200 OK
-  expect(response.status()).toBe(200);
-  
-  // Parse and validate the response data
-  const responseData = await response.json();
-  expect(responseData).toEqual({
-    userId: 1,
-    id: 1,
-    title: 'delectus aut autem',
-    completed: false,
+test.describe('API endpoint tests', () => {
+  test('GET request with status and data validation', async ({ request }) => {
+    // Test GET request and validate response structure
+    const response = await request.get('https://jsonplaceholder.typicode.com/todos/1');
+    expect(response.status()).toBe(200);
+    const responseData = await response.json();
+    expect(responseData).toEqual({
+      userId: 1,
+      id: 1,
+      title: 'delectus aut autem',
+      completed: false,
+    });
+    console.log('✅ GET request validated successfully');
   });
-  
-  console.log('✅ GET request validated successfully');
-});
 
-test('API check - POST request with request body', async ({ request }) => {
-  // Create data for the POST request
-  const newTodo = {
-    title: 'Test API with Playwright',
-    completed: false,
-    userId: 1
-  };
-  
-  // Send a POST request with the data
-  const response = await request.post('https://jsonplaceholder.typicode.com/todos', {
-    data: newTodo
+  test('POST request with request body', async ({ request }) => {
+    // Test POST request with data payload
+    const newTodo = {
+      title: 'Test API with Playwright',
+      completed: false,
+      userId: 1
+    };
+    const response = await request.post('https://jsonplaceholder.typicode.com/todos', {
+      data: newTodo
+    });
+    expect(response.status()).toBe(201);
+    const responseData = await response.json();
+    expect(responseData).toHaveProperty('id');
+    expect(responseData.title).toBe(newTodo.title);
+    console.log('✅ POST request validated successfully');
   });
-  
-  // Verify the response status is 201 Created
-  expect(response.status()).toBe(201);
-  
-  // Parse and validate the response data
-  const responseData = await response.json();
-  expect(responseData).toHaveProperty('id');
-  expect(responseData.title).toBe(newTodo.title);
-  
-  console.log('✅ POST request validated successfully');
-});
 
-test('API check - Error handling for non-existent resource', async ({ request }) => {
-  // Send a GET request to a non-existent resource
-  const response = await request.get('https://jsonplaceholder.typicode.com/todos/999999');
-  
-  // Verify the response status is 404 Not Found
-  expect(response.status()).toBe(404);
-  
-  // Verify the response body is empty
-  const responseData = await response.json();
-  expect(Object.keys(responseData).length).toBe(0);
-  
-  console.log('✅ Error handling validated successfully');
+  test('error handling for non-existent resource', async ({ request }) => {
+    // Test 404 error handling for missing resources
+    const response = await request.get('https://jsonplaceholder.typicode.com/todos/999999');
+    expect(response.status()).toBe(404);
+    const responseData = await response.json();
+    expect(Object.keys(responseData).length).toBe(0);
+    console.log('✅ Error handling validated successfully');
+  });
 });
 `,
 
   [ScriptType.Database]: `/**
- * Sample Database Query Test Script
- * 
- * This script demonstrates connecting to the RNAcentral public PostgreSQL database
- * hosted by the European Bioinformatics Institute (EBI). It performs database
- * connection testing, schema discovery, and basic query validation.
- * 
- * Test Coverage:
- * - Database connection and authentication
- * - Basic database information retrieval
- * - Schema discovery and table enumeration
- * - Query execution and result validation
- * - Connection cleanup and error handling
- * 
- * Target Database: RNAcentral Public PostgreSQL (Read-only)
- * Host: hh-pgsql-public.ebi.ac.uk:5432
- * Database: pfmegrnargs
- * Documentation: https://rnacentral.org/help/public-database
- * 
- * @requires 'pg' package
- * @requires '@playwright/test' package
+ * PostgreSQL database connection and query testing
+ * Connects to public database and executes SQL queries with validation
+ * @requires 'pg' package, '@playwright/test'
  */
 
 import { test, expect } from "@playwright/test";
@@ -187,295 +115,250 @@ const config = {
   ssl: false
 };
 
-test("Database Query Test - Connection and Basic Info", async () => {
-  const client = new Client(config);
-  
-  try {
-    await client.connect();
-    console.log("✅ Connected to RNAcentral PostgreSQL database");
+test.describe('database query tests', () => {
+  test('connection and basic info', async () => {
+    // Test database connection and retrieve basic information
+    const client = new Client(config);
+    
+    try {
+      await client.connect();
+      console.log("✅ Connected to RNAcentral PostgreSQL database");
 
-    // Test 1: Get database basic information (always works)
-    const infoResult = await client.query(\`
-      SELECT 
-        version() as db_version,
-        current_database() as database_name,
-        current_user as connected_user,
-        current_timestamp as connection_time
-    \`);
+      // Get database version and connection details
+      const infoResult = await client.query(\`
+        SELECT 
+          version() as db_version,
+          current_database() as database_name,
+          current_user as connected_user,
+          current_timestamp as connection_time
+      \`);
 
-    console.log("Database Information:");
-    console.log(\`Database: \${infoResult.rows[0].database_name}\`);
-    console.log(\`Connected as: \${infoResult.rows[0].connected_user}\`);
-    console.log(\`Connection Time: \${infoResult.rows[0].connection_time}\`);
-    console.log(\`Version: \${infoResult.rows[0].db_version.split(',')[0]}\`);
+      console.log("Database Information:");
+      console.log(\`Database: \${infoResult.rows[0].database_name}\`);
+      console.log(\`Connected as: \${infoResult.rows[0].connected_user}\`);
+      console.log(\`Connection Time: \${infoResult.rows[0].connection_time}\`);
+      console.log(\`Version: \${infoResult.rows[0].db_version.split(',')[0]}\`);
 
-    expect(infoResult.rows.length).toBe(1);
-    expect(infoResult.rows[0].database_name).toBe('pfmegrnargs');
-    expect(infoResult.rows[0].connected_user).toBe('reader');
+      expect(infoResult.rows.length).toBe(1);
+      expect(infoResult.rows[0].database_name).toBe('pfmegrnargs');
+      expect(infoResult.rows[0].connected_user).toBe('reader');
 
-    // Test 2: Check server settings and capabilities
-    const settingsResult = await client.query(\`
-      SELECT 
-        setting as timezone
-      FROM pg_settings 
-      WHERE name = 'TimeZone'
-    \`);
+      // Check server configuration
+      const settingsResult = await client.query(\`
+        SELECT 
+          setting as timezone
+        FROM pg_settings 
+        WHERE name = 'TimeZone'
+      \`);
 
-    console.log(\`Server Timezone: \${settingsResult.rows[0].timezone}\`);
-    expect(settingsResult.rows.length).toBe(1);
+      console.log(\`Server Timezone: \${settingsResult.rows[0].timezone}\`);
+      expect(settingsResult.rows.length).toBe(1);
 
-    console.log("✅ Connection and basic info test completed successfully");
-  } catch (err) {
-    console.error("Database query failed:", err);
-    throw err;
-  } finally {
-    await client.end();
-    console.log("✅ Database connection closed");
-  }
-});
-
-test("Database Query Test - Schema Discovery", async () => {
-  const client = new Client(config);
-  
-  try {
-    await client.connect();
-    console.log("✅ Connected to RNAcentral PostgreSQL database");
-
-    // Test 1: Discover all available schemas
-    const schemasResult = await client.query(\`
-      SELECT schema_name 
-      FROM information_schema.schemata 
-      WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
-      ORDER BY schema_name
-    \`);
-
-    console.log("Available Schemas:");
-    schemasResult.rows.forEach((schema, index) => {
-      console.log(\`\${index + 1}. \${schema.schema_name}\`);
-    });
-
-    expect(schemasResult.rows.length).toBeGreaterThanOrEqual(1);
-
-    // Test 2: Discover tables in each schema
-    for (const schema of schemasResult.rows) {
-      const tablesResult = await client.query(\`
-        SELECT table_name, table_type
-        FROM information_schema.tables 
-        WHERE table_schema = $1
-        ORDER BY table_name
-        LIMIT 5
-      \`, [schema.schema_name]);
-
-      console.log(\`Tables in \${schema.schema_name} schema (first 5):\`);
-      if (tablesResult.rows.length > 0) {
-        tablesResult.rows.forEach((table, index) => {
-          console.log(\`  \${index + 1}. \${table.table_name} (\${table.table_type})\`);
-        });
-      } else {
-        console.log("  No tables found or no access to tables");
-      }
+      console.log("✅ Connection and basic info test completed successfully");
+    } catch (err) {
+      console.error("Database query failed:", err);
+      throw err;
+    } finally {
+      await client.end();
+      console.log("✅ Database connection closed");
     }
+  });
 
-    console.log("✅ Schema discovery completed successfully");
-  } catch (err) {
-    console.error("Database query failed:", err);
-    throw err;
-  } finally {
-    await client.end();
-    console.log("✅ Database connection closed");
-  }
+  test('schema discovery', async () => {
+    // Discover database schemas and available tables
+    const client = new Client(config);
+    
+    try {
+      await client.connect();
+      console.log("✅ Connected to RNAcentral PostgreSQL database");
+
+      // Find all non-system schemas
+      const schemasResult = await client.query(\`
+        SELECT schema_name 
+        FROM information_schema.schemata 
+        WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+        ORDER BY schema_name
+      \`);
+
+      console.log("Available Schemas:");
+      schemasResult.rows.forEach((schema, index) => {
+        console.log(\`\${index + 1}. \${schema.schema_name}\`);
+      });
+
+      expect(schemasResult.rows.length).toBeGreaterThanOrEqual(1);
+
+      // List first 5 tables in each schema
+      for (const schema of schemasResult.rows) {
+        const tablesResult = await client.query(\`
+          SELECT table_name, table_type
+          FROM information_schema.tables 
+          WHERE table_schema = $1
+          ORDER BY table_name
+          LIMIT 5
+        \`, [schema.schema_name]);
+
+        console.log(\`Tables in \${schema.schema_name} schema (first 5):\`);
+        if (tablesResult.rows.length > 0) {
+          tablesResult.rows.forEach((table, index) => {
+            console.log(\`  \${index + 1}. \${table.table_name} (\${table.table_type})\`);
+          });
+        } else {
+          console.log("  No tables found or no access to tables");
+        }
+      }
+
+      console.log("✅ Schema discovery completed successfully");
+    } catch (err) {
+      console.error("Database query failed:", err);
+      throw err;
+    } finally {
+      await client.end();
+      console.log("✅ Database connection closed");
+    }
+  });
 });
 
 `,
 
   [ScriptType.Custom]: `/**
- * Sample Advanced Integration Test Script
- * 
- * This script demonstrates end-to-end testing scenarios combining
- * API testing with browser automation. It showcases real-world testing patterns
- * for modern web applications including data consistency validation across
- * different interfaces (API vs Web UI).
- * 
- * Test Coverage:
- * - API data retrieval and validation
- * - Browser automation with dynamic content
- * - Cross-platform data consistency verification
- * - Repository analysis and contributor metrics
- * - User profile validation across API and UI
- * 
- * Target Platform: GitHub Public API and Web Interface
- * API Base URL: https://api.github.com/
- * Web Interface: https://github.com/
- * API Documentation: https://docs.github.com/en/rest
- * 
- * @requires '@playwright/test' package
+ * GitHub API + Browser integration tests
+ * Combines API data fetching with browser validation for end-to-end testing
+ * @requires '@playwright/test'
  */
 
 import { test, expect } from "@playwright/test";
 
-test("GitHub Repository Analysis - API + Browser Integration", async ({
-  request,
-  page,
-}) => {
-  console.log("🚀 Starting GitHub repository analysis workflow...");
+test.describe('GitHub integration tests', () => {
+  test('repository analysis - API + browser integration', async ({ request, page }) => {
+    // Combine API data fetching with browser validation
+    console.log("🚀 Starting GitHub repository analysis workflow...");
 
-  const repoOwner = "microsoft";
-  const repoName = "playwright";
+    const repoOwner = "microsoft";
+    const repoName = "playwright";
 
-  // Step 1: API - Get repository information
-  console.log("Step 1: Fetching repository data via GitHub API...");
-  const repoResponse = await request.get(
-    \`https://api.github.com/repos/\${repoOwner}/\${repoName}\`
-  );
+    console.log("Step 1: Fetching repository data via GitHub API...");
+    const repoResponse = await request.get(
+      \`https://api.github.com/repos/\${repoOwner}/\${repoName}\`
+    );
 
-  expect(repoResponse.status()).toBe(200);
-  const repoData = await repoResponse.json();
-  
-  console.log(\`📊 Repository: \${repoData.full_name}\`);
-  console.log(\`⭐ Stars: \${repoData.stargazers_count}\`);
-  console.log(\`🍴 Forks: \${repoData.forks_count}\`);
-  console.log(\`📝 Description: \${repoData.description}\`);
-  console.log(\`🔗 Language: \${repoData.language}\`);
+    expect(repoResponse.status()).toBe(200);
+    const repoData = await repoResponse.json();
+    
+    // Display repository metrics from API
+    console.log(\`📊 Repository: \${repoData.full_name}\`);
+    console.log(\`⭐ Stars: \${repoData.stargazers_count}\`);
+    console.log(\`🍴 Forks: \${repoData.forks_count}\`);
+    console.log(\`📝 Description: \${repoData.description}\`);
+    console.log(\`🔗 Language: \${repoData.language}\`);
 
-  // Step 2: Browser - Navigate to repository page
-  console.log("Step 2: Opening GitHub repository in browser...");
-  await page.goto(\`https://github.com/\${repoOwner}/\${repoName}\`);
-  
-  // Verify page loaded correctly
-  await expect(page).toHaveTitle(/playwright/i);
-  
-  // Step 3: Cross-validate API data with browser content
-  console.log("Step 3: Validating API data against browser content...");
-  
-  // Check repository name is in the page using more specific selector
-  await expect(page.getByRole('heading', { name: '🎭 Playwright' })).toBeVisible();
-  console.log(\`✅ Repository page loaded and confirmed\`);
+    console.log("Step 2: Opening GitHub repository in browser...");
+    await page.goto(\`https://github.com/\${repoOwner}/\${repoName}\`);
+    await expect(page).toHaveTitle(/playwright/i);
+    
+    console.log("Step 3: Validating API data against browser content...");
+    await expect(page.getByRole('heading', { name: '🎭 Playwright' })).toBeVisible();
+    console.log(\`✅ Repository page loaded and confirmed\`);
 
-  console.log("✅ Repository analysis completed successfully");
-});
-
-test("GitHub API Data Analysis", async ({ request }) => {
-  console.log("🚀 Starting GitHub API data analysis...");
-
-  const repoOwner = "microsoft";
-  const repoName = "playwright";
-
-  // Step 1: Get repository issues
-  console.log("Step 1: Fetching repository issues via API...");
-  const issuesResponse = await request.get(
-    \`https://api.github.com/repos/\${repoOwner}/\${repoName}/issues?state=open&per_page=10\`
-  );
-
-  expect(issuesResponse.status()).toBe(200);
-  const issues = await issuesResponse.json();
-  
-  console.log(\`📋 Found \${issues.length} open issues (showing first 10)\`);
-  
-  // Analyze issue types and labels
-  const issueAnalysis = {
-    withLabels: issues.filter(issue => issue.labels.length > 0).length,
-    withAssignees: issues.filter(issue => issue.assignees.length > 0).length,
-    averageComments: Math.round(issues.reduce((sum, issue) => sum + issue.comments, 0) / issues.length)
-  };
-
-  console.log(\`🏷️  Issues with labels: \${issueAnalysis.withLabels}/\${issues.length}\`);
-  console.log(\`👥 Issues with assignees: \${issueAnalysis.withAssignees}/\${issues.length}\`);
-  console.log(\`💬 Average comments per issue: \${issueAnalysis.averageComments}\`);
-
-  // Step 2: Get repository contributors
-  console.log("Step 2: Fetching repository contributors...");
-  const contributorsResponse = await request.get(
-    \`https://api.github.com/repos/\${repoOwner}/\${repoName}/contributors?per_page=5\`
-  );
-
-  expect(contributorsResponse.status()).toBe(200);
-  const contributors = await contributorsResponse.json();
-  
-  console.log(\`👨‍💻 Top \${contributors.length} Contributors:\`);
-  contributors.forEach((contributor, index) => {
-    console.log(\`  \${index + 1}. \${contributor.login} - \${contributor.contributions} contributions\`);
+    console.log("✅ Repository analysis completed successfully");
   });
 
-  expect(contributors.length).toBeGreaterThan(0);
-  console.log("✅ API data analysis completed successfully");
-});
+  test('API data analysis', async ({ request }) => {
+    // Analyze GitHub repository issues and contributors via API
+    console.log("🚀 Starting GitHub API data analysis...");
 
-test("GitHub User Profile Analysis", async ({ request, page }) => {
-  console.log("🚀 Starting GitHub user profile analysis...");
+    const repoOwner = "microsoft";
+    const repoName = "playwright";
 
-  const username = "torvalds";
+    console.log("Step 1: Fetching repository issues via API...");
+    const issuesResponse = await request.get(
+      \`https://api.github.com/repos/\${repoOwner}/\${repoName}/issues?state=open&per_page=10\`
+    );
 
-  // Step 1: API - Get user profile information
-  console.log("Step 1: Fetching user profile via GitHub API...");
-  const userResponse = await request.get(\`https://api.github.com/users/\${username}\`);
+    expect(issuesResponse.status()).toBe(200);
+    const issues = await issuesResponse.json();
+    
+    console.log(\`📋 Found \${issues.length} open issues (showing first 10)\`);
+    
+    // Analyze issue patterns and statistics
+    const issueAnalysis = {
+      withLabels: issues.filter(issue => issue.labels.length > 0).length,
+      withAssignees: issues.filter(issue => issue.assignees.length > 0).length,
+      averageComments: Math.round(issues.reduce((sum, issue) => sum + issue.comments, 0) / issues.length)
+    };
 
-  expect(userResponse.status()).toBe(200);
-  const userData = await userResponse.json();
-  
-  console.log(\`👤 User: \${userData.login}\`);
-  console.log(\`📝 Name: \${userData.name || 'Not provided'}\`);
-  console.log(\`📊 Public Repos: \${userData.public_repos}\`);
-  console.log(\`👥 Followers: \${userData.followers}\`);
+    console.log(\`🏷️  Issues with labels: \${issueAnalysis.withLabels}/\${issues.length}\`);
+    console.log(\`👥 Issues with assignees: \${issueAnalysis.withAssignees}/\${issues.length}\`);
+    console.log(\`💬 Average comments per issue: \${issueAnalysis.averageComments}\`);
 
-  // Step 2: Browser - Navigate to user profile
-  console.log("Step 2: Validating user profile in browser...");
-  await page.goto(\`https://github.com/\${username}\`);
-  
-  // Wait for profile to load and validate we're on correct page
-  await page.waitForLoadState('networkidle');
-  await expect(page).toHaveURL(new RegExp(username));
-  console.log(\`✅ Confirmed on \${username}'s profile page\`);
+    console.log("Step 2: Fetching repository contributors...");
+    const contributorsResponse = await request.get(
+      \`https://api.github.com/repos/\${repoOwner}/\${repoName}/contributors?per_page=5\`
+    );
 
-  console.log("✅ User profile analysis completed successfully");
+    expect(contributorsResponse.status()).toBe(200);
+    const contributors = await contributorsResponse.json();
+    
+    // Display top contributors by commit count
+    console.log(\`👨‍💻 Top \${contributors.length} Contributors:\`);
+    contributors.forEach((contributor, index) => {
+      console.log(\`  \${index + 1}. \${contributor.login} - \${contributor.contributions} contributions\`);
+    });
+
+    expect(contributors.length).toBeGreaterThan(0);
+    console.log("✅ API data analysis completed successfully");
+  });
+
+  test('user profile analysis', async ({ request, page }) => {
+    // Validate user profile data across API and browser interfaces
+    console.log("🚀 Starting GitHub user profile analysis...");
+
+    const username = "torvalds";
+
+    console.log("Step 1: Fetching user profile via GitHub API...");
+    const userResponse = await request.get(\`https://api.github.com/users/\${username}\`);
+
+    expect(userResponse.status()).toBe(200);
+    const userData = await userResponse.json();
+    
+    // Display user profile information from API
+    console.log(\`👤 User: \${userData.login}\`);
+    console.log(\`📝 Name: \${userData.name || 'Not provided'}\`);
+    console.log(\`📊 Public Repos: \${userData.public_repos}\`);
+    console.log(\`👥 Followers: \${userData.followers}\`);
+
+    console.log("Step 2: Validating user profile in browser...");
+    await page.goto(\`https://github.com/\${username}\`);
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveURL(new RegExp(username));
+    console.log(\`✅ Confirmed on \${username}'s profile page\`);
+
+    console.log("✅ User profile analysis completed successfully");
+  });
 });
 
 `,
 
   [ScriptType.Performance]: `/**
- * Sample k6 Performance Test Script
- *
- * This script demonstrates k6 performance and load testing capabilities.
- * k6 is a modern load testing tool for testing the performance of APIs,
- * microservices, and websites. It uses JavaScript ES6 for test scripting.
- *
- * Test Coverage:
- * - HTTP GET request performance testing
- * - Virtual users (VUs) simulation
- * - Response time analysis (avg, p95, p99)
- * - Pass/fail thresholds validation
- * - Error rate monitoring
- *
- * Configuration:
- * - 10 virtual users
- * - 30 second test duration
- * - Success criteria: 95% of requests < 500ms, error rate < 10%
- *
- * Target API: test-api.k6.io - k6's official test API
- * Documentation: https://k6.io/docs/
- *
+ * k6 performance testing script
+ * Load testing with virtual users and response time thresholds
  * @requires k6 binary
  */
 
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-// Test configuration - all settings in script
 export const options = {
-  vus: 10,              // 10 virtual users
-  duration: '30s',      // Run for 30 seconds
-
-  // Pass/fail criteria
+  vus: 10,
+  duration: '30s',
   thresholds: {
-    http_req_duration: ['p(95)<500'],  // 95% of requests < 500ms
-    http_req_failed: ['rate<0.1'],     // Error rate < 10%
+    http_req_duration: ['p(95)<500'],
+    http_req_failed: ['rate<0.1'],
   },
 };
 
 export default function() {
-  // Test logic
   const response = http.get('https://test-api.k6.io/public/crocodiles/');
 
-  // Validation checks
   check(response, {
     'status is 200': (r) => r.status === 200,
     'response time < 500ms': (r) => r.timings.duration < 500,
@@ -495,7 +378,7 @@ export function getSampleScript(type: ScriptType): string {
 /**
  * Get a default script if the requested script is not found
  */
-function getDefaultScript(): string {
+function getDefaultScript() {
   return `import { test, expect } from '@playwright/test';
 
 test('basic test', async ({ page }) => {

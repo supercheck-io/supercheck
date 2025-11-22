@@ -195,13 +195,13 @@ export const K6_LOCATIONS = {
     code: 'eu-central' as const,
     name: 'EU Central (Frankfurt)',
     region: 'Europe',
-    flag: '🇪🇺',
+    flag: '🇩🇪',
   },
   'asia-pacific': {
     code: 'asia-pacific' as const,
-    name: 'Asia Pacific (Singapore)',
+    name: 'Asia Pacific (Mumbai)',
     region: 'Asia',
-    flag: '🇸🇬',
+    flag: '🇮🇳',
   },
 } as const;
 

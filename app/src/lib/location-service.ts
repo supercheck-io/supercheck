@@ -26,14 +26,14 @@ export const LOCATION_METADATA: Record<MonitoringLocation, LocationMetadata> = {
     name: "EU Central",
     region: "Frankfurt",
     coordinates: { lat: 50.1109, lon: 8.6821 },
-    flag: "🇪🇺",
+    flag: "🇩🇪",
   },
   [MONITORING_LOCATIONS.ASIA_PACIFIC]: {
     code: MONITORING_LOCATIONS.ASIA_PACIFIC,
     name: "Asia Pacific",
-    region: "Singapore",
-    coordinates: { lat: 1.3521, lon: 103.8198 },
-    flag: "🇸🇬",
+    region: "Mumbai",
+    coordinates: { lat: 19.0760, lon: 72.8777 },
+    flag: "🇮🇳",
   },
 };
 

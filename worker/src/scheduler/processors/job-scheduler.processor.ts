@@ -272,14 +272,20 @@ abstract class BaseJobSchedulerProcessor extends WorkerHost {
             projectId,
             location: resolvedLocation ?? DEFAULT_K6_LOCATION,
           },
-          jobOptions,
+          {
+            ...jobOptions,
+            priority: 1, // Lowest priority for long-running k6 jobs
+          },
         );
 
         this.logger.log(
           `Enqueued k6 execution task for scheduled job ${jobId}, run ${runId}`,
         );
       } else {
-        await this.jobExecutionQueue.add(runId, task, jobOptions);
+        await this.jobExecutionQueue.add(runId, task, {
+          ...jobOptions,
+          priority: 5, // Medium priority for regular Playwright tests
+        });
         this.logger.log(
           `Created execution task for scheduled job ${jobId}, run ${runId}`,
         );
