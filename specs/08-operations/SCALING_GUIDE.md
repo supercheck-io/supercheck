@@ -233,8 +233,8 @@ worker:
 
 Test execution containers have these limits enforced by the ContainerExecutorService:
 
-- **Memory**: 2048MB per test container
-- **CPU**: 2 cores per test container
+- **Memory**: 2048MB per test container (Configurable via `CONTAINER_MEMORY_LIMIT_MB`)
+- **CPU**: 1.5 cores per test container (Configurable via `CONTAINER_CPU_LIMIT`)
 - **Processes**: 100 max processes
 - **Shared Memory**: 512MB for browsers
 - **Temporary Storage**: 512MB tmpfs
@@ -533,6 +533,8 @@ WORKER_REPLICAS=4 MAX_CONCURRENT_EXECUTIONS=1 RUNNING_CAPACITY=4 docker-compose 
 | `RUNNING_CAPACITY` | 6 | Total concurrent test capacity |
 | `QUEUED_CAPACITY` | 50 | Maximum queue size |
 | `MAX_CONCURRENT_EXECUTIONS` | 1 | Concurrent tests per worker |
+| `CONTAINER_CPU_LIMIT` | 1.5 | CPU limit per test container |
+| `CONTAINER_MEMORY_LIMIT_MB` | 2048 | Memory limit per test container (MB) |
 
 ## Next Steps
 

@@ -459,8 +459,8 @@ graph TB
     subgraph "Security Hardening"
         S1[--security-opt=no-new-privileges<br/>Prevent privilege escalation]
         S2[--cap-drop=ALL<br/>Drop all Linux capabilities]
-        S3[--memory=2048m<br/>Memory limit]
-        S4[--cpus=2<br/>CPU limit]
+        S3[--memory=2048m<br/>Memory limit (Configurable)]
+        S4[--cpus=1.5<br/>CPU limit (Configurable)]
         S5[--pids-limit=100<br/>Process limit]
         S6[--network=bridge<br/>Network isolation]
         S7[Writable container /tmp<br/>For test scripts & reports]
