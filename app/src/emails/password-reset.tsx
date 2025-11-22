@@ -21,49 +21,52 @@ export const PasswordResetEmail = ({
     <BaseLayout
       preview="Reset your Supercheck password"
       title="Password Reset Request"
+      headerColor="#1f2937" // Gray-800
     >
-      {/* Main Content */}
-      <Text style={heading}>Reset Your Password</Text>
+      <Section style={contentSection}>
+        {/* Main Content */}
+        <Text style={heading}>Reset Your Password</Text>
 
-      <Text style={paragraph}>
-        You requested a password reset for your Supercheck account:
-      </Text>
-
-      <Text style={emailHighlight}>{userEmail}</Text>
-
-      <Text style={paragraph}>
-        Click the button below to create a new password:
-      </Text>
-
-      {/* CTA Button */}
-      <Section style={buttonContainer}>
-        <Button style={button} href={resetUrl}>
-          Reset Password
-        </Button>
-      </Section>
-
-      {/* Alternative Link */}
-      <Text style={smallText}>
-        Or copy and paste this URL into your browser:
-      </Text>
-      <Text style={urlText}>
-        <Link href={resetUrl} style={link}>
-          {resetUrl}
-        </Link>
-      </Text>
-
-      <Hr style={hr} />
-
-      {/* Security Notice */}
-      <Section style={warningBox}>
-        <Text style={warningTitle}>Security Notice</Text>
-        <Text style={warningText}>
-          This link will expire in <strong>1 hour</strong> for security reasons.
+        <Text style={paragraph}>
+          You requested a password reset for your Supercheck account:
         </Text>
-        <Text style={warningText}>
-          If you didn&apos;t request this reset, please ignore this email. Your
-          password will remain unchanged.
+
+        <Text style={emailHighlight}>{userEmail}</Text>
+
+        <Text style={paragraph}>
+          Click the button below to create a new password:
         </Text>
+
+        {/* CTA Button */}
+        <Section style={buttonContainer}>
+          <Button style={button} href={resetUrl}>
+            Reset Password
+          </Button>
+        </Section>
+
+        {/* Alternative Link */}
+        <Text style={smallText}>
+          Or copy and paste this URL into your browser:
+        </Text>
+        <Text style={urlText}>
+          <Link href={resetUrl} style={link}>
+            {resetUrl}
+          </Link>
+        </Text>
+
+        <Hr style={hr} />
+
+        {/* Security Notice */}
+        <Section style={warningBox}>
+          <Text style={warningTitle}>Security Notice</Text>
+          <Text style={warningText}>
+            This link will expire in <strong>1 hour</strong> for security reasons.
+          </Text>
+          <Text style={warningText}>
+            If you didn&apos;t request this reset, please ignore this email. Your
+            password will remain unchanged.
+          </Text>
+        </Section>
       </Section>
     </BaseLayout>
   );
@@ -73,6 +76,10 @@ export const PasswordResetEmail = ({
 // TEXT STYLES
 // ============================================================================
 
+const contentSection = {
+  padding: "32px 32px 0",
+};
+
 const heading = {
   color: "#111827",
   fontSize: "24px",
@@ -80,6 +87,7 @@ const heading = {
   lineHeight: "1.3",
   margin: "0 0 24px",
   textAlign: "center" as const,
+  letterSpacing: "-0.025em",
 };
 
 const paragraph = {

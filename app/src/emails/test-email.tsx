@@ -13,41 +13,45 @@ export const TestEmail = ({
     <BaseLayout
       preview="Test Email from Supercheck"
       title="Email Configuration Test"
+      headerColor="#3b82f6" // Blue-500
     >
-      <Text style={heading}>Email Test Successful</Text>
+      <Section style={contentSection}>
+        <Text style={heading}>Email Test Successful</Text>
 
-      <Text style={paragraph}>
-        Your email configuration is working properly.
-      </Text>
+        <Text style={paragraph}>
+          Your email configuration is working properly.
+        </Text>
 
-      <Text style={paragraph}>{testMessage}</Text>
+        <Text style={paragraph}>{testMessage}</Text>
 
-      <Section style={infoBox}>
-        <Text style={infoTitle}>Email Details:</Text>
-        <Text style={infoText}>
-          • Sent via: SMTP
-          <br />
-          • Template Engine: React Email
-          <br />
-          • Status: Delivered Successfully
-          <br />• Timestamp: {new Date().toLocaleString()}
+        <Section style={infoBox}>
+          <Text style={infoTitle}>Email Details</Text>
+          <Text style={infoText}>
+            • Status: Delivered Successfully
+            <br />• Timestamp: {new Date().toLocaleString()}
+          </Text>
+        </Section>
+
+        <Text style={smallText}>
+          This is an automated test email from Supercheck. If you received this, your email
+          notifications are configured correctly.
         </Text>
       </Section>
-
-      <Text style={smallText}>
-        This is an automated test email from Supercheck. If you received this, your email
-        notifications are configured correctly.
-      </Text>
     </BaseLayout>
   );
+};
+
+const contentSection = {
+  padding: "32px 32px 0",
 };
 
 const heading = {
   color: "#111827",
   fontSize: "22px",
-  fontWeight: "600" as const,
+  fontWeight: "700" as const,
   margin: "0 0 20px",
   textAlign: "center" as const,
+  letterSpacing: "-0.025em",
 };
 
 const paragraph = {
@@ -61,9 +65,9 @@ const paragraph = {
 const infoBox = {
   backgroundColor: "#f9fafb",
   border: "1px solid #e5e7eb",
-  borderRadius: "6px",
-  padding: "20px",
-  margin: "24px 0",
+  borderRadius: "8px",
+  padding: "24px",
+  margin: "32px 0",
 };
 
 const infoTitle = {
@@ -71,20 +75,23 @@ const infoTitle = {
   fontSize: "14px",
   fontWeight: "600" as const,
   margin: "0 0 12px",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.05em",
 };
 
 const infoText = {
   color: "#4b5563",
   fontSize: "14px",
-  lineHeight: "1.6",
+  lineHeight: "1.8",
   margin: "0",
 };
 
 const smallText = {
-  color: "#6b7280",
-  fontSize: "14px",
+  color: "#9ca3af",
+  fontSize: "13px",
   lineHeight: "1.5",
-  margin: "24px 0 0",
+  margin: "32px 0 0",
+  textAlign: "center" as const,
 };
 
 export default TestEmail;

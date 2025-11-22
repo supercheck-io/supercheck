@@ -25,7 +25,6 @@ export const codeTemplates: CodeTemplate[] = [
  * k6 smoke test for uptime and latency.
  * Coverage: single GET, status + basic body check, light load.
  * Config: 3 VUs for 30s, p95 < 800ms, errors < 1%.
- * Use TARGET_URL k6 var to point at your API.
  * @requires k6 binary
  */
 
@@ -42,7 +41,7 @@ export const options = {
 };
 
 export default function () {
-  const baseUrl = __ENV.TARGET_URL || 'https://test-api.k6.io';
+  const baseUrl = 'https://test-api.k6.io';
   const response = http.get(baseUrl + '/public/crocodiles/1/');
 
   check(response, {
@@ -65,7 +64,6 @@ export default function () {
  * Ramping load profile to mirror real traffic.
  * Coverage: staged VU growth, p95/p99 latency guardrails, error budget.
  * Config: 2m->5m->3m stages, max 80 VUs, p95 < 600ms, p99 < 1200ms.
- * Use TARGET_URL to switch environments without code edits.
  * @requires k6 binary
  */
 
@@ -87,7 +85,7 @@ export const options = {
 };
 
 export default function () {
-  const baseUrl = __ENV.TARGET_URL || 'https://test-api.k6.io';
+  const baseUrl = 'https://test-api.k6.io';
   const response = http.get(baseUrl + '/public/crocodiles/');
 
   check(response, {
@@ -136,7 +134,7 @@ export const options = {
 };
 
 export default function () {
-  const baseUrl = __ENV.TARGET_URL || 'https://test-api.k6.io';
+  const baseUrl = 'https://test-api.k6.io';
   const res = http.get(baseUrl + '/public/crocodiles/2/');
 
   check(res, { '200 OK during spike': (r) => r.status === 200 });
@@ -175,7 +173,7 @@ export const options = {
 };
 
 export default function () {
-  const baseUrl = __ENV.TARGET_URL || 'https://test-api.k6.io';
+  const baseUrl = 'https://test-api.k6.io';
   const response = http.get(baseUrl + '/public/crocodiles/3/');
 
   check(response, { 'status is 200': (res) => res.status === 200 });
@@ -212,7 +210,7 @@ export const options = {
 };
 
 export default function () {
-  const baseUrl = __ENV.TARGET_URL || 'https://test-api.k6.io';
+  const baseUrl = 'https://test-api.k6.io';
   const token = __ENV.API_TOKEN || '';
 
   group('list resources', () => {
@@ -285,7 +283,7 @@ export const options = {
 };
 
 export default function () {
-  const baseUrl = __ENV.TARGET_URL || 'https://jsonplaceholder.typicode.com';
+  const baseUrl = 'https://jsonplaceholder.typicode.com';
   const res = http.get(baseUrl + '/posts/1');
   
   const checkResult = check(res, {
@@ -356,7 +354,7 @@ export const options = {
 };
 
 export default function () {
-  const baseUrl = __ENV.TARGET_URL || 'https://jsonplaceholder.typicode.com';
+  const baseUrl = 'https://jsonplaceholder.typicode.com';
   
   // Read operation
   const getRes = http.get(baseUrl + '/posts/1', {
@@ -430,7 +428,7 @@ export const options = {
 };
 
 export default function () {
-  const baseUrl = __ENV.TARGET_URL || 'https://test-api.k6.io';
+  const baseUrl = 'https://test-api.k6.io';
   
   const responses = http.batch([
     ['GET', baseUrl + '/public/crocodiles/'],
@@ -485,7 +483,7 @@ export const options = {
 };
 
 export default function () {
-  const res = http.get(__ENV.TARGET_URL || 'https://test-api.k6.io/public/crocodiles/');
+  const res = http.get('https://test-api.k6.io/public/crocodiles/');
   check(res, {
     'status 200': (r) => r.status === 200,
     'latency acceptable': (r) => r.timings.duration < 2000,
