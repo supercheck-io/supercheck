@@ -134,7 +134,7 @@ module.exports = defineConfig({
   projects: [
     {
       name: 'chromium',
-      grepInvert: /@(mobile|iPhone|firefox|webkit|safari)\b/,
+      grepInvert: /@(mobile|iphone|firefox|webkit|safari)\b/i,
       use: {
         ...devices['Desktop Chrome'],
         // Override with optimized settings
@@ -150,7 +150,7 @@ module.exports = defineConfig({
     // Additional browsers
     {
       name: 'firefox',
-      grep: /@firefox\b/,
+      grep: /@firefox\b/i,
       use: {
         ...devices['Desktop Firefox'],
         viewport: { width: 1280, height: 720 },
@@ -166,7 +166,7 @@ module.exports = defineConfig({
 
     {
       name: 'safari',
-      grep: /@(webkit|safari)\b/,
+      grep: /@(webkit|safari)\b/i,
       use: {
         ...devices['Desktop Safari'],
         viewport: { width: 1280, height: 720 },
@@ -184,7 +184,7 @@ module.exports = defineConfig({
     {
       name: 'mobile-safari',
       // Only run tests tagged with @mobile or @iPhone
-      grep: /@(mobile|iPhone)\b/,
+      grep: /@(mobile|iphone)\b/i,
       use: {
         ...devices['iPhone 13'],
         headless: true,

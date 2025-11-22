@@ -486,7 +486,9 @@ export default function Home() {
             typeof data.system?.timestamp === "string"
               ? data.system.timestamp
               : new Date().toISOString(),
-          healthy: Boolean(data.system?.healthy ?? systemIssues.length === 0),
+          healthy: Boolean(
+            (data.system?.healthy ?? true) && systemIssues.length === 0
+          ),
           issues: systemIssues,
         },
       };
@@ -886,26 +888,68 @@ export default function Home() {
                 Overview of project&apos;s health, and performance.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <div
-                className={cn(
-                  "h-3 w-3 rounded-full",
-                  dashboardData.system.healthy ? "bg-green-500" : "bg-red-500"
-                )}
-              />
-              <span
-                className={cn(
-                  "text-sm font-medium",
-                  dashboardData.system.healthy
-                    ? "text-green-600"
-                    : "text-red-600"
-                )}
-              >
-                {dashboardData.system.healthy
-                  ? "Operational"
-                  : "Issues Detected"}
-              </span>
-            </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="p-0 h-auto hover:bg-transparent"
+                  >
+                    <div className="flex items-center gap-2 cursor-pointer">
+                      <div
+                        className={cn(
+                          "h-3 w-3 rounded-full",
+                          dashboardData.system.healthy
+                            ? "bg-green-500"
+                            : "bg-red-500"
+                        )}
+                      />
+                      <span
+                        className={cn(
+                          "text-sm font-medium",
+                          dashboardData.system.healthy
+                            ? "text-green-600"
+                            : "text-red-600"
+                        )}
+                      >
+                        {dashboardData.system.healthy
+                          ? "Operational"
+                          : "Issues Detected"}
+                      </span>
+                    </div>
+                  </Button>
+                </PopoverTrigger>
+                {!dashboardData.system.healthy &&
+                  dashboardData.system.issues.length > 0 && (
+                    <PopoverContent className="w-80 p-0" align="end">
+                      <div className="p-4 space-y-3">
+                        <h4 className="font-medium leading-none">
+                          System Issues
+                        </h4>
+                        <div className="space-y-2">
+                          {dashboardData.system.issues.map((issue, i) => (
+                            <div
+                              key={i}
+                              className="flex items-start gap-2 text-sm"
+                            >
+                              <div
+                                className={cn(
+                                  "mt-1 h-2 w-2 rounded-full flex-shrink-0",
+                                  issue.severity === "critical" ||
+                                    issue.severity === "high"
+                                    ? "bg-red-500"
+                                    : "bg-yellow-500"
+                                )}
+                              />
+                              <span className="text-muted-foreground">
+                                {issue.message}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  )}
+              </Popover>
           </div>
 
           {/* Overview Content */}
