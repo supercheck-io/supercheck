@@ -10,8 +10,7 @@ import { S3Service } from './execution/services/s3.service';
 import { DbService, DB_PROVIDER_TOKEN } from './execution/services/db.service';
 import { RedisService } from './execution/services/redis.service';
 import { JobNotificationService } from './execution/services/job-notification.service';
-import { TestExecutionProcessor } from './execution/processors/test-execution.processor';
-import { JobExecutionProcessor } from './execution/processors/job-execution.processor';
+import { PlaywrightExecutionProcessor } from './execution/processors/playwright-execution.processor';
 import { NotificationModule } from './notification/notification.module';
 import { ReportUploadService } from './common/services/report-upload.service';
 import { SecurityModule } from './common/security/security.module';
@@ -19,8 +18,7 @@ import * as schema from './db/schema';
 
 // Import constants from constants file
 import {
-  TEST_EXECUTION_QUEUE,
-  JOB_EXECUTION_QUEUE,
+  PLAYWRIGHT_QUEUE,
 } from './execution/constants';
 
 // Define common job options with TTL settings
@@ -64,14 +62,8 @@ const drizzleProvider: Provider = {
     SecurityModule,
     BullModule.registerQueue(
       {
-        name: TEST_EXECUTION_QUEUE,
+        name: PLAYWRIGHT_QUEUE,
         defaultJobOptions,
-        // Note: Worker concurrency is controlled by the processor options
-      },
-      {
-        name: JOB_EXECUTION_QUEUE,
-        defaultJobOptions,
-        // Note: Worker concurrency is controlled by the processor options
       },
     ),
   ],
@@ -85,8 +77,7 @@ const drizzleProvider: Provider = {
     RedisService,
     JobNotificationService,
     ReportUploadService,
-    TestExecutionProcessor,
-    JobExecutionProcessor,
+    PlaywrightExecutionProcessor,
   ],
   exports: [
     drizzleProvider,

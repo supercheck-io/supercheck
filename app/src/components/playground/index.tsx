@@ -132,7 +132,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   const initialPerformanceLocation: PerformanceLocation | null =
     initialResolvedType === "performance" && initialTestData
       ? ((initialTestData.location as PerformanceLocation) ??
-        ("us-east" as PerformanceLocation))
+        ("GLOBAL" as PerformanceLocation))
       : null;
 
   // Fetch current user ID for permissions
@@ -160,7 +160,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [performanceRunId, setPerformanceRunId] = useState<string | null>(null);
   const [performanceLocation, setPerformanceLocation] =
     useState<PerformanceLocation>(
-      initialPerformanceLocation ?? "us-east"
+      initialPerformanceLocation ?? "GLOBAL"
     );
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
@@ -718,7 +718,7 @@ const Playground: React.FC<PlaygroundProps> = ({
           const fallbackLocation =
             (result.location as PerformanceLocation) ||
             options?.location ||
-            ("us-east" as PerformanceLocation);
+            ("GLOBAL" as PerformanceLocation);
           setPerformanceLocation(fallbackLocation);
           setTestCase((prev) => ({
             ...prev,

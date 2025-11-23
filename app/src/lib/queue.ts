@@ -49,13 +49,10 @@ export interface JobExecutionTask {
   variables?: Record<string, string>; // Resolved variables for job execution
   secrets?: Record<string, string>; // Resolved secrets for job execution
   jobType?: SchemaJobType;
+  location?: string | null;
 }
 
-// Health check task interface - REMOVING
-// export interface HealthCheckExecutionTask { ... }
-
 // Interface for Monitor Job Data (mirroring DTO in runner)
-// Consider moving to a shared types location if used across app/worker extensively
 export interface MonitorJobData {
   monitorId: string;
   type: "http_request" | "website" | "ping_host" | "port_check";
@@ -79,24 +76,8 @@ export interface K6ExecutionTask {
   jobType?: string;
 }
 
-// Interface for Monitor Execution Result (mirroring type in runner)
-// This is the data that will be sent TO this queue BY the runner
-// export interface MonitorResultData { // REMOVING
-//   monitorId: string;
-//   status: "up" | "down" | "error" | "timeout"; // Corresponds to MonitorResultStatus
-//   checkedAt: string; // ISO string date
-//   responseTimeMs?: number;
-//   details?: any; // Corresponds to MonitorResultDetails, using any for now
-//   isUp: boolean;
-//   error?: string;
-// }
-
 // Constants for queue names and Redis keys
-export const TEST_EXECUTION_QUEUE = "test-execution";
-export const JOB_EXECUTION_QUEUE = "job-execution";
 export const MONITOR_EXECUTION_QUEUE = "monitor-execution";
-export const K6_TEST_EXECUTION_QUEUE = "k6-test-execution";
-export const K6_JOB_EXECUTION_QUEUE = "k6-job-execution";
 
 // Scheduler-related queues
 export const JOB_SCHEDULER_QUEUE = "job-scheduler";
@@ -112,7 +93,6 @@ export const DATA_LIFECYCLE_CLEANUP_QUEUE = "data-lifecycle-cleanup";
 // Redis capacity limit keys
 export const RUNNING_CAPACITY_LIMIT_KEY = "supercheck:capacity:running";
 export const QUEUE_CAPACITY_LIMIT_KEY = "supercheck:capacity:queued";
-// export const HEALTH_CHECK_CAPACITY_LIMIT_KEY = 'supercheck:capacity:healthcheck'; // REMOVING
 
 // Redis key TTL values (in seconds) - applies to both job and test execution
 export const REDIS_JOB_KEY_TTL = 7 * 24 * 60 * 60; // 7 days for job data (completed/failed jobs)
@@ -120,20 +100,29 @@ export const REDIS_EVENT_KEY_TTL = 24 * 60 * 60; // 24 hours for events/stats
 export const REDIS_METRICS_TTL = 48 * 60 * 60; // 48 hours for metrics data
 export const REDIS_CLEANUP_BATCH_SIZE = 100; // Process keys in smaller batches to reduce memory pressure
 
+// Regions
+export type Region = "US" | "EU" | "APAC" | "GLOBAL";
+export const REGIONS: Region[] = ["US", "EU", "APAC", "GLOBAL"];
+
+// Monitor regions (no GLOBAL - monitors check specific regional endpoints)
+export type MonitorRegion = Exclude<Region, "GLOBAL">;
+export const MONITOR_REGIONS: MonitorRegion[] = ["US", "EU", "APAC"];
+
 // Singleton instances
 let redisClient: Redis | null = null;
-let testQueue: Queue | null = null;
-let jobQueue: Queue | null = null;
-let monitorExecution: Queue | null = null;
-let k6TestExecutionQueue: Queue | null = null;
-let k6JobExecutionQueue: Queue | null = null;
+
+// Region-specific queues
+const playwrightQueues: Record<string, Queue> = {};
+const k6Queues: Record<string, Queue> = {};
+
+let monitorExecution: Record<MonitorRegion, Queue> | null = null;
 let jobSchedulerQueue: Queue | null = null;
 let k6JobSchedulerQueue: Queue | null = null;
 let monitorSchedulerQueue: Queue | null = null;
 let emailTemplateQueue: Queue | null = null;
 let dataLifecycleCleanupQueue: Queue | null = null;
 
-let monitorExecutionEvents: QueueEvents | null = null;
+let monitorExecutionEvents: Record<MonitorRegion, QueueEvents> | null = null;
 
 // Store initialization promise to prevent race conditions
 let initPromise: Promise<void> | null = null;
@@ -142,7 +131,7 @@ const MULTI_LOCATION_DISTRIBUTED =
   (process.env.MULTI_LOCATION_DISTRIBUTED || "").toLowerCase() === "true";
 
 // Queue event subscription type
-export type QueueEventType = "test" | "job"; // Removed 'healthCheck'
+export type QueueEventType = "test" | "job";
 
 export function buildRedisOptions(
   overrides: Partial<RedisOptions> = {},
@@ -242,12 +231,10 @@ export async function getRedisConnection(): Promise<Redis> {
 /**
  * Get queue instances, initializing them if necessary.
  */
-async function getQueues(): Promise<{
-  testQueue: Queue;
-  jobQueue: Queue;
-  monitorExecutionQueue: Queue;
-  k6TestQueue: Queue;
-  k6JobQueue: Queue;
+export async function getQueues(): Promise<{
+  playwrightQueues: Record<string, Queue>;
+  k6Queues: Record<string, Queue>;
+  monitorExecutionQueue: Record<MonitorRegion, Queue>;
   jobSchedulerQueue: Queue;
   k6JobSchedulerQueue: Queue;
   monitorSchedulerQueue: Queue;
@@ -268,9 +255,6 @@ async function getQueues(): Promise<{
           backoff: { type: "exponential", delay: 1000 },
         };
 
-        // Health check job options (different from regular jobs) - REMOVING
-        // const healthCheckJobOptions = { ... };
-
         // Queue settings with Redis TTL and auto-cleanup options
         const queueSettings = {
           connection,
@@ -283,20 +267,35 @@ async function getQueues(): Promise<{
           },
         };
 
-        // Health check queue settings - REMOVING
-        // const healthCheckQueueSettings = { ... };
+        // Playwright - single GLOBAL queue for all tests and jobs
+        const playwrightQueue = new Queue("playwright-GLOBAL", queueSettings);
+        playwrightQueue.on("error", (error) =>
+          queueLogger.error({ err: error }, "Playwright Queue Error")
+        );
+        playwrightQueues["GLOBAL"] = playwrightQueue;
 
-        testQueue = new Queue(TEST_EXECUTION_QUEUE, queueSettings);
-        jobQueue = new Queue(JOB_EXECUTION_QUEUE, queueSettings);
-        monitorExecution = new Queue(MONITOR_EXECUTION_QUEUE, queueSettings);
-        k6TestExecutionQueue = new Queue(
-          K6_TEST_EXECUTION_QUEUE,
-          queueSettings
-        );
-        k6JobExecutionQueue = new Queue(
-          K6_JOB_EXECUTION_QUEUE,
-          queueSettings
-        );
+        // K6 - Regional queues (keep existing)
+        for (const region of REGIONS) {
+          const k6QueueName = `k6-${region}`;
+          const k6Queue = new Queue(k6QueueName, queueSettings);
+          k6Queue.on("error", (error) =>
+            queueLogger.error({ err: error }, `k6 Queue (${region}) Error`)
+          );
+          k6Queues[region] = k6Queue;
+        }
+
+        // Monitor Execution - Regional queues (no GLOBAL)
+        const monitorQueues: Record<MonitorRegion, Queue> = {} as Record<MonitorRegion, Queue>;
+        for (const region of MONITOR_REGIONS) {
+          const monitorQueueName = `monitor-${region}`;
+          const monitorQueue = new Queue(monitorQueueName, queueSettings);
+          monitorQueue.on("error", (error) =>
+            queueLogger.error({ err: error }, `Monitor Queue (${region}) Error`)
+          );
+          monitorQueues[region] = monitorQueue;
+        }
+
+        monitorExecution = monitorQueues; // Store all monitor queues
 
         // Schedulers
         jobSchedulerQueue = new Queue(JOB_SCHEDULER_QUEUE, queueSettings);
@@ -315,25 +314,28 @@ async function getQueues(): Promise<{
         // Data lifecycle cleanup queue
         dataLifecycleCleanupQueue = new Queue(DATA_LIFECYCLE_CLEANUP_QUEUE, queueSettings);
 
-        monitorExecutionEvents = new QueueEvents(MONITOR_EXECUTION_QUEUE, {
-          connection: connection,
-        });
+        // Monitor Execution Events - Regional (no GLOBAL)
+        const monitorEvents: Record<MonitorRegion, QueueEvents> = {} as Record<MonitorRegion, QueueEvents>;
+        for (const region of MONITOR_REGIONS) {
+          const eventsConnection = redisClient!.duplicate();
+          // ioredis connects automatically by default, so we don't need to call connect()
+          // unless lazyConnect: true is set in options (which it isn't)
+          monitorEvents[region] = new QueueEvents(`monitor-${region}`, {
+            connection: eventsConnection,
+          });
+        }
+        monitorExecutionEvents = monitorEvents;
 
-        testQueue.on("error", (error) =>
-          queueLogger.error({ err: error }, "Test Queue Error")
-        );
-        jobQueue.on("error", (error) =>
-          queueLogger.error({ err: error }, "Job Queue Error")
-        );
-        monitorExecution.on("error", (error) =>
-          queueLogger.error({ err: error }, "Monitor Execution Queue Error")
-        );
-        k6TestExecutionQueue.on("error", (error) =>
-          queueLogger.error({ err: error }, "k6 Test Queue Error")
-        );
-        k6JobExecutionQueue.on("error", (error) =>
-          queueLogger.error({ err: error }, "k6 Job Queue Error")
-        );
+        // Add error listeners for regional monitor queues
+        for (const region of MONITOR_REGIONS) {
+          monitorExecution[region].on("error", (error: Error) =>
+            queueLogger.error({ err: error, region }, `Monitor Queue (${region}) Error`)
+          );
+          monitorExecutionEvents[region].on("error", (error: Error) =>
+            queueLogger.error({ err: error, region }, `Monitor Events (${region}) Error`)
+          );
+        }
+
         jobSchedulerQueue.on("error", (error) =>
           queueLogger.error({ err: error }, "Job Scheduler Queue Error")
         );
@@ -348,12 +350,6 @@ async function getQueues(): Promise<{
         );
         dataLifecycleCleanupQueue.on("error", (error) =>
           queueLogger.error({ err: error }, "Data Lifecycle Cleanup Queue Error")
-        );
-        monitorExecutionEvents.on("error", (error) =>
-          queueLogger.error(
-            { err: error },
-            "Monitor Execution Queue Events Error"
-          )
         );
 
         // Set up periodic cleanup for orphaned Redis keys
@@ -371,12 +367,12 @@ async function getQueues(): Promise<{
   await initPromise;
 
   if (
-    !testQueue ||
-    !jobQueue ||
+    Object.keys(playwrightQueues).length !== 1 || // Single GLOBAL queue
+    Object.keys(k6Queues).length !== REGIONS.length || // Regional queues  
     !monitorExecution ||
-    !k6TestExecutionQueue ||
-    !k6JobExecutionQueue ||
+    Object.keys(monitorExecution).length !== MONITOR_REGIONS.length || // Regional monitor queues (US, EU, APAC)
     !monitorExecutionEvents ||
+    Object.keys(monitorExecutionEvents).length !== MONITOR_REGIONS.length || // Regional monitor events
     !jobSchedulerQueue ||
     !k6JobSchedulerQueue ||
     !monitorSchedulerQueue ||
@@ -389,11 +385,9 @@ async function getQueues(): Promise<{
     );
   }
   return {
-    testQueue,
-    jobQueue,
+    playwrightQueues,
+    k6Queues,
     monitorExecutionQueue: monitorExecution,
-    k6TestQueue: k6TestExecutionQueue,
-    k6JobQueue: k6JobExecutionQueue,
     jobSchedulerQueue,
     k6JobSchedulerQueue,
     monitorSchedulerQueue,
@@ -437,15 +431,23 @@ async function setupQueueCleanup(connection: Redis): Promise<void> {
 async function performQueueCleanup(connection: Redis): Promise<void> {
   // Running queue cleanup
   const queuesToClean = [
-    { name: TEST_EXECUTION_QUEUE, queue: testQueue },
-    { name: JOB_EXECUTION_QUEUE, queue: jobQueue },
-    { name: MONITOR_EXECUTION_QUEUE, queue: monitorExecution },
-    { name: K6_TEST_EXECUTION_QUEUE, queue: k6TestExecutionQueue },
-    { name: K6_JOB_EXECUTION_QUEUE, queue: k6JobExecutionQueue },
     { name: JOB_SCHEDULER_QUEUE, queue: jobSchedulerQueue },
     { name: K6_JOB_SCHEDULER_QUEUE, queue: k6JobSchedulerQueue },
     { name: MONITOR_SCHEDULER_QUEUE, queue: monitorSchedulerQueue },
     { name: EMAIL_TEMPLATE_QUEUE, queue: emailTemplateQueue },
+    ...Object.entries(playwrightQueues).map(([region, queue]) => ({
+      name: `playwright-${region}`,
+      queue,
+    })),
+    ...Object.entries(k6Queues).map(([region, queue]) => ({
+      name: `k6-${region}`,
+      queue,
+    })),
+    // Add regional monitor queues
+    ...Object.entries(monitorExecution || {}).map(([region, queue]) => ({
+      name: `monitor-${region}`,
+      queue,
+    })),
   ];
 
   for (const { name, queue } of queuesToClean) {
@@ -538,11 +540,38 @@ async function cleanupOrphanedKeys(
 }
 
 /**
+ * Helper to get the correct queue based on type and location
+ */
+function getQueue(
+  queues: {
+    playwrightQueues: Record<string, Queue>;
+    k6Queues: Record<string, Queue>;
+  },
+  type: "playwright" | "k6",
+  location?: string | null
+): Queue {
+  if (type === "playwright") {
+    // Playwright always uses GLOBAL queue
+    return queues.playwrightQueues["GLOBAL"];
+  } else {
+    // K6 uses regional queues - location is already uppercase
+    const regionStr = (location || "GLOBAL").toUpperCase();
+
+    const effectiveRegion = REGIONS.includes(regionStr as Region)
+      ? regionStr
+      : "GLOBAL";
+
+    return queues.k6Queues[effectiveRegion];
+  }
+}
+
+/**
  * Add a test execution task to the queue.
  * Test executions participate in the shared parallel execution capacity.
  */
 export async function addTestToQueue(task: TestExecutionTask): Promise<string> {
-  const { testQueue } = await getQueues();
+  const queues = await getQueues();
+  const queue = getQueue(queues, "playwright", task.location);
   const jobUuid = task.runId ?? task.testId; // Prefer runId for unique tracking
   // Adding test to queue
 
@@ -555,7 +584,8 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<string> {
       // Timeout option would be: timeout: timeoutMs
       // But timeout/duration is managed by worker instead
     };
-    await testQueue.add(jobUuid, task, jobOptions);
+    // Use runId as job name for direct matching
+    await queue.add(jobUuid, task, jobOptions);
     // Test added successfully
     return jobUuid;
   } catch (error) {
@@ -573,7 +603,8 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<string> {
  * Add a job execution task (multiple tests) to the queue.
  */
 export async function addJobToQueue(task: JobExecutionTask): Promise<string> {
-  const { jobQueue } = await getQueues();
+  const queues = await getQueues();
+  const queue = getQueue(queues, "playwright", task.location);
   const runId = task.runId; // Use runId for consistency with scheduled jobs
   // Adding job to queue
 
@@ -583,7 +614,8 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<string> {
 
     // Setting timeout
 
-    await jobQueue.add(runId, task, {
+    // Use runId as job name for direct matching
+    await queue.add(runId, task, {
       jobId: runId, // Use runId as BullMQ job ID for consistency
       attempts: 3,
       backoff: {
@@ -594,7 +626,7 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<string> {
     // Job added successfully
     return runId;
   } catch (error) {
-    queueLogger.error({ err: error }, "`[Queue Client] Error adding job ${runId} to queue:`");
+    queueLogger.error({ err: error }, `[Queue Client] Error adding job ${runId} to queue:`);
     throw new Error(
       `Failed to add job execution job: ${
         error instanceof Error ? error.message : String(error)
@@ -610,12 +642,13 @@ export async function addK6TestToQueue(
   task: K6ExecutionTask,
   jobName = "k6-test-execution"
 ): Promise<string> {
-  const { k6TestQueue } = await getQueues();
+  const queues = await getQueues();
+  const queue = getQueue(queues, "k6", task.location);
 
   try {
     await verifyQueueCapacityOrThrow();
 
-    await k6TestQueue.add(jobName, task, {
+    await queue.add(jobName, task, {
       jobId: task.runId,
       attempts: 3,
     });
@@ -638,12 +671,13 @@ export async function addK6JobToQueue(
   task: K6ExecutionTask,
   jobName = "k6-job-execution"
 ): Promise<string> {
-  const { k6JobQueue } = await getQueues();
+  const queues = await getQueues();
+  const queue = getQueue(queues, "k6", task.location);
 
   try {
     await verifyQueueCapacityOrThrow();
 
-    await k6JobQueue.add(jobName, task, {
+    await queue.add(jobName, task, {
       jobId: task.runId,
       attempts: 3,
     });
@@ -714,18 +748,30 @@ export async function verifyQueueCapacityOrThrow(): Promise<void> {
  */
 export async function closeQueue(): Promise<void> {
   const promises = [];
-  if (testQueue) promises.push(testQueue.close());
-  if (jobQueue) promises.push(jobQueue.close());
-  if (monitorExecution) promises.push(monitorExecution.close());
-  if (k6TestExecutionQueue) promises.push(k6TestExecutionQueue.close());
-  if (k6JobExecutionQueue) promises.push(k6JobExecutionQueue.close());
+  for (const queue of Object.values(playwrightQueues)) {
+    promises.push(queue.close());
+  }
+  for (const queue of Object.values(k6Queues)) {
+    promises.push(queue.close());
+  }
+  // Close all regional monitor queues
+  if (monitorExecution) {
+    for (const queue of Object.values(monitorExecution)) {
+      promises.push(queue.close());
+    }
+  }
   if (jobSchedulerQueue) promises.push(jobSchedulerQueue.close());
   if (k6JobSchedulerQueue) promises.push(k6JobSchedulerQueue.close());
   if (monitorSchedulerQueue) promises.push(monitorSchedulerQueue.close());
   if (emailTemplateQueue) promises.push(emailTemplateQueue.close());
   if (redisClient) promises.push(redisClient.quit());
 
-  if (monitorExecutionEvents) promises.push(monitorExecutionEvents.close());
+  // Close all regional monitor events
+  if (monitorExecutionEvents) {
+    for (const events of Object.values(monitorExecutionEvents)) {
+      promises.push(events.close());
+    }
+  }
 
   try {
     await Promise.all(promises);
@@ -733,11 +779,10 @@ export async function closeQueue(): Promise<void> {
   } catch (error) {
     queueLogger.error({ err: error }, "[Queue Client] Error closing queues and events:");
   } finally {
-    testQueue = null;
-    jobQueue = null;
+    // Reset queues
+    for (const key in playwrightQueues) delete playwrightQueues[key];
+    for (const key in k6Queues) delete k6Queues[key];
     monitorExecution = null;
-    k6TestExecutionQueue = null;
-    k6JobExecutionQueue = null;
     jobSchedulerQueue = null;
     k6JobSchedulerQueue = null;
     monitorSchedulerQueue = null;
@@ -806,8 +851,11 @@ export async function addMonitorExecutionJobToQueue(
         expectedLocations.length > 0 ? expectedLocations : getEffectiveLocations(null);
 
       await Promise.all(
-        locationsToSchedule.map((location) =>
-          monitorExecutionQueue.add(
+        locationsToSchedule.map(async (location) => {
+          // Location is already uppercase MonitorRegion string
+          const monitorQueue = monitorExecutionQueue[location as MonitorRegion];
+          
+          return monitorQueue.add(
             "executeMonitorJob",
             {
               ...task,
@@ -820,14 +868,18 @@ export async function addMonitorExecutionJobToQueue(
               // Use default retention policy; only override priority
               priority: 1,
             }
-          )
-        )
+          );
+        })
       );
 
       return executionGroupId;
     }
 
-    const job = await monitorExecutionQueue.add(
+    // Single location execution - route to regional queue
+    const location = task.executionLocation || "EU"; // Default to EU
+    const monitorQueue = monitorExecutionQueue[location as MonitorRegion];
+
+    const job = await monitorQueue.add(
       "executeMonitorJob", // Use the correct job name that the processor expects
       task,
       {
@@ -848,4 +900,4 @@ export async function addMonitorExecutionJobToQueue(
   }
 }
 
-export { getQueues };
+

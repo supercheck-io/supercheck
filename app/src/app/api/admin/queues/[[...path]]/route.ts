@@ -33,11 +33,9 @@ const ensureBullBoard = async (): Promise<NextBullBoardAdapterState> => {
   }
 
   const {
-    testQueue,
-    jobQueue,
+    playwrightQueues,
+    k6Queues,
     monitorExecutionQueue,
-    k6TestQueue,
-    k6JobQueue,
     jobSchedulerQueue,
     k6JobSchedulerQueue,
     monitorSchedulerQueue,
@@ -47,14 +45,16 @@ const ensureBullBoard = async (): Promise<NextBullBoardAdapterState> => {
 
   createBullBoard({
     queues: [
-      new BullMQAdapter(testQueue, { displayName: "Test Execution" }),
-      new BullMQAdapter(jobQueue, { displayName: "Job Execution" }),
-      new BullMQAdapter(monitorExecutionQueue, {
-        displayName: "Monitor Execution",
-      }),
-        new BullMQAdapter(k6TestQueue, { displayName: "K6 Test Execution" }),
-        new BullMQAdapter(k6JobQueue, { displayName: "K6 Job Execution" }),
-        new BullMQAdapter(jobSchedulerQueue, { displayName: "Job Scheduler" }),
+      ...Object.entries(playwrightQueues).map(([region, queue]) => 
+        new BullMQAdapter(queue, { displayName: `Playwright Execution (${region})` })
+      ),
+      ...Object.entries(k6Queues).map(([region, queue]) => 
+        new BullMQAdapter(queue, { displayName: `k6 Execution (${region})` })
+      ),
+      ...Object.entries(monitorExecutionQueue).map(([region, queue]) => 
+        new BullMQAdapter(queue, { displayName: `Monitor Execution (${region})` })
+      ),
+        new BullMQAdapter(jobSchedulerQueue, { displayName: "Playwright Job Scheduler" }),
         new BullMQAdapter(k6JobSchedulerQueue, {
           displayName: "K6 Job Scheduler",
         }),

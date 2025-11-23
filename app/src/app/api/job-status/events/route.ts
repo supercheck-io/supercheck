@@ -38,8 +38,8 @@ export async function GET(request: Request) {
         await hub.ready();
 
         const sendEvent = async (event: NormalizedQueueEvent) => {
-          // Only send job events
-          if (event.category !== "job") {
+          // Only send job and test events (Playwright jobs are in 'test' category)
+          if (event.category !== "job" && event.category !== "test") {
             return;
           }
 

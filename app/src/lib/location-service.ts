@@ -14,22 +14,22 @@ export type { MonitoringLocation, LocationConfig };
  * Includes display names, regions, and geographic coordinates.
  */
 export const LOCATION_METADATA: Record<MonitoringLocation, LocationMetadata> = {
-  [MONITORING_LOCATIONS.US_EAST]: {
-    code: MONITORING_LOCATIONS.US_EAST,
+  [MONITORING_LOCATIONS.US]: {
+    code: MONITORING_LOCATIONS.US,
     name: "US East",
     region: "N. Virginia",
     coordinates: { lat: 38.9072, lon: -77.0369 },
     flag: "🇺🇸",
   },
-  [MONITORING_LOCATIONS.EU_CENTRAL]: {
-    code: MONITORING_LOCATIONS.EU_CENTRAL,
+  [MONITORING_LOCATIONS.EU]: {
+    code: MONITORING_LOCATIONS.EU,
     name: "EU Central",
     region: "Frankfurt",
     coordinates: { lat: 50.1109, lon: 8.6821 },
     flag: "🇩🇪",
   },
-  [MONITORING_LOCATIONS.ASIA_PACIFIC]: {
-    code: MONITORING_LOCATIONS.ASIA_PACIFIC,
+  [MONITORING_LOCATIONS.APAC]: {
+    code: MONITORING_LOCATIONS.APAC,
     name: "Asia Pacific",
     region: "Mumbai",
     coordinates: { lat: 19.0760, lon: 72.8777 },
@@ -47,7 +47,7 @@ const ALL_MONITORING_LOCATIONS = Object.values(
  */
 export const DEFAULT_LOCATION_CONFIG: LocationConfig = {
   enabled: false,
-  locations: [MONITORING_LOCATIONS.US_EAST],
+  locations: [MONITORING_LOCATIONS.EU],
   threshold: 50, // Majority must be up
   strategy: "majority",
 };
@@ -170,10 +170,10 @@ export function getEffectiveLocations(
 ): MonitoringLocation[] {
   if (!config || !config.enabled) {
     // Single location mode - use default primary location
-    return [MONITORING_LOCATIONS.US_EAST];
+    return [MONITORING_LOCATIONS.EU];
   }
 
-  return config.locations || [MONITORING_LOCATIONS.US_EAST];
+  return config.locations || [MONITORING_LOCATIONS.EU];
 }
 
 /**

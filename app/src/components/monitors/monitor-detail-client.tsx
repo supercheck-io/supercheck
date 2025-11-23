@@ -294,15 +294,7 @@ export function MonitorDetailClient({
       });
     }
 
-    const orderedLocations = Array.from(locationSet).sort((a, b) => {
-      const priority = ["us-east", "eu-central", "asia-pacific"];
-      const indexA = priority.indexOf(a);
-      const indexB = priority.indexOf(b);
-      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-      if (indexA !== -1) return -1;
-      if (indexB !== -1) return 1;
-      return a.localeCompare(b);
-    });
+    const orderedLocations = Array.from(locationSet).sort((a, b) => a.localeCompare(b));
 
     setAvailableLocations((prev) => {
       if (
@@ -619,7 +611,7 @@ export function MonitorDetailClient({
       effectiveLocationsFromConfig ??
       (locationsFromResults.length > 0
         ? locationsFromResults
-        : [MONITORING_LOCATIONS.US_EAST]);
+        : [MONITORING_LOCATIONS.EU]);
 
     // Get latest result for each location
     const latestByLocation: Record<MonitoringLocation, boolean> = {} as Record<

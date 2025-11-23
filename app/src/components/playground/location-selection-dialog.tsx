@@ -14,10 +14,12 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import {
   PERFORMANCE_LOCATION_OPTIONS,
+  PERFORMANCE_LOCATIONS,
   getPerformanceLocationOption,
   type PerformanceLocation,
 } from "./performance-locations";
 import { LocationMapCard } from "@/components/location/location-map-card";
+import type { MonitoringLocation } from "@/lib/location-service";
 
 export type { PerformanceLocation } from "./performance-locations";
 
@@ -32,7 +34,7 @@ export function LocationSelectionDialog({
   open,
   onOpenChange,
   onSelect,
-  defaultLocation = "us-east",
+  defaultLocation = "GLOBAL",
 }: LocationSelectionDialogProps) {
   const [selected, setSelected] = useState<PerformanceLocation>(
     defaultLocation
@@ -83,7 +85,13 @@ export function LocationSelectionDialog({
             ))}
           </RadioGroup>
           <LocationMapCard
-            locations={selected ? [selected] : []}
+            locations={
+              (selected === "GLOBAL"
+                ? PERFORMANCE_LOCATIONS
+                : selected
+                ? [selected]
+                : []) as MonitoringLocation[]
+            }
             size="compact"
             badgeContent={
               selectedOption ? (
@@ -115,9 +123,9 @@ export function LocationSelectionDialog({
                   </p>
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
-                  Selecting {selectedOption.name} routes virtual users through this
-                  geography so performance numbers reflect conditions near that
-                  region.
+                  {selected === "GLOBAL"
+                    ? "Selecting Global routes virtual users through any one of the randomly selected geographies based on availability."
+                    : `Selecting ${selectedOption.name} routes virtual users through this geography so performance numbers reflect conditions near that region.`}
                 </p>
               </div>
             )}

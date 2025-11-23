@@ -71,8 +71,8 @@ graph TB
     subgraph "Queue System"
         RS[Redis]
         MSQ[Monitor Scheduler Queue]
-        MEQ[Monitor Execution Queue]
-        MLQ[Multi-Location Queue]
+        MEQ[Monitor Execution Queues (Regional)]
+        MLQ[Multi-Location Queue (Virtual)]
     end
 
     subgraph "Worker Services"
@@ -103,8 +103,7 @@ graph TB
 
     MS --> MSQ
     MSQ --> MEQ
-    MEQ --> MLQ
-    MLQ --> WS
+    MEQ --> WS
     WS --> MP
     MP --> MLE
     MLE --> AS
@@ -129,39 +128,58 @@ The distributed multi-location pipeline is available but currently **opt-in**. T
 
 | Region | Worker Location Code | Description |
 |--------|----------------------|-------------|
-| US East | `us-east` (Ashburn) | Primary North American vantage point with low-latency access to US-based services. |
-| EU Central | `eu-central` (Frankfurt) | Core European vantage point ensuring GDPR-compliant monitoring coverage. |
-| Asia Pacific | `asia-pacific` (Mumbai) | High-availability APAC vantage point for latency-sensitive checks. |
+| US East | `US` (Ashburn) | Primary North American vantage point with low-latency access to US-based services. |
+| EU Central | `EU` (Frankfurt) | Core European vantage point ensuring GDPR-compliant monitoring coverage. **Default for monitors.** |
+| Asia Pacific | `APAC` (Mumbai) | High-availability APAC vantage point for latency-sensitive checks. |
 
-> **Local Development:** When you do not run dedicated regional workers, all locations execute sequentially on the same worker without any simulated delay. Results still carry their location code so the UI behaves consistently.
+#### Worker Architecture
+
+**Production:** 3 location-based workers, each handling regional + global queues:
+
+| Worker | Location | Regional Queues | Global Queues |
+|--------|----------|----------------|---------------|
+| `supercheck-worker-us` | US | `k6-US`, `monitor-US` | `playwright-GLOBAL`, `k6-GLOBAL` |
+| `supercheck-worker-eu` | EU | `k6-EU`, ` monitor-EU` | `playwright-GLOBAL`, `k6-GLOBAL` |
+| `supercheck-worker-apac` | APAC | `k6-APAC`, `monitor-APAC` | `playwright-GLOBAL`, `k6-GLOBAL` |
+
+**Key Points:**
+- Each worker handles **multiple job types** (Playwright, K6, Monitor)
+- **Regional queues** ensure geographic accuracy for monitors and K6 tests
+- **Global queues** (`playwright-GLOBAL`, `k6-GLOBAL`) are processed by **any available** worker
+- Automatic load balancing via BullMQ - first available worker gets the job
+
+**Local Development:** Set `WORKER_REGION=local` to process all queues on a single worker. All locations execute sequentially without simulated delay. Results still carry their location code so the UI behaves consistently. This is handled automatically in Docker Compose configurations.
+
 
 #### Distributed Execution Flow
 
-- App queues a single monitor job per location, tagging each with an `executionGroupId` and `expectedLocations`.
-- Workers compare the incoming job’s `executionLocation` against their `WORKER_LOCATION`. Non-matching workers requeue the job; matching workers execute immediately.
+- App queues a single monitor job per location, routing it to the specific **regional queue** (`monitor-US`, `monitor-EU`, etc.).
+- Regional workers listen only to their specific queue.
 - Each location stores an individual `monitor_results` row (including group metadata) and, once all expected locations report in, the worker aggregates statuses to update the parent monitor.
 - Alerts, SSE events, and UI filters consume the aggregated view while retaining per-location detail for drill-down.
 
 ```mermaid
 sequenceDiagram
     participant App as Next.js App
-    participant MQ as monitor-execution Queue
-    participant W_US as Worker (ash)
-    participant W_DE as Worker (fsn1)
-    participant W_IN as Worker (in)
+    participant MQ_US as monitor-US Queue
+    participant MQ_EU as monitor-EU Queue
+    participant MQ_APAC as monitor-APAC Queue
+    participant W_US as Worker (US)
+    participant W_EU as Worker (EU)
+    participant W_APAC as Worker (APAC)
     participant DB as PostgreSQL
 
-    App->>MQ: enqueue monitor job (ash) + groupId
-    App->>MQ: enqueue monitor job (fsn1) + groupId
-    App->>MQ: enqueue monitor job (in) + groupId
+    App->>MQ_US: enqueue monitor job (ash) + groupId
+    App->>MQ_EU: enqueue monitor job (fsn1) + groupId
+    App->>MQ_APAC: enqueue monitor job (in) + groupId
 
-    MQ->>W_US: deliver job (ash)
-    MQ->>W_DE: deliver job (fsn1)
-    MQ->>W_IN: deliver job (in)
+    MQ_US->>W_US: deliver job (ash)
+    MQ_EU->>W_EU: deliver job (fsn1)
+    MQ_APAC->>W_APAC: deliver job (in)
 
     W_US->>DB: insert ash result (includes groupId)
-    W_DE->>DB: insert fsn1 result (includes groupId)
-    W_IN->>DB: insert in result (includes groupId)
+    W_EU->>DB: insert fsn1 result (includes groupId)
+    W_APAC->>DB: insert in result (includes groupId)
 
     W_US->>W_US: aggregate when all expected locations reported
     W_US-->>DB: update monitor status + alerts
@@ -169,8 +187,9 @@ sequenceDiagram
 
 #### Queue Interactions
 
-- Monitor execution uses a single shared BullMQ queue; the payload contains the target location metadata.
-- Job and test execution queues remain location-agnostic. They are unaffected by the multi-location toggle and continue to run on any available worker replica.
+- Monitor execution uses **regional BullMQ queues** (`monitor-US`, `monitor-EU`, `monitor-APAC`). Default: `monitor-EU`.
+- The application logic routes jobs to the correct queue based on the target location.
+- Job and test execution queues are also location-aware (`k6-US`, `k6-EU`) or global (`playwright-GLOBAL`).
 
 ### Frontend (Next.js App)
 
@@ -534,12 +553,12 @@ graph TD
     subgraph "Queue Layer"
         D --> E[monitor-scheduler Queue]
         E --> F[Scheduled Execution]
-        F --> G[monitor-execution Queue]
+        F --> G[monitor-{REGION} Queues]
     end
 
     subgraph "Worker Layer"
         H[Monitor Scheduler Processor]
-        I[Monitor Processor]
+        I[Monitor Processor (Regional)]
         J[Enhanced Monitor Service]
 
         H --> E
@@ -567,14 +586,14 @@ graph TD
 - **Purpose**: Manages the schedules for all active monitors
 - **Job Type**: Repeating jobs with cron-like scheduling
 - **Reliability**: Job persistence, failure recovery, and dead letter handling
-- **How it Works**: Creates repeating jobs for each monitor based on frequency configuration. When triggered, adds execution jobs to the monitor-execution queue.
+- **How it Works**: Creates repeating jobs for each monitor based on frequency configuration. When triggered, adds execution jobs to the appropriate **regional monitor-execution queue**.
 
-#### 2. **`monitor-execution`**
+#### 2. **`monitor-{REGION}`**
 
-- **Purpose**: Executes actual monitor checks with enterprise-grade reliability
+- **Purpose**: Executes actual monitor checks with enterprise-grade reliability from specific regions (US, EU, APAC, GLOBAL)
 - **Job Type**: One-time jobs with retry logic and resource management
 - **Security**: All jobs validated, credentials encrypted, and resources managed
-- **How it Works**: The MonitorProcessor listens to this queue, executes checks using enhanced security services, and processes alerts.
+- **How it Works**: Regional MonitorProcessors listen to their specific queue, execute checks using enhanced security services, and process alerts.
 
 ### Queue Benefits
 
@@ -1022,7 +1041,7 @@ Response:
   success: true,
   data: [
     {
-      location: "us-east",
+      location: "US",
       totalChecks: 100,
       upChecks: 98,
       uptimePercentage: 98.0,
@@ -1105,9 +1124,9 @@ interface MonitorConfig {
 }
 
 type MonitoringLocation =
-  | "us-east"      // Ashburn, USA
-  | "eu-central"   // Frankfurt, Germany
-  | "asia-pacific"; // Mumbai
+  | "US"         // Ashburn, USA
+  | "EU"         // Frankfurt, Germany
+  | "APAC";      // Mumbai, India
 ```
 
 ### Security Configuration
@@ -1556,7 +1575,7 @@ curl -X POST http://supercheck.local:3000/api/monitors \
     "frequencyMinutes": 5,
     "locationConfig": {
       "enabled": true,
-      "locations": ["us-east", "eu-central", "asia-pacific"],
+      "locations": ["US", "EU", "APAC"],
       "strategy": "majority"
     }
   }'
@@ -1568,9 +1587,9 @@ docker service logs supercheck_worker_in -f | grep "response.*ms"
 
 # Should show REAL latency across regions
 # Example:
-# [FSN1/eu-central] Response time: 125ms (Falkenstein)
-# [ASH/us-east] Response time: 245ms (Ashburn)
-# [IN/asia-pacific] Response time: 320ms (Mumbai)
+# [FSN1/EU] Response time: 125ms (Falkenstein)
+# [ASH/US] Response time: 245ms (Ashburn)
+# [IN/APAC] Response time: 320ms (Mumbai)
 ```
 
 ### Scaling Recommendations

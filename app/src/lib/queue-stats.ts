@@ -1,8 +1,4 @@
 import {
-  JOB_EXECUTION_QUEUE,
-  TEST_EXECUTION_QUEUE,
-  K6_JOB_EXECUTION_QUEUE,
-  K6_TEST_EXECUTION_QUEUE,
   getQueues,
 } from "@/lib/queue";
 
@@ -47,11 +43,24 @@ export async function shouldProcessJob(): Promise<boolean> {
 export async function fetchQueueStats(): Promise<QueueStats> {
   try {
     const queues = await getQueues();
+    
+    // Aggregate all execution queues
     const executionQueues = [
-      { name: TEST_EXECUTION_QUEUE, queue: queues.testQueue },
-      { name: JOB_EXECUTION_QUEUE, queue: queues.jobQueue },
-      { name: K6_TEST_EXECUTION_QUEUE, queue: queues.k6TestQueue },
-      { name: K6_JOB_EXECUTION_QUEUE, queue: queues.k6JobQueue },
+      // Playwright GLOBAL queue
+      {
+        name: "playwright-GLOBAL",
+        queue: queues.playwrightQueues["GLOBAL"],
+      },
+      // K6 Regional Queues
+      ...Object.entries(queues.k6Queues).map(([region, queue]) => ({
+        name: `k6-${region}`,
+        queue,
+      })),
+      // Monitor Regional Queues
+      ...Object.entries(queues.monitorExecutionQueue).map(([region, queue]) => ({
+        name: `monitor-${region}`,
+        queue,
+      })),
     ];
 
     const countsByQueue = await Promise.all(

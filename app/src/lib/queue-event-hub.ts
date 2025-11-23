@@ -2,11 +2,8 @@ import { EventEmitter } from "node:events";
 import { Queue, QueueEvents } from "bullmq";
 import { eq } from "drizzle-orm";
 import {
-  JOB_EXECUTION_QUEUE,
-  K6_JOB_EXECUTION_QUEUE,
-  TEST_EXECUTION_QUEUE,
-  K6_TEST_EXECUTION_QUEUE,
   getQueues,
+  REGIONS,
 } from "@/lib/queue";
 import { db } from "@/utils/db";
 import { runs } from "@/db/schema";
@@ -20,7 +17,7 @@ const eventHubLogger = createLogger({ module: 'queue-event-hub' }) as {
   error: (data: unknown, msg?: string) => void;
 };
 
-type QueueCategory = "job" | "test";
+type QueueCategory = "job" | "test" | "monitor";
 
 export type NormalizedQueueEvent = {
   category: QueueCategory;
@@ -79,14 +76,34 @@ class QueueEventHub extends EventEmitter {
     this.initialized = true;
 
     try {
-      const { jobQueue, k6JobQueue, testQueue, k6TestQueue } = await getQueues();
+      const { playwrightQueues, k6Queues, monitorExecutionQueue } = await getQueues();
 
-      const sources: QueueEventSource[] = [
-        { category: "job", queueName: JOB_EXECUTION_QUEUE, queue: jobQueue },
-        { category: "job", queueName: K6_JOB_EXECUTION_QUEUE, queue: k6JobQueue },
-        { category: "test", queueName: TEST_EXECUTION_QUEUE, queue: testQueue },
-        { category: "test", queueName: K6_TEST_EXECUTION_QUEUE, queue: k6TestQueue },
-      ];
+      const sources: QueueEventSource[] = [];
+      
+      // Add playwright GLOBAL queue
+      sources.push({
+        category: "test", // Playwright queues handle both test and job execution
+        queueName: "playwright-GLOBAL",
+        queue: playwrightQueues["GLOBAL"],
+      });
+      
+      // Add k6 queues for all regions
+      for (const region of REGIONS) {
+        sources.push({
+          category: "job", // K6 queues are typically for jobs
+          queueName: `k6-${region}`,
+          queue: k6Queues[region],
+        });
+      }
+
+      // Add monitor queues for all regions
+      for (const region of REGIONS) {
+        sources.push({
+          category: "monitor",
+          queueName: `monitor-${region}`,
+          queue: monitorExecutionQueue[region],
+        });
+      }
 
       await Promise.all(
         sources.map((source) => this.attachQueueEvents(source).catch((error) => {

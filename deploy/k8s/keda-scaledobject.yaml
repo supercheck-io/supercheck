@@ -1,3 +1,17 @@
+# KEDA ScaledObjects for Supercheck Workers
+# Auto-scales workers based on queue depth
+#
+# Each worker monitors:
+# - Its regional queues (k6-{REGION}, monitor-{REGION})
+# - Global queues (playwright-GLOBAL, k6-GLOBAL)
+#
+# Scaling behavior:
+# - Min 0 replicas (scale to zero when idle)
+# - Max 10 replicas per region
+# - Trigger at 5 jobs per queue
+# - Multiple triggers = OR condition (scale if ANY queue has load)
+
+---
 apiVersion: keda.sh/v1alpha1
 kind: TriggerAuthentication
 metadata:
@@ -8,31 +22,242 @@ spec:
     - parameter: password
       name: supercheck-secret
       key: REDIS_PASSWORD
+
 ---
+# US Worker Scaler
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: supercheck-worker-scaler
+  name: scaler-worker-us
   namespace: supercheck
+  labels:
+    app.kubernetes.io/name: supercheck
+    app.kubernetes.io/component: scaler
+    app.kubernetes.io/region: us
 spec:
   scaleTargetRef:
-    name: supercheck-worker
-  minReplicaCount: 1
+    name: supercheck-worker-us
+
+  # Scaling limits
+  minReplicaCount: 0 # Scale to zero when idle
   maxReplicaCount: 10
-  pollingInterval: 30
-  cooldownPeriod: 300
+
+  # Polling interval
+  pollingInterval: 15 # Check every 15 seconds
+  cooldownPeriod: 120 # Wait 2 minutes before scaling down
+
+  # Advanced scaling behavior
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300 # 5 minutes stabilization
+          policies:
+            - type: Percent
+              value: 50
+              periodSeconds: 60 # Scale down max 50% per minute
+        scaleUp:
+          stabilizationWindowSeconds: 0 # Scale up immediately
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 15 # Double capacity every 15 seconds if needed
+            - type: Pods
+              value: 5
+              periodSeconds: 15 # Or add 5 pods every 15 seconds
+          selectPolicy: Max # Use most aggressive scale-up policy
+
+  triggers:
+    # Regional K6 queue
+    - type: redis
+      metadata:
+        address: redis.example.com:6379 # Update with actual Redis address
+        listName: bull:k6-US:wait
+        listLength: "5" # Scale up when 5+ jobs waiting
+        databaseIndex: "0"
+      authenticationRef:
+        name: keda-redis-auth
+
+    # Regional Monitor queue
+    - type: redis
+      metadata:
+        address: redis.example.com:6379
+        listName: bull:monitor-US:wait
+        listLength: "5"
+        databaseIndex: "0"
+      authenticationRef:
+        name: keda-redis-auth
+
+    # Global Playwright queue (shared with all workers)
+    - type: redis
+      metadata:
+        address: redis.example.com:6379
+        listName: bull:playwright-GLOBAL:wait
+        listLength: "10" # Higher threshold for global queues
+        databaseIndex: "0"
+      authenticationRef:
+        name: keda-redis-auth
+
+    # Global K6 queue (shared with all workers)
+    - type: redis
+      metadata:
+        address: redis.example.com:6379
+        listName: bull:k6-GLOBAL:wait
+        listLength: "10"
+        databaseIndex: "0"
+      authenticationRef:
+        name: keda-redis-auth
+
+---
+# EU Worker Scaler
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: scaler-worker-eu
+  namespace: supercheck
+  labels:
+    app.kubernetes.io/name: supercheck
+    app.kubernetes.io/component: scaler
+    app.kubernetes.io/region: eu
+spec:
+  scaleTargetRef:
+    name: supercheck-worker-eu
+
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  pollingInterval: 15
+  cooldownPeriod: 120
+
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Percent
+              value: 50
+              periodSeconds: 60
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 15
+            - type: Pods
+              value: 5
+              periodSeconds: 15
+          selectPolicy: Max
+
   triggers:
     - type: redis
       metadata:
         address: redis.example.com:6379
-        listName: bull:job-execution:wait
+        listName: bull:k6-EU:wait
         listLength: "5"
+        databaseIndex: "0"
       authenticationRef:
         name: keda-redis-auth
+
     - type: redis
       metadata:
         address: redis.example.com:6379
-        listName: bull:test-execution:wait
+        listName: bull:monitor-EU:wait
         listLength: "5"
+        databaseIndex: "0"
+      authenticationRef:
+        name: keda-redis-auth
+
+    - type: redis
+      metadata:
+        address: redis.example.com:6379
+        listName: bull:playwright-GLOBAL:wait
+        listLength: "10"
+        databaseIndex: "0"
+      authenticationRef:
+        name: keda-redis-auth
+
+    - type: redis
+      metadata:
+        address: redis.example.com:6379
+        listName: bull:k6-GLOBAL:wait
+        listLength: "10"
+        databaseIndex: "0"
+      authenticationRef:
+        name: keda-redis-auth
+
+---
+# APAC Worker Scaler
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: scaler-worker-apac
+  namespace: supercheck
+  labels:
+    app.kubernetes.io/name: supercheck
+    app.kubernetes.io/component: scaler
+    app.kubernetes.io/region: apac
+spec:
+  scaleTargetRef:
+    name: supercheck-worker-apac
+
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  pollingInterval: 15
+  cooldownPeriod: 120
+
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Percent
+              value: 50
+              periodSeconds: 60
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - type: Percent
+              value: 100
+              periodSeconds: 15
+            - type: Pods
+              value: 5
+              periodSeconds: 15
+          selectPolicy: Max
+
+  triggers:
+    - type: redis
+      metadata:
+        address: redis.example.com:6379
+        listName: bull:k6-APAC:wait
+        listLength: "5"
+        databaseIndex: "0"
+      authenticationRef:
+        name: keda-redis-auth
+
+    - type: redis
+      metadata:
+        address: redis.example.com:6379
+        listName: bull:monitor-APAC:wait
+        listLength: "5"
+        databaseIndex: "0"
+      authenticationRef:
+        name: keda-redis-auth
+
+    - type: redis
+      metadata:
+        address: redis.example.com:6379
+        listName: bull:playwright-GLOBAL:wait
+        listLength: "10"
+        databaseIndex: "0"
+      authenticationRef:
+        name: keda-redis-auth
+
+    - type: redis
+      metadata:
+        address: redis.example.com:6379
+        listName: bull:k6-GLOBAL:wait
+        listLength: "10"
+        databaseIndex: "0"
       authenticationRef:
         name: keda-redis-auth
