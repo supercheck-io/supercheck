@@ -81,7 +81,7 @@ export const monitorResults = pgTable(
     location: varchar("location", { length: 50 })
       .$type<MonitoringLocation>()
       .notNull()
-      .default("us-east"), // Default location for backward compatibility
+      .default("EU"), // Default location
     status: varchar("status", { length: 50 })
       .$type<MonitorResultStatus>()
       .notNull(),

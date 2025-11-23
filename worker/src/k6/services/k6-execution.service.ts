@@ -100,7 +100,7 @@ export class K6ExecutionService {
 
     this.maxConcurrentK6Runs = this.configService.get<number>(
       'K6_MAX_CONCURRENCY',
-      3,
+      1,
     );
 
     this.logger.log(`K6 binary path: ${this.k6BinaryPath}`);

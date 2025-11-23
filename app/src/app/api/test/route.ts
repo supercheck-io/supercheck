@@ -88,10 +88,13 @@ export async function POST(request: NextRequest) {
     const testType = isPerformanceTest ? "performance" : "browser";
 
     const normalizeLocation = (value?: string): K6Location => {
-      if (value === "us-east" || value === "eu-central" || value === "asia-pacific") {
-        return value;
+      const upper = value?.toUpperCase();
+      // Only accept uppercase format: GLOBAL, US, EU, APAC
+      if (upper === "GLOBAL" || upper === "US" || upper === "EU" || upper === "APAC") {
+        return upper;
       }
-      return "us-east";
+      // Default to GLOBAL for any other value
+      return "GLOBAL";
     };
 
     const executionLocation: K6Location | undefined = isPerformanceTest
@@ -160,7 +163,7 @@ export async function POST(request: NextRequest) {
 
     try {
       resolvedLocation = isPerformanceTest
-        ? executionLocation ?? "us-east"
+        ? executionLocation ?? "GLOBAL"
         : null;
 
       if (isPerformanceTest) {
@@ -195,7 +198,7 @@ export async function POST(request: NextRequest) {
           tests: [{ id: testId, script: code }],
           organizationId,
           projectId: project.id,
-          location: resolvedLocation ?? "us-east",
+          location: resolvedLocation ?? "GLOBAL",
         };
 
         await addK6TestToQueue(performanceTask, 'k6-playground-execution');

@@ -42,9 +42,9 @@ graph TB
 
     subgraph "📨 Queue System"
         REDIS[Redis]
-        QUEUE1[test-execution queue]
-        QUEUE2[job-execution queue]
-        QUEUE3[monitor-execution queue]
+        QUEUE1[playwright-GLOBAL queue]
+        QUEUE2[k6-{REGION} queues]
+        QUEUE3[monitor-{REGION} queues]
     end
 
     subgraph "⚙️ Worker Service"
@@ -108,11 +108,9 @@ graph TB
     B --> D[Set up Event Listeners]
     B --> E[Initialize Metadata Cache]
 
-    C --> C1[test-execution queue]
-    C --> C2[job-execution queue]
-    C --> C3[k6-test-execution queue]
-    C --> C4[k6-job-execution queue]
-    C --> C5[monitor-execution queue]
+    C --> C1[playwright-GLOBAL queue]
+    C --> C2[k6-{REGION} queues]
+    C --> C3[monitor-{REGION} queues]
 
     D --> D1[waiting event]
     D --> D2[active event]
@@ -132,7 +130,7 @@ graph TB
     classDef emit fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
 
     class A,B init
-    class C1,C2,C3,C4,C5 queue
+    class C1,C2,C3 queue
     class D1,D2,D3,D4,D5 event
     class F,G emit
 ```
@@ -585,7 +583,7 @@ graph TB
 
 ## Related Documentation
 
-- **Job Execution:** See `TEST_EXECUTION_AND_JOB_QUEUE_FLOW.md`
+- **Job Execution:** See `EXECUTION_SYSTEM.md`
 - **Queue System:** See `SUPERCHECK_ARCHITECTURE.md`
 - **Authentication:** See `AUTHENTICATION.md`
 - **RBAC:** See `RBAC_DOCUMENTATION.md`

@@ -10,10 +10,7 @@ import {
 import { DbService } from '../../execution/services/db.service';
 import * as schema from '../../db/schema';
 import { JobNotificationService } from '../../execution/services/job-notification.service';
-import {
-  K6_JOB_EXECUTION_QUEUE,
-  K6_TEST_EXECUTION_QUEUE,
-} from '../k6.constants';
+import { K6_QUEUE } from '../k6.constants';
 
 type K6Task = K6ExecutionTask;
 
@@ -472,8 +469,8 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
   }
 }
 
-@Processor(K6_TEST_EXECUTION_QUEUE, { concurrency: 1 })
-export class K6TestExecutionProcessor extends BaseK6ExecutionProcessor {
+@Processor(K6_QUEUE, { concurrency: 1 })
+export class K6ExecutionProcessor extends BaseK6ExecutionProcessor {
   constructor(
     k6ExecutionService: K6ExecutionService,
     dbService: DbService,
@@ -481,59 +478,7 @@ export class K6TestExecutionProcessor extends BaseK6ExecutionProcessor {
     jobNotificationService: JobNotificationService,
   ) {
     super(
-      'K6TestExecutionProcessor',
-      k6ExecutionService,
-      dbService,
-      configService,
-      jobNotificationService,
-    );
-  }
-
-  async process(
-    job: Job<K6Task>,
-  ): Promise<{ success: boolean; timedOut?: boolean }> {
-    return await this.handleProcess(job);
-  }
-
-  @OnWorkerEvent('completed')
-  onCompleted(job: Job, result: unknown) {
-    const timedOut = Boolean((result as any)?.timedOut);
-    const status = timedOut
-      ? 'timed out'
-      : (result as any)?.success
-        ? 'passed'
-        : 'failed';
-    this.logger.log(`k6 test ${job.id} completed: ${status}`);
-  }
-
-  @OnWorkerEvent('failed')
-  onFailed(job: Job | undefined, error: Error) {
-    const jobId = job?.id || 'unknown';
-    this.logger.error(
-      `[Event:failed] k6 test ${jobId} failed with error: ${error.message}`,
-      error.stack,
-    );
-  }
-
-  @OnWorkerEvent('error')
-  onError(error: Error) {
-    this.logger.error(
-      `[Event:error] k6 test worker encountered an error: ${error.message}`,
-      error.stack,
-    );
-  }
-}
-
-@Processor(K6_JOB_EXECUTION_QUEUE, { concurrency: 1 })
-export class K6JobExecutionProcessor extends BaseK6ExecutionProcessor {
-  constructor(
-    k6ExecutionService: K6ExecutionService,
-    dbService: DbService,
-    configService: ConfigService,
-    jobNotificationService: JobNotificationService,
-  ) {
-    super(
-      'K6JobExecutionProcessor',
+      'K6ExecutionProcessor',
       k6ExecutionService,
       dbService,
       configService,
@@ -570,8 +515,63 @@ export class K6JobExecutionProcessor extends BaseK6ExecutionProcessor {
   @OnWorkerEvent('error')
   onError(error: Error) {
     this.logger.error(
-      `[Event:error] k6 job worker encountered an error: ${error.message}`,
+      `[Event:error] k6 worker encountered an error: ${error.message}`,
       error.stack,
     );
+  }
+}
+
+@Processor('k6-US', { concurrency: 1 })
+export class K6ExecutionProcessorUS extends K6ExecutionProcessor {
+  constructor(
+    k6ExecutionService: K6ExecutionService,
+    dbService: DbService,
+    configService: ConfigService,
+    jobNotificationService: JobNotificationService,
+  ) {
+    super(
+      k6ExecutionService,
+      dbService,
+      configService,
+      jobNotificationService,
+    );
+    // Override logger name
+    (this as any).logger = new Logger('K6ExecutionProcessorUS');
+  }
+}
+
+@Processor('k6-EU', { concurrency: 1 })
+export class K6ExecutionProcessorEU extends K6ExecutionProcessor {
+  constructor(
+    k6ExecutionService: K6ExecutionService,
+    dbService: DbService,
+    configService: ConfigService,
+    jobNotificationService: JobNotificationService,
+  ) {
+    super(
+      k6ExecutionService,
+      dbService,
+      configService,
+      jobNotificationService,
+    );
+    (this as any).logger = new Logger('K6ExecutionProcessorEU');
+  }
+}
+
+@Processor('k6-APAC', { concurrency: 1 })
+export class K6ExecutionProcessorAPAC extends K6ExecutionProcessor {
+  constructor(
+    k6ExecutionService: K6ExecutionService,
+    dbService: DbService,
+    configService: ConfigService,
+    jobNotificationService: JobNotificationService,
+  ) {
+    super(
+      k6ExecutionService,
+      dbService,
+      configService,
+      jobNotificationService,
+    );
+    (this as any).logger = new Logger('K6ExecutionProcessorAPAC');
   }
 }

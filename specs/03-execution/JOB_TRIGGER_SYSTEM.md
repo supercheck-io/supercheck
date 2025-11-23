@@ -581,7 +581,7 @@ graph TB
 ## Related Documentation
 
 - **API Keys:** See `API_KEY_SYSTEM.md` for detailed API key documentation
-- **Queue System:** See `TEST_EXECUTION_AND_JOB_QUEUE_FLOW.md` for queue details
+- **Queue System:** See `EXECUTION_SYSTEM.md` for queue details
 - **Authentication:** See `AUTHENTICATION.md` for auth mechanisms
 
 ## Revision History

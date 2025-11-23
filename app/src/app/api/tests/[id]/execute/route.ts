@@ -60,10 +60,13 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
 
     // Parse request body for location (k6 tests only)
     const normalizeLocation = (value?: string): K6Location => {
-      if (value === 'us-east' || value === 'eu-central' || value === 'asia-pacific') {
-        return value;
+      const upper = value?.toUpperCase();
+      // Only accept uppercase format: GLOBAL, US, EU, APAC
+      if (upper === 'GLOBAL' || upper === 'US' || upper === 'EU' || upper === 'APAC') {
+        return upper;
       }
-      return 'us-east';
+      // Default to GLOBAL for any other value
+      return 'GLOBAL';
     };
 
     let requestedLocation: string | undefined;

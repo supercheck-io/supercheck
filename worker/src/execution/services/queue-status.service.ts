@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { Queue, QueueEvents } from 'bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
-import { JOB_EXECUTION_QUEUE, TEST_EXECUTION_QUEUE } from '../constants';
+import { PLAYWRIGHT_QUEUE } from '../constants';
 import type { Redis, Cluster } from 'ioredis';
 
 type RedisLike = Redis | Cluster;
@@ -22,14 +22,11 @@ type RedisLike = Redis | Cluster;
 @Injectable()
 export class QueueStatusService implements OnModuleDestroy {
   private readonly logger = new Logger(QueueStatusService.name);
-  private jobQueueEvents?: QueueEvents;
-  private testQueueEvents?: QueueEvents;
-  private jobQueueEventsConnection: RedisLike | null = null;
-  private testQueueEventsConnection: RedisLike | null = null;
+  private queueEvents?: QueueEvents;
+  private queueEventsConnection: RedisLike | null = null;
 
   constructor(
-    @InjectQueue(JOB_EXECUTION_QUEUE) private readonly jobQueue: Queue,
-    @InjectQueue(TEST_EXECUTION_QUEUE) private readonly testQueue: Queue,
+    @InjectQueue(PLAYWRIGHT_QUEUE) private readonly queue: Queue,
   ) {
     void this.initializeQueueListeners();
   }
@@ -40,67 +37,34 @@ export class QueueStatusService implements OnModuleDestroy {
    */
   private async initializeQueueListeners() {
     try {
-      const jobClient = await this.jobQueue.client;
-      const jobConnection = jobClient.duplicate();
-      await jobConnection.connect();
-      jobConnection.on('error', (error: unknown) =>
-        this.logger.error('Job QueueEvents connection error:', error),
+      const client = await this.queue.client;
+      const connection = client.duplicate();
+      await connection.connect();
+      connection.on('error', (error: unknown) =>
+        this.logger.error('QueueEvents connection error:', error),
       );
-      this.jobQueueEventsConnection = jobConnection;
+      this.queueEventsConnection = connection;
 
-      const testClient = await this.testQueue.client;
-      const testConnection = testClient.duplicate();
-      await testConnection.connect();
-      testConnection.on('error', (error: unknown) =>
-        this.logger.error('Test QueueEvents connection error:', error),
-      );
-      this.testQueueEventsConnection = testConnection;
-
-      // Set up QueueEvents for job queue
-      this.jobQueueEvents = new QueueEvents(JOB_EXECUTION_QUEUE, {
-        connection: jobConnection,
+      // Set up QueueEvents
+      this.queueEvents = new QueueEvents(PLAYWRIGHT_QUEUE, {
+        connection,
       });
 
-      // Set up QueueEvents for test queue
-      this.testQueueEvents = new QueueEvents(TEST_EXECUTION_QUEUE, {
-        connection: testConnection,
-      });
-
-      // Job queue event listeners - only for logging and monitoring
-      this.jobQueueEvents.on('waiting', ({ jobId }) => {
+      // Queue event listeners
+      this.queueEvents.on('waiting', ({ jobId }) => {
         this.logger.debug(`Job ${jobId} is waiting`);
       });
 
-      this.jobQueueEvents.on('active', ({ jobId }) => {
+      this.queueEvents.on('active', ({ jobId }) => {
         this.logger.debug(`Job ${jobId} is active`);
-        // Database updates are handled by the job execution processor
       });
 
-      this.jobQueueEvents.on('completed', ({ jobId }) => {
+      this.queueEvents.on('completed', ({ jobId }) => {
         this.logger.debug(`Job ${jobId} completed`);
-        // Database updates are handled by the job execution processor
       });
 
-      this.jobQueueEvents.on('failed', ({ jobId, failedReason }) => {
+      this.queueEvents.on('failed', ({ jobId, failedReason }) => {
         this.logger.error(`Job ${jobId} failed: ${failedReason}`);
-        // Database updates are handled by the job execution processor
-      });
-
-      // Test queue event listeners - only for logging and monitoring
-      this.testQueueEvents.on('waiting', ({ jobId }) => {
-        this.logger.debug(`Test ${jobId} is waiting`);
-      });
-
-      this.testQueueEvents.on('active', ({ jobId }) => {
-        this.logger.debug(`Test ${jobId} is active`);
-      });
-
-      this.testQueueEvents.on('completed', ({ jobId }) => {
-        this.logger.debug(`Test ${jobId} completed`);
-      });
-
-      this.testQueueEvents.on('failed', ({ jobId, failedReason }) => {
-        this.logger.error(`Test ${jobId} failed: ${failedReason}`);
       });
     } catch (error) {
       this.logger.error('Failed to initialize queue status listeners:', error);
@@ -108,37 +72,21 @@ export class QueueStatusService implements OnModuleDestroy {
   }
 
   async onModuleDestroy() {
-    if (this.jobQueueEvents) {
-      await this.jobQueueEvents.close();
+    if (this.queueEvents) {
+      await this.queueEvents.close();
     }
-    if (this.testQueueEvents) {
-      await this.testQueueEvents.close();
-    }
-    if (this.jobQueueEventsConnection) {
-      const jobConnection = this.jobQueueEventsConnection;
+    if (this.queueEventsConnection) {
+      const connection = this.queueEventsConnection;
       try {
-        await jobConnection.quit();
+        await connection.quit();
       } catch (error) {
         this.logger.warn(
-          'Error while quitting job QueueEvents connection, forcing disconnect:',
+          'Error while quitting QueueEvents connection, forcing disconnect:',
           error,
         );
-        jobConnection.disconnect();
+        connection.disconnect();
       }
-      this.jobQueueEventsConnection = null;
-    }
-    if (this.testQueueEventsConnection) {
-      const testConnection = this.testQueueEventsConnection;
-      try {
-        await testConnection.quit();
-      } catch (error) {
-        this.logger.warn(
-          'Error while quitting test QueueEvents connection, forcing disconnect:',
-          error,
-        );
-        testConnection.disconnect();
-      }
-      this.testQueueEventsConnection = null;
+      this.queueEventsConnection = null;
     }
   }
 }
