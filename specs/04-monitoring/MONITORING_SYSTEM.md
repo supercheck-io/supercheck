@@ -69,8 +69,8 @@ graph TB
     subgraph "Queue System"
         RS[Redis]
         MSQ[Monitor Scheduler Queue]
-        MEQ[Monitor Execution Queues (Regional)]
-        MLQ[Multi-Location Queue (Virtual)]
+        MEQ["Monitor Execution Queues<br/>Regional"]
+        MLQ["Multi-Location Queue<br/>Virtual"]
     end
 
     subgraph "Worker Services"
