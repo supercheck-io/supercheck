@@ -551,12 +551,12 @@ graph TD
     subgraph "Queue Layer"
         D --> E[monitor-scheduler Queue]
         E --> F[Scheduled Execution]
-        F --> G[monitor-{REGION} Queues]
+        F --> G["monitor-REGION<br/>Queues"]
     end
 
     subgraph "Worker Layer"
         H[Monitor Scheduler Processor]
-        I[Monitor Processor (Regional)]
+        I["Monitor Processor<br/>Regional"]
         J[Enhanced Monitor Service]
 
         H --> E
