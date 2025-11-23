@@ -6,12 +6,12 @@ import {
   type MonitoringLocation,
 } from "@/lib/location-service";
 
-export type PerformanceLocation = MonitoringLocation | "GLOBAL";
+export type PerformanceLocation = MonitoringLocation | "global";
 
 export const PERFORMANCE_LOCATIONS: MonitoringLocation[] = [
-  MONITORING_LOCATIONS.US,
-  MONITORING_LOCATIONS.EU,
-  MONITORING_LOCATIONS.APAC,
+  MONITORING_LOCATIONS.US_EAST,
+  MONITORING_LOCATIONS.EU_CENTRAL,
+  MONITORING_LOCATIONS.ASIA_PACIFIC,
 ];
 
 export type PerformanceLocationOption = {
@@ -23,7 +23,7 @@ export type PerformanceLocationOption = {
 
 export const PERFORMANCE_LOCATION_OPTIONS: PerformanceLocationOption[] = [
   {
-    value: "GLOBAL",
+    value: "global",
     name: "Global",
     region: "Global",
     flag: "🌍",

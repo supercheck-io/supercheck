@@ -48,9 +48,9 @@ graph TB
 
     subgraph "📨 Queue System - Redis & BullMQ"
         REDIS[(Redis)]
-        Q1[playwright-GLOBAL queue]
-        Q2[k6-{REGION} queues]
-        Q3[monitor-{REGION} queues]
+        Q1[playwright-global queue]
+        Q2[k6-{region} queues]
+        Q3[monitor-{region} queues]
         Q4[Scheduler Queues]
     end
 
@@ -126,7 +126,7 @@ sequenceDiagram
     API->>Redis: Check capacity
     Redis-->>API: Capacity OK
     API->>API: Resolve variables & secrets
-    API->>Redis: Add job to playwright-GLOBAL queue
+    API->>Redis: Add job to playwright-global queue
     Redis-->>API: Return job ID (202)
     API-->>Client: Job ID & status
 
@@ -158,9 +158,9 @@ The system manages distinct queues for different execution types and regions:
 
 | Worker | Location | Regional Queues | Global Queues |
 |--------|----------|----------------|---------------|
-| `supercheck-worker-us` | US | `k6-US`, `monitor-US` | `playwright-GLOBAL`, `k6-GLOBAL` |
-| `supercheck-worker-eu` | EU | `k6-EU`, `monitor-EU` | `playwright-GLOBAL`, `k6-GLOBAL` |
-| `supercheck-worker-apac` | APAC | `k6-APAC`, `monitor-APAC` | `playwright-GLOBAL`, `k6-GLOBAL` |
+| `supercheck-worker-us` | us-east | `k6-us-east`, `monitor-us-east` | `playwright-global`, `k6-global` |
+| `supercheck-worker-eu` | eu-central | `k6-eu-central`, `monitor-eu-central` | `playwright-global`, `k6-global` |
+| `supercheck-worker-apac` | asia-pacific | `k6-asia-pacific`, `monitor-asia-pacific` | `playwright-global`, `k6-global` |
 
 **Architecture Benefits:**
 - ✅ **Resource efficiency**: Each worker handles multiple job types
@@ -174,18 +174,18 @@ The system manages distinct queues for different execution types and regions:
 
 
 **Playwright Execution (Global):**
-- **playwright-GLOBAL** - Handles all Playwright tests and jobs (consolidated)
+- **playwright-global** - Handles all Playwright tests and jobs (consolidated)
 
 **K6 Execution (Regional):**
-- **k6-US** - K6 load tests from US region
-- **k6-EU** - K6 load tests from EU region
-- **k6-APAC** - K6 load tests from APAC region
-- **k6-GLOBAL** - K6 load tests from Global region
+- **k6-us-east** - K6 load tests from US East region
+- **k6-eu-central** - K6 load tests from EU Central region
+- **k6-asia-pacific** - K6 load tests from Asia Pacific region
+- **k6-global** - K6 load tests from Global region
 
 **Monitor Execution (Regional):**
-- **monitor-US** - Synthetic monitors from US region
-- **monitor-EU** - Synthetic monitors from EU region (default)
-- **monitor-APAC** - Synthetic monitors from APAC region
+- **monitor-us-east** - Synthetic monitors from US East region
+- **monitor-eu-central** - Synthetic monitors from EU Central region (default)
+- **monitor-asia-pacific** - Synthetic monitors from Asia Pacific region
 
 **Scheduler Queues (3):**
 - **job-scheduler** - Triggers scheduled jobs hourly
@@ -201,9 +201,9 @@ The system manages distinct queues for different execution types and regions:
 ```mermaid
 graph TB
     subgraph "Queue Types"
-        Q1[playwright-GLOBAL<br/>All Playwright Tasks]
-        Q2["k6-REGION<br/>Regional Load Tests"]
-        Q3["monitor-REGION<br/>Regional Monitors"]
+        Q1[playwright-global<br/>All Playwright Tasks]
+        Q2["k6-{region}<br/>Regional Load Tests"]
+        Q3["monitor-{region}<br/>Regional Monitors"]
         Q4[Scheduler Queues<br/>Cron Jobs]
     end
 
@@ -390,9 +390,9 @@ Queue statistics track:
 - Max allowed queued jobs (capacity)
 
 Execution queues counted in statistics:
-- playwright-GLOBAL
-- k6-{REGION} (US, EU, APAC, GLOBAL)
-- monitor-{REGION} (US, EU, APAC, GLOBAL)
+- playwright-global
+- k6-{region} (us-east, eu-central, asia-pacific, global)
+- monitor-{region} (us-east, eu-central, asia-pacific)
 
 ---
 
@@ -779,7 +779,7 @@ sequenceDiagram
 
 ### Playwright Execution (Global)
 
-Playwright tests and jobs are executed via a **single global queue** (`playwright-GLOBAL`). This simplifies the architecture as browser-based tests are typically less sensitive to geographic latency for functional verification compared to load tests.
+Playwright tests and jobs are executed via a **single global queue** (`playwright-global`). This simplifies the architecture as browser-based tests are typically less sensitive to geographic latency for functional verification compared to load tests.
 
 ### K6 Multi-Location Execution
 
@@ -862,7 +862,6 @@ Health checks and monitors can run from multiple locations for global coverage:
 ```mermaid
 graph TB
     A["Monitor Execution Request<br/>locations: US_EAST, EU, APAC<br/>strategy: majority"]
-    B["Check MULTI_LOCATION_DISTRIBUTED flag"]
     C["Create Execution Group ID<br/>monitor-{monitorId}-{timestamp}-{random}"]
     D["For each location"]
     E["Add to monitor-execution queue<br/>with location & group ID"]
@@ -873,9 +872,7 @@ graph TB
     J["Apply threshold strategy<br/>majority/all/any"]
     K["Determine overall status"]
 
-    A --> B
-    B -->|enabled| C
-    B -->|disabled| F
+    A --> C
     C --> D
     D --> E
     E --> F

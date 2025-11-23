@@ -13,6 +13,7 @@ import {
   MONITOR_EXECUTION_QUEUE,
   K6_JOB_SCHEDULER_QUEUE,
 } from './constants';
+import { MONITOR_QUEUES } from '../monitor/monitor.constants';
 import { DbModule } from '../db/db.module';
 import { MonitorModule } from '../monitor/monitor.module';
 import { LocationModule } from '../common/location/location.module';
@@ -30,6 +31,9 @@ import { LocationModule } from '../common/location/location.module';
       { name: JOB_EXECUTION_QUEUE },
       { name: K6_JOB_EXECUTION_QUEUE },
       { name: MONITOR_EXECUTION_QUEUE },
+      { name: MONITOR_QUEUES.US_EAST },
+      { name: MONITOR_QUEUES.EU_CENTRAL },
+      { name: MONITOR_QUEUES.ASIA_PACIFIC },
     ),
   ],
   providers: [

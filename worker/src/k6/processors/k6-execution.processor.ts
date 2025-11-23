@@ -521,7 +521,7 @@ export class K6ExecutionProcessor extends BaseK6ExecutionProcessor {
   }
 }
 
-@Processor('k6-US', { concurrency: 1 })
+@Processor('k6-us-east', { concurrency: 1 })
 export class K6ExecutionProcessorUS extends K6ExecutionProcessor {
   constructor(
     k6ExecutionService: K6ExecutionService,
@@ -536,11 +536,11 @@ export class K6ExecutionProcessorUS extends K6ExecutionProcessor {
       jobNotificationService,
     );
     // Override logger name
-    (this as any).logger = new Logger('K6ExecutionProcessorUS');
+    (this as any).logger = new Logger('K6ExecutionProcessorUSEast');
   }
 }
 
-@Processor('k6-EU', { concurrency: 1 })
+@Processor('k6-eu-central', { concurrency: 1 })
 export class K6ExecutionProcessorEU extends K6ExecutionProcessor {
   constructor(
     k6ExecutionService: K6ExecutionService,
@@ -554,11 +554,11 @@ export class K6ExecutionProcessorEU extends K6ExecutionProcessor {
       configService,
       jobNotificationService,
     );
-    (this as any).logger = new Logger('K6ExecutionProcessorEU');
+    (this as any).logger = new Logger('K6ExecutionProcessorEUCentral');
   }
 }
 
-@Processor('k6-APAC', { concurrency: 1 })
+@Processor('k6-asia-pacific', { concurrency: 1 })
 export class K6ExecutionProcessorAPAC extends K6ExecutionProcessor {
   constructor(
     k6ExecutionService: K6ExecutionService,
@@ -572,6 +572,6 @@ export class K6ExecutionProcessorAPAC extends K6ExecutionProcessor {
       configService,
       jobNotificationService,
     );
-    (this as any).logger = new Logger('K6ExecutionProcessorAPAC');
+    (this as any).logger = new Logger('K6ExecutionProcessorAsiaPacific');
   }
 }

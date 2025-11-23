@@ -117,7 +117,7 @@ function LocationConfigSectionComponent({
       enabled &&
       (!currentConfig.locations || currentConfig.locations.length === 0)
     ) {
-      newConfig.locations = [MONITORING_LOCATIONS.EU];
+      newConfig.locations = [MONITORING_LOCATIONS.EU_CENTRAL];
     }
     onChange(newConfig);
   };

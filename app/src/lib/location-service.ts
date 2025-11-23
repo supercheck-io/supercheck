@@ -14,22 +14,22 @@ export type { MonitoringLocation, LocationConfig };
  * Includes display names, regions, and geographic coordinates.
  */
 export const LOCATION_METADATA: Record<MonitoringLocation, LocationMetadata> = {
-  [MONITORING_LOCATIONS.US]: {
-    code: MONITORING_LOCATIONS.US,
+  [MONITORING_LOCATIONS.US_EAST]: {
+    code: MONITORING_LOCATIONS.US_EAST,
     name: "US East",
     region: "N. Virginia",
     coordinates: { lat: 38.9072, lon: -77.0369 },
     flag: "🇺🇸",
   },
-  [MONITORING_LOCATIONS.EU]: {
-    code: MONITORING_LOCATIONS.EU,
+  [MONITORING_LOCATIONS.EU_CENTRAL]: {
+    code: MONITORING_LOCATIONS.EU_CENTRAL,
     name: "EU Central",
     region: "Frankfurt",
     coordinates: { lat: 50.1109, lon: 8.6821 },
     flag: "🇩🇪",
   },
-  [MONITORING_LOCATIONS.APAC]: {
-    code: MONITORING_LOCATIONS.APAC,
+  [MONITORING_LOCATIONS.ASIA_PACIFIC]: {
+    code: MONITORING_LOCATIONS.ASIA_PACIFIC,
     name: "Asia Pacific",
     region: "Mumbai",
     coordinates: { lat: 19.0760, lon: 72.8777 },
@@ -47,7 +47,7 @@ const ALL_MONITORING_LOCATIONS = Object.values(
  */
 export const DEFAULT_LOCATION_CONFIG: LocationConfig = {
   enabled: false,
-  locations: [MONITORING_LOCATIONS.EU],
+  locations: [MONITORING_LOCATIONS.EU_CENTRAL],
   threshold: 50, // Majority must be up
   strategy: "majority",
 };
@@ -123,16 +123,49 @@ export function validateLocationConfig(
 }
 
 /**
+ * Normalize legacy uppercase location values to kebab-case
+ */
+export function normalizeLegacyLocation(location: string): MonitoringLocation {
+  const upperLocation = location.trim().toUpperCase();
+
+  switch (upperLocation) {
+    case 'US':
+    case 'US_EAST':
+    case 'US-EAST':
+    case 'US EAST':
+      return MONITORING_LOCATIONS.US_EAST;
+    case 'EU':
+    case 'EU_CENTRAL':
+    case 'EU-CENTRAL':
+    case 'EU CENTRAL':
+      return MONITORING_LOCATIONS.EU_CENTRAL;
+    case 'APAC':
+    case 'ASIA_PACIFIC':
+    case 'ASIA-PACIFIC':
+    case 'ASIA PACIFIC':
+      return MONITORING_LOCATIONS.ASIA_PACIFIC;
+    default:
+      // Already in correct format or default to EU Central
+      return location as MonitoringLocation;
+  }
+}
+
+/**
  * Calculate the overall status based on location results and threshold.
  */
 export function calculateAggregatedStatus(
   locationStatuses: Record<MonitoringLocation, boolean>,
   config: LocationConfig
 ): "up" | "down" | "partial" {
-  const locations = config.locations || [];
-  if (locations.length === 0) {
+  const rawLocations = config.locations || [];
+  if (rawLocations.length === 0) {
     return "down";
   }
+
+  // Normalize locations to ensure they match the keys in locationStatuses
+  const locations = rawLocations.map((loc) =>
+    normalizeLegacyLocation(loc),
+  );
 
   const upCount = locations.filter(
     (loc) => locationStatuses[loc] === true
@@ -170,10 +203,12 @@ export function getEffectiveLocations(
 ): MonitoringLocation[] {
   if (!config || !config.enabled) {
     // Single location mode - use default primary location
-    return [MONITORING_LOCATIONS.EU];
+    return [MONITORING_LOCATIONS.EU_CENTRAL];
   }
 
-  return config.locations || [MONITORING_LOCATIONS.EU];
+  // Normalize legacy locations
+  const locations = config.locations || [MONITORING_LOCATIONS.EU_CENTRAL];
+  return locations.map(loc => normalizeLegacyLocation(loc));
 }
 
 /**

@@ -65,6 +65,8 @@ type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
 @Injectable()
 export class MonitorService {
   private readonly logger = new Logger(MonitorService.name);
+  private static readonly AGGREGATION_MAX_RETRIES = 3;
+  private static readonly AGGREGATION_RETRY_DELAY_MS = 500;
 
   constructor(
     private readonly dbService: DbService,
@@ -81,7 +83,7 @@ export class MonitorService {
 
   async executeMonitor(
     jobData: MonitorJobDataDto,
-    location: MonitoringLocation = MONITORING_LOCATIONS.US_EAST,
+    location: MonitoringLocation = MONITORING_LOCATIONS.EU_CENTRAL,
   ): Promise<MonitorExecutionResult | null> {
     // Removed log - only log warnings, errors, and status changes
 
@@ -512,59 +514,94 @@ export class MonitorService {
         ? expectedLocations
         : this.locationService.getEffectiveLocations(locationConfig);
 
-    const groupRows = await this.dbService.db
-      .select({
-        monitorId: schema.monitorResults.monitorId,
-        location: schema.monitorResults.location,
-        status: schema.monitorResults.status,
-        checkedAt: schema.monitorResults.checkedAt,
-        responseTimeMs: schema.monitorResults.responseTimeMs,
-        details: schema.monitorResults.details,
-        isUp: schema.monitorResults.isUp,
-        testExecutionId: schema.monitorResults.testExecutionId,
-        testReportS3Url: schema.monitorResults.testReportS3Url,
-      })
-      .from(schema.monitorResults)
-      .where(
-        and(
-          eq(schema.monitorResults.monitorId, result.monitorId),
-          sql`(${schema.monitorResults.details} ->> 'executionGroupId') = ${executionGroupId}`,
-        ),
-      )
-      .orderBy(desc(schema.monitorResults.checkedAt));
+    // Retry logic to handle race conditions where other workers haven't committed yet
+    // Define the type for the rows we're selecting
+    type MonitorResultRow = {
+      monitorId: string;
+      location: string;
+      status: string;
+      checkedAt: Date;
+      responseTimeMs: number | null;
+      details: unknown;
+      isUp: boolean;
+      testExecutionId: string | null;
+      testReportS3Url: string | null;
+    };
 
-    const latestByLocation = new Map<
-      MonitoringLocation,
-      (typeof groupRows)[number]
-    >();
+    let latestByLocation = new Map<MonitoringLocation, MonitorResultRow>();
+    
+    for (let attempt = 1; attempt <= MonitorService.AGGREGATION_MAX_RETRIES; attempt++) {
+      const groupRows = await this.dbService.db
+        .select({
+          monitorId: schema.monitorResults.monitorId,
+          location: schema.monitorResults.location,
+          status: schema.monitorResults.status,
+          checkedAt: schema.monitorResults.checkedAt,
+          responseTimeMs: schema.monitorResults.responseTimeMs,
+          details: schema.monitorResults.details,
+          isUp: schema.monitorResults.isUp,
+          testExecutionId: schema.monitorResults.testExecutionId,
+          testReportS3Url: schema.monitorResults.testReportS3Url,
+        })
+        .from(schema.monitorResults)
+        .where(
+          and(
+            eq(schema.monitorResults.monitorId, result.monitorId),
+            sql`(${schema.monitorResults.details} ->> 'executionGroupId') = ${executionGroupId}`,
+          ),
+        )
+        .orderBy(desc(schema.monitorResults.checkedAt));
 
-    for (const row of groupRows) {
-      const rowLocation = row.location as MonitoringLocation;
-      if (!latestByLocation.has(rowLocation)) {
-        latestByLocation.set(rowLocation, row);
+      latestByLocation = new Map();
+      for (const row of groupRows) {
+        const rowLocation = row.location as MonitoringLocation;
+        if (!latestByLocation.has(rowLocation)) {
+          latestByLocation.set(rowLocation, row as MonitorResultRow);
+        }
+      }
+
+      if (latestByLocation.size >= expected.length) {
+        break;
+      }
+
+      if (attempt < MonitorService.AGGREGATION_MAX_RETRIES) {
+        this.logger.debug(
+          `Attempt ${attempt}/${MonitorService.AGGREGATION_MAX_RETRIES}: Waiting for all locations. Got ${latestByLocation.size}/${expected.length}. Retrying in ${MonitorService.AGGREGATION_RETRY_DELAY_MS}ms...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, MonitorService.AGGREGATION_RETRY_DELAY_MS));
       }
     }
 
     if (latestByLocation.size < expected.length) {
+      this.logger.warn(
+        `Not all locations reported for monitor ${result.monitorId}. ` +
+          `Expected: ${expected.join(', ')}. ` +
+          `Got: ${Array.from(latestByLocation.keys()).join(', ')}. ` +
+          `ExecutionGroupId: ${executionGroupId}`,
+      );
       return;
     }
+
+    this.logger.log(
+      `All locations reported for monitor ${result.monitorId}. Aggregating results...`,
+    );
 
     const aggregatedResults: MonitorExecutionResult[] = expected
       .map((location) => latestByLocation.get(location))
       .filter(
         (
           row,
-        ): row is (typeof groupRows)[number] & {
+        ): row is MonitorResultRow & {
           location: MonitoringLocation;
         } => Boolean(row),
       )
       .map((row) => ({
         monitorId: row.monitorId,
         location: row.location as MonitoringLocation,
-        status: row.status,
+        status: row.status as MonitorResultStatus,
         checkedAt: row.checkedAt,
         responseTimeMs: row.responseTimeMs ?? undefined,
-        details: row.details ?? undefined,
+        details: (row.details as MonitorResultDetails) ?? undefined,
         isUp: row.isUp,
         testExecutionId: row.testExecutionId ?? undefined,
         testReportS3Url: row.testReportS3Url ?? undefined,
@@ -574,7 +611,11 @@ export class MonitorService {
       return;
     }
 
+    this.logger.log(
+      `Calling saveMonitorResults for monitor ${result.monitorId} with ${aggregatedResults.length} results`,
+    );
     await this.saveMonitorResults(aggregatedResults, { persisted: true });
+    this.logger.log(`Successfully aggregated and saved results for monitor ${result.monitorId}`);
   }
 
   async saveMonitorResult(resultData: MonitorExecutionResult): Promise<void> {
@@ -2009,17 +2050,25 @@ export class MonitorService {
     checkedAt: Date,
   ): Promise<void> {
     try {
+      // Get current monitor status before update to detect status changes
+      const currentMonitor = await this.getMonitorById(monitorId);
+      const previousStatus = currentMonitor?.status;
+
+      // Determine if this is a status change
+      const isStatusChange = previousStatus && previousStatus !== status;
+
       await this.dbService.db
         .update(schema.monitors)
         .set({
           status: status,
           lastCheckAt: checkedAt,
-          lastStatusChangeAt:
-            status !== (await this.getMonitorById(monitorId))?.status
-              ? checkedAt
-              : undefined,
+          lastStatusChangeAt: isStatusChange ? checkedAt : undefined,
         })
         .where(eq(schema.monitors.id, monitorId));
+
+      this.logger.log(
+        `Updated monitor ${monitorId} status: ${previousStatus || 'unknown'} -> ${status}`,
+      );
     } catch (error) {
       this.logger.error(
         `Failed to update monitor status for ${monitorId}: ${getErrorMessage(error)}`,

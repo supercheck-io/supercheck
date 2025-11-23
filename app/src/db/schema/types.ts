@@ -8,8 +8,8 @@
 export type TestPriority = "low" | "medium" | "high";
 export type TestType = "browser" | "api" | "database" | "custom" | "performance";
 
-// K6 Performance Testing types
-export type K6Location = "GLOBAL" | "US" | "EU" | "APAC";
+// K6 Performance Testing types (includes global option for any location)
+export type K6Location = "us-east" | "eu-central" | "asia-pacific" | "global";
 
 // Job types
 export type JobType = "playwright" | "k6";
@@ -74,9 +74,9 @@ export type MonitorResultDetails = {
 
 // Monitoring locations
 export const MONITORING_LOCATIONS = {
-  US: "US",
-  EU: "EU",
-  APAC: "APAC",
+  US_EAST: "us-east",
+  EU_CENTRAL: "eu-central",
+  ASIA_PACIFIC: "asia-pacific",
 } as const;
 
 export type MonitoringLocation =

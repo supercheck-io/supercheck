@@ -42,9 +42,9 @@ graph TB
 
     subgraph "📨 Queue System"
         REDIS[Redis]
-        QUEUE1[playwright-GLOBAL queue]
-        QUEUE2[k6-{REGION} queues]
-        QUEUE3[monitor-{REGION} queues]
+        QUEUE1[playwright-global queue]
+        QUEUE2[k6-{region} queues]
+        QUEUE3[monitor-{region} queues]
     end
 
     subgraph "⚙️ Worker Service"
@@ -108,9 +108,9 @@ graph TB
     B --> D[Set up Event Listeners]
     B --> E[Initialize Metadata Cache]
 
-    C --> C1[playwright-GLOBAL queue]
-    C --> C2[k6-{REGION} queues]
-    C --> C3[monitor-{REGION} queues]
+    C --> C1[playwright-global queue]
+    C --> C2[k6-{region} queues]
+    C --> C3[monitor-{region} queues]
 
     D --> D1[waiting event]
     D --> D2[active event]
@@ -154,7 +154,11 @@ graph TB
 2. Load cached metadata (runId, projectId, organizationId)
 3. Determine normalized status
 4. Filter by project scope (security)
+4. Filter by project scope (security)
 5. Emit normalized event
+
+**Note on Monitor Results:**
+For monitor executions, the job return value is an array of results (one per location). The Event Hub automatically detects this array format and maps it to a "passed" status if the array is non-empty, ensuring that successful distributed monitor runs are correctly reflected in the UI.
 
 ```mermaid
 graph LR

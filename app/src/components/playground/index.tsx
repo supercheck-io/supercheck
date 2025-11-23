@@ -132,7 +132,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   const initialPerformanceLocation: PerformanceLocation | null =
     initialResolvedType === "performance" && initialTestData
       ? ((initialTestData.location as PerformanceLocation) ??
-        ("GLOBAL" as PerformanceLocation))
+        ("global" as PerformanceLocation))
       : null;
 
   // Fetch current user ID for permissions
@@ -160,7 +160,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [performanceRunId, setPerformanceRunId] = useState<string | null>(null);
   const [performanceLocation, setPerformanceLocation] =
     useState<PerformanceLocation>(
-      initialPerformanceLocation ?? "GLOBAL"
+      initialPerformanceLocation ?? "global"
     );
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
@@ -395,7 +395,7 @@ const Playground: React.FC<PlaygroundProps> = ({
           location:
             (result.location as PerformanceLocation | null) ??
             (resolvedType === "performance"
-              ? ("us-east" as PerformanceLocation)
+              ? "global"
               : null),
         });
 
@@ -414,14 +414,13 @@ const Playground: React.FC<PlaygroundProps> = ({
           location:
             (result.location as PerformanceLocation | null) ??
             (resolvedType === "performance"
-              ? ("us-east" as PerformanceLocation)
+              ? "global"
               : null),
         });
 
         if (resolvedType === "performance") {
           setPerformanceLocation(
-            (result.location as PerformanceLocation) ??
-              ("us-east" as PerformanceLocation)
+            (result.location as PerformanceLocation) ?? "global"
           );
         }
 
@@ -471,13 +470,12 @@ const Playground: React.FC<PlaygroundProps> = ({
         type: typeToSet,
         location:
           typeToSet === "performance"
-            ? (performanceLocation ?? prev.location ??
-              ("us-east" as PerformanceLocation))
+            ? (performanceLocation ?? prev.location ?? "global")
             : null,
       }));
 
       if (typeToSet === "performance" && !performanceLocation) {
-        setPerformanceLocation("us-east" as PerformanceLocation);
+        setPerformanceLocation("global");
       }
 
       const loadScriptForType = async () => {
@@ -517,15 +515,13 @@ const Playground: React.FC<PlaygroundProps> = ({
         createdAt: initialTestData.createdAt || undefined,
         location:
           resolvedType === "performance"
-            ? ((initialTestData.location as PerformanceLocation) ??
-              ("us-east" as PerformanceLocation))
+            ? ((initialTestData.location as PerformanceLocation) ?? "global")
             : null,
       });
 
       if (resolvedType === "performance") {
         const resolvedLocation: PerformanceLocation =
-          (initialTestData.location as PerformanceLocation) ??
-          ("us-east" as PerformanceLocation);
+          (initialTestData.location as PerformanceLocation) ?? "global";
         setPerformanceLocation(resolvedLocation);
         setTestCase((prev) => ({
           ...prev,
@@ -718,7 +714,7 @@ const Playground: React.FC<PlaygroundProps> = ({
           const fallbackLocation =
             (result.location as PerformanceLocation) ||
             options?.location ||
-            ("GLOBAL" as PerformanceLocation);
+            ("global" as PerformanceLocation);
           setPerformanceLocation(fallbackLocation);
           setTestCase((prev) => ({
             ...prev,

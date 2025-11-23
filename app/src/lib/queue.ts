@@ -100,13 +100,13 @@ export const REDIS_EVENT_KEY_TTL = 24 * 60 * 60; // 24 hours for events/stats
 export const REDIS_METRICS_TTL = 48 * 60 * 60; // 48 hours for metrics data
 export const REDIS_CLEANUP_BATCH_SIZE = 100; // Process keys in smaller batches to reduce memory pressure
 
-// Regions
-export type Region = "US" | "EU" | "APAC" | "GLOBAL";
-export const REGIONS: Region[] = ["US", "EU", "APAC", "GLOBAL"];
+// Regions for K6 performance tests (includes global option for any location)
+export type Region = "us-east" | "eu-central" | "asia-pacific" | "global";
+export const REGIONS: Region[] = ["us-east", "eu-central", "asia-pacific", "global"];
 
-// Monitor regions (no GLOBAL - monitors check specific regional endpoints)
-export type MonitorRegion = Exclude<Region, "GLOBAL">;
-export const MONITOR_REGIONS: MonitorRegion[] = ["US", "EU", "APAC"];
+// Monitor regions using kebab-case for queue names (no GLOBAL - monitors run from specific locations)
+export type MonitorRegion = "us-east" | "eu-central" | "asia-pacific";
+export const MONITOR_REGIONS: MonitorRegion[] = ["us-east", "eu-central", "asia-pacific"];
 
 // Singleton instances
 let redisClient: Redis | null = null;
@@ -126,9 +126,6 @@ let monitorExecutionEvents: Record<MonitorRegion, QueueEvents> | null = null;
 
 // Store initialization promise to prevent race conditions
 let initPromise: Promise<void> | null = null;
-
-const MULTI_LOCATION_DISTRIBUTED =
-  (process.env.MULTI_LOCATION_DISTRIBUTED || "").toLowerCase() === "true";
 
 // Queue event subscription type
 export type QueueEventType = "test" | "job";
@@ -268,11 +265,11 @@ export async function getQueues(): Promise<{
         };
 
         // Playwright - single GLOBAL queue for all tests and jobs
-        const playwrightQueue = new Queue("playwright-GLOBAL", queueSettings);
+        const playwrightQueue = new Queue("playwright-global", queueSettings);
         playwrightQueue.on("error", (error) =>
           queueLogger.error({ err: error }, "Playwright Queue Error")
         );
-        playwrightQueues["GLOBAL"] = playwrightQueue;
+        playwrightQueues["global"] = playwrightQueue;
 
         // K6 - Regional queues (keep existing)
         for (const region of REGIONS) {
@@ -284,7 +281,7 @@ export async function getQueues(): Promise<{
           k6Queues[region] = k6Queue;
         }
 
-        // Monitor Execution - Regional queues (no GLOBAL)
+        // Monitor Execution - Regional queues using kebab-case (no GLOBAL)
         const monitorQueues: Record<MonitorRegion, Queue> = {} as Record<MonitorRegion, Queue>;
         for (const region of MONITOR_REGIONS) {
           const monitorQueueName = `monitor-${region}`;
@@ -551,17 +548,25 @@ function getQueue(
   location?: string | null
 ): Queue {
   if (type === "playwright") {
-    // Playwright always uses GLOBAL queue
-    return queues.playwrightQueues["GLOBAL"];
+    // Playwright always uses global queue
+    const queue = queues.playwrightQueues["global"];
+    if (!queue) {
+      throw new Error("Playwright execution queue is not available");
+    }
+    return queue;
   } else {
-    // K6 uses regional queues - location is already uppercase
-    const regionStr = (location || "GLOBAL").toUpperCase();
+    // K6 uses regional queues with kebab-case names
+    const regionStr = (location || "global").toLowerCase();
 
     const effectiveRegion = REGIONS.includes(regionStr as Region)
       ? regionStr
-      : "GLOBAL";
+      : "global";
 
-    return queues.k6Queues[effectiveRegion];
+    const queue = queues.k6Queues[effectiveRegion];
+    if (!queue) {
+      throw new Error("K6 execution queue is not available for the requested region");
+    }
+    return queue;
   }
 }
 
@@ -651,6 +656,10 @@ export async function addK6TestToQueue(
     await queue.add(jobName, task, {
       jobId: task.runId,
       attempts: 3,
+      backoff: {
+        type: "exponential" as const,
+        delay: 5000,
+      },
     });
     return task.runId;
   } catch (error) {
@@ -680,6 +689,10 @@ export async function addK6JobToQueue(
     await queue.add(jobName, task, {
       jobId: task.runId,
       attempts: 3,
+      backoff: {
+        type: "exponential" as const,
+        delay: 5000,
+      },
     });
     return task.runId;
   } catch (error) {
@@ -832,63 +845,47 @@ export async function addMonitorExecutionJobToQueue(
   try {
     const { monitorExecutionQueue } = await getQueues();
 
-    if (MULTI_LOCATION_DISTRIBUTED) {
-      const monitorConfig = (task.config as MonitorConfig | undefined) ?? undefined;
-      const locationConfig = (monitorConfig?.locationConfig as LocationConfig | null) ?? null;
-      const effectiveLocations = getEffectiveLocations(locationConfig);
+    // Multi-location execution is the default behavior
+    const monitorConfig = (task.config as MonitorConfig | undefined) ?? undefined;
+    const locationConfig = (monitorConfig?.locationConfig as LocationConfig | null) ?? null;
+    const effectiveLocations = getEffectiveLocations(locationConfig);
 
-      const expectedLocations = Array.from(
-        new Set(
-          effectiveLocations.filter((location) => isMonitoringLocation(location))
-        )
-      ) as MonitoringLocation[];
+    const expectedLocations = Array.from(
+      new Set(
+        effectiveLocations.filter((location) => isMonitoringLocation(location))
+      )
+    ) as MonitoringLocation[];
 
-      const executionGroupId = `${task.monitorId}-${Date.now()}-${Buffer.from(
-        crypto.randomBytes(6)
-      ).toString("hex")}`;
+    const executionGroupId = `${task.monitorId}-${Date.now()}-${Buffer.from(
+      crypto.randomBytes(6)
+    ).toString("hex")}`;
 
-      const locationsToSchedule =
-        expectedLocations.length > 0 ? expectedLocations : getEffectiveLocations(null);
+    const locationsToSchedule =
+      expectedLocations.length > 0 ? expectedLocations : getEffectiveLocations(null);
 
-      await Promise.all(
-        locationsToSchedule.map(async (location) => {
-          // Location is already uppercase MonitorRegion string
-          const monitorQueue = monitorExecutionQueue[location as MonitorRegion];
-          
-          return monitorQueue.add(
-            "executeMonitorJob",
-            {
-              ...task,
-              executionLocation: location,
-              executionGroupId,
-              expectedLocations: locationsToSchedule,
-            },
-            {
-              jobId: `${task.monitorId}:${executionGroupId}:${location}`,
-              // Use default retention policy; only override priority
-              priority: 1,
-            }
-          );
-        })
-      );
+    await Promise.all(
+      locationsToSchedule.map(async (location) => {
+        // Location is already uppercase MonitorRegion string
+        const monitorQueue = monitorExecutionQueue[location as MonitorRegion];
 
-      return executionGroupId;
-    }
-
-    // Single location execution - route to regional queue
-    const location = task.executionLocation || "EU"; // Default to EU
-    const monitorQueue = monitorExecutionQueue[location as MonitorRegion];
-
-    const job = await monitorQueue.add(
-      "executeMonitorJob", // Use the correct job name that the processor expects
-      task,
-      {
-        jobId: task.monitorId, // Use monitorId as job ID to prevent duplicates if job already in queue
-        priority: 1, // Higher priority for immediate execution
-      }
+        return monitorQueue.add(
+          "executeMonitorJob",
+          {
+            ...task,
+            executionLocation: location,
+            executionGroupId,
+            expectedLocations: locationsToSchedule,
+          },
+          {
+            jobId: `${task.monitorId}:${executionGroupId}:${location}`,
+            // Use default retention policy; only override priority
+            priority: 1,
+          }
+        );
+      })
     );
-    // Monitor execution job added
-    return job.id!;
+
+    return executionGroupId;
   } catch (error) {
     queueLogger.error({ err: error, monitorId: task.monitorId },
       `Error adding monitor execution job for monitor ${task.monitorId}`);

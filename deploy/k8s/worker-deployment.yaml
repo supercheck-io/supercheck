@@ -7,9 +7,9 @@
 # - Auto-scaling via KEDA based on queue depth
 #
 # Queue Assignment:
-# - US worker: k6-US, monitor-US, playwright-GLOBAL, k6-GLOBAL
-# - EU worker: k6-EU, monitor-EU, playwright-GLOBAL, k6-GLOBAL
-# - APAC worker: k6-APAC, monitor-APAC, playwright-GLOBAL, k6-GLOBAL
+# - US worker: k6-us-east, monitor-us-east, playwright-global, k6-global
+# - EU worker: k6-eu-central, monitor-eu-central, playwright-global, k6-global
+# - APAC worker: k6-asia-pacific, monitor-asia-pacific, playwright-global, k6-global
 
 ---
 apiVersion: apps/v1
@@ -85,12 +85,12 @@ spec:
           # Worker-specific configuration
           env:
             - name: WORKER_REGION
-              value: "US"
+              value: "us-east"
             - name: NODE_ENV
               value: "production"
             - name: PORT
               value: "8000"
-            # Queues handled: k6-US, monitor-US, playwright-GLOBAL, k6-GLOBAL
+            # Queues handled: k6-us-east, monitor-us-east, playwright-global, k6-global
 
           ports:
             - name: http
@@ -212,12 +212,12 @@ spec:
 
           env:
             - name: WORKER_REGION
-              value: "EU"
+              value: "eu-central"
             - name: NODE_ENV
               value: "production"
             - name: PORT
               value: "8000"
-            # Queues handled: k6-EU, monitor-EU, playwright-GLOBAL, k6-GLOBAL
+            # Queues handled: k6-eu-central, monitor-eu-central, playwright-global, k6-global
 
           ports:
             - name: http
@@ -335,12 +335,12 @@ spec:
 
           env:
             - name: WORKER_REGION
-              value: "APAC"
+              value: "asia-pacific"
             - name: NODE_ENV
               value: "production"
             - name: PORT
               value: "8000"
-            # Queues handled: k6-APAC, monitor-APAC, playwright-GLOBAL, k6-GLOBAL
+            # Queues handled: k6-asia-pacific, monitor-asia-pacific, playwright-global, k6-global
 
           ports:
             - name: http

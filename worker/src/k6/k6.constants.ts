@@ -1,16 +1,12 @@
 // The queue names are now dynamic based on the region and execution type
-export const K6_QUEUE = process.env.QUEUE_NAME || 'k6-GLOBAL';
+export const K6_QUEUE = process.env.QUEUE_NAME || 'k6-global';
 
-export const REGIONS = ['US', 'EU', 'APAC', 'GLOBAL'] as const;
+export const REGIONS = ['us-east', 'eu-central', 'asia-pacific', 'global'] as const;
 export type Region = typeof REGIONS[number];
 
 export const K6_QUEUES = {
-  US: 'k6-US',
-  EU: 'k6-EU',
-  APAC: 'k6-APAC',
-  GLOBAL: 'k6-GLOBAL',
+  US_EAST: 'k6-us-east',
+  EU_CENTRAL: 'k6-eu-central',
+  ASIA_PACIFIC: 'k6-asia-pacific',
+  GLOBAL: 'k6-global',
 };
-
-// Job names are no longer used since we have separate queues
-export const K6_TEST_EXECUTION_JOB_NAME = 'k6-test-execution';
-export const K6_JOB_EXECUTION_JOB_NAME = 'k6-job-execution';

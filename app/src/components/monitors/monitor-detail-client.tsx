@@ -281,15 +281,15 @@ export function MonitorDetailClient({
     const locationSet = new Set<string>();
     if (monitor.recentResults && monitor.recentResults.length > 0) {
       monitor.recentResults.forEach((result) => {
-        if (result.location) {
-          locationSet.add(result.location);
+        if (result.location && isMonitoringLocation(result.location)) {
+          locationSet.add(result.location as MonitoringLocation);
         }
       });
     }
     if (paginatedTableResults && paginatedTableResults.length > 0) {
       paginatedTableResults.forEach((result) => {
-        if (result.location) {
-          locationSet.add(result.location);
+        if (result.location && isMonitoringLocation(result.location)) {
+          locationSet.add(result.location as MonitoringLocation);
         }
       });
     }
@@ -405,9 +405,11 @@ export function MonitorDetailClient({
       .map((r) => {
         const date =
           typeof r.checkedAt === "string" ? parseISO(r.checkedAt) : r.checkedAt;
-        const metadata = r.location
-          ? getLocationMetadata(r.location as MonitoringLocation)
-          : undefined;
+        const locationCode = r.location;
+        const metadata =
+          locationCode && isMonitoringLocation(locationCode)
+            ? getLocationMetadata(locationCode as MonitoringLocation)
+            : undefined;
 
         return {
           name: format(date, "HH:mm"), // Show only time (HH:MM) for cleaner x-axis
@@ -611,7 +613,7 @@ export function MonitorDetailClient({
       effectiveLocationsFromConfig ??
       (locationsFromResults.length > 0
         ? locationsFromResults
-        : [MONITORING_LOCATIONS.EU]);
+        : [MONITORING_LOCATIONS.EU_CENTRAL]);
 
     // Get latest result for each location
     const latestByLocation: Record<MonitoringLocation, boolean> = {} as Record<

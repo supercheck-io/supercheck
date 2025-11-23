@@ -4,9 +4,9 @@ import { HttpModule } from '@nestjs/axios';
 import { MonitorService } from './monitor.service';
 import {
   MonitorProcessor,
-  MonitorProcessorUS,
-  MonitorProcessorEU,
-  MonitorProcessorAPAC,
+  MonitorProcessorUSEast,
+  MonitorProcessorEUCentral,
+  MonitorProcessorAsiaPacific,
 } from './monitor.processor';
 import { MONITOR_EXECUTION_QUEUE, MONITOR_QUEUES } from './monitor.constants';
 import { DbModule } from '../db/db.module';
@@ -24,9 +24,9 @@ import { LocationModule } from '../common/location/location.module';
   imports: [
     BullModule.registerQueue(
       { name: MONITOR_EXECUTION_QUEUE },
-      { name: MONITOR_QUEUES.US },
-      { name: MONITOR_QUEUES.EU },
-      { name: MONITOR_QUEUES.APAC },
+      { name: MONITOR_QUEUES.US_EAST },
+      { name: MONITOR_QUEUES.EU_CENTRAL },
+      { name: MONITOR_QUEUES.ASIA_PACIFIC },
     ),
     HttpModule,
     DbModule,
@@ -37,9 +37,9 @@ import { LocationModule } from '../common/location/location.module';
   providers: [
     MonitorService,
     MonitorProcessor,
-    MonitorProcessorUS,
-    MonitorProcessorEU,
-    MonitorProcessorAPAC,
+    MonitorProcessorUSEast,
+    MonitorProcessorEUCentral,
+    MonitorProcessorAsiaPacific,
     MonitorAlertService,
     ValidationService,
     EnhancedValidationService,
