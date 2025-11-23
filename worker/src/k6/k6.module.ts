@@ -34,15 +34,15 @@ const defaultJobOptions = {
         defaultJobOptions,
       },
       {
-        name: K6_QUEUES.US,
+        name: K6_QUEUES.US_EAST,
         defaultJobOptions,
       },
       {
-        name: K6_QUEUES.EU,
+        name: K6_QUEUES.EU_CENTRAL,
         defaultJobOptions,
       },
       {
-        name: K6_QUEUES.APAC,
+        name: K6_QUEUES.ASIA_PACIFIC,
         defaultJobOptions,
       },
     ),

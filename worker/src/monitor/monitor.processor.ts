@@ -10,7 +10,6 @@ import { MonitorJobDataDto } from './dto/monitor-job.dto';
 import {
   MONITOR_EXECUTION_QUEUE,
   EXECUTE_MONITOR_JOB_NAME,
-  IS_DISTRIBUTED_MULTI_LOCATION,
 } from './monitor.constants';
 import { MonitorExecutionResult } from './types/monitor-result.type';
 
@@ -101,26 +100,26 @@ export class MonitorProcessor extends WorkerHost {
   }
 }
 
-@Processor('monitor-US')
-export class MonitorProcessorUS extends MonitorProcessor {
+@Processor('monitor-us-east')
+export class MonitorProcessorUSEast extends MonitorProcessor {
   constructor(monitorService: MonitorService) {
     super(monitorService);
-    (this as any).logger = new Logger(MonitorProcessorUS.name);
+    (this as any).logger = new Logger(MonitorProcessorUSEast.name);
   }
 }
 
-@Processor('monitor-EU')
-export class MonitorProcessorEU extends MonitorProcessor {
+@Processor('monitor-eu-central')
+export class MonitorProcessorEUCentral extends MonitorProcessor {
   constructor(monitorService: MonitorService) {
     super(monitorService);
-    (this as any).logger = new Logger(MonitorProcessorEU.name);
+    (this as any).logger = new Logger(MonitorProcessorEUCentral.name);
   }
 }
 
-@Processor('monitor-APAC')
-export class MonitorProcessorAPAC extends MonitorProcessor {
+@Processor('monitor-asia-pacific')
+export class MonitorProcessorAsiaPacific extends MonitorProcessor {
   constructor(monitorService: MonitorService) {
     super(monitorService);
-    (this as any).logger = new Logger(MonitorProcessorAPAC.name);
+    (this as any).logger = new Logger(MonitorProcessorAsiaPacific.name);
   }
 }

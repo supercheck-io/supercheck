@@ -3,7 +3,7 @@
 #
 # Each worker monitors:
 # - Its regional queues (k6-{REGION}, monitor-{REGION})
-# - Global queues (playwright-GLOBAL, k6-GLOBAL)
+# - Global queues (playwright-global, k6-global)
 #
 # Scaling behavior:
 # - Min 0 replicas (scale to zero when idle)
@@ -72,7 +72,7 @@ spec:
     - type: redis
       metadata:
         address: redis.example.com:6379 # Update with actual Redis address
-        listName: bull:k6-US:wait
+        listName: bull:k6-us-east:wait
         listLength: "5" # Scale up when 5+ jobs waiting
         databaseIndex: "0"
       authenticationRef:
@@ -82,7 +82,7 @@ spec:
     - type: redis
       metadata:
         address: redis.example.com:6379
-        listName: bull:monitor-US:wait
+        listName: bull:monitor-us-east:wait
         listLength: "5"
         databaseIndex: "0"
       authenticationRef:
@@ -92,7 +92,7 @@ spec:
     - type: redis
       metadata:
         address: redis.example.com:6379
-        listName: bull:playwright-GLOBAL:wait
+        listName: bull:playwright-global:wait
         listLength: "10" # Higher threshold for global queues
         databaseIndex: "0"
       authenticationRef:
@@ -102,7 +102,7 @@ spec:
     - type: redis
       metadata:
         address: redis.example.com:6379
-        listName: bull:k6-GLOBAL:wait
+        listName: bull:k6-global:wait
         listLength: "10"
         databaseIndex: "0"
       authenticationRef:
@@ -152,7 +152,7 @@ spec:
     - type: redis
       metadata:
         address: redis.example.com:6379
-        listName: bull:k6-EU:wait
+        listName: bull:k6-eu-central:wait
         listLength: "5"
         databaseIndex: "0"
       authenticationRef:
@@ -161,7 +161,7 @@ spec:
     - type: redis
       metadata:
         address: redis.example.com:6379
-        listName: bull:monitor-EU:wait
+        listName: bull:monitor-eu-central:wait
         listLength: "5"
         databaseIndex: "0"
       authenticationRef:
@@ -170,7 +170,7 @@ spec:
     - type: redis
       metadata:
         address: redis.example.com:6379
-        listName: bull:playwright-GLOBAL:wait
+        listName: bull:playwright-global:wait
         listLength: "10"
         databaseIndex: "0"
       authenticationRef:
@@ -179,7 +179,7 @@ spec:
     - type: redis
       metadata:
         address: redis.example.com:6379
-        listName: bull:k6-GLOBAL:wait
+        listName: bull:k6-global:wait
         listLength: "10"
         databaseIndex: "0"
       authenticationRef:
@@ -229,7 +229,7 @@ spec:
     - type: redis
       metadata:
         address: redis.example.com:6379
-        listName: bull:k6-APAC:wait
+        listName: bull:k6-asia-pacific:wait
         listLength: "5"
         databaseIndex: "0"
       authenticationRef:
@@ -238,7 +238,7 @@ spec:
     - type: redis
       metadata:
         address: redis.example.com:6379
-        listName: bull:monitor-APAC:wait
+        listName: bull:monitor-asia-pacific:wait
         listLength: "5"
         databaseIndex: "0"
       authenticationRef:
@@ -247,7 +247,7 @@ spec:
     - type: redis
       metadata:
         address: redis.example.com:6379
-        listName: bull:playwright-GLOBAL:wait
+        listName: bull:playwright-global:wait
         listLength: "10"
         databaseIndex: "0"
       authenticationRef:
@@ -256,7 +256,7 @@ spec:
     - type: redis
       metadata:
         address: redis.example.com:6379
-        listName: bull:k6-GLOBAL:wait
+        listName: bull:k6-global:wait
         listLength: "10"
         databaseIndex: "0"
       authenticationRef:

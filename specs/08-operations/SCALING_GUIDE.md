@@ -550,9 +550,9 @@ For Kubernetes deployments, Supercheck supports **KEDA (Kubernetes Event-driven 
 
 The autoscaling configuration is defined in `deploy/k8s/keda-scaledobject.yaml`. It uses the Redis scaler to monitor the length of the following Redis lists:
 
--   `bull:playwright-GLOBAL:wait`: Jobs waiting for Playwright execution
--   `bull:k6-{REGION}:wait`: Jobs waiting for K6 execution (US, EU, APAC, GLOBAL)
--   `bull:monitor-{REGION}:wait`: Jobs waiting for Monitor execution (US, EU, APAC, GLOBAL)
+-   `bull:playwright-global:wait`: Jobs waiting for Playwright execution
+-   `bull:k6-{region}:wait`: Jobs waiting for K6 execution (us-east, eu-central, asia-pacific, global)
+-   `bull:monitor-{region}:wait`: Jobs waiting for Monitor execution (us-east, eu-central, asia-pacific)
 
 ### ScaledObject Details
 
@@ -571,7 +571,7 @@ spec:
   triggers:
     - type: redis
       metadata:
-        listName: bull:playwright-GLOBAL:wait
+        listName: bull:playwright-global:wait
         listLength: "10"
 ```
 

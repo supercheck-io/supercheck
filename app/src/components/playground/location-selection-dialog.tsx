@@ -34,7 +34,7 @@ export function LocationSelectionDialog({
   open,
   onOpenChange,
   onSelect,
-  defaultLocation = "GLOBAL",
+  defaultLocation = "global",
 }: LocationSelectionDialogProps) {
   const [selected, setSelected] = useState<PerformanceLocation>(
     defaultLocation
@@ -86,7 +86,7 @@ export function LocationSelectionDialog({
           </RadioGroup>
           <LocationMapCard
             locations={
-              (selected === "GLOBAL"
+              (selected === "global"
                 ? PERFORMANCE_LOCATIONS
                 : selected
                 ? [selected]
@@ -123,7 +123,7 @@ export function LocationSelectionDialog({
                   </p>
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
-                  {selected === "GLOBAL"
+                  {selected === "global"
                     ? "Selecting Global routes virtual users through any one of the randomly selected geographies based on availability."
                     : `Selecting ${selectedOption.name} routes virtual users through this geography so performance numbers reflect conditions near that region.`}
                 </p>

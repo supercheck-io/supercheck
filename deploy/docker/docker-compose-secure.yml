@@ -107,12 +107,8 @@ x-common-env: &common-env # Database Configuration
 
   NEXT_PUBLIC_DEMO_MODE: ${NEXT_PUBLIC_DEMO_MODE:-true} # Set to true to enable demo mode
 
-  # Multi-location execution
-  # When true, the app fan-outs monitor jobs per region. For local development we
-  # leave the worker unpinned (`WORKER_LOCATION=local`) so it happily handles all
-  # locations sequentially. In distributed deployments override this value with
-  # one of the supported regions (us-east, eu-central, asia-pacific).
-  MULTI_LOCATION_DISTRIBUTED: ${MULTI_LOCATION_DISTRIBUTED:-false}
+  # Worker Location for geo-distributed monitoring and load testing
+  # Options: local (for local dev - processes all regions) | us-east | eu-central | asia-pacific (for production)
   WORKER_LOCATION: ${WORKER_LOCATION:-local}
 
 services:

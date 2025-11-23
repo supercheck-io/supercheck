@@ -13,13 +13,13 @@ import {
 import { prepareJobTestScripts } from "@/lib/job-execution-utils";
 import { validateK6Script } from "@/lib/k6-validator";
 
-const DEFAULT_K6_LOCATION: K6Location = "GLOBAL";
+const DEFAULT_K6_LOCATION: K6Location = "global";
 
 const normalizeK6Location = (value?: string): K6Location => {
-  const upper = value?.toUpperCase();
-  // Only accept uppercase format: GLOBAL, US, EU, APAC
-  if (upper === "GLOBAL" || upper === "US" || upper === "EU" || upper === "APAC") {
-    return upper;
+  const lower = value?.toLowerCase();
+  // Accept kebab-case format matching K6Location type: "us-east" | "eu-central" | "asia-pacific" | "global"
+  if (lower === "us-east" || lower === "eu-central" || lower === "asia-pacific" || lower === "global") {
+    return lower;
   }
   return DEFAULT_K6_LOCATION;
 };

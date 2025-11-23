@@ -37,11 +37,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TagSelector, type Tag } from "@/components/ui/tag-selector";
 import { priorities, types } from "@/components/tests/data";
-import {
-  PERFORMANCE_LOCATION_OPTIONS,
-  type PerformanceLocation,
-  getPerformanceLocationOption,
-} from "./performance-locations";
+import { type PerformanceLocation } from "./performance-locations";
+
 
 const PLAYWRIGHT_TYPE_OPTIONS = types.filter((t) => t.value !== "performance");
 const PERFORMANCE_TYPE_OPTIONS = types.filter((t) => t.value === "performance");
@@ -77,7 +74,7 @@ const testCaseSchema = testsInsertSchema
       }
     ),
     location: z
-      .enum(["US", "EU", "APAC", "GLOBAL"] as const)
+      .enum(["us-east", "eu-central", "asia-pacific", "global"] as const)
       .optional()
       .nullable(),
     updatedAt: z.string().nullable().optional(),
@@ -166,12 +163,7 @@ export function TestForm({
   const [formChanged, setFormChanged] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const performanceMode = isPerformanceMode || testCase.type === "performance";
-  const currentPerformanceLocation = (performanceLocation ||
-    testCase.location ||
-    "GLOBAL") as PerformanceLocation;
-  const currentLocationOption = getPerformanceLocationOption(
-    currentPerformanceLocation
-  );
+
 
   // Tag management state
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
@@ -207,7 +199,7 @@ export function TestForm({
     }
 
     const resolvedLocation =
-      performanceLocation ?? testCase.location ?? "GLOBAL";
+      performanceLocation ?? testCase.location ?? "global";
 
     if (testCase.location !== resolvedLocation) {
       setTestCase((prev) => ({
@@ -217,16 +209,6 @@ export function TestForm({
     }
   }, [performanceMode, performanceLocation, testCase.location, setTestCase]);
 
-  const handlePerformanceLocationSelect = (value: PerformanceLocation) => {
-    setTestCase((prev) => ({
-      ...prev,
-      location: value,
-    }));
-
-    if (onPerformanceLocationChange) {
-      onPerformanceLocationChange(value);
-    }
-  };
 
   // Function to check if specific tag can be deleted by current user
   const canDeleteSpecificTag = (tag: Tag): boolean => {
@@ -878,12 +860,12 @@ export function TestForm({
                   value === "performance"
                     ? (prev.location as PerformanceLocation) ||
                       performanceLocation ||
-                      "us-east"
+                      "global"
                     : null,
               }));
               if (value === "performance" && onPerformanceLocationChange) {
                 onPerformanceLocationChange(
-                  (performanceLocation || "us-east") as PerformanceLocation
+                  (performanceLocation || "global") as PerformanceLocation
                 );
               }
             }}
@@ -932,66 +914,6 @@ export function TestForm({
           )}
         </div>
 
-        {performanceMode && (
-          <div className="space-y-2">
-            <label htmlFor="location" className="block text-sm font-medium">
-              Execution Location
-            </label>
-            <div className="flex w-full flex-col gap-3 md:flex-row md:items-center md:gap-4">
-              <Select
-                value={currentPerformanceLocation}
-                onValueChange={(value) =>
-                  handlePerformanceLocationSelect(value as PerformanceLocation)
-                }
-                disabled={isRunning}
-              >
-                <SelectTrigger
-                  className={cn(
-                    "h-10 md:w-48 md:flex-shrink-0",
-                    isRunning ? "opacity-70 cursor-not-allowed" : ""
-                  )}
-                >
-                  <SelectValue placeholder="Select execution region">
-                    {currentLocationOption ? (
-                      <span className="flex items-center gap-2">
-                        {currentLocationOption.flag && (
-                          <span className="text-lg">
-                            {currentLocationOption.flag}
-                          </span>
-                        )}
-                        <span className="text-sm font-medium">
-                          {currentLocationOption.name}
-                        </span>
-                      </span>
-                    ) : (
-                      "Select execution region"
-                    )}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {PERFORMANCE_LOCATION_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      <div className="flex items-center gap-2">
-                        {option.flag && (
-                          <span className="text-lg">{option.flag}</span>
-                        )}
-                        <span className="text-sm font-medium">
-                          {option.name}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground flex-1 leading-relaxed min-w-44">
-                Performance tests originate from the selected region.
-              </p>
-            </div>
-            {errors.location && (
-              <p className="mt-1.5 text-xs text-red-500">{errors.location}</p>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Tags Section */}

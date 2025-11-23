@@ -122,13 +122,13 @@ graph TB
 
 ### Multi-Location Architecture
 
-The distributed multi-location pipeline is available but currently **opt-in**. The shared `MULTI_LOCATION_DISTRIBUTED` environment variable (used by both the Next.js app and the NestJS worker) defaults to `false`, so monitors run on whichever worker picks them up unless you explicitly enable distributed mode. When set to `true`, every monitor run is expanded into per-location jobs handled by regional workers. Subscription-aware org-level capacity limits and location policies will eventually flip this flag automatically per organization.
+The system uses distributed multi-location monitoring by default. Every monitor run is expanded into per-location jobs handled by regional workers, providing global coverage out of the box.
 
 | Region | Worker Location Code | Description |
 |--------|----------------------|-------------|
-| US East | `US` (Ashburn) | Primary North American vantage point with low-latency access to US-based services. |
-| EU Central | `EU` (Frankfurt) | Core European vantage point ensuring GDPR-compliant monitoring coverage. **Default for monitors.** |
-| Asia Pacific | `APAC` (Mumbai) | High-availability APAC vantage point for latency-sensitive checks. |
+| US East | `us-east` (Ashburn) | Primary North American vantage point with low-latency access to US-based services. |
+| EU Central | `eu-central` (Frankfurt) | Core European vantage point ensuring GDPR-compliant monitoring coverage. **Default for monitors.** |
+| Asia Pacific | `asia-pacific` (Mumbai) | High-availability APAC vantage point for latency-sensitive checks. |
 
 #### Worker Architecture
 
@@ -136,22 +136,22 @@ The distributed multi-location pipeline is available but currently **opt-in**. T
 
 | Worker | Location | Regional Queues | Global Queues |
 |--------|----------|----------------|---------------|
-| `supercheck-worker-us` | US | `k6-US`, `monitor-US` | `playwright-GLOBAL`, `k6-GLOBAL` |
-| `supercheck-worker-eu` | EU | `k6-EU`, ` monitor-EU` | `playwright-GLOBAL`, `k6-GLOBAL` |
-| `supercheck-worker-apac` | APAC | `k6-APAC`, `monitor-APAC` | `playwright-GLOBAL`, `k6-GLOBAL` |
+| `supercheck-worker-us` | us-east | `k6-us-east`, `monitor-us-east` | `playwright-global`, `k6-global` |
+| `supercheck-worker-eu` | eu-central | `k6-eu-central`, `monitor-eu-central` | `playwright-global`, `k6-global` |
+| `supercheck-worker-apac` | asia-pacific | `k6-asia-pacific`, `monitor-asia-pacific` | `playwright-global`, `k6-global` |
 
 **Key Points:**
 - Each worker handles **multiple job types** (Playwright, K6, Monitor)
 - **Regional queues** ensure geographic accuracy for monitors and K6 tests
-- **Global queues** (`playwright-GLOBAL`, `k6-GLOBAL`) are processed by **any available** worker
+- **Global queues** (`playwright-global`, `k6-global`) are processed by **any available** worker
 - Automatic load balancing via BullMQ - first available worker gets the job
 
-**Local Development:** Set `WORKER_REGION=local` to process all queues on a single worker. All locations execute sequentially without simulated delay. Results still carry their location code so the UI behaves consistently. This is handled automatically in Docker Compose configurations.
+**Local Development:** Set `WORKER_LOCATION=local` to process all queues on a single worker. All locations execute sequentially without simulated delay. Results still carry their location code so the UI behaves consistently. This is handled automatically in Docker Compose configurations.
 
 
 #### Distributed Execution Flow
 
-- App queues a single monitor job per location, routing it to the specific **regional queue** (`monitor-US`, `monitor-EU`, etc.).
+- App queues a single monitor job per location, routing it to the specific **regional queue** (`monitor-us-east`, `monitor-eu-central`, etc.).
 - Regional workers listen only to their specific queue.
 - Each location stores an individual `monitor_results` row (including group metadata) and, once all expected locations report in, the worker aggregates statuses to update the parent monitor.
 - Alerts, SSE events, and UI filters consume the aggregated view while retaining per-location detail for drill-down.
@@ -159,25 +159,25 @@ The distributed multi-location pipeline is available but currently **opt-in**. T
 ```mermaid
 sequenceDiagram
     participant App as Next.js App
-    participant MQ_US as monitor-US Queue
-    participant MQ_EU as monitor-EU Queue
-    participant MQ_APAC as monitor-APAC Queue
-    participant W_US as Worker (US)
-    participant W_EU as Worker (EU)
-    participant W_APAC as Worker (APAC)
+    participant MQ_US as monitor-us-east Queue
+    participant MQ_EU as monitor-eu-central Queue
+    participant MQ_APAC as monitor-asia-pacific Queue
+    participant W_US as Worker (US East)
+    participant W_EU as Worker (EU Central)
+    participant W_APAC as Worker (Asia Pacific)
     participant DB as PostgreSQL
 
-    App->>MQ_US: enqueue monitor job (ash) + groupId
-    App->>MQ_EU: enqueue monitor job (fsn1) + groupId
-    App->>MQ_APAC: enqueue monitor job (in) + groupId
+    App->>MQ_US: enqueue monitor job (us-east) + groupId
+    App->>MQ_EU: enqueue monitor job (eu-central) + groupId
+    App->>MQ_APAC: enqueue monitor job (asia-pacific) + groupId
 
-    MQ_US->>W_US: deliver job (ash)
-    MQ_EU->>W_EU: deliver job (fsn1)
-    MQ_APAC->>W_APAC: deliver job (in)
+    MQ_US->>W_US: deliver job (us-east)
+    MQ_EU->>W_EU: deliver job (eu-central)
+    MQ_APAC->>W_APAC: deliver job (asia-pacific)
 
-    W_US->>DB: insert ash result (includes groupId)
-    W_EU->>DB: insert fsn1 result (includes groupId)
-    W_APAC->>DB: insert in result (includes groupId)
+    W_US->>DB: insert us-east result (includes groupId)
+    W_EU->>DB: insert eu-central result (includes groupId)
+    W_APAC->>DB: insert asia-pacific result (includes groupId)
 
     W_US->>W_US: aggregate when all expected locations reported
     W_US-->>DB: update monitor status + alerts
@@ -185,9 +185,9 @@ sequenceDiagram
 
 #### Queue Interactions
 
-- Monitor execution uses **regional BullMQ queues** (`monitor-US`, `monitor-EU`, `monitor-APAC`). Default: `monitor-EU`.
+- Monitor execution uses **regional BullMQ queues** (`monitor-us-east`, `monitor-eu-central`, `monitor-asia-pacific`). Default: `monitor-eu-central`.
 - The application logic routes jobs to the correct queue based on the target location.
-- Job and test execution queues are also location-aware (`k6-US`, `k6-EU`) or global (`playwright-GLOBAL`).
+- Job and test execution queues are also location-aware (`k6-us-east`, `k6-eu-central`) or global (`playwright-global`).
 
 ### Frontend (Next.js App)
 
@@ -1122,9 +1122,9 @@ interface MonitorConfig {
 }
 
 type MonitoringLocation =
-  | "US"         // Ashburn, USA
-  | "EU"         // Frankfurt, Germany
-  | "APAC";      // Mumbai, India
+  | "us-east"         // Ashburn, USA
+  | "eu-central"      // Frankfurt, Germany
+  | "asia-pacific";   // Mumbai, India
 ```
 
 ### Security Configuration
@@ -1371,3 +1371,20 @@ The monitoring system is production-ready with:
 
 The system provides enterprise-level reliability, security, and performance that exceeds industry standards for production monitoring solutions.
 
+### Distributed Aggregation Logic
+
+When monitors are executed across multiple regions (e.g., US East, EU Central, Asia Pacific), the results must be aggregated to determine the overall status.
+
+**Aggregation Process:**
+1.  **Execution Group ID**: Each multi-location run is assigned a unique `executionGroupId`.
+2.  **Regional Execution**: Workers in each region execute the check and save their individual result with the `executionGroupId`.
+3.  **Aggregation Check**: As each result is saved, the worker checks if all expected locations have reported for that `executionGroupId`.
+4.  **Retry Mechanism**: To handle race conditions where results are committed slightly out of sync, the aggregation logic includes a retry mechanism:
+    -   **Max Retries**: 3 attempts
+    -   **Delay**: 500ms between attempts
+    -   This ensures robust status calculation even with slight network or database latency.
+5.  **Status Calculation**: Once all results are present (or retries exhausted), the system calculates the overall status (e.g., "Up" if majority of locations are up).
+
+### Location Normalization
+
+To ensure consistency across the system, all location codes are normalized to a standard format (kebab-case, e.g., `us-east`, `eu-central`). Legacy uppercase codes (e.g., `US`) are automatically converted during processing to prevent status discrepancies.

@@ -1,11 +1,7 @@
-// The queue names are now dynamic based on the region and execution type
-// Tests use playwright-test-{REGION}, jobs use playwright-job-{REGION}
+// Playwright tests use a single global queue
+// K6 tests use regional queues (see k6.constants.ts for regional queue names)
 // Queue names
-export const PLAYWRIGHT_QUEUE = process.env.QUEUE_NAME || 'playwright-GLOBAL';
-
-// Job names
-export const TEST_EXECUTION_JOB = 'test-execution';
-export const JOB_EXECUTION_JOB = 'job-execution';
+export const PLAYWRIGHT_QUEUE = process.env.QUEUE_NAME || 'playwright-global';
 
 // Limits
 export const CONCURRENT_JOB_LIMIT = 5;

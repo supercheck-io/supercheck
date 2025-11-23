@@ -8,8 +8,8 @@ import {
   MONITOR_EXECUTION_QUEUE,
   EXECUTE_MONITOR_JOB_NAME,
 } from '../constants';
+import { MONITOR_QUEUES } from '../../monitor/monitor.constants';
 import { MonitorJobData } from '../interfaces';
-import { IS_DISTRIBUTED_MULTI_LOCATION } from '../../monitor/monitor.constants';
 import { LocationService } from '../../common/location/location.service';
 import type {
   LocationConfig,
@@ -32,15 +32,21 @@ export class MonitorSchedulerProcessor extends WorkerHost {
   constructor(
     @InjectQueue(MONITOR_EXECUTION_QUEUE)
     private readonly monitorExecutionQueue: Queue,
+    @InjectQueue(MONITOR_QUEUES.US_EAST)
+    private readonly monitorExecutionQueueUSEast: Queue,
+    @InjectQueue(MONITOR_QUEUES.EU_CENTRAL)
+    private readonly monitorExecutionQueueEUCentral: Queue,
+    @InjectQueue(MONITOR_QUEUES.ASIA_PACIFIC)
+    private readonly monitorExecutionQueueAsiaPacific: Queue,
     private readonly locationService: LocationService,
   ) {
     super();
+    this.logger.log('MonitorSchedulerProcessor instantiated - ready to process scheduled monitors');
   }
 
   async process(
     job: Job<MonitorJobData, void, string>,
   ): Promise<{ success: boolean }> {
-    // Removed log - only log errors
     await this.handleScheduledMonitorTrigger(job);
     return { success: true };
   }
@@ -66,59 +72,65 @@ export class MonitorSchedulerProcessor extends WorkerHost {
     jobData: MonitorJobData,
     retryLimit: number,
   ): Promise<void> {
-    if (IS_DISTRIBUTED_MULTI_LOCATION) {
-      const monitorConfig =
-        (jobData.config as MonitorConfig | undefined) ?? undefined;
-      const locationConfig =
-        (monitorConfig?.locationConfig as LocationConfig | null) ?? null;
+    // Multi-location monitoring is always enabled
+    // Enqueue jobs to regional queues based on monitor's location config
+    const monitorConfig =
+      (jobData.config as MonitorConfig | undefined) ?? undefined;
+    const locationConfig =
+      (monitorConfig?.locationConfig as LocationConfig | null) ?? null;
 
-      const effectiveLocations =
-        this.locationService.getEffectiveLocations(locationConfig);
-      const expectedLocations = Array.from(
-        new Set(effectiveLocations),
-      ) as MonitoringLocation[];
+    const effectiveLocations =
+      this.locationService.getEffectiveLocations(locationConfig);
+    const expectedLocations = Array.from(
+      new Set(effectiveLocations),
+    ) as MonitoringLocation[];
 
-      const executionGroupId = `${jobData.monitorId}-${Date.now()}-${crypto
-        .randomBytes(6)
-        .toString('hex')}`;
-
-      await Promise.all(
-        expectedLocations.map((location) =>
-          this.monitorExecutionQueue.add(
-            EXECUTE_MONITOR_JOB_NAME,
-            {
-              ...jobData,
-              executionLocation: location,
-              executionGroupId,
-              expectedLocations,
-            },
-            {
-              jobId: `${jobData.monitorId}:${executionGroupId}:${location}`,
-              attempts: retryLimit,
-              backoff: { type: 'exponential', delay: 5000 },
-              removeOnComplete:
-                MonitorSchedulerProcessor.COMPLETED_JOB_RETENTION,
-              removeOnFail: MonitorSchedulerProcessor.FAILED_JOB_RETENTION,
-              priority: 10,
-            },
-          ),
-        ),
-      );
-      return;
-    }
-
-    const uniqueJobId = `${jobData.monitorId}-${Date.now()}-${crypto
+    // Create execution group ID for tracking related executions
+    const executionGroupId = `${jobData.monitorId}-${Date.now()}-${crypto
       .randomBytes(4)
       .toString('hex')}`;
 
-    await this.monitorExecutionQueue.add(EXECUTE_MONITOR_JOB_NAME, jobData, {
-      jobId: uniqueJobId,
-      attempts: retryLimit,
-      backoff: { type: 'exponential', delay: 5000 },
-      removeOnComplete: MonitorSchedulerProcessor.COMPLETED_JOB_RETENTION,
-      removeOnFail: MonitorSchedulerProcessor.FAILED_JOB_RETENTION,
-      priority: 10,
-    });
+    await Promise.all(
+      expectedLocations.map((location) => {
+        // Select the appropriate regional queue based on location
+        const queue = this.getQueueForLocation(location);
+
+        return queue.add(
+          EXECUTE_MONITOR_JOB_NAME,
+          {
+            ...jobData,
+            executionLocation: location,
+            executionGroupId,
+            expectedLocations,
+          },
+          {
+            jobId: `${jobData.monitorId}:${executionGroupId}:${location}`,
+            attempts: retryLimit,
+            backoff: { type: 'exponential', delay: 5000 },
+            removeOnComplete:
+              MonitorSchedulerProcessor.COMPLETED_JOB_RETENTION,
+            removeOnFail: MonitorSchedulerProcessor.FAILED_JOB_RETENTION,
+            priority: 10,
+          },
+        );
+      }),
+    );
+  }
+
+  private getQueueForLocation(location: MonitoringLocation): Queue {
+    switch (location) {
+      case 'us-east':
+        return this.monitorExecutionQueueUSEast;
+      case 'eu-central':
+        return this.monitorExecutionQueueEUCentral;
+      case 'asia-pacific':
+        return this.monitorExecutionQueueAsiaPacific;
+      default:
+        this.logger.warn(
+          `Unknown location: ${location}, defaulting to us-east queue`,
+        );
+        return this.monitorExecutionQueueUSEast;
+    }
   }
 
   @OnWorkerEvent('completed')

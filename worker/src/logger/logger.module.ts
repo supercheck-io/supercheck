@@ -33,7 +33,7 @@ import { LoggerService } from './logger.service';
                   translateTime: 'HH:MM:ss.l',
                   ignore: 'pid,hostname',
                   singleLine: false,
-                  messageFormat: '{levelLabel} [{context}] {msg}',
+                  messageFormat: '[{context}] {msg}',
                 },
               }
             : undefined,

@@ -46,21 +46,18 @@ export async function fetchQueueStats(): Promise<QueueStats> {
     
     // Aggregate all execution queues
     const executionQueues = [
-      // Playwright GLOBAL queue
+      // Playwright global queue
       {
-        name: "playwright-GLOBAL",
-        queue: queues.playwrightQueues["GLOBAL"],
+        name: "playwright-global",
+        queue: queues.playwrightQueues["global"],
       },
       // K6 Regional Queues
       ...Object.entries(queues.k6Queues).map(([region, queue]) => ({
         name: `k6-${region}`,
         queue,
       })),
-      // Monitor Regional Queues
-      ...Object.entries(queues.monitorExecutionQueue).map(([region, queue]) => ({
-        name: `monitor-${region}`,
-        queue,
-      })),
+      // Monitor queues are excluded from running capacity limits as they are critical
+      // and should not be blocked by long-running tests
     ];
 
     const countsByQueue = await Promise.all(
