@@ -584,9 +584,3 @@ graph TB
 - **Queue System:** See `EXECUTION_SYSTEM.md` for queue details
 - **Authentication:** See `AUTHENTICATION.md` for auth mechanisms
 
-## Revision History
-
-| Version | Date | Changes |
-|---------|------|---------|
-| 2.0 | 2025-01-12 | Enhanced with comprehensive diagrams and architecture |
-| 1.0 | 2024-10-01 | Initial job trigger specification |
