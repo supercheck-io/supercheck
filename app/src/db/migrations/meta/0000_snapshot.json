@@ -1,5 +1,5 @@
 {
-  "id": "03826730-dc1a-410a-ae74-97032e6edfe5",
+  "id": "997b86f3-c2d4-478f-92c6-0893660fa11e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -2328,7 +2328,7 @@
           "type": "varchar(50)",
           "primaryKey": false,
           "notNull": false,
-          "default": "'us-east'"
+          "default": "'global'"
         },
         "status": {
           "name": "status",
@@ -2537,7 +2537,7 @@
           "type": "varchar(50)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'us-east'"
+          "default": "'eu-central'"
         },
         "status": {
           "name": "status",
