@@ -43,32 +43,25 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 export const options = {
-  // Simulates 3 concurrent users
-  vus: 3,
-  // Runs the test for 30 seconds
-  duration: '30s',
+  vus: 3,           // 3 concurrent users
+  duration: '30s',  // Run for 30 seconds
   thresholds: {
-    // Fail if more than 1% of requests fail
-    http_req_failed: ['rate<0.01'],
-    // Fail if 95% of requests take longer than 800ms
-    http_req_duration: ['p(95)<800'],
+    http_req_failed: ['rate<0.01'],      // Error rate < 1%
+    http_req_duration: ['p(95)<800'],    // 95% of requests < 800ms
   },
 };
 
 export default function () {
   const baseUrl = 'https://test-api.k6.io';
-  
-  // Make a GET request to the target endpoint
   const response = http.get(baseUrl + '/public/crocodiles/1/');
 
-  // Validate the response
+  // Validate response
   check(response, {
     'status is 200': (res) => res.status === 200,
     'body is not empty': (res) => res.body && res.body.length > 0,
   });
 
-  // Pause for 1 second between iterations to pace the requests
-  sleep(1);
+  sleep(1); // Pause between requests
 }
 `,
   },
@@ -103,18 +96,15 @@ import { check } from 'k6';
 
 export const options = {
   stages: [
-    { duration: '2m', target: 10 },  // Ramp up to 10 users
-    { duration: '5m', target: 50 },  // Ramp up to 50 users
-    { duration: '3m', target: 80 },  // Peak load at 80 users
-    { duration: '2m', target: 0 },   // Ramp down to 0
+    { duration: '2m', target: 10 },   // Ramp-up to 10 VUs
+    { duration: '5m', target: 50 },   // Increase to 50 VUs
+    { duration: '3m', target: 80 },   // Peak load at 80 VUs
+    { duration: '2m', target: 0 },    // Ramp-down
   ],
   thresholds: {
-    // Fail if error rate exceeds 2%
-    http_req_failed: ['rate<0.02'],
-    // Latency goals: 95% < 600ms, 99% < 1200ms
-    http_req_duration: ['p(95)<600', 'p(99)<1200'],
-    // Ensure 95% of checks pass
-    checks: ['rate>0.95'],
+    http_req_failed: ['rate<0.02'],              // Error rate < 2%
+    http_req_duration: ['p(95)<600', 'p(99)<1200'], // Latency thresholds
+    checks: ['rate>0.95'],                       // 95% of checks pass
   },
 };
 
@@ -124,7 +114,6 @@ export default function () {
 
   check(response, {
     'status is 200': (res) => res.status === 200,
-    // Custom check for latency within the function
     'p95 under budget': (res) => res.timings.duration < 600,
   });
 }
@@ -158,20 +147,20 @@ import { check, sleep } from 'k6';
 export const options = {
   scenarios: {
     spike: {
-      executor: 'ramping-arrival-rate',
+      executor: 'ramping-arrival-rate', // Throughput-based (requests/sec)
       timeUnit: '1s',
-      preAllocatedVUs: 50, // Initial pool of VUs
-      maxVUs: 200,         // Max VUs to allocate during spike
+      preAllocatedVUs: 50,
+      maxVUs: 200,
       stages: [
-        { duration: '30s', target: 20 },  // Steady state
-        { duration: '30s', target: 200 }, // SPIKE!
-        { duration: '1m', target: 20 },   // Recovery
+        { duration: '30s', target: 20 },    // Baseline: 20 req/s
+        { duration: '30s', target: 200 },   // Spike: 200 req/s
+        { duration: '1m', target: 20 },     // Recovery: back to 20 req/s
       ],
     },
   },
   thresholds: {
-    http_req_failed: ['rate<0.05'], // Allow slightly higher errors during spike
-    http_req_duration: ['p(99)<1500'],
+    http_req_failed: ['rate<0.05'],         // Allow 5% errors during spike
+    http_req_duration: ['p(99)<1500'],      // 99% of requests < 1.5s
   },
 };
 
@@ -179,8 +168,11 @@ export default function () {
   const baseUrl = 'https://test-api.k6.io';
   const res = http.get(baseUrl + '/public/crocodiles/2/');
 
-  check(res, { '200 OK during spike': (r) => r.status === 200 });
-  sleep(1);
+  check(res, {
+    '200 OK during spike': (r) => r.status === 200
+  });
+
+  sleep(1); // User think time
 }
 `,
   },
@@ -211,13 +203,13 @@ import { check, sleep } from 'k6';
 
 export const options = {
   stages: [
-    { duration: '5m', target: 20 },  // Ramp up
-    { duration: '20m', target: 20 }, // Hold steady load
-    { duration: '5m', target: 0 },   // Ramp down
+    { duration: '5m', target: 20 },    // Warm-up
+    { duration: '20m', target: 20 },   // Hold steady load (find memory leaks, performance degradation)
+    { duration: '5m', target: 0 },     // Cool-down
   ],
   thresholds: {
-    http_req_failed: ['rate<0.01'],
-    http_req_duration: ['p(95)<700'],
+    http_req_failed: ['rate<0.01'],    // Must maintain <1% error rate
+    http_req_duration: ['p(95)<700'],  // Latency shouldn't degrade over time
   },
 };
 
@@ -225,10 +217,11 @@ export default function () {
   const baseUrl = 'https://test-api.k6.io';
   const response = http.get(baseUrl + '/public/crocodiles/3/');
 
-  check(response, { 'status is 200': (res) => res.status === 200 });
-  
-  // Important: Sleep to pace requests and prevent unintentional DoS
-  sleep(2);
+  check(response, {
+    'status is 200': (res) => res.status === 200
+  });
+
+  sleep(2); // Realistic pacing
 }
 `,
   },
@@ -262,48 +255,42 @@ export const options = {
   vus: 20,
   duration: '2m',
   thresholds: {
-    http_req_failed: ['rate<0.02'],
-    http_req_duration: ['p(95)<450'],
-    checks: ['rate>0.98'],
+    http_req_failed: ['rate<0.02'],      // Error rate < 2%
+    http_req_duration: ['p(95)<450'],    // 95% of requests < 450ms
+    checks: ['rate>0.98'],               // 98% of checks pass
   },
 };
 
 export default function () {
   const baseUrl = 'https://test-api.k6.io';
-  // Access environment variables using __ENV
-  const token = __ENV.API_TOKEN || '';
+  const token = __ENV.API_TOKEN || ''; // Read environment variable
 
-  // Group: List Resources
+  // GROUP 1: List resources
   group('list resources', () => {
     const res = http.get(baseUrl + '/public/crocodiles/');
     check(res, { 'listed resources': (r) => r.status === 200 });
   });
 
-  // Group: Create Resource
+  // GROUP 2: Create resource
   group('create resource', () => {
     const payload = JSON.stringify({
       name: 'Load Test',
       sex: 'M',
       date_of_birth: '2015-01-01',
     });
-
     const res = http.post(baseUrl + '/public/crocodiles/', payload, {
       headers: { 'Content-Type': 'application/json' },
     });
-
     check(res, { 'created resource': (r) => r.status === 201 });
   });
 
-  // Group: Authenticated Request (only runs if token provided)
+  // GROUP 3: Authenticated request
   group('authenticated request', () => {
-    if (!token) {
-      return;
-    }
+    if (!token) return; // Skip if no token
 
     const res = http.get(baseUrl + '/my/crocodiles/', {
       headers: { Authorization: 'Bearer ' + token },
     });
-
     check(res, { 'auth works': (r) => r.status === 200 });
   });
 
@@ -337,7 +324,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Rate, Trend } from 'k6/metrics';
 
-// Custom metrics for tracking specific checks
+// Custom metrics: Rate (percentages) and Trend (numeric distributions)
 const errorRate = new Rate('custom_error_rate');
 const customDuration = new Trend('custom_duration');
 
@@ -347,16 +334,17 @@ export const options = {
   thresholds: {
     'http_req_failed': ['rate<0.01'],
     'http_req_duration': ['p(95)<500', 'p(99)<1000'],
-    'custom_error_rate': ['rate<0.05'], // Fail if custom error rate > 5%
+    'custom_error_rate': ['rate<0.05'],
     'custom_duration': ['avg<300', 'p(90)<400'],
-    'checks': ['rate>0.95'], // Fail if < 95% of checks pass
+    'checks': ['rate>0.95'],
   },
 };
 
 export default function () {
   const baseUrl = 'https://jsonplaceholder.typicode.com';
   const res = http.get(baseUrl + '/posts/1');
-  
+
+  // Comprehensive response validation
   const checkResult = check(res, {
     'status is 200': (r) => r.status === 200,
     'content-type is JSON': (r) => r.headers['Content-Type']?.includes('application/json'),
@@ -370,11 +358,11 @@ export default function () {
     'response time < 500ms': (r) => r.timings.duration < 500,
     'response size < 10KB': (r) => r.body.length < 10240,
   });
-  
-  // Add results to custom metrics
+
+  // Track custom metrics
   errorRate.add(!checkResult);
   customDuration.add(res.timings.duration);
-  
+
   sleep(1);
 }
 `,
@@ -407,6 +395,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter, Rate, Trend } from 'k6/metrics';
 
+// Custom metrics: Counter, Rate, Trend
 const apiCalls = new Counter('api_calls');
 const successRate = new Rate('success_rate');
 const apiLatency = new Trend('api_latency');
@@ -417,58 +406,44 @@ export const options = {
     { duration: '1m', target: 50 },
     { duration: '30s', target: 0 },
   ],
-  
   thresholds: {
     'http_req_failed': ['rate<0.01'],
-    'http_req_duration': [
-      'avg<300',
-      'p(50)<200',
-      'p(90)<500',
-      'p(95)<700',
-      'p(99)<1000',
-    ],
+    'http_req_duration': ['avg<300', 'p(50)<200', 'p(90)<500', 'p(95)<700', 'p(99)<1000'],
     'checks': ['rate>0.95'],
     'success_rate': ['rate>0.98'],
     'api_latency': ['p(95)<300', 'p(99)<500'],
-    // Tag-based thresholds
-    'http_req_duration{endpoint:read}': ['p(95)<400'],
+    'http_req_duration{endpoint:read}': ['p(95)<400'],  // Tag-based thresholds
     'http_req_duration{endpoint:write}': ['p(95)<500'],
   },
 };
 
 export default function () {
   const baseUrl = 'https://jsonplaceholder.typicode.com';
-  
-  // Read operation
-  const getRes = http.get(baseUrl + '/posts/1', {
-    tags: { endpoint: 'read' }, // Tagging for specific thresholds
-  });
-  
+
+  // READ operation (tagged)
+  const getRes = http.get(baseUrl + '/posts/1', { tags: { endpoint: 'read' } });
   apiCalls.add(1);
-  const getSuccess = check(getRes, { 
+  const getSuccess = check(getRes, {
     'GET successful': (r) => r.status === 200,
     'has content': (r) => r.body && r.body.length > 0,
   });
   successRate.add(getSuccess);
   apiLatency.add(getRes.timings.duration);
-  
-  // Write operation
+
+  // WRITE operation (tagged)
   const postRes = http.post(
     baseUrl + '/posts',
     JSON.stringify({ title: 'Test', body: 'Load test', userId: 1 }),
     {
       headers: { 'Content-Type': 'application/json' },
-      tags: { endpoint: 'write' }, // Tagging for specific thresholds
+      tags: { endpoint: 'write' },
     }
   );
-  
   apiCalls.add(1);
-  const postSuccess = check(postRes, { 
-    'POST successful': (r) => r.status === 201,
-  });
+  const postSuccess = check(postRes, { 'POST successful': (r) => r.status === 201 });
   successRate.add(postSuccess);
   apiLatency.add(postRes.timings.duration);
-  
+
   sleep(1);
 }
 `,
@@ -503,32 +478,35 @@ const errorRate = new Rate('errors');
 
 export const options = {
   stages: [
-    { duration: '2m', target: 100 }, // Load 100
+    // Level 1: Light load
+    { duration: '2m', target: 100 },
     { duration: '5m', target: 100 },
-    { duration: '2m', target: 200 }, // Load 200
+    // Level 2: Moderate load
+    { duration: '2m', target: 200 },
     { duration: '5m', target: 200 },
-    { duration: '2m', target: 300 }, // Load 300 (Stress)
+    // Level 3: Heavy stress
+    { duration: '2m', target: 300 },
     { duration: '5m', target: 300 },
-    { duration: '5m', target: 0 },   // Recovery
+    // Recovery
+    { duration: '5m', target: 0 },
   ],
-  
   thresholds: {
-    'http_req_failed': ['rate<0.1'], // Allow 10% failure under stress
-    'http_req_duration': ['p(95)<5000'], // Allow 5s latency
+    'http_req_failed': ['rate<0.1'],      // Allow 10% errors under stress
+    'http_req_duration': ['p(95)<5000'],  // Allow 5s latency
     'errors': ['rate<0.15'],
   },
 };
 
 export default function () {
   const baseUrl = 'https://test-api.k6.io';
-  
+
   // Batch requests for higher throughput
   const responses = http.batch([
     ['GET', baseUrl + '/public/crocodiles/'],
     ['GET', baseUrl + '/public/crocodiles/1/'],
     ['GET', baseUrl + '/public/crocodiles/2/'],
   ]);
-  
+
   responses.forEach((res) => {
     const passed = check(res, {
       'status 200': (r) => r.status === 200,
@@ -536,7 +514,7 @@ export default function () {
     });
     errorRate.add(!passed);
   });
-  
+
   sleep(1);
 }
 `,
@@ -567,19 +545,17 @@ import http from 'k6/http';
 import { check } from 'k6';
 
 export const options = {
-  executor: 'ramping-arrival-rate',
+  executor: 'ramping-arrival-rate', // Throughput-based (requests/sec)
   startRate: 50,
   timeUnit: '1s',
   preAllocatedVUs: 500,
   maxVUs: 1000,
   stages: [
-    { target: 200, duration: '10m' },
-    { target: 500, duration: '10m' },
-    { target: 1000, duration: '10m' }, // Push to breaking point
+    { target: 200, duration: '10m' },  // 200 req/s
+    { target: 500, duration: '10m' },  // 500 req/s
+    { target: 1000, duration: '10m' }, // 1000 req/s (breaking point)
   ],
-  
   thresholds: {
-    // Abort test early if system is broken to save resources
     'http_req_failed': [{ threshold: 'rate<0.05', abortOnFail: true }],
     'http_req_duration': [{ threshold: 'p(99)<3000', abortOnFail: true }],
   },
@@ -1878,8 +1854,8 @@ export const options = {
   vus: 10,
   duration: '30s',
   thresholds: {
-    http_req_duration: ['p(95)<500'],
-    http_req_failed: ['rate<0.1'],
+    http_req_duration: ['p(95)<500'],  // 95% of requests < 500ms
+    http_req_failed: ['rate<0.1'],     // Error rate < 10%
   },
 };
 
@@ -1891,7 +1867,7 @@ export default function() {
     'response time < 500ms': (r) => r.timings.duration < 500,
   });
 
-  sleep(1);
+  sleep(1); // Pause between requests
 }`,
   },
 ];
