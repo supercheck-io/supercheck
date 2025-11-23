@@ -43,6 +43,42 @@ graph TB
 
 ---
 
+## Bootstrapping
+
+The first super admin must be bootstrapped into the system. There are two methods to achieve this:
+
+### 1. Automatic (Environment Variable) - Recommended
+Set the `SUPER_ADMIN_EMAIL` environment variable in your deployment configuration (e.g., `docker-compose.yml`). The system will automatically check for this user on startup and promote them to super admin if they exist.
+
+> [!IMPORTANT]
+> Only a **single** email address is supported. Comma-separated lists are strictly prohibited to prevent misconfiguration.
+
+```yaml
+environment:
+  - SUPER_ADMIN_EMAIL=admin@example.com
+```
+
+### 2. Manual (Script)
+You can manually promote a user by running the bootstrap script inside the container:
+
+```bash
+# Inside the app container
+npm run setup:admin -- admin@example.com
+```
+
+---
+
+### 3. Revoking Privileges
+To replace a super admin or downgrade a user, you must explicitly revoke their privileges using the revocation script:
+
+```bash
+# Inside the app container
+npm run revoke:admin -- admin@example.com
+```
+
+> [!NOTE]
+> This will downgrade the user's role to `admin` (Organization Admin). You can then bootstrap a new super admin using the methods above.
+
 ## Key Features
 
 ### 1. System Statistics
