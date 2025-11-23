@@ -77,7 +77,7 @@ const testCaseSchema = testsInsertSchema
       }
     ),
     location: z
-      .enum(["us-east", "eu-central", "asia-pacific"] as const)
+      .enum(["US", "EU", "APAC", "GLOBAL"] as const)
       .optional()
       .nullable(),
     updatedAt: z.string().nullable().optional(),
@@ -168,7 +168,7 @@ export function TestForm({
   const performanceMode = isPerformanceMode || testCase.type === "performance";
   const currentPerformanceLocation = (performanceLocation ||
     testCase.location ||
-    "us-east") as PerformanceLocation;
+    "GLOBAL") as PerformanceLocation;
   const currentLocationOption = getPerformanceLocationOption(
     currentPerformanceLocation
   );
@@ -207,7 +207,7 @@ export function TestForm({
     }
 
     const resolvedLocation =
-      performanceLocation ?? testCase.location ?? "us-east";
+      performanceLocation ?? testCase.location ?? "GLOBAL";
 
     if (testCase.location !== resolvedLocation) {
       setTestCase((prev) => ({

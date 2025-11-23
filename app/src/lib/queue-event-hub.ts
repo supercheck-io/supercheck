@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import {
   getQueues,
   REGIONS,
+  MONITOR_REGIONS,
 } from "@/lib/queue";
 import { db } from "@/utils/db";
 import { runs } from "@/db/schema";
@@ -97,7 +98,7 @@ class QueueEventHub extends EventEmitter {
       }
 
       // Add monitor queues for all regions
-      for (const region of REGIONS) {
+      for (const region of MONITOR_REGIONS) {
         sources.push({
           category: "monitor",
           queueName: `monitor-${region}`,
