@@ -202,8 +202,8 @@ The system manages distinct queues for different execution types and regions:
 graph TB
     subgraph "Queue Types"
         Q1[playwright-GLOBAL<br/>All Playwright Tasks]
-        Q2[k6-{REGION}<br/>Regional Load Tests]
-        Q3[monitor-{REGION}<br/>Regional Monitors]
+        Q2["k6-REGION<br/>Regional Load Tests"]
+        Q3["monitor-REGION<br/>Regional Monitors"]
         Q4[Scheduler Queues<br/>Cron Jobs]
     end
 
@@ -1567,8 +1567,3 @@ The execution system provides:
 ✅ **Horizontal scaling** for high throughput
 ✅ **Security isolation** with containerized environments
 
----
-
-**Document Version:** 1.0
-**Last Updated:** 2025-01-17
-**Status:** Production Ready
