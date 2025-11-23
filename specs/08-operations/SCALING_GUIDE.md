@@ -592,6 +592,4 @@ To enable KEDA autoscaling:
 4. **Set up monitoring and alerting** for production
 5. **Review performance metrics** regularly
 
-For more information, see:
-- [Test Execution Flow](TEST_EXECUTION_AND_JOB_QUEUE_FLOW.md)
-- [Security Documentation](SECURITY_IMPLEMENTATION_PLAN.md)
+For more information on test execution and monitoring, refer to the EXECUTION_SYSTEM.md and MONITORING_SYSTEM.md documentation in the specs directory.
