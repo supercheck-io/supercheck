@@ -20,7 +20,7 @@ import { jobs, runs } from '../../db/schema';
 import { eq, and } from 'drizzle-orm';
 import { Queue } from 'bullmq';
 
-const DEFAULT_K6_LOCATION = 'us-east';
+const DEFAULT_K6_LOCATION = 'global';
 
 abstract class BaseJobSchedulerProcessor extends WorkerHost {
   protected readonly logger: Logger;

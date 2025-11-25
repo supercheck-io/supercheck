@@ -40,13 +40,18 @@ export function LocationFilterDropdown({
         </div>
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="all">All Locations</SelectItem>
+        <SelectItem value="all">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🌍</span>
+            <span>All Locations</span>
+          </div>
+        </SelectItem>
         {availableLocations.map((location) => {
           const metadata = getLocationMetadata(location as MonitoringLocation);
           return (
             <SelectItem key={location} value={location}>
               <div className="flex items-center gap-2">
-                {metadata?.flag && <span>{metadata.flag}</span>}
+                {metadata?.flag && <span className="text-lg">{metadata.flag}</span>}
                 <span>{metadata?.name || location}</span>
               </div>
             </SelectItem>

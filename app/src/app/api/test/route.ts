@@ -88,11 +88,15 @@ export async function POST(request: NextRequest) {
     const testType = isPerformanceTest ? "performance" : "browser";
 
     const normalizeLocation = (value?: string): K6Location => {
-      if (value === "us-east" || value === "eu-central" || value === "asia-pacific") {
-        return value;
-      }
-      return "us-east";
-    };
+          const lower = value?.toLowerCase();
+          // Accept kebab-case format matching K6Location type: "us-east" | "eu-central" | "asia-pacific" | "global"
+          if (lower === "us-east" || lower === "eu-central" || lower === "asia-pacific" || lower === "global") {
+            return lower;
+          }
+          // Default to global for any other value with warning
+          console.warn(`[LOCATION WARNING] Invalid location "${value}" received, defaulting to "global". Valid locations: us-east, eu-central, asia-pacific, global`);
+          return "global";
+        };
 
     const executionLocation: K6Location | undefined = isPerformanceTest
       ? normalizeLocation(requestedLocation)
@@ -160,7 +164,7 @@ export async function POST(request: NextRequest) {
 
     try {
       resolvedLocation = isPerformanceTest
-        ? executionLocation ?? "us-east"
+        ? executionLocation ?? "global"
         : null;
 
       if (isPerformanceTest) {
@@ -195,7 +199,7 @@ export async function POST(request: NextRequest) {
           tests: [{ id: testId, script: code }],
           organizationId,
           projectId: project.id,
-          location: resolvedLocation ?? "us-east",
+          location: resolvedLocation ?? "global",
         };
 
         await addK6TestToQueue(performanceTask, 'k6-playground-execution');

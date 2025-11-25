@@ -24,102 +24,78 @@ import {
  * to survive restarts.
  */
 export async function SchedulerInitializer() {
-  // Schedulers are always enabled - no option to disable
+  console.log("🚀 SchedulerInitializer starting...");
+
   try {
-    // Initialize job scheduler synchronously to ensure it completes during startup
-    const initializeAsync = async () => {
-      try {
-        await cleanupJobScheduler();
-        const result = await initializeJobSchedulers();
+    // Initialize job scheduler
+    console.log("📋 Initializing job scheduler...");
+    await cleanupJobScheduler();
+    const jobResult = await initializeJobSchedulers();
 
-        if (result.success) {
-          if (result.failed && result.failed > 0) {
-            console.warn(`⚠️ ${result.failed} job(s) failed to initialize`);
-          }
-
-          // Initialize unified data lifecycle service
-          const lifecycleService = await initializeDataLifecycleService();
-          if (lifecycleService) {
-            const status = await lifecycleService.getStatus();
-            if (status.enabledStrategies.length > 0) {
-            } else {
-            }
-          } else {
-            console.warn("⚠️ Data lifecycle service failed to initialize");
-          }
-        } else {
-          console.error("❌ Job scheduler initialization failed", result.error);
-        }
-      } catch (error: unknown) {
-        console.error("❌ Job scheduler error:", error);
-        throw error;
+    if (jobResult.success) {
+      console.log(
+        `✅ Job scheduler initialized (${jobResult.scheduled} scheduled${
+          jobResult.failed ? `, ${jobResult.failed} failed` : ""
+        })`
+      );
+      if (jobResult.failed && jobResult.failed > 0) {
+        console.warn(`⚠️ ${jobResult.failed} job(s) failed to initialize`);
       }
-    };
+    } else {
+      console.error("❌ Job scheduler initialization failed", jobResult.error);
+    }
 
-    initializeAsync().catch((error) => {
-      console.error("❌ Critical: Job scheduler failed during startup:", error);
-    });
+    // Initialize unified data lifecycle service
+    console.log("ℹ️ Initializing data lifecycle service...");
+    const lifecycleService = await initializeDataLifecycleService();
+    if (lifecycleService) {
+      const status = await lifecycleService.getStatus();
+      console.log(
+        `✅ Data lifecycle service initialized (${status.enabledStrategies.length} strategies enabled)`
+      );
+      if (status.enabledStrategies.length > 0) {
+        console.log(`   Enabled strategies: ${status.enabledStrategies.join(", ")}`);
+      }
+    } else {
+      console.warn("⚠️ Data lifecycle service failed to initialize");
+    }
   } catch (error) {
-    console.error("❌ Error starting job scheduler:", error);
+    console.error("❌ Job scheduler error:", error);
   }
 
   try {
-    // Initialize monitor scheduler synchronously to ensure it completes during startup
-    const initializeAsync = async () => {
-      try {
-        await cleanupMonitorScheduler();
-        const result = await initializeMonitorSchedulers();
+    // Initialize monitor scheduler
+    console.log("🔔 Initializing monitor scheduler...");
+    await cleanupMonitorScheduler();
+    const monitorResult = await initializeMonitorSchedulers();
 
-        if (result.success) {
-          console.log(
-            `✅ Monitor scheduler initialized (${result.scheduled} monitors${
-              result.failed ? `, ${result.failed} failed` : ""
-            })`
-          );
-
-          if (result.failed > 0) {
-            console.warn(`⚠️ ${result.failed} monitor(s) failed to initialize`);
-          }
-        } else {
-          console.error("❌ Monitor scheduler initialization failed");
-        }
-      } catch (error: unknown) {
-        console.error("❌ Monitor scheduler error:", error);
-        throw error;
-      }
-    };
-
-    initializeAsync().catch((error) => {
-      console.error(
-        "❌ Critical: Monitor scheduler failed during startup:",
-        error
+    if (monitorResult.success) {
+      console.log(
+        `✅ Monitor scheduler initialized (${monitorResult.scheduled} monitors${
+          monitorResult.failed ? `, ${monitorResult.failed} failed` : ""
+        })`
       );
-    });
+
+      if (monitorResult.failed > 0) {
+        console.warn(`⚠️ ${monitorResult.failed} monitor(s) failed to initialize`);
+      }
+    } else {
+      console.error("❌ Monitor scheduler initialization failed");
+    }
   } catch (error) {
-    console.error("❌ Error starting monitor scheduler:", error);
+    console.error("❌ Monitor scheduler error:", error);
   }
 
   try {
     // Initialize email template processor for worker template rendering requests
-    const initializeAsync = async () => {
-      try {
-        await initializeEmailTemplateProcessor();
-        console.log("✅ Email template processor initialized");
-      } catch (error: unknown) {
-        console.error("❌ Email template processor error:", error);
-        throw error;
-      }
-    };
-
-    initializeAsync().catch((error) => {
-      console.error(
-        "❌ Critical: Email template processor failed during startup:",
-        error
-      );
-    });
+    console.log("📧 Initializing email template processor...");
+    await initializeEmailTemplateProcessor();
+    console.log("✅ Email template processor initialized");
   } catch (error) {
-    console.error("❌ Error starting email template processor:", error);
+    console.error("❌ Email template processor error:", error);
   }
+
+  console.log("✨ SchedulerInitializer completed");
 
   // This is a server component, so it doesn't render anything
   return null;

@@ -1,20 +1,18 @@
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
-import { JOB_EXECUTION_QUEUE } from '../constants';
+import { PLAYWRIGHT_QUEUE } from '../constants';
 import { ExecutionService } from '../services/execution.service';
 import { DbService } from '../services/db.service';
-import { JobExecutionTask, TestExecutionResult } from '../interfaces';
+import { JobNotificationService } from '../services/job-notification.service';
+import { JobExecutionTask, TestExecutionTask, TestExecutionResult, TestResult } from '../interfaces';
 import { eq } from 'drizzle-orm';
 import { jobs } from '../../db/schema';
 import { ErrorHandler } from '../../common/utils/error-handler';
-import { JobNotificationService } from '../services/job-notification.service';
 
-// Types are now imported from interfaces.ts which uses schema types
-
-@Processor(JOB_EXECUTION_QUEUE)
-export class JobExecutionProcessor extends WorkerHost {
-  private readonly logger = new Logger(JobExecutionProcessor.name);
+@Processor(PLAYWRIGHT_QUEUE, { concurrency: 5 }) // Increased concurrency for global queue
+export class PlaywrightExecutionProcessor extends WorkerHost {
+  private readonly logger = new Logger(PlaywrightExecutionProcessor.name);
 
   constructor(
     private readonly executionService: ExecutionService,
@@ -22,17 +20,53 @@ export class JobExecutionProcessor extends WorkerHost {
     private readonly jobNotificationService: JobNotificationService,
   ) {
     super();
-    this.logger.log(`[Constructor] JobExecutionProcessor instantiated.`);
+    this.logger.log(`[Constructor] PlaywrightExecutionProcessor instantiated.`);
   }
 
-  // Specify concurrency if needed, e.g., @Process({ concurrency: 2 })
-  // @Process()
-  async process(job: Job<JobExecutionTask>): Promise<TestExecutionResult> {
+  async process(job: Job<JobExecutionTask | TestExecutionTask>): Promise<TestExecutionResult | TestResult> {
+    const data = job.data;
+    
+    // Determine if this is a test or a job
+    if ('testId' in data && !('jobId' in data)) {
+      return this.processTest(job as Job<TestExecutionTask>);
+    } else {
+      return this.processJob(job as Job<JobExecutionTask>);
+    }
+  }
+
+  private async processTest(job: Job<TestExecutionTask>): Promise<TestResult> {
+    const testId = job.data.testId;
+    const startTime = new Date();
+
+    try {
+      await job.updateProgress(10);
+
+      // Delegate the actual execution to the service
+      const result = await this.executionService.runSingleTest(job.data);
+
+      await job.updateProgress(100);
+      
+      const status = result.success ? 'passed' : 'failed';
+      this.logger.log(`Test ${job.id} completed: ${status}`);
+
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `[${testId}] Test execution job ID: ${job.id} failed. Error: ${(error as Error).message}`,
+        (error as Error).stack,
+      );
+      await job.updateProgress(100);
+      throw error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  private async processJob(job: Job<JobExecutionTask>): Promise<TestExecutionResult> {
     const runId = job.data.runId;
     const jobData = job.data;
     const { jobId: originalJobId } = jobData;
     const jobIdForLookup = jobData.originalJobId || jobData.jobId;
     const startTime = new Date();
+    
     this.logger.log(
       `[${runId}] Job execution job ID: ${job.id} received for processing${originalJobId ? ` (job ${originalJobId})` : ''}`,
     );
@@ -41,7 +75,6 @@ export class JobExecutionProcessor extends WorkerHost {
 
     try {
       // Delegate the actual execution to the service
-      // The service handles validation, writing files, execution, upload, DB updates
       const result = await this.executionService.runJob(job.data);
 
       await job.updateProgress(100);
@@ -66,31 +99,10 @@ export class JobExecutionProcessor extends WorkerHost {
           ),
         );
 
-      // Update job status based on all current run statuses (including the one we just updated)
+      // Update job status based on all current run statuses
       if (originalJobId) {
-        const finalRunStatuses =
-          await this.dbService.getRunStatusesForJob(originalJobId);
-        // Robust: If only one run, or all runs are terminal, set job status to match this run
-        const allTerminal = finalRunStatuses.every((s) =>
-          ['passed', 'failed', 'error'].includes(s),
-        );
-        if (finalRunStatuses.length === 1 || allTerminal) {
-          await this.dbService
-            .updateJobStatus(originalJobId, [finalStatus])
-            .catch((err: Error) =>
-              this.logger.error(
-                `[${runId}] Failed to update job status (robust): ${err.message}`,
-              ),
-            );
-        } else {
-          await this.dbService
-            .updateJobStatus(originalJobId, finalRunStatuses)
-            .catch((err: Error) =>
-              this.logger.error(
-                `[${runId}] Failed to update job status: ${err.message}`,
-              ),
-            );
-        }
+        await this.updateJobStatus(originalJobId, finalStatus, runId);
+        
         // Always update lastRunAt after a run completes
         await this.dbService.db
           .update(jobs)
@@ -111,8 +123,6 @@ export class JobExecutionProcessor extends WorkerHost {
         jobType: jobData.jobType ?? 'playwright',
       });
 
-      // The result object (TestExecutionResult) from the service is returned.
-      // BullMQ will store this in Redis and trigger the 'completed' event.
       return result;
     } catch (error: unknown) {
       ErrorHandler.logError(
@@ -136,28 +146,7 @@ export class JobExecutionProcessor extends WorkerHost {
 
       // Update job status based on all current run statuses
       if (originalJobId) {
-        const finalRunStatuses =
-          await this.dbService.getRunStatusesForJob(originalJobId);
-        const allTerminal = finalRunStatuses.every((s) =>
-          ['passed', 'failed', 'error'].includes(s),
-        );
-        if (finalRunStatuses.length === 1 || allTerminal) {
-          await this.dbService
-            .updateJobStatus(originalJobId, [errorStatus])
-            .catch((err) =>
-              this.logger.error(
-                `[${runId}] Failed to update job error status (robust): ${(err as Error).message}`,
-              ),
-            );
-        } else {
-          await this.dbService
-            .updateJobStatus(originalJobId, finalRunStatuses)
-            .catch((err) =>
-              this.logger.error(
-                `[${runId}] Failed to update job error status: ${(err as Error).message}`,
-              ),
-            );
-        }
+        await this.updateJobStatus(originalJobId, errorStatus, runId);
       }
 
       try {
@@ -186,18 +175,56 @@ export class JobExecutionProcessor extends WorkerHost {
         );
       }
 
-      // Update job progress to indicate failure stage if applicable
       await job.updateProgress(100);
-
-      // It's crucial to re-throw the error for BullMQ to mark the job as failed.
-      // This will trigger the 'failed' event for the queue.
       throw error instanceof Error ? error : new Error(String(error));
     }
   }
 
+  private async updateJobStatus(originalJobId: string, status: "pending" | "running" | "passed" | "failed" | "error", runId: string) {
+    const finalRunStatuses =
+      await this.dbService.getRunStatusesForJob(originalJobId);
+    // Robust: If only one run, or all runs are terminal, set job status to match this run
+    const allTerminal = finalRunStatuses.every((s) =>
+      ['passed', 'failed', 'error'].includes(s),
+    );
+    if (finalRunStatuses.length === 1 || allTerminal) {
+      await this.dbService
+        .updateJobStatus(originalJobId, [status])
+        .catch((err: Error) =>
+          this.logger.error(
+            `[${runId}] Failed to update job status (robust): ${err.message}`,
+          ),
+        );
+    } else {
+      await this.dbService
+        .updateJobStatus(originalJobId, finalRunStatuses)
+        .catch((err: Error) =>
+          this.logger.error(
+            `[${runId}] Failed to update job status: ${err.message}`,
+          ),
+        );
+    }
+  }
+
+  @OnWorkerEvent('failed')
+  onFailed(job: Job | undefined, error: Error) {
+    const jobId = job?.id || 'unknown';
+    this.logger.error(
+      `[Event:failed] Job ${jobId} failed with error: ${error.message}`,
+      error.stack,
+    );
+  }
+
+  @OnWorkerEvent('error')
+  onError(error: Error) {
+    this.logger.error(
+      `[Event:error] Worker encountered an error: ${error.message}`,
+      error.stack,
+    );
+  }
+
   @OnWorkerEvent('ready')
   onReady() {
-    // This indicates the underlying BullMQ worker is connected and ready
     this.logger.log(
       '[Event:ready] Worker is connected to Redis and ready to process jobs.',
     );

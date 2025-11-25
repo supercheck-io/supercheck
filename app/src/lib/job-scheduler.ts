@@ -6,8 +6,7 @@ import { eq, isNotNull, and } from "drizzle-orm";
 import {
   getQueues,
   JobExecutionTask,
-  JOB_EXECUTION_QUEUE,
-  K6_JOB_EXECUTION_QUEUE,
+  addJobToQueue,
 } from "./queue";
 import crypto from "crypto";
 import { getNextRunDate } from "@/lib/cron-utils";
@@ -85,20 +84,12 @@ export async function scheduleJob(options: ScheduleOptions): Promise<string> {
       await schedulerQueue.removeRepeatableByKey(existingJob.key);
     }
 
-    // Create a repeatable job that follows the cron schedule
-    // The worker for JOB_SCHEDULER_QUEUE will process this.
-    // The data payload contains what's needed to create the *actual* execution job.
-    const executionQueueName = job.jobType === "k6"
-      ? K6_JOB_EXECUTION_QUEUE
-      : JOB_EXECUTION_QUEUE;
-
     await schedulerQueue.add(
       schedulerJobName,
       {
         jobId: options.jobId,
         name: options.name,
         testCases,
-        queue: executionQueueName, // Keep for handleScheduledJobTrigger
         retryLimit: options.retryLimit || 3,
         // Pass resolved variables and job info to worker
         variables: variableResolution.variables,
@@ -215,8 +206,7 @@ export async function handleScheduledJobTrigger(job: Job) {
         .where(eq(jobs.id, jobId));
     }
 
-    // Get the queue for execution
-    const { jobQueue } = await getQueues();
+    // Get the queue for execution - no longer directly accessed
 
     // Process the test cases that were passed from the scheduler setup
     // These contain the test scripts that were fetched at scheduling time
@@ -266,20 +256,8 @@ export async function handleScheduledJobTrigger(job: Job) {
       secrets: variableResolution.secrets,
     };
 
-    // Add task to the execution queue - always use runId as both job name and ID
-    // This ensures SSE can find it consistently for both manual and scheduled jobs
-    const jobOptions = {
-      jobId: runId, // Set explicit jobId to match runId for SSE lookups
-      attempts: data.retryLimit || 3,
-      backoff: {
-        type: "exponential" as const,
-        delay: 5000,
-      },
-      removeOnComplete: true,
-      removeOnFail: false,
-    };
-
-    await jobQueue.add(runId, task, jobOptions);
+    // Add task to the execution queue using the helper function
+    await addJobToQueue(task);
 
     // Created execution task
   } catch (error) {
@@ -516,21 +494,31 @@ export async function initializeDataLifecycleService(): Promise<DataLifecycleSer
     );
 
     // Create the unified data lifecycle service
+    console.log("[DATA_LIFECYCLE] Creating service from environment variables...");
     const lifecycleService = createDataLifecycleService();
+    console.log("[DATA_LIFECYCLE] Service created successfully");
 
     // Get Redis connection from existing queue system
+    console.log("[DATA_LIFECYCLE] Getting Redis connection from queue system...");
     const { redisConnection } = await getQueues();
+    console.log("[DATA_LIFECYCLE] Redis connection obtained");
 
     // Initialize the lifecycle service with Redis connection
+    console.log("[DATA_LIFECYCLE] Initializing service with Redis connection...");
     await lifecycleService.initialize(redisConnection);
+    console.log("[DATA_LIFECYCLE] Service initialization complete");
 
     // Set the global instance for access throughout the app
     setDataLifecycleInstance(lifecycleService);
 
-    console.log("[DATA_LIFECYCLE] Initialized successfully");
+    const status = await lifecycleService.getStatus();
+    console.log("[DATA_LIFECYCLE] ✅ Initialized successfully", {
+      enabledStrategies: status.enabledStrategies,
+      queueStatus: status.queueStatus,
+    });
     return lifecycleService;
   } catch (error) {
-    console.error("[DATA_LIFECYCLE] Failed to initialize:", error);
+    console.error("[DATA_LIFECYCLE] ❌ Failed to initialize:", error);
     // Don't fail the entire initialization
     return null;
   }

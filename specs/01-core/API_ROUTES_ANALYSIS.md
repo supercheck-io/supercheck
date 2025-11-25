@@ -99,5 +99,3 @@ This document reflects the **actual Next.js App Router handlers** that exist und
 - ✅ **Streaming safeguards:** `/api/job-status/events/[runId]` now requires active project context and org match before streaming.
 - **Caching:** Dashboard endpoint is compute-heavy; add short-lived caching keyed by project/org to reduce DB load.
 - **Monitoring queries:** Monitor list still does multiple queries per monitor for status in `app/src/app/api/monitors/[id]/status/route.ts`; push aggregation into a single query to avoid N+1 patterns.
-
-_Last verified against code: current workspace state_

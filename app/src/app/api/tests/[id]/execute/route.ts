@@ -60,10 +60,14 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
 
     // Parse request body for location (k6 tests only)
     const normalizeLocation = (value?: string): K6Location => {
-      if (value === 'us-east' || value === 'eu-central' || value === 'asia-pacific') {
-        return value;
+      const lower = value?.toLowerCase();
+      // Accept kebab-case format matching K6Location type: "us-east" | "eu-central" | "asia-pacific" | "global"
+      if (lower === "us-east" || lower === "eu-central" || lower === "asia-pacific" || lower === "global") {
+        return lower;
       }
-      return 'us-east';
+      // Default to global for any other value with warning
+      console.warn(`[LOCATION WARNING] Invalid location "${value}" received, defaulting to "global". Valid locations: us-east, eu-central, asia-pacific, global`);
+      return "global";
     };
 
     let requestedLocation: string | undefined;

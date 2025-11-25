@@ -42,7 +42,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:migrate:prod": "./scripts/migrate.sh",
-    "setup:admin": "tsx ./src/lib/bootstrap-super-admin.ts"
+    "setup:admin": "node scripts/bootstrap-admin.js",
+    "revoke:admin": "node scripts/revoke-admin.js"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.29",

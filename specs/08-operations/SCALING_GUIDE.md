@@ -550,29 +550,32 @@ For Kubernetes deployments, Supercheck supports **KEDA (Kubernetes Event-driven 
 
 The autoscaling configuration is defined in `deploy/k8s/keda-scaledobject.yaml`. It uses the Redis scaler to monitor the length of the following Redis lists:
 
--   `bull:job-execution:wait`: Jobs waiting for general execution
--   `bull:test-execution:wait`: Jobs waiting for test execution
+-   `bull:playwright-global:wait`: Jobs waiting for Playwright execution
+-   `bull:k6-{region}:wait`: Jobs waiting for K6 execution (us-east, eu-central, asia-pacific, global)
+-   `bull:monitor-{region}:wait`: Jobs waiting for Monitor execution (us-east, eu-central, asia-pacific)
 
 ### ScaledObject Details
+
+We deploy **9 separate ScaledObjects**, one for each worker deployment. Here is an example for the Global Playwright worker:
 
 ```yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: supercheck-worker-scaler
+  name: scaler-playwright-global
 spec:
   scaleTargetRef:
-    name: supercheck-worker
-  minReplicaCount: 1
+    name: supercheck-worker-playwright-global
+  minReplicaCount: 0
   maxReplicaCount: 10
   triggers:
     - type: redis
       metadata:
-        listName: bull:job-execution:wait
-        listLength: "5"
+        listName: bull:playwright-global:wait
+        listLength: "10"
 ```
 
--   **minReplicaCount**: Minimum number of worker pods (default: 1).
+-   **minReplicaCount**: Minimum number of worker pods (default: 0 to allow scaling to zero).
 -   **maxReplicaCount**: Maximum number of worker pods (default: 10).
 -   **listLength**: Target number of waiting jobs per pod. If the queue length exceeds this value, KEDA will scale up the workers.
 
@@ -589,6 +592,4 @@ To enable KEDA autoscaling:
 4. **Set up monitoring and alerting** for production
 5. **Review performance metrics** regularly
 
-For more information, see:
-- [Test Execution Flow](TEST_EXECUTION_AND_JOB_QUEUE_FLOW.md)
-- [Security Documentation](SECURITY_IMPLEMENTATION_PLAN.md)
+For more information on test execution and monitoring, refer to the EXECUTION_SYSTEM.md and MONITORING_SYSTEM.md documentation in the specs directory.

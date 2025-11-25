@@ -14,8 +14,6 @@ This document provides a comprehensive technical specification for the Superchec
 8. [Configuration](#configuration)
 9. [Performance & Monitoring](#performance--monitoring)
 10. [Multi-Location Monitoring](#multi-location-monitoring)
-11. [Production Readiness Assessment](#production-readiness-assessment)
-12. [Review & Changes](#review--changes)
 
 ## System Overview
 
@@ -71,8 +69,8 @@ graph TB
     subgraph "Queue System"
         RS[Redis]
         MSQ[Monitor Scheduler Queue]
-        MEQ[Monitor Execution Queue]
-        MLQ[Multi-Location Queue]
+        MEQ["Monitor Execution Queues<br/>Regional"]
+        MLQ["Multi-Location Queue<br/>Virtual"]
     end
 
     subgraph "Worker Services"
@@ -103,8 +101,7 @@ graph TB
 
     MS --> MSQ
     MSQ --> MEQ
-    MEQ --> MLQ
-    MLQ --> WS
+    MEQ --> WS
     WS --> MP
     MP --> MLE
     MLE --> AS
@@ -125,43 +122,62 @@ graph TB
 
 ### Multi-Location Architecture
 
-The distributed multi-location pipeline is available but currently **opt-in**. The shared `MULTI_LOCATION_DISTRIBUTED` environment variable (used by both the Next.js app and the NestJS worker) defaults to `false`, so monitors run on whichever worker picks them up unless you explicitly enable distributed mode. When set to `true`, every monitor run is expanded into per-location jobs handled by regional workers. Subscription-aware org-level capacity limits and location policies will eventually flip this flag automatically per organization.
+The system uses distributed multi-location monitoring by default. Every monitor run is expanded into per-location jobs handled by regional workers, providing global coverage out of the box.
 
 | Region | Worker Location Code | Description |
 |--------|----------------------|-------------|
 | US East | `us-east` (Ashburn) | Primary North American vantage point with low-latency access to US-based services. |
-| EU Central | `eu-central` (Frankfurt) | Core European vantage point ensuring GDPR-compliant monitoring coverage. |
+| EU Central | `eu-central` (Frankfurt) | Core European vantage point ensuring GDPR-compliant monitoring coverage. **Default for monitors.** |
 | Asia Pacific | `asia-pacific` (Mumbai) | High-availability APAC vantage point for latency-sensitive checks. |
 
-> **Local Development:** When you do not run dedicated regional workers, all locations execute sequentially on the same worker without any simulated delay. Results still carry their location code so the UI behaves consistently.
+#### Worker Architecture
+
+**Production:** 3 location-based workers, each handling regional + global queues:
+
+| Worker | Location | Regional Queues | Global Queues |
+|--------|----------|----------------|---------------|
+| `supercheck-worker-us` | us-east | `k6-us-east`, `monitor-us-east` | `playwright-global`, `k6-global` |
+| `supercheck-worker-eu` | eu-central | `k6-eu-central`, `monitor-eu-central` | `playwright-global`, `k6-global` |
+| `supercheck-worker-apac` | asia-pacific | `k6-asia-pacific`, `monitor-asia-pacific` | `playwright-global`, `k6-global` |
+
+**Key Points:**
+- Each worker handles **multiple job types** (Playwright, K6, Monitor)
+- **Regional queues** ensure geographic accuracy for monitors and K6 tests
+- **Global queues** (`playwright-global`, `k6-global`) are processed by **any available** worker
+- Automatic load balancing via BullMQ - first available worker gets the job
+
+**Local Development:** Set `WORKER_LOCATION=local` to process all queues on a single worker. All locations execute sequentially without simulated delay. Results still carry their location code so the UI behaves consistently. This is handled automatically in Docker Compose configurations.
+
 
 #### Distributed Execution Flow
 
-- App queues a single monitor job per location, tagging each with an `executionGroupId` and `expectedLocations`.
-- Workers compare the incoming job’s `executionLocation` against their `WORKER_LOCATION`. Non-matching workers requeue the job; matching workers execute immediately.
+- App queues a single monitor job per location, routing it to the specific **regional queue** (`monitor-us-east`, `monitor-eu-central`, etc.).
+- Regional workers listen only to their specific queue.
 - Each location stores an individual `monitor_results` row (including group metadata) and, once all expected locations report in, the worker aggregates statuses to update the parent monitor.
 - Alerts, SSE events, and UI filters consume the aggregated view while retaining per-location detail for drill-down.
 
 ```mermaid
 sequenceDiagram
     participant App as Next.js App
-    participant MQ as monitor-execution Queue
-    participant W_US as Worker (ash)
-    participant W_DE as Worker (fsn1)
-    participant W_IN as Worker (in)
+    participant MQ_US as monitor-us-east Queue
+    participant MQ_EU as monitor-eu-central Queue
+    participant MQ_APAC as monitor-asia-pacific Queue
+    participant W_US as Worker (US East)
+    participant W_EU as Worker (EU Central)
+    participant W_APAC as Worker (Asia Pacific)
     participant DB as PostgreSQL
 
-    App->>MQ: enqueue monitor job (ash) + groupId
-    App->>MQ: enqueue monitor job (fsn1) + groupId
-    App->>MQ: enqueue monitor job (in) + groupId
+    App->>MQ_US: enqueue monitor job (us-east) + groupId
+    App->>MQ_EU: enqueue monitor job (eu-central) + groupId
+    App->>MQ_APAC: enqueue monitor job (asia-pacific) + groupId
 
-    MQ->>W_US: deliver job (ash)
-    MQ->>W_DE: deliver job (fsn1)
-    MQ->>W_IN: deliver job (in)
+    MQ_US->>W_US: deliver job (us-east)
+    MQ_EU->>W_EU: deliver job (eu-central)
+    MQ_APAC->>W_APAC: deliver job (asia-pacific)
 
-    W_US->>DB: insert ash result (includes groupId)
-    W_DE->>DB: insert fsn1 result (includes groupId)
-    W_IN->>DB: insert in result (includes groupId)
+    W_US->>DB: insert us-east result (includes groupId)
+    W_EU->>DB: insert eu-central result (includes groupId)
+    W_APAC->>DB: insert asia-pacific result (includes groupId)
 
     W_US->>W_US: aggregate when all expected locations reported
     W_US-->>DB: update monitor status + alerts
@@ -169,8 +185,9 @@ sequenceDiagram
 
 #### Queue Interactions
 
-- Monitor execution uses a single shared BullMQ queue; the payload contains the target location metadata.
-- Job and test execution queues remain location-agnostic. They are unaffected by the multi-location toggle and continue to run on any available worker replica.
+- Monitor execution uses **regional BullMQ queues** (`monitor-us-east`, `monitor-eu-central`, `monitor-asia-pacific`). Default: `monitor-eu-central`.
+- The application logic routes jobs to the correct queue based on the target location.
+- Job and test execution queues are also location-aware (`k6-us-east`, `k6-eu-central`) or global (`playwright-global`).
 
 ### Frontend (Next.js App)
 
@@ -534,12 +551,12 @@ graph TD
     subgraph "Queue Layer"
         D --> E[monitor-scheduler Queue]
         E --> F[Scheduled Execution]
-        F --> G[monitor-execution Queue]
+        F --> G["monitor-REGION<br/>Queues"]
     end
 
     subgraph "Worker Layer"
         H[Monitor Scheduler Processor]
-        I[Monitor Processor]
+        I["Monitor Processor<br/>Regional"]
         J[Enhanced Monitor Service]
 
         H --> E
@@ -567,14 +584,14 @@ graph TD
 - **Purpose**: Manages the schedules for all active monitors
 - **Job Type**: Repeating jobs with cron-like scheduling
 - **Reliability**: Job persistence, failure recovery, and dead letter handling
-- **How it Works**: Creates repeating jobs for each monitor based on frequency configuration. When triggered, adds execution jobs to the monitor-execution queue.
+- **How it Works**: Creates repeating jobs for each monitor based on frequency configuration. When triggered, adds execution jobs to the appropriate **regional monitor-execution queue**.
 
-#### 2. **`monitor-execution`**
+#### 2. **`monitor-{REGION}`**
 
-- **Purpose**: Executes actual monitor checks with enterprise-grade reliability
+- **Purpose**: Executes actual monitor checks with enterprise-grade reliability from specific regions (US, EU, APAC, GLOBAL)
 - **Job Type**: One-time jobs with retry logic and resource management
 - **Security**: All jobs validated, credentials encrypted, and resources managed
-- **How it Works**: The MonitorProcessor listens to this queue, executes checks using enhanced security services, and processes alerts.
+- **How it Works**: Regional MonitorProcessors listen to their specific queue, execute checks using enhanced security services, and process alerts.
 
 ### Queue Benefits
 
@@ -1022,7 +1039,7 @@ Response:
   success: true,
   data: [
     {
-      location: "us-east",
+      location: "US",
       totalChecks: 100,
       upChecks: 98,
       uptimePercentage: 98.0,
@@ -1105,9 +1122,9 @@ interface MonitorConfig {
 }
 
 type MonitoringLocation =
-  | "us-east"      // Ashburn, USA
-  | "eu-central"   // Frankfurt, Germany
-  | "asia-pacific"; // Mumbai
+  | "us-east"         // Ashburn, USA
+  | "eu-central"      // Frankfurt, Germany
+  | "asia-pacific";   // Mumbai, India
 ```
 
 ### Security Configuration
@@ -1354,335 +1371,20 @@ The monitoring system is production-ready with:
 
 The system provides enterprise-level reliability, security, and performance that exceeds industry standards for production monitoring solutions.
 
----
-
-## 14. Hetzner Cloud Deployment
-
-### Overview
-
-This section covers deploying Supercheck's multi-location monitoring system on Hetzner Cloud infrastructure, a cost-effective European cloud provider with global presence.
-
-### Architecture on Hetzner
-
-```
-Hetzner Cloud Regions:
-├── FSN1 (Falkenstein, Germany) - Primary Region
-│   ├── App Service (3 replicas)
-│   ├── PostgreSQL Database (or managed)
-│   ├── Redis Cache (or managed)
-│   ├── Worker Nodes (2 × cx51)
-│   └── Storage Box (S3-compatible)
-│
-├── NBG1 (Nuremberg, Germany)
-│   └── Worker Nodes (2 × cx51) - Real execution
-│
-├── HEL1 (Helsinki, Finland)
-│   └── Worker Nodes (2 × cx51) - Real execution
-│
-├── ASH (Ashburn, Virginia, USA)
-│   └── Worker Nodes (2 × cx51) - Real execution
-│
-└── IN (Mumbai)
-    └── Worker Nodes (2 × cx51) - Real execution
-```
-
-### Cost Comparison
-
-| Provider | Setup | Monthly Cost | Notes |
-|----------|-------|--------------|-------|
-| AWS | Complex | $4,000-6,000 | Multi-region, managed services |
-| Hetzner | Simple | $1,200-1,500 | 5 regions, bare metal/cloud servers |
-| **Savings** | 70% easier | **70% cheaper** | **Hetzner recommendation** |
-
-### Quick Start on Hetzner
-
-#### Step 1: Create Hetzner Cloud Account
-```bash
-# Go to https://www.hetzner.cloud
-# Create account
-# Create project "supercheck"
-# Generate API token
-```
-
-#### Step 2: Create Servers
-
-```bash
-# Primary Region (FSN1)
-hcloud server create --type cx41 --image ubuntu-22.04 --location fsn1 \
-  --name supercheck-manager-1
-hcloud server create --type cx51 --image ubuntu-22.04 --location fsn1 \
-  --name supercheck-worker-fsn1-1
-hcloud server create --type cx51 --image ubuntu-22.04 --location fsn1 \
-  --name supercheck-worker-fsn1-2
-
-# Secondary Regions
-hcloud server create --type cx51 --image ubuntu-22.04 --location ash \
-  --name supercheck-worker-ash-1
-hcloud server create --type cx51 --image ubuntu-22.04 --location ash \
-  --name supercheck-worker-ash-2
-hcloud server create --type cx51 --image ubuntu-22.04 --location nbg1 \
-  --name supercheck-worker-in-1
-hcloud server create --type cx51 --image ubuntu-22.04 --location nbg1 \
-  --name supercheck-worker-in-2
-```
-
-#### Step 3: Install Docker on All Servers
-
-```bash
-# SSH into each server and run:
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-sudo usermod -aG docker $USER
-```
-
-#### Step 4: Initialize Swarm
-
-```bash
-# On primary manager (FSN1)
-docker swarm init --advertise-addr <MANAGER_PRIVATE_IP>
-
-# Get worker token
-WORKER_TOKEN=$(docker swarm join-token worker -q)
-```
-
-#### Step 5: Label Nodes
-
-```bash
-# FSN1 nodes
-docker node update --label-add service=app <manager-node-id>
-docker node update --label-add location=fsn1 <manager-node-id>
-docker node update --label-add service=worker <fsn1-worker-1-id>
-docker node update --label-add location=fsn1 <fsn1-worker-1-id>
-
-# Other regions
-docker node update --label-add service=worker <ash-worker-1-id>
-docker node update --label-add location=ash <ash-worker-1-id>
-docker node update --label-add service=worker <in-worker-1-id>
-docker node update --label-add location=in <in-worker-1-id>
-```
-
-#### Step 6: Configure Environment
-
-```bash
-cp .env.hetzner.example .env.hetzner
-nano .env.hetzner
-
-# Update with:
-# - Database connection (Hetzner managed or self-hosted)
-# - Redis connection
-# - S3 Storage Box endpoint and credentials
-# - Application URLs
-# - Security secrets
-```
-
-#### Step 7: Deploy Stack
-
-```bash
-export $(cat .env.hetzner | grep -v '^#' | xargs)
-docker stack deploy -c docker-stack-swarm-hetzner.yml supercheck
-
-# Verify
-docker service ls
-docker stack ps supercheck
-```
-
-### Database Setup on Hetzner
-
-#### Option A: Managed Database (Recommended)
-
-```bash
-# If Hetzner offers managed database:
-hcloud database create \
-  --type mysql \
-  --region fsn1 \
-  --name supercheck-db
-
-# Get connection string and update .env.hetzner
-```
-
-#### Option B: Self-Hosted PostgreSQL
-
-```bash
-# Create dedicated database server
-hcloud server create --type cx41 --image ubuntu-22.04 \
-  --location fsn1 --name supercheck-postgres
-
-# SSH and install PostgreSQL
-sudo apt-get update
-sudo apt-get install -y postgresql postgresql-contrib
-
-# Configure for remote connections
-sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" \
-  /etc/postgresql/14/main/postgresql.conf
-
-# Start service
-sudo systemctl restart postgresql
-
-# Setup replication to NBG1 (optional for HA)
-```
-
-### Storage Box Setup on Hetzner
-
-```bash
-# 1. Order Storage Box from Hetzner console
-# 2. Enable S3 API in settings
-# 3. Create S3 credentials
-# 4. Get endpoint: https://s3.your_storagebox.io
-# 5. Create buckets:
-
-s3cmd --configure \
-  --host=s3.your_storagebox.io \
-  --access_key=YOUR_KEY \
-  --secret_key=YOUR_SECRET
-
-s3cmd mb s3://supercheck-job-artifacts
-s3cmd mb s3://supercheck-test-artifacts
-s3cmd mb s3://supercheck-monitor-artifacts
-s3cmd mb s3://supercheck-status-artifacts
-```
-
-### Real Execution Verification
-
-After deployment, verify TRUE multi-location execution (not simulated):
-
-```bash
-# Create test monitor
-curl -X POST http://supercheck.local:3000/api/monitors \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Global Test",
-    "type": "http",
-    "target": "https://api.example.com",
-    "frequencyMinutes": 5,
-    "locationConfig": {
-      "enabled": true,
-      "locations": ["us-east", "eu-central", "asia-pacific"],
-      "strategy": "majority"
-    }
-  }'
-
-# Monitor execution from each location
-docker service logs supercheck_worker_fsn1 -f | grep "response.*ms"
-docker service logs supercheck_worker_ash -f | grep "response.*ms"
-docker service logs supercheck_worker_in -f | grep "response.*ms"
-
-# Should show REAL latency across regions
-# Example:
-# [FSN1/eu-central] Response time: 125ms (Falkenstein)
-# [ASH/us-east] Response time: 245ms (Ashburn)
-# [IN/asia-pacific] Response time: 320ms (Mumbai)
-```
-
-### Scaling Recommendations
-
-| Service | CPU | Memory | Count | Use Case |
-|---------|-----|--------|-------|----------|
-| cx21 | 2 | 4GB | - | Too small |
-| **cx41** | 4 | 8GB | 3 | App servers |
-| **cx51** | 8 | 16GB | 10 | Worker nodes (2 per region) |
-| cx61 | 16 | 32GB | - | Large workloads |
-
-### Cost Optimization Tips
-
-1. **Reduce Locations**: 3 regions (FSN1, ASH, IN) covers most use cases
-   - Saves: €0.208/hour × 730 hours = €152/month
-
-2. **Right-size Workers**: Scale down during off-peak hours
-   - Use Hetzner Autoscaling (if available)
-   - Or manual scaling via Docker commands
-
-3. **Use Spot Servers** (if available on Hetzner)
-   - Saves 40-50% on compute costs
-
-4. **Consolidate Services**: Run app + 1 worker on same server (small deployments)
-   - Saves: €0.104/hour per consolidated server = €76/month
-
-### Migration from AWS to Hetzner
-
-```bash
-# 1. Setup Hetzner infrastructure (parallel to AWS)
-# 2. Migrate database (pg_dump → pg_restore)
-# 3. Update environment variables
-# 4. Deploy stack to Hetzner
-# 5. Run smoke tests
-# 6. Switch DNS to Hetzner
-# 7. Decommission AWS (keep 7 days as fallback)
-```
-
-### Security Best Practices on Hetzner
-
-```bash
-# 1. Use Hetzner Firewall
-hcloud firewall create --name supercheck \
-  --rules "source_ips=YOUR_IP in=tcp:22,80,443"
-
-# 2. Assign to servers
-hcloud firewall attach-to-server --server supercheck-manager-1
-
-# 3. Use Private Networks for internal communication
-hcloud network create --name supercheck-network --ip-range 10.0.0.0/8
-
-# 4. Keep database on private network only
-# 5. Enable Hetzner DDoS Protection
-# 6. Regular backups of database and storage
-```
-
-### Monitoring on Hetzner
-
-```bash
-# Enable metrics in Hetzner Console:
-# - CPU usage
-# - Memory usage
-# - Disk I/O
-# - Network usage
-
-# Setup alerts:
-# - CPU > 80% for 5 minutes
-# - Memory > 85% for 5 minutes
-# - Disk > 90%
-
-# Deploy Prometheus for application metrics:
-docker service create \
-  --name prometheus \
-  --mode global \
-  -p 9090:9090 \
-  prom/prometheus
-```
-
-### Troubleshooting on Hetzner
-
-| Issue | Solution |
-|-------|----------|
-| High latency between regions | Check Hetzner network dashboard, verify bandwidth |
-| Storage Box slow | Move to dedicated Hetzner Storage or use Backblaze B2 |
-| Database connection timeout | Add server to private network, increase max connections |
-| Worker not picking up jobs | Verify Redis connectivity from worker servers |
-
-### Production Checklist
-
-- ✅ All servers created and Docker installed
-- ✅ Swarm initialized and nodes labeled
-- ✅ Database configured and accessible
-- ✅ Redis configured and accessible
-- ✅ Storage Box configured with S3 endpoint
-- ✅ Environment variables set correctly
-- ✅ Stack deployed successfully
-- ✅ All services healthy (docker service ls)
-- ✅ Multi-location execution verified (not simulated)
-- ✅ Firewall rules configured
-- ✅ Backup procedures established
-- ✅ Monitoring alerts configured
-- ✅ DNS pointing to Hetzner
-- ✅ SSL certificates configured
-
-## Production Readiness Assessment
-
-- **Overall Rating:** 4.5 / 5 – Production-ready for enterprise scale with clear operational playbooks and strong security posture.
-- **Strengths:** Encrypted secrets, RBAC-aware APIs, resilient queue design (BullMQ + Redis), regional redundancy with Hetzner sites, automated cleanup, and comprehensive observability hooks.
-- **Improvement Opportunities:** Formal chaos testing for regional failover, automated certificate rotation across all regions, and documented SLO/SLI targets for alert tuning.
-- **Readiness Verdict:** Fit for multi-region enterprise workloads once the above enhancements are scheduled into the ops roadmap.
-
-## Review & Changes
-
-- 2025-11-22: Added P95 (95th percentile) response time metrics for 24h and 30d periods in monitor detail UI and metrics calculation documentation.
-- 2025-10-25: Documented distributed multi-location execution, Hetzner deployment defaults, and queue behavior; added execution sequence diagram and production readiness assessment.
+### Distributed Aggregation Logic
+
+When monitors are executed across multiple regions (e.g., US East, EU Central, Asia Pacific), the results must be aggregated to determine the overall status.
+
+**Aggregation Process:**
+1.  **Execution Group ID**: Each multi-location run is assigned a unique `executionGroupId`.
+2.  **Regional Execution**: Workers in each region execute the check and save their individual result with the `executionGroupId`.
+3.  **Aggregation Check**: As each result is saved, the worker checks if all expected locations have reported for that `executionGroupId`.
+4.  **Retry Mechanism**: To handle race conditions where results are committed slightly out of sync, the aggregation logic includes a retry mechanism:
+    -   **Max Retries**: 3 attempts
+    -   **Delay**: 500ms between attempts
+    -   This ensures robust status calculation even with slight network or database latency.
+5.  **Status Calculation**: Once all results are present (or retries exhausted), the system calculates the overall status (e.g., "Up" if majority of locations are up).
+
+### Location Normalization
+
+To ensure consistency across the system, all location codes are normalized to a standard format (kebab-case, e.g., `us-east`, `eu-central`). Legacy uppercase codes (e.g., `US`) are automatically converted during processing to prevent status discrepancies.

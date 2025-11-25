@@ -48,26 +48,22 @@ graph TB
 
     subgraph "📨 Queue System - Redis & BullMQ"
         REDIS[(Redis)]
-        Q1[test-execution queue]
-        Q2[job-execution queue]
-        Q3[k6-test-execution queue]
-        Q4[k6-job-execution queue]
-        Q5[monitor-execution queue]
-        Q6[Scheduler Queues]
+        Q1[playwright-global queue]
+        Q2[k6-{region} queues]
+        Q3[monitor-{region} queues]
+        Q4[Scheduler Queues]
     end
 
     subgraph "⚙️ Worker Pool - Horizontal Scaling"
-        W1[Worker 1<br/>Concurrency: 2]
-        W2[Worker 2<br/>Concurrency: 2]
-        W3[Worker N<br/>Concurrency: 2]
+        W1[Worker Playwright Global]
+        W2[Worker K6 Regional]
+        W3[Worker Monitor Regional]
     end
 
     subgraph "🐳 Container Execution Layer"
         subgraph "Security Isolation"
-            C1[Playwright Container 1]
-            C2[Playwright Container 2]
-            C3[K6 Container 1]
-            C4[K6 Container 2]
+            C1[Playwright Container]
+            C2[K6 Container]
         end
 
         CONTAINER[Container Executor Service]
@@ -83,18 +79,18 @@ graph TB
     UI --> API1 & API2
     API1 & API2 --> API3
     API3 --> CACHE
-    API1 --> Q1 & Q3
-    API2 --> Q2 & Q4
+    API1 --> Q1
+    API2 --> Q1 & Q2
 
-    Q1 & Q2 & Q3 & Q4 & Q5 & Q6 --> REDIS
+    Q1 & Q2 & Q3 & Q4 --> REDIS
     REDIS --> W1 & W2 & W3
 
     W1 & W2 & W3 --> VALIDATION
     VALIDATION --> CONTAINER
-    CONTAINER --> C1 & C2 & C3 & C4
+    CONTAINER --> C1 & C2
 
-    C1 & C2 & C3 & C4 --> S3
-    C1 & C2 & C3 & C4 --> DB
+    C1 & C2 --> S3
+    C1 & C2 --> DB
 
     REDIS --> MONITOR
     MONITOR --> UI
@@ -108,9 +104,9 @@ graph TB
 
     class UI,MONITOR frontend
     class API1,API2,API3 api
-    class REDIS,Q1,Q2,Q3,Q4,Q5,Q6 queue
+    class REDIS,Q1,Q2,Q3,Q4 queue
     class W1,W2,W3,VALIDATION,CONTAINER worker
-    class C1,C2,C3,C4 container
+    class C1,C2 container
     class DB,S3,CACHE storage
 ```
 
@@ -130,7 +126,7 @@ sequenceDiagram
     API->>Redis: Check capacity
     Redis-->>API: Capacity OK
     API->>API: Resolve variables & secrets
-    API->>Redis: Add job to test-execution queue
+    API->>Redis: Add job to playwright-global queue
     Redis-->>API: Return job ID (202)
     API-->>Client: Job ID & status
 
@@ -155,14 +151,41 @@ sequenceDiagram
 
 ### Queue Definitions
 
-The system manages **10 distinct queues** for different execution types:
+The system manages distinct queues for different execution types and regions:
+### Worker Architecture
 
-**Execution Queues (5):**
-- **test-execution** - Playwright and browser-based test execution
-- **job-execution** - Multi-test job execution (sequential)
-- **k6-test-execution** - K6 load test execution
-- **k6-job-execution** - K6 job execution (multiple tests)
-- **monitor-execution** - Health check and monitoring execution
+**Production:** 3 location-based workers, each handling multiple queue types:
+
+| Worker | Location | Regional Queues | Global Queues |
+|--------|----------|----------------|---------------|
+| `supercheck-worker-us` | us-east | `k6-us-east`, `monitor-us-east` | `playwright-global`, `k6-global` |
+| `supercheck-worker-eu` | eu-central | `k6-eu-central`, `monitor-eu-central` | `playwright-global`, `k6-global` |
+| `supercheck-worker-apac` | asia-pacific | `k6-asia-pacific`, `monitor-asia-pacific` | `playwright-global`, `k6-global` |
+
+**Architecture Benefits:**
+- ✅ **Resource efficiency**: Each worker handles multiple job types
+- ✅ **Automatic load balancing**: Global queues processed by any available worker
+- ✅ **Geographic accuracy**: Regional queues ensure correct execution location
+- ✅ **Simple scaling**: Scale by region (3 deployments vs 8)
+
+**Local Development:** Set `WORKER_REGION=local` to process all queues on a single worker. Configured automatically in Docker Compose.
+
+### Active Queues (14 Total)
+
+
+**Playwright Execution (Global):**
+- **playwright-global** - Handles all Playwright tests and jobs (consolidated)
+
+**K6 Execution (Regional):**
+- **k6-us-east** - K6 load tests from US East region
+- **k6-eu-central** - K6 load tests from EU Central region
+- **k6-asia-pacific** - K6 load tests from Asia Pacific region
+- **k6-global** - K6 load tests from Global region
+
+**Monitor Execution (Regional):**
+- **monitor-us-east** - Synthetic monitors from US East region
+- **monitor-eu-central** - Synthetic monitors from EU Central region (default)
+- **monitor-asia-pacific** - Synthetic monitors from Asia Pacific region
 
 **Scheduler Queues (3):**
 - **job-scheduler** - Triggers scheduled jobs hourly
@@ -178,12 +201,10 @@ The system manages **10 distinct queues** for different execution types:
 ```mermaid
 graph TB
     subgraph "Queue Types"
-        Q1[test-execution<br/>Single Tests]
-        Q2[job-execution<br/>Multi-Test Jobs]
-        Q3[k6-test-execution<br/>Performance Tests]
-        Q4[k6-job-execution<br/>K6 Jobs]
-        Q5[monitor-execution<br/>Health Checks]
-        Q6[Scheduler Queues<br/>Cron Jobs]
+        Q1[playwright-global<br/>All Playwright Tasks]
+        Q2["k6-{region}<br/>Regional Load Tests"]
+        Q3["monitor-{region}<br/>Regional Monitors"]
+        Q4[Scheduler Queues<br/>Cron Jobs]
     end
 
     subgraph "Queue Configuration"
@@ -369,11 +390,9 @@ Queue statistics track:
 - Max allowed queued jobs (capacity)
 
 Execution queues counted in statistics:
-- test-execution
-- job-execution
-- k6-test-execution
-- k6-job-execution
-- monitor-execution
+- playwright-global
+- k6-{region} (us-east, eu-central, asia-pacific, global)
+- monitor-{region} (us-east, eu-central, asia-pacific)
 
 ---
 
@@ -758,6 +777,10 @@ sequenceDiagram
 
 ## Multi-Location Execution
 
+### Playwright Execution (Global)
+
+Playwright tests and jobs are executed via a **single global queue** (`playwright-global`). This simplifies the architecture as browser-based tests are typically less sensitive to geographic latency for functional verification compared to load tests.
+
 ### K6 Multi-Location Execution
 
 K6 load tests can be executed from multiple geographic locations for distributed load testing:
@@ -767,6 +790,7 @@ K6 load tests can be executed from multiple geographic locations for distributed
 - US West
 - Europe
 - Asia Pacific
+- Global (Default)
 
 **Execution Strategy:**
 - Each location runs the same K6 script independently
@@ -838,7 +862,6 @@ Health checks and monitors can run from multiple locations for global coverage:
 ```mermaid
 graph TB
     A["Monitor Execution Request<br/>locations: US_EAST, EU, APAC<br/>strategy: majority"]
-    B["Check MULTI_LOCATION_DISTRIBUTED flag"]
     C["Create Execution Group ID<br/>monitor-{monitorId}-{timestamp}-{random}"]
     D["For each location"]
     E["Add to monitor-execution queue<br/>with location & group ID"]
@@ -849,9 +872,7 @@ graph TB
     J["Apply threshold strategy<br/>majority/all/any"]
     K["Determine overall status"]
 
-    A --> B
-    B -->|enabled| C
-    B -->|disabled| F
+    A --> C
     C --> D
     D --> E
     E --> F
@@ -1543,8 +1564,3 @@ The execution system provides:
 ✅ **Horizontal scaling** for high throughput
 ✅ **Security isolation** with containerized environments
 
----
-
-**Document Version:** 1.0
-**Last Updated:** 2025-01-17
-**Status:** Production Ready

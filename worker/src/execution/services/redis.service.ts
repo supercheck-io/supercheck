@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { Redis, RedisOptions } from 'ioredis';
 import { Queue, QueueEvents } from 'bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
-import { JOB_EXECUTION_QUEUE, TEST_EXECUTION_QUEUE } from '../constants';
+import { PLAYWRIGHT_QUEUE } from '../constants';
 import { DbService } from './db.service';
 
 // Constants for Redis TTL
@@ -35,17 +35,14 @@ const REDIS_CLEANUP_BATCH_SIZE = 100; // Process keys in smaller batches to redu
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   private redisClient: Redis;
-  private jobQueueEvents: QueueEvents;
-  private testQueueEvents: QueueEvents;
-  private jobQueueEventsConnection: Redis;
-  private testQueueEventsConnection: Redis;
+  private queueEvents: QueueEvents;
+  private queueEventsConnection: Redis;
   private readonly redisOptions: RedisOptions;
   private cleanupInterval: NodeJS.Timeout;
 
   constructor(
     private configService: ConfigService,
-    @InjectQueue(JOB_EXECUTION_QUEUE) private jobQueue: Queue,
-    @InjectQueue(TEST_EXECUTION_QUEUE) private testQueue: Queue,
+    @InjectQueue(PLAYWRIGHT_QUEUE) private queue: Queue,
     private dbService: DbService,
   ) {
     const host = this.configService.get<string>('REDIS_HOST', 'localhost');
@@ -138,61 +135,27 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * Database updates are handled by the job execution processor to avoid race conditions
    */
   private initializeQueueListeners() {
-    // Set up QueueEvents for job queue
-    this.jobQueueEventsConnection = new Redis(this.redisOptions);
-    this.testQueueEventsConnection = new Redis(this.redisOptions);
-
-    this.jobQueueEventsConnection.on('error', (error) =>
-      this.logger.error('Job QueueEvents connection error:', error),
+    // Set up QueueEvents
+    this.queueEventsConnection = new Redis(this.redisOptions);
+    this.queueEventsConnection.on('error', (error) =>
+      this.logger.error('QueueEvents connection error:', error),
     );
-    this.testQueueEventsConnection.on('error', (error) =>
-      this.logger.error('Test QueueEvents connection error:', error),
-    );
-
-    this.jobQueueEvents = new QueueEvents(JOB_EXECUTION_QUEUE, {
-      connection: this.jobQueueEventsConnection,
+    this.queueEvents = new QueueEvents(PLAYWRIGHT_QUEUE, {
+      connection: this.queueEventsConnection,
     });
 
-    // Set up QueueEvents for test queue
-    this.testQueueEvents = new QueueEvents(TEST_EXECUTION_QUEUE, {
-      connection: this.testQueueEventsConnection,
-    });
-
-    // Job queue event listeners - only for logging and monitoring
-    this.jobQueueEvents.on('waiting', ({ jobId }) => {
+    // Queue event listeners
+    this.queueEvents.on('waiting', ({ jobId }) => {
       this.logger.debug(`Job ${jobId} is waiting`);
     });
-
-    this.jobQueueEvents.on('active', ({ jobId }) => {
+    this.queueEvents.on('active', ({ jobId }) => {
       this.logger.debug(`Job ${jobId} is active`);
-      // Database updates are handled by the job execution processor
     });
-
-    this.jobQueueEvents.on('completed', ({ jobId }) => {
+    this.queueEvents.on('completed', ({ jobId }) => {
       this.logger.debug(`Job ${jobId} completed`);
-      // Database updates are handled by the job execution processor
     });
-
-    this.jobQueueEvents.on('failed', ({ jobId, failedReason }) => {
+    this.queueEvents.on('failed', ({ jobId, failedReason }) => {
       this.logger.error(`Job ${jobId} failed: ${failedReason}`);
-      // Database updates are handled by the job execution processor
-    });
-
-    // Test queue event listeners - only for logging and monitoring
-    this.testQueueEvents.on('waiting', ({ jobId }) => {
-      this.logger.debug(`Test ${jobId} is waiting`);
-    });
-
-    this.testQueueEvents.on('active', ({ jobId }) => {
-      this.logger.debug(`Test ${jobId} is active`);
-    });
-
-    this.testQueueEvents.on('completed', ({ jobId }) => {
-      this.logger.debug(`Test ${jobId} completed`);
-    });
-
-    this.testQueueEvents.on('failed', ({ jobId, failedReason }) => {
-      this.logger.error(`Test ${jobId} failed: ${failedReason}`);
     });
   }
 
@@ -221,34 +184,22 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
     try {
       // 1. Clean up completed/failed jobs
-      await this.jobQueue.clean(
+      await this.queue.clean(
         REDIS_JOB_TTL * 1000,
         REDIS_CLEANUP_BATCH_SIZE,
         'completed',
       );
-      await this.jobQueue.clean(
-        REDIS_JOB_TTL * 1000,
-        REDIS_CLEANUP_BATCH_SIZE,
-        'failed',
-      );
-      await this.testQueue.clean(
-        REDIS_JOB_TTL * 1000,
-        REDIS_CLEANUP_BATCH_SIZE,
-        'completed',
-      );
-      await this.testQueue.clean(
+      await this.queue.clean(
         REDIS_JOB_TTL * 1000,
         REDIS_CLEANUP_BATCH_SIZE,
         'failed',
       );
 
       // 2. Trim event streams to reduce memory usage
-      await this.jobQueue.trimEvents(1000);
-      await this.testQueue.trimEvents(1000);
+      await this.queue.trimEvents(1000);
 
       // 3. Set TTL on orphaned keys
-      await this.cleanupOrphanedKeys(JOB_EXECUTION_QUEUE);
-      await this.cleanupOrphanedKeys(TEST_EXECUTION_QUEUE);
+      await this.cleanupOrphanedKeys(PLAYWRIGHT_QUEUE);
 
       this.logger.log('Redis cleanup completed successfully');
     } catch (error) {
@@ -332,20 +283,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
 
     // Clean up queue event listeners
-    if (this.jobQueueEvents) {
-      await this.jobQueueEvents.close();
+    if (this.queueEvents) {
+      await this.queueEvents.close();
     }
-
-    if (this.testQueueEvents) {
-      await this.testQueueEvents.close();
-    }
-
-    if (this.jobQueueEventsConnection) {
-      await this.jobQueueEventsConnection.quit();
-    }
-
-    if (this.testQueueEventsConnection) {
-      await this.testQueueEventsConnection.quit();
+    if (this.queueEventsConnection) {
+      await this.queueEventsConnection.quit();
     }
 
     // Close Redis connection

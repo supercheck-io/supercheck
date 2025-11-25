@@ -918,11 +918,53 @@ export class DataLifecycleService {
 }
 
 // ============================================================================
+// ENVIRONMENT VARIABLE PARSING UTILITIES
+// ============================================================================
+
+/**
+ * Parse a boolean environment variable with a default value
+ * Handles common truthy/falsy values and normalization
+ *
+ * @param envVar - The environment variable value
+ * @param defaultValue - The default if env var is not set
+ * @returns - boolean result
+ */
+function parseBooleanEnv(envVar: string | undefined, defaultValue: boolean): boolean {
+  if (envVar === undefined) {
+    return defaultValue;
+  }
+
+  const normalized = envVar.trim().toLowerCase();
+  if (normalized === "true" || normalized === "1" || normalized === "yes") {
+    return true;
+  }
+  if (normalized === "false" || normalized === "0" || normalized === "no") {
+    return false;
+  }
+
+  // Invalid value - log and use default
+  console.warn(
+    `[DATA_LIFECYCLE] Invalid boolean env var value: "${envVar}", using default: ${defaultValue}`
+  );
+  return defaultValue;
+}
+
+/**
+ * Parse and strip quotes from cron schedule string
+ * Handles environment variables that may be quoted
+ */
+function parseCronSchedule(cronEnv: string | undefined, defaultCron: string): string {
+  const value = (cronEnv || defaultCron).trim();
+  return value.replace(/^["']|["']$/g, "");
+}
+
+// ============================================================================
 // FACTORY & GLOBAL INSTANCE
 // ============================================================================
 
 /**
  * Create data lifecycle service from environment variables
+ * Uses consistent configuration parsing with sensible defaults
  */
 export function createDataLifecycleService(): DataLifecycleService {
   const strategies: CleanupStrategyConfig[] = [
@@ -930,71 +972,76 @@ export function createDataLifecycleService(): DataLifecycleService {
     // Enabled by default to prevent database bloat from monitor checks
     {
       entityType: "monitor_results",
-      enabled: process.env.MONITOR_CLEANUP_ENABLED !== "true", // Default: true
-      cronSchedule: (process.env.MONITOR_CLEANUP_CRON || "0 2 * * *").replace(
-        /^["']|["']$/g,
-        ""
-      ), // Default: 2 AM daily
-      retentionDays: parseInt(process.env.MONITOR_RETENTION_DAYS || "30", 10), // Default: 30 days
-      batchSize: parseInt(process.env.MONITOR_CLEANUP_BATCH_SIZE || "1000", 10), // Default: 1000 records per batch
+      enabled: parseBooleanEnv(process.env.MONITOR_CLEANUP_ENABLED, true),
+      cronSchedule: parseCronSchedule(
+        process.env.MONITOR_CLEANUP_CRON,
+        "0 2 * * *"
+      ),
+      retentionDays: parseInt(process.env.MONITOR_RETENTION_DAYS || "30", 10),
+      batchSize: parseInt(process.env.MONITOR_CLEANUP_BATCH_SIZE || "1000", 10),
       maxRecordsPerRun: parseInt(
         process.env.MONITOR_CLEANUP_SAFETY_LIMIT || "1000000",
         10
-      ), // Default: 1M records max
+      ),
     },
 
     // Job Runs Cleanup
     // Disabled by default - only enable when needed for storage management
     {
       entityType: "job_runs",
-      enabled: process.env.JOB_RUNS_CLEANUP_ENABLED === "true", // Default: false (explicit opt-in)
-      cronSchedule: (process.env.JOB_RUNS_CLEANUP_CRON || "0 3 * * *").replace(
-        /^["']|["']$/g,
-        ""
-      ), // Default: 3 AM daily
-      retentionDays: parseInt(process.env.JOB_RUNS_RETENTION_DAYS || "90", 10), // Default: 90 days
-      batchSize: parseInt(process.env.JOB_RUNS_CLEANUP_BATCH_SIZE || "100", 10), // Default: 100 (smaller for complex ops)
+      enabled: parseBooleanEnv(process.env.JOB_RUNS_CLEANUP_ENABLED, false),
+      cronSchedule: parseCronSchedule(
+        process.env.JOB_RUNS_CLEANUP_CRON,
+        "0 3 * * *"
+      ),
+      retentionDays: parseInt(process.env.JOB_RUNS_RETENTION_DAYS || "90", 10),
+      batchSize: parseInt(process.env.JOB_RUNS_CLEANUP_BATCH_SIZE || "100", 10),
       maxRecordsPerRun: parseInt(
         process.env.JOB_RUNS_CLEANUP_SAFETY_LIMIT || "10000",
         10
-      ), // Default: 10K records max
+      ),
     },
 
     // Playground Artifacts Cleanup
     // Disabled by default - playground artifacts are temporary by nature
     {
       entityType: "playground_artifacts",
-      enabled: process.env.PLAYGROUND_CLEANUP_ENABLED === "true", // Default: false (explicit opt-in)
-      cronSchedule: (
-        process.env.PLAYGROUND_CLEANUP_CRON || "0 */12 * * *"
-      ).replace(/^["']|["']$/g, ""), // Default: every 12 hours
+      enabled: parseBooleanEnv(
+        process.env.PLAYGROUND_CLEANUP_ENABLED,
+        false
+      ),
+      cronSchedule: parseCronSchedule(
+        process.env.PLAYGROUND_CLEANUP_CRON,
+        "0 */12 * * *"
+      ),
       customConfig: {
         maxAgeHours: parseInt(
           process.env.PLAYGROUND_CLEANUP_MAX_AGE_HOURS || "24",
           10
-        ), // Default: 24 hours
+        ),
         bucketName:
-          process.env.S3_TEST_BUCKET_NAME || "playwright-test-artifacts", // Default: test artifacts bucket
+          process.env.S3_TEST_BUCKET_NAME || "playwright-test-artifacts",
       },
     },
   ];
 
-  // Validate all enabled strategies
+  // Validate and log all configured strategies
+  console.log(
+    `[DATA_LIFECYCLE] Configuring cleanup strategies (${strategies.length} total)`
+  );
   for (const config of strategies) {
+    console.log(
+      `[DATA_LIFECYCLE] ${config.entityType}: enabled=${config.enabled}, cron="${config.cronSchedule}"`
+    );
+
     if (config.enabled) {
-      // Basic cron validation
-      console.log(
-        `[DATA_LIFECYCLE] Validating cron schedule for ${config.entityType}: "${config.cronSchedule}"`
-      );
+      // Validate cron schedule
       const cronParts = config.cronSchedule.split(/\s+/);
       if (cronParts.length !== 5 && cronParts.length !== 6) {
         throw new Error(
-          `Invalid cron schedule for ${config.entityType}: ${config.cronSchedule}`
+          `Invalid cron schedule for ${config.entityType}: "${config.cronSchedule}" (expected 5-6 parts, got ${cronParts.length})`
         );
       }
-      console.log(
-        `[DATA_LIFECYCLE] Cron validation passed for ${config.entityType}, parts: ${cronParts.length}`
-      );
     }
   }
 
