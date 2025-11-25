@@ -2,11 +2,9 @@ import { EventEmitter } from "node:events";
 import { Queue, QueueEvents } from "bullmq";
 import { eq } from "drizzle-orm";
 import {
-  JOB_EXECUTION_QUEUE,
-  K6_JOB_EXECUTION_QUEUE,
-  TEST_EXECUTION_QUEUE,
-  K6_TEST_EXECUTION_QUEUE,
   getQueues,
+  REGIONS,
+  MONITOR_REGIONS,
 } from "@/lib/queue";
 import { db } from "@/utils/db";
 import { runs } from "@/db/schema";
@@ -20,7 +18,7 @@ const eventHubLogger = createLogger({ module: 'queue-event-hub' }) as {
   error: (data: unknown, msg?: string) => void;
 };
 
-type QueueCategory = "job" | "test";
+type QueueCategory = "job" | "test" | "monitor";
 
 export type NormalizedQueueEvent = {
   category: QueueCategory;
@@ -79,14 +77,34 @@ class QueueEventHub extends EventEmitter {
     this.initialized = true;
 
     try {
-      const { jobQueue, k6JobQueue, testQueue, k6TestQueue } = await getQueues();
+      const { playwrightQueues, k6Queues, monitorExecutionQueue } = await getQueues();
 
-      const sources: QueueEventSource[] = [
-        { category: "job", queueName: JOB_EXECUTION_QUEUE, queue: jobQueue },
-        { category: "job", queueName: K6_JOB_EXECUTION_QUEUE, queue: k6JobQueue },
-        { category: "test", queueName: TEST_EXECUTION_QUEUE, queue: testQueue },
-        { category: "test", queueName: K6_TEST_EXECUTION_QUEUE, queue: k6TestQueue },
-      ];
+      const sources: QueueEventSource[] = [];
+      
+      // Add playwright global queue
+      sources.push({
+        category: "test", // Playwright queues handle both test and job execution
+        queueName: "playwright-global",
+        queue: playwrightQueues["global"],
+      });
+      
+      // Add k6 queues for all regions
+      for (const region of REGIONS) {
+        sources.push({
+          category: "job", // K6 queues are typically for jobs
+          queueName: `k6-${region}`,
+          queue: k6Queues[region],
+        });
+      }
+
+      // Add monitor queues for all regions
+      for (const region of MONITOR_REGIONS) {
+        sources.push({
+          category: "monitor",
+          queueName: `monitor-${region}`,
+          queue: monitorExecutionQueue[region],
+        });
+      }
 
       await Promise.all(
         sources.map((source) => this.attachQueueEvents(source).catch((error) => {
@@ -196,31 +214,55 @@ class QueueEventHub extends EventEmitter {
       trigger = cached.trigger;
     } else {
       try {
-        const run = await db.query.runs.findFirst({
-          where: eq(runs.id, queueJobId),
-        });
-
-        if (run) {
-          trigger = run.trigger ?? undefined;
-
-          // Determine entityId based on run type
-          if (run.jobId) {
-            // This is a job run - use the jobId
-            entityId = run.jobId;
-          } else if (
-            typeof run.metadata === "object" &&
-            run.metadata !== null &&
-            "testId" in run.metadata &&
-            typeof (run.metadata as Record<string, unknown>).testId === "string"
-          ) {
-            // Test with testId in metadata
-            entityId = (run.metadata as Record<string, unknown>).testId as string;
-          } else if (category === "test") {
-            // For single test executions, the runId IS the testId
-            entityId = queueJobId;
+        // Check if this is a composite monitor ID (uuid:group:location)
+        // Format: monitorId:executionGroupId:location
+        const isCompositeMonitorId = category === 'monitor' && queueJobId.includes(':');
+        
+        if (isCompositeMonitorId) {
+          const parts = queueJobId.split(':');
+          // Assuming first part is monitorId (UUID)
+          const monitorId = parts[0];
+          // Simple UUID regex check
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          
+          if (uuidRegex.test(monitorId)) {
+            entityId = monitorId;
+            trigger = 'schedule'; // Default trigger for monitors
+            this.runMetaCache.set(queueJobId, { entityId, trigger });
           }
+        } 
+        // Only query runs table if queueJobId is a valid UUID
+        else {
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          
+          if (uuidRegex.test(queueJobId)) {
+            const run = await db.query.runs.findFirst({
+              where: eq(runs.id, queueJobId),
+            });
 
-          this.runMetaCache.set(queueJobId, { entityId, trigger });
+            if (run) {
+              trigger = run.trigger ?? undefined;
+
+              // Determine entityId based on run type
+              if (run.jobId) {
+                // This is a job run - use the jobId
+                entityId = run.jobId;
+              } else if (
+                typeof run.metadata === "object" &&
+                run.metadata !== null &&
+                "testId" in run.metadata &&
+                typeof (run.metadata as Record<string, unknown>).testId === "string"
+              ) {
+                // Test with testId in metadata
+                entityId = (run.metadata as Record<string, unknown>).testId as string;
+              } else if (category === "test") {
+                // For single test executions, the runId IS the testId
+                entityId = queueJobId;
+              }
+
+              this.runMetaCache.set(queueJobId, { entityId, trigger });
+            }
+          }
         }
       } catch (error) {
         eventHubLogger.warn({ err: error },
@@ -260,6 +302,8 @@ class QueueEventHub extends EventEmitter {
             ? (returnValue as { success?: unknown }).success === true
               ? "passed"
               : "failed"
+            : Array.isArray(returnValue) && returnValue.length > 0
+            ? "passed" // Assume array result (like monitors) means success if not empty
             : "failed"; // Default to failed if no clear success indication
 
         eventHubLogger.info({

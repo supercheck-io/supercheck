@@ -56,3 +56,24 @@ Docker Compose Infrastructure
   docker-compose restart postgres redis minio
 
   This setup gives you hot reload for both services while all the infrastructure stays stable in Docker.
+
+  Multi-Location Monitoring Configuration
+
+  The system uses distributed multi-location monitoring by default, running monitors across different geographic regions (US, EU, APAC).
+
+  Environment Variables:
+
+  WORKER_LOCATION=local
+  # Specifies which region this worker instance should process
+  # - local: Process all regional queues (for local development)
+  # - us-east: Only process monitor-us-east queue
+  # - eu-central: Only process monitor-eu-central queue
+  # - asia-pacific: Only process monitor-asia-pacific queue
+
+  For Local Development:
+  - Set WORKER_LOCATION=local so one worker processes all regions
+  - This allows local testing of the multi-region setup
+
+  For Production:
+  - Deploy workers in each region with respective WORKER_LOCATION (us-east/eu-central/asia-pacific)
+  - Each regional worker only processes jobs for its designated region

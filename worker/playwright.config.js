@@ -138,6 +138,7 @@ module.exports = defineConfig({
   projects: [
     {
       name: 'chromium',
+      grepInvert: /@(mobile|iphone|firefox|webkit|safari)\b/i,
       use: {
         ...devices['Desktop Chrome'],
         // Override with optimized settings
@@ -150,8 +151,10 @@ module.exports = defineConfig({
       },
     },
 
+    // Additional browsers
     {
       name: 'firefox',
+      grep: /@firefox\b/i,
       use: {
         ...devices['Desktop Firefox'],
         viewport: { width: 1280, height: 720 },
@@ -166,7 +169,8 @@ module.exports = defineConfig({
     },
 
     {
-      name: 'webkit',
+      name: 'safari',
+      grep: /@(webkit|safari)\b/i,
       use: {
         ...devices['Desktop Safari'],
         viewport: { width: 1280, height: 720 },
@@ -180,36 +184,13 @@ module.exports = defineConfig({
       },
     },
 
-    /* Test against mobile viewports. */
+    // Mobile testing projects (opt-in via @mobile tag)
     {
-      name: 'Mobile Chrome',
-      use: { 
-        ...devices['Pixel 8'],
-        headless: true,
-      },
-    },
-    {
-      name: 'Mobile Safari',
-      use: { 
+      name: 'mobile-safari',
+      // Only run tests tagged with @mobile or @iPhone
+      grep: /@(mobile|iphone)\b/i,
+      use: {
         ...devices['iPhone 13'],
-        headless: true,
-      },
-    },
-
-    /* Test against branded browsers. */
-    {
-      name: 'Microsoft Edge',
-      use: {
-        ...devices['Desktop Edge'],
-        channel: 'msedge',
-        headless: true,
-      },
-    },
-    {
-      name: 'Google Chrome',
-      use: {
-        ...devices['Desktop Chrome'],
-        channel: 'chrome',
         headless: true,
       },
     },

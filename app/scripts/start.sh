@@ -71,6 +71,10 @@ main() {
         log_error "Failed to run migrations. Exiting."
         exit 1
     fi
+
+    # Bootstrap super admin if configured
+    log "Checking for super admin configuration..."
+    node scripts/bootstrap-admin.js
     
     # Start the server
     start_server

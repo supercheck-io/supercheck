@@ -1,101 +1,388 @@
+# Supercheck Worker Deployments - Location-Based Architecture
+# 3 regional workers, each handling multiple queue types
+#
+# Architecture:
+# - Each worker processes regional queues (k6, monitor) + global queues (playwright, k6)
+# - WORKER_REGION determines which queues to process
+# - Auto-scaling via KEDA based on queue depth
+#
+# Queue Assignment:
+# - US worker: k6-us-east, monitor-us-east, playwright-global, k6-global
+# - EU worker: k6-eu-central, monitor-eu-central, playwright-global, k6-global
+# - APAC worker: k6-asia-pacific, monitor-asia-pacific, playwright-global, k6-global
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: supercheck-worker
+  name: supercheck-worker-us
   namespace: supercheck
   labels:
     app.kubernetes.io/name: supercheck
     app.kubernetes.io/component: worker
+    app.kubernetes.io/region: us
 spec:
-  revisionHistoryLimit: 3
+  revision HistoryLimit: 3
+  replicas: 2 # Initial replicas, scaled by KEDA
   selector:
     matchLabels:
       app.kubernetes.io/name: supercheck
       app.kubernetes.io/component: worker
+      app.kubernetes.io/region: us
   template:
     metadata:
       labels:
         app.kubernetes.io/name: supercheck
         app.kubernetes.io/component: worker
+        app.kubernetes.io/region: us
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: supercheck
-      securityContext:
-        fsGroup: 1001
-        runAsUser: 1001
-        runAsGroup: 1001
-        runAsNonRoot: true
+
+      # Prefer nodes in US region
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: supercheck/region
+                    operator: In
+                    values:
+                      - "US"
+
+        # Anti-affinity to spread pods across nodes
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/region
+                      operator: In
+                      values:
+                        - us
+                topologyKey: kubernetes.io/hostname
+
+      # Graceful termination
+      terminationGracePeriodSeconds: 120
+
       containers:
         - name: worker
           image: ghcr.io/supercheck-io/supercheck/worker:latest
           imagePullPolicy: IfNotPresent
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false
-            capabilities:
-              drop:
-                - ALL
+
+          # Environment from ConfigMap and Secret
           envFrom:
             - configMapRef:
                 name: supercheck-config
             - secretRef:
                 name: supercheck-secret
+
+          # Worker-specific configuration
           env:
+            - name: WORKER_REGION
+              value: "us-east"
+            - name: NODE_ENV
+              value: "production"
             - name: PORT
               value: "8000"
-            - name: DOCKER_HOST
-              value: "tcp://localhost:2375"
+            # Queues handled: k6-us-east, monitor-us-east, playwright-global, k6-global
+
           ports:
             - name: http
               containerPort: 8000
               protocol: TCP
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: http
-            initialDelaySeconds: 30
-            timeoutSeconds: 5
+
+          # Resource limits - optimized for medium-sized tests
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+
+          # Health checks
           livenessProbe:
             httpGet:
               path: /health
               port: http
             initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
             timeoutSeconds: 5
-          resources:
-            requests:
-              cpu: 800m
-              memory: 1.6Gi
-            limits:
-              cpu: "1.5"
-              memory: 2Gi
-          volumeMounts:
-            - name: docker-graph
-              mountPath: /var/lib/docker
-        - name: dind
-          image: docker:27-dind
-          imagePullPolicy: IfNotPresent
-          args:
-            - --host=tcp://0.0.0.0:2375
-            - --storage-driver=overlay2
-            - --log-level=error
-          env:
-            - name: DOCKER_TLS_CERTDIR
-              value: ""
+            failureThreshold: 3
+
+          # Lifecycle hooks for graceful shutdown
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 15"]
+
+          # Security context
           securityContext:
-            privileged: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false # Worker needs to write temp files
+            capabilities:
+              drop:
+                - ALL
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: supercheck-worker-eu
+  namespace: supercheck
+  labels:
+    app.kubernetes.io/name: supercheck
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/region: eu
+spec:
+  revisionHistoryLimit: 3
+  replicas: 2 # Initial replicas, scaled by KEDA
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: supercheck
+      app.kubernetes.io/component: worker
+      app.kubernetes.io/region: eu
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: supercheck
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/region: eu
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: supercheck
+
+      # Prefer nodes in EU region
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: supercheck/region
+                    operator: In
+                    values:
+                      - "EU"
+
+        # Anti-affinity to spread pods across nodes
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/region
+                      operator: In
+                      values:
+                        - eu
+                topologyKey: kubernetes.io/hostname
+
+      terminationGracePeriodSeconds: 120
+
+      containers:
+        - name: worker
+          image: ghcr.io/supercheck-io/supercheck/worker:latest
+          imagePullPolicy: IfNotPresent
+
+          envFrom:
+            - configMapRef:
+                name: supercheck-config
+            - secretRef:
+                name: supercheck-secret
+
+          env:
+            - name: WORKER_REGION
+              value: "eu-central"
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "8000"
+            # Queues handled: k6-eu-central, monitor-eu-central, playwright-global, k6-global
+
           ports:
-            - name: docker
-              containerPort: 2375
+            - name: http
+              containerPort: 8000
               protocol: TCP
+
           resources:
             requests:
-              cpu: 400m
-              memory: 512Mi
+              cpu: "500m"
+              memory: "1Gi"
             limits:
-              cpu: "1"
-              memory: 1Gi
-          volumeMounts:
-            - name: docker-graph
-              mountPath: /var/lib/docker
-      volumes:
-        - name: docker-graph
-          emptyDir: {}
+              cpu: "2000m"
+              memory: "4Gi"
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 15"]
+
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: supercheck-worker-apac
+  namespace: supercheck
+  labels:
+    app.kubernetes.io/name: supercheck
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/region: apac
+spec:
+  revisionHistoryLimit: 3
+  replicas: 1 # Initial replicas, scaled by KEDA
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: supercheck
+      app.kubernetes.io/component: worker
+      app.kubernetes.io/region: apac
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: supercheck
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/region: apac
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: supercheck
+
+      # Prefer nodes in APAC region
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: supercheck/region
+                    operator: In
+                    values:
+                      - "APAC"
+
+        # Anti-affinity to spread pods across nodes
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/region
+                      operator: In
+                      values:
+                        - apac
+                topologyKey: kubernetes.io/hostname
+
+      terminationGracePeriodSeconds: 120
+
+      containers:
+        - name: worker
+          image: ghcr.io/supercheck-io/supercheck/worker:latest
+          imagePullPolicy: IfNotPresent
+
+          envFrom:
+            - configMapRef:
+                name: supercheck-config
+            - secretRef:
+                name: supercheck-secret
+
+          env:
+            - name: WORKER_REGION
+              value: "asia-pacific"
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "8000"
+            # Queues handled: k6-asia-pacific, monitor-asia-pacific, playwright-global, k6-global
+
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "4Gi"
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 15"]
+
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL

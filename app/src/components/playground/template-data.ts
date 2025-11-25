@@ -23,8 +23,19 @@ export const codeTemplates: CodeTemplate[] = [
     tags: ["k6", "smoke", "api"],
     code: `/**
  * k6 smoke test for uptime and latency.
- * Coverage: single GET, status + basic body check, light load.
- * Config: 3 VUs for 30s, p95 < 800ms, errors < 1%.
+ * 
+ * Purpose:
+ * - Verify system availability (uptime)
+ * - Check basic latency performance
+ * - Ensure the system is ready for heavier load tests
+ * 
+ * Configuration:
+ * - VUs: 3 virtual users running concurrently
+ * - Duration: 30 seconds test run
+ * - Thresholds: 
+ *   - Error rate must be < 1%
+ *   - 95th percentile response time must be < 800ms
+ * 
  * @requires k6 binary
  */
 
@@ -32,11 +43,11 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 export const options = {
-  vus: 3,
-  duration: '30s',
+  vus: 3,           // 3 concurrent users
+  duration: '30s',  // Run for 30 seconds
   thresholds: {
-    http_req_failed: ['rate<0.01'],
-    http_req_duration: ['p(95)<800'],
+    http_req_failed: ['rate<0.01'],      // Error rate < 1%
+    http_req_duration: ['p(95)<800'],    // 95% of requests < 800ms
   },
 };
 
@@ -44,12 +55,13 @@ export default function () {
   const baseUrl = 'https://test-api.k6.io';
   const response = http.get(baseUrl + '/public/crocodiles/1/');
 
+  // Validate response
   check(response, {
     'status is 200': (res) => res.status === 200,
     'body is not empty': (res) => res.body && res.body.length > 0,
   });
 
-  sleep(1);
+  sleep(1); // Pause between requests
 }
 `,
   },
@@ -61,9 +73,21 @@ export default function () {
     testType: "performance",
     tags: ["k6", "load", "ramping"],
     code: `/**
- * Ramping load profile to mirror real traffic.
- * Coverage: staged VU growth, p95/p99 latency guardrails, error budget.
- * Config: 2m->5m->3m stages, max 80 VUs, p95 < 600ms, p99 < 1200ms.
+ * Ramping load profile to mirror real traffic patterns.
+ * 
+ * Purpose:
+ * - Simulate a gradual increase in traffic (ramp-up)
+ * - Hold traffic at peak load (steady state)
+ * - Gradually decrease traffic (ramp-down)
+ * 
+ * Configuration:
+ * - Stages:
+ *   1. Ramp up to 10 VUs over 2 minutes
+ *   2. Ramp up to 50 VUs over next 5 minutes
+ *   3. Ramp up to 80 VUs over next 3 minutes
+ *   4. Ramp down to 0 VUs over 2 minutes
+ * - Thresholds: Strict latency and error limits
+ * 
  * @requires k6 binary
  */
 
@@ -72,15 +96,15 @@ import { check } from 'k6';
 
 export const options = {
   stages: [
-    { duration: '2m', target: 10 },
-    { duration: '5m', target: 50 },
-    { duration: '3m', target: 80 },
-    { duration: '2m', target: 0 },
+    { duration: '2m', target: 10 },   // Ramp-up to 10 VUs
+    { duration: '5m', target: 50 },   // Increase to 50 VUs
+    { duration: '3m', target: 80 },   // Peak load at 80 VUs
+    { duration: '2m', target: 0 },    // Ramp-down
   ],
   thresholds: {
-    http_req_failed: ['rate<0.02'],
-    http_req_duration: ['p(95)<600', 'p(99)<1200'],
-    checks: ['rate>0.95'],
+    http_req_failed: ['rate<0.02'],              // Error rate < 2%
+    http_req_duration: ['p(95)<600', 'p(99)<1200'], // Latency thresholds
+    checks: ['rate>0.95'],                       // 95% of checks pass
   },
 };
 
@@ -104,9 +128,16 @@ export default function () {
     tags: ["k6", "spike", "resilience"],
     code: `/**
  * Spike test to validate burst handling and recovery.
- * Coverage: sudden arrival spike, p99 latency, error ceiling.
- * Config: ramp to 200 iters/s then back down, maxVUs 200.
- * Uses ramping-arrival-rate executor with recovery stage.
+ * 
+ * Purpose:
+ * - Verify system stability during sudden traffic spikes
+ * - Ensure system recovers after the spike subsides
+ * - Test autoscaling triggers
+ * 
+ * Configuration:
+ * - Executor: ramping-arrival-rate (controls throughput)
+ * - Spike: Jump from 20 to 200 iterations/s in 30s
+ * 
  * @requires k6 binary
  */
 
@@ -116,20 +147,20 @@ import { check, sleep } from 'k6';
 export const options = {
   scenarios: {
     spike: {
-      executor: 'ramping-arrival-rate',
+      executor: 'ramping-arrival-rate', // Throughput-based (requests/sec)
       timeUnit: '1s',
       preAllocatedVUs: 50,
       maxVUs: 200,
       stages: [
-        { duration: '30s', target: 20 },
-        { duration: '30s', target: 200 },
-        { duration: '1m', target: 20 },
+        { duration: '30s', target: 20 },    // Baseline: 20 req/s
+        { duration: '30s', target: 200 },   // Spike: 200 req/s
+        { duration: '1m', target: 20 },     // Recovery: back to 20 req/s
       ],
     },
   },
   thresholds: {
-    http_req_failed: ['rate<0.05'],
-    http_req_duration: ['p(99)<1500'],
+    http_req_failed: ['rate<0.05'],         // Allow 5% errors during spike
+    http_req_duration: ['p(99)<1500'],      // 99% of requests < 1.5s
   },
 };
 
@@ -137,8 +168,11 @@ export default function () {
   const baseUrl = 'https://test-api.k6.io';
   const res = http.get(baseUrl + '/public/crocodiles/2/');
 
-  check(res, { '200 OK during spike': (r) => r.status === 200 });
-  sleep(1);
+  check(res, {
+    '200 OK during spike': (r) => r.status === 200
+  });
+
+  sleep(1); // User think time
 }
 `,
   },
@@ -150,10 +184,17 @@ export default function () {
     testType: "performance",
     tags: ["k6", "soak", "endurance"],
     code: `/**
- * Soak test to surface long-running degradations.
- * Coverage: steady load, leak detection, latency drift watch.
- * Config: 20 VUs for 20m with gentle ramp, p95 < 700ms.
- * Great for spotting connection pool or memory issues.
+ * Soak test (Endurance test) to surface long-running issues.
+ * 
+ * Purpose:
+ * - Detect memory leaks
+ * - Identify resource exhaustion (connections, file handles)
+ * - Monitor performance degradation over time
+ * 
+ * Configuration:
+ * - Duration: 20 minutes (shortened for demo, usually hours)
+ * - VUs: Constant load of 20 users
+ * 
  * @requires k6 binary
  */
 
@@ -162,13 +203,13 @@ import { check, sleep } from 'k6';
 
 export const options = {
   stages: [
-    { duration: '5m', target: 20 },
-    { duration: '20m', target: 20 },
-    { duration: '5m', target: 0 },
+    { duration: '5m', target: 20 },    // Warm-up
+    { duration: '20m', target: 20 },   // Hold steady load (find memory leaks, performance degradation)
+    { duration: '5m', target: 0 },     // Cool-down
   ],
   thresholds: {
-    http_req_failed: ['rate<0.01'],
-    http_req_duration: ['p(95)<700'],
+    http_req_failed: ['rate<0.01'],    // Must maintain <1% error rate
+    http_req_duration: ['p(95)<700'],  // Latency shouldn't degrade over time
   },
 };
 
@@ -176,8 +217,11 @@ export default function () {
   const baseUrl = 'https://test-api.k6.io';
   const response = http.get(baseUrl + '/public/crocodiles/3/');
 
-  check(response, { 'status is 200': (res) => res.status === 200 });
-  sleep(2);
+  check(response, {
+    'status is 200': (res) => res.status === 200
+  });
+
+  sleep(2); // Realistic pacing
 }
 `,
   },
@@ -190,9 +234,17 @@ export default function () {
     tags: ["k6", "api", "auth"],
     code: `/**
  * Mixed API flow with public and authenticated calls.
- * Coverage: list + create + auth-only endpoint, grouped checks.
- * Config: 20 VUs for 2m, p95 < 450ms, errors < 2%.
- * Provide API_TOKEN via k6 env for auth portion.
+ * 
+ * Purpose:
+ * - Test multiple endpoints in a single script
+ * - Handle authentication (Bearer token)
+ * - Group metrics by functionality (list, create, auth)
+ * 
+ * Configuration:
+ * - VUs: 20 concurrent users
+ * - Duration: 2 minutes
+ * - Environment: Requires API_TOKEN for auth parts
+ * 
  * @requires k6 binary
  */
 
@@ -203,44 +255,42 @@ export const options = {
   vus: 20,
   duration: '2m',
   thresholds: {
-    http_req_failed: ['rate<0.02'],
-    http_req_duration: ['p(95)<450'],
-    checks: ['rate>0.98'],
+    http_req_failed: ['rate<0.02'],      // Error rate < 2%
+    http_req_duration: ['p(95)<450'],    // 95% of requests < 450ms
+    checks: ['rate>0.98'],               // 98% of checks pass
   },
 };
 
 export default function () {
   const baseUrl = 'https://test-api.k6.io';
-  const token = __ENV.API_TOKEN || '';
+  const token = __ENV.API_TOKEN || ''; // Read environment variable
 
+  // GROUP 1: List resources
   group('list resources', () => {
     const res = http.get(baseUrl + '/public/crocodiles/');
     check(res, { 'listed resources': (r) => r.status === 200 });
   });
 
+  // GROUP 2: Create resource
   group('create resource', () => {
     const payload = JSON.stringify({
       name: 'Load Test',
       sex: 'M',
       date_of_birth: '2015-01-01',
     });
-
     const res = http.post(baseUrl + '/public/crocodiles/', payload, {
       headers: { 'Content-Type': 'application/json' },
     });
-
     check(res, { 'created resource': (r) => r.status === 201 });
   });
 
+  // GROUP 3: Authenticated request
   group('authenticated request', () => {
-    if (!token) {
-      return;
-    }
+    if (!token) return; // Skip if no token
 
     const res = http.get(baseUrl + '/my/crocodiles/', {
       headers: { Authorization: 'Bearer ' + token },
     });
-
     check(res, { 'auth works': (r) => r.status === 200 });
   });
 
@@ -257,8 +307,16 @@ export default function () {
     tags: ["k6", "checks", "assertions", "validation"],
     code: `/**
  * k6 checks and assertions guide.
- * Coverage: status checks, header validation, body assertions, timing checks.
- * Demonstrates check() patterns and custom metrics.
+ * 
+ * Purpose:
+ * - Demonstrate how to validate response data
+ * - Use custom metrics (Rate, Trend) to track specific events
+ * - Perform complex JSON validation
+ * 
+ * Key Concepts:
+ * - Checks: Boolean assertions that don't fail the load test (unlike thresholds)
+ * - Custom Metrics: Track business-specific logic (e.g., "custom_error_rate")
+ * 
  * @requires k6 binary
  */
 
@@ -266,7 +324,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Rate, Trend } from 'k6/metrics';
 
-// Custom metrics for tracking specific checks
+// Custom metrics: Rate (percentages) and Trend (numeric distributions)
 const errorRate = new Rate('custom_error_rate');
 const customDuration = new Trend('custom_duration');
 
@@ -285,7 +343,8 @@ export const options = {
 export default function () {
   const baseUrl = 'https://jsonplaceholder.typicode.com';
   const res = http.get(baseUrl + '/posts/1');
-  
+
+  // Comprehensive response validation
   const checkResult = check(res, {
     'status is 200': (r) => r.status === 200,
     'content-type is JSON': (r) => r.headers['Content-Type']?.includes('application/json'),
@@ -299,10 +358,11 @@ export default function () {
     'response time < 500ms': (r) => r.timings.duration < 500,
     'response size < 10KB': (r) => r.body.length < 10240,
   });
-  
+
+  // Track custom metrics
   errorRate.add(!checkResult);
   customDuration.add(res.timings.duration);
-  
+
   sleep(1);
 }
 `,
@@ -315,9 +375,19 @@ export default function () {
     testType: "performance",
     tags: ["k6", "thresholds", "slo", "performance"],
     code: `/**
- * Advanced k6 thresholds for SLO enforcement.
- * Coverage: complex thresholds, custom metrics, tagged metrics.
- * Uses jsonplaceholder for reliable demo endpoint.
+ * Advanced k6 thresholds for SLO (Service Level Objective) enforcement.
+ * 
+ * Purpose:
+ * - Define complex pass/fail criteria
+ * - Use tags to apply thresholds to specific endpoints (read vs write)
+ * - Track success rates and latency percentiles
+ * 
+ * Configuration:
+ * - Stages: Ramp up -> Hold -> Ramp down
+ * - Thresholds: 
+ *   - Global latency limits
+ *   - Specific limits for 'read' and 'write' operations
+ * 
  * @requires k6 binary
  */
 
@@ -325,6 +395,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Counter, Rate, Trend } from 'k6/metrics';
 
+// Custom metrics: Counter, Rate, Trend
 const apiCalls = new Counter('api_calls');
 const successRate = new Rate('success_rate');
 const apiLatency = new Trend('api_latency');
@@ -335,41 +406,31 @@ export const options = {
     { duration: '1m', target: 50 },
     { duration: '30s', target: 0 },
   ],
-  
   thresholds: {
     'http_req_failed': ['rate<0.01'],
-    'http_req_duration': [
-      'avg<300',
-      'p(50)<200',
-      'p(90)<500',
-      'p(95)<700',
-      'p(99)<1000',
-    ],
+    'http_req_duration': ['avg<300', 'p(50)<200', 'p(90)<500', 'p(95)<700', 'p(99)<1000'],
     'checks': ['rate>0.95'],
     'success_rate': ['rate>0.98'],
     'api_latency': ['p(95)<300', 'p(99)<500'],
-    'http_req_duration{endpoint:read}': ['p(95)<400'],
+    'http_req_duration{endpoint:read}': ['p(95)<400'],  // Tag-based thresholds
     'http_req_duration{endpoint:write}': ['p(95)<500'],
   },
 };
 
 export default function () {
   const baseUrl = 'https://jsonplaceholder.typicode.com';
-  
-  // Read operation
-  const getRes = http.get(baseUrl + '/posts/1', {
-    tags: { endpoint: 'read' },
-  });
-  
+
+  // READ operation (tagged)
+  const getRes = http.get(baseUrl + '/posts/1', { tags: { endpoint: 'read' } });
   apiCalls.add(1);
-  const getSuccess = check(getRes, { 
+  const getSuccess = check(getRes, {
     'GET successful': (r) => r.status === 200,
     'has content': (r) => r.body && r.body.length > 0,
   });
   successRate.add(getSuccess);
   apiLatency.add(getRes.timings.duration);
-  
-  // Write operation
+
+  // WRITE operation (tagged)
   const postRes = http.post(
     baseUrl + '/posts',
     JSON.stringify({ title: 'Test', body: 'Load test', userId: 1 }),
@@ -378,14 +439,11 @@ export default function () {
       tags: { endpoint: 'write' },
     }
   );
-  
   apiCalls.add(1);
-  const postSuccess = check(postRes, { 
-    'POST successful': (r) => r.status === 201,
-  });
+  const postSuccess = check(postRes, { 'POST successful': (r) => r.status === 201 });
   successRate.add(postSuccess);
   apiLatency.add(postRes.timings.duration);
-  
+
   sleep(1);
 }
 `,
@@ -399,7 +457,16 @@ export default function () {
     tags: ["k6", "stress", "capacity"],
     code: `/**
  * Stress test to find system breaking points.
- * Coverage: gradual load increase, find max capacity, monitor degradation.
+ * 
+ * Purpose:
+ * - Push the system beyond normal capacity
+ * - Determine the maximum capacity of the system
+ * - Verify system recovery after stress
+ * 
+ * Configuration:
+ * - Stages: Step-wise increase in load (100 -> 200 -> 300 VUs)
+ * - Thresholds: Relaxed latency limits (5s) to allow for degradation under stress
+ * 
  * @requires k6 binary
  */
 
@@ -411,31 +478,35 @@ const errorRate = new Rate('errors');
 
 export const options = {
   stages: [
+    // Level 1: Light load
     { duration: '2m', target: 100 },
     { duration: '5m', target: 100 },
+    // Level 2: Moderate load
     { duration: '2m', target: 200 },
     { duration: '5m', target: 200 },
+    // Level 3: Heavy stress
     { duration: '2m', target: 300 },
     { duration: '5m', target: 300 },
+    // Recovery
     { duration: '5m', target: 0 },
   ],
-  
   thresholds: {
-    'http_req_failed': ['rate<0.1'],
-    'http_req_duration': ['p(95)<5000'],
+    'http_req_failed': ['rate<0.1'],      // Allow 10% errors under stress
+    'http_req_duration': ['p(95)<5000'],  // Allow 5s latency
     'errors': ['rate<0.15'],
   },
 };
 
 export default function () {
   const baseUrl = 'https://test-api.k6.io';
-  
+
+  // Batch requests for higher throughput
   const responses = http.batch([
     ['GET', baseUrl + '/public/crocodiles/'],
     ['GET', baseUrl + '/public/crocodiles/1/'],
     ['GET', baseUrl + '/public/crocodiles/2/'],
   ]);
-  
+
   responses.forEach((res) => {
     const passed = check(res, {
       'status 200': (r) => r.status === 200,
@@ -443,7 +514,7 @@ export default function () {
     });
     errorRate.add(!passed);
   });
-  
+
   sleep(1);
 }
 `,
@@ -457,7 +528,16 @@ export default function () {
     tags: ["k6", "breakpoint", "capacity"],
     code: `/**
  * Breakpoint test to identify exact system limits.
- * Coverage: incremental load increase, precise capacity measurement.
+ * 
+ * Purpose:
+ * - Find the exact point where the system fails
+ * - Determine the "knee" of the curve where latency spikes
+ * 
+ * Configuration:
+ * - Executor: ramping-arrival-rate (constant throughput increase)
+ * - Stages: Aggressive ramp up to 1000 iterations/s
+ * - Thresholds: Abort test immediately if failure rate or latency gets too high
+ * 
  * @requires k6 binary
  */
 
@@ -465,17 +545,16 @@ import http from 'k6/http';
 import { check } from 'k6';
 
 export const options = {
-  executor: 'ramping-arrival-rate',
+  executor: 'ramping-arrival-rate', // Throughput-based (requests/sec)
   startRate: 50,
   timeUnit: '1s',
   preAllocatedVUs: 500,
   maxVUs: 1000,
   stages: [
-    { target: 200, duration: '10m' },
-    { target: 500, duration: '10m' },
-    { target: 1000, duration: '10m' },
+    { target: 200, duration: '10m' },  // 200 req/s
+    { target: 500, duration: '10m' },  // 500 req/s
+    { target: 1000, duration: '10m' }, // 1000 req/s (breaking point)
   ],
-  
   thresholds: {
     'http_req_failed': [{ threshold: 'rate<0.05', abortOnFail: true }],
     'http_req_duration': [{ threshold: 'p(99)<3000', abortOnFail: true }],
@@ -503,9 +582,16 @@ export default function () {
     testType: "browser",
     tags: ["playwright", "smoke", "ui", "chromium"],
     code: `/**
- * Playwright UI smoke for a Todo-style app.
- * Coverage: navigation, title, primary input, add item.
- * Default: Runs in Chromium (no tag needed).
+ * Playwright UI smoke test.
+ * 
+ * Purpose:
+ * - Verify that the application loads correctly
+ * - Check that critical UI elements are visible
+ * - Perform a basic user interaction (add a todo item)
+ * 
+ * Configuration:
+ * - Default browser: Chromium (unless specified otherwise via tags or config)
+ * - Base URL: Defined in the test (replace with your app's URL)
  * 
  * @requires @playwright/test
  */
@@ -517,13 +603,18 @@ const APP_URL = 'https://demo.playwright.dev/todomvc';
 // No tag = Chromium (default)
 test.describe('UI smoke test', () => {
   test('home page renders primary UI', async ({ page }) => {
+    // Navigate to the application
     await page.goto(APP_URL);
 
+    // Verify page title and input visibility
     await expect(page).toHaveTitle(/TodoMVC/);
     await expect(page.getByPlaceholder('What needs to be done?')).toBeVisible();
 
+    // Perform interaction: Add a new task
     await page.getByPlaceholder('What needs to be done?').fill('Smoke task');
     await page.keyboard.press('Enter');
+    
+    // Verify the task was added to the list
     await expect(page.getByRole('listitem').first()).toContainText('Smoke task');
   });
 });
@@ -537,9 +628,18 @@ test.describe('UI smoke test', () => {
     testType: "browser",
     tags: ["playwright", "auth", "login"],
     code: `/**
- * Auth flow covering login and logout.
- * Coverage: form fill, post-login assertion, logout redirect.
- * Replace baseUrl and credentials with your app fixtures.
+ * Authentication flow test (Login & Logout).
+ * 
+ * Purpose:
+ * - Verify user can successfully log in with valid credentials
+ * - Verify user is redirected to the secure area
+ * - Verify user can log out successfully
+ * 
+ * Key Actions:
+ * - Form filling (username/password)
+ * - Button clicking
+ * - URL and element visibility assertions
+ * 
  * @requires @playwright/test
  */
 
@@ -552,12 +652,18 @@ test.describe('authentication flow', () => {
   test('user can sign in and sign out', async ({ page }) => {
     await page.goto(APP_URL + '/login');
 
+    // Fill login form
     await page.getByLabel('Username').fill(CREDENTIALS.username);
     await page.getByLabel('Password').fill(CREDENTIALS.password);
     await page.getByRole('button', { name: 'Login' }).click();
 
+    // Verify successful login
     await expect(page.getByText('You logged into a secure area!')).toBeVisible();
+    
+    // Perform logout
     await page.getByRole('link', { name: 'Logout' }).click();
+    
+    // Verify redirect to login page
     await expect(page).toHaveURL(APP_URL + '/login');
   });
 });
@@ -571,12 +677,15 @@ test.describe('authentication flow', () => {
     testType: "browser",
     tags: ["playwright", "mobile", "responsive"],
     code: `/**
- * Mobile viewport testing using device-specific projects.
- * Coverage: viewport size, touch interactions, mobile-optimized UI.
+ * Mobile viewport testing.
  * 
- * Available mobile browser projects:
- * - Mobile Chrome: Pixel 8 viewport (393x851) - Android Chrome
- * - Mobile Safari: iPhone 13 viewport (390x844) - iOS Safari
+ * Purpose:
+ * - Verify layout and functionality on mobile screen sizes
+ * - Ensure responsive design elements work as expected
+ * 
+ * Configuration:
+ * - Defines separate tests for Mobile Chrome (Pixel 8) and Mobile Safari (iPhone 13)
+ * - Checks viewport dimensions
  * 
  * @requires @playwright/test
  */
@@ -590,7 +699,7 @@ test.describe('Mobile Chrome layout', () => {
   test('mobile Chrome viewport exposes key actions', async ({ page }) => {
     await page.goto(APP_URL);
 
-    // Verify Pixel 8 viewport dimensions
+    // Verify Pixel 8 viewport dimensions (393x851)
     const viewport = page.viewportSize();
     expect(viewport?.width).toBe(393);
     expect(viewport?.height).toBe(851);
@@ -609,7 +718,7 @@ test.describe('Mobile Safari layout', () => {
   test('mobile Safari viewport and interactions', async ({ page }) => {
     await page.goto(APP_URL);
 
-    // Verify iPhone 13 viewport dimensions
+    // Verify iPhone 13 viewport dimensions (390x844)
     const viewport = page.viewportSize();
     expect(viewport?.width).toBe(390);
     expect(viewport?.height).toBe(844);
@@ -633,13 +742,15 @@ test.describe('Mobile Safari layout', () => {
     tags: ["playwright", "emulation", "geolocation"],
     code: `/**
  * Device emulation with geolocation, locale, and timezone.
- * Coverage: GPS coordinates, language preferences, time zones.
- * Useful for testing location-based features and i18n.
  * 
- * Browser compatibility: Works across all browser projects
- * - chromium, firefox, webkit: Full emulation support
- * - Mobile Chrome/Mobile Safari: Mobile-specific emulation
- * - Microsoft Edge/Google Chrome: Full emulation support
+ * Purpose:
+ * - Test location-based features (GPS)
+ * - Verify internationalization (i18n) and localization (l10n)
+ * - Check timezone handling
+ * 
+ * Configuration:
+ * - Geolocation: Rome, Italy
+ * - Permissions: Automatically grants 'geolocation' permission
  * 
  * @requires @playwright/test
  */
@@ -649,11 +760,11 @@ import { expect, test } from '@playwright/test';
 const APP_URL = 'https://demo.playwright.dev/todomvc';
 
 test.use({
-  // Set geolocation
-  geolocation: { longitude: 12.492507, latitude: 41.889938 }, // Rome, Italy
+  // Set geolocation to Rome, Italy
+  geolocation: { longitude: 12.492507, latitude: 41.889938 },
   permissions: ['geolocation'],
   
-  // Set locale and timezone (configured globally in playwright.config.js)
+  // Locale and timezone can also be set here or in global config
   // locale: 'en-US',
   // timezoneId: 'UTC',
 });
@@ -662,7 +773,7 @@ test.describe('geolocation and locale emulation', () => {
   test('app responds to geolocation and locale', async ({ page }) => {
     await page.goto(APP_URL);
     
-    // Verify geolocation is available
+    // Verify geolocation is correctly set in the browser context
     const position = await page.evaluate(() => {
       return new Promise((resolve) => {
         navigator.geolocation.getCurrentPosition((pos) => {
@@ -679,7 +790,7 @@ test.describe('geolocation and locale emulation', () => {
       longitude: 12.492507,
     });
     
-    // Verify locale (matches global config: en-US)
+    // Verify locale settings
     const locale = await page.evaluate(() => navigator.language);
     expect(locale).toBe('en-US');
   });
@@ -695,28 +806,16 @@ test.describe('geolocation and locale emulation', () => {
     testType: "browser",
     tags: ["playwright", "tags", "browser-selection"],
     code: `/**
- * Browser selection using tags and project targeting.
- * Coverage: demonstrates browser project concepts and tag-based selection.
+ * Browser selection using tags.
  * 
- * Available browser projects:
- * - chromium: Default Chrome-based browser (no tag needed)
- * - firefox: Firefox browser (use @firefox tag)
- * - webkit: Safari/WebKit browser (use @webkit or @safari tag)
- * - Mobile Chrome: Pixel 8 mobile viewport (use project name directly)
- * - Mobile Safari: iPhone 13 mobile viewport (use project name directly)
- * - Microsoft Edge: Edge browser (use project name directly)
- * - Google Chrome: Chrome browser (use project name directly)
+ * Purpose:
+ * - Run tests only on specific browsers (e.g., WebKit/Safari)
+ * - Demonstrate how to use the 'tag' option in test.describe
  * 
- * Tag usage examples:
- * // Firefox specific test
- * test.describe('Firefox test', { tag: ['@firefox'] }, () => {
- *   test('firefox behavior', async ({ page }) => { ... });
- * });
- * 
- * // WebKit/Safari specific test  
- * test.describe('WebKit test', { tag: ['@webkit'] }, () => {
- *   test('webkit behavior', async ({ page }) => { ... });
- * });
+ * Usage:
+ * - @webkit: Runs on WebKit (Safari engine)
+ * - @firefox: Runs on Firefox
+ * - @chromium: Runs on Chromium (default)
  * 
  * @requires @playwright/test
  */
@@ -725,12 +824,13 @@ import { expect, test } from '@playwright/test';
 
 const APP_URL = 'https://demo.playwright.dev/todomvc';
 
-// WebKit test with @webkit tag
+// This test suite will ONLY run when the project is 'webkit' or has the @webkit tag
 test.describe('Browser Selection Demo - WebKit', { tag: ['@webkit'] }, () => {
   test('webkit basic functionality', async ({ page }) => {
     await page.goto(APP_URL);
     await expect(page).toHaveTitle(/TodoMVC/);
     
+    // Verify we are running in a WebKit/Safari environment
     const userAgent = await page.evaluate(() => navigator.userAgent);
     expect(userAgent).toContain('Safari');
     
@@ -755,8 +855,18 @@ test.describe('Browser Selection Demo - WebKit', { tag: ['@webkit'] }, () => {
     tags: ["playwright", "api", "health"],
     code: `/**
  * API health probe with contract checks.
- * Coverage: status, headers, JSON fields, type assertions.
- * Great for quick monitors of critical endpoints.
+ * 
+ * Purpose:
+ * - Verify that the API is up and running (status 200)
+ * - Check that the response headers are correct (Content-Type)
+ * - Validate the structure and data types of the response body
+ * 
+ * Key Actions:
+ * - GET request
+ * - Status assertion
+ * - Header assertion
+ * - JSON body validation
+ * 
  * @requires @playwright/test
  */
 
@@ -766,12 +876,15 @@ const API_URL = 'https://jsonplaceholder.typicode.com';
 
 test.describe('API health check', () => {
   test('health endpoint responds with expected payload', async ({ request }) => {
+    // Send GET request
     const response = await request.get(API_URL + '/posts/1');
 
+    // Basic status checks
     expect(response.ok()).toBeTruthy();
     expect(response.status()).toBe(200);
     expect(response.headers()['content-type']).toContain('application/json');
 
+    // Validate JSON structure
     const body = await response.json();
     expect(body).toMatchObject({ id: 1 });
     expect(typeof body.title).toBe('string');
@@ -788,8 +901,18 @@ test.describe('API health check', () => {
     tags: ["playwright", "api", "crud"],
     code: `/**
  * API CRUD flow executed serially.
- * Coverage: POST create, GET verify, DELETE cleanup.
- * Uses test.describe.serial to share created ID safely.
+ * 
+ * Purpose:
+ * - Test the full lifecycle of a resource (Create, Read, Delete)
+ * - Ensure data consistency across operations
+ * - Clean up test data after execution
+ * 
+ * Key Actions:
+ * - POST to create a resource
+ * - GET to verify creation
+ * - DELETE to clean up
+ * - test.describe.serial ensures tests run in order
+ * 
  * @requires @playwright/test
  */
 
@@ -797,6 +920,7 @@ import { expect, test } from '@playwright/test';
 
 const API_URL = 'https://jsonplaceholder.typicode.com';
 
+// Use serial mode to share state (createdId) between tests
 test.describe.serial('posts CRUD', () => {
   let createdId;
 
@@ -812,13 +936,16 @@ test.describe.serial('posts CRUD', () => {
   });
 
   test('fetches the created post', async ({ request }) => {
+    // Skip if creation failed
     test.skip(!createdId, 'create step failed');
+    
     const response = await request.get(API_URL + '/posts/' + createdId);
     expect(response.ok()).toBeTruthy();
     const json = await response.json();
     expect(json.id).toBe(createdId);
   });
 
+  // Cleanup after all tests in this group
   test.afterAll(async ({ request }) => {
     if (!createdId) return;
     await request.delete(API_URL + '/posts/' + createdId);
@@ -835,8 +962,16 @@ test.describe.serial('posts CRUD', () => {
     tags: ["playwright", "api", "auth"],
     code: `/**
  * Authenticated API call using a bearer token.
- * Coverage: header injection, 200 assertion, key fields validation.
- * Replace API_URL and API_TOKEN with your secured endpoint.
+ * 
+ * Purpose:
+ * - Verify access to protected endpoints
+ * - Demonstrate how to inject authorization headers
+ * - Validate user-specific data
+ * 
+ * Configuration:
+ * - Uses request.newContext to apply headers to all requests in the scope
+ * - Requires a valid API_TOKEN
+ * 
  * @requires @playwright/test
  */
 
@@ -847,6 +982,7 @@ const API_TOKEN = 'replace-with-token';
 
 test.describe('authenticated API request', () => {
   test('authenticated profile request', async ({ request }) => {
+    // Create a new context with the Authorization header pre-configured
     const api = await request.newContext({
       baseURL: API_URL,
       extraHTTPHeaders: { Authorization: 'Bearer ' + API_TOKEN },
@@ -859,6 +995,7 @@ test.describe('authenticated API request', () => {
     expect(body).toHaveProperty('email');
     expect(body).toHaveProperty('id');
 
+    // Always dispose of the context when done
     await api.dispose();
   });
 });
@@ -877,8 +1014,16 @@ test.describe('authenticated API request', () => {
     tags: ["playwright", "database", "select"],
     code: `/**
  * PostgreSQL read health check.
- * Coverage: connection, simple SELECT, column existence.
- * Swap connection string for your database user/host.
+ * 
+ * Purpose:
+ * - Verify database connectivity
+ * - Check that a specific table exists and has expected columns
+ * - Ensure read operations are functioning
+ * 
+ * Configuration:
+ * - Requires 'pg' library
+ * - Connection string must be configured
+ * 
  * @requires @playwright/test, pg
  */
 
@@ -896,7 +1041,10 @@ test.afterAll(async () => {
 // Cheap heartbeat query to ensure the database is reachable.
 test.describe('database read health check', () => {
   test('users table returns expected columns', async () => {
+    // Execute a simple SELECT query
     const result = await pool.query('SELECT id, email FROM users LIMIT 1');
+    
+    // Verify we got results and the schema matches expectations
     expect(result.rowCount).toBeGreaterThan(0);
     expect(result.rows[0]).toHaveProperty('email');
   });
@@ -912,8 +1060,19 @@ test.describe('database read health check', () => {
     tags: ["playwright", "database", "transaction"],
     code: `/**
  * Transactional insert with rollback for clean state.
- * Coverage: BEGIN/ROLLBACK, returned row validation, cleanup assertion.
- * Keeps test data out of shared environments.
+ * 
+ * Purpose:
+ * - Test write operations without polluting the database
+ * - Verify that INSERTs work correctly
+ * - Ensure data isolation by rolling back changes
+ * 
+ * Key Actions:
+ * - BEGIN transaction
+ * - INSERT data
+ * - Verify insertion
+ * - ROLLBACK transaction
+ * - Verify data is gone
+ * 
  * @requires @playwright/test, pg
  */
 
@@ -931,29 +1090,34 @@ test.afterAll(async () => {
 // Use transactions so test data never leaks into production.
 test.describe('database transaction with rollback', () => {
   test('insert + rollback keeps DB clean', async () => {
-  const client = await pool.connect();
+    const client = await pool.connect();
 
-  try {
-    await client.query('BEGIN');
+    try {
+      // Start transaction
+      await client.query('BEGIN');
 
-    const inserted = await client.query(
-      'INSERT INTO users (email, name) VALUES ($1, $2) RETURNING id, email, name',
-      ['playwright@example.com', 'Playwright Test']
-    );
+      // Perform insert
+      const inserted = await client.query(
+        'INSERT INTO users (email, name) VALUES ($1, $2) RETURNING id, email, name',
+        ['playwright@example.com', 'Playwright Test']
+      );
 
-    expect(inserted.rowCount).toBe(1);
-    expect(inserted.rows[0].email).toBe('playwright@example.com');
+      // Verify insert was successful within the transaction
+      expect(inserted.rowCount).toBe(1);
+      expect(inserted.rows[0].email).toBe('playwright@example.com');
 
-    await client.query('ROLLBACK');
+      // Rollback changes
+      await client.query('ROLLBACK');
 
-    const check = await client.query(
-      'SELECT 1 FROM users WHERE email = $1',
-      ['playwright@example.com']
-    );
-    expect(check.rowCount).toBe(0);
-  } finally {
-    client.release();
-  }
+      // Verify data was removed
+      const check = await client.query(
+        'SELECT 1 FROM users WHERE email = $1',
+        ['playwright@example.com']
+      );
+      expect(check.rowCount).toBe(0);
+    } finally {
+      client.release();
+    }
   });
 });
 `,
@@ -967,8 +1131,16 @@ test.describe('database transaction with rollback', () => {
     tags: ["playwright", "database", "update"],
     code: `/**
  * Safe UPDATE example with RETURNING.
- * Coverage: scoped update, affected rows, value assertions.
- * Ensures you never run unbounded updates in tests.
+ * 
+ * Purpose:
+ * - Demonstrate how to safely update records
+ * - Verify the update affected the correct rows
+ * - Check the returned data matches expectations
+ * 
+ * Best Practices:
+ * - Always use WHERE clauses to limit scope
+ * - Use RETURNING to verify the new state immediately
+ * 
  * @requires @playwright/test, pg
  */
 
@@ -986,14 +1158,15 @@ test.afterAll(async () => {
 // Example update: always scope by id and assert row count.
 test.describe('safe database update', () => {
   test('updates a user safely', async () => {
-  const result = await pool.query(
-    'UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name',
-    ['Updated Name', 1]
-  );
+    const result = await pool.query(
+      'UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name',
+      ['Updated Name', 1]
+    );
 
-  expect(result.rowCount).toBe(1);
-  expect(result.rows[0].id).toBe(1);
-  expect(result.rows[0].name).toBe('Updated Name');
+    // Verify exactly one row was updated
+    expect(result.rowCount).toBe(1);
+    expect(result.rows[0].id).toBe(1);
+    expect(result.rows[0].name).toBe('Updated Name');
   });
 });
 `,
@@ -1008,8 +1181,16 @@ test.describe('safe database update', () => {
     tags: ["playwright", "fixtures", "page-object"],
     code: `/**
  * Custom fixtures for reusable test components.
- * Coverage: page objects, test data, authentication state.
- * Demonstrates the fixtures pattern for maintainable tests.
+ * 
+ * Purpose:
+ * - Abstract common actions into reusable "fixtures"
+ * - Simplify test code by removing repetitive setup/teardown
+ * - Implement the Page Object Model (POM) pattern
+ * 
+ * Key Concepts:
+ * - test.extend: Creates a new test object with custom fixtures
+ * - Page Object: Encapsulates page-specific logic (goto, addTodo, getTodoText)
+ * 
  * @requires @playwright/test
  */
 
@@ -1039,6 +1220,7 @@ const test = base.extend({
     
     // Navigate to app before each test
     await todoPage.goto();
+    // Pass the fixture to the test
     await use(todoPage);
   },
 });
@@ -1071,8 +1253,17 @@ test.describe('custom fixtures and page objects', () => {
     tags: ["playwright", "forms", "stubbing", "api"],
     code: `/**
  * Form submission with network stubbing.
- * Coverage: form interactions, POST API stub, success validation.
- * Demonstrates how to intercept and mock API responses for hermetic testing.
+ * 
+ * Purpose:
+ * - Test frontend logic in isolation from the backend
+ * - Simulate specific backend responses (success, error, edge cases)
+ * - Speed up tests by avoiding real network calls
+ * 
+ * Key Actions:
+ * - page.route: Intercepts network requests
+ * - route.fulfill: Provides a mock response
+ * - UI verification: Checks that the UI handles the mock response correctly
+ * 
  * @requires @playwright/test
  */
 
@@ -1084,6 +1275,7 @@ test.describe('form submission with API stubbing', () => {
   test('stubs todo creation API and validates UI response', async ({ page }) => {
     // Stub the todo creation API call
     await page.route('**/todos', async (route) => {
+      // Only intercept POST requests
       if (route.request().method() !== 'POST') {
         return route.continue();
       }
@@ -1130,15 +1322,16 @@ test.describe('form submission with API stubbing', () => {
     tags: ["playwright", "devices", "emulation", "mobile"],
     code: `/**
  * Device emulation capabilities showcase.
- * Coverage: mobile devices, tablets, desktop viewports, touch interactions.
- * Demonstrates how to use test.use() with devices for full device emulation.
  * 
- * Available device presets include:
- * - Mobile: iPhone 13, iPhone 12, Pixel 5, Pixel 8
- * - Tablet: iPad, iPad Pro, Surface Pro
- * - Desktop: Desktop Chrome, Desktop Firefox, Desktop Safari
+ * Purpose:
+ * - Demonstrate how to emulate different devices (Mobile, Tablet, Desktop)
+ * - Verify touch interactions
+ * - Check responsive layout adaptations
  * 
- * Usage: Run with specific project or uncomment device preset below
+ * Configuration:
+ * - Uses 'devices' dictionary from Playwright
+ * - Can be configured globally or per-test using test.use()
+ * 
  * @requires @playwright/test
  */
 
@@ -1250,8 +1443,18 @@ test.describe('device verification example', () => {
     tags: ["playwright", "api", "ui"],
     code: `/**
  * Cross-layer test: seed via API, verify via UI.
- * Coverage: POST seed, UI add/read, optional API cleanup.
- * Swap API_URL/APP_URL/selectors to match your product.
+ * 
+ * Purpose:
+ * - Demonstrate end-to-end testing across layers
+ * - Use API for fast data setup (seeding)
+ * - Use UI for user-centric verification
+ * - Clean up data via API
+ * 
+ * Key Actions:
+ * - API POST: Create data
+ * - UI Interaction: Verify data visibility
+ * - API DELETE: Remove data
+ * 
  * @requires @playwright/test
  */
 
@@ -1262,22 +1465,496 @@ const APP_URL = 'https://demo.playwright.dev/todomvc';
 
 test.describe('API + UI end-to-end test', () => {
   test('creates data via API and checks UI', async ({ page, request }) => {
-  const createResponse = await request.post(API_URL + '/posts', {
-    data: { title: 'Full-stack check', body: 'Seeded by API', userId: 1 },
-  });
+    // 1. Seed data using the API (fast)
+    const createResponse = await request.post(API_URL + '/posts', {
+      data: { title: 'Full-stack check', body: 'Seeded by API', userId: 1 },
+    });
 
-  expect(createResponse.ok()).toBeTruthy();
-  const payload = await createResponse.json();
+    expect(createResponse.ok()).toBeTruthy();
+    const payload = await createResponse.json();
 
-  await page.goto(APP_URL);
-  await page.getByPlaceholder('What needs to be done?').fill(payload.title);
-  await page.keyboard.press('Enter');
-  await expect(page.getByRole('listitem').first()).toContainText(payload.title);
+    // 2. Verify data in the UI (user perspective)
+    await page.goto(APP_URL);
+    await page.getByPlaceholder('What needs to be done?').fill(payload.title);
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('listitem').first()).toContainText(payload.title);
 
-  await request.delete(API_URL + '/posts/' + payload.id);
+    // 3. Clean up data using the API
+    await request.delete(API_URL + '/posts/' + payload.id);
   });
 });
 `,
+  },
+  {
+    id: "pw-browser-comprehensive",
+    name: "Comprehensive Browser Test",
+    description: "Multi-test suite covering navigation, elements, and forms",
+    category: "Browser fundamentals",
+    testType: "browser",
+    tags: ["playwright", "browser", "comprehensive"],
+    code: `/**
+ * Comprehensive browser automation test suite with Playwright
+ * Demonstrates core UI testing patterns: navigation, element interaction, and form submission
+ *
+ * Purpose:
+ * - Test page title and metadata correctness
+ * - Verify navigation flow and DOM element visibility
+ * - Validate form input, submission, and data persistence
+ *
+ * Test Coverage:
+ * 1. Page Title Test: Validates page metadata and document title
+ * 2. Navigation Test: Simulates user clicking links and verifying page changes
+ * 3. Form Test: Fills form fields, submits data, and verifies results
+ *
+ * Configuration:
+ * - Browser: Chromium (default) unless specified via config
+ * - Base URL: Uses absolute URLs for flexibility
+ * - Assertions: Uses semantic locators (role, label, placeholder) for resilience
+ *
+ * Use Case:
+ * - Validate core user journeys (landing page → documentation → form)
+ * - Smoke test for UI layer regressions
+ * - Onboarding test to verify key application flows work
+ *
+ * @requires '@playwright/test'
+ */
+
+import { test, expect } from '@playwright/test';
+
+test.describe('browser automation tests', () => {
+  test('page title verification', async ({ page }) => {
+    // Navigate to Playwright docs and verify page metadata
+    await page.goto('https://playwright.dev/');
+
+    // Verify document title matches expected pattern
+    await expect(page).toHaveTitle(/Playwright/);
+    console.log('✅ Page title verified successfully');
+  });
+
+  test('navigation and element visibility', async ({ page }) => {
+    // Test multi-step navigation flow through the application
+    await page.goto('https://playwright.dev/');
+
+    // Click navigation link to move to next page
+    await page.getByRole('link', { name: 'Get started' }).click();
+
+    // Verify the target page loaded with expected content
+    await expect(page.getByRole('heading', { name: 'Installation' })).toBeVisible();
+    console.log('✅ Navigation and element visibility verified');
+  });
+
+  test('form interaction', async ({ page }) => {
+    // Test form input, submission, and data handling
+    await page.goto('https://demo.playwright.dev/todomvc');
+
+    // Fill form field with test data
+    await page.getByPlaceholder('What needs to be done?').fill('Test automation with Playwright');
+
+    // Submit form by pressing Enter
+    await page.getByPlaceholder('What needs to be done?').press('Enter');
+
+    // Verify form data was persisted and appears in the UI
+    await expect(page.getByTestId('todo-title')).toHaveText(['Test automation with Playwright']);
+    console.log('✅ Form interaction verified');
+  });
+});
+`,
+  },
+  {
+    id: "pw-api-comprehensive",
+    name: "Comprehensive API Test",
+    description: "Tests HTTP methods, response validation, and error handling",
+    category: "API Coverage",
+    testType: "api",
+    tags: ["playwright", "api", "comprehensive"],
+    code: `/**
+ * REST API testing with Playwright
+ * Comprehensive API tests covering HTTP methods, response validation, and error handling
+ *
+ * Purpose:
+ * - Validate read operations (GET) with exact response matching
+ * - Verify write operations (POST) with state validation
+ * - Test error handling for edge cases (404, missing resources)
+ *
+ * Test Coverage:
+ * 1. GET Request Test: Validates HTTP status, headers, and full response structure
+ * 2. POST Request Test: Tests data submission, ID generation, and response data
+ * 3. Error Handling Test: Validates 404 responses and empty result handling
+ *
+ * Configuration:
+ * - API Base: JSONPlaceholder (public fake API for testing)
+ * - Assertions: Strict validation (exact equality, not partial matching)
+ * - Response Format: JSON
+ *
+ * Use Case:
+ * - Smoke test API endpoints before deploying to production
+ * - Validate API contract changes
+ * - Test error scenarios and edge cases
+ *
+ * @requires '@playwright/test'
+ */
+
+import { test, expect } from '@playwright/test';
+
+test.describe('API endpoint tests', () => {
+  test('GET request with status and data validation', async ({ request }) => {
+    // Test GET request and validate response structure
+    const response = await request.get('https://jsonplaceholder.typicode.com/todos/1');
+
+    // Verify successful response status
+    expect(response.status()).toBe(200);
+
+    // Validate complete response payload structure
+    const responseData = await response.json();
+    expect(responseData).toEqual({
+      userId: 1,
+      id: 1,
+      title: 'delectus aut autem',
+      completed: false,
+    });
+    console.log('✅ GET request validated successfully');
+  });
+
+  test('POST request with request body', async ({ request }) => {
+    // Test POST request with data payload and verify creation
+    const newTodo = {
+      title: 'Test API with Playwright',
+      completed: false,
+      userId: 1
+    };
+
+    // Submit POST request with payload
+    const response = await request.post('https://jsonplaceholder.typicode.com/todos', {
+      data: newTodo
+    });
+
+    // Verify creation response status
+    expect(response.status()).toBe(201);
+
+    // Validate response contains expected fields
+    const responseData = await response.json();
+    expect(responseData).toHaveProperty('id');
+    expect(responseData.title).toBe(newTodo.title);
+    console.log('✅ POST request validated successfully');
+  });
+
+  test('error handling for non-existent resource', async ({ request }) => {
+    // Test 404 error handling for missing resources
+    const response = await request.get('https://jsonplaceholder.typicode.com/todos/999999');
+
+    // Verify 404 not found response
+    expect(response.status()).toBe(404);
+
+    // Validate empty response body for missing resource
+    const responseData = await response.json();
+    expect(Object.keys(responseData).length).toBe(0);
+    console.log('✅ Error handling validated successfully');
+  });
+});
+`,
+  },
+  {
+    id: "pw-db-discovery",
+    name: "Database Discovery & Query",
+    description: "Connects to DB, discovers schema, and executes queries",
+    category: "Database checks",
+    testType: "database",
+    tags: ["playwright", "database", "postgres", "discovery"],
+    code: `/**
+ * PostgreSQL database connection and query testing
+ * Connects to public database and executes SQL queries with validation
+ * @requires 'pg' package, '@playwright/test'
+ */
+
+import { test, expect } from "@playwright/test";
+import { Client } from "pg";
+
+const config = {
+  connectionString: "postgres://reader:NWDMCE5xdipIjRrp@hh-pgsql-public.ebi.ac.uk:5432/pfmegrnargs",
+  ssl: false
+};
+
+test.describe('database query tests', () => {
+  test('connection and basic info', async () => {
+    // Test database connection and retrieve basic information
+    const client = new Client(config);
+    
+    try {
+      await client.connect();
+      console.log("✅ Connected to RNAcentral PostgreSQL database");
+
+      // Get database version and connection details
+      const infoResult = await client.query(\`
+        SELECT 
+          version() as db_version,
+          current_database() as database_name,
+          current_user as connected_user,
+          current_timestamp as connection_time
+      \`);
+
+      console.log("Database Information:");
+      console.log(\`Database: \${infoResult.rows[0].database_name}\`);
+      console.log(\`Connected as: \${infoResult.rows[0].connected_user}\`);
+      console.log(\`Connection Time: \${infoResult.rows[0].connection_time}\`);
+      console.log(\`Version: \${infoResult.rows[0].db_version.split(',')[0]}\`);
+
+      expect(infoResult.rows.length).toBe(1);
+      expect(infoResult.rows[0].database_name).toBe('pfmegrnargs');
+      expect(infoResult.rows[0].connected_user).toBe('reader');
+
+      // Check server configuration
+      const settingsResult = await client.query(\`
+        SELECT 
+          setting as timezone
+        FROM pg_settings 
+        WHERE name = 'TimeZone'
+      \`);
+
+      console.log(\`Server Timezone: \${settingsResult.rows[0].timezone}\`);
+      expect(settingsResult.rows.length).toBe(1);
+
+      console.log("✅ Connection and basic info test completed successfully");
+    } catch (err) {
+      console.error("Database query failed:", err);
+      throw err;
+    } finally {
+      await client.end();
+      console.log("✅ Database connection closed");
+    }
+  });
+
+  test('schema discovery', async () => {
+    // Discover database schemas and available tables
+    const client = new Client(config);
+    
+    try {
+      await client.connect();
+      console.log("✅ Connected to RNAcentral PostgreSQL database");
+
+      // Find all non-system schemas
+      const schemasResult = await client.query(\`
+        SELECT schema_name 
+        FROM information_schema.schemata 
+        WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+        ORDER BY schema_name
+      \`);
+
+      console.log("Available Schemas:");
+      schemasResult.rows.forEach((schema, index) => {
+        console.log(\`\${index + 1}. \${schema.schema_name}\`);
+      });
+
+      expect(schemasResult.rows.length).toBeGreaterThanOrEqual(1);
+
+      // List first 5 tables in each schema
+      for (const schema of schemasResult.rows) {
+        const tablesResult = await client.query(\`
+          SELECT table_name, table_type
+          FROM information_schema.tables 
+          WHERE table_schema = $1
+          ORDER BY table_name
+          LIMIT 5
+        \`, [schema.schema_name]);
+
+        console.log(\`Tables in \${schema.schema_name} schema (first 5):\`);
+        if (tablesResult.rows.length > 0) {
+          tablesResult.rows.forEach((table, index) => {
+            console.log(\`  \${index + 1}. \${table.table_name} (\${table.table_type})\`);
+          });
+        } else {
+          console.log("  No tables found or no access to tables");
+        }
+      }
+
+      console.log("✅ Schema discovery completed successfully");
+    } catch (err) {
+      console.error("Database query failed:", err);
+      throw err;
+    } finally {
+      await client.end();
+      console.log("✅ Database connection closed");
+    }
+  });
+});
+`,
+  },
+  {
+    id: "pw-custom-github",
+    name: "GitHub API + Browser Integration",
+    description: "Combines API data fetching with browser validation",
+    category: "Cross-layer",
+    testType: "custom",
+    tags: ["playwright", "api", "browser", "github"],
+    code: `/**
+ * GitHub API + Browser integration tests
+ * Combines API data fetching with browser validation for end-to-end testing
+ * @requires '@playwright/test'
+ */
+
+import { test, expect } from "@playwright/test";
+
+test.describe('GitHub integration tests', () => {
+  test('repository analysis - API + browser integration', async ({ request, page }) => {
+    // Combine API data fetching with browser validation
+    console.log("🚀 Starting GitHub repository analysis workflow...");
+
+    const repoOwner = "microsoft";
+    const repoName = "playwright";
+
+    console.log("Step 1: Fetching repository data via GitHub API...");
+    const repoResponse = await request.get(
+      \`https://api.github.com/repos/\${repoOwner}/\${repoName}\`
+    );
+
+    expect(repoResponse.status()).toBe(200);
+    const repoData = await repoResponse.json();
+    
+    // Display repository metrics from API
+    console.log(\`📊 Repository: \${repoData.full_name}\`);
+    console.log(\`⭐ Stars: \${repoData.stargazers_count}\`);
+    console.log(\`🍴 Forks: \${repoData.forks_count}\`);
+    console.log(\`📝 Description: \${repoData.description}\`);
+    console.log(\`🔗 Language: \${repoData.language}\`);
+
+    console.log("Step 2: Opening GitHub repository in browser...");
+    await page.goto(\`https://github.com/\${repoOwner}/\${repoName}\`);
+    await expect(page).toHaveTitle(/playwright/i);
+    
+    console.log("Step 3: Validating API data against browser content...");
+    await expect(page.getByRole('heading', { name: '🎭 Playwright' })).toBeVisible();
+    console.log(\`✅ Repository page loaded and confirmed\`);
+
+    console.log("✅ Repository analysis completed successfully");
+  });
+
+  test('API data analysis', async ({ request }) => {
+    // Analyze GitHub repository issues and contributors via API
+    console.log("🚀 Starting GitHub API data analysis...");
+
+    const repoOwner = "microsoft";
+    const repoName = "playwright";
+
+    console.log("Step 1: Fetching repository issues via API...");
+    const issuesResponse = await request.get(
+      \`https://api.github.com/repos/\${repoOwner}/\${repoName}/issues?state=open&per_page=10\`
+    );
+
+    expect(issuesResponse.status()).toBe(200);
+    const issues = await issuesResponse.json();
+    
+    console.log(\`📋 Found \${issues.length} open issues (showing first 10)\`);
+    
+    // Analyze issue patterns and statistics
+    const issueAnalysis = {
+      withLabels: issues.filter(issue => issue.labels.length > 0).length,
+      withAssignees: issues.filter(issue => issue.assignees.length > 0).length,
+      averageComments: Math.round(issues.reduce((sum, issue) => sum + issue.comments, 0) / issues.length)
+    };
+
+    console.log(\`🏷️  Issues with labels: \${issueAnalysis.withLabels}/\${issues.length}\`);
+    console.log(\`👥 Issues with assignees: \${issueAnalysis.withAssignees}/\${issues.length}\`);
+    console.log(\`💬 Average comments per issue: \${issueAnalysis.averageComments}\`);
+
+    console.log("Step 2: Fetching repository contributors...");
+    const contributorsResponse = await request.get(
+      \`https://api.github.com/repos/\${repoOwner}/\${repoName}/contributors?per_page=5\`
+    );
+
+    expect(contributorsResponse.status()).toBe(200);
+    const contributors = await contributorsResponse.json();
+    
+    // Display top contributors by commit count
+    console.log(\`👨‍💻 Top \${contributors.length} Contributors:\`);
+    contributors.forEach((contributor, index) => {
+      console.log(\`  \${index + 1}. \${contributor.login} - \${contributor.contributions} contributions\`);
+    });
+
+    expect(contributors.length).toBeGreaterThan(0);
+    console.log("✅ API data analysis completed successfully");
+  });
+
+  test('user profile analysis', async ({ request, page }) => {
+    // Validate user profile data across API and browser interfaces
+    console.log("🚀 Starting GitHub user profile analysis...");
+
+    const username = "torvalds";
+
+    console.log("Step 1: Fetching user profile via GitHub API...");
+    const userResponse = await request.get(\`https://api.github.com/users/\${username}\`);
+
+    expect(userResponse.status()).toBe(200);
+    const userData = await userResponse.json();
+    
+    // Display user profile information from API
+    console.log(\`👤 User: \${userData.login}\`);
+    console.log(\`📝 Name: \${userData.name || 'Not provided'}\`);
+    console.log(\`📊 Public Repos: \${userData.public_repos}\`);
+    console.log(\`👥 Followers: \${userData.followers}\`);
+
+    console.log("Step 2: Validating user profile in browser...");
+    await page.goto(\`https://github.com/\${username}\`);
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveURL(new RegExp(username));
+    console.log(\`✅ Confirmed on \${username}'s profile page\`);
+
+    console.log("✅ User profile analysis completed successfully");
+  });
+});
+`,
+  },
+  {
+    id: "k6-basic",
+    name: "Basic Performance Test",
+    description: "Simple load test with virtual users and thresholds",
+    category: "Smoke & Health",
+    testType: "performance",
+    tags: ["k6", "basic", "performance"],
+    code: `/**
+ * Basic k6 performance test script
+ * Simple load testing with concurrent virtual users and SLA thresholds
+ *
+ * Purpose:
+ * - Verify baseline API performance under moderate load
+ * - Check response times meet acceptable thresholds (p95 < 500ms)
+ * - Monitor error rates during normal operation
+ *
+ * Configuration:
+ * - VUs: 10 concurrent virtual users
+ * - Duration: 30 seconds
+ * - Thresholds:
+ *   - Response time: 95th percentile must be < 500ms
+ *   - Error rate: Must be < 10%
+ *
+ * Use Case:
+ * - Quick performance baseline check
+ * - Part of CI/CD pipeline for regression testing
+ * - Verify API health before running heavier tests
+ *
+ * @requires k6 binary
+ */
+
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+export const options = {
+  vus: 10,                    // 10 virtual users
+  duration: '30s',            // Run for 30 seconds
+  thresholds: {
+    http_req_duration: ['p(95)<500'],  // 95% of requests < 500ms
+    http_req_failed: ['rate<0.1'],     // Error rate < 10%
+  },
+};
+
+export default function() {
+  const response = http.get('https://test-api.k6.io/public/crocodiles/');
+
+  check(response, {
+    'status is 200': (r) => r.status === 200,
+    'response time < 500ms': (r) => r.timings.duration < 500,
+  });
+
+  sleep(1); // Pause between requests to simulate user think time
+}`,
   },
 ];
 

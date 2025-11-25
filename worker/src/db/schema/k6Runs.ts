@@ -46,7 +46,7 @@ export const k6PerformanceRuns = pgTable("k6_performance_runs", {
   // Execution location (where test actually ran)
   location: varchar("location", { length: 50 })
     .$type<K6Location>()
-    .default("us-east"),
+    .default("global"),
 
   // Status tracking
   status: varchar("status", { length: 20 })

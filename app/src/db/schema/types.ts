@@ -8,8 +8,8 @@
 export type TestPriority = "low" | "medium" | "high";
 export type TestType = "browser" | "api" | "database" | "custom" | "performance";
 
-// K6 Performance Testing types
-export type K6Location = "us-east" | "eu-central" | "asia-pacific";
+// K6 Performance Testing types (includes global option for any location)
+export type K6Location = "us-east" | "eu-central" | "asia-pacific" | "global";
 
 // Job types
 export type JobType = "playwright" | "k6";

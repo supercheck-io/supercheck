@@ -602,7 +602,4 @@ All major implementation tasks have been completed, including the teams table cl
 4. **Backup Strategy**: Implement automated backup and recovery procedures
 5. **Documentation**: Create detailed operational runbooks
 
-For user-facing documentation, see:
-
-- [RBAC_DOCUMENTATION.md](../RBAC_DOCUMENTATION.md) - Complete RBAC and super admin guide
-- [SECURITY.md](../SECURITY.md) - Security best practices and configuration
+For more information on related systems, see the RBAC System and API Key System documentation in the specs directory.

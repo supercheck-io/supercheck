@@ -1,7 +1,11 @@
-export const JOB_EXECUTION_QUEUE = 'job-execution';
-export const TEST_EXECUTION_QUEUE = 'test-execution';
+// Playwright tests use a single global queue
+// K6 tests use regional queues (see k6.constants.ts for regional queue names)
+// Queue names
+export const PLAYWRIGHT_QUEUE = process.env.QUEUE_NAME || 'playwright-global';
 
-// Default capacity limits that should match the frontend settings
+// Limits
+export const CONCURRENT_JOB_LIMIT = 5;
+export const JOB_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes that should match the frontend settings
 export const RUNNING_CAPACITY = parseInt(
   process.env.RUNNING_CAPACITY || '5',
   10,

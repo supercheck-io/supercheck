@@ -16,11 +16,13 @@ import { logAuditEvent } from '@/lib/audit-logger';
 import { applyVariablesToTestScripts, decodeTestScript } from "@/lib/job-execution-utils";
 import { validateK6Script } from "@/lib/k6-validator";
 
-const DEFAULT_K6_LOCATION: K6Location = "us-east";
+const DEFAULT_K6_LOCATION: K6Location = "global";
 
 const normalizeK6Location = (value?: string): K6Location => {
-  if (value === "us-east" || value === "eu-central" || value === "asia-pacific") {
-    return value;
+  const lower = value?.toLowerCase();
+  // Accept kebab-case format matching K6Location type: "us-east" | "eu-central" | "asia-pacific" | "global"
+  if (lower === "us-east" || lower === "eu-central" || lower === "asia-pacific" || lower === "global") {
+    return lower;
   }
   return DEFAULT_K6_LOCATION;
 };
@@ -100,13 +102,14 @@ export async function POST(request: Request) {
     const jobRecord = jobDetails[0];
     const jobType = (jobRecord?.jobType || "playwright") as JobType;
     const isPerformanceJob = jobType === "k6";
-    const requestedLocation =
-      isPerformanceJob && typeof data.location === "string"
-        ? (data.location as string)
-        : undefined;
+    
+    // Extract location from request data for all job types
+    const requestedLocation = typeof data.location === "string" ? (data.location as string) : undefined;
+    
+    // Normalize location if needed (mainly for k6, but useful for consistency)
     const resolvedLocation = isPerformanceJob
       ? normalizeK6Location(requestedLocation)
-      : null;
+      : requestedLocation || "US"; // Default to US for Playwright if not specified
 
     runId = crypto.randomUUID();
     const startTime = new Date();
@@ -118,7 +121,7 @@ export async function POST(request: Request) {
       status: "running",
       startedAt: startTime,
       trigger, // Include trigger value
-      location: resolvedLocation,
+      location: resolvedLocation as K6Location,
       metadata: {
         jobType,
         ...(isPerformanceJob
@@ -126,7 +129,10 @@ export async function POST(request: Request) {
               executionEngine: "k6",
               location: resolvedLocation,
             }
-          : { executionEngine: "playwright" }),
+          : { 
+              executionEngine: "playwright",
+              location: resolvedLocation 
+            }),
       },
     });
 

@@ -6,9 +6,9 @@ import {
   type MonitoringLocation,
 } from "@/lib/location-service";
 
-export type PerformanceLocation = MonitoringLocation;
+export type PerformanceLocation = MonitoringLocation | "global";
 
-export const PERFORMANCE_LOCATIONS: PerformanceLocation[] = [
+export const PERFORMANCE_LOCATIONS: MonitoringLocation[] = [
   MONITORING_LOCATIONS.US_EAST,
   MONITORING_LOCATIONS.EU_CENTRAL,
   MONITORING_LOCATIONS.ASIA_PACIFIC,
@@ -21,8 +21,14 @@ export type PerformanceLocationOption = {
   flag?: string;
 };
 
-export const PERFORMANCE_LOCATION_OPTIONS: PerformanceLocationOption[] =
-  PERFORMANCE_LOCATIONS.map((location) => {
+export const PERFORMANCE_LOCATION_OPTIONS: PerformanceLocationOption[] = [
+  {
+    value: "global",
+    name: "Global",
+    region: "Global",
+    flag: "🌍",
+  },
+  ...PERFORMANCE_LOCATIONS.map((location) => {
     const metadata = LOCATION_METADATA[location];
     return {
       value: location,
@@ -30,7 +36,8 @@ export const PERFORMANCE_LOCATION_OPTIONS: PerformanceLocationOption[] =
       region: metadata?.region ?? "",
       flag: metadata?.flag,
     };
-  });
+  }),
+];
 
 export function getPerformanceLocationOption(
   value: PerformanceLocation

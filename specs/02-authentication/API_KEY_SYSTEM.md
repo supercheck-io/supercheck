@@ -14,7 +14,6 @@ The Supercheck API key system provides secure, programmatic access to job trigge
 6. [Database Schema](#database-schema)
 7. [Rate Limiting](#rate-limiting)
 8. [Testing Guide](#testing-guide)
-9. [Migration History](#migration-history)
 
 ## System Architecture
 
@@ -495,35 +494,6 @@ graph TB
     class B1,B2,B3,C1,C2,C3,D1,D2,D3 test
 ```
 
-## Migration History
-
-### Database Migrations
-
-**Migration 1: `0003_youthful_clea.sql`**
-- Added `jobId` field to `apikey` table
-- Changed user foreign key from `ON DELETE CASCADE` to `ON DELETE NO ACTION`
-- Added job foreign key with `ON DELETE CASCADE`
-
-**Migration 2: `0004_sharp_weapon_omega.sql`**
-- Temporarily removed `permissions` field
-- Testing simplified job-based authorization
-
-**Migration 3: `0005_dry_zarda.sql`**
-- Re-added `permissions` field as JSONB
-- Kept for future flexibility
-- Currently unused in favor of direct `jobId` checks
-
-### Schema Files Updated
-
-**App Schema:** `app/src/db/schema/schema.ts`
-- Updated `apikey` table definition
-- Added foreign key constraints
-- Added indexes
-
-**Worker Schema:** `worker/src/db/schema.ts`
-- Synchronized with app schema
-- Ensures consistency across services
-
 ## Security Considerations
 
 ### Key Generation
@@ -655,10 +625,3 @@ Phase 4: Policy-based access control
 - **RBAC System:** See `RBAC_DOCUMENTATION.md` for permission model
 - **Database Schema:** See `ERD_DIAGRAM.md` for complete schema
 
-## Revision History
-
-| Version | Date | Changes |
-|---------|------|---------|
-| 3.0 | 2025-01-12 | Removed code snippets, enhanced diagrams |
-| 2.0 | 2024-12-15 | Updated with direct job association model |
-| 1.0 | 2024-11-01 | Initial specification |

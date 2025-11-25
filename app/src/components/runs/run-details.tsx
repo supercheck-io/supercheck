@@ -83,6 +83,23 @@ export function RunDetails({
     run.location ?? null
   );
 
+  // Helper function to format location display with flag and name
+  // Using same flags as rest of the app (from location-service.ts)
+  const formatLocationDisplay = (location: string | null): { flag: string; name: string } => {
+    if (!location || location.toLowerCase() === "local" || location.toLowerCase() === "global") {
+      return { flag: "🌍", name: "Global" };
+    }
+
+    // Map location codes to display names with flags matching rest of app
+    const locationMap: Record<string, { flag: string; name: string }> = {
+      "us-east": { flag: "🇺🇸", name: "US East" },
+      "eu-central": { flag: "🇩🇪", name: "EU Central" },
+      "asia-pacific": { flag: "🇮🇳", name: "Asia Pacific" },
+    };
+
+    return locationMap[location] || { flag: "🌍", name: "Global" };
+  };
+
   // Helper to validate status is one of the allowed values
   const mapStatusForDisplay = (status: string): TestRunStatus => {
     const statusLower = status.toLowerCase();
@@ -399,13 +416,21 @@ export function RunDetails({
 
           {isPerformanceRun ? (
             <div className="bg-muted/30 rounded-lg p-2 border flex items-center overflow-hidden">
-              <MapPin className="h-6 w-6 min-w-6 mr-2 text-amber-500" />
+              <MapPin className="h-6 w-6 min-w-6 mr-2 text-green-600" />
               <div className="min-w-0 w-full">
                 <div className="text-xs font-medium text-muted-foreground">
                   Location
                 </div>
-                <div className="text-sm font-semibold truncate">
-                  {headerLocation || "Not specified"}
+                <div className="text-sm font-semibold truncate flex items-center gap-1.5">
+                  {(() => {
+                    const locationDisplay = formatLocationDisplay(headerLocation);
+                    return (
+                      <>
+                        <span className="text-base">{locationDisplay.flag}</span>
+                        <span>{locationDisplay.name}</span>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

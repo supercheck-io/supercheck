@@ -2,13 +2,12 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { K6ExecutionService } from './services/k6-execution.service';
 import {
-  K6JobExecutionProcessor,
-  K6TestExecutionProcessor,
+  K6ExecutionProcessor,
+  K6ExecutionProcessorUS,
+  K6ExecutionProcessorEU,
+  K6ExecutionProcessorAPAC,
 } from './processors/k6-execution.processor';
-import {
-  K6_JOB_EXECUTION_QUEUE,
-  K6_TEST_EXECUTION_QUEUE,
-} from './k6.constants';
+import { K6_QUEUE, K6_QUEUES } from './k6.constants';
 import { ExecutionModule } from '../execution.module';
 import { SecurityModule } from '../common/security/security.module';
 
@@ -31,19 +30,29 @@ const defaultJobOptions = {
     SecurityModule, // Import SecurityModule for container execution
     BullModule.registerQueue(
       {
-        name: K6_TEST_EXECUTION_QUEUE,
+        name: K6_QUEUE,
         defaultJobOptions,
       },
       {
-        name: K6_JOB_EXECUTION_QUEUE,
+        name: K6_QUEUES.US_EAST,
+        defaultJobOptions,
+      },
+      {
+        name: K6_QUEUES.EU_CENTRAL,
+        defaultJobOptions,
+      },
+      {
+        name: K6_QUEUES.ASIA_PACIFIC,
         defaultJobOptions,
       },
     ),
   ],
   providers: [
     K6ExecutionService,
-    K6TestExecutionProcessor,
-    K6JobExecutionProcessor,
+    K6ExecutionProcessor,
+    K6ExecutionProcessorUS,
+    K6ExecutionProcessorEU,
+    K6ExecutionProcessorAPAC,
   ],
   exports: [K6ExecutionService],
 })

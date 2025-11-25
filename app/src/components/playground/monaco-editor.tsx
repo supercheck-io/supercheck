@@ -541,7 +541,7 @@ export const MonacoEditorClient = memo(
                       id="fullscreen-editor-title"
                       className="text-xl font-semibold"
                     >
-                      Fullscreen Editor
+                      Editor
                     </h2>
                   </div>
                   <Button

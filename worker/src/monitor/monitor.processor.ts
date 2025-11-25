@@ -2,28 +2,23 @@ import {
   Processor,
   WorkerHost,
   OnWorkerEvent,
-  InjectQueue,
 } from '@nestjs/bullmq';
-import { Job, Queue } from 'bullmq';
+import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { MonitorService } from './monitor.service';
 import { MonitorJobDataDto } from './dto/monitor-job.dto';
 import {
   MONITOR_EXECUTION_QUEUE,
   EXECUTE_MONITOR_JOB_NAME,
-  IS_DISTRIBUTED_MULTI_LOCATION,
-  WORKER_LOCATION,
 } from './monitor.constants';
 import { MonitorExecutionResult } from './types/monitor-result.type';
 
 @Processor(MONITOR_EXECUTION_QUEUE)
 export class MonitorProcessor extends WorkerHost {
-  private readonly logger = new Logger(MonitorProcessor.name);
+  protected readonly logger = new Logger(MonitorProcessor.name);
 
   constructor(
-    private readonly monitorService: MonitorService,
-    @InjectQueue(MONITOR_EXECUTION_QUEUE)
-    private readonly monitorExecutionQueue: Queue,
+    protected readonly monitorService: MonitorService,
   ) {
     super();
   }
@@ -32,10 +27,29 @@ export class MonitorProcessor extends WorkerHost {
     job: Job<MonitorJobDataDto, MonitorExecutionResult[], string>,
   ): Promise<MonitorExecutionResult[]> {
     if (job.name === EXECUTE_MONITOR_JOB_NAME) {
-      if (IS_DISTRIBUTED_MULTI_LOCATION) {
-        return this.handleDistributedMonitorJob(job);
+      const jobLocation = job.data.executionLocation;
+
+      if (jobLocation) {
+        // Execute for specific location
+        const result = await this.monitorService.executeMonitor(
+          job.data,
+          jobLocation,
+        );
+
+        if (!result) {
+          return [];
+        }
+
+        // Save distributed result
+        await this.monitorService.saveDistributedMonitorResult(result, {
+          executionGroupId: job.data.executionGroupId,
+          expectedLocations: job.data.expectedLocations,
+        });
+
+        return [result];
       }
-      // Execute monitor from configured locations (single or multiple)
+
+      // Execute monitor from configured locations (legacy/single queue mode)
       return this.monitorService.executeMonitorWithLocations(job.data);
     }
 
@@ -47,12 +61,14 @@ export class MonitorProcessor extends WorkerHost {
 
   @OnWorkerEvent('completed')
   onCompleted(job: Job, results: MonitorExecutionResult[]) {
-    if (IS_DISTRIBUTED_MULTI_LOCATION) {
+    // In distributed mode (regional queues), results are saved individually in process()
+    // We only need to save here if it was a multi-location execution (legacy)
+    if (job.data.executionLocation) {
       return;
     }
-    // Save all location results with aggregation
+
+    // Save all location results with aggregation (legacy/local mode)
     if (results && results.length > 0) {
-      // Debug: Log synthetic test results if present
       const syntheticResults = results.filter((r) => r.testExecutionId);
       if (syntheticResults.length > 0) {
         this.logger.log(
@@ -82,69 +98,28 @@ export class MonitorProcessor extends WorkerHost {
   ) {
     // Removed log - progress updates are too verbose
   }
+}
 
-  private async handleDistributedMonitorJob(
-    job: Job<MonitorJobDataDto, MonitorExecutionResult[], string>,
-  ): Promise<MonitorExecutionResult[]> {
-    const jobLocation = job.data.executionLocation;
-
-    if (!jobLocation) {
-      return this.monitorService.executeMonitorWithLocations(job.data);
-    }
-
-    if (WORKER_LOCATION && WORKER_LOCATION !== jobLocation) {
-      await this.requeueJobForLocation(job, jobLocation);
-      return [];
-    }
-
-    const result = await this.monitorService.executeMonitor(
-      job.data,
-      jobLocation,
-    );
-
-    if (!result) {
-      return [];
-    }
-
-    await this.monitorService.saveDistributedMonitorResult(result, {
-      executionGroupId: job.data.executionGroupId,
-      expectedLocations: job.data.expectedLocations,
-    });
-
-    return [result];
+@Processor('monitor-us-east')
+export class MonitorProcessorUSEast extends MonitorProcessor {
+  constructor(monitorService: MonitorService) {
+    super(monitorService);
+    (this as any).logger = new Logger(MonitorProcessorUSEast.name);
   }
+}
 
-  private async requeueJobForLocation(
-    job: Job<MonitorJobDataDto, MonitorExecutionResult[], string>,
-    targetLocation: string,
-  ): Promise<void> {
-    const { attempts, backoff, removeOnComplete, removeOnFail, priority } =
-      job.opts;
+@Processor('monitor-eu-central')
+export class MonitorProcessorEUCentral extends MonitorProcessor {
+  constructor(monitorService: MonitorService) {
+    super(monitorService);
+    (this as any).logger = new Logger(MonitorProcessorEUCentral.name);
+  }
+}
 
-    try {
-      await this.monitorExecutionQueue.add(job.name, job.data, {
-        jobId: `${job.id}:${targetLocation}:${Date.now()}`,
-        attempts: attempts ?? 3,
-        backoff,
-        removeOnComplete,
-        removeOnFail,
-        priority,
-        delay: 1000,
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to requeue monitor job ${job.id} for location ${targetLocation}`,
-        error instanceof Error ? error.stack : String(error),
-      );
-    }
-
-    try {
-      await job.remove();
-    } catch (removeError) {
-      this.logger.error(
-        `Failed to remove monitor job ${job.id} after requeue`,
-        removeError instanceof Error ? removeError.stack : String(removeError),
-      );
-    }
+@Processor('monitor-asia-pacific')
+export class MonitorProcessorAsiaPacific extends MonitorProcessor {
+  constructor(monitorService: MonitorService) {
+    super(monitorService);
+    (this as any).logger = new Logger(MonitorProcessorAsiaPacific.name);
   }
 }
