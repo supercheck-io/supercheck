@@ -248,12 +248,17 @@ async function invalidateUserSessions(
   reason: string
 ): Promise<void> {
   try {
-    // Use Better Auth's session revocation API
-    await auth.api.revokeUserSessions({
-      body: {
-        userId,
-      },
-    });
+    // Revoke all sessions for the user via database
+    // Note: Better Auth doesn't provide a bulk session revocation API by userId,
+    // so we use direct database access for this admin operation
+    const { db } = await import("@/utils/db");
+    const { session } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const deletedSessions = await db
+      .delete(session)
+      .where(eq(session.userId, userId))
+      .returning({ id: session.id });
 
     // Log session invalidation
     const { logAuditEvent } = await import("@/lib/audit-logger");
@@ -264,6 +269,7 @@ async function invalidateUserSessions(
       metadata: {
         reason,
         timestamp: new Date().toISOString(),
+        sessionsRevoked: deletedSessions.length,
         allSessionsRevoked: true,
       },
       success: true,

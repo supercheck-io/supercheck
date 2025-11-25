@@ -115,6 +115,14 @@ CREATE TABLE "organization" (
 	"logo" text,
 	"created_at" timestamp NOT NULL,
 	"metadata" text,
+	"polar_customer_id" text,
+	"subscription_plan" text,
+	"subscription_status" text DEFAULT 'none',
+	"subscription_id" text,
+	"playwright_minutes_used" integer DEFAULT 0,
+	"k6_vu_hours_used" integer DEFAULT 0,
+	"usage_period_start" timestamp,
+	"usage_period_end" timestamp,
 	CONSTRAINT "organization_slug_unique" UNIQUE("slug")
 );
 --> statement-breakpoint
@@ -589,6 +597,27 @@ CREATE TABLE "status_pages" (
 	"created_at" timestamp DEFAULT now(),
 	"updated_at" timestamp DEFAULT now(),
 	CONSTRAINT "status_pages_subdomain_unique" UNIQUE("subdomain")
+);
+--> statement-breakpoint
+CREATE TABLE "plan_limits" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"plan" text NOT NULL,
+	"max_monitors" integer NOT NULL,
+	"min_check_interval_minutes" integer NOT NULL,
+	"playwright_minutes_included" integer NOT NULL,
+	"k6_vu_hours_included" integer NOT NULL,
+	"running_capacity" integer NOT NULL,
+	"queued_capacity" integer NOT NULL,
+	"max_team_members" integer NOT NULL,
+	"max_organizations" integer NOT NULL,
+	"max_projects" integer NOT NULL,
+	"max_status_pages" integer NOT NULL,
+	"custom_domains" boolean DEFAULT false NOT NULL,
+	"sso_enabled" boolean DEFAULT false NOT NULL,
+	"data_retention_days" integer NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "plan_limits_plan_unique" UNIQUE("plan")
 );
 --> statement-breakpoint
 ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

@@ -451,7 +451,52 @@ export class PlaygroundArtifactsCleanupStrategy implements ICleanupStrategy {
     }
   }
 
+  /**
+   * Check if S3 is available and bucket exists
+   * Returns false if bucket doesn't exist (not an error, just not configured yet)
+   */
+  private async checkS3Available(): Promise<boolean> {
+    const bucketName = String(
+      this.config.customConfig?.bucketName || "playwright-test-artifacts"
+    );
+
+    try {
+      const { S3Client, HeadBucketCommand } = await import("@aws-sdk/client-s3");
+
+      const s3Client = new S3Client({
+        region: process.env.AWS_REGION || "us-east-1",
+        endpoint: process.env.S3_ENDPOINT || "http://localhost:9000",
+        forcePathStyle: true,
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID || "minioadmin",
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "minioadmin",
+        },
+      });
+
+      await s3Client.send(new HeadBucketCommand({ Bucket: bucketName }));
+      return true;
+    } catch (error: unknown) {
+      const err = error as { $metadata?: { httpStatusCode?: number }; Code?: string; message?: string };
+      if (err?.$metadata?.httpStatusCode === 404 || err?.Code === 'NoSuchBucket') {
+        // Bucket doesn't exist - this is expected if S3 isn't set up yet
+        return false;
+      }
+      // Other errors (network, auth, etc.) - log but don't fail
+      console.warn(
+        `[DATA_LIFECYCLE] [playground_artifacts] S3 health check failed:`,
+        err?.message || String(error)
+      );
+      return false;
+    }
+  }
+
   async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
+    // Check if S3 is available before attempting stats collection
+    const isAvailable = await this.checkS3Available();
+    if (!isAvailable) {
+      return { totalRecords: 0, oldRecords: 0 };
+    }
+
     const maxAgeHours = Number(this.config.customConfig?.maxAgeHours || 24);
     const cutoffTime = Date.now() - maxAgeHours * 60 * 60 * 1000;
     const bucketName = String(
@@ -500,7 +545,16 @@ export class PlaygroundArtifactsCleanupStrategy implements ICleanupStrategy {
       } while (continuationToken);
 
       return { totalRecords: totalObjects, oldRecords: oldObjects };
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = error as { $metadata?: { httpStatusCode?: number }; Code?: string };
+      // Handle NoSuchBucket error gracefully - this is expected if S3 isn't set up yet
+      if (err?.$metadata?.httpStatusCode === 404 || err?.Code === 'NoSuchBucket') {
+        console.warn(
+          `[DATA_LIFECYCLE] [playground_artifacts] S3 bucket '${bucketName}' does not exist. Skipping stats collection.`
+        );
+        return { totalRecords: 0, oldRecords: 0 };
+      }
+
       console.error(
         "[DATA_LIFECYCLE] [playground_artifacts] Failed to get stats:",
         error
@@ -530,6 +584,18 @@ export class PlaygroundArtifactsCleanupStrategy implements ICleanupStrategy {
         dryRun,
       },
     };
+
+    // Check if S3 is available before attempting cleanup
+    const isAvailable = await this.checkS3Available();
+    if (!isAvailable) {
+      result.duration = Date.now() - startTime;
+      result.details = {
+        ...result.details,
+        skipped: true,
+        reason: 'S3 bucket not available',
+      };
+      return result;
+    }
 
     try {
       // List old objects
@@ -611,16 +677,28 @@ export class PlaygroundArtifactsCleanupStrategy implements ICleanupStrategy {
           } ${result.s3ObjectsDeleted} S3 objects`
         );
       }
-    } catch (error) {
+    } catch (error: unknown) {
+      const err = error as { $metadata?: { httpStatusCode?: number }; Code?: string };
       result.success = false;
-      result.errors.push(
-        error instanceof Error ? error.message : String(error)
-      );
       result.duration = Date.now() - startTime;
-      console.error(
-        `[DATA_LIFECYCLE] [${this.entityType}] Cleanup failed:`,
-        error
-      );
+
+      // Handle NoSuchBucket error gracefully - this is expected if S3 isn't set up yet
+      if (err?.$metadata?.httpStatusCode === 404 || err?.Code === 'NoSuchBucket') {
+        console.warn(
+          `[DATA_LIFECYCLE] [${this.entityType}] S3 bucket '${bucketName}' does not exist. Skipping cleanup.`
+        );
+        result.errors.push(`S3 bucket '${bucketName}' does not exist`);
+        // Mark as success since missing bucket is not a failure condition
+        result.success = true;
+      } else {
+        result.errors.push(
+          error instanceof Error ? error.message : String(error)
+        );
+        console.error(
+          `[DATA_LIFECYCLE] [${this.entityType}] Cleanup failed:`,
+          error
+        );
+      }
     }
 
     return result;

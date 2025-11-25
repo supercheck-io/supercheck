@@ -59,6 +59,10 @@ export async function POST() {
       name: `${user.name}'s Organization`,
       slug: randomUUID(),
       createdAt: new Date(),
+      // Self-hosted: unlimited plan immediately
+      // Cloud: null plan until Polar subscription via webhook
+      subscriptionPlan: process.env.NEXT_PUBLIC_SELF_HOSTED === 'true' ? 'unlimited' : null,
+      subscriptionStatus: process.env.NEXT_PUBLIC_SELF_HOSTED === 'true' ? 'active' : 'none',
     }).returning();
 
     // Add user as owner of the organization

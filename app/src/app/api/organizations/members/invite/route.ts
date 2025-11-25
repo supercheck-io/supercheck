@@ -15,6 +15,7 @@ import { EmailService } from "@/lib/email-service";
 import { inviteMemberSchema } from "@/lib/validations/member";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { renderOrganizationInvitationEmail } from "@/lib/email-renderer";
+import { checkTeamMemberLimit } from "@/lib/middleware/plan-enforcement";
 
 // Simple rate limiting - max 10 invites per hour per user
 const inviteRateLimit = new Map<string, { count: number; resetTime: number }>();
@@ -88,6 +89,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Invalid request data" },
         { status: 400 }
+      );
+    }
+
+    // Check team member limit for the organization
+    const currentMemberCount = await db
+      .select({ count: member.userId })
+      .from(member)
+      .where(eq(member.organizationId, activeOrg.id));
+
+    const limitCheck = await checkTeamMemberLimit(activeOrg.id, currentMemberCount.length);
+    if (!limitCheck.allowed) {
+      console.warn(`Team member limit reached for organization ${activeOrg.id}: ${limitCheck.error}`);
+      return NextResponse.json(
+        { error: limitCheck.error },
+        { status: 403 }
       );
     }
 

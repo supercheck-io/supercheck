@@ -19,6 +19,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { NavUser } from "@/components/nav-user";
 import { DemoBadge } from "@/components/demo-badge";
+import { SubscriptionGuard } from "@/components/subscription-guard";
 
 export default async function MainLayout({
   children,
@@ -63,7 +64,9 @@ export default async function MainLayout({
               </div>
             </header>
             <main className="flex-1 flex-col gap-4 overflow-y-auto">
-              {children}
+              <SubscriptionGuard>
+                {children}
+              </SubscriptionGuard>
             </main>
           </SidebarInset>
           </JobProvider>

@@ -42,10 +42,6 @@ async function processEmailTemplateJob(
 ): Promise<RenderedEmailResult> {
   const { template, data } = job.data;
 
-  console.log(
-    `[Email Template Processor] Processing job ${job.id} for template: ${template}`
-  );
-
   try {
     // Use static imports for email renderer
     const emailRenderer = {
@@ -159,9 +155,7 @@ async function processEmailTemplateJob(
         throw new Error(`Unknown template type: ${template}`);
     }
 
-    console.log(
-      `[Email Template Processor] Successfully rendered template ${template} for job ${job.id}`
-    );
+    // Template rendered successfully
 
     return result;
   } catch (error) {
@@ -299,7 +293,6 @@ async function renderJobTimeoutEmail(
  */
 export async function initializeEmailTemplateProcessor(): Promise<void> {
   if (emailTemplateWorker) {
-    console.log("[Email Template Processor] Already initialized");
     return;
   }
 
@@ -336,9 +329,7 @@ export async function initializeEmailTemplateProcessor(): Promise<void> {
       console.error("[Email Template Processor] Worker error:", err);
     });
 
-    console.log(
-      "[Email Template Processor] Initialized and ready to process jobs"
-    );
+    // Processor initialized successfully
   } catch (error) {
     console.error(
       "[Email Template Processor] Failed to initialize:",

@@ -8,6 +8,7 @@ import {
   K6ExecutionTask,
 } from '../services/k6-execution.service';
 import { DbService } from '../../execution/services/db.service';
+import { UsageTrackerService } from '../../execution/services/usage-tracker.service';
 import * as schema from '../../db/schema';
 import { JobNotificationService } from '../../execution/services/job-notification.service';
 import { K6_QUEUE } from '../k6.constants';
@@ -40,6 +41,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     protected readonly dbService: DbService,
     protected readonly configService: ConfigService,
     protected readonly jobNotificationService: JobNotificationService,
+    protected readonly usageTrackerService: UsageTrackerService,
   ) {
     super();
     this.logger = new Logger(processorName);
@@ -238,6 +240,23 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         .set(runUpdate)
         .where(eq(schema.runs.id, runId));
 
+      // Track K6 usage for billing
+      await this.usageTrackerService.trackK6Execution(
+        taskData.organizationId,
+        metrics.maxVUs,
+        result.durationMs,
+        {
+          runId,
+          jobId: taskData.jobId,
+          testId,
+          location: taskData.location,
+        }
+      ).catch((err: Error) =>
+        this.logger.warn(
+          `[${runId}] Failed to track K6 usage: ${err.message}`,
+        ),
+      );
+
       if (taskData.jobId) {
         const finalStatus = result.timedOut
           ? 'failed'
@@ -414,6 +433,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     avgResponseTimeMs: number;
     p95ResponseTimeMs: number;
     p99ResponseTimeMs: number;
+    maxVUs: number;
   } {
     if (!summary || !summary.metrics) {
       return {
@@ -423,12 +443,15 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         avgResponseTimeMs: 0,
         p95ResponseTimeMs: 0,
         p99ResponseTimeMs: 0,
+        maxVUs: 0,
       };
     }
 
     const metrics = summary.metrics;
     const httpReqs = metrics['http_reqs'] || {};
     const httpReqDuration = metrics['http_req_duration'] || {};
+    const vus = metrics['vus'] || {};
+    const vusMax = metrics['vus_max'] || {};
 
     return {
       totalRequests: httpReqs.count || 0,
@@ -437,6 +460,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       avgResponseTimeMs: httpReqDuration.avg || 0,
       p95ResponseTimeMs: httpReqDuration['p(95)'] || 0,
       p99ResponseTimeMs: httpReqDuration['p(99)'] || 0,
+      maxVUs: vusMax.max || vusMax.value || vus.max || vus.value || 1, // Default to 1 VU if not found
     };
   }
 
@@ -476,6 +500,7 @@ export class K6ExecutionProcessor extends BaseK6ExecutionProcessor {
     dbService: DbService,
     configService: ConfigService,
     jobNotificationService: JobNotificationService,
+    usageTrackerService: UsageTrackerService,
   ) {
     super(
       'K6ExecutionProcessor',
@@ -483,6 +508,7 @@ export class K6ExecutionProcessor extends BaseK6ExecutionProcessor {
       dbService,
       configService,
       jobNotificationService,
+      usageTrackerService,
     );
   }
 
@@ -528,12 +554,14 @@ export class K6ExecutionProcessorUS extends K6ExecutionProcessor {
     dbService: DbService,
     configService: ConfigService,
     jobNotificationService: JobNotificationService,
+    usageTrackerService: UsageTrackerService,
   ) {
     super(
       k6ExecutionService,
       dbService,
       configService,
       jobNotificationService,
+      usageTrackerService,
     );
     // Override logger name
     (this as any).logger = new Logger('K6ExecutionProcessorUSEast');
@@ -547,12 +575,14 @@ export class K6ExecutionProcessorEU extends K6ExecutionProcessor {
     dbService: DbService,
     configService: ConfigService,
     jobNotificationService: JobNotificationService,
+    usageTrackerService: UsageTrackerService,
   ) {
     super(
       k6ExecutionService,
       dbService,
       configService,
       jobNotificationService,
+      usageTrackerService,
     );
     (this as any).logger = new Logger('K6ExecutionProcessorEUCentral');
   }
@@ -565,12 +595,14 @@ export class K6ExecutionProcessorAPAC extends K6ExecutionProcessor {
     dbService: DbService,
     configService: ConfigService,
     jobNotificationService: JobNotificationService,
+    usageTrackerService: UsageTrackerService,
   ) {
     super(
       k6ExecutionService,
       dbService,
       configService,
       jobNotificationService,
+      usageTrackerService,
     );
     (this as any).logger = new Logger('K6ExecutionProcessorAsiaPacific');
   }

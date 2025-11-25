@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { StatsCard } from "@/components/admin/stats-card";
 import { Card, CardContent} from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,6 +12,7 @@ import { toast } from "sonner";
 import { AuditLogsTable } from "@/components/admin/audit-logs-table";
 import { MembersTable } from "@/components/org-admin/members-table";
 import { ProjectsTable } from "@/components/org-admin/projects-table";
+import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
 import { MemberAccessDialog } from "@/components/members/MemberAccessDialog";
 import { FormInput } from "@/components/ui/form-input";
 import { createProjectSchema, type CreateProjectFormData } from "@/lib/validations/project";
@@ -80,6 +82,9 @@ interface ProjectMember {
 
 export default function OrgAdminDashboard() {
   const { setBreadcrumbs } = useBreadcrumbs();
+  const searchParams = useSearchParams();
+  const defaultTab = searchParams.get('tab') || 'overview';
+  const [activeTab, setActiveTab] = useState(defaultTab);
   const [stats, setStats] = useState<OrgStats | null>(null);
   const [orgDetails, setOrgDetails] = useState<OrgDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -388,12 +393,13 @@ export default function OrgAdminDashboard() {
       
       <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
         <CardContent className="p-6">
-          <Tabs defaultValue="overview" className="space-y-4" onValueChange={handleTabChange}>
+          <Tabs value={activeTab} className="space-y-4" onValueChange={(value) => { setActiveTab(value); handleTabChange(value); }}>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="projects">Projects</TabsTrigger>
           <TabsTrigger value="members">Members</TabsTrigger>
           <TabsTrigger value="audit">Audit</TabsTrigger>
+          <TabsTrigger value="subscription">Subscription</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
@@ -607,6 +613,10 @@ export default function OrgAdminDashboard() {
 
         <TabsContent value="audit" className="space-y-4">
           <AuditLogsTable />
+        </TabsContent>
+
+        <TabsContent value="subscription" className="space-y-4">
+          <SubscriptionTab />
         </TabsContent>
       </Tabs>
         </CardContent>

@@ -1,5 +1,5 @@
 {
-  "id": "997b86f3-c2d4-478f-92c6-0893660fa11e",
+  "id": "ab4665af-15b0-44ed-8cc5-69d51228b2e9",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1128,6 +1128,57 @@
         "metadata": {
           "name": "metadata",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "polar_customer_id": {
+          "name": "polar_customer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subscription_plan": {
+          "name": "subscription_plan",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subscription_status": {
+          "name": "subscription_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'none'"
+        },
+        "subscription_id": {
+          "name": "subscription_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "playwright_minutes_used": {
+          "name": "playwright_minutes_used",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": 0
+        },
+        "k6_vu_hours_used": {
+          "name": "k6_vu_hours_used",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": 0
+        },
+        "usage_period_start": {
+          "name": "usage_period_start",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usage_period_end": {
+          "name": "usage_period_end",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         }
@@ -5369,6 +5420,133 @@
           "nullsNotDistinct": false,
           "columns": [
             "subdomain"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.plan_limits": {
+      "name": "plan_limits",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "plan": {
+          "name": "plan",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_monitors": {
+          "name": "max_monitors",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "min_check_interval_minutes": {
+          "name": "min_check_interval_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "playwright_minutes_included": {
+          "name": "playwright_minutes_included",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "k6_vu_hours_included": {
+          "name": "k6_vu_hours_included",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "running_capacity": {
+          "name": "running_capacity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "queued_capacity": {
+          "name": "queued_capacity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_team_members": {
+          "name": "max_team_members",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_organizations": {
+          "name": "max_organizations",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_projects": {
+          "name": "max_projects",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_status_pages": {
+          "name": "max_status_pages",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "custom_domains": {
+          "name": "custom_domains",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "sso_enabled": {
+          "name": "sso_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "data_retention_days": {
+          "name": "data_retention_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "plan_limits_plan_unique": {
+          "name": "plan_limits_plan_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "plan"
           ]
         }
       },
