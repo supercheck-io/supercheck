@@ -494,21 +494,31 @@ export async function initializeDataLifecycleService(): Promise<DataLifecycleSer
     );
 
     // Create the unified data lifecycle service
+    console.log("[DATA_LIFECYCLE] Creating service from environment variables...");
     const lifecycleService = createDataLifecycleService();
+    console.log("[DATA_LIFECYCLE] Service created successfully");
 
     // Get Redis connection from existing queue system
+    console.log("[DATA_LIFECYCLE] Getting Redis connection from queue system...");
     const { redisConnection } = await getQueues();
+    console.log("[DATA_LIFECYCLE] Redis connection obtained");
 
     // Initialize the lifecycle service with Redis connection
+    console.log("[DATA_LIFECYCLE] Initializing service with Redis connection...");
     await lifecycleService.initialize(redisConnection);
+    console.log("[DATA_LIFECYCLE] Service initialization complete");
 
     // Set the global instance for access throughout the app
     setDataLifecycleInstance(lifecycleService);
 
-    console.log("[DATA_LIFECYCLE] Initialized successfully");
+    const status = await lifecycleService.getStatus();
+    console.log("[DATA_LIFECYCLE] ✅ Initialized successfully", {
+      enabledStrategies: status.enabledStrategies,
+      queueStatus: status.queueStatus,
+    });
     return lifecycleService;
   } catch (error) {
-    console.error("[DATA_LIFECYCLE] Failed to initialize:", error);
+    console.error("[DATA_LIFECYCLE] ❌ Failed to initialize:", error);
     // Don't fail the entire initialization
     return null;
   }

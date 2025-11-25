@@ -73,7 +73,7 @@ export function LocationSelectionDialog({
                 className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/60 px-3 py-2.5 transition hover:border-primary/60 hover:bg-card/80"
               >
                 <div className="flex items-center gap-1.5 font-medium text-foreground">
-                  {option.flag && <span className="text-sm">{option.flag}</span>}
+                  {option.flag && <span className="text-xl">{option.flag}</span>}
                   <span className="text-sm">{option.name}</span>
                 </div>
                 <RadioGroupItem
@@ -97,7 +97,7 @@ export function LocationSelectionDialog({
               selectedOption ? (
                 <span className="flex items-center gap-2 text-sm text-muted-foreground">
                   {selectedOption.flag && (
-                    <span className="text-base leading-none">
+                    <span className="text-xl leading-none">
                       {selectedOption.flag}
                     </span>
                   )}
@@ -114,7 +114,7 @@ export function LocationSelectionDialog({
               <div className="rounded-xl border border-border/60 bg-background/60 p-4">
                 <div className="flex items-center gap-3">
                   {selectedOption.flag && (
-                    <span className="text-2xl leading-none">
+                    <span className="text-3xl leading-none">
                       {selectedOption.flag}
                     </span>
                   )}

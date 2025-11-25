@@ -1493,8 +1493,29 @@ test.describe('API + UI end-to-end test', () => {
     testType: "browser",
     tags: ["playwright", "browser", "comprehensive"],
     code: `/**
- * Browser automation tests with Playwright
- * Demonstrates web page navigation, element interaction, and form testing
+ * Comprehensive browser automation test suite with Playwright
+ * Demonstrates core UI testing patterns: navigation, element interaction, and form submission
+ *
+ * Purpose:
+ * - Test page title and metadata correctness
+ * - Verify navigation flow and DOM element visibility
+ * - Validate form input, submission, and data persistence
+ *
+ * Test Coverage:
+ * 1. Page Title Test: Validates page metadata and document title
+ * 2. Navigation Test: Simulates user clicking links and verifying page changes
+ * 3. Form Test: Fills form fields, submits data, and verifies results
+ *
+ * Configuration:
+ * - Browser: Chromium (default) unless specified via config
+ * - Base URL: Uses absolute URLs for flexibility
+ * - Assertions: Uses semantic locators (role, label, placeholder) for resilience
+ *
+ * Use Case:
+ * - Validate core user journeys (landing page → documentation → form)
+ * - Smoke test for UI layer regressions
+ * - Onboarding test to verify key application flows work
+ *
  * @requires '@playwright/test'
  */
 
@@ -1502,25 +1523,37 @@ import { test, expect } from '@playwright/test';
 
 test.describe('browser automation tests', () => {
   test('page title verification', async ({ page }) => {
-    // Navigate to Playwright docs and verify page title
+    // Navigate to Playwright docs and verify page metadata
     await page.goto('https://playwright.dev/');
+
+    // Verify document title matches expected pattern
     await expect(page).toHaveTitle(/Playwright/);
     console.log('✅ Page title verified successfully');
   });
 
   test('navigation and element visibility', async ({ page }) => {
-    // Test navigation flow and element interaction
+    // Test multi-step navigation flow through the application
     await page.goto('https://playwright.dev/');
+
+    // Click navigation link to move to next page
     await page.getByRole('link', { name: 'Get started' }).click();
+
+    // Verify the target page loaded with expected content
     await expect(page.getByRole('heading', { name: 'Installation' })).toBeVisible();
     console.log('✅ Navigation and element visibility verified');
   });
 
   test('form interaction', async ({ page }) => {
-    // Test form input and submission in TodoMVC app
+    // Test form input, submission, and data handling
     await page.goto('https://demo.playwright.dev/todomvc');
+
+    // Fill form field with test data
     await page.getByPlaceholder('What needs to be done?').fill('Test automation with Playwright');
+
+    // Submit form by pressing Enter
     await page.getByPlaceholder('What needs to be done?').press('Enter');
+
+    // Verify form data was persisted and appears in the UI
     await expect(page.getByTestId('todo-title')).toHaveText(['Test automation with Playwright']);
     console.log('✅ Form interaction verified');
   });
@@ -1536,7 +1569,28 @@ test.describe('browser automation tests', () => {
     tags: ["playwright", "api", "comprehensive"],
     code: `/**
  * REST API testing with Playwright
- * Tests HTTP methods, response validation, and error handling
+ * Comprehensive API tests covering HTTP methods, response validation, and error handling
+ *
+ * Purpose:
+ * - Validate read operations (GET) with exact response matching
+ * - Verify write operations (POST) with state validation
+ * - Test error handling for edge cases (404, missing resources)
+ *
+ * Test Coverage:
+ * 1. GET Request Test: Validates HTTP status, headers, and full response structure
+ * 2. POST Request Test: Tests data submission, ID generation, and response data
+ * 3. Error Handling Test: Validates 404 responses and empty result handling
+ *
+ * Configuration:
+ * - API Base: JSONPlaceholder (public fake API for testing)
+ * - Assertions: Strict validation (exact equality, not partial matching)
+ * - Response Format: JSON
+ *
+ * Use Case:
+ * - Smoke test API endpoints before deploying to production
+ * - Validate API contract changes
+ * - Test error scenarios and edge cases
+ *
  * @requires '@playwright/test'
  */
 
@@ -1546,7 +1600,11 @@ test.describe('API endpoint tests', () => {
   test('GET request with status and data validation', async ({ request }) => {
     // Test GET request and validate response structure
     const response = await request.get('https://jsonplaceholder.typicode.com/todos/1');
+
+    // Verify successful response status
     expect(response.status()).toBe(200);
+
+    // Validate complete response payload structure
     const responseData = await response.json();
     expect(responseData).toEqual({
       userId: 1,
@@ -1558,16 +1616,22 @@ test.describe('API endpoint tests', () => {
   });
 
   test('POST request with request body', async ({ request }) => {
-    // Test POST request with data payload
+    // Test POST request with data payload and verify creation
     const newTodo = {
       title: 'Test API with Playwright',
       completed: false,
       userId: 1
     };
+
+    // Submit POST request with payload
     const response = await request.post('https://jsonplaceholder.typicode.com/todos', {
       data: newTodo
     });
+
+    // Verify creation response status
     expect(response.status()).toBe(201);
+
+    // Validate response contains expected fields
     const responseData = await response.json();
     expect(responseData).toHaveProperty('id');
     expect(responseData.title).toBe(newTodo.title);
@@ -1577,7 +1641,11 @@ test.describe('API endpoint tests', () => {
   test('error handling for non-existent resource', async ({ request }) => {
     // Test 404 error handling for missing resources
     const response = await request.get('https://jsonplaceholder.typicode.com/todos/999999');
+
+    // Verify 404 not found response
     expect(response.status()).toBe(404);
+
+    // Validate empty response body for missing resource
     const responseData = await response.json();
     expect(Object.keys(responseData).length).toBe(0);
     console.log('✅ Error handling validated successfully');
@@ -1842,8 +1910,26 @@ test.describe('GitHub integration tests', () => {
     testType: "performance",
     tags: ["k6", "basic", "performance"],
     code: `/**
- * k6 performance testing script
- * Load testing with virtual users and response time thresholds
+ * Basic k6 performance test script
+ * Simple load testing with concurrent virtual users and SLA thresholds
+ *
+ * Purpose:
+ * - Verify baseline API performance under moderate load
+ * - Check response times meet acceptable thresholds (p95 < 500ms)
+ * - Monitor error rates during normal operation
+ *
+ * Configuration:
+ * - VUs: 10 concurrent virtual users
+ * - Duration: 30 seconds
+ * - Thresholds:
+ *   - Response time: 95th percentile must be < 500ms
+ *   - Error rate: Must be < 10%
+ *
+ * Use Case:
+ * - Quick performance baseline check
+ * - Part of CI/CD pipeline for regression testing
+ * - Verify API health before running heavier tests
+ *
  * @requires k6 binary
  */
 
@@ -1851,8 +1937,8 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 export const options = {
-  vus: 10,
-  duration: '30s',
+  vus: 10,                    // 10 virtual users
+  duration: '30s',            // Run for 30 seconds
   thresholds: {
     http_req_duration: ['p(95)<500'],  // 95% of requests < 500ms
     http_req_failed: ['rate<0.1'],     // Error rate < 10%
@@ -1867,7 +1953,7 @@ export default function() {
     'response time < 500ms': (r) => r.timings.duration < 500,
   });
 
-  sleep(1); // Pause between requests
+  sleep(1); // Pause between requests to simulate user think time
 }`,
   },
 ];
