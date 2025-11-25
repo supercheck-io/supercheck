@@ -29,6 +29,14 @@ erDiagram
         text logo
         timestamp createdAt
         text metadata
+        text polarCustomerId
+        text subscriptionPlan
+        text subscriptionStatus
+        text subscriptionId
+        integer playwrightMinutesUsed
+        integer k6VuHoursUsed
+        timestamp usagePeriodStart
+        timestamp usagePeriodEnd
     }
 
     MEMBER {
@@ -568,6 +576,26 @@ erDiagram
     USER ||--o{ incident_templates : "creates"
     USER ||--o{ postmortems : "writes"
 
+    plan_limits {
+        uuid id PK
+        text plan
+        integer maxMonitors
+        integer minCheckIntervalMinutes
+        integer playwrightMinutesIncluded
+        integer k6VuHoursIncluded
+        integer runningCapacity
+        integer queuedCapacity
+        integer maxTeamMembers
+        integer maxOrganizations
+        integer maxProjects
+        integer maxStatusPages
+        boolean customDomains
+        boolean ssoEnabled
+        integer dataRetentionDays
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
     ORGANIZATION ||--o{ MEMBER : "has members"
     ORGANIZATION ||--o{ INVITATION : "has invitations"
     ORGANIZATION ||--o{ PROJECTS : "contains"
@@ -665,6 +693,10 @@ erDiagram
 - **Subscriber System**: Multi-channel notifications (email, SMS, webhook) for status updates and incidents
 - **Component Organization**: Logical grouping of services with monitor linking and status tracking
 - **Analytics & Metrics**: Detailed uptime tracking and performance metrics per component
+- **Polar Billing Integration**: Subscription-based billing with Plus, Pro, and Unlimited plans
+- **Usage Tracking**: Monitor Playwright minutes and K6 VU hours with automatic overage calculation
+- **Plan Enforcement**: Resource limits enforced based on subscription plan (monitors, projects, team members, etc.)
+- **Self-Hosted Mode**: Unlimited plan automatically assigned to self-hosted deployments
 
 ### Role Hierarchy
 

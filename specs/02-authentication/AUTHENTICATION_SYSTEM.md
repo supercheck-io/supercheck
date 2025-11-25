@@ -2,7 +2,13 @@
 
 ## Overview
 
-Supercheck uses **Better Auth 1.2.8** as its comprehensive authentication framework, providing secure email/password authentication, multi-tenant organization management, role-based access control (RBAC), and admin capabilities including user impersonation.
+Supercheck uses **Better Auth 1.2.8** as its comprehensive authentication framework, providing:
+- **Email/Password Authentication**: Traditional credential-based sign-in
+- **Social Authentication**: GitHub and Google OAuth 2.0 sign-in
+- **Multi-Tenant Organization Management**: Built-in organization support
+- **Role-Based Access Control (RBAC)**: Fine-grained permissions
+- **Admin Capabilities**: User impersonation and management
+- **Polar Billing Integration**: Automatic customer creation for cloud deployments
 
 ## Table of Contents
 
@@ -27,17 +33,25 @@ graph TB
         UI2[Sign Up Page]
         UI3[Forgot Password Page]
         UI4[Reset Password Page]
+        UI5[Auth Callback Page]
         CLIENT[Better Auth Client]
     end
 
     subgraph "🔐 Better Auth Server"
         SERVER[Auth Server Core]
         PLUGINS[Plugins]
+        SOCIAL[Social Providers]
 
         subgraph "Plugin System"
             ORG[Organization Plugin]
             ADMIN[Admin Plugin]
             APIKEY[API Key Plugin]
+            POLAR[Polar Plugin<br/>Optional]
+        end
+
+        subgraph "OAuth Providers"
+            GITHUB[GitHub OAuth]
+            GOOGLE[Google OAuth]
         end
     end
 
@@ -53,12 +67,22 @@ graph TB
 
     subgraph "📧 External Services"
         SMTP[SMTP Email Service]
+        GHAPI[GitHub API]
+        GAPI[Google API]
+        PAPI[Polar API<br/>Optional]
     end
 
     UI1 & UI2 & UI3 & UI4 --> CLIENT
+    UI5 --> CLIENT
     CLIENT --> SERVER
     SERVER --> PLUGINS
-    PLUGINS --> ORG & ADMIN & APIKEY
+    PLUGINS --> ORG & ADMIN & APIKEY & POLAR
+
+    SERVER --> SOCIAL
+    SOCIAL --> GITHUB & GOOGLE
+    GITHUB --> GHAPI
+    GOOGLE --> GAPI
+    POLAR --> PAPI
 
     SERVER --> MW1
     MW1 --> MW2
@@ -73,11 +97,11 @@ graph TB
     classDef data fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
     classDef external fill:#ffebee,stroke:#d32f2f,stroke-width:2px
 
-    class UI1,UI2,UI3,UI4,CLIENT frontend
-    class SERVER,PLUGINS,ORG,ADMIN,APIKEY auth
+    class UI1,UI2,UI3,UI4,UI5,CLIENT frontend
+    class SERVER,PLUGINS,ORG,ADMIN,APIKEY,POLAR,SOCIAL,GITHUB,GOOGLE auth
     class MW1,MW2,MW3 middleware
     class DB data
-    class SMTP external
+    class SMTP,GHAPI,GAPI,PAPI external
 ```
 
 ## Authentication Flows
@@ -217,6 +241,103 @@ sequenceDiagram
     end
 ```
 
+### Social Sign-In Flow (GitHub/Google)
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant BetterAuth
+    participant OAuth as GitHub/Google
+    participant Callback as Auth Callback Page
+    participant Setup as /api/auth/setup-defaults
+    participant Database
+    participant Polar as Polar API<br/>(Cloud Mode)
+
+    User->>Frontend: Click "Sign in with GitHub/Google"
+    Frontend->>BetterAuth: Initiate OAuth flow
+    BetterAuth->>OAuth: Redirect to provider
+    User->>OAuth: Authenticate & authorize
+
+    OAuth->>BetterAuth: Redirect with auth code
+    BetterAuth->>OAuth: Exchange code for tokens
+    OAuth-->>BetterAuth: Access token + refresh token
+
+    BetterAuth->>Database: Query user by email
+
+    alt Existing User
+        BetterAuth->>Database: Link social account
+        BetterAuth->>Database: Store tokens
+    else New User
+        BetterAuth->>Database: Create user record
+        BetterAuth->>Database: Create account record
+
+        Note over BetterAuth,Polar: Cloud Mode: Polar customer creation
+        opt Polar Enabled
+            BetterAuth->>Polar: Create customer
+            Polar-->>BetterAuth: Customer ID
+            BetterAuth->>Database: Store polar_customer_id
+        end
+    end
+
+    BetterAuth->>Database: Create session
+    BetterAuth-->>Callback: Redirect to /auth-callback
+    Callback->>Setup: POST setup-defaults
+    Setup->>Database: Create org + project (if new user)
+    Setup-->>Callback: Defaults created
+
+    Callback-->>User: Redirect to dashboard
+```
+
+### Social Sign-Up Flow Details
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI as Sign Up Page
+    participant Social as Social Buttons
+    participant OAuth as OAuth Provider
+    participant Auth as Better Auth
+    participant Callback as /auth-callback
+    participant DB as Database
+
+    User->>UI: Visit /sign-up
+    UI->>Social: Render social buttons
+    User->>Social: Click "Sign up with GitHub"
+
+    Social->>Auth: signIn.social({provider: "github"})
+    Auth->>OAuth: Redirect to OAuth consent
+    OAuth-->>User: Show authorization screen
+
+    User->>OAuth: Grant permissions
+    OAuth->>Auth: Callback with auth code
+    Auth->>OAuth: Exchange code for tokens
+
+    Auth->>DB: Check if user exists
+    alt New User
+        Auth->>DB: INSERT user
+        Auth->>DB: INSERT account (social)
+        Auth->>DB: INSERT session
+        Note over Auth: New user flag set
+    else Existing User
+        Auth->>DB: Link social account
+        Auth->>DB: INSERT session
+        Note over Auth: No new user flag
+    end
+
+    Auth-->>Callback: Redirect to /auth-callback
+    Callback->>Callback: Check session
+
+    alt New User
+        Callback->>DB: Call /api/auth/setup-defaults
+        Note over Callback: Create org + project
+    else Existing User
+        Note over Callback: Skip org creation
+    end
+
+    Callback-->>User: Redirect to dashboard
+```
+
 ## Better Auth Configuration
 
 ### Core Configuration
@@ -224,13 +345,67 @@ sequenceDiagram
 **Location:** `app/src/utils/auth.ts`
 
 **Key Features:**
-- Email/password authentication
-- Organization plugin with org creation handled in the API layer (`/api/auth/setup-defaults` + invitations)
-- Admin plugin with impersonation support
-- API key plugin for programmatic access
-- Session duration: 7 days
-- Session update age: 24 hours
-- Database adapter: Drizzle ORM with PostgreSQL
+- **Email/Password Authentication**: Traditional credential-based auth
+- **Social Authentication**:
+  - GitHub OAuth 2.0 (conditionally enabled)
+  - Google OAuth 2.0 (conditionally enabled, with offline access and refresh tokens)
+- **Organization Plugin**: Org creation handled in the API layer (`/api/auth/setup-defaults` + invitations)
+- **Admin Plugin**: Super admin roles with impersonation support
+- **API Key Plugin**: Programmatic access for jobs and monitors
+- **Polar Plugin** *(Optional)*: Automatic customer creation for cloud deployments
+- **Session Duration**: 7 days
+- **Session Update Age**: 24 hours (refreshes with activity)
+- **Database Adapter**: Drizzle ORM with PostgreSQL
+
+### Social Authentication Configuration
+
+**GitHub OAuth:**
+```typescript
+socialProviders: {
+  github: {
+    clientId: process.env.GITHUB_CLIENT_ID,
+    clientSecret: process.env.GITHUB_CLIENT_SECRET,
+    enabled: !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
+  },
+}
+```
+
+**Google OAuth:**
+```typescript
+socialProviders: {
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    enabled: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+    accessType: "offline",  // Always get refresh tokens
+    prompt: "select_account consent",  // Force account selection
+  },
+}
+```
+
+**Environment Variables:**
+```bash
+# GitHub OAuth (Optional)
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
+NEXT_PUBLIC_GITHUB_ENABLED=true  # Show GitHub button
+
+# Google OAuth (Optional)
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+NEXT_PUBLIC_GOOGLE_ENABLED=true  # Show Google button
+```
+
+**Callback URLs:**
+- GitHub: `{BASE_URL}/api/auth/callback/github`
+- Google: `{BASE_URL}/api/auth/callback/google`
+
+**Setup Requirements:**
+- GitHub: Create OAuth App at [GitHub Developer Settings](https://github.com/settings/developers)
+  - **Important**: For GitHub Apps, enable email read permissions
+- Google: Create OAuth credentials at [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+  - **Important**: Configure OAuth consent screen first
+  - Add authorized redirect URIs exactly matching your callback URLs
 
 ### Plugins Enabled
 
@@ -560,22 +735,38 @@ sequenceDiagram
 **Better Auth handlers (App Router):**
 - `/api/auth/[...all]` and `/api/auth` handle sign-in, sign-up, sign-out, password reset, and session retrieval.
 - `/api/auth/sign-in/email` and `/api/auth/sign-up/email` are dedicated email/password entrypoints used by the auth pages.
+- `/api/auth/callback/github` - GitHub OAuth callback handler
+- `/api/auth/callback/google` - Google OAuth callback handler
 - `/api/auth/impersonation-status`, `/api/admin/stop-impersonation` surface impersonation state/stop controls.
-- `/api/auth/user` returns the current session’s user.
+- `/api/auth/user` returns the current session's user.
 - `/api/auth/setup-defaults` creates a default org/project when the user has no memberships and no pending invites.
 - `/api/auth/verify-key` validates job-scoped API keys.
+
+**Frontend Routes:**
+- `/sign-in` - Sign-in page with email/password and social auth buttons
+- `/sign-up` - Sign-up page with email/password and social auth buttons
+- `/auth-callback` - OAuth redirect handler, calls setup-defaults for new users
+- `/forgot-password` - Password reset request page
+- `/reset-password` - Password reset form page
 
 **Organization & membership APIs (outside Better Auth):**
 - `/api/organizations/*` and `/api/projects/*` manage orgs, projects, members, invitations, and variables; access is enforced via RBAC middleware rather than Better Auth plugins.
 
 ### Client SDK Methods
 
-**Authentication:**
-- `authClient.signIn.email(credentials)` - Sign in
-- `authClient.signUp.email(userData)` - Sign up
-- `authClient.signOut()` - Sign out
-- `authClient.forgetPassword(email)` - Request reset
-- `authClient.resetPassword(data)` - Reset password
+**Email/Password Authentication:**
+- `authClient.signIn.email(credentials)` - Sign in with email/password
+- `authClient.signUp.email(userData)` - Sign up with email/password
+- `authClient.signOut()` - Sign out (all methods)
+- `authClient.forgetPassword(email)` - Request password reset
+- `authClient.resetPassword(data)` - Reset password with token
+
+**Social Authentication:**
+- `authClient.signIn.social({ provider: "github", callbackURL })` - Sign in with GitHub
+- `authClient.signIn.social({ provider: "google", callbackURL })` - Sign in with Google
+- Auto-redirects to OAuth provider, then back to callbackURL
+- Handles both new user signup and existing user signin
+- Automatically links social accounts to existing email accounts
 
 **Organizations & Admin (Better Auth client plugins):**
 - `organization.create/list/setActive(...)` - Manage org membership context
@@ -583,7 +774,7 @@ sequenceDiagram
 - `admin.listUsers/createUser/banUser/unbanUser/impersonateUser/removeUser` - Super-admin actions
 
 **React Hooks:**
-- `useSession()` - Get current session
+- `useSession()` - Get current session (works for all auth methods)
 
 ## Database Schema
 

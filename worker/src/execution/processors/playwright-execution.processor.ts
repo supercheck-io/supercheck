@@ -5,6 +5,7 @@ import { PLAYWRIGHT_QUEUE } from '../constants';
 import { ExecutionService } from '../services/execution.service';
 import { DbService } from '../services/db.service';
 import { JobNotificationService } from '../services/job-notification.service';
+import { UsageTrackerService } from '../services/usage-tracker.service';
 import { JobExecutionTask, TestExecutionTask, TestExecutionResult, TestResult } from '../interfaces';
 import { eq } from 'drizzle-orm';
 import { jobs } from '../../db/schema';
@@ -18,6 +19,7 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
     private readonly executionService: ExecutionService,
     private readonly dbService: DbService,
     private readonly jobNotificationService: JobNotificationService,
+    private readonly usageTrackerService: UsageTrackerService,
   ) {
     super();
     this.logger.log(`[Constructor] PlaywrightExecutionProcessor instantiated.`);
@@ -98,6 +100,21 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
             `[${runId}] Failed to update run status to ${finalStatus}: ${err.message}`,
           ),
         );
+
+      // Track Playwright usage for billing
+      await this.usageTrackerService.trackPlaywrightExecution(
+        jobData.organizationId,
+        durationMs,
+        {
+          runId,
+          jobId: originalJobId,
+          testCount: result.results?.length || 0,
+        }
+      ).catch((err: Error) =>
+        this.logger.warn(
+          `[${runId}] Failed to track Playwright usage: ${err.message}`,
+        ),
+      );
 
       // Update job status based on all current run statuses
       if (originalJobId) {

@@ -12,6 +12,7 @@ import {
 } from '@/lib/queue';
 import { validateK6Script } from '@/lib/k6-validator';
 import { randomUUID } from 'crypto';
+import { SubscriptionService } from '@/lib/services/subscription-service';
 
 declare const Buffer: {
   from(data: string, encoding: string): { toString(encoding: string): string };
@@ -41,6 +42,17 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
       return NextResponse.json(
         { error: 'Insufficient permissions to execute tests' },
         { status: 403 }
+      );
+    }
+
+    // Check subscription plan limits
+    const subscriptionService = new SubscriptionService();
+    try {
+      await subscriptionService.getOrganizationPlan(organizationId);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Subscription required' },
+        { status: 402 }
       );
     }
 

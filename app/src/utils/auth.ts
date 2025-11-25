@@ -10,8 +10,119 @@ import {
   getClientIP,
 } from "@/lib/session-security";
 import { renderPasswordResetEmail } from "@/lib/email-renderer";
-
 import { nextCookies } from "better-auth/next-js";
+import { isPolarEnabled, getPolarConfig, getPolarProducts } from "@/lib/feature-flags";
+
+/**
+ * Get Polar plugin configuration if enabled
+ * Returns null if Polar is disabled or not configured
+ */
+function getPolarPlugin() {
+  if (!isPolarEnabled()) {
+    return null;
+  }
+
+  try {
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    const { polar, checkout, portal, usage, webhooks } = require("@polar-sh/better-auth");
+    const { Polar } = require("@polar-sh/sdk");
+    /* eslint-enable @typescript-eslint/no-require-imports */
+
+    const config = getPolarConfig()!;
+    const products = getPolarProducts();
+
+    const polarClient = new Polar({
+      accessToken: config.accessToken,
+      server: config.server,
+    });
+
+    // Polar client initialized successfully
+
+    return polar({
+      client: polarClient,
+      // Enable automatic customer creation on signup
+      // This ensures the user's email is pre-filled in checkout
+      createCustomerOnSignUp: true,
+      // Provide customer metadata - user object should have id after DB insert
+      getCustomerCreateParams: async ({ user }: { user: { id?: string; email?: string; name?: string } }) => {
+        // Log for debugging
+        console.log('[Polar] Creating customer for user:', { id: user.id, email: user.email, name: user.name });
+        
+        return {
+          email: user.email || '',
+          name: user.name || user.email || '',
+          metadata: {
+            // Only include userId if it exists
+            ...(user.id ? { userId: String(user.id) } : {}),
+            source: 'supercheck-signup',
+          },
+        };
+      },
+      use: [
+        checkout({
+          products: products
+            ? [
+                {
+                  productId: products.plusProductId,
+                  slug: "plus",
+                },
+                {
+                  productId: products.proProductId,
+                  slug: "pro",
+                },
+              ]
+            : [],
+          successUrl: "/billing/success?checkout_id={CHECKOUT_ID}",
+          authenticatedUsersOnly: true,
+        }),
+        portal({
+          returnUrl:
+            process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL,
+        }),
+        usage(),
+        webhooks({
+          secret: config.webhookSecret!,
+          // Catch-all handler to log all events and handle subscription updates
+          onPayload: async (payload: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+            // Import handlers dynamically inside the callback
+            const {
+              handleSubscriptionActive,
+              handleSubscriptionUpdated,
+              handleSubscriptionCanceled,
+              handleOrderPaid,
+            } = await import("@/lib/webhooks/polar-webhooks");
+
+            console.log('[Polar Webhook] Event received:', {
+              type: payload.type,
+              dataKeys: Object.keys(payload.data || {}),
+            });
+            console.log('[Polar Webhook] Full payload:', JSON.stringify(payload, null, 2));
+
+            // Handle subscription events
+            if (payload.type === 'subscription.active' || payload.type === 'subscription.created') {
+              await handleSubscriptionActive(payload);
+            } else if (payload.type === 'subscription.updated') {
+              await handleSubscriptionUpdated(payload);
+            } else if (payload.type === 'subscription.canceled') {
+              await handleSubscriptionCanceled(payload);
+            } else if (payload.type === 'order.paid') {
+              await handleOrderPaid(payload);
+            } else if (payload.type === 'customer.created' || payload.type === 'customer.updated' || payload.type === 'customer.state_changed') {
+              // Customer events are informational - just log them
+              console.log('[Polar Webhook] Customer event:', payload.type, payload.data?.email);
+            } else {
+              // Log any unhandled event types
+              console.log('[Polar Webhook] Unhandled event type:', payload.type);
+            }
+          },
+        }),
+      ],
+    });
+  } catch (error) {
+    console.error("[Better Auth] Failed to initialize Polar plugin:", error);
+    return null;
+  }
+}
 
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET!,
@@ -27,6 +138,21 @@ export const auth = betterAuth({
           "https://*.demo.supercheck.io",
         ]
       : undefined,
+  socialProviders: {
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID as string,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
+      enabled: !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
+    },
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID as string,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+      enabled: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+      // Get refresh token on first login and prompt for account selection
+      accessType: "offline",
+      prompt: "select_account consent",
+    },
+  },
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
@@ -142,18 +268,21 @@ export const auth = betterAuth({
     }),
     apiKey(),
     nextCookies(),
+    // Conditionally add Polar plugin if enabled
+    ...(getPolarPlugin() ? [getPolarPlugin()!] : []),
   ],
   advanced: {
-    generateId: false,
+    database: {
+      generateId: false,
+    },
   },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days in seconds
     updateAge: 60 * 60 * 24,
   },
-  // Remove hooks for now to fix the error - we'll implement this differently
-  // hooks: {
-  //     after: [
-  //         // We'll implement post-signup org/project creation in the API layer instead
-  //     ],
-  // },
+  // Note: Organization and project creation for social auth signups
+  // is handled client-side by checking for new users and calling
+  // /api/auth/setup-defaults from the sign-in/sign-up pages.
+  // Polar customer creation is handled automatically by the Polar plugin
+  // via createCustomerOnSignUp: true
 });

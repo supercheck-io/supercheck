@@ -181,23 +181,7 @@ export async function getRedisConnection(): Promise<Redis> {
   );
   redisClient.on("connect", () => {});
   redisClient.on("ready", async () => {
-    // Check Redis memory policy when connection is ready
-    try {
-      if (redisClient) {
-        const info = await redisClient.info("memory");
-        const maxmemoryPolicy = info
-          .split("\n")
-          .find((line) => line.startsWith("maxmemory_policy:"))
-          ?.split(":")[1]
-          ?.trim();
-        queueLogger.info(
-          { maxmemoryPolicy },
-          `Redis maxmemory_policy: ${maxmemoryPolicy}`
-        );
-      }
-    } catch (err) {
-      queueLogger.warn({ err }, "Failed to check Redis memory policy");
-    }
+    // Redis connection is ready
   });
   redisClient.on("close", () => {});
 

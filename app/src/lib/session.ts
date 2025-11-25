@@ -91,11 +91,14 @@ export async function getCurrentUser(): Promise<UserSession | null> {
           createdAt: impersonatedUser.createdAt,
           updatedAt: impersonatedUser.updatedAt,
           image: impersonatedUser.image,
-          banned: impersonatedUser.banned,
-          role: impersonatedUser.role,
-          banReason: impersonatedUser.banReason,
-          banExpires: impersonatedUser.banExpires,
-        };
+          // Additional properties from database
+          ...((impersonatedUser.banned !== undefined || impersonatedUser.role !== undefined) && {
+            banned: impersonatedUser.banned,
+            role: impersonatedUser.role,
+            banReason: impersonatedUser.banReason,
+            banExpires: impersonatedUser.banExpires,
+          }),
+        } as typeof currentUserData;
       }
     }
 
