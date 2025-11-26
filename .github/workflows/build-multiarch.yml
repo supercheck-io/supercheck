@@ -36,6 +36,14 @@ jobs:
           df -h
           docker system df
           
+          # Remove unnecessary tools and packages to free up space
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          
           # Clean up Docker system to reclaim space
           docker system prune -af --volumes
           
@@ -45,6 +53,9 @@ jobs:
           # Clean up temp directories
           rm -rf /tmp/* || true
           rm -rf /var/tmp/* || true
+          
+          # Clean up GitHub Actions cache
+          rm -rf /home/runner/actions-runner/cached/_diag/* || true
           
           echo "=== After cleanup ==="
           df -h
@@ -126,6 +137,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
+
+      - name: Clean up after app build
+        run: |
+          echo "=== Cleaning up after app build ==="
+          docker system prune -af
+          df -h
 
       - name: Build and push worker image
         uses: docker/build-push-action@v5
