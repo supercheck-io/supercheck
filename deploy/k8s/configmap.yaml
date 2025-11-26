@@ -86,10 +86,10 @@ data:
   AI_TEMPERATURE: "0.1"
 
   # Self-Hosted Mode (set to 'true' for unlimited features without Polar billing)
-  NEXT_PUBLIC_SELF_HOSTED: "true"
+  SELF_HOSTED: "true"
 
   # Polar Billing Configuration (only for cloud deployments)
-  # Set NEXT_PUBLIC_SELF_HOSTED=false to enable Polar billing
+  # Set SELF_HOSTED=false to enable Polar billing
   POLAR_SERVER: "production"
   POLAR_PLUS_PRODUCT_ID: ""
   POLAR_PRO_PRODUCT_ID: ""

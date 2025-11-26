@@ -165,7 +165,7 @@ graph TB
 - Features:
   - Integrated into Playwright execution processor
   - Integrated into K6 execution processor
-  - Self-hosted mode detection
+  - Unconditional tracking (tracks usage for both cloud and self-hosted)
   - Error handling without breaking execution
 
 #### 5. **Webhook Handlers**
@@ -236,7 +236,7 @@ sequenceDiagram
     BetterAuth->>DB: Create user record
     BetterAuth->>DB: Create organization
 
-    Note over BetterAuth,DB: Polar plugin check: NEXT_PUBLIC_SELF_HOSTED=true<br/>Skip Polar integration
+    Note over BetterAuth,DB: Polar plugin check: SELF_HOSTED=true<br/>Skip Polar integration
 
     BetterAuth->>DB: SET subscription_plan = 'unlimited'
     BetterAuth->>DB: SET subscription_status = 'active'
@@ -328,17 +328,12 @@ sequenceDiagram
 
     PWProc->>DB: Save execution results
 
-    Note over PWProc,UsageTracker: Track usage if Polar enabled
+    Note over PWProc,UsageTracker: Track usage unconditionally
 
     PWProc->>UsageTracker: trackPlaywrightExecution(<br/>  orgId,<br/>  durationMs: 125000,<br/>  metadata<br/>)
-
-    alt Self-hosted mode
-        UsageTracker-->>PWProc: Skip (self-hosted)
-    else Cloud mode
-        UsageTracker->>UsageTracker: minutes = ceil(125000/1000/60) = 3
-        UsageTracker->>DB: UPDATE organization<br/>SET playwright_minutes_used += 3<br/>WHERE id = orgId
-        UsageTracker-->>PWProc: Tracked: 3 minutes
-    end
+    UsageTracker->>UsageTracker: minutes = ceil(125000/1000/60) = 3
+    UsageTracker->>DB: UPDATE organization<br/>SET playwright_minutes_used += 3<br/>WHERE id = orgId
+    UsageTracker-->>PWProc: Tracked: 3 minutes
 
     PWProc-->>Worker: Execution complete
     Worker->>Queue: Mark job complete
@@ -526,8 +521,12 @@ graph LR
 #### Environment Variables
 ```bash
 # Self-Hosted Mode (set to 'true' for unlimited features)
-# This single variable controls both server and client behavior
+# SELF_HOSTED is the primary variable for server-side configuration (Docker/K8s)
+# NEXT_PUBLIC_SELF_HOSTED is used for client-side build-time configuration
+SELF_HOSTED=false
 NEXT_PUBLIC_SELF_HOSTED=false
+
+# Polar Configuration
 
 # Polar Configuration
 POLAR_ACCESS_TOKEN=polar_at_xxxxxxxxxxxxx

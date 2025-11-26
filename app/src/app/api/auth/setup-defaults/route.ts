@@ -6,6 +6,7 @@ import { eq, and, gte, desc } from 'drizzle-orm';
 import { auth } from '@/utils/auth';
 import { headers } from 'next/headers';
 import { randomUUID } from 'crypto';
+import { isCloudHosted } from '@/lib/feature-flags';
 
 export async function POST() {
   try {
@@ -55,14 +56,15 @@ export async function POST() {
     }
 
     // Create default organization
+    const isSelfHosted = !isCloudHosted();
     const [newOrg] = await db.insert(orgTable).values({
       name: `${user.name}'s Organization`,
       slug: randomUUID(),
       createdAt: new Date(),
       // Self-hosted: unlimited plan immediately
       // Cloud: null plan until Polar subscription via webhook
-      subscriptionPlan: process.env.NEXT_PUBLIC_SELF_HOSTED === 'true' ? 'unlimited' : null,
-      subscriptionStatus: process.env.NEXT_PUBLIC_SELF_HOSTED === 'true' ? 'active' : 'none',
+      subscriptionPlan: isSelfHosted ? 'unlimited' : null,
+      subscriptionStatus: isSelfHosted ? 'active' : 'none',
     }).returning();
 
     // Add user as owner of the organization
