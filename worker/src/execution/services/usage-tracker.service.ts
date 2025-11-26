@@ -11,16 +11,11 @@ import { DB_PROVIDER_TOKEN } from './db.service';
 @Injectable()
 export class UsageTrackerService {
   private readonly logger = new Logger(UsageTrackerService.name);
-  private readonly isPolarEnabled: boolean;
 
   constructor(
     @Inject(DB_PROVIDER_TOKEN)
     private readonly db: PostgresJsDatabase<typeof schema>,
-  ) {
-    // Check if Polar is enabled (self-hosted mode has it disabled)
-    this.isPolarEnabled = process.env.SELF_HOSTED !== 'true' &&
-                          !!process.env.POLAR_ACCESS_TOKEN;
-  }
+  ) {}
 
   /**
    * Track Playwright execution time
@@ -31,14 +26,6 @@ export class UsageTrackerService {
     executionTimeMs: number,
     metadata?: Record<string, any>,
   ): Promise<void> {
-    // Don't track for self-hosted
-    if (!this.isPolarEnabled) {
-      this.logger.debug(
-        `[Usage] Skipping Playwright usage tracking (self-hosted mode)`,
-      );
-      return;
-    }
-
     try {
       const minutes = Math.ceil(executionTimeMs / 1000 / 60);
 
@@ -73,14 +60,6 @@ export class UsageTrackerService {
     durationMs: number,
     metadata?: Record<string, any>,
   ): Promise<void> {
-    // Don't track for self-hosted
-    if (!this.isPolarEnabled) {
-      this.logger.debug(
-        `[Usage] Skipping K6 usage tracking (self-hosted mode)`,
-      );
-      return;
-    }
-
     try {
       // Calculate VU hours: (VUs * duration in hours)
       const hours = (virtualUsers * durationMs) / 1000 / 60 / 60;

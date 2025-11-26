@@ -9,7 +9,18 @@
  * Uses NEXT_PUBLIC_SELF_HOSTED so it works on both server and client
  */
 export const isCloudHosted = (): boolean => {
-  return process.env.NEXT_PUBLIC_SELF_HOSTED !== "true";
+  // Check both prefixed (client/build-time) and non-prefixed (server/runtime) variables
+  const selfHosted = process.env.NEXT_PUBLIC_SELF_HOSTED?.toLowerCase() || 
+                     process.env.SELF_HOSTED?.toLowerCase();
+                     
+  const isSelfHosted = selfHosted === "true" || selfHosted === "1";
+  
+  // Log only on server side to avoid console noise in client
+  if (typeof window === 'undefined' && process.env.NODE_ENV !== 'production') {
+    console.log(`[FeatureFlags] isCloudHosted check: NEXT_PUBLIC_SELF_HOSTED=${process.env.NEXT_PUBLIC_SELF_HOSTED}, SELF_HOSTED=${process.env.SELF_HOSTED}, result=${!isSelfHosted}`);
+  }
+  
+  return !isSelfHosted;
 };
 
 /**
@@ -17,7 +28,13 @@ export const isCloudHosted = (): boolean => {
  * Requires cloud-hosted mode and proper configuration
  */
 export const isPolarEnabled = (): boolean => {
-  return isCloudHosted() && !!process.env.POLAR_ACCESS_TOKEN;
+  const enabled = isCloudHosted() && !!process.env.POLAR_ACCESS_TOKEN;
+  
+  if (typeof window === 'undefined' && process.env.NODE_ENV !== 'production') {
+     // console.log(`[FeatureFlags] isPolarEnabled: ${enabled} (Cloud=${isCloudHosted()}, Token=${!!process.env.POLAR_ACCESS_TOKEN})`);
+  }
+  
+  return enabled;
 };
 
 /**
