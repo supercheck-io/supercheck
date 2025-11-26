@@ -14,3 +14,4 @@ export { StatusPageWelcomeEmail } from "./status-page-welcome";
 export { IncidentNotificationEmail } from "./incident-notification";
 export { MonitorAlertEmail } from "./monitor-alert";
 export { TestEmail } from "./test-email";
+export { UsageNotificationEmail } from "./usage-notification";

@@ -88,6 +88,71 @@ CREATE TABLE "verification" (
 	"updated_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
+CREATE TABLE "billing_settings" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"organization_id" uuid NOT NULL,
+	"monthly_spending_limit_cents" integer,
+	"enable_spending_limit" boolean DEFAULT false NOT NULL,
+	"hard_stop_on_limit" boolean DEFAULT false NOT NULL,
+	"notify_at_50_percent" boolean DEFAULT false NOT NULL,
+	"notify_at_80_percent" boolean DEFAULT true NOT NULL,
+	"notify_at_90_percent" boolean DEFAULT true NOT NULL,
+	"notify_at_100_percent" boolean DEFAULT true NOT NULL,
+	"notification_emails" text,
+	"last_notification_sent_at" timestamp,
+	"notifications_sent_this_period" text,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "billing_settings_organization_id_unique" UNIQUE("organization_id")
+);
+--> statement-breakpoint
+CREATE TABLE "overage_pricing" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"plan" text NOT NULL,
+	"playwright_minute_price_cents" integer NOT NULL,
+	"k6_vu_hour_price_cents" integer NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "overage_pricing_plan_unique" UNIQUE("plan")
+);
+--> statement-breakpoint
+CREATE TABLE "usage_events" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"organization_id" uuid NOT NULL,
+	"event_type" text NOT NULL,
+	"event_name" text NOT NULL,
+	"units" numeric(10, 4) NOT NULL,
+	"unit_type" text NOT NULL,
+	"metadata" text,
+	"synced_to_polar" boolean DEFAULT false NOT NULL,
+	"polar_event_id" text,
+	"sync_error" text,
+	"sync_attempts" integer DEFAULT 0 NOT NULL,
+	"last_sync_attempt" timestamp,
+	"billing_period_start" timestamp NOT NULL,
+	"billing_period_end" timestamp NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "usage_notifications" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"organization_id" uuid NOT NULL,
+	"notification_type" text NOT NULL,
+	"resource_type" text NOT NULL,
+	"usage_amount" numeric(10, 4) NOT NULL,
+	"usage_limit" numeric(10, 4) NOT NULL,
+	"usage_percentage" integer NOT NULL,
+	"current_spending_cents" integer,
+	"spending_limit_cents" integer,
+	"sent_to" text NOT NULL,
+	"delivery_status" text DEFAULT 'pending' NOT NULL,
+	"delivery_error" text,
+	"billing_period_start" timestamp NOT NULL,
+	"billing_period_end" timestamp NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"sent_at" timestamp
+);
+--> statement-breakpoint
 CREATE TABLE "invitation" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"organization_id" uuid NOT NULL,
@@ -629,6 +694,9 @@ ALTER TABLE "apikey" ADD CONSTRAINT "apikey_project_id_projects_id_fk" FOREIGN K
 ALTER TABLE "session" ADD CONSTRAINT "session_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "session" ADD CONSTRAINT "session_active_organization_id_organization_id_fk" FOREIGN KEY ("active_organization_id") REFERENCES "public"."organization"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "session" ADD CONSTRAINT "session_active_project_id_projects_id_fk" FOREIGN KEY ("active_project_id") REFERENCES "public"."projects"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "billing_settings" ADD CONSTRAINT "billing_settings_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "usage_events" ADD CONSTRAINT "usage_events_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "usage_notifications" ADD CONSTRAINT "usage_notifications_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invitation" ADD CONSTRAINT "invitation_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invitation" ADD CONSTRAINT "invitation_inviter_id_user_id_fk" FOREIGN KEY ("inviter_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "member" ADD CONSTRAINT "member_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -715,6 +783,15 @@ CREATE INDEX "session_expires_at_idx" ON "session" USING btree ("expires_at");--
 CREATE INDEX "session_active_org_idx" ON "session" USING btree ("active_organization_id");--> statement-breakpoint
 CREATE INDEX "verification_identifier_idx" ON "verification" USING btree ("identifier");--> statement-breakpoint
 CREATE INDEX "verification_expires_at_idx" ON "verification" USING btree ("expires_at");--> statement-breakpoint
+CREATE INDEX "billing_settings_org_id_idx" ON "billing_settings" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX "usage_events_org_id_idx" ON "usage_events" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX "usage_events_event_type_idx" ON "usage_events" USING btree ("event_type");--> statement-breakpoint
+CREATE INDEX "usage_events_synced_idx" ON "usage_events" USING btree ("synced_to_polar");--> statement-breakpoint
+CREATE INDEX "usage_events_billing_period_idx" ON "usage_events" USING btree ("billing_period_start","billing_period_end");--> statement-breakpoint
+CREATE INDEX "usage_events_created_at_idx" ON "usage_events" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "usage_notifications_org_id_idx" ON "usage_notifications" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX "usage_notifications_type_idx" ON "usage_notifications" USING btree ("notification_type");--> statement-breakpoint
+CREATE INDEX "usage_notifications_billing_period_idx" ON "usage_notifications" USING btree ("billing_period_start","billing_period_end");--> statement-breakpoint
 CREATE INDEX "invitation_organization_id_idx" ON "invitation" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "invitation_email_idx" ON "invitation" USING btree ("email");--> statement-breakpoint
 CREATE INDEX "invitation_email_status_idx" ON "invitation" USING btree ("email","status");--> statement-breakpoint

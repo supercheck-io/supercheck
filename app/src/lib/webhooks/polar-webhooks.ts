@@ -4,6 +4,7 @@
  */
 
 import { subscriptionService } from "@/lib/services/subscription-service";
+import { billingSettingsService } from "@/lib/services/billing-settings.service";
 import { db } from "@/utils/db";
 import { organization } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -161,6 +162,9 @@ export async function handleSubscriptionActive(payload: PolarWebhookPayload) {
 
   // Reset usage counters for new billing period
   await subscriptionService.resetUsageCounters(org.id);
+
+  // Reset notification tracking for new billing period
+  await billingSettingsService.resetNotificationsForPeriod(org.id);
 
   console.log(
     `[Polar] Activated ${plan} plan for organization ${org.name} (${org.id})`
