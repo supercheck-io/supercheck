@@ -112,7 +112,7 @@ x-common-env: &common-env # Database Configuration
   WORKER_LOCATION: ${WORKER_LOCATION:-local}
 
   # Self-Hosted Mode (set to 'true' for unlimited features without Polar billing)
-  # NEXT_PUBLIC_SELF_HOSTED is not needed as we handle SELF_HOSTED on the server
+  # Client-side code fetches this from /api/config/hosting-mode at runtime
   SELF_HOSTED: ${SELF_HOSTED:-true}
 
   # Polar Billing Configuration (only for cloud deployments)
@@ -161,7 +161,7 @@ services:
 
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.1.8-beta.6
+    image: ghcr.io/supercheck-io/supercheck/app:1.1.9-beta.2
     expose:
       - "3000"
     environment:
@@ -236,7 +236,7 @@ services:
   # Worker (NestJS Runner) - Container-based test execution
   # Tests run in isolated Docker containers (Playwright/K6), not inside worker
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.1.8-beta.6
+    image: ghcr.io/supercheck-io/supercheck/worker:1.1.9-beta.2
     environment:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)

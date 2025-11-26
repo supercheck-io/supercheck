@@ -106,6 +106,7 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   ACME_EMAIL: ${ACME_EMAIL}
 
   # Self-Hosted Mode (set to 'true' for unlimited features without Polar billing)
+  # Client-side code fetches this from /api/config/hosting-mode at runtime
   SELF_HOSTED: ${SELF_HOSTED:-true}
 
   # Polar Billing Configuration (only for cloud deployments)
