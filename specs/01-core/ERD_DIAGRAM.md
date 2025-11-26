@@ -596,6 +596,70 @@ erDiagram
         timestamp updatedAt
     }
 
+    %% Billing & Usage Tables
+    billing_settings {
+        uuid id PK
+        uuid organizationId FK
+        integer monthlySpendingLimitCents
+        boolean enableSpendingLimit
+        boolean hardStopOnLimit
+        boolean notifyAt50Percent
+        boolean notifyAt80Percent
+        boolean notifyAt90Percent
+        boolean notifyAt100Percent
+        text notificationEmails
+        timestamp lastNotificationSentAt
+        text notificationsSentThisPeriod
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    usage_events {
+        uuid id PK
+        uuid organizationId FK
+        text eventType
+        text eventName
+        numeric units
+        text unitType
+        text metadata
+        boolean syncedToPolar
+        text polarEventId
+        text syncError
+        integer syncAttempts
+        timestamp lastSyncAttempt
+        timestamp billingPeriodStart
+        timestamp billingPeriodEnd
+        timestamp createdAt
+    }
+
+    usage_notifications {
+        uuid id PK
+        uuid organizationId FK
+        text notificationType
+        text resourceType
+        numeric usageAmount
+        numeric usageLimit
+        integer usagePercentage
+        integer currentSpendingCents
+        integer spendingLimitCents
+        text sentTo
+        text deliveryStatus
+        text deliveryError
+        timestamp billingPeriodStart
+        timestamp billingPeriodEnd
+        timestamp createdAt
+        timestamp sentAt
+    }
+
+    overage_pricing {
+        uuid id PK
+        text plan
+        integer playwrightMinutePriceCents
+        integer k6VuHourPriceCents
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
     ORGANIZATION ||--o{ MEMBER : "has members"
     ORGANIZATION ||--o{ INVITATION : "has invitations"
     ORGANIZATION ||--o{ PROJECTS : "contains"
@@ -608,6 +672,9 @@ erDiagram
     ORGANIZATION ||--o{ ALERTS : "manages"
     ORGANIZATION ||--o{ audit_logs : "tracks"
     ORGANIZATION ||--o{ status_pages : "manages"
+    ORGANIZATION ||--o{ billing_settings : "configures"
+    ORGANIZATION ||--o{ usage_events : "generates"
+    ORGANIZATION ||--o{ usage_notifications : "receives"
 
     PROJECTS ||--o{ project_members : "has members"
     PROJECTS ||--o{ TESTS : "contains"

@@ -1279,10 +1279,292 @@ async function getCachedPlanLimits(plan: string) {
 - ✅ Webhook handlers
 - ✅ Self-hosted mode support
 
+### v1.1.0 (2025-11-26)
+- ✅ Usage-based billing with Polar event ingestion
+- ✅ Spending limits with hard stop capability
+- ✅ Usage notification emails (50%, 80%, 90%, 100% thresholds)
+- ✅ Overage pricing configuration
+- ✅ Billing settings API endpoints
+- ✅ Spending limits UI component
+
 ### Future Enhancements
 - [ ] Annual billing option
 - [ ] Enterprise plan with custom pricing
 - [ ] Usage forecasting and predictions
-- [ ] Automated billing alerts
 - [ ] Cost estimation before execution
 - [ ] Usage analytics dashboard
+
+---
+
+## Usage-Based Billing Implementation
+
+### Overview
+
+SuperCheck implements a hybrid usage-based billing model:
+1. **Base Subscription**: Monthly fee for Plus/Pro plans with included quotas
+2. **Overage Charges**: Per-unit charges when exceeding included quotas
+3. **Spending Limits**: User-configurable caps to control costs
+
+### Architecture
+
+```mermaid
+graph TB
+    subgraph "Worker Service"
+        Execution[Test/K6 Execution]
+        UsageTracker[Usage Tracker Service]
+    end
+
+    subgraph "App Service"
+        PolarUsage[Polar Usage Service]
+        BillingSettings[Billing Settings Service]
+        NotificationService[Usage Notification Service]
+    end
+
+    subgraph "Database"
+        UsageEvents[(usage_events)]
+        BillingSettingsTable[(billing_settings)]
+        OveragePricing[(overage_pricing)]
+        UsageNotifications[(usage_notifications)]
+    end
+
+    subgraph "External"
+        PolarAPI[Polar API]
+        EmailService[Email Service]
+    end
+
+    Execution --> UsageTracker
+    UsageTracker --> UsageEvents
+    UsageTracker --> PolarUsage
+    PolarUsage --> PolarAPI
+    PolarUsage --> BillingSettings
+    BillingSettings --> BillingSettingsTable
+    BillingSettings --> NotificationService
+    NotificationService --> UsageNotifications
+    NotificationService --> EmailService
+```
+
+### Database Schema
+
+#### billing_settings
+Stores per-organization billing preferences:
+```sql
+CREATE TABLE billing_settings (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL UNIQUE,
+  monthly_spending_limit_cents INTEGER,
+  enable_spending_limit BOOLEAN DEFAULT false,
+  hard_stop_on_limit BOOLEAN DEFAULT false,
+  notify_at_50_percent BOOLEAN DEFAULT false,
+  notify_at_80_percent BOOLEAN DEFAULT true,
+  notify_at_90_percent BOOLEAN DEFAULT true,
+  notify_at_100_percent BOOLEAN DEFAULT true,
+  notification_emails TEXT, -- JSON array
+  notifications_sent_this_period TEXT, -- JSON array of sent thresholds
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+```
+
+#### usage_events
+Tracks all usage events for billing reconciliation:
+```sql
+CREATE TABLE usage_events (
+  id UUID PRIMARY KEY,
+  organization_id UUID NOT NULL,
+  event_type TEXT NOT NULL, -- 'playwright_execution', 'k6_execution', 'monitor_execution'
+  event_name TEXT NOT NULL,
+  units NUMERIC(10,4) NOT NULL,
+  unit_type TEXT NOT NULL, -- 'minutes', 'vu_hours'
+  metadata TEXT, -- JSON
+  synced_to_polar BOOLEAN DEFAULT false,
+  polar_event_id TEXT,
+  billing_period_start TIMESTAMP,
+  billing_period_end TIMESTAMP,
+  created_at TIMESTAMP
+);
+```
+
+#### overage_pricing
+Per-plan overage rates:
+```sql
+CREATE TABLE overage_pricing (
+  id UUID PRIMARY KEY,
+  plan TEXT NOT NULL UNIQUE, -- 'plus', 'pro'
+  playwright_minute_price_cents INTEGER NOT NULL, -- e.g., 10 = $0.10
+  k6_vu_hour_price_cents INTEGER NOT NULL, -- e.g., 50 = $0.50
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+```
+
+### API Endpoints
+
+#### GET /api/billing/settings
+Returns billing settings for the active organization.
+
+#### PATCH /api/billing/settings
+Updates billing settings:
+```json
+{
+  "monthlySpendingLimitDollars": 100,
+  "enableSpendingLimit": true,
+  "hardStopOnLimit": false,
+  "notifyAt50Percent": false,
+  "notifyAt80Percent": true,
+  "notifyAt90Percent": true,
+  "notifyAt100Percent": true,
+  "notificationEmails": ["billing@example.com"]
+}
+```
+
+#### GET /api/billing/usage
+Returns detailed usage metrics including overage costs:
+```json
+{
+  "usage": {
+    "playwrightMinutes": {
+      "used": 550,
+      "included": 500,
+      "overage": 50,
+      "overageCostCents": 500,
+      "percentage": 110
+    },
+    "k6VuHours": {
+      "used": 80,
+      "included": 100,
+      "overage": 0,
+      "overageCostCents": 0,
+      "percentage": 80
+    },
+    "totalOverageCostCents": 500
+  },
+  "spending": {
+    "currentDollars": 5.00,
+    "limitDollars": 100,
+    "limitEnabled": true,
+    "hardStopEnabled": false,
+    "percentageUsed": 5,
+    "isAtLimit": false,
+    "remainingDollars": 95
+  }
+}
+```
+
+#### GET /api/billing/notifications
+Returns notification history for the organization.
+
+### Spending Limits
+
+#### Soft Limit (Default)
+- Sends email notifications at configured thresholds
+- Does NOT block executions
+- Allows unlimited overage charges
+
+#### Hard Stop
+- Blocks new executions when limit is reached
+- Existing scheduled jobs continue running
+- Manual executions are prevented
+- User must increase limit or disable hard stop
+
+### Usage Notifications
+
+Notifications are sent via email when usage reaches configured thresholds:
+
+| Threshold | Default | Description |
+|-----------|---------|-------------|
+| 50% | Off | Early warning |
+| 80% | On | Approaching limit |
+| 90% | On | Critical warning |
+| 100% | On | Limit reached |
+
+Recipients:
+- Organization admins (always)
+- Custom email addresses (configurable)
+
+### Polar Integration
+
+#### Event Ingestion
+Usage events are recorded locally and can be synced to Polar for billing:
+
+```typescript
+// Worker tracks usage
+await usageTrackerService.trackPlaywrightExecution(
+  organizationId,
+  durationMs,
+  { runId, jobId }
+);
+
+// App service syncs to Polar
+await polarUsageService.ingestUsageEvent({
+  organizationId,
+  eventType: "playwright_execution",
+  eventName: "playwright_minutes",
+  units: minutes,
+  unitType: "minutes",
+  metadata: { runId, jobId }
+});
+```
+
+#### Better Auth Usage Plugin
+The `usage()` plugin from `@polar-sh/better-auth` provides:
+- `authClient.usage.ingestion()` - Client-side event ingestion
+- `authClient.usage.meters.list()` - List customer meters
+
+### UI Components
+
+#### SpendingLimits Component
+Located at `app/src/components/billing/spending-limits.tsx`:
+- Enable/disable spending limit
+- Set monthly limit amount
+- Toggle hard stop
+- Configure notification thresholds
+- Add custom notification recipients
+
+#### Integration
+The SpendingLimits component is integrated into the Subscription tab in Organization Admin for cloud plans (Plus/Pro).
+
+### Migration
+
+Run the migration to add billing tables:
+```bash
+cd app
+npm run db:migrate
+```
+
+The migration creates:
+- `billing_settings` table
+- `usage_events` table
+- `usage_notifications` table
+- `overage_pricing` table with default pricing
+
+### Environment Variables
+
+No additional environment variables required. The feature uses existing Polar configuration:
+- `POLAR_ACCESS_TOKEN`
+- `POLAR_SERVER`
+- `POLAR_WEBHOOK_SECRET`
+- `POLAR_PLUS_PRODUCT_ID`
+- `POLAR_PRO_PRODUCT_ID`
+
+### Testing
+
+#### Manual Testing Checklist
+- [ ] Enable spending limit and verify it saves
+- [ ] Set hard stop and verify executions are blocked at limit
+- [ ] Trigger usage threshold and verify email notification
+- [ ] Verify notification is only sent once per period
+- [ ] Verify notifications reset on subscription renewal
+
+#### API Testing
+```bash
+# Get billing settings
+curl -X GET /api/billing/settings
+
+# Update spending limit
+curl -X PATCH /api/billing/settings \
+  -H "Content-Type: application/json" \
+  -d '{"monthlySpendingLimitDollars": 50, "enableSpendingLimit": true}'
+
+# Get usage with spending status
+curl -X GET /api/billing/usage
+```

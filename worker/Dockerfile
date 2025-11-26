@@ -3,10 +3,9 @@
 FROM mcr.microsoft.com/playwright:v1.56.1-noble AS base
 
 # Build k6 with xk6-dashboard extension
-FROM golang:1.23-alpine AS k6-builder
+FROM golang:1.24-alpine AS k6-builder
 RUN apk add --no-cache git
-# Enable Go toolchain auto-download for Go 1.24 requirement
-ENV GOTOOLCHAIN=auto
+# xk6 requires Go 1.24+. Using golang:1.24-alpine image has it built-in, avoiding memory-intensive downloads
 RUN go install go.k6.io/xk6/cmd/xk6@latest
 RUN xk6 build --with github.com/grafana/xk6-dashboard@latest
 RUN chmod +x k6
