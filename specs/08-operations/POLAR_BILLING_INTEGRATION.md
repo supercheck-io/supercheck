@@ -521,12 +521,8 @@ graph LR
 #### Environment Variables
 ```bash
 # Self-Hosted Mode (set to 'true' for unlimited features)
-# SELF_HOSTED is the primary variable for server-side configuration (Docker/K8s)
-# NEXT_PUBLIC_SELF_HOSTED is used for client-side build-time configuration
+# Client-side code fetches this from /api/config/hosting-mode at runtime
 SELF_HOSTED=false
-NEXT_PUBLIC_SELF_HOSTED=false
-
-# Polar Configuration
 
 # Polar Configuration
 POLAR_ACCESS_TOKEN=polar_at_xxxxxxxxxxxxx

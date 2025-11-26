@@ -5,9 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "@/utils/auth-client";
 import { Loader2 } from "lucide-react";
 
-// Check if we're in cloud mode (not self-hosted)
-const isCloudMode = process.env.NEXT_PUBLIC_SELF_HOSTED !== 'true';
-
 /**
  * OAuth Callback Handler
  *
@@ -52,6 +49,19 @@ export default function AuthCallbackPage() {
 
         // Small delay to ensure database consistency
         await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // Check hosting mode from server (runtime env var, not build-time)
+        let isCloudMode = false;
+        try {
+          const modeResponse = await fetch("/api/config/hosting-mode");
+          if (modeResponse.ok) {
+            const modeData = await modeResponse.json();
+            isCloudMode = modeData.cloudHosted;
+          }
+        } catch {
+          // On error, assume self-hosted to avoid blocking users
+          console.log("Could not check hosting mode, assuming self-hosted");
+        }
 
         // For cloud mode: check if user needs to subscribe
         if (isCloudMode) {

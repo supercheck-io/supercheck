@@ -4,9 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
-// Check if we're in cloud mode (not self-hosted)
-const isCloudMode = process.env.NEXT_PUBLIC_SELF_HOSTED !== 'true';
-
 // Routes that don't require subscription
 const ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION = [
   '/billing',
@@ -34,27 +31,44 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   const pathname = usePathname();
   const [isChecking, setIsChecking] = useState(true);
   const [hasSubscription, setHasSubscription] = useState(false);
+  const [isSelfHosted, setIsSelfHosted] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Self-hosted mode: skip subscription check
-    if (!isCloudMode) {
-      setHasSubscription(true);
-      setIsChecking(false);
-      return;
-    }
+    const checkHostingModeAndSubscription = async () => {
+      // First, check hosting mode from server (runtime env var)
+      try {
+        const modeResponse = await fetch('/api/config/hosting-mode');
+        if (modeResponse.ok) {
+          const modeData = await modeResponse.json();
+          setIsSelfHosted(modeData.selfHosted);
+          
+          // Self-hosted mode: skip subscription check
+          if (modeData.selfHosted) {
+            setHasSubscription(true);
+            setIsChecking(false);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check hosting mode:', error);
+        // On error, assume self-hosted to avoid blocking users
+        setIsSelfHosted(true);
+        setHasSubscription(true);
+        setIsChecking(false);
+        return;
+      }
 
-    // Check if current route is allowed without subscription
-    const isAllowedRoute = ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION.some(
-      route => pathname.startsWith(route)
-    );
+      // Check if current route is allowed without subscription
+      const isAllowedRoute = ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION.some(
+        route => pathname.startsWith(route)
+      );
 
-    if (isAllowedRoute) {
-      setIsChecking(false);
-      return;
-    }
+      if (isAllowedRoute) {
+        setIsChecking(false);
+        return;
+      }
 
-    // Check subscription status
-    const checkSubscription = async () => {
+      // Cloud mode: Check subscription status
       try {
         const response = await fetch('/api/billing/current');
         if (response.ok) {
@@ -75,11 +89,11 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
       }
     };
 
-    checkSubscription();
+    checkHostingModeAndSubscription();
   }, [pathname, router]);
 
   // Self-hosted mode or allowed route: render children immediately
-  if (!isCloudMode || ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION.some(route => pathname.startsWith(route))) {
+  if (isSelfHosted || ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION.some(route => pathname.startsWith(route))) {
     return <>{children}</>;
   }
 
