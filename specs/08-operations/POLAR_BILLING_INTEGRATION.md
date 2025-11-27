@@ -136,11 +136,13 @@ graph TB
   - `requiresSubscription()` - Check if running in cloud mode (requires Polar)
   - `hasActiveSubscription(orgId)` - Verify org has active paid subscription  
   - `getOrganizationPlan()` - Retrieve plan limits (throws if cloud + no subscription)
+  - `getOrganizationPlanSafe()` - Non-throwing version for display purposes (returns plus limits for unsubscribed)
   - `getEffectivePlan(orgId)` - Get plan with better error messages
   - `blockUntilSubscribed(orgId)` - Throw error if subscription required but missing
   - `trackPlaywrightUsage()` - Increment Playwright minutes
   - `trackK6Usage()` - Increment K6 VU hours (NUMERIC for precision)
   - `getUsage()` - Get current usage with overage calculations
+  - `getUsageSafe()` - Non-throwing version using safe plan lookup
   - `updateSubscription()` - Update plan from webhooks
   - `resetUsageCounters()` - Reset for new billing period
 
@@ -176,10 +178,39 @@ graph TB
   - `subscription.active` / `subscription.created` - New subscription activation
   - `subscription.updated` - Plan changes
   - `subscription.canceled` - Cancellation
-  - `order.paid` - Payment confirmation (also activates subscription)
-  - `customer.*` - Customer info changes (logged only)
-- Organization linking: Uses `referenceId` in checkout metadata to link subscriptions to organizations
+  - `order.paid` / `order.created` / `order.updated` - Payment confirmation (also activates subscription)
+  - `checkout.created` / `checkout.updated` - Checkout events (also activates subscription)
+  - `customer.*` - Customer info changes (no action)
+- **Important**: Polar sends webhook payloads with **camelCase** field names:
+  - `customerId` (not `customer_id`)
+  - `productId` (not `product_id`)
+  - `endsAt` (not `ends_at`)
+- Organization linking: Two methods to find organization:
+  1. **Primary**: `referenceId` in checkout metadata (organization ID passed during checkout)
+  2. **Fallback**: `polarCustomerId` stored on organization (linked during signup via `setup-defaults`)
 - Product mapping: Maps Polar product IDs to plan names (plus/pro) via environment variables
+- Logging: Minimal logs for successful activations only (e.g., `[Polar] ✅ Activated plus for OrgName`)
+
+#### 6. **Billing Success Page**
+- Location: `app/src/app/(main)/billing/success/page.tsx`
+- Purpose: Handle post-checkout redirect and verify subscription activation
+- Features:
+  - Polls `/api/billing/current` every second to verify subscription is active
+  - Waits up to 30 seconds for webhook to process (never gives up early)
+  - Shows "Activating Subscription..." while verifying
+  - Only redirects to dashboard **after subscription is confirmed active**
+  - Shows "Retry Verification" button if taking longer than 30 seconds
+  - Continues polling slowly (every 3 seconds) in background after timeout
+  - Prevents redirect loop by never auto-redirecting without verified subscription
+
+#### 7. **Subscription Guard**
+- Location: `app/src/components/subscription-guard.tsx`
+- Purpose: Client-side route protection for cloud mode
+- Features:
+  - Checks actual subscription status in `/api/billing/current` response (not just HTTP status)
+  - Verifies both `subscription.status === 'active'` AND `subscription.plan` exists
+  - Allows access to: `/billing/*`, `/subscribe`, `/settings`, `/sign-out`, `/org-admin`
+  - Redirects unsubscribed users to `/subscribe?required=true`
 
 ---
 
@@ -190,6 +221,10 @@ graph TB
 > [!NOTE]
 > This flow applies to **all signup methods**: email/password, GitHub OAuth, and Google OAuth. All methods trigger Polar customer creation in cloud mode.
 
+The signup flow involves two phases:
+1. **User Creation**: Better Auth creates the user and Polar plugin creates a customer with `externalId = user.id`
+2. **Organization Setup**: The `setup-defaults` API creates the organization and links it to the Polar customer
+
 ```mermaid
 sequenceDiagram
     actor User
@@ -197,26 +232,34 @@ sequenceDiagram
     participant BetterAuth as Better Auth
     participant PolarPlugin as Polar Plugin
     participant PolarAPI as Polar API
+    participant SetupAPI as /api/auth/setup-defaults
     participant DB as Database
 
     User->>UI: Submit signup form\n(Email/Password, GitHub, or Google)
     UI->>BetterAuth: createUser(email, password)\nor OAuth callback
     BetterAuth->>DB: Create user record
-    BetterAuth->>DB: Create organization
 
     Note over BetterAuth,PolarPlugin: Polar plugin hook triggered
 
     BetterAuth->>PolarPlugin: onUserCreated(user)
-    PolarPlugin->>PolarAPI: createCustomer({ email, metadata })
-    PolarAPI-->>PolarPlugin: customerId
-    PolarPlugin->>DB: UPDATE organization<br/>SET polar_customer_id = customerId
-    PolarPlugin->>DB: SET subscription_plan = NULL
-    PolarPlugin->>DB: SET subscription_status = 'none'
+    PolarPlugin->>PolarAPI: createCustomer({ email, externalId: user.id })
+    PolarAPI-->>PolarPlugin: Customer created
 
     BetterAuth-->>UI: User created
-    UI-->>User: Redirect to dashboard
 
-    Note over DB: Organization ready with<br/>Polar customer but NO plan.<br/>User must subscribe to Plus/Pro.
+    Note over UI,SetupAPI: Frontend calls setup-defaults
+
+    UI->>SetupAPI: POST /api/auth/setup-defaults
+    SetupAPI->>DB: Create organization\n(subscription_plan=NULL, status='none')
+    SetupAPI->>DB: Create default project
+    SetupAPI->>PolarAPI: getCustomerByExternalId(user.id)
+    PolarAPI-->>SetupAPI: customerId
+    SetupAPI->>DB: UPDATE organization\nSET polar_customer_id = customerId
+    SetupAPI-->>UI: Organization created
+
+    UI-->>User: Redirect to /subscribe
+
+    Note over DB: Organization linked to Polar customer.\nUser must subscribe to Plus/Pro.
 ```
 
 ### 2. User Signup Flow (Self-Hosted Mode)
@@ -1133,15 +1176,23 @@ console.log("Cost per minute:", plan.overagePricing.playwrightMinutes);
 
 ### Logging
 
-#### Application Logs
+Logging is kept minimal to reduce noise. Only essential success/error messages are logged.
+
+#### Webhook Logs
 ```typescript
-// Subscription service
-console.log(`[Subscription] Updated org ${orgId}:`, data);
+// Event received (single line)
+console.log('[Polar] Webhook:', payload.type);
 
-// Usage tracking
-console.log(`[Usage] Tracked ${minutes} Playwright minutes for org ${orgId}`);
+// Successful activation
+console.log(`[Polar] ✅ Activated plus for OrgName`);
 
-// Plan enforcement
+// Error case
+console.error('[Polar] Org not found for subscription', { orgId, customerId });
+```
+
+#### Plan Enforcement Logs
+```typescript
+// Errors only
 console.warn(`Monitor limit reached for org ${orgId}: ${error}`);
 ```
 
@@ -1153,6 +1204,8 @@ this.logger.log(`[Usage] Tracked Playwright execution: ${minutes} minutes`);
 // K6 execution
 this.logger.log(`[Usage] Tracked K6 usage: ${vuHours} VU hours`);
 ```
+
+> **Note**: Verbose logging was removed in v1.2.0 to improve console readability. Use database queries for debugging subscription issues.
 
 ---
 
@@ -1210,20 +1263,31 @@ async function getCachedPlanLimits(plan: string) {
 
 ## Security
 
-### API Key Management
+### API Key Management 
 - Store `POLAR_ACCESS_TOKEN` in secure environment variables
 - Never commit secrets to version control
 - Rotate tokens periodically (recommended: quarterly)
 
-### Webhook Security
-- Always verify webhook signatures using `POLAR_WEBHOOK_SECRET`
-- Implement replay attack prevention
-- Log all webhook events for audit
+### Webhook Security 
+- **Signature Verification**: Better Auth Polar plugin verifies signatures using `POLAR_WEBHOOK_SECRET` BEFORE any database operations
+- **Idempotency**: Webhook handlers check if subscription already active to prevent duplicate processing
+- **Event Types**: Only processes trusted event types (`subscription.*`, `order.*`, `checkout.*`)
+- **Audit Trail**: Logs webhook events for debugging (no sensitive data)
 
-### Data Protection
+### Data Protection 
 - Minimal PII storage (only Polar customer ID)
-- Encrypt sensitive data at rest
+- No sensitive data logged (removed verbose JSON dumps in v1.2.0)
 - Comply with GDPR for European customers
+
+### Server-Side Enforcement 
+- All protected API routes validate subscription via `subscriptionService.getOrganizationPlan()`
+- Throws error for unsubscribed cloud users before any resource creation
+- Client-side `SubscriptionGuard` is UX enhancement only, not security boundary
+
+### Race Condition Mitigation 
+- Webhooks primarily use `referenceId` from checkout metadata (reliable)
+- `polarCustomerId` linking is fallback mechanism (graceful if fails)
+- No artificial delays or fragile workarounds
 
 ---
 
@@ -1286,6 +1350,15 @@ async function getCachedPlanLimits(plan: string) {
 - ✅ Overage pricing configuration
 - ✅ Billing settings API endpoints
 - ✅ Spending limits UI component
+
+### v1.2.0 (2025-11-27)
+- ✅ **Fixed redirect loop**: Billing success page now properly waits for subscription verification
+- ✅ **Improved UX**: Added retry button and extended polling (30s + continuous background polling)
+- ✅ **Fixed webhook payload parsing**: Updated to use camelCase fields (`customerId`, `productId`, `endsAt`)
+- ✅ **Added checkout/order events**: Handle `order.created`, `order.updated`, `checkout.created`, `checkout.updated`
+- ✅ **Minimal logging**: Removed verbose JSON dumps, kept only essential success/error logs
+- ✅ **SubscriptionGuard fix**: Now checks actual subscription status in response, not just HTTP 200
+- ✅ **Better Auth Polar integration**: Wrapped billing_settings calls in try-catch to prevent transaction rollbacks
 
 ### Future Enhancements
 - [ ] Annual billing option
