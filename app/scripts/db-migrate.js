@@ -356,6 +356,57 @@ async function verifyMigrations() {
   }
 }
 
+// Function to verify plan_limits are seeded (CRITICAL)
+async function verifyPlanLimitsSeeded() {
+  log("Verifying plan_limits table has required data...");
+
+  try {
+    const client = postgres(DATABASE_URL);
+
+    // Check if plan_limits table exists
+    const tableExists = await client`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'plan_limits'
+      );
+    `.then((result) => result[0]?.exists);
+
+    if (!tableExists) {
+      logError("plan_limits table does not exist");
+      await client.end();
+      return false;
+    }
+
+    // Check if required plans exist
+    const plans = await client`SELECT plan FROM plan_limits ORDER BY plan`;
+    const planNames = plans.map(p => p.plan);
+    
+    if (planNames.length === 0) {
+      logError("plan_limits table is empty - no plans found");
+      await client.end();
+      return false;
+    }
+
+    // Verify all required plans exist
+    const requiredPlans = ['plus', 'pro', 'unlimited'];
+    const missingPlans = requiredPlans.filter(p => !planNames.includes(p));
+    
+    if (missingPlans.length > 0) {
+      logError(`Missing required plans: ${missingPlans.join(', ')}`);
+      await client.end();
+      return false;
+    }
+
+    await client.end();
+    logSuccess(`Verified ${planNames.length} plan(s) in database: ${planNames.join(', ')}`);
+    return true;
+  } catch (err) {
+    logError(`Plan limits verification error: ${err.message}`);
+    return false;
+  }
+}
+
 // Main function
 async function main() {
   try {
@@ -388,15 +439,11 @@ async function main() {
       process.exit(1);
     }
 
-    // Step 5: Run seeds (if any)
-    log("Running database seeds...");
-    try {
-      const { runSeeds } = require('./seed.js');
-      await runSeeds();
-      logSuccess("Database seeds completed successfully");
-    } catch (seedErr) {
-      logWarning(`Seed execution failed (non-critical): ${seedErr.message}`);
-      // Don't fail the migration for seeds, just warn
+    // Step 5: Verify plan_limits are seeded (CRITICAL - app cannot function without this)
+    log("Verifying plan_limits seeding...");
+    if (!(await verifyPlanLimitsSeeded())) {
+      logError("CRITICAL: plan_limits table is empty. Database seeding failed.");
+      process.exit(1);
     }
 
     logSuccess("Database migration process completed successfully");
