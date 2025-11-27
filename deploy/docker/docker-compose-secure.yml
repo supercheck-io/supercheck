@@ -252,7 +252,7 @@ services:
       postgres:
         condition: service_healthy
       app:
-        condition: service_healthy # Wait for app to complete migrations
+        condition: service_healthy
       redis:
         condition: service_healthy
       minio:

@@ -177,12 +177,63 @@ async function findOrganizationByCustomerId(customerId: string) {
   });
 
   if (!org) {
-    console.error(
-      `[Polar] Organization not found for customer: ${customerId}`
+    console.log(
+      `[Polar] Organization not found by polarCustomerId: ${truncateId(customerId)}, will try other methods`
     );
   }
 
   return org;
+}
+
+/**
+ * Find organization by user ID (from customer metadata)
+ * This is a fallback when polarCustomerId isn't linked yet
+ */
+async function findOrganizationByUserId(userId: string) {
+  // Import member table to find org by user membership
+  const { member } = await import("@/db/schema");
+  
+  // Find the user's membership and get their organization
+  const membership = await db.query.member.findFirst({
+    where: eq(member.userId, userId),
+  });
+
+  if (!membership) {
+    console.log(`[Polar] No membership found for user: ${truncateId(userId)}`);
+    return null;
+  }
+
+  // Get the organization
+  const org = await db.query.organization.findFirst({
+    where: eq(organization.id, membership.organizationId),
+  });
+
+  if (org) {
+    console.log(`[Polar] Found organization ${truncateId(org.id)} via user ${truncateId(userId)}`);
+    return org;
+  }
+
+  console.log(`[Polar] No organization found for user: ${truncateId(userId)}`);
+  return null;
+}
+
+/**
+ * Extract user ID from customer metadata in payload
+ */
+function getUserIdFromPayload(payload: PolarWebhookPayload): string | null {
+  // Check customer metadata
+  const customer = payload.data.customer as { metadata?: { userId?: string } } | undefined;
+  if (customer?.metadata?.userId) {
+    return customer.metadata.userId;
+  }
+  
+  // Check direct metadata
+  const metadata = payload.data.metadata as { userId?: string } | undefined;
+  if (metadata?.userId) {
+    return metadata.userId;
+  }
+  
+  return null;
 }
 
 /**
@@ -216,14 +267,30 @@ export async function handleSubscriptionActive(payload: PolarWebhookPayload) {
   const customerId = getCustomerIdFromPayload(payload);
   const productId = getProductIdFromPayload(payload);
   const orgId = getOrganizationIdFromPayload(payload);
+  const userId = getUserIdFromPayload(payload);
   
+  // Try multiple methods to find the organization
   let org = orgId ? await findOrganizationById(orgId) : null;
+  
   if (!org && customerId) {
     org = await findOrganizationByCustomerId(customerId);
   }
+  
+  // Fallback: find by user ID from customer metadata
+  if (!org && userId) {
+    org = await findOrganizationByUserId(userId);
+    // If found via userId, also link the polarCustomerId for future lookups
+    if (org && customerId && !org.polarCustomerId) {
+      console.log(`[Polar] Linking customer ${truncateId(customerId)} to org ${truncateId(org.id)}`);
+      await db
+        .update(organization)
+        .set({ polarCustomerId: customerId })
+        .where(eq(organization.id, org.id));
+    }
+  }
 
   if (!org) {
-    console.error(`[Polar] Org not found for subscription (orgRef: ${truncateId(orgId)}, customer: ${truncateId(customerId)})`);
+    console.error(`[Polar] Org not found for subscription (orgRef: ${truncateId(orgId)}, customer: ${truncateId(customerId)}, user: ${truncateId(userId)})`);
     return;
   }
 
@@ -354,6 +421,7 @@ export async function handleOrderPaid(payload: PolarWebhookPayload) {
   const customerId = getCustomerIdFromPayload(payload);
   const productId = getProductIdFromPayload(payload);
   const orgId = getOrganizationIdFromPayload(payload);
+  const userId = getUserIdFromPayload(payload);
   
   let org = orgId ? await findOrganizationById(orgId) : null;
 
@@ -361,9 +429,22 @@ export async function handleOrderPaid(payload: PolarWebhookPayload) {
   if (!org && customerId) {
     org = await findOrganizationByCustomerId(customerId);
   }
+  
+  // Fallback: find by user ID from customer metadata
+  if (!org && userId) {
+    org = await findOrganizationByUserId(userId);
+    // If found via userId, also link the polarCustomerId for future lookups
+    if (org && customerId && !org.polarCustomerId) {
+      console.log(`[Polar] Linking customer ${truncateId(customerId)} to org ${truncateId(org.id)}`);
+      await db
+        .update(organization)
+        .set({ polarCustomerId: customerId })
+        .where(eq(organization.id, org.id));
+    }
+  }
 
   if (!org) {
-    console.error(`[Polar] Org not found for order (orgRef: ${truncateId(orgId)}, customer: ${truncateId(customerId)})`);
+    console.error(`[Polar] Org not found for order (orgRef: ${truncateId(orgId)}, customer: ${truncateId(customerId)}, user: ${truncateId(userId)})`);
     return;
   }
 

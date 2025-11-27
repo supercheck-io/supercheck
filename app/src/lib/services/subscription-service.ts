@@ -340,15 +340,26 @@ export class SubscriptionService {
     });
 
     if (!limits) {
-      console.warn(
-        `Plan limits not found for plan: ${plan}, falling back to unlimited`
-      );
-      // Fallback to extracted constants to prevent infinite recursion
-      return {
-        ...FALLBACK_UNLIMITED_LIMITS,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+      if (isPolarEnabled()) {
+        // Cloud mode: NEVER fall back to unlimited - this is a critical error
+        console.error(
+          `CRITICAL: Plan limits not found for plan: ${plan} in cloud mode. Database may not be seeded.`
+        );
+        throw new Error(
+          `Plan limits not found for plan: ${plan}. Please contact support or ensure database is properly seeded.`
+        );
+      } else {
+        // Self-hosted mode: fall back to unlimited (expected behavior)
+        console.warn(
+          `Plan limits not found for plan: ${plan} in self-hosted mode, falling back to unlimited`
+        );
+        // Fallback to extracted constants to prevent infinite recursion
+        return {
+          ...FALLBACK_UNLIMITED_LIMITS,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      }
     }
 
     return limits;

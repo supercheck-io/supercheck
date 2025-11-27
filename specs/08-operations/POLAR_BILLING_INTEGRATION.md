@@ -1910,13 +1910,18 @@ echo "POLAR_SERVER: $POLAR_SERVER"
 - Computes HMAC-SHA256 with format: `${msg_id}.${timestamp}.${body}`
 
 #### 3. Plan Limits Not Found
-**Symptom**: `Plan limits not found for plan: plus, falling back to unlimited`
+**Symptom**: `CRITICAL: Plan limits not found for plan: plus in cloud mode. Database may not be seeded.`
 
 **Root Cause**: Database not seeded with plan_limits data
 
+**IMPORTANT**: In cloud mode, the app will now **throw an error** instead of falling back to unlimited. This prevents accidental unlimited access.
+
 **Solution**:
 ```bash
-# Run seed manually if automatic seeding failed
+# Option 1: Exec into app container and run seed
+docker compose exec app node scripts/seed.js
+
+# Option 2: Run seed manually with DATABASE_URL
 export DATABASE_URL="postgresql://user:pass@host:port/db"
 node scripts/seed.js
 
@@ -1932,6 +1937,11 @@ psql $DATABASE_URL -c "SELECT plan, max_monitors FROM plan_limits;"
  pro       |         100
  unlimited |     999999
 ```
+
+**Prevention**: The app startup script (`start.sh`) now:
+1. Runs seeding with 3 retry attempts
+2. Verifies plan_limits table has data
+3. Fails to start if seeding fails (prevents running without plan limits)
 
 #### 3. Security Validation Errors
 **Symptom**: "Invalid subscription plan detected" or "Unlimited plan is only available in self-hosted mode"
@@ -2072,7 +2082,8 @@ Webhook processing includes comprehensive monitoring:
 |-------|-------|----------|
 | `Missing required Polar environment variables` | Env vars not set | Set all required POLAR_* variables |
 | `Invalid webhook signature` | Secret mismatch | Update POLAR_WEBHOOK_SECRET in both places |
-| `Plan limits not found for plan: plus` | Database not seeded | Run `node scripts/seed.js` |
+| `CRITICAL: Plan limits not found for plan: plus in cloud mode` | Database not seeded | Run `docker compose exec app node scripts/seed.js` |
+| `Plan limits not found for plan: plus, falling back to unlimited` | Self-hosted mode, no seed | Run `node scripts/seed.js` (optional in self-hosted) |
 | `Organization not found for customer` | Data inconsistency | Check organization.polar_customer_id |
 | `Polar not configured` | SELF_HOSTED=true | Set SELF_HOSTED=false for cloud mode |
 
