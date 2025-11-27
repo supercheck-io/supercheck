@@ -22,7 +22,7 @@ metadata:
     app.kubernetes.io/component: worker
     app.kubernetes.io/region: us
 spec:
-  revision HistoryLimit: 3
+  revisionHistoryLimit: 3
   replicas: 2 # Initial replicas, scaled by KEDA
   selector:
     matchLabels:
@@ -40,32 +40,36 @@ spec:
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
-      serviceAccountName: supercheck
+      # Node affinity - only run on worker nodes
+      nodeSelector:
+        workload: worker
 
-      # Prefer nodes in US region
+      # Tolerate the worker taint
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: worker
+          effect: NoSchedule
+
+      # Pod anti-affinity - spread across nodes
       affinity:
-        nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              preference:
-                matchExpressions:
-                  - key: supercheck/region
-                    operator: In
-                    values:
-                      - "US"
-
-        # Anti-affinity to spread pods across nodes
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
             - weight: 100
               podAffinityTerm:
                 labelSelector:
                   matchExpressions:
-                    - key: app.kubernetes.io/region
+                    - key: app.kubernetes.io/name
                       operator: In
                       values:
-                        - us
+                        - supercheck
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                        - worker
                 topologyKey: kubernetes.io/hostname
+
+      serviceAccountName: supercheck
 
       # Graceful termination
       terminationGracePeriodSeconds: 120
@@ -90,6 +94,8 @@ spec:
               value: "production"
             - name: PORT
               value: "8000"
+            - name: DOCKER_HOST
+              value: "unix:///var/run/docker.sock"
             # Queues handled: k6-us-east, monitor-us-east, playwright-global, k6-global
 
           ports:
@@ -141,6 +147,18 @@ spec:
               drop:
                 - ALL
 
+          # Volume mounts for Docker socket
+          volumeMounts:
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+
+      # Volumes
+      volumes:
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -170,32 +188,36 @@ spec:
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
-      serviceAccountName: supercheck
+      # Node affinity - only run on worker nodes
+      nodeSelector:
+        workload: worker
 
-      # Prefer nodes in EU region
+      # Tolerate the worker taint
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: worker
+          effect: NoSchedule
+
+      # Pod anti-affinity - spread across nodes
       affinity:
-        nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              preference:
-                matchExpressions:
-                  - key: supercheck/region
-                    operator: In
-                    values:
-                      - "EU"
-
-        # Anti-affinity to spread pods across nodes
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
             - weight: 100
               podAffinityTerm:
                 labelSelector:
                   matchExpressions:
-                    - key: app.kubernetes.io/region
+                    - key: app.kubernetes.io/name
                       operator: In
                       values:
-                        - eu
+                        - supercheck
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                        - worker
                 topologyKey: kubernetes.io/hostname
+
+      serviceAccountName: supercheck
 
       terminationGracePeriodSeconds: 120
 
@@ -217,6 +239,8 @@ spec:
               value: "production"
             - name: PORT
               value: "8000"
+            - name: DOCKER_HOST
+              value: "unix:///var/run/docker.sock"
             # Queues handled: k6-eu-central, monitor-eu-central, playwright-global, k6-global
 
           ports:
@@ -264,6 +288,18 @@ spec:
               drop:
                 - ALL
 
+          # Volume mounts for Docker socket
+          volumeMounts:
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+
+      # Volumes
+      volumes:
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -293,32 +329,36 @@ spec:
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
-      serviceAccountName: supercheck
+      # Node affinity - only run on worker nodes
+      nodeSelector:
+        workload: worker
 
-      # Prefer nodes in APAC region
+      # Tolerate the worker taint
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: worker
+          effect: NoSchedule
+
+      # Pod anti-affinity - spread across nodes
       affinity:
-        nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              preference:
-                matchExpressions:
-                  - key: supercheck/region
-                    operator: In
-                    values:
-                      - "APAC"
-
-        # Anti-affinity to spread pods across nodes
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
             - weight: 100
               podAffinityTerm:
                 labelSelector:
                   matchExpressions:
-                    - key: app.kubernetes.io/region
+                    - key: app.kubernetes.io/name
                       operator: In
                       values:
-                        - apac
+                        - supercheck
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                        - worker
                 topologyKey: kubernetes.io/hostname
+
+      serviceAccountName: supercheck
 
       terminationGracePeriodSeconds: 120
 
@@ -340,6 +380,8 @@ spec:
               value: "production"
             - name: PORT
               value: "8000"
+            - name: DOCKER_HOST
+              value: "unix:///var/run/docker.sock"
             # Queues handled: k6-asia-pacific, monitor-asia-pacific, playwright-global, k6-global
 
           ports:
@@ -386,3 +428,15 @@ spec:
             capabilities:
               drop:
                 - ALL
+
+          # Volume mounts for Docker socket
+          volumeMounts:
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+
+      # Volumes
+      volumes:
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket

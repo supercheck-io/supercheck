@@ -101,6 +101,10 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   AI_MAX_RETRIES: ${AI_MAX_RETRIES:-2}
   AI_TEMPERATURE: ${AI_TEMPERATURE:-0.1}
 
+  # Worker Location for geo-distributed monitoring and load testing
+  # Options: local (for local dev - processes all regions) | us-east | eu-central | asia-pacific (for production)
+  WORKER_LOCATION: ${WORKER_LOCATION:-global}
+
   # Traefik/HTTPS Configuration
   APP_DOMAIN: ${APP_DOMAIN}
   ACME_EMAIL: ${ACME_EMAIL}

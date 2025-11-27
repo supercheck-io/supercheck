@@ -21,6 +21,41 @@ export const isPolarEnabled = (): boolean => {
 };
 
 /**
+ * Validate Polar configuration for production
+ * Throws error if required configuration is missing in cloud mode
+ */
+export const validatePolarConfig = (): void => {
+  if (!isCloudHosted()) {
+    return; // Self-hosted mode doesn't need Polar config
+  }
+
+  const requiredVars = [
+    'POLAR_ACCESS_TOKEN',
+    'POLAR_WEBHOOK_SECRET',
+    'POLAR_PLUS_PRODUCT_ID',
+    'POLAR_PRO_PRODUCT_ID'
+  ];
+
+  const missing = requiredVars.filter(varName => !process.env[varName]);
+  
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required Polar environment variables: ${missing.join(', ')}. ` +
+      `These are required for cloud-hosted mode. ` +
+      `Please check your environment configuration.`
+    );
+  }
+
+  // Validate server value
+  const server = process.env.POLAR_SERVER || "production";
+  if (!["production", "sandbox"].includes(server)) {
+    throw new Error(
+      `Invalid POLAR_SERVER value: "${server}". Must be "production" or "sandbox".`
+    );
+  }
+};
+
+/**
  * Get Polar configuration if enabled
  * Returns null if Polar is not enabled
  */
@@ -28,11 +63,18 @@ export const getPolarConfig = ():
   | {
       accessToken: string;
       server: "production" | "sandbox";
-      webhookSecret: string | undefined;
+      webhookSecret: string;
     }
   | null => {
   if (!isPolarEnabled()) {
     return null;
+  }
+
+  const webhookSecret = process.env.POLAR_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    throw new Error(
+      "POLAR_WEBHOOK_SECRET is required for secure webhook processing in production."
+    );
   }
 
   return {
@@ -40,7 +82,7 @@ export const getPolarConfig = ():
     server: (process.env.POLAR_SERVER || "production") as
       | "production"
       | "sandbox",
-    webhookSecret: process.env.POLAR_WEBHOOK_SECRET,
+    webhookSecret,
   };
 };
 

@@ -193,14 +193,29 @@ graph TB
 #### 5. **Webhook Handlers**
 - Location: `app/src/lib/webhooks/polar-webhooks.ts`
 - Purpose: Process Polar subscription events
-- Implementation: Uses `onPayload` catch-all handler in Better Auth Polar plugin
-- Events handled:
+- **Implementation**: Uses Better Auth's `@polar-sh/better-auth` webhooks plugin
+  - Signature verification is handled automatically by the plugin (Standard Webhooks spec)
+  - Webhook endpoint: `/api/auth/polar/webhooks` (handled by Better Auth's `[...all]` catch-all route)
+  - Uses **specific event handlers** for critical events + `onPayload` catch-all for logging
+- **Handlers configured** (in `app/src/utils/auth.ts`):
+  ```typescript
+  webhooks({
+    secret: config.webhookSecret!,
+    onSubscriptionActive: (payload) => handleSubscriptionActive(payload),
+    onSubscriptionCreated: (payload) => handleSubscriptionActive(payload),
+    onSubscriptionUpdated: (payload) => handleSubscriptionUpdated(payload),
+    onSubscriptionCanceled: (payload) => handleSubscriptionCanceled(payload),
+    onOrderPaid: (payload) => handleOrderPaid(payload),
+    onCustomerStateChanged: (payload) => handleCustomerStateChanged(),
+    onPayload: (payload) => console.log('[Polar] Webhook:', payload.type),
+  })
+  ```
+- **Events handled**:
   - `subscription.active` / `subscription.created` - New subscription activation
   - `subscription.updated` - Plan changes
   - `subscription.canceled` - Cancellation
-  - `order.paid` / `order.created` / `order.updated` - Payment confirmation (also activates subscription)
-  - `checkout.created` / `checkout.updated` - Checkout events (also activates subscription)
-  - `customer.*` - Customer info changes (no action)
+  - `order.paid` - Payment confirmation
+  - `customer.state_changed` - Customer state sync
 - **Important**: Polar sends webhook payloads with **camelCase** field names:
   - `customerId` (not `customer_id`)
   - `productId` (not `product_id`)
@@ -212,7 +227,20 @@ graph TB
 - Logging: Minimal logs with truncated IDs for security (e.g., `[Polar] ✅ Activated plus for org abc12345...`)
 
 #### 5.1. **Webhook Security & Reliability**
+
+##### Security Considerations
+- **Automatic Signature Verification**: Better Auth's `@polar-sh/better-auth` plugin handles webhook signature verification automatically using the Standard Webhooks specification
+  - No custom verification code needed
+  - Uses `webhook-id`, `webhook-timestamp`, `webhook-signature` headers
+  - Computes HMAC-SHA256 with format: `${msg_id}.${timestamp}.${body}`
+- **Secret Management**: `POLAR_WEBHOOK_SECRET` must match the secret configured in Polar dashboard exactly
+  - Store as environment variable, never commit to version control
+  - Rotate periodically for security
+- **Type Safety**: Using specific handlers (`onSubscriptionActive`, etc.) provides typed payloads and prevents runtime errors
+
+##### Reliability Features
 - **Idempotency**: All webhook handlers check if event was already processed using in-memory cache with 24-hour TTL
+  - **Note**: Cache resets on app restart - consider Redis for production if this is problematic
 - **Cache Cleanup**: Automatic cleanup when cache exceeds 1000 entries to prevent memory leaks
 - **Safe Logging**: All IDs are truncated to 8 characters in logs to prevent data exposure
 - **Duplicate Detection**: Both webhook-level (by webhook ID) and database-level (by subscription state) idempotency
@@ -221,6 +249,16 @@ graph TB
   - `subscription.updated` - Prevents duplicate plan changes
   - `subscription.canceled` - Prevents duplicate cancellations
   - `order.paid` - Prevents duplicate order processing
+
+##### Production Monitoring
+- **Error Tracking**: Integrate with monitoring service (Sentry, Datadog) to capture webhook handler failures
+- **Timeout Guards**: Each webhook handler should have a timeout (default 30s) to prevent hanging
+- **Retry Handling**: Polar automatically retries failed webhooks with exponential backoff (up to 10 attempts)
+- **Metrics to Monitor**:
+  - Webhook processing success/failure rate
+  - Handler execution duration
+  - Idempotency cache hit rate
+  - Subscription update latency
 
 #### 6. **Billing Success Page**
 - Location: `app/src/app/(main)/billing/success/page.tsx`
@@ -1716,4 +1754,350 @@ curl -X PATCH /api/billing/settings \
 
 # Get usage with spending status
 curl -X GET /api/billing/usage
+```
+
+---
+
+## Security Architecture
+
+### Defense-in-Depth Protection
+
+The Polar billing integration implements multiple layers of security to prevent unauthorized access to unlimited plans in cloud mode:
+
+#### 1. Application Layer Security
+
+**Webhook Validation**
+```typescript
+// getPlanFromProductId() - Never returns unlimited plans
+if (productId === plusProductId) return "plus";
+if (productId === proProductId) return "pro";
+// SECURITY: Defaults to plus, never unlimited
+return "plus";
+```
+
+**Update Validation**
+```typescript
+// updateSubscription() - Blocks unlimited plans in cloud mode
+if (isPolarEnabled() && data.subscriptionPlan === "unlimited") {
+  throw new Error("Unlimited plan is only available in self-hosted mode");
+}
+```
+
+**Read Validation**
+```typescript
+// getOrganizationPlan() & getOrganizationPlanSafe() - Validate on read
+if (org.subscriptionPlan === "unlimited") {
+  throw new Error("Invalid subscription plan detected. Please contact support.");
+}
+```
+
+#### 2. Database Layer Security
+
+**CHECK Constraint**
+```sql
+-- organization table constraint
+CHECK (
+  subscription_plan != 'unlimited' OR polar_customer_id IS NULL
+)
+```
+- Prevents unlimited plans when Polar customer ID exists (cloud mode)
+- Only allows unlimited plans without Polar customer ID (self-hosted mode)
+
+#### 3. Self-Hosted Mode Bypass
+
+```typescript
+// isPolarEnabled() - Complete bypass when SELF_HOSTED=true
+export const isPolarEnabled = (): boolean => {
+  return isCloudHosted() && !!process.env.POLAR_ACCESS_TOKEN;
+};
+```
+
+- When `SELF_HOSTED=true`, all Polar functionality is disabled
+- Unlimited plans are only available in self-hosted mode
+- No API calls to Polar, no webhook processing, no subscription validation
+
+### Security Monitoring
+
+All security violations are logged with:
+- Organization ID (truncated for privacy)
+- Specific violation type
+- Context (which function detected the issue)
+
+```typescript
+console.error(`[SubscriptionService] SECURITY: Organization ${orgId.substring(0, 8)}... has unlimited plan in cloud mode - possible database tampering`);
+```
+
+### Attack Vector Protection
+
+| Attack Vector | Protection Layer | Status |
+|---------------|------------------|---------|
+| Webhook manipulation | Webhook validation | ✅ Blocked |
+| API endpoint bypass | Update validation | ✅ Blocked |
+| Database tampering | Read validation + DB constraint | ✅ Blocked |
+| Admin override | Endpoint restrictions | ✅ Blocked |
+| Frontend bypass | Server-side validation | ✅ Blocked |
+
+---
+
+## Production Deployment Checklist
+
+### Pre-Deployment Requirements
+- [ ] All required environment variables are set and verified
+- [ ] `POLAR_WEBHOOK_SECRET` is generated and configured in Polar dashboard
+- [ ] Polar product IDs match the configured plans (`POLAR_PLUS_PRODUCT_ID`, `POLAR_PRO_PRODUCT_ID`)
+- [ ] Database is accessible and has connection permissions
+
+### Post-Deployment Verification
+- [ ] App starts without Polar configuration errors
+- [ ] Check startup logs: `[Instrumentation] ✅ Polar configuration validated`
+- [ ] Database has plan_limits data: `SELECT COUNT(*) FROM plan_limits;` → `3`
+- [ ] Test webhook delivery from Polar dashboard succeeds (Better Auth handles POST at `/api/auth/polar/webhooks`)
+- [ ] Webhook handlers are called: Check logs for `[Polar] Webhook: subscription.active` etc.
+
+### Environment Variables Validation
+```bash
+# Verify all required variables are set
+echo "POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN:0:20}..."
+echo "POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET:0:20}..."
+echo "POLAR_PLUS_PRODUCT_ID: $POLAR_PLUS_PRODUCT_ID"
+echo "POLAR_PRO_PRODUCT_ID: $POLAR_PRO_PRODUCT_ID"
+echo "POLAR_SERVER: $POLAR_SERVER"
+```
+
+---
+
+## Troubleshooting Guide
+
+### Critical Issues
+
+#### 1. Webhook Returns 404
+**Symptom**: Polar dashboard shows "404 Not Found" for webhook deliveries
+
+**Root Cause**: Better Auth's Polar plugin is not properly configured or the `[...all]` catch-all route is missing
+
+**Solution**:
+1. Ensure Better Auth Polar plugin is enabled with webhooks in `app/src/utils/auth.ts`:
+   ```typescript
+   polar({
+     client: polarClient,
+     use: [
+       webhooks({
+         secret: config.webhookSecret!,
+         onPayload: async (payload) => { /* handlers */ }
+       })
+     ]
+   })
+   ```
+2. Ensure `/api/auth/[...all]/route.ts` exists and exports `toNextJsHandler(auth)`
+3. **Important**: Do NOT create a custom `/api/auth/polar/webhooks/route.ts` file - this will intercept requests before Better Auth can handle them
+4. Redeliver failed webhooks from Polar dashboard
+
+#### 2. Webhook Signature Verification Failed (401 Unauthorized)
+**Symptom**: Polar dashboard shows webhook failures with 401 status, logs show "Invalid signature"
+
+**Root Cause**: Custom webhook route intercepting requests instead of Better Auth handling them
+
+**Solution**:
+1. **Delete any custom webhook route**: Remove `/app/src/app/api/auth/polar/webhooks/route.ts` if it exists
+2. **Delete the polar directory**: Remove `/app/src/app/api/auth/polar/` directory entirely
+3. Let Better Auth's `[...all]` catch-all handle the webhook at `/api/auth/polar/webhooks`
+4. Better Auth's `@polar-sh/better-auth` plugin handles signature verification automatically using the Standard Webhooks specification
+5. Ensure `POLAR_WEBHOOK_SECRET` matches the secret configured in Polar dashboard
+
+**Why This Works**: The `@polar-sh/better-auth` webhooks plugin uses the Standard Webhooks library internally which correctly:
+- Base64 decodes the secret
+- Uses `webhook-id`, `webhook-timestamp`, `webhook-signature` headers
+- Computes HMAC-SHA256 with format: `${msg_id}.${timestamp}.${body}`
+
+#### 3. Plan Limits Not Found
+**Symptom**: `Plan limits not found for plan: plus, falling back to unlimited`
+
+**Root Cause**: Database not seeded with plan_limits data
+
+**Solution**:
+```bash
+# Run seed manually if automatic seeding failed
+export DATABASE_URL="postgresql://user:pass@host:port/db"
+node scripts/seed.js
+
+# Verify data exists
+psql $DATABASE_URL -c "SELECT plan, max_monitors FROM plan_limits;"
+```
+
+**Expected Output**:
+```
+ plan      | max_monitors 
+-----------+-------------
+ plus      |          25
+ pro       |         100
+ unlimited |     999999
+```
+
+#### 3. Security Validation Errors
+**Symptom**: "Invalid subscription plan detected" or "Unlimited plan is only available in self-hosted mode"
+
+**Root Cause**: Attempt to set unlimited plan in cloud mode (security protection)
+
+**Solution**:
+```bash
+# Check if organization has Polar customer ID (cloud mode)
+psql $DATABASE_URL -c "SELECT id, name, polar_customer_id, subscription_plan FROM organization WHERE subscription_plan = 'unlimited';"
+
+# If polar_customer_id is NOT NULL, this is a security violation
+# Fix by updating to valid plan or removing Polar customer ID for self-hosted
+```
+
+#### 4. Environment Variable Validation Errors
+**Symptom**: App fails to start with "Missing required Polar environment variables"
+
+**Root Cause**: Required environment variables not configured
+
+**Solution**:
+```bash
+# Check all required variables
+grep -E "POLAR_|SELF_HOSTED" .env
+
+# Required for cloud mode:
+# POLAR_ACCESS_TOKEN=pol_live_...
+# POLAR_WEBHOOK_SECRET=whsec_...
+# POLAR_PLUS_PRODUCT_ID=prod_...
+# POLAR_PRO_PRODUCT_ID=prod_...
+# POLAR_SERVER=production
+
+# Restart app after fixing variables
+```
+
+#### 4. Webhook Signature Verification Fails
+**Symptom**: `Invalid webhook signature` errors in logs
+
+**Root Cause**: `POLAR_WEBHOOK_SECRET` mismatch between app and Polar
+
+**Solution**:
+1. Generate new secure secret:
+   ```bash
+   openssl rand -hex 32
+   ```
+2. Update environment variable in deployment
+3. Update Polar webhook configuration with same secret
+4. Redeliver failed webhooks from Polar dashboard
+
+#### 5. Subscription Not Activating After Payment
+**Symptom**: Billing success page stuck on "Activating Subscription..."
+
+**Root Cause**: Webhook not processed or organization lookup failed
+
+**Solution**:
+1. Check webhook logs for `[Polar Webhook]` messages:
+   ```bash
+   tail -f logs/app.log | grep "\[Polar Webhook\]"
+   ```
+2. Verify organization has `polarCustomerId` set:
+   ```sql
+   SELECT id, name, polar_customer_id, subscription_status 
+   FROM organization 
+   WHERE id = 'your-org-id';
+   ```
+3. Check Polar webhook deliveries and redeliver if failed
+4. Manual activation (emergency only):
+   ```sql
+   UPDATE organization 
+   SET subscription_status = 'active', subscription_plan = 'plus'
+   WHERE id = 'your-org-id';
+   ```
+
+### Debugging Tools
+
+#### Webhook Endpoint Testing
+```bash
+# Webhook endpoint only accepts POST requests (handled by Better Auth)
+# Test by triggering a webhook redelivery from Polar dashboard
+# Check logs for: [Polar] Webhook: <event_type>
+
+# If you need to verify the route is reachable:
+curl -v -X POST https://demo.supercheck.io/api/auth/polar/webhooks \
+  -H "Content-Type: application/json" \
+  -d '{"test": true}'
+# Expected: 401 (signature verification failure) - this confirms route is reachable
+```
+
+#### Database Verification
+```sql
+-- Check plan limits are seeded correctly
+SELECT plan, max_monitors, running_capacity, max_team_members 
+FROM plan_limits 
+ORDER BY max_monitors;
+
+-- Check organizations with Polar customers
+SELECT id, name, subscription_plan, subscription_status, polar_customer_id 
+FROM organization 
+WHERE polar_customer_id IS NOT NULL;
+
+-- Check recent subscription activity
+SELECT id, created_at, subscription_plan, subscription_status 
+FROM organization 
+WHERE subscription_status = 'active' 
+ORDER BY updated_at DESC 
+LIMIT 5;
+```
+
+#### Log Monitoring
+```bash
+# Watch for webhook events
+tail -f logs/app.log | grep "\[Polar Webhook\]"
+
+# Watch for subscription activations
+tail -f logs/app.log | grep "Activated.*for org"
+
+# Watch for configuration validation
+tail -f logs/app.log | grep "Polar configuration"
+```
+
+### Performance Monitoring
+
+Webhook processing includes comprehensive monitoring:
+- **Request ID Tracking**: `[Polar Webhook:a1b2c3d4]`
+- **Processing Time**: `Processed subscription.active in 45ms`
+- **Error Details**: Full stack traces for debugging
+- **Security Logging**: Signature verification attempts logged
+
+**Monitor for**:
+- Processing times >1000ms (indicates database issues)
+- Signature verification failures (security concern)
+- Organization lookup failures (data consistency)
+- Database connection errors (infrastructure issue)
+
+### Common Error Messages
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Missing required Polar environment variables` | Env vars not set | Set all required POLAR_* variables |
+| `Invalid webhook signature` | Secret mismatch | Update POLAR_WEBHOOK_SECRET in both places |
+| `Plan limits not found for plan: plus` | Database not seeded | Run `node scripts/seed.js` |
+| `Organization not found for customer` | Data inconsistency | Check organization.polar_customer_id |
+| `Polar not configured` | SELF_HOSTED=true | Set SELF_HOSTED=false for cloud mode |
+
+### Emergency Procedures
+
+#### Manual Subscription Activation
+```sql
+-- Find the organization by Polar customer ID
+SELECT id, name FROM organization WHERE polar_customer_id = 'customer-id-from-polar';
+
+-- Manually activate subscription
+UPDATE organization 
+SET 
+  subscription_status = 'active',
+  subscription_plan = 'plus', -- or 'pro'
+  subscription_id = 'webhook-id-from-polar',
+  updated_at = NOW()
+WHERE id = 'organization-id';
+```
+
+#### Reset Failed Webhook Processing
+```bash
+# Restart app to clear webhook cache
+docker-compose restart app
+
+# Or clear specific webhook cache (if implemented)
+# This depends on your caching implementation
 ```

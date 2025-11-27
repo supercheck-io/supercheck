@@ -44,6 +44,9 @@ x-common-env: &common-env # Database Configuration
   K6_TEST_EXECUTION_TIMEOUT_MS: ${K6_TEST_EXECUTION_TIMEOUT_MS:-3600000}
   K6_JOB_EXECUTION_TIMEOUT_MS: ${K6_JOB_EXECUTION_TIMEOUT_MS:-3600000}
 
+  # Worker Location for geo-distributed deployments
+  WORKER_LOCATION: ${WORKER_LOCATION:-global}
+
   # AWS S3 / MinIO Configuration
   AWS_REGION: ${AWS_REGION:-us-east-1}
   AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
@@ -113,10 +116,6 @@ x-common-env: &common-env # Database Configuration
   AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-90000}
   AI_MAX_RETRIES: ${AI_MAX_RETRIES:-2}
   AI_TEMPERATURE: ${AI_TEMPERATURE:-0.1}
-
-  # Worker Location for geo-distributed monitoring and load testing
-  # Options: local (for local dev - processes all regions) | us-east | eu-central | asia-pacific (for production)
-  WORKER_LOCATION: ${WORKER_LOCATION:-local}
 
   # Self-Hosted Mode (set to 'true' for unlimited features without Polar billing)
   # Client-side code fetches this from /api/config/hosting-mode at runtime
