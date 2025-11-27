@@ -67,9 +67,17 @@ export default function AuthCallbackPage() {
         if (isCloudMode) {
           try {
             const billingResponse = await fetch("/api/billing/current");
-            if (!billingResponse.ok) {
-              // No active subscription - redirect to subscribe page
-              console.log("Cloud mode: No active subscription, redirecting to subscribe");
+            if (billingResponse.ok) {
+              const billingData = await billingResponse.json();
+              // Check if subscription is actually active (not just that the endpoint returned OK)
+              if (billingData.subscription?.status !== "active" || !billingData.subscription?.plan) {
+                console.log("Cloud mode: No active subscription, redirecting to subscribe");
+                router.push("/subscribe?setup=true");
+                return;
+              }
+            } else {
+              // API error - redirect to subscribe to be safe
+              console.log("Cloud mode: Billing check failed, redirecting to subscribe");
               router.push("/subscribe?setup=true");
               return;
             }
@@ -109,7 +117,7 @@ export default function AuthCallbackPage() {
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
         <div className="flex flex-col gap-2">
           <h2 className="text-lg font-semibold">
-            {isSettingUp ? "Setting up your account..." : "Completing sign in..."}
+            Setting up your account...
           </h2>
           <p className="text-sm text-muted-foreground">
             {error || "Please wait while we set up your workspace"}
