@@ -109,14 +109,14 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
     return <>{children}</>;
   }
 
-  // Still checking subscription
-  if (isChecking) {
+  // Still checking subscription - only shown in cloud mode, never in self-hosted
+  if (isChecking && !isSelfHosted) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <div className="flex flex-col gap-2">
-            <h2 className="text-lg font-semibold">Verifying subscription...</h2>
+            <h2 className="text-lg font-semibold">Verifying account status...</h2>
             <p className="text-sm text-muted-foreground">Please wait</p>
           </div>
         </div>
@@ -135,8 +135,8 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
       <div className="flex flex-col items-center gap-4 text-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
         <div className="flex flex-col gap-2">
-          <h2 className="text-lg font-semibold">Redirecting to billing...</h2>
-          <p className="text-sm text-muted-foreground">Subscription required</p>
+          <h2 className="text-lg font-semibold">Completing access setup...</h2>
+          <p className="text-sm text-muted-foreground">Please wait</p>
         </div>
       </div>
     </div>

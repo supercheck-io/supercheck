@@ -90,38 +90,46 @@ export default function SignUpPage() {
       return;
     }
 
-    // Check hosting mode and subscription status for cloud mode
+    // Check hosting mode - only verify subscription for cloud mode
     try {
       const modeResponse = await fetch("/api/config/hosting-mode");
       if (modeResponse.ok) {
         const modeData = await modeResponse.json();
+
+        // Only check subscription in cloud mode
         if (modeData.cloudHosted) {
-          // Cloud mode: check if user needs to subscribe
-          const billingResponse = await fetch("/api/billing/current");
-          if (billingResponse.ok) {
-            const billingData = await billingResponse.json();
-            // Check if subscription is actually active
-            if (billingData.subscription?.status !== "active" || !billingData.subscription?.plan) {
-              console.log("Cloud mode: No active subscription, redirecting to subscribe");
+          try {
+            const billingResponse = await fetch("/api/billing/current");
+            if (billingResponse.ok) {
+              const billingData = await billingResponse.json();
+              // Check if subscription is actually active
+              if (billingData.subscription?.status !== "active" || !billingData.subscription?.plan) {
+                console.log("Cloud mode: No active subscription, redirecting to subscribe");
+                router.push("/subscribe?setup=true");
+                setIsLoading(false);
+                return;
+              }
+            } else {
+              // Billing check failed - redirect to subscribe to be safe
               router.push("/subscribe?setup=true");
               setIsLoading(false);
               return;
             }
-          } else {
-            // Billing check failed - redirect to subscribe to be safe
+          } catch {
+            console.log("Cloud mode: Failed to check subscription, redirecting to subscribe");
             router.push("/subscribe?setup=true");
             setIsLoading(false);
             return;
           }
         }
+        // Self-hosted mode: no subscription check needed, proceed to dashboard
       }
     } catch {
       console.log("Could not check hosting mode, proceeding to dashboard");
     }
 
     // Default: redirect to dashboard
-    router.push("/")
-
+    router.push("/");
     setIsLoading(false);
   };
 

@@ -106,18 +106,18 @@ export default function BillingSuccessPage() {
             {isVerifying ? "Activating Subscription..." : "Subscription Activated!"}
           </CardTitle>
           <CardDescription className="text-base">
-            {isVerifying 
-              ? "Please wait while we confirm your subscription. This usually takes just a few seconds."
-              : "Thank you for subscribing to Supercheck. Your account has been upgraded and you now have access to all features."
+            {isVerifying
+              ? "Please wait while we confirm your account. This usually takes just a few seconds."
+              : "Thank you! Your account has been activated and you now have access to all features."
             }
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground">
             <p>
-              {isVerifying 
-                ? "We're processing your payment and setting up your account..."
-                : "Your subscription is now active. A confirmation email has been sent to your registered email address."
+              {isVerifying
+                ? "We're confirming your account setup. This may take a moment..."
+                : "Your account is now active. A confirmation email has been sent to your registered email address."
               }
             </p>
           </div>
@@ -149,7 +149,7 @@ export default function BillingSuccessPage() {
                   {isVerifying ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Verifying...
+                      Confirming...
                     </>
                   ) : (
                     <>
@@ -160,8 +160,8 @@ export default function BillingSuccessPage() {
                 </Button>
                 
                 <p className="text-sm text-muted-foreground">
-                  {isVerifying 
-                    ? "Verifying subscription status..."
+                  {isVerifying
+                    ? "Confirming account setup..."
                     : `Redirecting automatically in ${countdown} seconds...`
                   }
                 </p>
