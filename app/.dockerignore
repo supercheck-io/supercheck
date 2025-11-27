@@ -117,4 +117,9 @@ playwright/.cache/
 # Test artifacts
 public/test-results/
 public/artifacts/
-public/tests/ 
+public/tests/
+
+# Additional large directories
+docs/
+specs/
+scripts/ 
