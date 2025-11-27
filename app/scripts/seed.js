@@ -31,15 +31,38 @@ const DATABASE_URL =
   process.env.DATABASE_URL ||
   `postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}`;
 
+// Helper function to retry database operations
+async function withRetry(fn, maxRetries = 3, delay = 2000) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (i === maxRetries - 1) throw err;
+      console.log(`⚠️  Attempt ${i + 1} failed, retrying in ${delay}ms... (${err.message})`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      delay *= 1.5; // Exponential backoff
+    }
+  }
+}
+
 async function runSeeds() {
   console.log('🌱 Running database seeds...');
 
-  // Create postgres client
+  // Create postgres client with connection timeout and retry
   const sql = postgres(DATABASE_URL, {
     max: 1, // Only one connection for seeding
+    connect_timeout: 30, // 30 second timeout
+    idle_timeout: 20, // 20 second idle timeout
+    max_lifetime: 60, // 60 second max lifetime
   });
 
   try {
+    // Test database connection with retry
+    console.log('🔍 Testing database connection...');
+    await withRetry(async () => {
+      await sql`SELECT 1`;
+      console.log('✅ Database connection successful');
+    });
     // Get all seed files
     const seedsDir = path.join(__dirname, '../src/db/seeds');
     
@@ -103,6 +126,30 @@ async function runSeeds() {
     }
 
     console.log('\n🎉 All seeds completed successfully!');
+
+    // Verify plan_limits were seeded correctly
+    console.log('\n🔍 Verifying plan_limits seeding...');
+    const planLimitsCount = await sql`SELECT COUNT(*) as count FROM plan_limits`;
+    const count = parseInt(planLimitsCount[0]?.count || '0', 10);
+    
+    if (count === 0) {
+      console.error('❌ CRITICAL: plan_limits table is empty after seeding!');
+      console.error('   This will cause subscription errors. Please check the seed SQL.');
+      throw new Error('plan_limits table is empty after seeding');
+    }
+    
+    // Verify specific plans exist
+    const plans = await sql`SELECT plan FROM plan_limits ORDER BY plan`;
+    const planNames = plans.map(p => p.plan);
+    console.log(`✅ Verified ${count} plan(s) in database: ${planNames.join(', ')}`);
+    
+    // Check for required plans
+    const requiredPlans = ['plus', 'pro', 'unlimited'];
+    const missingPlans = requiredPlans.filter(p => !planNames.includes(p));
+    if (missingPlans.length > 0) {
+      console.warn(`⚠️  Missing plans: ${missingPlans.join(', ')}`);
+    }
+    
   } catch (error) {
     console.error('❌ Error running seeds:', error.message);
     throw error; // Re-throw to signal failure
@@ -113,7 +160,15 @@ async function runSeeds() {
 
 // Run seeds if called directly
 if (require.main === module) {
-  runSeeds();
+  runSeeds()
+    .then(() => {
+      console.log('✅ Seeding completed successfully');
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('❌ Seeding failed:', error.message);
+      process.exit(1);
+    });
 }
 
 module.exports = { runSeeds };

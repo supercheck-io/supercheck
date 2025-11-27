@@ -25,6 +25,10 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
 # Function to run migrations
 run_migrations() {
     log "Running database migrations..."
@@ -87,11 +91,26 @@ main() {
     fi
 
     # Run seeding after migrations (idempotent - safe to run multiple times)
-    # Non-blocking: log warning but continue if seeding fails to handle transient issues
-    if ! run_seeding; then
-        log_error "Database seeding failed, but continuing with app startup. Plan limits may be missing."
-        log_error "You can manually seed later with: npm run db:seed"
-    fi
+    # Critical: app cannot function without plan limits
+    # Add retry logic for seeding to handle transient failures
+    local seed_attempts=0
+    local max_seed_attempts=3
+    while [ $seed_attempts -lt $max_seed_attempts ]; do
+        if run_seeding; then
+            log "Database seeding completed successfully!"
+            break
+        else
+            seed_attempts=$((seed_attempts + 1))
+            if [ $seed_attempts -lt $max_seed_attempts ]; then
+                log_warning "Seeding attempt $seed_attempts failed, retrying in 5 seconds..."
+                sleep 5
+            else
+                log_error "Database seeding failed after $max_seed_attempts attempts. App cannot start without plan limits."
+                log_error "Please check database connection and retry."
+                exit 1
+            fi
+        fi
+    done
 
     # Bootstrap super admin if configured
     log "Checking for super admin configuration..."
