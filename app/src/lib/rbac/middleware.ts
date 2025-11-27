@@ -47,20 +47,10 @@ export async function hasPermission(
       return false;
     }
 
-    // Use Better Auth's hasPermission API for organization and admin permissions
-    if (["organization", "member", "invitation"].includes(resource)) {
-      const result = await auth.api.hasPermission({
-        headers: await headers(),
-        body: {
-          permissions: {
-            [resource]: [action],
-          },
-        },
-      });
-      return result.success;
-    }
-
-    // For custom resources, use our custom logic
+    // Use custom RBAC permission system
+    // Note: Better Auth provides session management and organization context,
+    // but permission checks are handled by our custom RBAC implementation
+    // which provides fine-grained control over resources and actions
     const userRole = await getUserRole(session.user.id, context?.organizationId);
     const assignedProjects =
       context?.assignedProjectIds ||
@@ -481,36 +471,18 @@ export async function requirePermissions(
   const authResult = await requireAuth();
 
   try {
+    // Check all required permissions using custom RBAC system
     for (const [resource, actions] of Object.entries(permissions)) {
-      if (
-        ["organization", "member", "invitation", "user", "session"].includes(
-          resource
-        )
-      ) {
-        const result = await auth.api.hasPermission({
-          headers: await headers(),
-          body: {
-            permissions: {
-              [resource]: actions,
-            },
-          },
-        });
-
-        if (!result.success) {
-          throw new Error(`Access denied: Missing ${resource} permissions`);
-        }
-      } else {
-        for (const action of actions) {
-          const hasAccess = await hasPermission(
-            resource as keyof typeof statement,
-            action,
-            context
+      for (const action of actions) {
+        const hasAccess = await hasPermission(
+          resource as keyof typeof statement,
+          action,
+          context
+        );
+        if (!hasAccess) {
+          throw new Error(
+            `Access denied: Missing ${resource}:${action} permission`
           );
-          if (!hasAccess) {
-            throw new Error(
-              `Access denied: Missing ${resource}:${action} permission`
-            );
-          }
         }
       }
     }
@@ -1106,20 +1078,9 @@ export function getProjectIdFromUrl(req: NextRequest): string | null {
 
 export async function isAdmin(organizationId?: string): Promise<boolean> {
   try {
-    if (organizationId) {
-      const result = await auth.api.hasPermission({
-        headers: await headers(),
-        body: {
-          permissions: {
-            organization: ["update"],
-            member: ["create", "update", "delete"],
-          },
-        },
-      });
-      return result.success;
-    }
-
-    return await hasPermission("system", "manage_users");
+    // Check if user has system-level admin permissions
+    // If organizationId is provided, scope the check to that organization
+    return await hasPermission("system", "manage_users", { organizationId });
   } catch {
     return false;
   }
@@ -1147,18 +1108,8 @@ export async function canPerformAdminOperation(
     | "manage_organizations"
 ): Promise<boolean> {
   try {
-    const result = await auth.api.userHasPermission({
-      body: {
-        permissions: {
-          system: [operation],
-        },
-      },
-    });
-    if (result.error) {
-      console.error("Admin permission check failed:", result.error);
-      return false;
-    }
-    return result.success;
+    // Check system-level admin permissions using custom RBAC
+    return await hasPermission("system", operation);
   } catch (error) {
     console.error("Admin permission check failed:", error);
     return false;

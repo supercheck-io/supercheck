@@ -12,6 +12,7 @@ import {
 } from "@/lib/queue";
 import { prepareJobTestScripts } from "@/lib/job-execution-utils";
 import { validateK6Script } from "@/lib/k6-validator";
+import { SubscriptionService } from "@/lib/services/subscription-service";
 
 const DEFAULT_K6_LOCATION: K6Location = "global";
 
@@ -162,6 +163,23 @@ export async function POST(
     }
 
     const job = jobResult[0];
+
+    // Check subscription plan limits
+    const subscriptionService = new SubscriptionService();
+    try {
+      if (!job.organizationId) {
+        return NextResponse.json(
+          { error: 'Organization ID is required for subscription validation' },
+          { status: 400 }
+        );
+      }
+      await subscriptionService.getOrganizationPlan(job.organizationId);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Subscription required' },
+        { status: 402 }
+      );
+    }
 
     // Additional validation: ensure job is not in an error state that prevents triggering
     if (job.status === 'error') {

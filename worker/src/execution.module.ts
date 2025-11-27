@@ -10,6 +10,7 @@ import { S3Service } from './execution/services/s3.service';
 import { DbService, DB_PROVIDER_TOKEN } from './execution/services/db.service';
 import { RedisService } from './execution/services/redis.service';
 import { JobNotificationService } from './execution/services/job-notification.service';
+import { UsageTrackerService } from './execution/services/usage-tracker.service';
 import { PlaywrightExecutionProcessor } from './execution/processors/playwright-execution.processor';
 import { NotificationModule } from './notification/notification.module';
 import { ReportUploadService } from './common/services/report-upload.service';
@@ -76,6 +77,7 @@ const drizzleProvider: Provider = {
     DbService,
     RedisService,
     JobNotificationService,
+    UsageTrackerService,
     ReportUploadService,
     PlaywrightExecutionProcessor,
   ],
@@ -84,6 +86,7 @@ const drizzleProvider: Provider = {
     DbService,
     RedisService,
     JobNotificationService,
+    UsageTrackerService,
     ExecutionService,
     S3Service,
   ],

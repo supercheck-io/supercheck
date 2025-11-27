@@ -9,6 +9,7 @@
  *   OR set SUPER_ADMIN_EMAIL env var
  */
 
+require('dotenv').config();
 const postgres = require('postgres');
 
 async function main() {

@@ -7,6 +7,7 @@ import { CheckIcon } from "@/components/logo/supercheck-logo"
 import { Loader2, Eye, EyeOff } from "lucide-react"
 import Link from "next/link"
 import { useState } from "react"
+import { SocialAuthButtons } from "./social-auth-buttons"
 
 interface InviteData {
   organizationName: string;
@@ -45,12 +46,17 @@ export function SignupForm({
                   {inviteData ? `Join ${inviteData.organizationName}` : 'Sign up'}
                 </h1>
                 <p className="text-muted-foreground text-balance">
-                  {inviteData 
+                  {inviteData
                     ? `Create an account to join ${inviteData.organizationName} as ${inviteData.role}`
                     : 'Create an account to get started'
                   }
                 </p>
               </div>
+              <SocialAuthButtons
+                mode="signup"
+                callbackUrl={inviteToken ? `/invite/${inviteToken}` : "/"}
+                disabled={isLoading}
+              />
               <div className="grid gap-3">
                 <Label htmlFor="name">Name</Label>
                 <Input

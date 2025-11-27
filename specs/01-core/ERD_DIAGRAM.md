@@ -29,6 +29,14 @@ erDiagram
         text logo
         timestamp createdAt
         text metadata
+        text polarCustomerId
+        text subscriptionPlan
+        text subscriptionStatus
+        text subscriptionId
+        integer playwrightMinutesUsed
+        integer k6VuHoursUsed
+        timestamp usagePeriodStart
+        timestamp usagePeriodEnd
     }
 
     MEMBER {
@@ -568,6 +576,90 @@ erDiagram
     USER ||--o{ incident_templates : "creates"
     USER ||--o{ postmortems : "writes"
 
+    plan_limits {
+        uuid id PK
+        text plan
+        integer maxMonitors
+        integer minCheckIntervalMinutes
+        integer playwrightMinutesIncluded
+        integer k6VuHoursIncluded
+        integer runningCapacity
+        integer queuedCapacity
+        integer maxTeamMembers
+        integer maxOrganizations
+        integer maxProjects
+        integer maxStatusPages
+        boolean customDomains
+        boolean ssoEnabled
+        integer dataRetentionDays
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    %% Billing & Usage Tables
+    billing_settings {
+        uuid id PK
+        uuid organizationId FK
+        integer monthlySpendingLimitCents
+        boolean enableSpendingLimit
+        boolean hardStopOnLimit
+        boolean notifyAt50Percent
+        boolean notifyAt80Percent
+        boolean notifyAt90Percent
+        boolean notifyAt100Percent
+        text notificationEmails
+        timestamp lastNotificationSentAt
+        text notificationsSentThisPeriod
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    usage_events {
+        uuid id PK
+        uuid organizationId FK
+        text eventType
+        text eventName
+        numeric units
+        text unitType
+        text metadata
+        boolean syncedToPolar
+        text polarEventId
+        text syncError
+        integer syncAttempts
+        timestamp lastSyncAttempt
+        timestamp billingPeriodStart
+        timestamp billingPeriodEnd
+        timestamp createdAt
+    }
+
+    usage_notifications {
+        uuid id PK
+        uuid organizationId FK
+        text notificationType
+        text resourceType
+        numeric usageAmount
+        numeric usageLimit
+        integer usagePercentage
+        integer currentSpendingCents
+        integer spendingLimitCents
+        text sentTo
+        text deliveryStatus
+        text deliveryError
+        timestamp billingPeriodStart
+        timestamp billingPeriodEnd
+        timestamp createdAt
+        timestamp sentAt
+    }
+
+    overage_pricing {
+        uuid id PK
+        text plan
+        integer playwrightMinutePriceCents
+        integer k6VuHourPriceCents
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
     ORGANIZATION ||--o{ MEMBER : "has members"
     ORGANIZATION ||--o{ INVITATION : "has invitations"
     ORGANIZATION ||--o{ PROJECTS : "contains"
@@ -580,6 +672,9 @@ erDiagram
     ORGANIZATION ||--o{ ALERTS : "manages"
     ORGANIZATION ||--o{ audit_logs : "tracks"
     ORGANIZATION ||--o{ status_pages : "manages"
+    ORGANIZATION ||--o{ billing_settings : "configures"
+    ORGANIZATION ||--o{ usage_events : "generates"
+    ORGANIZATION ||--o{ usage_notifications : "receives"
 
     PROJECTS ||--o{ project_members : "has members"
     PROJECTS ||--o{ TESTS : "contains"
@@ -665,6 +760,10 @@ erDiagram
 - **Subscriber System**: Multi-channel notifications (email, SMS, webhook) for status updates and incidents
 - **Component Organization**: Logical grouping of services with monitor linking and status tracking
 - **Analytics & Metrics**: Detailed uptime tracking and performance metrics per component
+- **Polar Billing Integration**: Subscription-based billing with Plus, Pro, and Unlimited plans
+- **Usage Tracking**: Monitor Playwright minutes and K6 VU hours with automatic overage calculation
+- **Plan Enforcement**: Resource limits enforced based on subscription plan (monitors, projects, team members, etc.)
+- **Self-Hosted Mode**: Unlimited plan automatically assigned to self-hosted deployments
 
 ### Role Hierarchy
 

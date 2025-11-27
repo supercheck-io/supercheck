@@ -130,6 +130,11 @@ const createNextConfig = (phase: string): NextConfig => {
           module: /node_modules\/bullmq/,
           message: /the request of a dependency is an expression/,
         },
+        {
+          module: /node_modules\/kysely/,
+          message:
+            /Critical dependency: the request of a dependency is an expression/,
+        },
       ];
 
       // Server-side only modules - no polyfills needed for client

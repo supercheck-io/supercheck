@@ -34,7 +34,7 @@ export async function SchedulerInitializer() {
 
     if (jobResult.success) {
       console.log(
-        `✅ Job scheduler initialized (${jobResult.scheduled} scheduled${
+        `✅ Job scheduler initialized (${jobResult.initialized} scheduled${
           jobResult.failed ? `, ${jobResult.failed} failed` : ""
         })`
       );
