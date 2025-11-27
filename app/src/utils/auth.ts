@@ -83,35 +83,49 @@ function getPolarPlugin() {
         usage(),
         webhooks({
           secret: config.webhookSecret!,
-          // Catch-all handler to log all events and handle subscription updates
-          onPayload: async (payload: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
-            // Import handlers dynamically inside the callback
-            const {
-              handleSubscriptionActive,
-              handleSubscriptionUpdated,
-              handleSubscriptionCanceled,
-              handleOrderPaid,
-            } = await import("@/lib/webhooks/polar-webhooks");
-
-            // Handle subscription events - only log event type for debugging
-            console.log('[Polar] Webhook:', payload.type);
-
-            // Handle subscription events
-            if (payload.type === 'subscription.active' || payload.type === 'subscription.created') {
-              await handleSubscriptionActive(payload);
-            } else if (payload.type === 'subscription.updated') {
-              await handleSubscriptionUpdated(payload);
-            } else if (payload.type === 'subscription.canceled') {
-              await handleSubscriptionCanceled(payload);
-            } else if (payload.type === 'order.paid' || payload.type === 'order.created' || payload.type === 'order.updated' || payload.type === 'checkout.created' || payload.type === 'checkout.updated') {
-              // Handle order and checkout events - these may also activate subscriptions
-              await handleOrderPaid(payload);
-            } else if (payload.type === 'customer.created' || payload.type === 'customer.updated' || payload.type === 'customer.state_changed') {
-              // Customer events are informational - no action needed
-            } else {
-              // Log any unhandled event types for debugging
-              console.log('[Polar] Unhandled webhook:', payload.type);
-            }
+          // Subscription lifecycle handlers
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onSubscriptionActive: async (payload: any) => {
+            console.log('[Polar] Webhook: subscription.active');
+            const { handleSubscriptionActive } = await import("@/lib/webhooks/polar-webhooks");
+            await handleSubscriptionActive(payload);
+          },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onSubscriptionCreated: async (payload: any) => {
+            console.log('[Polar] Webhook: subscription.created');
+            const { handleSubscriptionActive } = await import("@/lib/webhooks/polar-webhooks");
+            await handleSubscriptionActive(payload);
+          },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onSubscriptionUpdated: async (payload: any) => {
+            console.log('[Polar] Webhook: subscription.updated');
+            const { handleSubscriptionUpdated } = await import("@/lib/webhooks/polar-webhooks");
+            await handleSubscriptionUpdated(payload);
+          },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onSubscriptionCanceled: async (payload: any) => {
+            console.log('[Polar] Webhook: subscription.canceled');
+            const { handleSubscriptionCanceled } = await import("@/lib/webhooks/polar-webhooks");
+            await handleSubscriptionCanceled(payload);
+          },
+          // Payment confirmation handler
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onOrderPaid: async (payload: any) => {
+            console.log('[Polar] Webhook: order.paid');
+            const { handleOrderPaid } = await import("@/lib/webhooks/polar-webhooks");
+            await handleOrderPaid(payload);
+          },
+          // Customer state change - useful for syncing customer data
+          onCustomerStateChanged: async () => {
+            console.log('[Polar] Webhook: customer.state_changed');
+            const { handleCustomerStateChanged } = await import("@/lib/webhooks/polar-webhooks");
+            await handleCustomerStateChanged();
+          },
+          // Catch-all for logging and handling any other events
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onPayload: async (payload: any) => {
+            // Log all events for debugging/monitoring
+            console.log('[Polar] Webhook received:', payload.type);
           },
         }),
       ],

@@ -254,6 +254,17 @@ export class SubscriptionService {
       );
     }
 
+    // SECURITY: Validate plan is legitimate for cloud mode
+    if (org.subscriptionPlan === "unlimited") {
+      console.error(`[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has unlimited plan in cloud mode - possible database tampering`);
+      throw new Error("Invalid subscription plan detected. Please contact support.");
+    }
+
+    if (!["plus", "pro"].includes(org.subscriptionPlan)) {
+      console.error(`[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has invalid plan ${org.subscriptionPlan} in cloud mode`);
+      throw new Error(`Invalid subscription plan: ${org.subscriptionPlan}. Only plus and pro plans are available.`);
+    }
+
     return this.getPlanLimits(org.subscriptionPlan);
   }
 
@@ -288,6 +299,19 @@ export class SubscriptionService {
 
     // Cloud mode: return actual plan if subscribed, otherwise return plus limits for display
     if (org.subscriptionPlan && org.subscriptionStatus === "active") {
+      // SECURITY: Validate plan is legitimate for cloud mode (same as getOrganizationPlan)
+      if (org.subscriptionPlan === "unlimited") {
+        console.error(`[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has unlimited plan in cloud mode (getOrganizationPlanSafe) - possible database tampering`);
+        // Return blocked state instead of unlimited for security
+        return this.getPlanLimits("blocked");
+      }
+
+      if (!["plus", "pro"].includes(org.subscriptionPlan)) {
+        console.error(`[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has invalid plan ${org.subscriptionPlan} in cloud mode (getOrganizationPlanSafe)`);
+        // Return blocked state for invalid plans
+        return this.getPlanLimits("blocked");
+      }
+
       return this.getPlanLimits(org.subscriptionPlan);
     }
 
@@ -331,8 +355,9 @@ export class SubscriptionService {
   }
 
   /**
-   * Update organization subscription information
+   * Update subscription information for an organization
    * Used by webhook handlers when subscription changes
+   * SECURITY: Validates that unlimited plans are only set in self-hosted mode
    */
   async updateSubscription(
     organizationId: string,
@@ -343,6 +368,18 @@ export class SubscriptionService {
       polarCustomerId?: string;
     }
   ) {
+    // SECURITY: Block unlimited plans in cloud mode
+    if (isPolarEnabled() && data.subscriptionPlan === "unlimited") {
+      console.error(`[SubscriptionService] SECURITY: Attempted to set unlimited plan in cloud mode for org ${organizationId.substring(0, 8)}...`);
+      throw new Error("Unlimited plan is only available in self-hosted mode");
+    }
+
+    // SECURITY: Only allow plus/pro plans in cloud mode
+    if (isPolarEnabled() && data.subscriptionPlan && !["plus", "pro"].includes(data.subscriptionPlan)) {
+      console.error(`[SubscriptionService] SECURITY: Invalid plan ${data.subscriptionPlan} attempted in cloud mode for org ${organizationId.substring(0, 8)}...`);
+      throw new Error(`Invalid plan ${data.subscriptionPlan}. Only plus and pro plans are available in cloud mode.`);
+    }
+
     await db
       .update(organization)
       .set({

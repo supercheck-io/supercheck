@@ -71,7 +71,7 @@ spec:
     # Regional K6 queue
     - type: redis
       metadata:
-        address: redis.example.com:6379 # Update with actual Redis address
+        address: supercheck-redis:6379 # Update with actual Redis service name/address
         listName: bull:k6-us-east:wait
         listLength: "5" # Scale up when 5+ jobs waiting
         databaseIndex: "0"
@@ -81,7 +81,7 @@ spec:
     # Regional Monitor queue
     - type: redis
       metadata:
-        address: redis.example.com:6379
+        address: supercheck-redis:6379
         listName: bull:monitor-us-east:wait
         listLength: "5"
         databaseIndex: "0"
@@ -91,7 +91,7 @@ spec:
     # Global Playwright queue (shared with all workers)
     - type: redis
       metadata:
-        address: redis.example.com:6379
+        address: supercheck-redis:6379
         listName: bull:playwright-global:wait
         listLength: "10" # Higher threshold for global queues
         databaseIndex: "0"
@@ -101,7 +101,7 @@ spec:
     # Global K6 queue (shared with all workers)
     - type: redis
       metadata:
-        address: redis.example.com:6379
+        address: supercheck-redis:6379
         listName: bull:k6-global:wait
         listLength: "10"
         databaseIndex: "0"
@@ -151,7 +151,7 @@ spec:
   triggers:
     - type: redis
       metadata:
-        address: redis.example.com:6379
+        address: supercheck-redis:6379
         listName: bull:k6-eu-central:wait
         listLength: "5"
         databaseIndex: "0"
@@ -160,7 +160,7 @@ spec:
 
     - type: redis
       metadata:
-        address: redis.example.com:6379
+        address: supercheck-redis:6379
         listName: bull:monitor-eu-central:wait
         listLength: "5"
         databaseIndex: "0"
@@ -169,7 +169,7 @@ spec:
 
     - type: redis
       metadata:
-        address: redis.example.com:6379
+        address: supercheck-redis:6379
         listName: bull:playwright-global:wait
         listLength: "10"
         databaseIndex: "0"
@@ -178,7 +178,7 @@ spec:
 
     - type: redis
       metadata:
-        address: redis.example.com:6379
+        address: supercheck-redis:6379
         listName: bull:k6-global:wait
         listLength: "10"
         databaseIndex: "0"
@@ -228,7 +228,7 @@ spec:
   triggers:
     - type: redis
       metadata:
-        address: redis.example.com:6379
+        address: supercheck-redis:6379
         listName: bull:k6-asia-pacific:wait
         listLength: "5"
         databaseIndex: "0"
@@ -237,7 +237,7 @@ spec:
 
     - type: redis
       metadata:
-        address: redis.example.com:6379
+        address: supercheck-redis:6379
         listName: bull:monitor-asia-pacific:wait
         listLength: "5"
         databaseIndex: "0"
@@ -246,7 +246,7 @@ spec:
 
     - type: redis
       metadata:
-        address: redis.example.com:6379
+        address: supercheck-redis:6379
         listName: bull:playwright-global:wait
         listLength: "10"
         databaseIndex: "0"
@@ -255,7 +255,7 @@ spec:
 
     - type: redis
       metadata:
-        address: redis.example.com:6379
+        address: supercheck-redis:6379
         listName: bull:k6-global:wait
         listLength: "10"
         databaseIndex: "0"

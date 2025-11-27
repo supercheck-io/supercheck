@@ -55,6 +55,9 @@ x-common-env: &common-env # Database Configuration
   K6_TEST_EXECUTION_TIMEOUT_MS: 3600000
   K6_JOB_EXECUTION_TIMEOUT_MS: 3600000
 
+  # Worker Location
+  WORKER_LOCATION: local # For local dev - processes all queues
+
   # AWS S3 / MinIO Configuration
   AWS_REGION: us-east-1
   AWS_ACCESS_KEY_ID: minioadmin

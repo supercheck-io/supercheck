@@ -12,6 +12,23 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     console.log('[Instrumentation] Starting - Loading background services...');
 
+    // Validate Polar configuration early in cloud mode
+    try {
+      console.log('[Instrumentation] Validating Polar configuration...');
+      const { validatePolarConfig } = await import('@/lib/feature-flags');
+      validatePolarConfig();
+      console.log('[Instrumentation] ✅ Polar configuration validated');
+    } catch (error) {
+      // In cloud mode, Polar config is critical - fail fast
+      if (error instanceof Error && error.message.includes('Missing required Polar environment variables')) {
+        console.error('[Instrumentation] ❌ CRITICAL: Polar configuration error:', error.message);
+        console.error('[Instrumentation] 💡 Please set the required environment variables and restart the server');
+        // Don't throw here to allow the app to start in self-hosted mode, but log clearly
+      } else {
+        console.error('[Instrumentation] ❌ Polar configuration validation error:', error);
+      }
+    }
+
     try {
       // Initialize data lifecycle service (cleanup/retention management)
       console.log('[Instrumentation] Loading data lifecycle service...');

@@ -19,6 +19,35 @@ spec:
         app.kubernetes.io/name: supercheck
         app.kubernetes.io/component: app
     spec:
+      # Node affinity - only run on app nodes
+      nodeSelector:
+        workload: app
+
+      # Tolerate the app taint
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: app
+          effect: NoSchedule
+
+      # Pod anti-affinity - spread across nodes for HA
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                        - supercheck
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                        - app
+                topologyKey: kubernetes.io/hostname
+
       serviceAccountName: supercheck
       securityContext:
         fsGroup: 1001
@@ -47,16 +76,20 @@ spec:
               protocol: TCP
           readinessProbe:
             httpGet:
-              path: /
+              path: /api/health
               port: http
             initialDelaySeconds: 20
+            periodSeconds: 5
             timeoutSeconds: 5
+            failureThreshold: 2
           livenessProbe:
             httpGet:
-              path: /
+              path: /api/health
               port: http
             initialDelaySeconds: 40
+            periodSeconds: 10
             timeoutSeconds: 5
+            failureThreshold: 3
           resources:
             requests:
               cpu: 300m

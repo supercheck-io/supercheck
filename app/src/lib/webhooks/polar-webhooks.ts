@@ -127,6 +127,8 @@ function getCustomerIdFromPayload(payload: PolarWebhookPayload): string | undefi
 
 /**
  * Map Polar product ID to subscription plan
+ * SECURITY: Only allows "plus" or "pro" plans in cloud mode
+ * Never returns "unlimited" - that's reserved for self-hosted only
  */
 function getPlanFromProductId(productId: string): SubscriptionPlan {
   const plusProductId = process.env.POLAR_PLUS_PRODUCT_ID;
@@ -135,7 +137,8 @@ function getPlanFromProductId(productId: string): SubscriptionPlan {
   if (productId === plusProductId) return "plus";
   if (productId === proProductId) return "pro";
   
-  // Default to plus for cloud mode
+  // SECURITY: Default to plus for unknown products - never unlimited
+  console.warn(`[Polar] Unknown product ID: ${productId}, defaulting to plus plan`);
   return "plus";
 }
 

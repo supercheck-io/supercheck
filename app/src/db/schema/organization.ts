@@ -46,7 +46,15 @@ export const organization = pgTable("organization", {
   k6VuHoursUsed: integer("k6_vu_hours_used").default(0), // Changed from integer to numeric in migration
   usagePeriodStart: timestamp("usage_period_start"),
   usagePeriodEnd: timestamp("usage_period_end"),
-});
+}, () => ({
+  // SECURITY: Prevent unlimited plans in cloud mode
+  // Only allows unlimited plan when there's no Polar customer ID (self-hosted mode)
+  unlimitedPlanConstraint: sql`
+    CHECK (
+      subscription_plan != 'unlimited' OR polar_customer_id IS NULL
+    )
+  `,
+}));
 
 /**
  * Maps users to organizations, defining their roles.
