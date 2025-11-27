@@ -107,4 +107,9 @@ public/artifacts/
 public/tests/
 
 # Source maps (not needed in production)
-*.map 
+*.map
+
+# Additional large directories
+docs/
+specs/
+scripts/ 
