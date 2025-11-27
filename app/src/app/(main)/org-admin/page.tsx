@@ -89,6 +89,7 @@ export default function OrgAdminDashboard() {
   const [orgDetails, setOrgDetails] = useState<OrgDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentUserRole, setCurrentUserRole] = useState<string>('project_viewer');
+  const [isCloudHosted, setIsCloudHosted] = useState(false);
   
   // Members tab state
   const [members, setMembers] = useState<OrgMember[]>([]);
@@ -117,6 +118,8 @@ export default function OrgAdminDashboard() {
     // Also fetch members and invitations data on mount
     fetchMembers();
     fetchInvitations();
+    // Check hosting mode and subscription status
+    checkHostingAndSubscription();
   }, []);
 
   // Set breadcrumbs
@@ -200,6 +203,19 @@ export default function OrgAdminDashboard() {
       }
     } catch (error) {
       console.error('Error fetching invitations:', error);
+    }
+  };
+
+  const checkHostingAndSubscription = async () => {
+    try {
+      // Check hosting mode
+      const modeResponse = await fetch('/api/config/hosting-mode');
+      if (modeResponse.ok) {
+        const modeData = await modeResponse.json();
+        setIsCloudHosted(modeData.cloudHosted);
+      }
+    } catch (error) {
+      console.error('Error checking hosting mode:', error);
     }
   };
 
@@ -399,7 +415,9 @@ export default function OrgAdminDashboard() {
           <TabsTrigger value="projects">Projects</TabsTrigger>
           <TabsTrigger value="members">Members</TabsTrigger>
           <TabsTrigger value="audit">Audit</TabsTrigger>
-          <TabsTrigger value="subscription">Subscription</TabsTrigger>
+          {isCloudHosted && (
+            <TabsTrigger value="subscription">Subscription</TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
@@ -615,9 +633,11 @@ export default function OrgAdminDashboard() {
           <AuditLogsTable />
         </TabsContent>
 
-        <TabsContent value="subscription" className="space-y-4">
-          <SubscriptionTab />
-        </TabsContent>
+        {isCloudHosted && (
+          <TabsContent value="subscription" className="space-y-4">
+            <SubscriptionTab />
+          </TabsContent>
+        )}
       </Tabs>
         </CardContent>
       </Card>

@@ -6,10 +6,12 @@ import { Loader2 } from "lucide-react";
 
 // Routes that don't require subscription
 const ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION = [
-  '/billing',
-  '/subscribe',
-  '/settings',
-  '/sign-out',
+  '/billing',        // Billing management pages
+  '/billing/success', // Post-checkout success page
+  '/subscribe',      // Subscription selection page
+  '/settings',       // User settings
+  '/sign-out',       // Sign out
+  '/org-admin',      // Org admin (has its own subscription tab logic)
 ];
 
 interface SubscriptionGuardProps {
@@ -72,10 +74,20 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
       try {
         const response = await fetch('/api/billing/current');
         if (response.ok) {
-          setHasSubscription(true);
+          const data = await response.json();
+          // Check if subscription is actually active (not just that endpoint returned OK)
+          const isActive = data.subscription?.status === 'active' && data.subscription?.plan;
+          if (isActive) {
+            setHasSubscription(true);
+          } else {
+            // No active subscription - redirect to subscribe page
+            console.log('No active subscription (status:', data.subscription?.status, '), redirecting to subscribe');
+            router.push('/subscribe?required=true');
+            return;
+          }
         } else {
-          // No subscription - redirect to subscribe page
-          console.log('No active subscription, redirecting to subscribe');
+          // API error - redirect to subscribe page
+          console.log('Billing API error, redirecting to subscribe');
           router.push('/subscribe?required=true');
           return;
         }

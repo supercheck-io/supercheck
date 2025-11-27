@@ -34,11 +34,11 @@ export async function GET() {
       );
     }
 
-    // Get plan limits
-    const plan = await subscriptionService.getOrganizationPlan(activeOrg.id);
+    // Get plan limits (use safe version that doesn't throw for unsubscribed users)
+    const plan = await subscriptionService.getOrganizationPlanSafe(activeOrg.id);
 
-    // Get current usage
-    const usage = await subscriptionService.getUsage(activeOrg.id);
+    // Get current usage (use safe version)
+    const usage = await subscriptionService.getUsageSafe(activeOrg.id);
 
     // Get current resource counts
     const [monitorCount, statusPageCount, projectCount, memberCount] = await Promise.all([

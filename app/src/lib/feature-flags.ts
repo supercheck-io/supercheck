@@ -9,14 +9,7 @@
  */
 export const isCloudHosted = (): boolean => {
   const selfHosted = process.env.SELF_HOSTED?.toLowerCase();
-  const isSelfHosted = selfHosted === "true" || selfHosted === "1";
-  
-  // Log only on server side to avoid console noise in client
-  if (typeof window === 'undefined' && process.env.NODE_ENV !== 'production') {
-    console.log(`[FeatureFlags] isCloudHosted check: SELF_HOSTED=${process.env.SELF_HOSTED}, result=${!isSelfHosted}`);
-  }
-  
-  return !isSelfHosted;
+  return selfHosted !== "true" && selfHosted !== "1";
 };
 
 /**
@@ -24,13 +17,7 @@ export const isCloudHosted = (): boolean => {
  * Requires cloud-hosted mode and proper configuration
  */
 export const isPolarEnabled = (): boolean => {
-  const enabled = isCloudHosted() && !!process.env.POLAR_ACCESS_TOKEN;
-  
-  if (typeof window === 'undefined' && process.env.NODE_ENV !== 'production') {
-     // console.log(`[FeatureFlags] isPolarEnabled: ${enabled} (Cloud=${isCloudHosted()}, Token=${!!process.env.POLAR_ACCESS_TOKEN})`);
-  }
-  
-  return enabled;
+  return isCloudHosted() && !!process.env.POLAR_ACCESS_TOKEN;
 };
 
 /**
