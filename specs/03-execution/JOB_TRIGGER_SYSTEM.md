@@ -272,51 +272,65 @@ graph LR
 
 ## Capacity Management
 
+### Atomic Capacity Enforcement
+
+**✅ Race Condition Prevention**
+- All job triggers (Manual, Remote, Schedule) use atomic capacity management
+- Redis Lua scripts prevent concurrent requests from exceeding limits
+- Organization-specific capacity limits enforced at the trigger point
+
 ### Capacity Tracking Architecture
 
 ```mermaid
 graph TB
-    A[Job Trigger Request] --> B{Check Capacity}
+    A[Job Trigger Request] --> CM[Capacity Manager]
+    CM --> B{"reserveSlot(organizationId)"}
 
-    subgraph "Redis Capacity Store"
-        C[Running Count<br/>Current: 4]
-        D[Queued Count<br/>Current: 15]
-        E[Running Capacity<br/>Limit: 6]
-        F[Queued Capacity<br/>Limit: 50]
+    subgraph "Redis Atomic Counters"
+        C["capacity:running:{orgId}<br/>Current: 4"]
+        D["capacity:queued:{orgId}<br/>Current: 15"]
+        E["Plan Limits<br/>Plus: 5/50, Pro: 10/100"]
     end
 
-    B --> C & D & E & F
+    B --> Lua[Lua Script<br/>Atomic Check + Increment]
+    Lua --> C & D & E
 
-    B --> G{Running < Limit?}
-    G -->|No| H{Queued < Limit?}
-    H -->|No| I[❌ Reject: 429]
-    H -->|Yes| J[✅ Add to Queue]
+    Lua --> F{Slot Reserved?}
+    F -->|No| G[❌ 429 Error]
+    F -->|Yes| H[✅ Add to Queue]
 
-    G -->|Yes| K[✅ Add to Queue]
-    K --> L[Increment Queued Count]
-    J --> L
+    subgraph "Job Event Management"
+        I[active event<br/>queued→running]
+        J[completed event<br/>release running]
+        K[failed event<br/>release running/queued]
+        L[stalled event<br/>release running]
+    end
 
-    M[Worker Picks Job] --> N[Decrement Queued]
-    N --> O[Increment Running]
-
-    P[Job Complete] --> Q[Decrement Running]
+    H --> I & J & K & L
 
     classDef check fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     classDef redis fill:#ffebee,stroke:#d32f2f,stroke-width:2px
     classDef success fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
     classDef reject fill:#ffcdd2,stroke:#c62828,stroke-width:2px
+    classDef event fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
 
-    class B,G,H check
-    class C,D,E,F redis
-    class J,K,L,N,O,Q success
-    class I reject
+    class CM,B,F check
+    class C,D,E redis
+    class H,I,J,K,L success
+    class G reject
 ```
 
-### Capacity Limits
+### Capacity Limits by Plan
 
-| Limit Type | Default | Configurable | Scope |
-|------------|---------|--------------|-------|
-| **Running Capacity** | 6 | `RUNNING_CAPACITY` | Global |
+| Plan | Running Capacity | Queued Capacity | Scope |
+|------|------------------|-----------------|-------|
+| **Plus** | 5 concurrent | 50 queued | Organization |
+| **Pro** | 10 concurrent | 100 queued | Organization |
+| **Unlimited** | 999 concurrent | 9999 queued | Organization |
+
+**Environment Overrides (Self-hosted):**
+- `RUNNING_CAPACITY`: Override plan-specific running limit
+- `QUEUED_CAPACITY`: Override plan-specific queued limit |
 | **Queued Capacity** | 50 | `QUEUED_CAPACITY` | Global |
 | **Execution Timeout** | 15 min | `JOB_EXECUTION_TIMEOUT_MS` | Per Job |
 | **Max Concurrent Tests** | 2 | `MAX_CONCURRENT_EXECUTIONS` | Per Worker |
@@ -379,6 +393,26 @@ graph TB
 | **Rate Limiting** | Per user (10/min) | Per API key (configurable) | N/A |
 | **Audit Logging** | User ID + timestamp | API key ID + IP | System + cron ID |
 | **CSRF Protection** | Required | N/A | N/A |
+| **Polar Validation** | Yes | Yes | No (internal) |
+
+### Security Enhancements
+
+#### **Remote Trigger Security**
+
+1. **Polar Customer Validation**
+   - All remote triggers validate that the organization has a valid Polar customer
+   - Blocks execution for deleted/invalid Polar customers with clear error message
+   - Returns HTTP 402 for subscription/customer issues
+
+2. **Atomic API Key Counter**
+   - API key usage statistics updated atomically using SQL `COALESCE + INCREMENT`
+   - Prevents race conditions from concurrent requests overwriting counts
+   - Non-blocking: failures don't prevent job execution
+
+3. **Safe Logging**
+   - Organization IDs truncated in logs to prevent data exposure
+   - API key names logged but not full key values
+   - Error messages sanitized before returning to client
 
 ## Database Schema
 

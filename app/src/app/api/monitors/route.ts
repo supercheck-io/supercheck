@@ -8,6 +8,7 @@ import { createMonitorHandler, updateMonitorHandler } from "@/lib/monitor-servic
 import { logAuditEvent } from "@/lib/audit-logger";
 import { sanitizeString, sanitizeUrl, sanitizeHostname } from "@/lib/input-sanitizer";
 import { checkMonitorLimit } from "@/lib/middleware/plan-enforcement";
+import { subscriptionService } from "@/lib/services/subscription-service";
 
 export async function GET(request: Request) {
   try {
@@ -103,6 +104,9 @@ export async function GET(request: Request) {
 export async function POST(req: NextRequest) {
   try {
     const { userId, project, organizationId } = await requireProjectContext();
+
+    // Validate Polar customer exists before allowing monitor creation
+    await subscriptionService.requireValidPolarCustomer(organizationId);
 
     const rawData = await req.json();
     console.log("[MONITOR_CREATE] Raw data received:", rawData);

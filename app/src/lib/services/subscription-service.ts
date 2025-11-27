@@ -6,9 +6,187 @@
 import { db } from "@/utils/db";
 import { organization, planLimits, type SubscriptionPlan } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
-import { isPolarEnabled } from "@/lib/feature-flags";
+import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
+
+// Constants for configuration
+const POLAR_API_TIMEOUT_MS = 5000; // 5 second timeout for Polar API calls
+const CUSTOMER_VALIDATION_CACHE_TTL_MS = 60000; // 60 second cache TTL
+const POLAR_SANDBOX_URL = 'https://sandbox-api.polar.sh';
+const POLAR_PRODUCTION_URL = 'https://api.polar.sh';
+
+// Fallback unlimited plan limits - extracted for maintainability
+const FALLBACK_UNLIMITED_LIMITS = {
+  id: "fallback-unlimited",
+  plan: "unlimited" as const,
+  maxMonitors: 999999,
+  minCheckIntervalMinutes: 1,
+  playwrightMinutesIncluded: 999999,
+  k6VuHoursIncluded: 999999,
+  runningCapacity: 999,
+  queuedCapacity: 9999,
+  maxTeamMembers: 999,
+  maxOrganizations: 999,
+  maxProjects: 999,
+  maxStatusPages: 999,
+  customDomains: true,
+  ssoEnabled: true,
+  dataRetentionDays: 365,
+} as const;
+
+// Blocked plan limits for deleted Polar customers
+const BLOCKED_PLAN_LIMITS = {
+  id: "blocked",
+  plan: "unlimited" as const, // Show unlimited in UI but blocked in practice
+  maxMonitors: 0,
+  minCheckIntervalMinutes: 1,
+  playwrightMinutesIncluded: 0,
+  k6VuHoursIncluded: 0,
+  runningCapacity: 0,
+  queuedCapacity: 0,
+  maxTeamMembers: 0,
+  maxOrganizations: 0,
+  maxProjects: 0,
+  maxStatusPages: 0,
+  customDomains: false,
+  ssoEnabled: false,
+  dataRetentionDays: 0,
+} as const;
 
 export class SubscriptionService {
+  /**
+   * Cache for Polar customer validation results
+   * Prevents excessive API calls to Polar while maintaining security
+   */
+  private validationCache = new Map<string, { valid: boolean; timestamp: number }>();
+
+  /**
+   * Clear expired cache entries (called periodically)
+   */
+  private cleanExpiredCache(): void {
+    const now = Date.now();
+    for (const [key, value] of this.validationCache.entries()) {
+      if (now - value.timestamp > CUSTOMER_VALIDATION_CACHE_TTL_MS) {
+        this.validationCache.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Get Polar API URL based on environment
+   */
+  private getPolarApiUrl(server: string): string {
+    return server === 'sandbox' ? POLAR_SANDBOX_URL : POLAR_PRODUCTION_URL;
+  }
+
+  /**
+   * Validate if Polar customer exists in Polar's system
+   * Returns false if customer doesn't exist (does NOT auto-clear)
+   * Implements caching to prevent excessive API calls
+   */
+  private async validatePolarCustomer(organizationId: string, polarCustomerId: string): Promise<boolean> {
+    if (!isPolarEnabled() || !polarCustomerId) {
+      return true; // No validation needed if Polar disabled or no customer ID
+    }
+
+    // Check cache first
+    const cacheKey = `${organizationId}:${polarCustomerId}`;
+    const cached = this.validationCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CUSTOMER_VALIDATION_CACHE_TTL_MS) {
+      return cached.valid;
+    }
+
+    // Clean expired cache entries periodically
+    if (this.validationCache.size > 100) {
+      this.cleanExpiredCache();
+    }
+
+    try {
+      const config = getPolarConfig();
+      if (!config) {
+        console.warn('[SubscriptionService] Polar config not found');
+        return false;
+      }
+
+      const polarUrl = this.getPolarApiUrl(config.server);
+      
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), POLAR_API_TIMEOUT_MS);
+
+      try {
+        const response = await fetch(`${polarUrl}/v1/customers/${polarCustomerId}`, {
+          headers: {
+            'Authorization': `Bearer ${config.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        let isValid = false;
+        if (response.ok) {
+          isValid = true; // Customer exists in Polar
+        } else if (response.status === 404) {
+          console.warn(`[SubscriptionService] Polar customer not found (org: ${organizationId.substring(0, 8)}...)`);
+          isValid = false;
+        } else {
+          console.error(`[SubscriptionService] Polar API error: ${response.status} (org: ${organizationId.substring(0, 8)}...)`);
+          isValid = false;
+        }
+
+        // Cache the result
+        this.validationCache.set(cacheKey, { valid: isValid, timestamp: Date.now() });
+        return isValid;
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        throw fetchError;
+      }
+    } catch (error) {
+      // Handle timeout specifically
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.error('[SubscriptionService] Polar API timeout - treating as invalid for safety');
+      } else {
+        console.error('[SubscriptionService] Error validating Polar customer:', error);
+      }
+      // Don't cache errors - allow retry on next request
+      return false;
+    }
+  }
+
+  /**
+   * Block API operations if Polar customer doesn't exist
+   * Use this middleware to protect resource creation endpoints
+   */
+  async requireValidPolarCustomer(organizationId: string): Promise<void> {
+    if (!isPolarEnabled()) {
+      return; // Self-hosted: no validation needed
+    }
+
+    const org = await db.query.organization.findFirst({
+      where: eq(organization.id, organizationId),
+    });
+
+    if (!org) {
+      throw new Error("Organization not found");
+    }
+
+    // If no Polar customer ID, user needs to subscribe
+    if (!org.polarCustomerId) {
+      throw new Error(
+        "No Polar customer found. Please subscribe to a plan to continue."
+      );
+    }
+
+    // Validate customer exists in Polar
+    const customerExists = await this.validatePolarCustomer(organizationId, org.polarCustomerId);
+    if (!customerExists) {
+      throw new Error(
+        "Polar customer not found. Please contact support or subscribe to a new plan."
+      );
+    }
+  }
+
   /**
    * Check if organization requires an active subscription (cloud mode)
    * Returns false for self-hosted installations
@@ -19,7 +197,7 @@ export class SubscriptionService {
 
   /**
    * Check if organization has an active paid subscription
-   * Returns false if cloud mode and no subscription
+   * Returns false if cloud mode and no subscription or customer doesn't exist in Polar
    */
   async hasActiveSubscription(organizationId: string): Promise<boolean> {
     if (!isPolarEnabled()) {
@@ -32,6 +210,15 @@ export class SubscriptionService {
 
     if (!org) {
       return false;
+    }
+
+    // If we have a Polar customer ID, validate it exists
+    if (org.polarCustomerId) {
+      const customerExists = await this.validatePolarCustomer(organizationId, org.polarCustomerId);
+      if (!customerExists) {
+        // Customer doesn't exist in Polar
+        return false;
+      }
     }
 
     // Check if subscription is active
@@ -74,6 +261,7 @@ export class SubscriptionService {
    * Get the subscription plan information for an organization (non-throwing version)
    * Returns unlimited plan limits for unsubscribed cloud users (for display purposes)
    * Use this for billing/current endpoint to show usage even without subscription
+   * Validates Polar customer existence but doesn't auto-clear
    */
   async getOrganizationPlanSafe(organizationId: string) {
     const org = await db.query.organization.findFirst({
@@ -89,6 +277,15 @@ export class SubscriptionService {
       return this.getPlanLimits("unlimited");
     }
 
+    // If we have a Polar customer ID, validate it exists
+    if (org.polarCustomerId) {
+      const customerExists = await this.validatePolarCustomer(organizationId, org.polarCustomerId);
+      if (!customerExists) {
+        // Customer doesn't exist in Polar, return blocked state for UI
+        return this.getPlanLimits("blocked");
+      }
+    }
+
     // Cloud mode: return actual plan if subscribed, otherwise return plus limits for display
     if (org.subscriptionPlan && org.subscriptionStatus === "active") {
       return this.getPlanLimits(org.subscriptionPlan);
@@ -101,19 +298,33 @@ export class SubscriptionService {
   /**
    * Get plan limit configuration for a specific plan
    * Falls back to unlimited if plan not found
+   * Special handling for "blocked" plan when Polar customer doesn't exist
    */
-  async getPlanLimits(plan: SubscriptionPlan): Promise<
-typeof planLimits.$inferSelect> {
+  async getPlanLimits(plan: SubscriptionPlan | "blocked"): Promise<
+  typeof planLimits.$inferSelect> {
+    // Handle special "blocked" plan for deleted Polar customers
+    if (plan === "blocked") {
+      return {
+        ...BLOCKED_PLAN_LIMITS,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    }
+
     const limits = await db.query.planLimits.findFirst({
-      where: eq(planLimits.plan, plan),
+      where: eq(planLimits.plan, plan as SubscriptionPlan),
     });
 
     if (!limits) {
       console.warn(
         `Plan limits not found for plan: ${plan}, falling back to unlimited`
       );
-      // Fallback to unlimited
-      return this.getPlanLimits("unlimited");
+      // Fallback to extracted constants to prevent infinite recursion
+      return {
+        ...FALLBACK_UNLIMITED_LIMITS,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
     }
 
     return limits;

@@ -48,6 +48,20 @@ run_migrations() {
     fi
 }
 
+# Function to run database seeding
+run_seeding() {
+    log "Running database seeding..."
+    
+    # Run the seed script - it's idempotent due to ON CONFLICT DO NOTHING
+    if node scripts/seed.js; then
+        log_success "Database seeding completed successfully"
+        return 0
+    else
+        log_error "Database seeding failed"
+        return 1
+    fi
+}
+
 # Function to start the Next.js server
 start_server() {
     log "Starting Next.js server..."
@@ -70,6 +84,13 @@ main() {
     if ! run_migrations; then
         log_error "Failed to run migrations. Exiting."
         exit 1
+    fi
+
+    # Run seeding after migrations (idempotent - safe to run multiple times)
+    # Non-blocking: log warning but continue if seeding fails to handle transient issues
+    if ! run_seeding; then
+        log_error "Database seeding failed, but continuing with app startup. Plan limits may be missing."
+        log_error "You can manually seed later with: npm run db:seed"
     fi
 
     # Bootstrap super admin if configured

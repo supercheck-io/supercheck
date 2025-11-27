@@ -1,22 +1,51 @@
 import {
   getQueues,
 } from "@/lib/queue";
+import { checkCapacityLimits } from "@/lib/middleware/plan-enforcement";
 
-// Default capacity limits - enforced at both API and worker level
-export const RUNNING_CAPACITY = parseInt(process.env.RUNNING_CAPACITY || "5");
-
-/**
- * Maximum number of jobs that can be queued.
- * This is a hard limit enforced at the API layer - new submissions will be rejected
- * with a 429 (Too Many Requests) status code once this limit is reached.
- */
-export const QUEUED_CAPACITY = parseInt(process.env.QUEUED_CAPACITY || "50");
+// Default capacity limits - used as fallback for self-hosted mode
+export const DEFAULT_RUNNING_CAPACITY = parseInt(process.env.RUNNING_CAPACITY || "5");
+export const DEFAULT_QUEUED_CAPACITY = parseInt(process.env.QUEUED_CAPACITY || "50");
 
 export interface QueueStats {
   running: number;
   runningCapacity: number;
   queued: number;
   queuedCapacity: number;
+}
+
+export interface CapacityLimits {
+  runningCapacity: number;
+  queuedCapacity: number;
+}
+
+/**
+ * Get capacity limits for an organization based on their subscription plan
+ * For self-hosted mode, uses environment defaults
+ * For cloud mode, fetches plan-specific limits from database
+ */
+export async function getCapacityLimitsForOrg(organizationId?: string): Promise<CapacityLimits> {
+  if (!organizationId) {
+    // No org context - use defaults (self-hosted or unauthenticated)
+    return {
+      runningCapacity: DEFAULT_RUNNING_CAPACITY,
+      queuedCapacity: DEFAULT_QUEUED_CAPACITY,
+    };
+  }
+
+  try {
+    // checkCapacityLimits handles both self-hosted (env vars) and cloud (plan limits)
+    return await checkCapacityLimits(organizationId);
+  } catch (error) {
+    console.warn(
+      `Failed to get capacity limits for org ${organizationId}, using defaults:`,
+      error instanceof Error ? error.message : String(error)
+    );
+    return {
+      runningCapacity: DEFAULT_RUNNING_CAPACITY,
+      queuedCapacity: DEFAULT_QUEUED_CAPACITY,
+    };
+  }
 }
 
 const COUNT_STATUSES = [
@@ -39,9 +68,13 @@ export async function shouldProcessJob(): Promise<boolean> {
 
 /**
  * Fetch real queue statistics from Redis using BullMQ key patterns
+ * @param organizationId - Optional organization ID to get plan-specific capacity limits
  */
-export async function fetchQueueStats(): Promise<QueueStats> {
+export async function fetchQueueStats(organizationId?: string): Promise<QueueStats> {
   try {
+    // Get capacity limits - org-specific for cloud, env defaults for self-hosted
+    const capacityLimits = await getCapacityLimitsForOrg(organizationId);
+    
     const queues = await getQueues();
     
     // Aggregate all execution queues
@@ -101,10 +134,10 @@ export async function fetchQueueStats(): Promise<QueueStats> {
     );
 
     return {
-      running: Math.min(totals.running, RUNNING_CAPACITY),
-      runningCapacity: RUNNING_CAPACITY,
+      running: Math.min(totals.running, capacityLimits.runningCapacity),
+      runningCapacity: capacityLimits.runningCapacity,
       queued: totals.queued,
-      queuedCapacity: QUEUED_CAPACITY,
+      queuedCapacity: capacityLimits.queuedCapacity,
     };
   } catch (error) {
     console.error(
@@ -132,16 +165,16 @@ export function generateMockQueueStats(): QueueStats {
   }
 
   // Calculate running threads based on load factor
-  const runningBase = Math.floor(RUNNING_CAPACITY * loadFactor);
+  const runningBase = Math.floor(DEFAULT_RUNNING_CAPACITY * loadFactor);
   const runningNoise = Math.floor(Math.random() * 10) - 5; // -5 to +5 noise
   const running = Math.min(
-    RUNNING_CAPACITY,
+    DEFAULT_RUNNING_CAPACITY,
     Math.max(1, runningBase + runningNoise)
   ); // Ensure at least 1
 
   // Only show queued if we're at capacity
   let queued = 0;
-  if (running >= RUNNING_CAPACITY * 0.95) {
+  if (running >= DEFAULT_RUNNING_CAPACITY * 0.95) {
     // Near capacity, some queuing
     const queuedBase = Math.floor(Math.random() * 20); // 0-20 range for queued
     queued = queuedBase;
@@ -149,29 +182,31 @@ export function generateMockQueueStats(): QueueStats {
 
   return {
     running,
-    runningCapacity: RUNNING_CAPACITY,
+    runningCapacity: DEFAULT_RUNNING_CAPACITY,
     queued,
-    queuedCapacity: QUEUED_CAPACITY,
+    queuedCapacity: DEFAULT_QUEUED_CAPACITY,
   };
 }
 
 /**
  * Get queue statistics with fallback to zeros
+ * @param organizationId - Optional organization ID to get plan-specific capacity limits
  */
-export async function getQueueStats(): Promise<QueueStats> {
+export async function getQueueStats(organizationId?: string): Promise<QueueStats> {
   try {
-    return await fetchQueueStats();
+    return await fetchQueueStats(organizationId);
   } catch (error) {
     console.error(
       "Error fetching real queue stats:",
       error instanceof Error ? error.message : String(error)
     );
-    // Return zeros rather than mock data
+    // Return zeros with default capacity on error
+    const defaultLimits = await getCapacityLimitsForOrg(organizationId);
     return {
       running: 0,
-      runningCapacity: RUNNING_CAPACITY,
+      runningCapacity: defaultLimits.runningCapacity,
       queued: 0,
-      queuedCapacity: QUEUED_CAPACITY,
+      queuedCapacity: defaultLimits.queuedCapacity,
     };
   }
 }

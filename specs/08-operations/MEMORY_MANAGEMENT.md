@@ -62,7 +62,16 @@ The memory management system addresses three critical areas:
 
 1. **Worker Service Memory Leaks** - Long-running test execution memory management
 2. **Redis Memory Growth** - TTL-based cache management and automated cleanup
-3. **File Processing Optimization** - Efficient resource cleanup and garbage collection
+3. **Container-Based Execution** - No local file cleanup, automatic container destruction
+
+### ✅ **Major Architectural Change: Container-Based Execution**
+
+**All test execution now runs exclusively in Docker containers:**
+- ✅ **No Local File Cleanup**: Container filesystem is isolated and destroyed after execution
+- ✅ **No Local Folder Accumulation**: No `playwright-reports/` or `k6-reports/` folders accumulate
+- ✅ **Automatic Cleanup**: Container cleanup is automatic and guaranteed
+- ✅ **Zero Performance Overhead**: No scheduled cleanup operations needed
+- ✅ **Enhanced Security**: Complete isolation from host filesystem
 
 ## Worker Service Memory Management
 
@@ -95,6 +104,21 @@ Real-time monitoring with configurable thresholds and automated responses:
 - **Threshold Alerts**: Configurable warning levels (default: 2048MB)
 - **Automatic Cleanup**: Triggered cleanup when thresholds exceeded
 - **Process Management**: Enhanced browser process termination
+
+### Atomic Capacity Management Integration
+
+**Redis-based capacity enforcement with memory safety:**
+
+- **Atomic Operations**: Lua scripts prevent race conditions in capacity checks
+- **TTL Safety Net**: 24-hour TTL on all Redis counters prevents permanent leaks
+- **Event-Driven Cleanup**: Job lifecycle events automatically release capacity slots
+- **Reconciliation Function**: Periodic comparison of Redis counters vs actual BullMQ job counts
+- **Per-Organization Isolation**: Separate capacity tracking per organization prevents cross-contamination
+
+**Memory Impact:**
+- Minimal Redis memory footprint for capacity counters
+- Automatic cleanup prevents unbounded growth
+- Organization-specific keys scale linearly with customer base
 
 ### Concurrency Controls
 

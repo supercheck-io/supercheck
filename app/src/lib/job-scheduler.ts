@@ -5,7 +5,6 @@ import { JobTrigger } from "@/db/schema";
 import { eq, isNotNull, and } from "drizzle-orm";
 import {
   getQueues,
-  JobExecutionTask,
   addJobToQueue,
 } from "./queue";
 import crypto from "crypto";
@@ -16,6 +15,7 @@ import {
   type DataLifecycleService,
 } from "./data-lifecycle-service";
 import { prepareJobTestScripts } from "./job-execution-utils";
+import type { JobExecutionTask } from "./queue";
 
 interface ScheduleOptions {
   name: string;
@@ -419,7 +419,6 @@ export async function cleanupJobScheduler() {
     try {
       // Cleaning up orphaned entries
       const { jobSchedulerQueue, k6JobSchedulerQueue } = await getQueues();
-
       const schedulerQueues = [jobSchedulerQueue, k6JobSchedulerQueue];
       const repeatableJobsByQueue = await Promise.all(
         schedulerQueues.map(async (queue) => ({

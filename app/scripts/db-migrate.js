@@ -256,6 +256,66 @@ async function runMigrations() {
   }
 }
 
+// Function to ensure critical columns exist for Polar billing
+// Since app is not live yet, we can be more aggressive about schema fixes
+async function ensurePolarColumns() {
+  log("Ensuring Polar billing columns exist...");
+
+  try {
+    const client = postgres(DATABASE_URL);
+
+    // Check if organization table exists
+    const orgTableExists = await client`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'organization'
+      );
+    `.then((result) => result[0]?.exists);
+
+    if (!orgTableExists) {
+      log("Organization table doesn't exist, will be created by migration");
+      await client.end();
+      return true;
+    }
+
+    // Check for polar_customer_id column specifically
+    const polarColumnExists = await client`
+      SELECT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_schema = 'public' 
+        AND table_name = 'organization'
+        AND column_name = 'polar_customer_id'
+      );
+    `.then((result) => result[0]?.exists);
+
+    if (!polarColumnExists) {
+      log("Adding missing polar_customer_id column to organization table");
+      
+      try {
+        await client.unsafe(`ALTER TABLE organization ADD COLUMN polar_customer_id text`);
+        logSuccess("Added polar_customer_id column");
+      } catch (err) {
+        if (err.message.includes('already exists')) {
+          log("polar_customer_id column already exists");
+        } else {
+          logError(`Failed to add polar_customer_id: ${err.message}`);
+          await client.end();
+          return false;
+        }
+      }
+    } else {
+      log("polar_customer_id column already exists");
+    }
+
+    await client.end();
+    return true;
+  } catch (err) {
+    logError(`Polar column check error: ${err.message}`);
+    return false;
+  }
+}
+
 // Function to verify migrations
 async function verifyMigrations() {
   log("Verifying migrations...");
@@ -319,6 +379,12 @@ async function main() {
 
     // Step 4: Verify migrations
     if (!(await verifyMigrations())) {
+      process.exit(1);
+    }
+
+    // Step 4.5: Ensure Polar columns exist (critical for subscription flow)
+    if (!(await ensurePolarColumns())) {
+      logError("Failed to ensure Polar columns exist");
       process.exit(1);
     }
 

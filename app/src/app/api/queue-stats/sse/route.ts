@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { getQueueStats } from '@/lib/queue-stats';
+import { getActiveOrganization } from '@/lib/session';
 
 // Helper to create SSE messages
 const encoder = new TextEncoder();
@@ -8,6 +9,16 @@ function createSSEMessage<T>(data: T) {
 }
 
 export async function GET(request: NextRequest) {
+  // Get the active organization for plan-specific capacity limits
+  // This is non-blocking - if no org, we'll use defaults
+  let organizationId: string | undefined;
+  try {
+    const activeOrg = await getActiveOrganization();
+    organizationId = activeOrg?.id;
+  } catch {
+    // Ignore auth errors - will use default capacity limits
+  }
+
   // Set up response headers for SSE
   const responseHeaders = {
     'Content-Type': 'text/event-stream',
@@ -29,10 +40,10 @@ export async function GET(request: NextRequest) {
         }
       });
 
-      // Function to send queue stats
+      // Function to send queue stats with org-specific limits
       const sendStats = async () => {
         try {
-          const stats = await getQueueStats();
+          const stats = await getQueueStats(organizationId);
           const message = createSSEMessage(stats);
           controller.enqueue(encoder.encode(message));
         } catch {

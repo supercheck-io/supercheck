@@ -42,15 +42,15 @@ graph TB
 
     subgraph "🔐 API Layer"
         API1[Test Execution API<br/>POST /api/test/route]
-        API2[Job Execution API<br/>POST /api/jobs/[id]/trigger]
+        API2["Job Execution API<br/>POST /api/jobs/{id}/trigger"]
         API3[Capacity Check API<br/>fetchQueueStats]
     end
 
     subgraph "📨 Queue System - Redis & BullMQ"
         REDIS[(Redis)]
-        Q1[playwright-global queue]
-        Q2[k6-{region} queues]
-        Q3[monitor-{region} queues]
+        Q1["playwright-global queue"]
+        Q2["k6-{region} queues"]
+        Q3["monitor-{region} queues"]
         Q4[Scheduler Queues]
     end
 
@@ -296,89 +296,119 @@ Each queue is configured with memory-optimized settings:
 
 ### Overview
 
-Capacity is managed entirely through **Redis keys** rather than local state. This allows distributed capacity tracking across multiple worker instances.
+Capacity is managed through **Redis-based atomic counters** with **organization-specific limits**. The system uses Lua scripts to prevent race conditions and enforce plan-based capacity constraints.
 
-### Capacity Limits
+### Capacity Limits by Plan
 
-**RUNNING_CAPACITY (Default: 5)**
-- Maximum number of jobs actively executing simultaneously
-- Enforced at API layer before job submission
-- Tracked via Redis key: `supercheck:capacity:running`
-- Includes all execution types: Playwright tests, K6 tests, Monitor checks
+| Plan | Running Capacity | Queued Capacity | Use Case |
+|------|------------------|-----------------|----------|
+| Plus | 5 concurrent | 50 queued | Small teams |
+| Pro | 10 concurrent | 100 queued | Growing teams |
+| Unlimited (Self-hosted) | 999 concurrent | 9999 queued | Self-hosted deployments |
 
-**QUEUED_CAPACITY (Default: 50)**
-- Maximum number of jobs waiting in queue
-- Hard limit enforced at API layer
-- Returns 429 (Too Many Requests) when exceeded
-- Tracked via Redis key: `supercheck:capacity:queued`
+**Environment Variable Overrides (Self-hosted only):**
+```bash
+RUNNING_CAPACITY=10    # Override plan-specific running limit
+QUEUED_CAPACITY=100    # Override plan-specific queued limit
+```
 
-### Capacity Check Flow
+### Atomic Capacity Enforcement
+
+**✅ Race Condition Prevention**
+- Uses Redis Lua scripts for atomic capacity check + slot reservation
+- Eliminates race conditions between concurrent requests
+- Per-organization key isolation: `capacity:running:{orgId}`, `capacity:queued:{orgId}`
+
+**✅ Counter Leak Prevention**
+- 24-hour TTL on all Redis counters
+- Job lifecycle events properly release counters:
+  - `active`: transitions queued→running
+  - `completed/failed`: releases running slots
+  - `failed` (before active): releases queued slots
+  - `stalled`: releases running slots with warnings
+
+### Atomic Capacity Check Flow
 
 ```mermaid
 sequenceDiagram
     participant API as API Layer
-    participant Redis as Redis/BullMQ
+    participant CM as Capacity Manager
+    participant Redis as Redis (Lua Script)
     participant Queue as Queue
 
-    API->>Redis: fetchQueueStats()
-    Redis->>Redis: Query active jobs across all queues
-    Redis->>Redis: Query waiting/delayed jobs
-    Redis-->>API: Return { running, queued, capacity }
+    API->>CM: reserveSlot(organizationId)
+    CM->>CM: checkCapacityLimits(organizationId)
+    CM->>Redis: Execute Lua Script (Atomic)
+    Redis->>Redis: Check queued < queuedCapacity?
+    Redis->>Redis: Check running < runningCapacity?
+    Redis->>Redis: INCR queued counter
+    Redis-->>CM: Return slotReserved (boolean)
 
-    alt running >= runningCapacity
-        API-->>API: Return 429 (System at capacity)
-    else queued >= queuedCapacity
-        API-->>API: Return 429 (Queue full)
-    else Capacity available
+    alt slotReserved = false
+        CM-->>API: Throw Error (429 - Capacity Limit Reached)
+    else slotReserved = true
         API->>Redis: Resolve variables & secrets
         API->>Queue: Add job to appropriate queue
         Queue-->>API: Return job ID (202 Accepted)
+        
+        Note over Queue: Job Events Handle Counter Management:
+        Queue->>CM: active event → transitionQueuedToRunning()
+        Queue->>CM: completed event → releaseRunningSlot()
+        Queue->>CM: failed event → releaseRunningSlot() or releaseQueuedSlot()
     end
 ```
 
-### Global Capacity Tracking
+### Organization-Specific Capacity Tracking
 
 ```mermaid
 graph TB
-    subgraph "Redis Capacity Keys"
-        K1["supercheck:capacity:running"<br/>Current Count]
-        K2["supercheck:capacity:queued"<br/>Queue Count]
+    subgraph "Redis Atomic Counters"
+        K1["capacity:running:{orgId}"<br/>Running Jobs Count]
+        K2["capacity:queued:{orgId}"<br/>Queued Jobs Count]
+        K3["TTL: 24 hours<br/>Prevents leaks"]
     end
 
-    subgraph "Capacity Limits"
-        L1["RUNNING_CAPACITY: 5"]
-        L2["QUEUED_CAPACITY: 50"]
+    subgraph "Plan-Based Limits"
+        L1["Plus: 5 running, 50 queued"]
+        L2["Pro: 10 running, 100 queued"]
+        L3["Unlimited: 999 running, 9999 queued"]
     end
 
-    subgraph "Operations"
-        O1["Before Queue: Check"]
-        O2["Worker Start: Increment Running"]
-        O3["Worker Complete: Decrement Running"]
-        O4["Queue Add: Increment Queued"]
-        O5["Worker Pickup: Decrement Queued"]
+    subgraph "Atomic Operations"
+        O1["reserveSlot(): Lua Script<br/>Check + Increment"]
+        O2["transitionQueuedToRunning()<br/>DECR queued, INCR running"]
+        O3["releaseRunningSlot()<br/>DECR running"]
+        O4["releaseQueuedSlot()<br/>DECR queued"]
+    end
+
+    subgraph "Job Events"
+        E1["active → O2"]
+        E2["completed → O3"]
+        E3["failed → O3 or O4"]
+        E4["stalled → O3"]
     end
 
     A[Job Request] --> O1
     O1 --> K1 & K2
-    O1 --> L1 & L2
+    O1 --> L1 & L2 & L3
 
-    O1 --> D{Capacity OK?}
-    D -->|Yes| O4
-    D -->|No| E["Reject: 429"]
+    O1 --> D{Slot Reserved?}
+    D -->|Yes| F[Add to Queue]
+    D -->|No| R["429 Error"]
 
-    O4 --> F[Add to Queue]
-    F --> O5
-    O5 --> O2
-    O2 --> G[Execute]
-    G --> O3
+    F --> E1
+    E1 --> O2
+    E2 & E3 & E4 --> O3 & O4
 
     classDef redis fill:#ffebee,stroke:#d32f2f,stroke-width:2px
     classDef limit fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     classDef op fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef event fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
 
-    class K1,K2 redis
-    class L1,L2 limit
-    class O1,O2,O3,O4,O5 op
+    class K1,K2,K3 redis
+    class L1,L2,L3 limit
+    class O1,O2,O3,O4 op
+    class E1,E2,E3,E4 event
 ```
 
 ### Queue Statistics
@@ -392,7 +422,12 @@ Queue statistics track:
 Execution queues counted in statistics:
 - playwright-global
 - k6-{region} (us-east, eu-central, asia-pacific, global)
-- monitor-{region} (us-east, eu-central, asia-pacific)
+
+**Monitor Execution Bypass:**
+- ✅ **Critical monitors bypass capacity limits entirely**
+- ✅ Monitor queues are excluded from capacity calculations
+- ✅ Dedicated regional queues: `monitor-{region}` 
+- ✅ Ensures uninterrupted health monitoring regardless of test capacity
 
 ---
 
@@ -478,12 +513,12 @@ graph TB
     subgraph "Security Hardening"
         S1[--security-opt=no-new-privileges<br/>Prevent privilege escalation]
         S2[--cap-drop=ALL<br/>Drop all Linux capabilities]
-        S3[--memory=2048m<br/>Memory limit (Configurable)]
-        S4[--cpus=1.5<br/>CPU limit (Configurable)]
-        S5[--pids-limit=100<br/>Process limit]
-        S6[--network=bridge<br/>Network isolation]
-        S7[Writable container /tmp<br/>For test scripts & reports]
-        S8[--shm-size=512m<br/>Shared memory for browsers]
+        S3["--memory=2048m<br/>Memory limit (Configurable)"]
+        S4["--cpus=1.5<br/>CPU limit (Configurable)"]
+        S5["--pids-limit=100<br/>Process limit"]
+        S6["--network=bridge<br/>Network isolation"]
+        S7["Writable container /tmp<br/>For test scripts & reports"]
+        S8["--shm-size=512m<br/>Shared memory for browsers"]
     end
 
     S1 & S2 --> SEC[Secure Execution Environment]
