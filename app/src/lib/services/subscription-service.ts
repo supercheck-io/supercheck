@@ -43,7 +43,7 @@ export class SubscriptionService {
 
   /**
    * Get the subscription plan information for an organization
-   * For cloud mode: returns actual plan or throws if no subscription
+   * For cloud mode: returns actual plan or throws if no subscription (use getOrganizationPlanSafe for non-throwing version)
    * For self-hosted: always returns unlimited
    */
   async getOrganizationPlan(organizationId: string) {
@@ -68,6 +68,34 @@ export class SubscriptionService {
     }
 
     return this.getPlanLimits(org.subscriptionPlan);
+  }
+
+  /**
+   * Get the subscription plan information for an organization (non-throwing version)
+   * Returns unlimited plan limits for unsubscribed cloud users (for display purposes)
+   * Use this for billing/current endpoint to show usage even without subscription
+   */
+  async getOrganizationPlanSafe(organizationId: string) {
+    const org = await db.query.organization.findFirst({
+      where: eq(organization.id, organizationId),
+    });
+
+    if (!org) {
+      throw new Error("Organization not found");
+    }
+
+    // Self-hosted mode: always unlimited
+    if (!isPolarEnabled()) {
+      return this.getPlanLimits("unlimited");
+    }
+
+    // Cloud mode: return actual plan if subscribed, otherwise return plus limits for display
+    if (org.subscriptionPlan && org.subscriptionStatus === "active") {
+      return this.getPlanLimits(org.subscriptionPlan);
+    }
+
+    // Return plus plan limits for display purposes (user will see what they'd get)
+    return this.getPlanLimits("plus");
   }
 
   /**
@@ -110,11 +138,6 @@ typeof planLimits.$inferSelect> {
         ...data,
       })
       .where(eq(organization.id, organizationId));
-
-    console.log(
-      `[Subscription] Updated organization ${organizationId}:`,
-      data
-    );
   }
 
   /**
@@ -133,10 +156,6 @@ typeof planLimits.$inferSelect> {
         playwrightMinutesUsed: sql`COALESCE(${organization.playwrightMinutesUsed}, 0) + ${minutes}`,
       })
       .where(eq(organization.id, organizationId));
-
-    console.log(
-      `[Usage] Tracked ${minutes} Playwright minutes for org ${organizationId}`
-    );
   }
 
   /**
@@ -155,10 +174,6 @@ typeof planLimits.$inferSelect> {
         k6VuHoursUsed: sql`COALESCE(${organization.k6VuHoursUsed}, 0) + ${vuHours}`,
       })
       .where(eq(organization.id, organizationId));
-
-    console.log(
-      `[Usage] Tracked ${vuHours} K6 VU hours for org ${organizationId}`
-    );
   }
 
   /**
@@ -175,6 +190,43 @@ typeof planLimits.$inferSelect> {
     }
 
     const plan = await this.getOrganizationPlan(organizationId);
+
+    return {
+      playwrightMinutes: {
+        used: org.playwrightMinutesUsed || 0,
+        included: plan.playwrightMinutesIncluded,
+        overage: Math.max(
+          0,
+          (org.playwrightMinutesUsed || 0) - plan.playwrightMinutesIncluded
+        ),
+      },
+      k6VuHours: {
+        used: org.k6VuHoursUsed || 0,
+        included: plan.k6VuHoursIncluded,
+        overage: Math.max(
+          0,
+          (org.k6VuHoursUsed || 0) - plan.k6VuHoursIncluded
+        ),
+      },
+      periodStart: org.usagePeriodStart,
+      periodEnd: org.usagePeriodEnd,
+    };
+  }
+
+  /**
+   * Get current usage for an organization (non-throwing version)
+   * Uses safe plan lookup for unsubscribed users
+   */
+  async getUsageSafe(organizationId: string) {
+    const org = await db.query.organization.findFirst({
+      where: eq(organization.id, organizationId),
+    });
+
+    if (!org) {
+      throw new Error("Organization not found");
+    }
+
+    const plan = await this.getOrganizationPlanSafe(organizationId);
 
     return {
       playwrightMinutes: {
@@ -216,10 +268,6 @@ typeof planLimits.$inferSelect> {
         usagePeriodEnd: nextMonth,
       })
       .where(eq(organization.id, organizationId));
-
-    console.log(
-      `[Usage] Reset usage counters for org ${organizationId}, period: ${now.toISOString()} to ${nextMonth.toISOString()}`
-    );
   }
 
   /**

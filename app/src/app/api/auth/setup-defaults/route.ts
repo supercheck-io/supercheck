@@ -6,7 +6,60 @@ import { eq, and, gte, desc } from 'drizzle-orm';
 import { auth } from '@/utils/auth';
 import { headers } from 'next/headers';
 import { randomUUID } from 'crypto';
-import { isCloudHosted } from '@/lib/feature-flags';
+import { isCloudHosted, isPolarEnabled, getPolarConfig } from '@/lib/feature-flags';
+
+/**
+ * Link Polar customer to organization
+ * Looks up the customer by externalId (user ID) and stores the polarCustomerId on the organization
+ */
+async function linkPolarCustomerToOrganization(userId: string, organizationId: string): Promise<void> {
+  if (!isPolarEnabled()) {
+    return;
+  }
+
+  try {
+    const config = getPolarConfig();
+    if (!config) {
+      console.log('[Polar] Config not available, skipping customer link');
+      return;
+    }
+
+    // Dynamically import Polar SDK
+    const { Polar } = await import('@polar-sh/sdk');
+    const polarClient = new Polar({
+      accessToken: config.accessToken,
+      server: config.server,
+    });
+
+    // Look up customer by externalId (which is the user ID set during signup)
+    // The Polar plugin creates customers with externalId = user.id
+    try {
+      const customer = await polarClient.customers.getExternal({
+        externalId: userId,
+      });
+
+      if (customer?.id) {
+        console.log(`[Polar] Found customer ${customer.id} for user ${userId}, linking to organization ${organizationId}`);
+        
+        // Update organization with Polar customer ID
+        await db
+          .update(orgTable)
+          .set({ polarCustomerId: customer.id })
+          .where(eq(orgTable.id, organizationId));
+        
+        console.log(`[Polar] ✅ Linked customer ${customer.id} to organization ${organizationId}`);
+      } else {
+        console.log(`[Polar] No customer found for user ${userId} - customer may not have been created yet`);
+      }
+    } catch (lookupError) {
+      // Customer not found is expected if Polar customer creation failed or hasn't completed
+      console.log(`[Polar] Customer lookup failed for user ${userId}:`, lookupError instanceof Error ? lookupError.message : lookupError);
+    }
+  } catch (error) {
+    // Log but don't fail - the webhook will still work via referenceId
+    console.error('[Polar] Error linking customer to organization:', error);
+  }
+}
 
 export async function POST() {
   try {
@@ -109,8 +162,11 @@ export async function POST() {
 
     console.log(`✅ Created default org "${newOrg.name}" and project "${newProject.name}" for user ${user.email}`);
 
-    // Force a small delay to ensure database consistency
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Link Polar customer to organization (for cloud mode)
+    // This allows webhooks to find the organization by polarCustomerId
+    // Note: Webhooks primarily use referenceId from checkout metadata
+    // This customer linking is a fallback mechanism
+    await linkPolarCustomerToOrganization(user.id, newOrg.id);
 
     return NextResponse.json({
       success: true,

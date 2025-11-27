@@ -72,7 +72,8 @@ function getPolarPlugin() {
                 },
               ]
             : [],
-          successUrl: "/billing/success?checkout_id={CHECKOUT_ID}",
+          // Use absolute URL to ensure correct redirect after checkout
+          successUrl: `${process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || 'http://localhost:3000'}/billing/success?checkout_id={CHECKOUT_ID}`,
           authenticatedUsersOnly: true,
         }),
         portal({
@@ -92,11 +93,8 @@ function getPolarPlugin() {
               handleOrderPaid,
             } = await import("@/lib/webhooks/polar-webhooks");
 
-            console.log('[Polar Webhook] Event received:', {
-              type: payload.type,
-              dataKeys: Object.keys(payload.data || {}),
-            });
-            console.log('[Polar Webhook] Full payload:', JSON.stringify(payload, null, 2));
+            // Handle subscription events - only log event type for debugging
+            console.log('[Polar] Webhook:', payload.type);
 
             // Handle subscription events
             if (payload.type === 'subscription.active' || payload.type === 'subscription.created') {
@@ -105,14 +103,14 @@ function getPolarPlugin() {
               await handleSubscriptionUpdated(payload);
             } else if (payload.type === 'subscription.canceled') {
               await handleSubscriptionCanceled(payload);
-            } else if (payload.type === 'order.paid') {
+            } else if (payload.type === 'order.paid' || payload.type === 'order.created' || payload.type === 'order.updated' || payload.type === 'checkout.created' || payload.type === 'checkout.updated') {
+              // Handle order and checkout events - these may also activate subscriptions
               await handleOrderPaid(payload);
             } else if (payload.type === 'customer.created' || payload.type === 'customer.updated' || payload.type === 'customer.state_changed') {
-              // Customer events are informational - just log them
-              console.log('[Polar Webhook] Customer event:', payload.type, payload.data?.email);
+              // Customer events are informational - no action needed
             } else {
-              // Log any unhandled event types
-              console.log('[Polar Webhook] Unhandled event type:', payload.type);
+              // Log any unhandled event types for debugging
+              console.log('[Polar] Unhandled webhook:', payload.type);
             }
           },
         }),
