@@ -680,10 +680,10 @@ npm run db:migrate
 This migration:
 - Adds subscription fields to `organization` table
 - Creates `plan_limits` table with plan configurations
-- Automatically runs seeds from `src/db/seeds/` folder
-- Seeds default plan limits (Plus, Pro, Unlimited)
+- **Seeds plan limits as part of migration** (Plus, Pro, Unlimited)
+- **Verifies seeding was successful** before completing
 
-Note: Seed files are now in a dedicated `seeds/` folder to prevent accidental deletion during migration cleanup.
+**Important**: Plan limits seeding is now integrated directly into the migration system (`0001_seed_plan_limits.sql`) for reliability. The migration will fail if plan_limits are not properly seeded, preventing the app from starting without required data.
 
 ### Integration Points
 
@@ -1912,36 +1912,33 @@ echo "POLAR_SERVER: $POLAR_SERVER"
 #### 3. Plan Limits Not Found
 **Symptom**: `CRITICAL: Plan limits not found for plan: plus in cloud mode. Database may not be seeded.`
 
-**Root Cause**: Database not seeded with plan_limits data
+**Root Cause**: Database migration did not complete successfully (plan_limits seeding is now part of migrations)
 
-**IMPORTANT**: In cloud mode, the app will now **throw an error** instead of falling back to unlimited. This prevents accidental unlimited access.
+**IMPORTANT**: In cloud mode, the app will **throw an error** instead of falling back to unlimited. This prevents accidental unlimited access.
 
 **Solution**:
 ```bash
-# Option 1: Exec into app container and run seed
-docker compose exec app node scripts/seed.js
-
-# Option 2: Run seed manually with DATABASE_URL
-export DATABASE_URL="postgresql://user:pass@host:port/db"
-node scripts/seed.js
+# Re-run migrations (includes seeding)
+docker compose exec app node scripts/db-migrate.js
 
 # Verify data exists
-psql $DATABASE_URL -c "SELECT plan, max_monitors FROM plan_limits;"
+docker compose exec postgres psql -U postgres -d supercheck -c "SELECT plan, max_monitors FROM plan_limits;"
 ```
 
 **Expected Output**:
 ```
- plan      | max_monitors 
+   plan    | max_monitors 
 -----------+-------------
  plus      |          25
  pro       |         100
  unlimited |     999999
 ```
 
-**Prevention**: The app startup script (`start.sh`) now:
-1. Runs seeding with 3 retry attempts
-2. Verifies plan_limits table has data
-3. Fails to start if seeding fails (prevents running without plan limits)
+**Prevention**: The migration system now:
+1. Seeds plan_limits as part of `0001_seed_plan_limits.sql` migration
+2. Verifies all required plans exist after migrations
+3. Fails to complete if plan_limits are not properly seeded
+4. App startup will fail if migrations fail (prevents running without required data)
 
 #### 3. Security Validation Errors
 **Symptom**: "Invalid subscription plan detected" or "Unlimited plan is only available in self-hosted mode"
@@ -2082,8 +2079,9 @@ Webhook processing includes comprehensive monitoring:
 |-------|-------|----------|
 | `Missing required Polar environment variables` | Env vars not set | Set all required POLAR_* variables |
 | `Invalid webhook signature` | Secret mismatch | Update POLAR_WEBHOOK_SECRET in both places |
-| `CRITICAL: Plan limits not found for plan: plus in cloud mode` | Database not seeded | Run `docker compose exec app node scripts/seed.js` |
-| `Plan limits not found for plan: plus, falling back to unlimited` | Self-hosted mode, no seed | Run `node scripts/seed.js` (optional in self-hosted) |
+| `CRITICAL: Plan limits not found for plan: plus in cloud mode` | Migration incomplete | Run `docker compose exec app node scripts/db-migrate.js` |
+| `CRITICAL: plan_limits table is empty` | Migration failed | Check migration logs, re-run migrations |
+| `Plan limits not found for plan: plus, falling back to unlimited` | Self-hosted mode, no seed | Re-run migrations (optional in self-hosted) |
 | `Organization not found for customer` | Data inconsistency | Check organization.polar_customer_id |
 | `Polar not configured` | SELF_HOSTED=true | Set SELF_HOSTED=false for cloud mode |
 
