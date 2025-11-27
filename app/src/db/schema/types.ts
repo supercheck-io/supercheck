@@ -232,3 +232,7 @@ export type IncidentStatus =
   | "scheduled";
 export type IncidentImpact = "none" | "minor" | "major" | "critical";
 export type SubscriberMode = "email" | "webhook" | "slack";
+
+// Billing/Subscription types
+export type SubscriptionPlan = "plus" | "pro" | "unlimited";
+export type SubscriptionStatus = "active" | "canceled" | "past_due" | "none";

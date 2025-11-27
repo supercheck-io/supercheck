@@ -41,5 +41,15 @@ declare namespace NodeJS {
     PLAYGROUND_CLEANUP_ENABLED: string;
     PLAYGROUND_CLEANUP_CRON: string;
     PLAYGROUND_CLEANUP_MAX_AGE_HOURS: string;
+
+    // Self-Hosted Mode (single variable for both server and client)
+    NEXT_PUBLIC_SELF_HOSTED: string;
+    
+    // Polar Payment Integration
+    POLAR_ACCESS_TOKEN: string;
+    POLAR_SERVER: string; // 'production' or 'sandbox'
+    POLAR_WEBHOOK_SECRET: string;
+    POLAR_PLUS_PRODUCT_ID: string;
+    POLAR_PRO_PRODUCT_ID: string;
   }
 } 

@@ -73,36 +73,54 @@ export default function SignUpPage() {
 
       if (response.ok) {
         await response.json();
-
-        // If user signed up with an invite token, redirect to accept invitation
-        if (inviteToken) {
-          router.push(`/invite/${inviteToken}`);
-        } else {
-          router.push("/");
-        }
       } else {
         console.warn("⚠️ Could not create defaults, but signup successful");
-
-        // If user signed up with an invite token, redirect to accept invitation
-        if (inviteToken) {
-          router.push(`/invite/${inviteToken}`);
-        } else {
-          router.push("/");
-        }
       }
     } catch (setupError) {
       console.warn(
         "⚠️ Setup defaults failed, but signup successful:",
         setupError
       );
-
-      // If user signed up with an invite token, redirect to accept invitation
-      if (inviteToken) {
-        router.push(`/invite/${inviteToken}`);
-      } else {
-        router.push("/");
-      }
     }
+
+    // If user signed up with an invite token, redirect to accept invitation
+    if (inviteToken) {
+      router.push(`/invite/${inviteToken}`);
+      setIsLoading(false);
+      return;
+    }
+
+    // Check hosting mode and subscription status for cloud mode
+    try {
+      const modeResponse = await fetch("/api/config/hosting-mode");
+      if (modeResponse.ok) {
+        const modeData = await modeResponse.json();
+        if (modeData.cloudHosted) {
+          // Cloud mode: check if user needs to subscribe
+          const billingResponse = await fetch("/api/billing/current");
+          if (billingResponse.ok) {
+            const billingData = await billingResponse.json();
+            // Check if subscription is actually active
+            if (billingData.subscription?.status !== "active" || !billingData.subscription?.plan) {
+              console.log("Cloud mode: No active subscription, redirecting to subscribe");
+              router.push("/subscribe?setup=true");
+              setIsLoading(false);
+              return;
+            }
+          } else {
+            // Billing check failed - redirect to subscribe to be safe
+            router.push("/subscribe?setup=true");
+            setIsLoading(false);
+            return;
+          }
+        }
+      }
+    } catch {
+      console.log("Could not check hosting mode, proceeding to dashboard");
+    }
+
+    // Default: redirect to dashboard
+    router.push("/")
 
     setIsLoading(false);
   };

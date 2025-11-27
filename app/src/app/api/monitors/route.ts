@@ -7,6 +7,7 @@ import { requireProjectContext } from '@/lib/project-context';
 import { createMonitorHandler, updateMonitorHandler } from "@/lib/monitor-service";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { sanitizeString, sanitizeUrl, sanitizeHostname } from "@/lib/input-sanitizer";
+import { checkMonitorLimit } from "@/lib/middleware/plan-enforcement";
 
 export async function GET(request: Request) {
   try {
@@ -236,10 +237,30 @@ export async function POST(req: NextRequest) {
     
     // Check permission to create monitors
     const canCreate = await hasPermission('monitor', 'create', { organizationId, projectId: targetProjectId });
-    
+
     if (!canCreate) {
       return NextResponse.json(
         { error: 'Insufficient permissions to create monitors' },
+        { status: 403 }
+      );
+    }
+
+    // Check monitor limit for the organization's plan
+    const currentMonitorCount = await db
+      .select({ count: monitors.id })
+      .from(monitors)
+      .where(eq(monitors.organizationId, organizationId));
+
+    const limitCheck = await checkMonitorLimit(organizationId, currentMonitorCount.length);
+    if (!limitCheck.allowed) {
+      console.warn(`Monitor limit reached for organization ${organizationId}: ${limitCheck.error}`);
+      return NextResponse.json(
+        {
+          error: limitCheck.error,
+          upgrade: limitCheck.upgrade,
+          currentPlan: limitCheck.currentPlan,
+          limit: limitCheck.limit
+        },
         { status: 403 }
       );
     }

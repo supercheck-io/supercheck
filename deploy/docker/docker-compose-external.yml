@@ -105,6 +105,26 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   APP_DOMAIN: ${APP_DOMAIN}
   ACME_EMAIL: ${ACME_EMAIL}
 
+  # Self-Hosted Mode (set to 'true' for unlimited features without Polar billing)
+  # Client-side code fetches this from /api/config/hosting-mode at runtime
+  SELF_HOSTED: ${SELF_HOSTED:-true}
+
+  # Polar Billing Configuration (only for cloud deployments)
+  # Set SELF_HOSTED=false to enable Polar billing
+  POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN:-}
+  POLAR_SERVER: ${POLAR_SERVER:-production}
+  POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET:-}
+  POLAR_PLUS_PRODUCT_ID: ${POLAR_PLUS_PRODUCT_ID:-}
+  POLAR_PRO_PRODUCT_ID: ${POLAR_PRO_PRODUCT_ID:-}
+
+  # OAuth Configuration (optional - enable social login)
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+  GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+  NEXT_PUBLIC_GITHUB_ENABLED: ${NEXT_PUBLIC_GITHUB_ENABLED:-false}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  NEXT_PUBLIC_GOOGLE_ENABLED: ${NEXT_PUBLIC_GOOGLE_ENABLED:-false}
+
 services:
   # Traefik Reverse Proxy with HTTPS
   traefik:

@@ -72,7 +72,7 @@ export type MonitorResultDetails = {
   [key: string]: unknown;
 };
 
-// Monitoring locations - using kebab-case for internal representation
+// Monitoring locations
 export const MONITORING_LOCATIONS = {
   US_EAST: "us-east",
   EU_CENTRAL: "eu-central",
@@ -232,3 +232,7 @@ export type IncidentStatus =
   | "scheduled";
 export type IncidentImpact = "none" | "minor" | "major" | "critical";
 export type SubscriberMode = "email" | "webhook" | "slack";
+
+// Billing/Subscription types
+export type SubscriptionPlan = "plus" | "pro" | "unlimited";
+export type SubscriptionStatus = "active" | "canceled" | "past_due" | "none";

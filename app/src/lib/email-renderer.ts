@@ -15,6 +15,7 @@ import {
   IncidentNotificationEmail,
   MonitorAlertEmail,
   TestEmail,
+  UsageNotificationEmail,
 } from "@/emails";
 
 export interface RenderedEmail {
@@ -143,6 +144,45 @@ export async function renderTestEmail(params?: {
 
   return {
     subject: "Test Email from Supercheck",
+    html: await render(component, { pretty: false }),
+    text: await render(component, { plainText: true }),
+  };
+}
+
+/**
+ * Usage Notification Email
+ */
+export async function renderUsageNotificationEmail(params: {
+  organizationName: string;
+  notificationType:
+    | "usage_50_percent"
+    | "usage_80_percent"
+    | "usage_90_percent"
+    | "usage_100_percent"
+    | "spending_limit_warning"
+    | "spending_limit_reached";
+  resourceType: "playwright" | "k6" | "combined" | "spending";
+  usageAmount: number;
+  usageLimit: number;
+  usagePercentage: number;
+  currentSpendingDollars?: number;
+  spendingLimitDollars?: number;
+  billingPageUrl: string;
+  periodEndDate: string;
+}): Promise<RenderedEmail> {
+  const component = UsageNotificationEmail(params);
+
+  const subjectMap: Record<string, string> = {
+    usage_50_percent: `[50% Usage] ${params.organizationName} - Supercheck`,
+    usage_80_percent: `[80% Warning] ${params.organizationName} - Supercheck`,
+    usage_90_percent: `[90% Critical] ${params.organizationName} - Supercheck`,
+    usage_100_percent: `[Limit Reached] ${params.organizationName} - Supercheck`,
+    spending_limit_warning: `[Spending Warning] ${params.organizationName} - Supercheck`,
+    spending_limit_reached: `[Spending Limit] ${params.organizationName} - Supercheck`,
+  };
+
+  return {
+    subject: subjectMap[params.notificationType] || `Usage Alert - ${params.organizationName}`,
     html: await render(component, { pretty: false }),
     text: await render(component, { plainText: true }),
   };

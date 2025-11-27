@@ -322,6 +322,17 @@ async function main() {
       process.exit(1);
     }
 
+    // Step 5: Run seeds (if any)
+    log("Running database seeds...");
+    try {
+      const { runSeeds } = require('./seed.js');
+      await runSeeds();
+      logSuccess("Database seeds completed successfully");
+    } catch (seedErr) {
+      logWarning(`Seed execution failed (non-critical): ${seedErr.message}`);
+      // Don't fail the migration for seeds, just warn
+    }
+
     logSuccess("Database migration process completed successfully");
     process.exit(0);
   } catch (err) {

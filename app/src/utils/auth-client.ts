@@ -4,6 +4,7 @@ import {
   organizationClient,
   adminClient,
 } from "better-auth/client/plugins";
+import { polarClient } from "@polar-sh/better-auth";
 import { ac, roles, Role } from "@/lib/rbac/permissions";
 
 export const authClient = createAuthClient({
@@ -28,6 +29,9 @@ export const authClient = createAuthClient({
         super_admin: roles[Role.SUPER_ADMIN],
       },
     }),
+    // Polar client plugin for checkout and portal functionality
+    // Only active when Polar is enabled on the server
+    polarClient(),
   ],
 });
 

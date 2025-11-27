@@ -5,6 +5,8 @@ import { getCurrentProjectContext } from '@/lib/project-context';
 import { db } from '@/utils/db';
 import { projects, projectMembers } from '@/db/schema';
 import { logAuditEvent } from '@/lib/audit-logger';
+import { checkProjectLimit } from '@/lib/middleware/plan-enforcement';
+import { eq } from 'drizzle-orm';
 
 /**
  * GET /api/projects
@@ -123,14 +125,18 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Check project limit
-    const userProjects = await getUserProjects(userId, targetOrgId);
-    const maxProjects = parseInt(process.env.MAX_PROJECTS_PER_ORG || '10');
-    
-    if (userProjects.length >= maxProjects) {
+    // Check project limit based on subscription plan
+    const allProjectsInOrg = await db
+      .select({ count: projects.id })
+      .from(projects)
+      .where(eq(projects.organizationId, targetOrgId));
+
+    const limitCheck = await checkProjectLimit(targetOrgId, allProjectsInOrg.length);
+    if (!limitCheck.allowed) {
+      console.warn(`Project limit reached for organization ${targetOrgId}: ${limitCheck.error}`);
       return NextResponse.json(
-        { error: `Maximum ${maxProjects} projects allowed per organization` },
-        { status: 400 }
+        { error: limitCheck.error },
+        { status: 403 }
       );
     }
     

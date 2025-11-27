@@ -11,6 +11,7 @@ import {
   timestamp,
   uuid,
   boolean,
+  integer,
   unique,
   index,
 } from "drizzle-orm/pg-core";
@@ -30,6 +31,21 @@ export const organization = pgTable("organization", {
   logo: text("logo"),
   createdAt: timestamp("created_at").notNull(),
   metadata: text("metadata"),
+  
+  // Polar subscription fields
+  polarCustomerId: text("polar_customer_id"), // External customer ID in Polar
+  subscriptionPlan: text("subscription_plan")
+    .$type<"plus" | "pro" | "unlimited">(), // Nullable: cloud users start without plan until subscription
+  subscriptionStatus: text("subscription_status")
+    .$type<"active" | "canceled" | "past_due" | "none">()
+    .default("none"),
+  subscriptionId: text("subscription_id"), // Polar subscription ID
+  
+  // Usage tracking fields
+  playwrightMinutesUsed: integer("playwright_minutes_used").default(0),
+  k6VuHoursUsed: integer("k6_vu_hours_used").default(0), // Changed from integer to numeric in migration
+  usagePeriodStart: timestamp("usage_period_start"),
+  usagePeriodEnd: timestamp("usage_period_end"),
 });
 
 /**

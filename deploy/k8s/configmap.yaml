@@ -84,3 +84,16 @@ data:
   AI_TIMEOUT_MS: "90000"
   AI_MAX_RETRIES: "2"
   AI_TEMPERATURE: "0.1"
+
+  # Self-Hosted Mode (set to 'true' for unlimited features without Polar billing)
+  SELF_HOSTED: "true"
+
+  # Polar Billing Configuration (only for cloud deployments)
+  # Set SELF_HOSTED=false to enable Polar billing
+  POLAR_SERVER: "production"
+  POLAR_PLUS_PRODUCT_ID: ""
+  POLAR_PRO_PRODUCT_ID: ""
+
+  # OAuth Configuration (optional - enable social login)
+  NEXT_PUBLIC_GITHUB_ENABLED: "false"
+  NEXT_PUBLIC_GOOGLE_ENABLED: "false"
