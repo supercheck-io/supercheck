@@ -7,7 +7,12 @@
 
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config({ path: '.env.local' });
+// Load .env.local for local development, but don't override existing env vars (Docker)
+try {
+  require('dotenv').config({ path: '.env.local', override: false });
+} catch (e) {
+  // dotenv is optional for Docker environments
+}
 
 // Import postgres
 const postgres = require('postgres');

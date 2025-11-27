@@ -16,6 +16,7 @@ import {
 import { desc, eq, inArray, and } from "drizzle-orm";
 import { hasPermission } from '@/lib/rbac/middleware';
 import { requireProjectContext } from '@/lib/project-context';
+import { subscriptionService } from '@/lib/services/subscription-service';
 
 import { randomUUID } from "crypto";
 
@@ -523,6 +524,29 @@ async function runJob(request: Request) {
         { status: 400 }
       );
     }
+
+    // Get job details to validate Polar customer
+    const jobDetails = await db
+      .select({ organizationId: jobs.organizationId })
+      .from(jobs)
+      .where(eq(jobs.id, jobId))
+      .limit(1);
+
+    if (jobDetails.length === 0) {
+      return NextResponse.json(
+        { error: "Job not found" },
+        { status: 404 }
+      );
+    }
+
+    // Validate Polar customer exists before allowing test execution
+    if (!jobDetails[0].organizationId) {
+      return NextResponse.json(
+        { error: "Job has no associated organization" },
+        { status: 400 }
+      );
+    }
+    await subscriptionService.requireValidPolarCustomer(jobDetails[0].organizationId);
 
     // Create a new test run record in the database
     const runId = crypto.randomUUID();

@@ -15,7 +15,6 @@ export default function AuthCallbackPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session, isPending } = useSession();
-  const [isSettingUp, setIsSettingUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,7 +30,6 @@ export default function AuthCallbackPage() {
       }
 
       try {
-        setIsSettingUp(true);
 
         // Check if there's an invite token in the URL
         const inviteToken = searchParams.get("invite");
@@ -104,7 +102,6 @@ export default function AuthCallbackPage() {
           router.push(callbackUrl);
         }, 2000);
       } finally {
-        setIsSettingUp(false);
       }
     };
 

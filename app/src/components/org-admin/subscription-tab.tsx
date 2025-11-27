@@ -84,7 +84,7 @@ export function SubscriptionTab() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (authClient as any).customer.portal();
       if (result?.data?.url) {
-        window.open(result.data.url, '_blank', 'noopener,noreferrer');
+        window.location.href = result.data.url;
       }
     } catch (error) {
       console.error("Error opening portal:", error);

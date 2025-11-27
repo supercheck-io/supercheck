@@ -585,9 +585,8 @@ erDiagram
         integer k6VuHoursIncluded
         integer runningCapacity
         integer queuedCapacity
-        integer maxTeamMembers
-        integer maxOrganizations
         integer maxProjects
+        integer maxOrganizations
         integer maxStatusPages
         boolean customDomains
         boolean ssoEnabled
@@ -762,7 +761,7 @@ erDiagram
 - **Analytics & Metrics**: Detailed uptime tracking and performance metrics per component
 - **Polar Billing Integration**: Subscription-based billing with Plus, Pro, and Unlimited plans
 - **Usage Tracking**: Monitor Playwright minutes and K6 VU hours with automatic overage calculation
-- **Plan Enforcement**: Resource limits enforced based on subscription plan (monitors, projects, team members, etc.)
+- **Plan Enforcement**: Resource limits enforced based on subscription plan (monitors, projects, capacity limits, etc.)
 - **Self-Hosted Mode**: Unlimited plan automatically assigned to self-hosted deployments
 
 ### Role Hierarchy

@@ -134,9 +134,9 @@ graph TB
 - Purpose: Manage subscription state and usage tracking
 - Methods:
   - `requiresSubscription()` - Check if running in cloud mode (requires Polar)
-  - `hasActiveSubscription(orgId)` - Verify org has active paid subscription  
+  - `hasActiveSubscription(orgId)` - Verify org has active paid subscription
   - `getOrganizationPlan()` - Retrieve plan limits (throws if cloud + no subscription)
-  - `getOrganizationPlanSafe()` - Non-throwing version for display purposes (returns plus limits for unsubscribed)
+  - `getOrganizationPlanSafe()` - Non-throwing version for display purposes (returns "blocked" state for deleted customers)
   - `getEffectivePlan(orgId)` - Get plan with better error messages
   - `blockUntilSubscribed(orgId)` - Throw error if subscription required but missing
   - `trackPlaywrightUsage()` - Increment Playwright minutes
@@ -145,6 +145,25 @@ graph TB
   - `getUsageSafe()` - Non-throwing version using safe plan lookup
   - `updateSubscription()` - Update plan from webhooks
   - `resetUsageCounters()` - Reset for new billing period
+  - `validatePolarCustomer(orgId, customerId)` - Check if customer exists in Polar API
+  - `requireValidPolarCustomer(orgId)` - Block operations if Polar customer doesn't exist
+
+#### 2.1. **Polar Customer Validation**
+- **Purpose**: Handle scenarios where Polar customers are deleted from Polar but still exist in local database
+- **Validation Flow**:
+  1. When accessing resources, `validatePolarCustomer()` calls Polar API to check customer existence
+  2. If customer returns 404, `requireValidPolarCustomer()` blocks the operation with error message
+  3. `getOrganizationPlanSafe()` returns "blocked" state with zero limits for deleted customers
+- **Error Message**: "Polar customer not found. Please contact support or subscribe to a new plan."
+- **Applied Endpoints**: Monitor creation, project creation, test execution, remote job trigger, and all resource operations
+- **Behavior**: Users can log in and view existing resources but cannot create new ones or execute tests
+
+#### 2.2. **Security & Performance Enhancements**
+- **API Timeout**: All Polar API calls have a 5-second timeout to prevent request blocking
+- **Result Caching**: Customer validation results cached for 60 seconds to reduce API load
+- **Safe Logging**: Organization/customer IDs are truncated in logs to prevent data exposure
+- **Constants**: Plan limits extracted to constants (`FALLBACK_UNLIMITED_LIMITS`, `BLOCKED_PLAN_LIMITS`) for maintainability
+- **Environment URLs**: Correct sandbox (`sandbox-api.polar.sh`) vs production (`api.polar.sh`) URL handling
 
 #### 3. **Plan Enforcement Middleware**  
 - Location: `app/src/lib/middleware/plan-enforcement.ts`
@@ -158,6 +177,7 @@ graph TB
   - `checkFeatureAvailability()` - Check feature flags (SSO, custom domains)
 - Returns:
   - **Cloud + No Subscription**: `{ allowed: false, requiresSubscription: true, availablePlans: ["plus", "pro"] }`
+  - **Cloud + Deleted Customer**: `{ allowed: false, error: "Polar customer not found. Please contact support or subscribe to a new plan." }`
   - **Cloud + At Limit**: `{ allowed: false, error: "...", upgrade: "pro" }`
   - **Self-Hosted**: `{ allowed: true }` (always unlimited)
 
@@ -189,7 +209,18 @@ graph TB
   1. **Primary**: `referenceId` in checkout metadata (organization ID passed during checkout)
   2. **Fallback**: `polarCustomerId` stored on organization (linked during signup via `setup-defaults`)
 - Product mapping: Maps Polar product IDs to plan names (plus/pro) via environment variables
-- Logging: Minimal logs for successful activations only (e.g., `[Polar] ✅ Activated plus for OrgName`)
+- Logging: Minimal logs with truncated IDs for security (e.g., `[Polar] ✅ Activated plus for org abc12345...`)
+
+#### 5.1. **Webhook Security & Reliability**
+- **Idempotency**: All webhook handlers check if event was already processed using in-memory cache with 24-hour TTL
+- **Cache Cleanup**: Automatic cleanup when cache exceeds 1000 entries to prevent memory leaks
+- **Safe Logging**: All IDs are truncated to 8 characters in logs to prevent data exposure
+- **Duplicate Detection**: Both webhook-level (by webhook ID) and database-level (by subscription state) idempotency
+- **Event Types with Idempotency**:
+  - `subscription.active` - Prevents duplicate activations
+  - `subscription.updated` - Prevents duplicate plan changes
+  - `subscription.canceled` - Prevents duplicate cancellations
+  - `order.paid` - Prevents duplicate order processing
 
 #### 6. **Billing Success Page**
 - Location: `app/src/app/(main)/billing/success/page.tsx`
@@ -918,6 +949,51 @@ INSERT INTO plan_limits VALUES
 
 > [!NOTE]
 > There is no "free" plan. Cloud users must subscribe to Plus or Pro. Self-hosted users get unlimited automatically.
+
+### Capacity Limits Enforcement
+
+Capacity limits (`running_capacity` and `queued_capacity`) control concurrent job execution:
+
+| Plan | Running Capacity | Queued Capacity |
+|------|------------------|-----------------|
+| Plus | 5 concurrent | 50 queued |
+| Pro | 10 concurrent | 100 queued |
+| Unlimited | 999 concurrent | 9999 queued |
+
+**How Capacity Enforcement Works:**
+
+1. **API Layer**: Before adding a job to the queue, `verifyQueueCapacityOrThrow(organizationId)` checks:
+   - If running jobs < `runningCapacity`: job is accepted immediately
+   - If running jobs >= `runningCapacity`: check if queued jobs < `queuedCapacity`
+   - Returns 429 (Too Many Requests) if both limits are exceeded
+
+2. **Real-time Display**: The `ParallelThreads` component shows current capacity via SSE:
+   - Fetches organization-specific limits based on subscription plan
+   - Updates every second with running/queued counts
+
+3. **Self-Hosted Mode**: Environment variables override database limits:
+   ```bash
+   RUNNING_CAPACITY=10    # Override max concurrent executions
+   QUEUED_CAPACITY=100    # Override max queued jobs
+   ```
+
+**Edge Cases & Limitations:**
+- **Race Conditions**: ✅ **FIXED** - Implemented Redis-based atomic counters using Lua scripts. All capacity checks and slot reservations happen atomically to prevent concurrent requests from exceeding limits.
+- **Plan Downgrades**: When an organization downgrades from Pro to Plus mid-execution, existing queued jobs might exceed new limits. The system allows existing jobs to continue but new submissions will be enforced at the lower plan limits.
+- **Counter Leaks**: 24-hour TTL on Redis counters prevents permanent leaks. Job lifecycle events (completed/failed/stalled/active) properly release counters.
+- **Monitor Execution**: ✅ **BYPASSES CAPACITY** - Critical health monitors are not subject to capacity limits and use dedicated queues to ensure uninterrupted monitoring.
+
+**Production Safety Features:**
+- **Reconciliation Function**: Periodic comparison of Redis counters vs actual BullMQ job counts to detect and fix counter drift
+- **Event-Driven Cleanup**: Comprehensive job lifecycle event handling ensures accurate counter management
+- **Per-Organization Isolation**: Capacity keys are isolated per organization: `capacity:running:{orgId}`, `capacity:queued:{orgId}`
+
+**Implementation Files:**
+- `app/src/lib/capacity-manager.ts` - **NEW**: Core atomic capacity management with Lua scripts
+- `app/src/lib/queue-stats.ts` - Capacity tracking with org-specific limits
+- `app/src/lib/queue.ts` - `verifyQueueCapacityOrThrow()` enforcement and event listeners
+- `app/src/lib/middleware/plan-enforcement.ts` - `checkCapacityLimits()` lookup
+- `app/src/components/parallel-threads.tsx` - UI display
 
 ---
 

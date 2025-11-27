@@ -2,8 +2,70 @@
  * Input Sanitization Utility
  *
  * Provides secure input sanitization to prevent XSS, SQL injection, and other security vulnerabilities.
- * Uses best practices for sanitizing user inputs while preserving functionality.
+ * Uses defense-in-depth approach with multiple layers of protection.
+ * 
+ * Security considerations:
+ * - Removes dangerous HTML tags (script, iframe, object, embed, svg, etc.)
+ * - Removes event handlers (onclick, onerror, onload, etc.)
+ * - Removes dangerous protocols (javascript:, data:, vbscript:)
+ * - Removes template literals that could be used for injection
+ * - Removes base64-encoded dangerous content
  */
+
+// Dangerous HTML tags that could execute code
+const DANGEROUS_TAGS = [
+  'script', 'iframe', 'object', 'embed', 'form', 'input',
+  'svg', 'math', 'link', 'style', 'base', 'meta', 'applet'
+];
+
+// Event handler patterns (covers all on* attributes)
+const EVENT_HANDLER_PATTERN = /\s*on\w+\s*=\s*(?:["'][^"']*["']|[^\s>]+)/gi;
+
+// Dangerous protocols
+const DANGEROUS_PROTOCOLS = [
+  'javascript:',
+  'vbscript:',
+  'data:text/html',
+  'data:application/javascript',
+  'data:text/javascript',
+];
+
+/**
+ * Removes dangerous HTML tags from input
+ */
+function removeDangerousTags(input: string): string {
+  let sanitized = input;
+  
+  for (const tag of DANGEROUS_TAGS) {
+    // Remove opening and closing tags with content
+    const regex = new RegExp(`<${tag}\\b[^<]*(?:(?!</${tag}>)<[^<]*)*</${tag}>`, 'gi');
+    sanitized = sanitized.replace(regex, '');
+    
+    // Remove self-closing tags
+    const selfClosingRegex = new RegExp(`<${tag}\\b[^>]*/?\\s*>`, 'gi');
+    sanitized = sanitized.replace(selfClosingRegex, '');
+  }
+  
+  return sanitized;
+}
+
+/**
+ * Removes dangerous protocols from input
+ */
+function removeDangerousProtocols(input: string): string {
+  let sanitized = input;
+  
+  for (const protocol of DANGEROUS_PROTOCOLS) {
+    // Case-insensitive replacement with possible whitespace/encoding tricks
+    const regex = new RegExp(protocol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/:/g, '\\s*:'), 'gi');
+    sanitized = sanitized.replace(regex, '');
+  }
+  
+  // Also handle encoded versions (&#x6A; = j, etc.)
+  sanitized = sanitized.replace(/&#x?[0-9a-f]+;?/gi, '');
+  
+  return sanitized;
+}
 
 /**
  * Sanitizes a string by removing potentially dangerous characters and HTML tags
@@ -11,22 +73,29 @@
  */
 export function sanitizeString(input: string | null | undefined): string {
   if (!input) return '';
+  
+  // Limit input length to prevent ReDoS attacks
+  const maxLength = 100000;
+  let sanitized = input.length > maxLength ? input.substring(0, maxLength) : input;
 
-  // Remove any null bytes
-  let sanitized = input.replace(/\0/g, '');
+  // Remove any null bytes and control characters (except common whitespace)
+  sanitized = sanitized.replace(/[\0\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
 
-  // Remove HTML tags except safe ones (for descriptions/text fields)
-  // This prevents XSS attacks via script tags
-  sanitized = sanitized.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  sanitized = sanitized.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '');
-  sanitized = sanitized.replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '');
-  sanitized = sanitized.replace(/<embed\b[^<]*>/gi, '');
-  sanitized = sanitized.replace(/on\w+\s*=\s*["'][^"']*["']/gi, ''); // Remove event handlers
+  // Remove dangerous HTML tags
+  sanitized = removeDangerousTags(sanitized);
 
-  // Remove potentially dangerous protocols
-  sanitized = sanitized.replace(/javascript:/gi, '');
-  sanitized = sanitized.replace(/data:text\/html/gi, '');
-  sanitized = sanitized.replace(/vbscript:/gi, '');
+  // Remove event handlers (covers all on* attributes like onclick, onerror, onload)
+  sanitized = sanitized.replace(EVENT_HANDLER_PATTERN, '');
+
+  // Remove dangerous protocols
+  sanitized = removeDangerousProtocols(sanitized);
+  
+  // Remove template literals that could be used for injection
+  sanitized = sanitized.replace(/\$\{[^}]*\}/g, '');
+  
+  // Remove expression attributes (expression(), url() with javascript)
+  sanitized = sanitized.replace(/expression\s*\([^)]*\)/gi, '');
+  sanitized = sanitized.replace(/url\s*\(\s*["']?\s*javascript:/gi, '');
 
   // Trim whitespace
   return sanitized.trim();

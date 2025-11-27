@@ -75,6 +75,28 @@ This document outlines the **current implementation status** of the organization
 - ✅ Legacy role formats normalized
 - ✅ Session security enhanced with proper token management
 
+#### 7. **Atomic Capacity Management System**
+
+- ✅ Redis-based atomic capacity enforcement using Lua scripts
+- ✅ Organization-specific capacity limits by subscription plan:
+  - **Plus**: 5 concurrent, 50 queued
+  - **Pro**: 10 concurrent, 100 queued  
+  - **Unlimited**: 999 concurrent, 9999 queued
+- ✅ Race condition prevention in job submission
+- ✅ Event-driven counter lifecycle management
+- ✅ Monitor execution bypasses capacity limits (critical health checks)
+- ✅ 24-hour TTL safety net for counter leak prevention
+- ✅ Per-organization key isolation: `capacity:running:{orgId}`, `capacity:queued:{orgId}`
+
+#### 8. **Polar Billing Integration**
+
+- ✅ Complete Polar webhook integration for subscription management
+- ✅ Organization billing fields: `polarCustomerId`, `subscriptionPlan`, `subscriptionStatus`, `subscriptionId`
+- ✅ Automated plan enforcement and capacity limits
+- ✅ Self-hosted mode with unlimited capacity (`SELF_HOST=true`)
+- ✅ Usage tracking for Playwright minutes and K6 VU hours
+- ✅ Real-time subscription status synchronization
+
 ## Implementation Details
 
 ### Database Schema

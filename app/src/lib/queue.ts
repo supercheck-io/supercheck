@@ -14,7 +14,7 @@ import {
 import { createLogger } from "./logger/index";
 
 // Create queue logger
-const queueLogger = createLogger({ module: 'queue-client' }) as {
+export const queueLogger = createLogger({ module: 'queue-client' }) as {
   debug: (data: unknown, msg?: string) => void;
   info: (data: unknown, msg?: string) => void;
   warn: (data: unknown, msg?: string) => void;
@@ -307,6 +307,19 @@ export async function getQueues(): Promise<{
         }
         monitorExecutionEvents = monitorEvents;
 
+        // Create QueueEvents for execution queues
+        const playwrightEvents: Record<string, QueueEvents> = {};
+        playwrightEvents["global"] = new QueueEvents("playwright-global", {
+          connection: redisClient!.duplicate(),
+        });
+
+        const k6Events: Record<string, QueueEvents> = {};
+        for (const region of REGIONS) {
+          k6Events[region] = new QueueEvents(`k6-${region}`, {
+            connection: redisClient!.duplicate(),
+          });
+        }
+
         // Add error listeners for regional monitor queues
         for (const region of MONITOR_REGIONS) {
           monitorExecution[region].on("error", (error: Error) =>
@@ -335,6 +348,46 @@ export async function getQueues(): Promise<{
 
         // Set up periodic cleanup for orphaned Redis keys
         await setupQueueCleanup(connection);
+
+        // Set up capacity management with atomic counters (pass queues to prevent circular dependency)
+        const { setupCapacityManagement } = await import("./capacity-manager");
+        
+        // Create QueueEvents for remaining queues
+        const jobSchedulerEvents = new QueueEvents(JOB_SCHEDULER_QUEUE, {
+          connection: redisClient!.duplicate(),
+        });
+        const k6JobSchedulerEvents = new QueueEvents(K6_JOB_SCHEDULER_QUEUE, {
+          connection: redisClient!.duplicate(),
+        });
+        const monitorSchedulerEvents = new QueueEvents(MONITOR_SCHEDULER_QUEUE, {
+          connection: redisClient!.duplicate(),
+        });
+        const emailTemplateEvents = new QueueEvents(EMAIL_TEMPLATE_QUEUE, {
+          connection: redisClient!.duplicate(),
+        });
+        const dataLifecycleCleanupEvents = new QueueEvents(DATA_LIFECYCLE_CLEANUP_QUEUE, {
+          connection: redisClient!.duplicate(),
+        });
+
+        await setupCapacityManagement({
+          playwrightQueues,
+          k6Queues,
+          monitorExecution,
+          jobSchedulerQueue,
+          k6JobSchedulerQueue,
+          monitorSchedulerQueue,
+          emailTemplateQueue,
+          dataLifecycleCleanupQueue,
+        }, {
+          playwrightEvents,
+          k6Events,
+          monitorExecutionEvents,
+          jobSchedulerEvents,
+          k6JobSchedulerEvents,
+          monitorSchedulerEvents,
+          emailTemplateEvents,
+          dataLifecycleCleanupEvents,
+        });
 
         // BullMQ Queues initialized
       } catch (error) {
@@ -565,8 +618,8 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<string> {
   // Adding test to queue
 
   try {
-    // Enforce parallel execution limits before enqueueing
-    await verifyQueueCapacityOrThrow();
+    // Enforce parallel execution limits before enqueueing (with org-specific limits)
+    await verifyQueueCapacityOrThrow(task.organizationId);
 
     const jobOptions = {
       jobId: jobUuid,
@@ -598,8 +651,8 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<string> {
   // Adding job to queue
 
   try {
-    // Check the current queue size against QUEUED_CAPACITY
-    await verifyQueueCapacityOrThrow();
+    // Check the current queue size against QUEUED_CAPACITY (with org-specific limits)
+    await verifyQueueCapacityOrThrow(task.organizationId);
 
     // Setting timeout
 
@@ -635,7 +688,8 @@ export async function addK6TestToQueue(
   const queue = getQueue(queues, "k6", task.location);
 
   try {
-    await verifyQueueCapacityOrThrow();
+    // Enforce parallel execution limits (with org-specific limits)
+    await verifyQueueCapacityOrThrow(task.organizationId);
 
     await queue.add(jobName, task, {
       jobId: task.runId,
@@ -668,7 +722,8 @@ export async function addK6JobToQueue(
   const queue = getQueue(queues, "k6", task.location);
 
   try {
-    await verifyQueueCapacityOrThrow();
+    // Enforce parallel execution limits (with org-specific limits)
+    await verifyQueueCapacityOrThrow(task.organizationId);
 
     await queue.add(jobName, task, {
       jobId: task.runId,
@@ -691,46 +746,40 @@ export async function addK6JobToQueue(
 }
 
 /**
- * Verify that we haven't exceeded QUEUED_CAPACITY before adding a new job
- * Throws an error if the queue capacity is exceeded
+ * Atomically verify capacity and reserve a slot before adding a new job
+ * Uses Redis-based atomic counters to prevent race conditions
+ * 
+ * @param organizationId - Organization ID to check plan-specific capacity limits
+ * @throws Error if the queue capacity is exceeded
+ * @returns Promise resolving to true if slot reserved, throws if at capacity
  */
-export async function verifyQueueCapacityOrThrow(): Promise<void> {
-  // Import the queue stats
-  const { fetchQueueStats } = await import("@/lib/queue-stats");
-
+export async function verifyQueueCapacityOrThrow(organizationId?: string): Promise<void> {
+  // Import the capacity manager
+  const { getCapacityManager } = await import("./capacity-manager");
+  
   try {
-    // Get real queue stats from Redis
-    const stats = await fetchQueueStats();
-
-    // Checking capacity
-
-    // First check: If running < RUNNING_CAPACITY, we can add more jobs immediately
-    if (stats.running < stats.runningCapacity) {
-      // There are available running slots, no need to check queue capacity
-      return;
+    const capacityManager = await getCapacityManager();
+    const slotReserved = await capacityManager.reserveSlot(organizationId);
+    
+    if (!slotReserved) {
+      // Get capacity details for error message
+      const limits = await capacityManager.getCurrentUsage(organizationId);
+      throw new Error(
+        `Queue capacity limit reached (${limits.queued}/${limits.queuedCapacity} queued jobs). Please try again later when running capacity (${limits.running}/${limits.runningCapacity}) is available.`
+      );
     }
-
-    // Second check: If running at capacity, verify queued capacity is not exceeded
-    if (stats.running >= stats.runningCapacity) {
-      // Running is at or over capacity, need to check queue capacity
-      if (stats.queued >= stats.queuedCapacity) {
-        throw new Error(
-          `Queue capacity limit reached (${stats.queued}/${stats.queuedCapacity} queued jobs). Please try again later when running capacity (${stats.running}/${stats.runningCapacity}) is available.`
-        );
-      }
-    }
-
-    // All good - we haven't hit capacity limits
+    
+    // Slot successfully reserved - job can proceed
     return;
   } catch (error) {
     // Rethrow capacity errors
     if (error instanceof Error && error.message.includes("capacity limit")) {
-      queueLogger.error({ err: error }, "Capacity limit error");
+      queueLogger.error({ err: error, organizationId }, "Capacity limit error");
       throw error;
     }
 
-    // For connection errors, log but still enforce a basic check
-    queueLogger.error({ err: error },
+    // For other errors, log but still enforce a basic check
+    queueLogger.error({ err: error, organizationId },
       "Error checking queue capacity");
 
     // Fail closed on errors - be conservative when we can't verify capacity

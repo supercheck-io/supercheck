@@ -57,17 +57,51 @@ export async function checkMonitorLimit(
 
 /**
  * Get capacity limits (running and queued) for an organization
- * Returns plan-specific limits or environment defaults for self-hosted
+ * 
+ * **Self-Hosted Mode (SELF_HOSTED=true):**
+ * - Uses environment variables RUNNING_CAPACITY and QUEUED_CAPACITY if set
+ * - Falls back to plan limits from database (unlimited plan)
+ * - Falls back to defaults (5 running, 50 queued) if all else fails
+ * 
+ * **Cloud Mode (SELF_HOSTED=false):**
+ * - Uses plan-specific limits from database (plus/pro plans)
+ * - Plan limits are enforced based on subscription
  */
 export async function checkCapacityLimits(organizationId: string) {
+  // Default values
+  const defaultRunning = 5;
+  const defaultQueued = 50;
+
   if (!isPolarEnabled()) {
-    // Use environment defaults for self-hosted
-    return {
-      runningCapacity: parseInt(process.env.RUNNING_CAPACITY || "5"),
-      queuedCapacity: parseInt(process.env.QUEUED_CAPACITY || "50"),
-    };
+    // Self-hosted mode: Check for environment variable overrides first
+    const envRunning = process.env.RUNNING_CAPACITY;
+    const envQueued = process.env.QUEUED_CAPACITY;
+
+    if (envRunning || envQueued) {
+      // Environment variables take precedence in self-hosted mode
+      return {
+        runningCapacity: envRunning ? parseInt(envRunning) : defaultRunning,
+        queuedCapacity: envQueued ? parseInt(envQueued) : defaultQueued,
+      };
+    }
+
+    // Fall back to plan limits from database (unlimited plan for self-hosted)
+    try {
+      const plan = await subscriptionService.getOrganizationPlan(organizationId);
+      return {
+        runningCapacity: plan.runningCapacity,
+        queuedCapacity: plan.queuedCapacity,
+      };
+    } catch {
+      // If plan lookup fails, use defaults
+      return {
+        runningCapacity: defaultRunning,
+        queuedCapacity: defaultQueued,
+      };
+    }
   }
 
+  // Cloud mode: Use plan-specific limits
   const plan = await subscriptionService.getOrganizationPlan(organizationId);
 
   return {

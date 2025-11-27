@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { jobs, apikey, runs, JobTrigger } from "@/db/schema";
 import type { JobType, K6Location } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import crypto from "crypto";
 import {
   addJobToQueue,
@@ -12,7 +12,7 @@ import {
 } from "@/lib/queue";
 import { prepareJobTestScripts } from "@/lib/job-execution-utils";
 import { validateK6Script } from "@/lib/k6-validator";
-import { SubscriptionService } from "@/lib/services/subscription-service";
+import { subscriptionService } from "@/lib/services/subscription-service";
 
 const DEFAULT_K6_LOCATION: K6Location = "global";
 
@@ -164,15 +164,28 @@ export async function POST(
 
     const job = jobResult[0];
 
-    // Check subscription plan limits
-    const subscriptionService = new SubscriptionService();
+    // Validate organization ID exists
+    if (!job.organizationId) {
+      return NextResponse.json(
+        { error: 'Organization ID is required for subscription validation' },
+        { status: 400 }
+      );
+    }
+
+    // Validate Polar customer exists (blocks deleted customers)
     try {
-      if (!job.organizationId) {
-        return NextResponse.json(
-          { error: 'Organization ID is required for subscription validation' },
-          { status: 400 }
-        );
-      }
+      await subscriptionService.requireValidPolarCustomer(job.organizationId);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Polar customer validation failed';
+      console.warn(`[Job Trigger] Polar customer validation failed for org ${job.organizationId.substring(0, 8)}...`);
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: 402 }
+      );
+    }
+
+    // Check subscription plan limits
+    try {
       await subscriptionService.getOrganizationPlan(job.organizationId);
     } catch (error) {
       return NextResponse.json(
@@ -212,18 +225,20 @@ export async function POST(
       console.warn(`Invalid JSON in trigger request body for job ${jobId}, proceeding with defaults`);
     }
 
-    // Update API key usage statistics asynchronously
+    // Update API key usage statistics atomically to prevent race conditions
     const now = new Date();
-    const currentCount = parseInt(key.requestCount || '0', 10);
-    db.update(apikey)
-      .set({ 
-        lastRequest: now,
-        requestCount: (currentCount + 1).toString(),
-      })
-      .where(eq(apikey.id, key.id))
-      .catch((error) => {
-        console.error(`Failed to update API key usage for ${key.id}:`, error);
-      });
+    try {
+      await db.update(apikey)
+        .set({ 
+          lastRequest: now,
+          // Atomic increment to prevent race conditions with concurrent requests
+          requestCount: sql`COALESCE(${apikey.requestCount}::integer, 0) + 1`,
+        })
+        .where(eq(apikey.id, key.id));
+    } catch (error) {
+      // Log but don't fail the request - usage tracking is non-critical
+      console.error(`[Job Trigger] Failed to update API key usage (non-critical):`, error);
+    }
 
     // Create run record
     const runId = crypto.randomUUID();

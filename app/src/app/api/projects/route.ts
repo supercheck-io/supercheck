@@ -7,6 +7,7 @@ import { projects, projectMembers } from '@/db/schema';
 import { logAuditEvent } from '@/lib/audit-logger';
 import { checkProjectLimit } from '@/lib/middleware/plan-enforcement';
 import { eq } from 'drizzle-orm';
+import { subscriptionService } from '@/lib/services/subscription-service';
 
 /**
  * GET /api/projects
@@ -124,6 +125,9 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
+    
+    // Validate Polar customer exists before allowing project creation
+    await subscriptionService.requireValidPolarCustomer(targetOrgId);
     
     // Check project limit based on subscription plan
     const allProjectsInOrg = await db

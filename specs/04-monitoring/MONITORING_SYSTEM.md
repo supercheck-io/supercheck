@@ -816,13 +816,33 @@ graph TD
 
 The monitoring system uses a comprehensive sanitization utility that provides defense-in-depth security:
 
+#### **Security Features**
+
+- **ReDoS Protection**: Input length limited to 100KB to prevent regex-based denial of service
+- **Comprehensive Tag Removal**: Removes 13+ dangerous HTML tags including SVG and math elements
+- **Protocol Sanitization**: Blocks javascript:, vbscript:, and data:text/* protocols
+- **Template Literal Protection**: Removes `${...}` patterns to prevent template injection
+- **HTML Entity Decoding**: Removes encoded characters that could bypass filters
+- **Expression Filtering**: Blocks CSS expression() and url(javascript:) patterns
+
+#### **Dangerous Tags Blocked**
+
+```typescript
+const DANGEROUS_TAGS = [
+  'script', 'iframe', 'object', 'embed', 'form', 'input',
+  'svg', 'math', 'link', 'style', 'base', 'meta', 'applet'
+];
+```
+
 #### **Core Sanitization Functions**
 
 - **`sanitizeString()`**: General-purpose string sanitization
-  - Removes null bytes and control characters
-  - Strips script tags, iframes, objects, and embeds
-  - Removes event handlers (onclick, onerror, etc.)
-  - Blocks dangerous protocols (javascript:, vbscript:, data:text/html)
+  - Removes null bytes and control characters (except common whitespace)
+  - Strips all dangerous HTML tags (script, iframe, svg, etc.)
+  - Removes all event handlers (on* attributes)
+  - Blocks dangerous protocols (javascript:, vbscript:, data:*)
+  - Removes template literals `${...}` to prevent injection
+  - Removes CSS expressions and javascript URLs
 
 - **`sanitizeUrl()`**: URL-specific validation
   - Ensures valid URL structure
@@ -1243,6 +1263,54 @@ Monitor Status: DOWN → UP (Recovery Alert: Always sent)
 - **Maintains Visibility**: Critical status changes always reported
 - **Smart Recovery**: Recovery alerts always sent to confirm resolution
 - **Audit Trail**: Complete tracking of alert history and suppression decisions
+
+## Capacity Management for Monitors
+
+### Overview
+
+**✅ Monitors bypass capacity limits entirely** - Monitor checks are critical health monitoring functions that are NOT subject to the capacity enforcement system. This ensures that essential monitoring is never blocked by regular test execution capacity.
+
+### Capacity Bypass Design
+
+**Monitor executions DO NOT consume capacity slots:**
+- **Synthetic Test Monitors**: ✅ Bypass capacity limits
+- **HTTP/HTTPS Monitors**: ✅ Bypass capacity limits  
+- **Website Monitors**: ✅ Bypass capacity limits
+- **Ping/Port Monitors**: ✅ Bypass capacity limits
+
+**Implementation Details:**
+- Monitor scheduler does NOT call `verifyQueueCapacityOrThrow()`
+- Monitor queues are excluded from capacity calculations in queue stats
+- Monitor execution uses dedicated regional queues: `monitor-{region}`
+- No capacity limits apply to monitor scheduling or execution
+
+### Multi-Location Impact
+
+**Unlimited Multi-Location Execution:**
+- Each location can run monitors independently
+- Monitor running in 3 locations = 3 concurrent executions (no capacity limits)
+- Plan limits do NOT apply to monitor executions
+- Critical monitoring always takes priority
+
+**Example Scenario:**
+```
+Pro Plan (10 concurrent slots for TESTS only)
+├── Tests: 3 running, 4 queued (within plan limits)
+├── Monitors: 5 synthetic + 3 HTTP + 2 website (UNLIMITED)
+└── Total: Tests respect capacity, Monitors bypass entirely
+```
+
+### Configuration Best Practices
+
+**Frequency vs Resource Planning:**
+- High-frequency monitors (1-minute) consume system resources but NOT capacity slots
+- Monitor frequency is limited by system resources, not plan capacity
+- Consider staggered schedules to optimize system resource usage
+
+**Multi-Location Strategy:**
+- Each additional location increases system resource usage but NOT capacity consumption
+- Use all available locations for comprehensive monitoring coverage
+- No need to reserve locations - all are available for monitor execution
 
 ## Performance & Monitoring
 
