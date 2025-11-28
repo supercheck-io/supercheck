@@ -1,21 +1,62 @@
-MIT License
+Supercheck Community License
 
-Copyright (c) 2024 Supercheck Contributors
+Copyright (c) 2025 Supercheck Contributors
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+GRANT OF RIGHTS
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+You are granted a non-exclusive, royalty-free license to use, modify, and distribute
+this software and its source code, subject to the restrictions and conditions outlined below.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+PERMITTED USE
+
+1. Personal Use: You may use Supercheck for personal projects and development purposes.
+
+2. Open Source Development: You may use Supercheck as a foundation for open-source projects
+   that advance the testing and monitoring community, provided such projects are also
+   made publicly available under compatible open-source terms.
+
+3. Internal Deployment: You may deploy and operate Supercheck internally within your
+   organization for your own business operations and testing needs.
+
+4. Contributing Back: You may submit improvements, bug fixes, and features back to the
+   official Supercheck project via pull requests.
+
+RESTRICTIONS
+
+You may NOT:
+
+1. Whitelabel or resell Supercheck as your own product or service.
+
+2. Launch a competitive SaaS (Software-as-a-Service) product, testing platform, or
+   monitoring service based on or derived from Supercheck without explicit written
+   permission from Supercheck Contributors.
+
+3. Use Supercheck as the primary component in a commercial offering that competes
+   with the official Supercheck service.
+
+4. Remove or obscure copyright notices, licenses, or attribution.
+
+5. Use Supercheck's branding, trademarks, or logos in any way that implies endorsement
+   or affiliation without permission.
+
+COMMERCIAL LICENSING
+
+If you wish to use Supercheck for commercial purposes, competitive products, or
+whitelabeling, please contact the Supercheck team to discuss a commercial license agreement.
+
+DISCLAIMER
+
+This software is provided "AS IS" without warranty of any kind, express or implied,
+including but not limited to the warranties of merchantability, fitness for a particular
+purpose, and non-infringement. In no event shall the authors or copyright holders be
+liable for any claim, damages, or other liability arising from the use of this software.
+
+TERMINATION
+
+Violation of the restrictions above will result in immediate termination of your license
+and rights granted hereunder. You must cease all use and distribution of Supercheck.
+
+GOVERNING LAW
+
+This license is governed by applicable law. Any disputes shall be resolved in the
+appropriate courts of jurisdiction.
