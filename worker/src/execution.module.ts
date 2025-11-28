@@ -22,12 +22,17 @@ import {
   PLAYWRIGHT_QUEUE,
 } from './execution/constants';
 
-// Define common job options with TTL settings
+// Define common job options with TTL settings and retry configuration
+// Retries help with transient failures (container startup, network issues)
+// Usage tracking only happens on successful completion, so retries don't cause duplicate billing
 const defaultJobOptions = {
   removeOnComplete: { count: 500, age: 24 * 3600 }, // Keep completed jobs for 24 hours (500 max)
   removeOnFail: { count: 1000, age: 7 * 24 * 3600 }, // Keep failed jobs for 7 days (1000 max)
-  attempts: 3,
-  backoff: { type: 'exponential', delay: 1000 },
+  attempts: 3, // Retry up to 3 times for transient failures
+  backoff: {
+    type: 'exponential' as const,
+    delay: 5000, // Start with 5 second delay, then 10s, 20s
+  },
 };
 
 // PostgreSQL database connection provider

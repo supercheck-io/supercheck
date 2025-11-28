@@ -41,9 +41,14 @@ export const organization = pgTable("organization", {
     .default("none"),
   subscriptionId: text("subscription_id"), // Polar subscription ID
   
+  // Subscription period dates (from Polar webhook)
+  // These track the actual subscription billing cycle dates
+  subscriptionStartedAt: timestamp("subscription_started_at"), // When current subscription period started
+  subscriptionEndsAt: timestamp("subscription_ends_at"), // When current subscription period ends
+  
   // Usage tracking fields
   playwrightMinutesUsed: integer("playwright_minutes_used").default(0),
-  k6VuHoursUsed: integer("k6_vu_hours_used").default(0), // Changed from integer to numeric in migration
+  k6VuMinutesUsed: integer("k6_vu_minutes_used").default(0), // Changed from hours to minutes for consistency with Playwright
   usagePeriodStart: timestamp("usage_period_start"),
   usagePeriodEnd: timestamp("usage_period_end"),
 }, () => ({

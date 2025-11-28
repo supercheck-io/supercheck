@@ -80,11 +80,11 @@ export const usageEvents = pgTable(
     eventType: text("event_type")
       .$type<"playwright_execution" | "k6_execution" | "monitor_execution">()
       .notNull(),
-    eventName: text("event_name").notNull(), // e.g., "playwright_minutes", "k6_vu_hours"
+    eventName: text("event_name").notNull(), // e.g., "playwright_minutes", "k6_vu_minutes"
 
     // Usage amount
     units: numeric("units", { precision: 10, scale: 4 }).notNull(),
-    unitType: text("unit_type").notNull(), // "minutes", "vu_hours"
+    unitType: text("unit_type").notNull(), // "minutes", "vu_minutes"
 
     // Metadata for the event
     metadata: text("metadata"), // JSON - runId, jobId, testId, etc.
@@ -201,7 +201,7 @@ export const overagePricing = pgTable("overage_pricing", {
 
   // Overage pricing (in cents per unit)
   playwrightMinutePriceCents: integer("playwright_minute_price_cents").notNull(), // e.g., 10 = $0.10
-  k6VuHourPriceCents: integer("k6_vu_hour_price_cents").notNull(), // e.g., 50 = $0.50
+  k6VuMinutePriceCents: integer("k6_vu_minute_price_cents").notNull(), // e.g., 1 = $0.01
 
   // Metadata
   createdAt: timestamp("created_at").defaultNow().notNull(),

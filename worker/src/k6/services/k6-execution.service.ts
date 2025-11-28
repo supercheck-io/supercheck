@@ -429,20 +429,9 @@ export class K6ExecutionService {
         }
       }
 
-      // 5c. Persist console output for artifact upload
+      // 5c. Console output is already persisted by executeK6InContainer
+      // Just get the path for later use
       const consolePath = path.join(extractedReportsDir, 'console.log');
-      try {
-        const combinedLog =
-          execResult.stdout +
-          (execResult.stderr
-            ? `\n\n[stderr]\n${execResult.stderr}`.trimEnd()
-            : '');
-        await fs.writeFile(consolePath, combinedLog);
-      } catch (error) {
-        this.logger.warn(
-          `[${runId}] Failed to write console.log: ${getErrorMessage(error)}`,
-        );
-      }
 
       // 6. Prepare artifacts for upload (organize files in report directory)
       await fs.mkdir(reportDir, { recursive: true });
@@ -769,11 +758,14 @@ export class K6ExecutionService {
       const stdout = containerResult.stdout;
       const stderr = containerResult.stderr;
 
-      // Persist stdout to console.log so it can be fetched/archived later
+      // Persist stdout + stderr to console.log so it can be fetched/archived later
       try {
+        const combinedLog =
+          (stdout || '') +
+          (stderr ? `\n\n[stderr]\n${stderr}`.trimEnd() : '');
         await fs.writeFile(
           path.join(extractToHost, 'console.log'),
-          stdout || '',
+          combinedLog,
           'utf-8',
         );
       } catch (err) {
@@ -782,18 +774,8 @@ export class K6ExecutionService {
         );
       }
 
-      // Publish final output to Redis (since we can't stream from container)
-      if (stdout) {
-        try {
-          await this.redisService
-            .getClient()
-            .publish(`k6:run:${runId}:console`, stdout);
-        } catch (err) {
-          this.logger.warn(
-            `[${runId}] Failed to publish console output: ${getErrorMessage(err)}`,
-          );
-        }
-      }
+      // Note: stdout was already streamed via onStdoutChunk callback during execution
+      // No need to publish again - it would cause duplicate output in the UI
 
       const exitDescription = timedOut
         ? `terminated after exceeding timeout (${timeoutMs ?? 'unknown'}ms)`
@@ -814,14 +796,8 @@ export class K6ExecutionService {
         }
       }
 
-      // Log stdout for debugging (first 2000 chars)
-      if (stdout) {
-        const truncatedStdout =
-          stdout.length > 2000
-            ? `${stdout.substring(0, 2000)}\n... (truncated)`
-            : stdout;
-        this.logger.debug(`[${runId}] k6 stdout:\n${truncatedStdout}`);
-      }
+      // Note: Container executor already logs the full stdout output
+      // No need to log it again here to avoid duplication
 
       return {
         exitCode,

@@ -51,6 +51,26 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
       const status = result.success ? 'passed' : 'failed';
       this.logger.log(`Test ${job.id} completed: ${status}`);
 
+      // Calculate execution duration and track usage
+      const endTime = new Date();
+      const durationMs = result.executionTimeMs ?? (endTime.getTime() - startTime.getTime());
+
+      // Track Playwright usage for billing (if organizationId is available)
+      if (job.data.organizationId) {
+        await this.usageTrackerService.trackPlaywrightExecution(
+          job.data.organizationId,
+          durationMs,
+          {
+            testId,
+            type: 'single_test',
+          }
+        ).catch((err: Error) =>
+          this.logger.warn(
+            `[${testId}] Failed to track Playwright usage: ${err.message}`,
+          ),
+        );
+      }
+
       return result;
     } catch (error) {
       this.logger.error(

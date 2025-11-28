@@ -139,7 +139,7 @@ export function LimitCard({ label, current, limit, icon, className = "" }: Limit
 interface UsageDashboardProps {
   usage: {
     playwrightMinutes: { used: number; included: number; overage: number; percentage: number };
-    k6VuHours: { used: number; included: number; overage: number; percentage: number };
+    k6VuMinutes: { used: number; included: number; overage: number; percentage: number };
   };
   limits: {
     monitors: { current: number; limit: number; percentage: number };
@@ -151,7 +151,7 @@ interface UsageDashboardProps {
     name: string;
     overagePricing?: {
       playwrightMinutes: number;
-      k6VuHours: number;
+      k6VuMinutes: number;
     };
   };
   periodEnd?: Date;
@@ -181,7 +181,7 @@ export function UsageDashboard({
   className = "",
 }: UsageDashboardProps) {
   const playwrightOverageCost = usage.playwrightMinutes.overage * (plan.overagePricing?.playwrightMinutes || 0);
-  const k6OverageCost = usage.k6VuHours.overage * (plan.overagePricing?.k6VuHours || 0);
+  const k6OverageCost = usage.k6VuMinutes.overage * (plan.overagePricing?.k6VuMinutes || 0);
   const totalOverageCost = playwrightOverageCost + k6OverageCost;
 
   return (
@@ -219,13 +219,13 @@ export function UsageDashboard({
           />
 
           <UsageMeter
-            label="K6 Virtual User Hours"
-            used={usage.k6VuHours.used}
-            included={usage.k6VuHours.included}
-            unit="VU hours"
+            label="K6 Virtual User Minutes"
+            used={usage.k6VuMinutes.used}
+            included={usage.k6VuMinutes.included}
+            unit="VU minutes"
             icon={<TrendingUp className="h-4 w-4" />}
             showOverage
-            overage={usage.k6VuHours.overage}
+            overage={usage.k6VuMinutes.overage}
             overageCost={k6OverageCost}
           />
         </CardContent>

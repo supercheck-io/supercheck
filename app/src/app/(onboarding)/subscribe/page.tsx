@@ -30,7 +30,7 @@ interface PricingPlan {
   features: {
     monitors: string | number;
     playwrightMinutes: string | number;
-    k6VuHours: string | number;
+    k6VuMinutes: string | number;
     teamMembers: string | number;
     projects: string | number;
     statusPages: string | number;
@@ -40,7 +40,7 @@ interface PricingPlan {
   };
   overagePricing: {
     playwrightMinutes: number;
-    k6VuHours: number;
+    k6VuMinutes: number;
   };
 }
 
@@ -56,7 +56,7 @@ interface PricingData {
 const defaultFaqs = [
   {
     question: "How is usage tracked?",
-    answer: "Playwright Minutes count total browser execution time. K6 VU Hours are calculated as Virtual Users × execution time in hours. Monitors count against Playwright minutes for each check."
+    answer: "Playwright Minutes count total browser execution time. K6 VU Minutes are calculated as Virtual Users × execution time in minutes. Monitors count against Playwright minutes for each check."
   },
   {
     question: "What happens if I exceed my limits?",
@@ -204,7 +204,7 @@ export default function SubscribePage() {
                   <strong>{plan.features.playwrightMinutes}</strong> Playwright minutes/mo
                 </FeatureItem>
                 <FeatureItem>
-                  <strong>{plan.features.k6VuHours}</strong> k6 VU hours/mo
+                  <strong>{plan.features.k6VuMinutes}</strong> k6 VU-minutes/mo
                 </FeatureItem>
                 <FeatureItem>
                   <strong>{plan.features.teamMembers}</strong> team members
@@ -250,8 +250,8 @@ export default function SubscribePage() {
 
               {/* Overage Pricing */}
               <p className="text-xs text-muted-foreground text-center">
-                Overage: ${plan.overagePricing.playwrightMinutes}/min Playwright, 
-                ${plan.overagePricing.k6VuHours}/VU-hr k6
+                Overage: ${plan.overagePricing.playwrightMinutes}/min Playwright,
+                ${plan.overagePricing.k6VuMinutes}/VU-min k6
               </p>
             </CardContent>
           </Card>

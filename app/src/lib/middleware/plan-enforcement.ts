@@ -149,8 +149,8 @@ export async function checkUsageLimit(
       additionalUsage,
     };
   } else {
-    const currentUsage = org.k6VuHoursUsed || 0;
-    const included = plan.k6VuHoursIncluded;
+    const currentUsage = org.k6VuMinutesUsed || 0;
+    const included = plan.k6VuMinutesIncluded;
     const totalUsage = currentUsage + additionalUsage;
     const overage = Math.max(0, totalUsage - included);
 

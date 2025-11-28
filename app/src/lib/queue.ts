@@ -228,12 +228,17 @@ export async function getQueues(): Promise<{
       try {
         const connection = await getRedisConnection();
 
-        // Memory-optimized job options
+        // Memory-optimized job options with retry for transient failures
+        // Retries help with container startup issues, network problems, etc.
+        // Usage is only tracked on successful completion, so retries don't cause duplicate billing
         const defaultJobOptions = {
           removeOnComplete: { count: 500, age: 24 * 3600 }, // Keep completed jobs for 24 hours (500 max)
           removeOnFail: { count: 1000, age: 7 * 24 * 3600 }, // Keep failed jobs for 7 days (1000 max)
-          attempts: 3,
-          backoff: { type: "exponential", delay: 1000 },
+          attempts: 3, // Retry up to 3 times for transient failures
+          backoff: {
+            type: 'exponential',
+            delay: 5000, // Start with 5 second delay, then 10s, 20s
+          },
         };
 
         // Queue settings with Redis TTL and auto-cleanup options
@@ -657,13 +662,9 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<string> {
     // Setting timeout
 
     // Use runId as job name for direct matching
+    // Note: Uses queue's defaultJobOptions for attempts/backoff
     await queue.add(runId, task, {
       jobId: runId, // Use runId as BullMQ job ID for consistency
-      attempts: 3,
-      backoff: {
-        type: "exponential" as const,
-        delay: 5000,
-      },
     });
     // Job added successfully
     return runId;
@@ -691,13 +692,9 @@ export async function addK6TestToQueue(
     // Enforce parallel execution limits (with org-specific limits)
     await verifyQueueCapacityOrThrow(task.organizationId);
 
+    // Note: Uses queue's defaultJobOptions for attempts/backoff
     await queue.add(jobName, task, {
       jobId: task.runId,
-      attempts: 3,
-      backoff: {
-        type: "exponential" as const,
-        delay: 5000,
-      },
     });
     return task.runId;
   } catch (error) {
@@ -725,13 +722,9 @@ export async function addK6JobToQueue(
     // Enforce parallel execution limits (with org-specific limits)
     await verifyQueueCapacityOrThrow(task.organizationId);
 
+    // Note: Uses queue's defaultJobOptions for attempts/backoff
     await queue.add(jobName, task, {
       jobId: task.runId,
-      attempts: 3,
-      backoff: {
-        type: "exponential" as const,
-        delay: 5000,
-      },
     });
     return task.runId;
   } catch (error) {
