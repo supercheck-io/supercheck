@@ -71,7 +71,11 @@ interface PolarWebhookPayload {
     customerId?: string;
     productId?: string;
     status?: string;
-    endsAt?: string;
+    // Subscription billing period dates from Polar
+    startsAt?: string; // ISO date when subscription period starts
+    endsAt?: string;   // ISO date when subscription period ends
+    currentPeriodStart?: string; // Alternative field name
+    currentPeriodEnd?: string;   // Alternative field name
     amount?: number;
     currency?: string;
     metadata?: {
@@ -92,6 +96,38 @@ interface PolarWebhookPayload {
     [key: string]: unknown;
   };
   [key: string]: unknown;
+}
+
+/**
+ * Helper to get subscription period dates from payload
+ * Returns the billing cycle start and end dates from Polar
+ */
+function getSubscriptionDatesFromPayload(payload: PolarWebhookPayload): { startsAt: Date | null; endsAt: Date | null } {
+  // Try direct fields first (subscription events)
+  let startsAt: Date | null = null;
+  let endsAt: Date | null = null;
+  
+  // Try startsAt/endsAt (most common in subscription events)
+  if (payload.data.startsAt) {
+    startsAt = new Date(payload.data.startsAt);
+  }
+  if (payload.data.endsAt) {
+    endsAt = new Date(payload.data.endsAt);
+  }
+  
+  // Try currentPeriodStart/currentPeriodEnd (alternative naming)
+  if (!startsAt && payload.data.currentPeriodStart) {
+    startsAt = new Date(payload.data.currentPeriodStart);
+  }
+  if (!endsAt && payload.data.currentPeriodEnd) {
+    endsAt = new Date(payload.data.currentPeriodEnd);
+  }
+  
+  // Validate dates are valid
+  if (startsAt && isNaN(startsAt.getTime())) startsAt = null;
+  if (endsAt && isNaN(endsAt.getTime())) endsAt = null;
+  
+  return { startsAt, endsAt };
 }
 
 /**
@@ -304,14 +340,24 @@ export async function handleSubscriptionActive(payload: PolarWebhookPayload) {
   }
 
   const plan = getPlanFromProductId(productId);
+  const subscriptionDates = getSubscriptionDatesFromPayload(payload);
+  
   await subscriptionService.updateSubscription(org.id, {
     subscriptionPlan: plan,
     subscriptionStatus: "active",
     subscriptionId: webhookId,
     polarCustomerId: customerId,
+    // Pass Polar subscription dates for accurate billing period
+    subscriptionStartedAt: subscriptionDates.startsAt,
+    subscriptionEndsAt: subscriptionDates.endsAt,
   });
 
-  await subscriptionService.resetUsageCounters(org.id);
+  // Reset usage counters using Polar's subscription dates (not calendar months)
+  await subscriptionService.resetUsageCountersWithDates(
+    org.id,
+    subscriptionDates.startsAt,
+    subscriptionDates.endsAt
+  );
 
   try {
     await billingSettingsService.resetNotificationsForPeriod(org.id);

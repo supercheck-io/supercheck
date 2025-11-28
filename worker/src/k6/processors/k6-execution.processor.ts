@@ -23,13 +23,6 @@ function getErrorMessage(error: unknown): string {
   return String(error);
 }
 
-class LocationMismatchError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'LocationMismatchError';
-  }
-}
-
 abstract class BaseK6ExecutionProcessor extends WorkerHost {
   protected readonly logger: Logger;
   protected readonly workerLocation: string;
@@ -102,6 +95,8 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     }
 
     // Location filtering (multi-region mode)
+    // With attempts: 1, we can't rely on retries for location routing
+    // Instead, just log and process anyway - the job was already assigned to this queue
     const shouldFilter =
       this.enableLocationFiltering &&
       !workerIsWildcard &&
@@ -109,11 +104,10 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       normalizedJobLocation !== normalizedWorkerLocation;
 
     if (shouldFilter) {
-      const message = `[Job ${job.id}] Skipping - job location (${requestedLocation}) doesn't match worker location (${this.workerLocation})`;
-      this.logger.debug(message);
-      // Throw error to trigger BullMQ's automatic retry mechanism
-      // allowing another worker in the correct region to pick it up
-      throw new LocationMismatchError(message);
+      // Log warning but still process - with attempts: 1, we can't retry
+      this.logger.warn(
+        `[Job ${job.id}] Location mismatch: job requested ${requestedLocation} but worker is ${this.workerLocation}. Processing anyway to avoid permanent failure.`,
+      );
     }
 
     this.logger.log(
@@ -318,12 +312,6 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       // Return the success status to BullMQ so queue events are correctly reported
       return { success: result.success, timedOut: result.timedOut };
     } catch (error) {
-      if (error instanceof LocationMismatchError) {
-        // Don't update run status for location mismatches since the job will be retried
-        this.logger.warn(error.message);
-        throw error;
-      }
-
       const message = `[Job ${job.id}] Failed with error: ${
         error instanceof Error ? error.message : String(error)
       }`;

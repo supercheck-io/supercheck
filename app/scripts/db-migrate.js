@@ -279,36 +279,52 @@ async function ensurePolarColumns() {
       return true;
     }
 
-    // Check for polar_customer_id column specifically
-    const polarColumnExists = await client`
-      SELECT EXISTS (
-        SELECT FROM information_schema.columns 
-        WHERE table_schema = 'public' 
-        AND table_name = 'organization'
-        AND column_name = 'polar_customer_id'
-      );
-    `.then((result) => result[0]?.exists);
+    // Define all required Polar columns
+    const requiredColumns = [
+      { name: 'polar_customer_id', type: 'text' },
+      { name: 'subscription_plan', type: 'text' },
+      { name: 'subscription_status', type: 'text DEFAULT \'none\'' },
+      { name: 'subscription_id', type: 'text' },
+      { name: 'subscription_started_at', type: 'timestamp' },
+      { name: 'subscription_ends_at', type: 'timestamp' },
+      { name: 'playwright_minutes_used', type: 'integer DEFAULT 0' },
+      { name: 'k6_vu_minutes_used', type: 'integer DEFAULT 0' },
+      { name: 'usage_period_start', type: 'timestamp' },
+      { name: 'usage_period_end', type: 'timestamp' },
+    ];
 
-    if (!polarColumnExists) {
-      log("Adding missing polar_customer_id column to organization table");
-      
-      try {
-        await client.unsafe(`ALTER TABLE organization ADD COLUMN polar_customer_id text`);
-        logSuccess("Added polar_customer_id column");
-      } catch (err) {
-        if (err.message.includes('already exists')) {
-          log("polar_customer_id column already exists");
-        } else {
-          logError(`Failed to add polar_customer_id: ${err.message}`);
-          await client.end();
-          return false;
+    for (const column of requiredColumns) {
+      const columnExists = await client`
+        SELECT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_schema = 'public' 
+          AND table_name = 'organization'
+          AND column_name = ${column.name}
+        );
+      `.then((result) => result[0]?.exists);
+
+      if (!columnExists) {
+        log(`Adding missing ${column.name} column to organization table`);
+        
+        try {
+          await client.unsafe(`ALTER TABLE organization ADD COLUMN IF NOT EXISTS ${column.name} ${column.type}`);
+          logSuccess(`Added ${column.name} column`);
+        } catch (err) {
+          if (err.message.includes('already exists')) {
+            log(`${column.name} column already exists`);
+          } else {
+            logError(`Failed to add ${column.name}: ${err.message}`);
+            await client.end();
+            return false;
+          }
         }
+      } else {
+        log(`${column.name} column already exists`);
       }
-    } else {
-      log("polar_customer_id column already exists");
     }
 
     await client.end();
+    logSuccess("All Polar billing columns verified");
     return true;
   } catch (err) {
     logError(`Polar column check error: ${err.message}`);

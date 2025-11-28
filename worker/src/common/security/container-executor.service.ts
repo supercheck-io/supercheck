@@ -442,17 +442,14 @@ export class ContainerExecutorService {
         }
       }
 
-      // Log detailed execution information for debugging
+      // Log execution result (stdout is saved to console.log, no need to log full content)
       this.logger.debug(`Container ${containerName} exited with code ${result.exitCode}`);
       if (result.stdout && result.stdout.trim().length > 0) {
-        // Log more stdout to see full Playwright output including report generation
-        this.logger.debug(`Container stdout (first 3000 chars): ${result.stdout.substring(0, 3000)}`);
-        if (result.stdout.length > 3000) {
-          this.logger.debug(`Container stdout (last 2000 chars): ${result.stdout.substring(result.stdout.length - 2000)}`);
-        }
+        this.logger.debug(`Container stdout: ${result.stdout.length} chars (saved to console.log)`);
       }
       if (result.stderr && result.stderr.trim().length > 0) {
-        this.logger.debug(`Container stderr (first 2000 chars): ${result.stderr.substring(0, 2000)}`);
+        // Only log stderr content since it indicates errors
+        this.logger.debug(`Container stderr (first 500 chars): ${result.stderr.substring(0, 500)}`);
       }
 
       // Log errors for non-zero exits

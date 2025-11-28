@@ -34,7 +34,7 @@ erDiagram
         text subscriptionStatus
         text subscriptionId
         integer playwrightMinutesUsed
-        integer k6VuHoursUsed
+        integer k6VuMinutesUsed
         timestamp usagePeriodStart
         timestamp usagePeriodEnd
     }
@@ -582,7 +582,7 @@ erDiagram
         integer maxMonitors
         integer minCheckIntervalMinutes
         integer playwrightMinutesIncluded
-        integer k6VuHoursIncluded
+        integer k6VuMinutesIncluded
         integer runningCapacity
         integer queuedCapacity
         integer maxProjects
