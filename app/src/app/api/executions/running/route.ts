@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { runs, jobs, projects } from '@/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
@@ -19,7 +19,7 @@ interface ExecutionItem {
   source: 'job' | 'playground';
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // robustly get organizationId from project context
     const { organizationId } = await requireProjectContext();
@@ -93,7 +93,6 @@ export async function GET(request: NextRequest) {
     await Promise.all(
       activeRuns.map(async (run) => {
         let foundState: string | null = null;
-        let foundQueue: string | null = null;
 
         // Check all queues in parallel and find if any match
         await Promise.all(
@@ -102,20 +101,14 @@ export async function GET(request: NextRequest) {
               const job = await queue.getJob(run.id);
               if (job) {
                 const state = await job.getState();
-                // If we found it in a valid state, capture it
-                // We don't stop early (no short-circuit) to avoid race conditions,
-                // but we only care if AT LEAST one queue has it.
-                if (
-                  state === 'active' ||
-                  state === 'waiting' ||
-                  state === 'delayed'
-                ) {
+                // Only 'active' means the job is actually running
+                // 'waiting' and 'delayed' are queued states, not running
+                if (state === 'active') {
                   foundState = state;
-                  foundQueue = queue.name;
                   console.log(`[API] Run ${run.id} found in queue ${queue.name} with state: ${state}`);
                 }
               }
-            } catch (err) {
+            } catch {
               // Ignore errors from individual queue checks
             }
           })
@@ -144,7 +137,7 @@ export async function GET(request: NextRequest) {
             }
           } else {
             // It's a Playground run (or other ad-hoc run)
-            const metadata = run.metadata as Record<string, any> || {};
+            const metadata = (run.metadata as Record<string, unknown>) || {};
             const isPlayground = metadata.source === 'playground';
             const testType = metadata.testType || 'playwright'; // Default to playwright if unknown
             

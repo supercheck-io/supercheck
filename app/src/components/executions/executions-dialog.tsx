@@ -94,12 +94,12 @@ export function ExecutionsDialog({ open, onOpenChange, defaultTab = "running" }:
 
                 const data = await res.json();
                 setRunning(
-                    data.running.map((item: any) => ({
+                    (data.running as ExecutionItem[]).map((item) => ({
                         ...item,
                         startedAt: item.startedAt ? new Date(item.startedAt) : null,
                     }))
                 );
-                setQueued(data.queued);
+                setQueued(data.queued as ExecutionItem[]);
             } catch (error) {
                 console.error("Error fetching executions:", error);
                 toast.error("Failed to load executions");
@@ -215,10 +215,6 @@ export function ExecutionsDialog({ open, onOpenChange, defaultTab = "running" }:
         ) : (
             <K6Logo width={20} height={20} />
         );
-    };
-
-    const getTypeBadgeVariant = (type: "playwright" | "k6") => {
-        return type === "playwright" ? "default" : "secondary";
     };
 
     const getSourceIcon = (source?: "job" | "playground") => {
@@ -411,8 +407,16 @@ export function ExecutionsDialog({ open, onOpenChange, defaultTab = "running" }:
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Continue Running</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleCancelConfirm} className="bg-destructive hover:bg-destructive/90">
+                        <AlertDialogCancel onClick={(e) => e.stopPropagation()}>
+                            Continue Running
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleCancelConfirm();
+                            }}
+                            className="bg-destructive hover:bg-destructive/90"
+                        >
                             Cancel Execution
                         </AlertDialogAction>
                     </AlertDialogFooter>
