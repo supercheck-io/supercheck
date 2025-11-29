@@ -4,7 +4,7 @@ import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
 import { requireProjectContext } from "@/lib/project-context";
 import { hasPermission } from "@/lib/rbac/middleware";
 import { db } from "@/utils/db";
-import { runs, jobs, projects, tests } from "@/db/schema";
+import { runs, jobs, tests } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 const encoder = new TextEncoder();
@@ -103,7 +103,7 @@ export async function GET(request: Request) {
                     // Show full test name
                     jobName = test.title;
                   }
-                } catch (error) {
+                } catch {
                   // Ignore error, keep default name
                 }
               }

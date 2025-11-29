@@ -49,40 +49,48 @@ export function AIDiffViewer({
     originalEditor?.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
   }, []);
 
-  const updateModifiedEditorValue = useCallback((value: string) => {
+  // Update editor during streaming - avoid setState to prevent re-renders
+  useEffect(() => {
+    if (!isStreaming || !streamingContent) return;
+
     const modifiedEditor = editorRef.current?.getModifiedEditor?.();
     if (modifiedEditor) {
-      const model = modifiedEditor.getModel();
-      model?.setValue(value);
-      modifiedEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
+      try {
+        const model = modifiedEditor.getModel();
+        if (model && !model.isDisposed?.()) {
+          model.setValue(streamingContent);
+        }
+      } catch {
+        // Silently ignore model errors during streaming
+      }
     }
-  }, []);
 
+    // Return cleanup function to suppress promise rejection warnings
+    return () => {
+      // Cleanup
+    };
+  }, [streamingContent, isStreaming]);
+
+  // Update editor when streaming ends
   useEffect(() => {
-    if (isStreaming && streamingContent) {
-      updateModifiedEditorValue(streamingContent);
-      setCurrentFixedScript(streamingContent);
-      return;
-    }
+    if (isStreaming) return;
 
-    if (!isStreaming && fixedScript) {
-      updateModifiedEditorValue(fixedScript);
+    if (fixedScript) {
       setCurrentFixedScript(fixedScript);
+      const modifiedEditor = editorRef.current?.getModifiedEditor?.();
+      if (modifiedEditor) {
+        try {
+          const model = modifiedEditor.getModel();
+          if (model && !model.isDisposed?.()) {
+            model.setValue(fixedScript);
+          }
+        } catch {
+          // Silently ignore model errors
+        }
+      }
       scrollEditorsToTop();
     }
-  }, [
-    fixedScript,
-    isStreaming,
-    streamingContent,
-    scrollEditorsToTop,
-    updateModifiedEditorValue,
-  ]);
-
-  useEffect(() => {
-    if (!isStreaming) {
-      scrollEditorsToTop();
-    }
-  }, [isStreaming, scrollEditorsToTop]);
+  }, [isStreaming, fixedScript, scrollEditorsToTop]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -95,7 +103,7 @@ export function AIDiffViewer({
           if (typeof editorRef.current.dispose === "function") {
             editorRef.current.dispose();
           }
-        } catch (error) {
+        } catch {
           // Silently ignore cleanup errors
         }
       }
