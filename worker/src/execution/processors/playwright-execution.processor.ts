@@ -40,6 +40,7 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
 
   private async processTest(job: Job<TestExecutionTask>): Promise<TestResult> {
     const testId = job.data.testId;
+    const runId = job.data.runId; // runId is the database run ID for playground tests
     const startTime = new Date();
 
     try {
@@ -52,12 +53,25 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
       
       // Check if this was a cancellation
       const isCancellation = !result.success && result.error?.includes('Cancellation requested by user');
-      const status = isCancellation ? 'cancelled' : (result.success ? 'passed' : 'failed');
+      const status = isCancellation ? 'error' : (result.success ? 'passed' : 'failed');
       this.logger.log(`Test ${job.id} completed: ${status}`);
 
       // Calculate execution duration and track usage
       const endTime = new Date();
       const durationMs = result.executionTimeMs ?? (endTime.getTime() - startTime.getTime());
+      const durationSeconds = Math.floor(durationMs / 1000);
+
+      // Update the runs table status for playground tests (critical for preventing stale runs)
+      if (runId) {
+        const errorDetails = isCancellation ? 'Cancellation requested by user' : (result.error || undefined);
+        await this.dbService
+          .updateRunStatus(runId, status, durationSeconds.toString(), errorDetails)
+          .catch((err: Error) =>
+            this.logger.error(
+              `[${testId}] Failed to update run status to ${status}: ${err.message}`,
+            ),
+          );
+      }
 
       // Track Playwright usage for billing (if organizationId is available)
       if (job.data.organizationId) {
@@ -66,6 +80,7 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
           durationMs,
           {
             testId,
+            runId,
             type: 'single_test',
           }
         ).catch((err: Error) =>
@@ -87,6 +102,19 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
         (error as Error).stack,
       );
       await job.updateProgress(100);
+
+      // Update the runs table status for playground tests on error
+      if (runId) {
+        const errorStatus = isCancellation ? 'error' : 'failed';
+        const errorDetails = isCancellation ? 'Cancellation requested by user' : errorMessage;
+        await this.dbService
+          .updateRunStatus(runId, errorStatus, '0', errorDetails)
+          .catch((err: Error) =>
+            this.logger.error(
+              `[${testId}] Failed to update run error status: ${err.message}`,
+            ),
+          );
+      }
       
       // For cancellations, return a result instead of throwing to prevent BullMQ retry
       if (isCancellation) {

@@ -151,6 +151,22 @@ const Playground: React.FC<PlaygroundProps> = ({
         ("global" as PerformanceLocation))
       : null;
 
+  // Suppress Monaco editor cancellation errors (harmless during component lifecycle)
+  useEffect(() => {
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (
+        event.reason?.type === "cancelation" &&
+        event.reason?.msg === "operation is manually canceled"
+      ) {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("unhandledrejection", handleUnhandledRejection);
+    return () =>
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+  }, []);
+
   // Fetch current user ID for permissions
   useEffect(() => {
     const fetchUserId = async () => {
@@ -160,8 +176,8 @@ const Playground: React.FC<PlaygroundProps> = ({
           const userData = await response.json();
           setCurrentUserId(userData.user?.id);
         }
-      } catch (error) {
-        console.error("Error fetching user ID:", error);
+      } catch {
+        // Silently ignore user fetch errors
       }
     };
     fetchUserId();
@@ -750,7 +766,7 @@ const Playground: React.FC<PlaygroundProps> = ({
         }
 
         setReportUrl(result.reportUrl);
-        setCurrentRunId(result.testId); // Store for cancellation
+        setCurrentRunId(result.runId || result.testId); // Store runId for cancellation (runId is the database/queue ID)
 
         const eventSource = new EventSource(
           `/api/test-status/events/${result.testId}`

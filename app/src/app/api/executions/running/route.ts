@@ -17,6 +17,7 @@ interface ExecutionItem {
   startedAt: Date | null;
   queuePosition?: number;
   source: 'job' | 'playground';
+  projectName?: string;
 }
 
 export async function GET() {
@@ -41,6 +42,7 @@ export async function GET() {
         jobId: runs.jobId,
         startedAt: runs.startedAt,
         metadata: runs.metadata,
+        projectName: projects.name,
       })
       .from(runs)
       .innerJoin(projects, eq(runs.projectId, projects.id))
@@ -74,7 +76,7 @@ export async function GET() {
       ...new Set(activeRuns.map((r) => r.jobId).filter((id): id is string => id !== null)),
     ];
 
-    let jobMap = new Map<string, { name: string; type: string }>();
+    let jobMap = new Map<string, { name: string; type: string; projectName?: string }>();
 
     if (jobIds.length > 0) {
       const jobDetails = await db
@@ -82,12 +84,14 @@ export async function GET() {
           id: jobs.id,
           name: jobs.name,
           type: jobs.jobType, // Correct property name from schema
+          projectName: projects.name,
         })
         .from(jobs)
+        .innerJoin(projects, eq(jobs.projectId, projects.id))
         .where(inArray(jobs.id, jobIds));
 
       jobMap = new Map(
-        jobDetails.map((j) => [j.id, { name: j.name, type: j.type }]),
+        jobDetails.map((j) => [j.id, { name: j.name, type: j.type, projectName: j.projectName }]),
       );
     }
 
@@ -148,6 +152,7 @@ export async function GET() {
                 status: 'running',
                 startedAt: run.startedAt,
                 source: 'job',
+                projectName: run.projectName,
               });
             } else {
               console.log(`[API] Run ${run.id} is running but job details not found for jobId ${run.jobId}`);
@@ -197,6 +202,7 @@ export async function GET() {
               status: 'running',
               startedAt: run.startedAt,
               source: isPlayground ? 'playground' : 'job',
+              projectName: run.projectName,
             });
           }
         } else {
@@ -234,6 +240,7 @@ export async function GET() {
               startedAt: null,
               queuePosition: i + 1,
               source: 'job',
+              projectName: jobDetail.projectName,
             });
           }
         }
