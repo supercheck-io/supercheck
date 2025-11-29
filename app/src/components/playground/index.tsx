@@ -14,8 +14,24 @@ import { CodeEditor } from "./code-editor";
 import { TestForm } from "./test-form";
 import { LoadingOverlay } from "./loading-overlay";
 import { ValidationError } from "./validation-error";
-import { Loader2Icon, ZapIcon, Text, Code2 } from "lucide-react";
+import { Loader2Icon, ZapIcon, Text, Code2, X } from "lucide-react";
 import * as z from "zod";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { editor } from "monaco-editor";
 import { ScriptType } from "@/lib/script-service";
 import { ReportViewer } from "@/components/shared/report-viewer";
@@ -153,6 +169,9 @@ const Playground: React.FC<PlaygroundProps> = ({
 
   const [activeTab, setActiveTab] = useState<string>("editor");
   const [isRunning, setIsRunning] = useState(false);
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isReportLoading, setIsReportLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(true);
@@ -711,6 +730,7 @@ const Playground: React.FC<PlaygroundProps> = ({
         if (responseTestType === "performance") {
           const resolvedRunId: string = result.runId || result.testId;
           setPerformanceRunId(resolvedRunId);
+          setCurrentRunId(resolvedRunId); // Store for cancellation
           const fallbackLocation =
             (result.location as PerformanceLocation) ||
             options?.location ||
@@ -730,6 +750,7 @@ const Playground: React.FC<PlaygroundProps> = ({
         }
 
         setReportUrl(result.reportUrl);
+        setCurrentRunId(result.testId); // Store for cancellation
 
         const eventSource = new EventSource(
           `/api/test-status/events/${result.testId}`
@@ -768,6 +789,7 @@ const Playground: React.FC<PlaygroundProps> = ({
 
               if (isTerminalStatus) {
                 setIsRunning(false);
+                setCurrentRunId(null);
                 setIsReportLoading(false);
 
                 // Only treat as passed when we explicitly see a passed/ok status
@@ -830,6 +852,7 @@ const Playground: React.FC<PlaygroundProps> = ({
         eventSource.onerror = (e) => {
           console.error("SSE connection error:", e);
           setIsRunning(false);
+          setCurrentRunId(null);
           setIsReportLoading(false);
 
           // Mark test as failed when SSE connection fails
@@ -860,6 +883,7 @@ const Playground: React.FC<PlaygroundProps> = ({
         };
       } else {
         setIsRunning(false);
+        setCurrentRunId(null);
         setIsReportLoading(false);
 
         // Mark test as failed when execution fails
@@ -897,6 +921,7 @@ const Playground: React.FC<PlaygroundProps> = ({
     } catch (error) {
       console.error("Error running script:", error);
       setIsRunning(false);
+      setCurrentRunId(null);
       setIsReportLoading(false);
 
       // Mark test as failed when exception occurs
@@ -963,6 +988,65 @@ const Playground: React.FC<PlaygroundProps> = ({
       location,
     }));
     await executeQueuedTest({ location });
+  };
+
+  const handleCancelClick = () => {
+    setShowCancelConfirm(true);
+  };
+
+  const handleCancelRun = async () => {
+    if (!currentRunId) {
+      toast.error("Cannot cancel", {
+        description: "No active run to cancel",
+      });
+      return;
+    }
+
+    setIsCancelling(true);
+    setShowCancelConfirm(false);
+
+    try {
+      const response = await fetch(`/api/runs/${currentRunId}/cancel`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        toast.error("Failed to cancel run", {
+          description: errorData.error || "Unknown error occurred",
+        });
+        setIsCancelling(false);
+        return;
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success("Run cancelled", {
+          description: "The execution has been cancelled successfully",
+        });
+
+        // Reset state
+        setIsRunning(false);
+        setCurrentRunId(null);
+        setIsReportLoading(false);
+        setTestExecutionStatus("none");
+      } else {
+        toast.error("Failed to cancel run", {
+          description: data.message || "Unknown error occurred",
+        });
+      }
+    } catch (error) {
+      console.error("[Playground] Error cancelling run:", error);
+      toast.error("Error cancelling run", {
+        description: error instanceof Error ? error.message : "Network error",
+      });
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
   // AI Fix handlers
@@ -1178,36 +1262,83 @@ const Playground: React.FC<PlaygroundProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button
-                      onClick={runTest}
-                      disabled={
-                        isRunning ||
-                        isValidating ||
-                        isAIAnalyzing ||
-                        isAICreating ||
-                        !userCanRunTests
-                      }
-                      className="flex items-center gap-2 bg-[hsl(221.2,83.2%,53.3%)] text-white hover:bg-[hsl(221.2,83.2%,48%)] "
-                      size="sm"
-                    >
-                      {isValidating ? (
-                        <>
-                          <Loader2Icon className="h-4 w-4 animate-spin" />
-                          <span className="mr-2">Validating...</span>
-                        </>
-                      ) : isRunning ? (
-                        <>
-                          <Loader2Icon className="h-4 w-4 animate-spin" />
-                          <span className="mr-2">Running...</span>
-                        </>
-                      ) : (
-                        <>
-                          <ZapIcon className="h-4 w-4" />
+                    <div className="relative">
+                      {/* Run Button - always visible */}
+                      <Button
+                        onClick={isRunning ? undefined : runTest}
+                        disabled={
+                          isRunning || isValidating || isAIAnalyzing || isAICreating || !userCanRunTests
+                        }
+                        className="flex items-center gap-2 bg-[hsl(221.2,83.2%,53.3%)] text-white hover:bg-[hsl(221.2,83.2%,48%)]"
+                        size="sm"
+                        title={
+                          isRunning
+                            ? "Test is currently running"
+                            : !userCanRunTests
+                            ? "Insufficient permissions to run tests"
+                            : "Run test"
+                        }
+                      >
+                        {isValidating ? (
+                          <>
+                            <Loader2Icon className="h-4 w-4 animate-spin" />
+                            <span className="mr-2">Validating...</span>
+                          </>
+                        ) : isRunning ? (
+                          <>
+                            <Loader2Icon className="h-4 w-4 animate-spin" />
+                            <span className="mr-2">Running...</span>
+                          </>
+                        ) : (
+                          <>
+                            <ZapIcon className="h-4 w-4" />
+                            <span className="mr-2">Run</span>
+                          </>
+                        )}
+                      </Button>
 
-                          <span className="mr-2">Run</span>
-                        </>
+                      {/* Cancel Button - overlaid on top right when running */}
+                      {isRunning && !isCancelling && (
+                        <TooltipProvider>
+                          <Tooltip delayDuration={200}>
+                            <TooltipTrigger asChild>
+                              <Button
+                                onClick={handleCancelClick}
+                                size="sm"
+                                variant="ghost"
+                                className="absolute -top-1.5 -right-1.5 h-5 w-5 p-0 rounded-full bg-red-500 hover:bg-red-600 shadow-md transition-colors"
+                              >
+                                <X className="h-3 w-3 text-white" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                              <p>Cancel run</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       )}
-                    </Button>
+                    </div>
+
+                    {/* Cancel Confirmation Dialog */}
+                    <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Cancel Execution?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to cancel this test execution? This action cannot be undone and the run will be marked as cancelled.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Continue Running</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={handleCancelRun}
+                            className="bg-red-500 hover:bg-red-600"
+                          >
+                            Cancel Execution
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
 

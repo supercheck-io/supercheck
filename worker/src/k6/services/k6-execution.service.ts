@@ -720,6 +720,7 @@ export class K6ExecutionService {
         null, // No host script path - using inline content
         ['k6', ...args],
         {
+          runId, // Pass runId for cancellation tracking
           inlineScriptContent: scriptContent,
           inlineScriptFileName: scriptFileName,
           ensureDirectories: Array.from(directoriesToEnsure),

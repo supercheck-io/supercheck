@@ -242,11 +242,18 @@ export async function getQueues(): Promise<{
         };
 
         // Queue settings with Redis TTL and auto-cleanup options
+        // CRITICAL: lockDuration and stallInterval must accommodate max execution times:
+        // - Tests: up to 5 minutes (300s)
+        // - Jobs: up to 1 hour (3600s)
+        // - lockDuration: 70 minutes (4200s) - max execution time + buffer for cleanup
+        // - stallInterval: 30 seconds - check frequently for stalled jobs
         const queueSettings = {
           connection,
           defaultJobOptions,
-          // Settings to prevent orphaned Redis keys
-          stalledInterval: 30000, // Check for stalled jobs every 30 seconds
+          // Settings to prevent orphaned Redis keys and handle long-running jobs
+          lockDuration: 70 * 60 * 1000, // 70 minutes - must be >= max execution time (60 min for jobs)
+          stallInterval: 30000, // Check for stalled jobs every 30 seconds
+          maxStalledCount: 2, // Move job back to waiting max 2 times before failing
           metrics: {
             maxDataPoints: 60, // Limit metrics storage to 60 data points (1 hour at 1 min interval)
             collectDurations: true,

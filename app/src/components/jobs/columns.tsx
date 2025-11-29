@@ -1,6 +1,22 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { TimerIcon, Loader2, Zap, Clock } from "lucide-react";
-import { useRef, useCallback, useEffect } from "react";
+import { TimerIcon, Loader2, Zap, Clock, X } from "lucide-react";
+import { useRef, useCallback, useEffect, useState } from "react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import type { Job } from "./schema";
 import { DataTableColumnHeader } from "./data-table-column-header";
@@ -61,6 +77,9 @@ function RunButton({ job }: { job: Job }) {
   const { isJobRunning, setJobRunning, startJobRun } = useJobContext();
   const { currentProject } = useProjectContext();
   const eventSourceRef = useRef<EventSource | null>(null);
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // Get job running state from global context
   const isRunning = isJobRunning(job.id);
@@ -160,6 +179,8 @@ function RunButton({ job }: { job: Job }) {
       const data = await response.json();
 
       if (data.runId) {
+        // Store the runId for cancellation
+        setCurrentRunId(data.runId);
         // Use the global job context to manage toast notifications and SSE
         startJobRun(data.runId, job.id, job.name);
       } else {
@@ -193,45 +214,168 @@ function RunButton({ job }: { job: Job }) {
     }
   };
 
+  const handleCancelClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setShowCancelConfirm(true);
+  };
+
+  const handleCancelRun = async (e?: React.MouseEvent) => {
+    // Prevent event bubbling to row click handler
+    if (e) {
+      e.stopPropagation();
+    }
+
+    if (!currentRunId) {
+      toast.error("Cannot cancel", {
+        description: "No active run to cancel",
+      });
+      return;
+    }
+
+    setIsCancelling(true);
+    setShowCancelConfirm(false);
+
+    try {
+      const response = await fetch(`/api/runs/${currentRunId}/cancel`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        toast.error("Failed to cancel run", {
+          description: errorData.error || "Unknown error occurred",
+        });
+        setIsCancelling(false);
+        return;
+      }
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success("Run cancelled", {
+          description: "The execution has been cancelled successfully",
+        });
+
+        // Reset state
+        setJobRunning(false, job.id);
+        setCurrentRunId(null);
+        closeSSEConnection();
+      } else {
+        toast.error("Failed to cancel run", {
+          description: data.message || "Unknown error occurred",
+        });
+      }
+    } catch (error) {
+      console.error("[RunButton] Error cancelling run:", error);
+      toast.error("Error cancelling run", {
+        description: error instanceof Error ? error.message : "Network error",
+      });
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   return (
-    <Button
-      onClick={handleRunJob}
-      size="sm"
-      variant="default"
-      className={cn(
-        "bg-[hsl(212,83%,53%)] hover:bg-[hsl(212,83%,48%)] dark:bg-[hsl(221,83%,53%)] dark:hover:bg-[hsl(221,83%,48%)]",
-        "text-white",
-        "flex items-center justify-center",
-        "h-7 px-1 rounded-md",
-        "gap-2",
-        "cursor-pointer",
-        "ml-1"
+    <div className="relative ml-1">
+      {/* Run Button - always visible */}
+      <Button
+        onClick={isRunning ? undefined : handleRunJob}
+        size="sm"
+        variant="default"
+        className={cn(
+          "bg-[hsl(212,83%,53%)] hover:bg-[hsl(212,83%,48%)] dark:bg-[hsl(221,83%,53%)] dark:hover:bg-[hsl(221,83%,48%)]",
+          "text-white",
+          "flex items-center justify-center",
+          "h-7 px-2 rounded-md",
+          "gap-1.5",
+          "min-w-[85px]",
+          isRunning && "cursor-default"
+        )}
+        disabled={
+          isRunning || !job.tests || job.tests.length === 0 || !hasPermission
+        }
+        title={
+          !hasPermission && !isRunning
+            ? "Insufficient permissions to trigger jobs"
+            : isRunning
+            ? "Job is currently running"
+            : !job.tests || job.tests.length === 0
+            ? "No tests available to run"
+            : "Run job"
+        }
+      >
+        {isRunning ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-xs">Running...</span>
+          </>
+        ) : (
+          <>
+            <Zap className="h-4 w-4" />
+            <span className="text-xs">Run</span>
+          </>
+        )}
+      </Button>
+
+      {/* Cancel Button - overlaid on top right when running */}
+      {isRunning && (
+        <TooltipProvider>
+          <Tooltip delayDuration={200}>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={handleCancelClick}
+                size="sm"
+                variant="ghost"
+                disabled={isCancelling}
+                className={cn(
+                  "absolute -top-1.5 -right-1.5",
+                  "h-5 w-5 p-0 rounded-full",
+                  "bg-red-500 hover:bg-red-600",
+                  "shadow-md",
+                  "transition-colors",
+                  isCancelling && "cursor-not-allowed opacity-50"
+                )}
+                title={isCancelling ? "Cancelling..." : "Cancel run"}
+              >
+                {isCancelling ? (
+                  <Loader2 className="h-3 w-3 animate-spin text-white" />
+                ) : (
+                  <X className="h-3 w-3 text-white" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <p>{isCancelling ? "Cancelling..." : "Cancel run"}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
-      disabled={
-        isRunning || !job.tests || job.tests.length === 0 || !hasPermission
-      }
-      title={
-        !hasPermission
-          ? "Insufficient permissions to trigger jobs"
-          : isRunning
-          ? "Job is currently running"
-          : !job.tests || job.tests.length === 0
-          ? "No tests available to run"
-          : "Run job"
-      }
-    >
-      {isRunning ? (
-        <>
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span className="text-xs">Running...</span>
-        </>
-      ) : (
-        <>
-          <Zap className="h-4 w-4" />
-          <span className="text-xs">Run</span>
-        </>
-      )}
-    </Button>
+
+      {/* Cancel Confirmation Dialog */}
+      <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Execution?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel this job execution? This action cannot be undone and the run will be marked as cancelled.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continue Running</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancelRun}
+              className="bg-red-500 hover:bg-red-600"
+            >
+              Cancel Execution
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 }
 
@@ -342,8 +486,9 @@ export const columns: ColumnDef<Job>[] = [
     cell: ({ row }) => {
       const jobId = row.getValue("id") as string;
       const dbStatus = row.getValue("status") as string;
+      const lastRun = row.original.lastRun as { errorDetails?: string | null } | null;
 
-      return <JobStatusDisplay jobId={jobId} dbStatus={dbStatus} />;
+      return <JobStatusDisplay jobId={jobId} dbStatus={dbStatus} lastRunErrorDetails={lastRun?.errorDetails} />;
     },
     filterFn: (row, id, value) => {
       return value.includes(row.getValue(id));

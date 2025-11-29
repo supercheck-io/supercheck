@@ -52,15 +52,15 @@ export function detectTimeoutError(
       } else {
         // Try to infer from known timeout values
         if (
-          combinedErrorText.includes("120000ms") ||
-          combinedErrorText.includes("120000")
+          combinedErrorText.includes("300000ms") ||
+          combinedErrorText.includes("300000")
         ) {
-          timeoutMs = 120000; // 2 minutes - test timeout
+          timeoutMs = 300000; // 5 minutes - test timeout
         } else if (
-          combinedErrorText.includes("900000ms") ||
-          combinedErrorText.includes("900000")
+          combinedErrorText.includes("3600000ms") ||
+          combinedErrorText.includes("3600000")
         ) {
-          timeoutMs = 900000; // 15 minutes - job timeout
+          timeoutMs = 3600000; // 60 minutes - job timeout
         }
       }
 
@@ -68,14 +68,14 @@ export function detectTimeoutError(
 
       // Determine timeout type based on duration
       let timeoutType: "test" | "job" | "unknown" = "unknown";
-      if (timeoutMs === 120000) {
-        timeoutType = "test"; // 2 minutes
-      } else if (timeoutMs === 900000) {
-        timeoutType = "job"; // 15 minutes
-      } else if (timeoutMs > 0 && timeoutMinutes <= 2) {
-        timeoutType = "test"; // Assume test if ≤ 2 minutes
-      } else if (timeoutMs > 0 && timeoutMinutes >= 10) {
-        timeoutType = "job"; // Assume job if ≥ 10 minutes
+      if (timeoutMs === 300000) {
+        timeoutType = "test"; // 5 minutes - test timeout
+      } else if (timeoutMs === 3600000) {
+        timeoutType = "job"; // 60 minutes - job timeout
+      } else if (timeoutMs > 0 && timeoutMinutes <= 5) {
+        timeoutType = "test"; // Assume test if ≤ 5 minutes
+      } else if (timeoutMs > 0 && timeoutMinutes > 5) {
+        timeoutType = "job"; // Assume job if > 5 minutes
       }
 
       return {
@@ -104,7 +104,7 @@ export function getTimeoutErrorMessages(timeoutInfo: TimeoutErrorInfo) {
 
   const minutes =
     timeoutInfo.timeoutDurationMinutes ||
-    (timeoutInfo.timeoutType === "test" ? 2 : 15);
+    (timeoutInfo.timeoutType === "test" ? 5 : 60);
 
   if (timeoutInfo.timeoutType === "test") {
     return {

@@ -41,34 +41,48 @@ export async function GET() {
       ))
       .orderBy(desc(notificationProviders.id));
 
-    // Enhance providers with last used information
-    const enhancedProviders = await Promise.all(
-      providers.map(async (provider) => {
-        const configContext = provider.projectId ?? undefined;
-        const decryptedConfig = decryptNotificationProviderConfig(
-          provider.config,
-          configContext ?? undefined
-        );
-        const { sanitizedConfig, maskedFields } = sanitizeConfigForClient(
-          provider.type as NotificationProviderType,
-          decryptedConfig
-        );
+    if (providers.length === 0) {
+      return NextResponse.json([]);
+    }
 
-        const lastAlert = await db
-          .select({ sentAt: alertHistory.sentAt })
-          .from(alertHistory)
-          .where(sql`alert_history.provider = ${provider.id}::text`)
-          .orderBy(desc(alertHistory.sentAt))
-          .limit(1);
-
-        return {
-          ...provider,
-          config: sanitizedConfig,
-          maskedFields,
-          lastUsed: lastAlert[0]?.sentAt || null,
-        };
+    // OPTIMIZED: Batch fetch last used dates for all providers in one query
+    const providerIds = providers.map(p => p.id);
+    const lastAlerts = await db
+      .select({
+        provider: alertHistory.provider,
+        sentAt: sql<Date>`MAX(${alertHistory.sentAt})`.as('sentAt'),
       })
-    );
+      .from(alertHistory)
+      .where(sql`${alertHistory.provider}::uuid = ANY(${providerIds}::uuid[])`)
+      .groupBy(alertHistory.provider);
+
+    // Build lookup map for O(1) access
+    const lastAlertMap = new Map<string, Date>();
+    lastAlerts.forEach(alert => {
+      if (alert.provider) {
+        lastAlertMap.set(alert.provider, alert.sentAt);
+      }
+    });
+
+    // Enhance providers with last used information (no N+1 queries)
+    const enhancedProviders = providers.map(provider => {
+      const configContext = provider.projectId ?? undefined;
+      const decryptedConfig = decryptNotificationProviderConfig(
+        provider.config,
+        configContext ?? undefined
+      );
+      const { sanitizedConfig, maskedFields } = sanitizeConfigForClient(
+        provider.type as NotificationProviderType,
+        decryptedConfig
+      );
+
+      return {
+        ...provider,
+        config: sanitizedConfig,
+        maskedFields,
+        lastUsed: lastAlertMap.get(provider.id) || null,
+      };
+    });
 
     return NextResponse.json(enhancedProviders);
   } catch (error) {

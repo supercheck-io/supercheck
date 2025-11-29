@@ -128,6 +128,49 @@ graph LR
 
 ---
 
+## Execution Cancellation
+
+Playground tests support **real-time cancellation** during execution.
+
+### How It Works
+
+1. User clicks "Cancel" button (red X overlay on Run button)
+2. **Confirmation dialog** appears asking user to confirm
+3. On confirm, API sets cancellation signal in Redis
+4. Worker detects signal (polling every 1 second)
+5. Docker container is killed immediately (exit code 137)
+6. UI shows "Cancelled" status with Ban icon
+
+### UI Consistency with Jobs
+
+The Playground Run button matches the Jobs Run button UI:
+- **Run Button**: Blue button with Zap icon, disabled while running
+- **Cancel Button**: Red circular overlay on top-right when running
+- **Confirmation Dialog**: Same dialog as Jobs page before cancelling
+- **Status Display**: "Cancelled" status with Ban icon (same as Jobs/Runs)
+
+### Cancellation Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Playground
+    participant API
+    participant Worker
+    participant Container
+
+    User->>Playground: Click "Cancel"
+    Playground->>API: POST /api/runs/{runId}/cancel
+    API->>API: Set Redis cancellation signal
+    Worker->>Worker: Detect cancellation (1s poll)
+    Worker->>Container: docker kill
+    Container-->>Worker: Killed
+    API-->>Playground: { success: true }
+    Playground-->>User: Show "Cancelled"
+```
+
+---
+
 ## Summary
 
 ✅ **Interactive Development** - Real-time code editing and execution
@@ -135,3 +178,4 @@ graph LR
 ✅ **AI Integration** - Intelligent error fixing
 ✅ **Multi-Location** - Test from multiple regions
 ✅ **Automatic Cleanup** - 24-hour artifact retention
+✅ **Cancellation Support** - Stop running tests instantly
