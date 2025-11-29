@@ -45,34 +45,34 @@ export default async function MainLayout({
               {/* Check and setup defaults for new users */}
               <SetupChecker />
               <AppSidebar />
-          <SidebarInset>
-            <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
-              <div className="flex items-center gap-2 px-4">
-                <SidebarTrigger className="-ml-1" />
-                <Separator
-                  orientation="vertical"
-                  className="mr-2 data-[orientation=vertical]:h-4"
-                />
-                <BreadcrumbDisplay />
-              </div>
-              <div className="flex items-center gap-10 px-4">
-                <DemoBadge isDemoMode={process.env.NEXT_PUBLIC_DEMO_MODE === "true"} />
-                <CommandSearch />
-                <ParallelThreads />
-                <NavUser />
-           
-              </div>
-            </header>
-            <main className="flex-1 flex-col gap-4 overflow-y-auto">
-              <SubscriptionGuard>
-                {children}
-              </SubscriptionGuard>
-            </main>
-          </SidebarInset>
-          </JobProvider>
-        </SidebarProvider>
-      </ProjectContextProvider>
-    </BreadcrumbProvider>
+              <SidebarInset>
+                <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
+                  <div className="flex items-center gap-2 px-4">
+                    <SidebarTrigger className="-ml-1" />
+                    <Separator
+                      orientation="vertical"
+                      className="mr-2 data-[orientation=vertical]:h-4"
+                    />
+                    <BreadcrumbDisplay />
+                  </div>
+                  <div className="flex items-center gap-6 px-4">
+                    <DemoBadge isDemoMode={process.env.NEXT_PUBLIC_DEMO_MODE === "true"} />
+                    <CommandSearch />
+                    <ParallelThreads />
+                    <NavUser />
+
+                  </div>
+                </header>
+                <main className="flex-1 flex-col gap-4 overflow-y-auto">
+                  <SubscriptionGuard>
+                    {children}
+                  </SubscriptionGuard>
+                </main>
+              </SidebarInset>
+            </JobProvider>
+          </SidebarProvider>
+        </ProjectContextProvider>
+      </BreadcrumbProvider>
     </QueryProvider>
   );
 }
