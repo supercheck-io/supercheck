@@ -87,9 +87,9 @@ class UsageNotificationService {
         organizationId,
         org.name,
         "k6",
-        metrics.k6VuHours.used,
-        metrics.k6VuHours.included,
-        metrics.k6VuHours.percentage,
+        metrics.k6VuMinutes.used,
+        metrics.k6VuMinutes.included,
+        metrics.k6VuMinutes.percentage,
         settings,
         org.usagePeriodStart,
         org.usagePeriodEnd

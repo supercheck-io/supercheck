@@ -5,11 +5,7 @@
 # - Each worker processes regional queues (k6, monitor) + global queues (playwright, k6)
 # - WORKER_REGION determines which queues to process
 # - Auto-scaling via KEDA based on queue depth
-#
-# Queue Assignment:
-# - US worker: k6-us-east, monitor-us-east, playwright-global, k6-global
-# - EU worker: k6-eu-central, monitor-eu-central, playwright-global, k6-global
-# - APAC worker: k6-asia-pacific, monitor-asia-pacific, playwright-global, k6-global
+# - Node affinity: workload=worker AND region={us-east|eu-central|asia-pacific}
 
 ---
 apiVersion: apps/v1
@@ -40,9 +36,10 @@ spec:
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
-      # Node affinity - only run on worker nodes
+      # Node affinity - run on worker nodes in US region
       nodeSelector:
         workload: worker
+        region: us-east
 
       # Tolerate the worker taint
       tolerations:
@@ -71,7 +68,6 @@ spec:
 
       serviceAccountName: supercheck
 
-      # Graceful termination
       terminationGracePeriodSeconds: 120
 
       containers:
@@ -79,14 +75,12 @@ spec:
           image: ghcr.io/supercheck-io/supercheck/worker:latest
           imagePullPolicy: IfNotPresent
 
-          # Environment from ConfigMap and Secret
           envFrom:
             - configMapRef:
                 name: supercheck-config
             - secretRef:
                 name: supercheck-secret
 
-          # Worker-specific configuration
           env:
             - name: WORKER_REGION
               value: "us-east"
@@ -103,7 +97,6 @@ spec:
               containerPort: 8000
               protocol: TCP
 
-          # Resource limits - optimized for medium-sized tests
           resources:
             requests:
               cpu: "500m"
@@ -112,7 +105,6 @@ spec:
               cpu: "2000m"
               memory: "4Gi"
 
-          # Health checks
           livenessProbe:
             httpGet:
               path: /health
@@ -131,28 +123,24 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 3
 
-          # Lifecycle hooks for graceful shutdown
           lifecycle:
             preStop:
               exec:
                 command: ["/bin/sh", "-c", "sleep 15"]
 
-          # Security context
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false # Worker needs to write temp files
+            readOnlyRootFilesystem: false
             capabilities:
               drop:
                 - ALL
 
-          # Volume mounts for Docker socket
           volumeMounts:
             - name: docker-sock
               mountPath: /var/run/docker.sock
 
-      # Volumes
       volumes:
         - name: docker-sock
           hostPath:
@@ -188,9 +176,10 @@ spec:
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
-      # Node affinity - only run on worker nodes
+      # Node affinity - run on worker nodes in EU region
       nodeSelector:
         workload: worker
+        region: eu-central
 
       # Tolerate the worker taint
       tolerations:
@@ -288,12 +277,10 @@ spec:
               drop:
                 - ALL
 
-          # Volume mounts for Docker socket
           volumeMounts:
             - name: docker-sock
               mountPath: /var/run/docker.sock
 
-      # Volumes
       volumes:
         - name: docker-sock
           hostPath:
@@ -329,9 +316,10 @@ spec:
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
-      # Node affinity - only run on worker nodes
+      # Node affinity - run on worker nodes in APAC region
       nodeSelector:
         workload: worker
+        region: asia-pacific
 
       # Tolerate the worker taint
       tolerations:
@@ -429,12 +417,10 @@ spec:
               drop:
                 - ALL
 
-          # Volume mounts for Docker socket
           volumeMounts:
             - name: docker-sock
               mountPath: /var/run/docker.sock
 
-      # Volumes
       volumes:
         - name: docker-sock
           hostPath:

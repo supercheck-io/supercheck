@@ -53,9 +53,11 @@ const JobContext = createContext<JobContextType | undefined>(undefined);
 export function JobStatusDisplay({
   jobId,
   dbStatus,
+  lastRunErrorDetails,
 }: {
   jobId: string;
   dbStatus: string;
+  lastRunErrorDetails?: string | null;
 }) {
   const { isJobRunning, getJobStatus } = useJobContext();
   const [effectiveStatus, setEffectiveStatus] = useState<string | null>(null);
@@ -69,10 +71,19 @@ export function JobStatusDisplay({
       const contextStatus = getJobStatus(jobId);
       // Use context status if available (especially for terminal statuses)
       // Otherwise fall back to db status
-      const statusToUse = contextStatus || dbStatus;
+      let statusToUse = contextStatus || dbStatus;
+      
+      // Check if this is a cancelled run (status is error but errorDetails contains cancellation)
+      if (statusToUse === "error" && lastRunErrorDetails) {
+        const lowerErrorDetails = lastRunErrorDetails.toLowerCase();
+        if (lowerErrorDetails.includes("cancellation") || lowerErrorDetails.includes("cancelled")) {
+          statusToUse = "cancelled";
+        }
+      }
+      
       setEffectiveStatus(statusToUse || "pending");
     }
-  }, [jobId, dbStatus, isJobRunning, getJobStatus]);
+  }, [jobId, dbStatus, isJobRunning, getJobStatus, lastRunErrorDetails]);
 
   // Fallback to dbStatus if effectiveStatus hasn't been set yet
   const displayStatus = effectiveStatus || dbStatus || "pending";
@@ -223,11 +234,12 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (["completed", "passed", "failed", "error"].includes(status)) {
+      if (["completed", "passed", "failed", "error", "cancelled"].includes(status)) {
         setJobStatus(jobId, payload.status);
         if (activeRunsRef.current[jobId]?.runId === runId) {
           const jobName = activeRunsRef.current[jobId]?.jobName || jobId;
           const passed = status === "completed" || status === "passed";
+          const cancelled = status === "cancelled" || status === "error"; // Cancelled status from SSE or error status
 
           // Remove from active runs
           setActiveRuns((prev) => {
@@ -250,28 +262,34 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
           runToJobMapRef.current.delete(runId);
 
           // Show completion toast
-          toast[passed ? "success" : "error"](
-            passed ? "Job execution passed" : "Job execution failed",
-            {
-              description: (
-                <>
-                  {jobName}:{" "}
-                  {passed
-                    ? "All tests executed successfully."
-                    : "One or more tests did not complete successfully."}{" "}
-                  <a
-                    href={`/runs/${runId}`}
-                    className="underline font-medium"
-                  >
-                    View Run Report
-                  </a>
-                </>
-              ),
-              duration: 10000,
-            }
-          );
+          let toastType: "success" | "error" | "info" = passed ? "success" : "error";
+          let toastTitle = passed ? "Job execution passed" : "Job execution failed";
+          let toastMessage = passed
+            ? "All tests executed successfully."
+            : "One or more tests did not complete successfully.";
 
-          // Refresh the page
+          if (cancelled) {
+            toastType = "info";
+            toastTitle = "Job execution cancelled";
+            toastMessage = "The job execution was cancelled by a user.";
+          }
+
+          toast[toastType](toastTitle, {
+            description: (
+              <>
+                {jobName}: {toastMessage}{" "}
+                <a
+                  href={`/runs/${runId}`}
+                  className="underline font-medium"
+                >
+                  View Run Report
+                </a>
+              </>
+            ),
+            duration: 10000,
+          });
+
+          // Refresh the page to get updated errorDetails for cancelled jobs
           router.refresh();
         }
       }

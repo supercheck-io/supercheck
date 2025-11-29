@@ -6,6 +6,7 @@ import { MonitorJobDataDto } from './dto/monitor-job.dto';
 import { MonitorExecutionResult } from './types/monitor-result.type';
 import { DbService } from '../db/db.service';
 import { ExecutionService } from '../execution/services/execution.service';
+import { UsageTrackerService } from '../execution/services/usage-tracker.service';
 import * as schema from '../db/schema'; // Assuming your schema is here and WILL contain monitorResults
 import type {
   MonitorConfig,
@@ -79,6 +80,7 @@ export class MonitorService {
     private readonly resourceManager: ResourceManagerService,
     private readonly executionService: ExecutionService,
     private readonly locationService: LocationService,
+    private readonly usageTrackerService: UsageTrackerService,
   ) {}
 
   async executeMonitor(
@@ -2297,7 +2299,28 @@ export class MonitorService {
       const responseTimeMs =
         testResult.executionTimeMs ?? Date.now() - startTime;
 
-      // 5. Convert test result to monitor result format
+      // 5. Track Playwright usage for billing (synthetic monitors count as Playwright execution)
+      const monitor = await this.dbService.db.query.monitors.findFirst({
+        where: (monitors, { eq }) => eq(monitors.id, monitorId),
+      });
+      
+      if (monitor?.organizationId) {
+        await this.usageTrackerService.trackPlaywrightExecution(
+          monitor.organizationId,
+          responseTimeMs,
+          {
+            monitorId,
+            testId: test.id,
+            type: 'synthetic_monitor',
+          }
+        ).catch((err: Error) =>
+          this.logger.warn(
+            `[${monitorId}] Failed to track Playwright usage for synthetic test: ${err.message}`,
+          ),
+        );
+      }
+
+      // 6. Convert test result to monitor result format
       if (testResult.success) {
         this.logger.log(
           `[${monitorId}] Synthetic test passed: ${test.title} (${responseTimeMs}ms)`,

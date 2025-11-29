@@ -43,7 +43,7 @@ export const organization = pgTable("organization", {
   
   // Usage tracking fields
   playwrightMinutesUsed: integer("playwright_minutes_used").default(0),
-  k6VuHoursUsed: integer("k6_vu_hours_used").default(0), // Changed from integer to numeric in migration
+  k6VuMinutesUsed: integer("k6_vu_minutes_used").default(0), // VU minutes (whole numbers)
   usagePeriodStart: timestamp("usage_period_start"),
   usagePeriodEnd: timestamp("usage_period_end"),
 });

@@ -244,21 +244,75 @@ export async function GET(request: Request) {
         );
       }
 
-      // Check if this is likely a timeout error for failed executions
-      if (reportResult.status === "failed") {
-        // For failed test executions without reports, it's very likely a timeout
-        // since script validation errors and other issues usually still generate some output
+      // Check for error status (includes cancellation) or failed status
+      if (reportResult.status === "error" || reportResult.status === "failed") {
+        // Check if this is a cancellation by looking up the run's errorDetails
+        let isCancellation = false;
+        let errorDetails: string | null = null;
+        
+        if (reportResult.entityType === "job") {
+          const runRecord = await db
+            .select({ errorDetails: runs.errorDetails })
+            .from(runs)
+            .where(eq(runs.id, entityId))
+            .limit(1);
+          
+          if (runRecord.length > 0) {
+            errorDetails = runRecord[0].errorDetails;
+            isCancellation = errorDetails?.toLowerCase().includes("cancellation") ||
+                            errorDetails?.toLowerCase().includes("cancelled") || false;
+          }
+        } else if (reportResult.entityType === "test") {
+          // For playground tests, check the report_metadata table for cancellation
+          // The status will be 'error' and we can check if it was a cancellation
+          // by looking at the status - 'error' status with no report typically means cancellation
+          isCancellation = reportResult.status === "error";
+          if (isCancellation) {
+            errorDetails = "Cancellation requested by user";
+          }
+        } else if (reportResult.entityType === "k6_performance") {
+          const k6Record = await db
+            .select({ errorDetails: k6PerformanceRuns.errorDetails })
+            .from(k6PerformanceRuns)
+            .where(eq(k6PerformanceRuns.runId, entityId))
+            .limit(1);
+          
+          if (k6Record.length > 0) {
+            errorDetails = k6Record[0].errorDetails;
+            isCancellation = errorDetails?.toLowerCase().includes("cancellation") ||
+                            errorDetails?.toLowerCase().includes("cancelled") || false;
+          }
+        }
+        
+        // Return cancellation-specific response
+        if (isCancellation) {
+          return NextResponse.json(
+            {
+              error: "Execution cancelled",
+              message: "This execution was cancelled by a user",
+              details: errorDetails || "Cancellation requested by user",
+              cancellationInfo: {
+                isCancelled: true,
+              },
+              entityType: reportResult.entityType,
+              status: reportResult.status,
+            },
+            { status: 499 } // 499 Client Closed Request (commonly used for cancellations)
+          );
+        }
+        
+        // For non-cancelled failed executions, check for timeout
         if (reportResult.entityType === "test") {
           return NextResponse.json(
             {
               error: "Test execution timeout",
-              message: "Test execution timed out after 2 minutes",
-              details: "Execution timed out after 2 minutes",
+              message: "Test execution timed out after 5 minutes",
+              details: "Execution timed out after 5 minutes",
               timeoutInfo: {
                 isTimeout: true,
                 timeoutType: "test",
-                timeoutDurationMs: 120000, // 2 minutes
-                timeoutDurationMinutes: 2,
+                timeoutDurationMs: 300000, // 5 minutes
+                timeoutDurationMinutes: 5,
               },
               entityType: reportResult.entityType,
               status: reportResult.status,
@@ -269,13 +323,13 @@ export async function GET(request: Request) {
           return NextResponse.json(
             {
               error: "Job execution timeout",
-              message: "Job execution timed out after 15 minutes",
-              details: "Execution timed out after 15 minutes",
+              message: "Job execution timed out after 60 minutes",
+              details: "Execution timed out after 60 minutes",
               timeoutInfo: {
                 isTimeout: true,
                 timeoutType: "job",
-                timeoutDurationMs: 900000, // 15 minutes
-                timeoutDurationMinutes: 15,
+                timeoutDurationMs: 3600000, // 60 minutes (1 hour)
+                timeoutDurationMinutes: 60,
               },
               entityType: reportResult.entityType,
               status: reportResult.status,
@@ -289,7 +343,7 @@ export async function GET(request: Request) {
           {
             error: "Execution failed",
             message: "The execution failed without generating a report",
-            details: "The execution completed but no report was generated",
+            details: errorDetails || "The execution completed but no report was generated",
             entityType: reportResult.entityType,
             status: reportResult.status,
           },

@@ -49,17 +49,17 @@ docker-compose -f docker/docker-compose.yml up -d
 ### Kubernetes Architecture
 
 ```
-K3s Cluster (Hetzner Cloud)
-├── App Nodes (cx31: 2vCPU, 4GB)
-│   ├── Next.js Frontend
-│   ├── API Server
-│   ├── Validation Service
-│   └── Pod Anti-Affinity (HA)
+K3s HA Cluster (Hetzner Cloud)
+├── Load Balancer (API Access)
 │
-├── Worker Nodes (cx41: 4vCPU, 16GB)
-│   ├── Playwright Executor
-│   ├── K6 Load Tester
-│   ├── Docker Socket Mount
+├── Master Nodes (3x - HA Control Plane)
+│   ├── K3s Server (Embedded etcd)
+│   ├── App Workloads (workload=app)
+│   └── Pod Anti-Affinity
+│
+├── Worker Nodes (Scalable)
+│   ├── Worker Workloads (workload=worker)
+│   ├── Playwright/K6 Executors
 │   ├── KEDA Auto-scaling
 │   └── Pod Anti-Affinity
 │
@@ -80,6 +80,45 @@ K3s Cluster (Hetzner Cloud)
 | **Health Checks** | Liveness + readiness probes | Self-healing pods |
 | **Resource Limits** | CPU/memory constraints | Prevent resource exhaustion |
 | **Security** | Pod security policies, RBAC | Defense in depth |
+
+---
+
+## Infrastructure Provisioning (Terraform)
+
+For a production-grade setup on Hetzner Cloud, we use Terraform to provision the infrastructure.
+
+### Prerequisites
+
+- Terraform v1.0+
+- Hetzner Cloud API Token
+- SSH Public Key
+
+### Setup
+
+1. **Initialize Terraform**
+   ```bash
+   cd deploy/terraform
+   terraform init
+   ```
+
+2. **Configure Variables**
+   Create `deploy/terraform/terraform.tfvars`:
+   ```hcl
+   hcloud_token       = "your-token"
+   ssh_public_key     = "ssh-rsa ..."
+   environment        = "production"
+   node_count_per_region = 3
+   ```
+
+3. **Deploy**
+   ```bash
+   terraform apply
+   ```
+
+4. **Get Kubeconfig**
+   Follow the output commands to retrieve and merge kubeconfigs.
+
+For detailed instructions, see [deploy/terraform/README.md](terraform/README.md).
 
 ---
 
@@ -104,14 +143,41 @@ K3s Cluster (Hetzner Cloud)
 - ✅ Updated health checks to use `/api/health` endpoint
 - ✅ Added proper `periodSeconds` and `failureThreshold`
 
-**`worker-deployment.yaml`** (3 regional deployments)
-- ✅ Fixed typo: `revision HistoryLimit` → `revisionHistoryLimit`
-- ✅ Added `nodeSelector: workload=worker` for node affinity
-- ✅ Added `tolerations` for worker taint
-- ✅ Added `podAntiAffinity` for spreading across nodes
-- ✅ Added Docker socket volume mount (`/var/run/docker.sock`)
-- ✅ Added `DOCKER_HOST` environment variable
-- ✅ Removed regional node affinity in favor of workload-based affinity
+**`worker-deployment.yaml`**
+- ✅ 3 Regional deployments (`us`, `eu`, `apac`)
+- ✅ Node affinity: `workload=worker` AND `region={us-east|eu-central|asia-pacific}`
+- ✅ Pod anti-affinity for high availability
+- ✅ Docker socket volume mount for executors
+
+### Node Tagging for Location-Based Queues
+
+To ensure workers run on the correct nodes and process the correct queues, you must label your worker nodes with the appropriate region.
+
+**1. List Nodes:**
+```bash
+kubectl get nodes
+```
+
+**2. Label Nodes:**
+Assign specific nodes to regions. For example, if you have 3 worker nodes:
+
+```bash
+# Worker 1 -> US East
+kubectl label node <node-1> workload=worker region=us-east
+
+# Worker 2 -> EU Central
+kubectl label node <node-2> workload=worker region=eu-central
+
+# Worker 3 -> Asia Pacific
+kubectl label node <node-3> workload=worker region=asia-pacific
+```
+
+**3. Verify Labels:**
+```bash
+kubectl get nodes --show-labels
+```
+
+This ensures that `supercheck-worker-us` only runs on nodes labeled `region=us-east`, effectively routing US-based jobs to those specific nodes.
 
 #### Scaling & Autoscaling
 

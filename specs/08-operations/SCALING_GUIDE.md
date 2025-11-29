@@ -176,8 +176,8 @@ The scaling configuration is built into the main Docker Compose files:
 
 #### High-Throughput Workloads
 - **Many small tests**: More workers, standard memory
-- **Configuration**: `WORKER_REPLICAS=8` `MAX_CONCURRENT_EXECUTIONS=3`
-- **Total**: 24 concurrent capacity
+- **Configuration**: `WORKER_REPLICAS=8` `MAX_CONCURRENT_EXECUTIONS=1`
+- **Total**: 8 concurrent capacity
 
 #### Memory-Intensive Workloads
 - **Large browser tests**: Fewer workers, more memory per worker

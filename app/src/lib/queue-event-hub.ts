@@ -24,7 +24,7 @@ export type NormalizedQueueEvent = {
   category: QueueCategory;
   queue: string;
   event: "waiting" | "active" | "completed" | "failed" | "stalled";
-  status: "running" | "passed" | "failed" | "error";
+  status: "running" | "passed" | "failed" | "error" | "cancelled";
   queueJobId: string;
   entityId?: string;
   trigger?: string;
@@ -297,18 +297,33 @@ class QueueEventHub extends EventEmitter {
           successValue: hasSuccessField ? (returnValue as { success?: unknown }).success : undefined,
         }, "Processing completed event");
 
-        status =
-          hasSuccessField
-            ? (returnValue as { success?: unknown }).success === true
-              ? "passed"
-              : "failed"
-            : Array.isArray(returnValue) && returnValue.length > 0
-            ? "passed" // Assume array result (like monitors) means success if not empty
-            : "failed"; // Default to failed if no clear success indication
+        // Check if this is a cancellation (error field contains cancellation message)
+        const errorField = returnValue !== null && typeof returnValue === "object" && "error" in returnValue
+          ? (returnValue as { error?: string }).error
+          : undefined;
+        const isCancellation = errorField && (
+          errorField.toLowerCase().includes("cancellation") ||
+          errorField.toLowerCase().includes("cancelled")
+        );
+
+        if (isCancellation) {
+          status = "cancelled";
+        } else {
+          status =
+            hasSuccessField
+              ? (returnValue as { success?: unknown }).success === true
+                ? "passed"
+                : "failed"
+              : Array.isArray(returnValue) && returnValue.length > 0
+              ? "passed" // Assume array result (like monitors) means success if not empty
+              : "failed"; // Default to failed if no clear success indication
+        }
 
         eventHubLogger.info({
           queueJobId,
           mappedStatus: status,
+          isCancellation,
+          errorField,
         }, `Mapped completed event to status: ${status}`);
         break;
       case "failed":

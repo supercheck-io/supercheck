@@ -333,7 +333,7 @@ graph TB
 - `QUEUED_CAPACITY`: Override plan-specific queued limit |
 | **Queued Capacity** | 50 | `QUEUED_CAPACITY` | Global |
 | **Execution Timeout** | 15 min | `JOB_EXECUTION_TIMEOUT_MS` | Per Job |
-| **Max Concurrent Tests** | 2 | `MAX_CONCURRENT_EXECUTIONS` | Per Worker |
+| **Max Concurrent Tests** | 1 | `MAX_CONCURRENT_EXECUTIONS` | Per Worker |
 
 ## Security & Authorization
 
@@ -597,8 +597,171 @@ graph TB
 ### For Manual Triggers
 - Provide clear feedback on queue position
 - Show estimated wait time
-- Allow cancellation of queued jobs
+- **Allow cancellation of queued and running jobs**
 - Display capacity status before trigger
+
+## Job Cancellation
+
+### Overview
+
+Users can cancel running or queued jobs via the **Cancel API**. Cancellation uses Redis-based signaling to communicate between the app and distributed workers.
+
+### Cancellation Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI as Jobs UI
+    participant API as Cancel API
+    participant Redis
+    participant Worker
+    participant Container
+
+    User->>UI: Click "Cancel" button
+    UI->>API: POST /api/runs/{runId}/cancel
+    API->>API: Validate RBAC permissions
+    API->>Redis: SET supercheck:cancel:{runId} = 1
+    
+    alt Job Waiting in Queue
+        API->>API: Remove from BullMQ queue
+        API->>API: Update DB status → error
+    else Job Running
+        API->>API: Update DB status → error
+        Worker->>Redis: Poll every 1 second
+        Redis-->>Worker: Cancellation detected
+        Worker->>Container: docker kill
+        Worker->>Redis: Clear cancellation signal
+    end
+    
+    API-->>UI: { success: true }
+    UI-->>User: Show "Cancelled" status
+```
+
+### API Endpoint
+
+**Endpoint:** `POST /api/runs/:runId/cancel`
+
+**Authentication:** Session cookie (same as Manual Trigger)
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Run cancelled successfully",
+  "runId": "uuid",
+  "queueRemoved": true,
+  "jobType": "playwright"
+}
+```
+
+### Cancellation States
+
+| Original State | After Cancel | Notes |
+|----------------|--------------|-------|
+| `pending` | `error` | Removed from queue |
+| `running` | `error` | Container killed (exit code 137) |
+| `passed` | N/A | Cannot cancel completed |
+| `failed` | N/A | Cannot cancel completed |
+| `error` | N/A | Cannot cancel completed |
+
+### UI Confirmation Dialog
+
+Before cancelling, users see a confirmation dialog:
+- **Title**: "Cancel Execution?"
+- **Description**: "Are you sure you want to cancel this job execution? This action cannot be undone and the run will be marked as cancelled."
+- **Actions**: "Continue Running" (cancel) or "Cancel Execution" (confirm)
+
+### UI Status Display
+
+Cancelled runs display as "Cancelled" (not "Error") in the UI:
+- Database stores `status: 'error'` with `errorDetails: 'Cancellation requested by user'`
+- UI detects cancellation keywords in `errorDetails` and displays "Cancelled" with Ban icon
+- Faceted filters correctly count cancelled runs separately from other errors
+
+### Implementation Details
+
+- **Redis Signal TTL**: 1 hour (prevents stale signals)
+- **Polling Interval**: 1 second during container execution
+- **Container Kill**: Uses `docker kill` (SIGKILL) for immediate termination
+- **Cleanup**: Container removed, resources released automatically
+
+## Queue Status Synchronization
+
+### Overview
+
+To prevent jobs from getting "stuck" in a `running` state due to worker crashes or unexpected terminations, the system implements **active queue verification** that synchronizes database status with the actual BullMQ queue state.
+
+### Synchronization Mechanism
+
+```mermaid
+sequenceDiagram
+    participant UI as Jobs UI
+    participant API as Status API
+    participant DB as PostgreSQL
+    participant Queue as BullMQ/Redis
+    
+    UI->>API: GET /api/jobs/status/running
+    API->>DB: Query runs with status='running'
+    
+    loop For Each Running Job
+        API->>Queue: getJob(runId)
+        Queue-->>API: Job state or null
+        
+        alt Job Running in Queue
+            API->>API: Mark as valid
+        else Job Not in Queue
+            API->>DB: UPDATE status='error'
+            API->>API: Mark as stale
+        end
+    end
+    
+    API-->>UI: Return only valid running jobs
+```
+
+### When It Runs
+
+- **On Page Load**: `/api/jobs/status/running` is called by `JobContext` 
+- **On Refresh**: Ensures UI always shows accurate state
+- **Automatic**: No manual intervention required
+
+### How It Works
+
+**Implementation:** `app/src/app/api/jobs/status/running/route.ts`
+
+1. **Query Database**: Get all runs with `status: 'running'`
+2. **Verify with Queue**: For each run, check if job exists in BullMQ queues:
+   - Check Playwright global queue
+   - Check K6 regional queues
+   - Use `queue.getJob(runId)` and `job.getState()`
+3. **Detect Inconsistencies**: If queue says job is completed/failed/missing but DB says "running"
+4. **Sync Database**: Immediately update stale runs to `error` status
+5. **Return Valid Jobs**: Only return jobs that are truly running
+
+### Performance Optimization
+
+- **Parallel Batch Queries**: Checks all runs concurrently using `Promise.all()`
+- **Early Exit**: Uses `Promise.race()` to return as soon as job is found in any queue
+- **Timeout Protection**: 500ms timeout per run to prevent hanging
+- **Complexity**: O(N) instead of O(N×M) where N=runs, M=queues
+
+### Error Messages
+
+Stale jobs are marked with:
+```typescript
+{
+  status: "error",
+  errorDetails: "Job status inconsistency detected - not found in execution queue",
+  completedAt: <current timestamp>
+}
+```
+
+### Benefits
+
+- ✅ **Self-Healing**: System automatically fixes stuck jobs
+- ✅ **No Background Service**: Simple, synchronous verification
+- ✅ **Real-time**: Updates happen on every page load
+- ✅ **User Transparency**: Users immediately see accurate status
+
 
 ### For Remote Triggers
 - Implement exponential backoff on 429 responses

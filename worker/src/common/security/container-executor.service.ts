@@ -25,8 +25,15 @@ import {
   validateCommandArgument,
   createSafeTempPath,
 } from './path-validator';
+import { CancellationService } from '../services/cancellation.service';
 
 export interface ContainerExecutionOptions {
+  /**
+   * Run ID for cancellation tracking
+   * If provided, the executor will poll for cancellation signals and kill the container if cancelled
+   */
+  runId?: string;
+
   /**
    * Timeout in milliseconds
    */
@@ -127,7 +134,13 @@ export class ContainerExecutorService {
   // Use custom worker image with Playwright browsers and k6 pre-installed
   private readonly defaultImage = process.env.WORKER_IMAGE || 'ghcr.io/supercheck-io/supercheck/worker:latest';
 
-  constructor(private configService: ConfigService) {
+  // Track running containers for cancellation
+  private runningContainers: Map<string, string> = new Map(); // runId -> containerName
+
+  constructor(
+    private configService: ConfigService,
+    private cancellationService: CancellationService,
+  ) {
     this.logger.log(
       `Container executor initialized with default image: ${this.defaultImage}`,
     );
@@ -404,6 +417,39 @@ export class ContainerExecutorService {
         all: true, // Combine stdout and stderr
       });
 
+      // Register container for cancellation tracking
+      if (options.runId) {
+        this.runningContainers.set(options.runId, containerName);
+        this.logger.debug(`Registered container ${containerName} for runId ${options.runId}`);
+      }
+
+      // Start background cancellation checker
+      let cancellationCheckInterval: NodeJS.Timeout | null = null;
+      let containerKilled = false;
+
+      if (options.runId) {
+        cancellationCheckInterval = setInterval(async () => {
+          try {
+            const isCancelled = await this.cancellationService.isCancelled(options.runId!);
+            if (isCancelled && !containerKilled) {
+              this.logger.warn(`[${options.runId}] Cancellation detected - killing container ${containerName}`);
+              containerKilled = true;
+
+              // Kill the container immediately
+              await this.killContainer(containerName);
+
+              // Clear the cancellation signal
+              await this.cancellationService.clearCancellationSignal(options.runId!);
+
+              // Kill the child process
+              child.kill('SIGKILL');
+            }
+          } catch (error) {
+            this.logger.error(`Error checking cancellation: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }, 1000); // Check every second
+      }
+
       // Stream chunks if requested
       if (options.onStdoutChunk && child.stdout) {
         child.stdout.on('data', (chunk: Buffer) => {
@@ -427,6 +473,17 @@ export class ContainerExecutorService {
 
       const result = await child;
 
+      // Stop cancellation checker
+      if (cancellationCheckInterval) {
+        clearInterval(cancellationCheckInterval);
+      }
+
+      // Unregister container
+      if (options.runId) {
+        this.runningContainers.delete(options.runId);
+        this.logger.debug(`Unregistered container for runId ${options.runId}`);
+      }
+
       const duration = Date.now() - startTime;
 
       // Check if timed out
@@ -442,17 +499,14 @@ export class ContainerExecutorService {
         }
       }
 
-      // Log detailed execution information for debugging
+      // Log execution result (stdout is saved to console.log, no need to log full content)
       this.logger.debug(`Container ${containerName} exited with code ${result.exitCode}`);
       if (result.stdout && result.stdout.trim().length > 0) {
-        // Log more stdout to see full Playwright output including report generation
-        this.logger.debug(`Container stdout (first 3000 chars): ${result.stdout.substring(0, 3000)}`);
-        if (result.stdout.length > 3000) {
-          this.logger.debug(`Container stdout (last 2000 chars): ${result.stdout.substring(result.stdout.length - 2000)}`);
-        }
+        this.logger.debug(`Container stdout: ${result.stdout.length} chars (saved to console.log)`);
       }
       if (result.stderr && result.stderr.trim().length > 0) {
-        this.logger.debug(`Container stderr (first 2000 chars): ${result.stderr.substring(0, 2000)}`);
+        // Only log stderr content since it indicates errors
+        this.logger.debug(`Container stderr (first 500 chars): ${result.stderr.substring(0, 500)}`);
       }
 
       // Log errors for non-zero exits
@@ -584,6 +638,28 @@ export class ContainerExecutorService {
   /**
    * Force removes a Docker container
    */
+  /**
+   * Kills a running container immediately
+   */
+  private async killContainer(containerName: string): Promise<void> {
+    try {
+      this.logger.warn(`Killing container: ${containerName}`);
+      // Use docker kill for immediate termination (faster than stop)
+      await execa('docker', ['kill', containerName], {
+        timeout: 5000,
+        reject: false,
+      });
+      // Then remove the container
+      await this.forceRemoveContainer(containerName);
+    } catch (error) {
+      this.logger.error(
+        `Failed to kill container ${containerName}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      // Try force remove as fallback
+      await this.forceRemoveContainer(containerName);
+    }
+  }
+
   private async forceRemoveContainer(containerName: string): Promise<void> {
     try {
       this.logger.log(`Force removing container: ${containerName}`);

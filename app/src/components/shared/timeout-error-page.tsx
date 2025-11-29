@@ -100,9 +100,9 @@ export function TimeoutErrorPage({
           {/* Additional Help Text */}
           <p className="text-sm text-muted-foreground  max-w-md">
             {timeoutInfo.timeoutType === 'test' 
-              ? "Test scripts that take longer than 2 minutes are automatically terminated."
+              ? "Test scripts that take longer than 5 minutes are automatically terminated."
               : timeoutInfo.timeoutType === 'job'
-              ? "Job executions that take longer than 15 minutes are automatically terminated to prevent resource exhaustion."
+              ? "Job executions that take longer than 60 minutes are automatically terminated to prevent resource exhaustion."
               : "Long-running executions are automatically terminated to prevent resource exhaustion."
             }
           </p>

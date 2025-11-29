@@ -55,13 +55,18 @@ export async function GET(request: Request) {
               return;
             }
 
+            // Skip playground runs (runs without a jobId) - they have their own status handling
+            if (!run.jobId) {
+              return;
+            }
+
             // Verify the run belongs to the user's project
             if (run.projectId !== project.id) {
               // Run belongs to a different project, skip this event
               return;
             }
 
-            // If this is a job run, also verify the job belongs to the project
+            // Verify the job belongs to the project
             if (run.jobId) {
               const job = await db.query.jobs.findFirst({
                 where: eq(jobs.id, run.jobId),

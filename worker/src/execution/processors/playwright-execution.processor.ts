@@ -6,6 +6,7 @@ import { ExecutionService } from '../services/execution.service';
 import { DbService } from '../services/db.service';
 import { JobNotificationService } from '../services/job-notification.service';
 import { UsageTrackerService } from '../services/usage-tracker.service';
+import { CancellationService } from '../../common/services/cancellation.service';
 import { JobExecutionTask, TestExecutionTask, TestExecutionResult, TestResult } from '../interfaces';
 import { eq } from 'drizzle-orm';
 import { jobs } from '../../db/schema';
@@ -20,6 +21,7 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
     private readonly dbService: DbService,
     private readonly jobNotificationService: JobNotificationService,
     private readonly usageTrackerService: UsageTrackerService,
+    private readonly cancellationService: CancellationService,
   ) {
     super();
     this.logger.log(`[Constructor] PlaywrightExecutionProcessor instantiated.`);
@@ -48,16 +50,56 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
 
       await job.updateProgress(100);
       
-      const status = result.success ? 'passed' : 'failed';
+      // Check if this was a cancellation
+      const isCancellation = !result.success && result.error?.includes('Cancellation requested by user');
+      const status = isCancellation ? 'cancelled' : (result.success ? 'passed' : 'failed');
       this.logger.log(`Test ${job.id} completed: ${status}`);
+
+      // Calculate execution duration and track usage
+      const endTime = new Date();
+      const durationMs = result.executionTimeMs ?? (endTime.getTime() - startTime.getTime());
+
+      // Track Playwright usage for billing (if organizationId is available)
+      if (job.data.organizationId) {
+        await this.usageTrackerService.trackPlaywrightExecution(
+          job.data.organizationId,
+          durationMs,
+          {
+            testId,
+            type: 'single_test',
+          }
+        ).catch((err: Error) =>
+          this.logger.warn(
+            `[${testId}] Failed to track Playwright usage: ${err.message}`,
+          ),
+        );
+      }
 
       return result;
     } catch (error) {
+      const errorMessage = (error as Error).message;
+      const isCancellation = errorMessage.includes('cancelled') || 
+                             errorMessage.includes('cancellation') ||
+                             errorMessage.includes('code 137');
+      
       this.logger.error(
-        `[${testId}] Test execution job ID: ${job.id} failed. Error: ${(error as Error).message}`,
+        `[${testId}] Test execution job ID: ${job.id} failed. Error: ${errorMessage}`,
         (error as Error).stack,
       );
       await job.updateProgress(100);
+      
+      // For cancellations, return a result instead of throwing to prevent BullMQ retry
+      if (isCancellation) {
+        return {
+          success: false,
+          error: 'Cancellation requested by user',
+          reportUrl: null,
+          testId,
+          stdout: '',
+          stderr: '',
+        };
+      }
+      
       throw error instanceof Error ? error : new Error(String(error));
     }
   }
@@ -68,10 +110,29 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
     const { jobId: originalJobId } = jobData;
     const jobIdForLookup = jobData.originalJobId || jobData.jobId;
     const startTime = new Date();
-    
+
     this.logger.log(
       `[${runId}] Job execution job ID: ${job.id} received for processing${originalJobId ? ` (job ${originalJobId})` : ''}`,
     );
+
+    // Check for cancellation signal before starting execution
+    if (await this.cancellationService.isCancelled(runId)) {
+      this.logger.warn(`[${runId}] Job execution cancelled before processing (detected in queue)`);
+
+      // Update run status to cancelled
+      await this.dbService
+        .updateRunStatus(runId, 'error', '0')
+        .catch((err: Error) =>
+          this.logger.error(
+            `[${runId}] Failed to update run status to cancelled: ${err.message}`,
+          ),
+        );
+
+      // Clear the cancellation signal
+      await this.cancellationService.clearCancellationSignal(runId);
+
+      throw new Error('Execution cancelled by user');
+    }
 
     await job.updateProgress(10);
 
@@ -89,8 +150,16 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
       const durationMs = endTime.getTime() - startTime.getTime();
       const durationSeconds = Math.floor(durationMs / 1000);
 
-      // Update the job status based on test results
-      const finalStatus = result.success ? 'passed' : 'failed';
+      // Check if execution service already set error status (for cancellations)
+      // Don't override 'error' status with 'failed'
+      let finalStatus: 'passed' | 'failed' | 'error';
+      if (!result.success && result.error?.includes('Cancellation requested by user')) {
+        // Execution was cancelled, keep 'error' status
+        finalStatus = 'error';
+      } else {
+        // Normal completion
+        finalStatus = result.success ? 'passed' : 'failed';
+      }
 
       // Update the run status with duration first
       await this.dbService
@@ -149,12 +218,19 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
         { runId, jobId: job.id },
       );
 
+      // Check if this is a cancellation error
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isCancellation = errorMessage.includes('cancelled') || 
+                             errorMessage.includes('cancellation') ||
+                             errorMessage.includes('code 137');
+      
       // Update database with error status
-      const errorStatus = 'failed';
+      const errorStatus = isCancellation ? 'error' : 'failed';
+      const errorDetails = isCancellation ? 'Cancellation requested by user' : errorMessage;
 
       // Update run status first
       await this.dbService
-        .updateRunStatus(runId, errorStatus, '0')
+        .updateRunStatus(runId, errorStatus, '0', errorDetails)
         .catch((err: Error) =>
           this.logger.error(
             `[${runId}] Failed to update run error status: ${err.message}`,
@@ -193,6 +269,21 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
       }
 
       await job.updateProgress(100);
+      
+      // For cancellations, return a result instead of throwing to prevent BullMQ retry
+      if (isCancellation) {
+        return {
+          jobId: runId,
+          success: false,
+          error: 'Cancellation requested by user',
+          reportUrl: null,
+          results: [],
+          timestamp: new Date().toISOString(),
+          stdout: '',
+          stderr: '',
+        };
+      }
+      
       throw error instanceof Error ? error : new Error(String(error));
     }
   }
