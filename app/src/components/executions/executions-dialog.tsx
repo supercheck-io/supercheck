@@ -51,6 +51,7 @@ interface ExecutionItem {
     startedAt: Date | null;
     queuePosition?: number;
     source?: "job" | "playground";
+    projectName?: string;
 }
 
 interface ExecutionsDialogProps {
@@ -257,6 +258,7 @@ export function ExecutionsDialog({ open, onOpenChange, defaultTab = "running" }:
                             <TableHead className="w-[100px]">Source</TableHead>
                             <TableHead className="w-[120px]">Type</TableHead>
                             <TableHead>Name</TableHead>
+                            <TableHead className="w-[150px]">Project</TableHead>
                             <TableHead className="w-[150px]">
                                 {activeTab === "running" ? "Started" : "Queued"}
                             </TableHead>
@@ -288,6 +290,11 @@ export function ExecutionsDialog({ open, onOpenChange, defaultTab = "running" }:
                                             Position #{item.queuePosition}
                                         </Badge>
                                     )}
+                                </TableCell>
+                                <TableCell>
+                                    <div className="text-sm truncate max-w-[150px]" title={item.projectName || "—"}>
+                                        {item.projectName || "—"}
+                                    </div>
                                 </TableCell>
                                 <TableCell className="text-xs text-muted-foreground">
                                     {item.startedAt ? (

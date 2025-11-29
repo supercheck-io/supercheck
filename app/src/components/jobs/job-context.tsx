@@ -16,6 +16,7 @@ interface JobStatusSSEPayload {
   jobId?: string;
   runId?: string;
   queue?: string;
+  hasJobId?: boolean;
   [key: string]: unknown;
 }
 
@@ -72,7 +73,7 @@ export function JobStatusDisplay({
       // Use context status if available (especially for terminal statuses)
       // Otherwise fall back to db status
       let statusToUse = contextStatus || dbStatus;
-      
+
       // Check if this is a cancelled run (status is error but errorDetails contains cancellation)
       if (statusToUse === "error" && lastRunErrorDetails) {
         const lowerErrorDetails = lastRunErrorDetails.toLowerCase();
@@ -80,7 +81,7 @@ export function JobStatusDisplay({
           statusToUse = "cancelled";
         }
       }
-      
+
       setEffectiveStatus(statusToUse || "pending");
     }
   }, [jobId, dbStatus, isJobRunning, getJobStatus, lastRunErrorDetails]);
@@ -261,33 +262,39 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
 
           runToJobMapRef.current.delete(runId);
 
-          // Show completion toast
-          let toastType: "success" | "error" | "info" = passed ? "success" : "error";
-          let toastTitle = passed ? "Job execution passed" : "Job execution failed";
-          let toastMessage = passed
-            ? "All tests executed successfully."
-            : "One or more tests did not complete successfully.";
+          // Only show toast for actual job runs (not playground runs)
+          // Use hasJobId field from SSE payload (added to distinguish job vs playground runs)
+          const isActualJob = payload.hasJobId === true;
 
-          if (cancelled) {
-            toastType = "info";
-            toastTitle = "Job execution cancelled";
-            toastMessage = "The job execution was cancelled by a user.";
+          if (isActualJob) {
+            // Show completion toast for job runs only
+            let toastType: "success" | "error" | "info" = passed ? "success" : "error";
+            let toastTitle = passed ? "Job execution passed" : "Job execution failed";
+            let toastMessage = passed
+              ? "All tests executed successfully."
+              : "One or more tests did not complete successfully.";
+
+            if (cancelled) {
+              toastType = "info";
+              toastTitle = "Job execution cancelled";
+              toastMessage = "The job execution was cancelled by a user.";
+            }
+
+            toast[toastType](toastTitle, {
+              description: (
+                <>
+                  {jobName}: {toastMessage}{" "}
+                  <a
+                    href={`/runs/${runId}`}
+                    className="underline font-medium"
+                  >
+                    View Run Report
+                  </a>
+                </>
+              ),
+              duration: 10000,
+            });
           }
-
-          toast[toastType](toastTitle, {
-            description: (
-              <>
-                {jobName}: {toastMessage}{" "}
-                <a
-                  href={`/runs/${runId}`}
-                  className="underline font-medium"
-                >
-                  View Run Report
-                </a>
-              </>
-            ),
-            duration: 10000,
-          });
 
           // Refresh the page to get updated errorDetails for cancelled jobs
           router.refresh();
@@ -446,18 +453,18 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
         });
 
         // Remove the job from active runs
-          setActiveRuns((prev) => {
-            const newRuns = { ...prev };
-            delete newRuns[jobId];
-            activeRunsRef.current = newRuns;
-            return newRuns;
-          });
+        setActiveRuns((prev) => {
+          const newRuns = { ...prev };
+          delete newRuns[jobId];
+          activeRunsRef.current = newRuns;
+          return newRuns;
+        });
 
-          runToJobMapRef.current.forEach((meta, runKey) => {
-            if (meta.jobId === jobId) {
-              runToJobMapRef.current.delete(runKey);
-            }
-          });
+        runToJobMapRef.current.forEach((meta, runKey) => {
+          if (meta.jobId === jobId) {
+            runToJobMapRef.current.delete(runKey);
+          }
+        });
 
         // Close the event source for this job
         if (eventSourcesRef.current.has(jobId)) {
