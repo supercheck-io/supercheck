@@ -168,6 +168,12 @@ The system manages distinct queues for different execution types and regions:
 - ✅ **Geographic accuracy**: Regional queues ensure correct execution location
 - ✅ **Simple scaling**: Scale by region (3 deployments vs 8)
 
+**Single Cluster Deployment:**
+In a single cluster setup, geographic isolation is achieved via **Node Affinity**.
+- Nodes must be labeled with `region={us-east|eu-central|asia-pacific}`.
+- Worker deployments use `nodeSelector` to target specific nodes.
+- This allows logical separation of "regions" even within the same physical cluster if needed, or physical separation if nodes are in different zones/regions but connected to the same control plane.
+
 **Local Development:** Set `WORKER_REGION=local` to process all queues on a single worker. Configured automatically in Docker Compose.
 
 ### Active Queues (14 Total)
