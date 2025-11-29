@@ -1,7 +1,7 @@
 import { NextResponse, NextRequest } from "next/server";
 import { db } from "@/utils/db";
-import { alertHistory, jobs, monitors, notificationProviders } from "@/db/schema";
-import { desc, eq, and, sql } from "drizzle-orm";
+import { alertHistory } from "@/db/schema";
+import { sql } from "drizzle-orm";
 import { hasPermission } from '@/lib/rbac/middleware';
 import { requireProjectContext } from '@/lib/project-context';
 
@@ -42,89 +42,83 @@ export async function GET() {
     console.log('Database instance created, starting queries...');
     
     try {
-      // Get alert history for jobs in this project
-      console.log('Querying job alerts...');
-      const jobAlerts = await dbInstance
-        .select({
-          id: alertHistory.id,
-          targetType: alertHistory.targetType,
-          monitorId: alertHistory.monitorId,
-          jobId: alertHistory.jobId,
-          target: alertHistory.target,
-          type: alertHistory.type,
-          message: alertHistory.message,
-          status: alertHistory.status,
-          timestamp: alertHistory.sentAt,
-          providerId: alertHistory.provider,
-          providerName: notificationProviders.name,
-          providerType: notificationProviders.type,
-          errorMessage: alertHistory.errorMessage,
-          jobName: jobs.name,
-          monitorName: sql`null`,
-        })
-        .from(alertHistory)
-        .innerJoin(jobs, eq(alertHistory.jobId, jobs.id))
-        .leftJoin(
-          notificationProviders,
-          sql`${notificationProviders.id}::text = ${alertHistory.provider}`
+      // OPTIMIZED: Use UNION ALL to fetch both job and monitor alerts in a single query
+      // This reduces 2 queries to 1 and lets the database handle sorting
+      type AlertHistoryRow = {
+        id: string;
+        targetType: string;
+        monitorId: string | null;
+        jobId: string | null;
+        target: string;
+        type: string;
+        message: string;
+        status: string;
+        timestamp: Date;
+        providerId: string | null;
+        providerName: string | null;
+        providerType: string | null;
+        errorMessage: string | null;
+        jobName: string | null;
+        monitorName: string | null;
+      };
+
+      const historyResult = await dbInstance.execute(sql`
+        (
+          SELECT 
+            ah.id,
+            ah.target_type as "targetType",
+            ah.monitor_id as "monitorId",
+            ah.job_id as "jobId",
+            ah.target,
+            ah.type,
+            ah.message,
+            ah.status,
+            ah.sent_at as "timestamp",
+            ah.provider as "providerId",
+            np.name as "providerName",
+            np.type as "providerType",
+            ah.error_message as "errorMessage",
+            j.name as "jobName",
+            NULL as "monitorName"
+          FROM alert_history ah
+          INNER JOIN jobs j ON ah.job_id = j.id
+          LEFT JOIN notification_providers np ON np.id::text = ah.provider
+          WHERE j.organization_id = ${organizationId}
+            AND j.project_id = ${project.id}
         )
-        .where(and(
-          eq(jobs.organizationId, organizationId),
-          eq(jobs.projectId, project.id)
-        ))
-        .orderBy(desc(alertHistory.sentAt))
-        .limit(25);
-      
-      console.log('Job alerts query completed, count:', jobAlerts.length);
-
-      // Get alert history for monitors in this project
-      console.log('Querying monitor alerts...');
-      const monitorAlerts = await dbInstance
-        .select({
-          id: alertHistory.id,
-          targetType: alertHistory.targetType,
-          monitorId: alertHistory.monitorId,
-          jobId: alertHistory.jobId,
-          target: alertHistory.target,
-          type: alertHistory.type,
-          message: alertHistory.message,
-          status: alertHistory.status,
-          timestamp: alertHistory.sentAt,
-          providerId: alertHistory.provider,
-          providerName: notificationProviders.name,
-          providerType: notificationProviders.type,
-          errorMessage: alertHistory.errorMessage,
-          jobName: sql`null`,
-          monitorName: monitors.name,
-        })
-        .from(alertHistory)
-        .innerJoin(monitors, eq(alertHistory.monitorId, monitors.id))
-        .leftJoin(
-          notificationProviders,
-          sql`${notificationProviders.id}::text = ${alertHistory.provider}`
+        UNION ALL
+        (
+          SELECT 
+            ah.id,
+            ah.target_type as "targetType",
+            ah.monitor_id as "monitorId",
+            ah.job_id as "jobId",
+            ah.target,
+            ah.type,
+            ah.message,
+            ah.status,
+            ah.sent_at as "timestamp",
+            ah.provider as "providerId",
+            np.name as "providerName",
+            np.type as "providerType",
+            ah.error_message as "errorMessage",
+            NULL as "jobName",
+            m.name as "monitorName"
+          FROM alert_history ah
+          INNER JOIN monitors m ON ah.monitor_id = m.id
+          LEFT JOIN notification_providers np ON np.id::text = ah.provider
+          WHERE m.organization_id = ${organizationId}
+            AND m.project_id = ${project.id}
         )
-        .where(and(
-          eq(monitors.organizationId, organizationId),
-          eq(monitors.projectId, project.id)
-        ))
-        .orderBy(desc(alertHistory.sentAt))
-        .limit(25);
-      
-      console.log('Monitor alerts query completed, count:', monitorAlerts.length);
+        ORDER BY "timestamp" DESC
+        LIMIT 50
+      `);
 
-      // Combine and sort by timestamp
-      const history = [...jobAlerts, ...monitorAlerts]
-        .sort((a, b) => {
-          const dateA = a.timestamp instanceof Date ? a.timestamp : new Date(String(a.timestamp));
-          const dateB = b.timestamp instanceof Date ? b.timestamp : new Date(String(b.timestamp));
-          return dateB.getTime() - dateA.getTime();
-        })
-        .slice(0, 50);
-
-      console.log('Combined history count:', history.length);
+      const history = historyResult as unknown as AlertHistoryRow[];
+      console.log('Alert history query completed, count:', history.length);
 
       // Transform the data to match the expected format
-      const transformedHistory = history.map(item => ({
+      const transformedHistory = history.map((item: AlertHistoryRow) => ({
         id: item.id,
         targetType: item.targetType,
         targetId: item.monitorId || item.jobId || '',

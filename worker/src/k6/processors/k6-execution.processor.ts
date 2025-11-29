@@ -9,6 +9,7 @@ import {
 } from '../services/k6-execution.service';
 import { DbService } from '../../execution/services/db.service';
 import { UsageTrackerService } from '../../execution/services/usage-tracker.service';
+import { CancellationService } from '../../common/services/cancellation.service';
 import * as schema from '../../db/schema';
 import { JobNotificationService } from '../../execution/services/job-notification.service';
 import { K6_QUEUE } from '../k6.constants';
@@ -35,6 +36,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     protected readonly configService: ConfigService,
     protected readonly jobNotificationService: JobNotificationService,
     protected readonly usageTrackerService: UsageTrackerService,
+    protected readonly cancellationService: CancellationService,
   ) {
     super();
     this.logger = new Logger(processorName);
@@ -67,7 +69,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
 
   async handleProcess(
     job: Job<K6Task>,
-  ): Promise<{ success: boolean; timedOut?: boolean }> {
+  ): Promise<{ success: boolean; timedOut?: boolean; error?: string }> {
     const processStartTime = Date.now();
     const requestedLocation = job.data.location || 'us-east';
     const normalizedJobLocation = requestedLocation.toLowerCase();
@@ -114,6 +116,26 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       `[Job ${job.id}] Processing k6 ${isJobRun ? 'job' : 'single test'} from location: ${this.workerLocation}`,
     );
 
+    // Check for cancellation signal before starting execution
+    if (await this.cancellationService.isCancelled(runId)) {
+      this.logger.warn(`[${runId}] K6 execution cancelled before processing (detected in queue)`);
+
+      // Update run status to cancelled
+      await this.dbService.db
+        .update(schema.runs)
+        .set({
+          status: 'error',
+          completedAt: new Date(),
+          errorDetails: 'Execution cancelled by user',
+        })
+        .where(eq(schema.runs.id, runId));
+
+      // Clear the cancellation signal
+      await this.cancellationService.clearCancellationSignal(runId);
+
+      throw new Error('Execution cancelled by user');
+    }
+
     try {
       // Mark run as in-progress
       await this.dbService.db
@@ -136,6 +158,10 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       // Extract metrics from summary
       const metrics = this.extractMetrics(result.summary);
 
+      // Check if this was a cancellation (exit code 137 = SIGKILL)
+      // The container executor kills the container with SIGKILL when cancellation is detected
+      const wasCancelled = !result.success && (result.error?.includes('code 137') || result.error?.includes('cancelled'));
+
       // Create k6_performance_runs record
       const totalRequests = Math.round(metrics.totalRequests || 0);
       const failedRequests = Math.round(metrics.failedRequests || 0);
@@ -144,6 +170,13 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       const p95DurationMs = Math.round(metrics.p95ResponseTimeMs || 0);
       const p99DurationMs = Math.round(metrics.p99ResponseTimeMs || 0);
 
+      // Determine k6_performance_runs status
+      const k6PerformanceStatus = wasCancelled
+        ? 'error'
+        : result.success
+          ? 'passed'
+          : 'failed';
+
       await this.dbService.db.insert(schema.k6PerformanceRuns).values({
         testId,
         runId,
@@ -151,7 +184,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         organizationId: taskData.organizationId,
         projectId: taskData.projectId,
         location: this.workerLocation as any, // Actual execution location
-        status: result.success ? 'passed' : 'failed',
+        status: k6PerformanceStatus,
         startedAt: new Date(Date.now() - result.durationMs),
         completedAt: new Date(),
         durationMs: result.durationMs,
@@ -166,7 +199,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         reportS3Url: result.reportUrl,
         summaryS3Url: result.summaryUrl ?? null,
         consoleS3Url: result.consoleUrl ?? null,
-        errorDetails: result.error,
+        errorDetails: wasCancelled ? 'Cancellation requested by user' : result.error,
         consoleOutput: result.consoleOutput
           ? result.consoleOutput.slice(0, 10000)
           : null,
@@ -186,9 +219,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         durationString = `${durationSeconds}s`;
       }
 
-      const runStatus: 'passed' | 'failed' = result.success
-        ? 'passed'
-        : 'failed';
+      // Use the wasCancelled check from above (line 163)
+      const runStatus: 'passed' | 'failed' | 'error' = wasCancelled
+        ? 'error'
+        : result.success
+          ? 'passed'
+          : 'failed';
       const runUpdate: Record<string, any> = {
         status: runStatus,
         completedAt: new Date(),
@@ -209,7 +245,9 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         `;
       }
 
-      if (result.timedOut) {
+      if (wasCancelled) {
+        runUpdate.errorDetails = 'Cancellation requested by user';
+      } else if (result.timedOut) {
         const baseExpression =
           metadataExpression ?? sql`coalesce(metadata, '{}'::jsonb)`;
         metadataExpression = sql`
@@ -234,11 +272,13 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         .set(runUpdate)
         .where(eq(schema.runs.id, runId));
 
-      // Track K6 usage for billing
+      // Track K6 usage for billing (even for cancelled runs - they still consumed resources)
+      // Use actual duration for cancelled runs, not 0
+      const actualDurationMs = result.durationMs > 0 ? result.durationMs : Math.max(1000, Date.now() - processStartTime);
       await this.usageTrackerService.trackK6Execution(
         taskData.organizationId,
-        metrics.maxVUs,
-        result.durationMs,
+        metrics.maxVUs > 0 ? metrics.maxVUs : 1, // At least 1 VU for cancelled runs
+        actualDurationMs,
         {
           runId,
           jobId: taskData.jobId,
@@ -252,11 +292,13 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       );
 
       if (taskData.jobId) {
-        const finalStatus = result.timedOut
-          ? 'failed'
-          : result.success
-            ? 'passed'
-            : 'failed';
+        const finalStatus = wasCancelled
+          ? 'error'
+          : result.timedOut
+            ? 'failed'
+            : result.success
+              ? 'passed'
+              : 'failed';
 
         // Update job status based on all current run statuses
         try {
@@ -310,7 +352,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       // Note: Telemetry log is emitted inside span context above (line 163-173)
 
       // Return the success status to BullMQ so queue events are correctly reported
-      return { success: result.success, timedOut: result.timedOut };
+      // Include error field for cancellation detection by queue-event-hub
+      return { 
+        success: result.success, 
+        timedOut: result.timedOut,
+        error: wasCancelled ? 'Cancellation requested by user' : (result.error ?? undefined),
+      };
     } catch (error) {
       const message = `[Job ${job.id}] Failed with error: ${
         error instanceof Error ? error.message : String(error)
@@ -320,7 +367,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         error instanceof Error ? error.stack : undefined,
       );
 
-      // Update run record to failed status before rethrowing to ensure UI and retries work correctly
+      // Update run record to error status before rethrowing to ensure UI and retries work correctly
       try {
         const durationSeconds = Math.round(
           (Date.now() - processStartTime) / 1000,
@@ -337,14 +384,19 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
           durationString = `${durationSeconds}s`;
         }
 
+        // Check if this is a cancellation error
+        const isCancellation = message.includes('cancelled') || 
+                               message.includes('cancellation') ||
+                               message.includes('code 137');
+        
         await this.dbService.db
           .update(schema.runs)
           .set({
-            status: 'failed',
+            status: isCancellation ? 'error' : 'failed',
             completedAt: new Date(),
             durationMs: Date.now() - processStartTime,
             duration: durationString,
-            errorDetails: message,
+            errorDetails: isCancellation ? 'Cancellation requested by user' : message,
           })
           .where(eq(schema.runs.id, runId));
       } catch (dbError) {
@@ -409,6 +461,19 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         `[${isJobRun ? 'K6 Job' : 'K6 Test'}] ${runId} crashed`,
         error instanceof Error ? error.stack : undefined
       );
+
+      // Check if this is a cancellation error (re-check at outer scope)
+      const isCancellationOuter = message.includes('cancelled') || 
+                                   message.includes('cancellation') ||
+                                   message.includes('code 137');
+      
+      // For cancellations, return a result instead of throwing to prevent BullMQ retry
+      if (isCancellationOuter) {
+        return {
+          success: false,
+          timedOut: false,
+        };
+      }
 
       throw error;
     }
@@ -489,6 +554,7 @@ export class K6ExecutionProcessor extends BaseK6ExecutionProcessor {
     configService: ConfigService,
     jobNotificationService: JobNotificationService,
     usageTrackerService: UsageTrackerService,
+    cancellationService: CancellationService,
   ) {
     super(
       'K6ExecutionProcessor',
@@ -497,6 +563,7 @@ export class K6ExecutionProcessor extends BaseK6ExecutionProcessor {
       configService,
       jobNotificationService,
       usageTrackerService,
+      cancellationService,
     );
   }
 
@@ -543,6 +610,7 @@ export class K6ExecutionProcessorUS extends K6ExecutionProcessor {
     configService: ConfigService,
     jobNotificationService: JobNotificationService,
     usageTrackerService: UsageTrackerService,
+    cancellationService: CancellationService,
   ) {
     super(
       k6ExecutionService,
@@ -550,6 +618,7 @@ export class K6ExecutionProcessorUS extends K6ExecutionProcessor {
       configService,
       jobNotificationService,
       usageTrackerService,
+      cancellationService,
     );
     // Override logger name
     (this as any).logger = new Logger('K6ExecutionProcessorUSEast');
@@ -564,6 +633,7 @@ export class K6ExecutionProcessorEU extends K6ExecutionProcessor {
     configService: ConfigService,
     jobNotificationService: JobNotificationService,
     usageTrackerService: UsageTrackerService,
+    cancellationService: CancellationService,
   ) {
     super(
       k6ExecutionService,
@@ -571,6 +641,7 @@ export class K6ExecutionProcessorEU extends K6ExecutionProcessor {
       configService,
       jobNotificationService,
       usageTrackerService,
+      cancellationService,
     );
     (this as any).logger = new Logger('K6ExecutionProcessorEUCentral');
   }
@@ -584,6 +655,7 @@ export class K6ExecutionProcessorAPAC extends K6ExecutionProcessor {
     configService: ConfigService,
     jobNotificationService: JobNotificationService,
     usageTrackerService: UsageTrackerService,
+    cancellationService: CancellationService,
   ) {
     super(
       k6ExecutionService,
@@ -591,6 +663,7 @@ export class K6ExecutionProcessorAPAC extends K6ExecutionProcessor {
       configService,
       jobNotificationService,
       usageTrackerService,
+      cancellationService,
     );
     (this as any).logger = new Logger('K6ExecutionProcessorAsiaPacific');
   }

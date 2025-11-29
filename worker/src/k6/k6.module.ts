@@ -24,6 +24,15 @@ const defaultJobOptions = {
   },
 };
 
+// Queue settings with proper timeout for K6 (up to 60 minutes execution time)
+// CRITICAL: lockDuration must be >= max execution time to prevent jobs from being marked as stalled
+const queueSettings = {
+  defaultJobOptions,
+  lockDuration: 70 * 60 * 1000, // 70 minutes - must be >= max execution time (60 min for K6 tests)
+  stallInterval: 30000, // Check for stalled jobs every 30 seconds
+  maxStalledCount: 2, // Move job back to waiting max 2 times before failing
+};
+
 @Module({
   imports: [
     ExecutionModule, // Import ExecutionModule to get S3Service and RedisService
@@ -31,19 +40,19 @@ const defaultJobOptions = {
     BullModule.registerQueue(
       {
         name: K6_QUEUE,
-        defaultJobOptions,
+        ...queueSettings,
       },
       {
         name: K6_QUEUES.US_EAST,
-        defaultJobOptions,
+        ...queueSettings,
       },
       {
         name: K6_QUEUES.EU_CENTRAL,
-        defaultJobOptions,
+        ...queueSettings,
       },
       {
         name: K6_QUEUES.ASIA_PACIFIC,
-        defaultJobOptions,
+        ...queueSettings,
       },
     ),
   ],

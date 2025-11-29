@@ -597,8 +597,93 @@ graph TB
 ### For Manual Triggers
 - Provide clear feedback on queue position
 - Show estimated wait time
-- Allow cancellation of queued jobs
+- **Allow cancellation of queued and running jobs**
 - Display capacity status before trigger
+
+## Job Cancellation
+
+### Overview
+
+Users can cancel running or queued jobs via the **Cancel API**. Cancellation uses Redis-based signaling to communicate between the app and distributed workers.
+
+### Cancellation Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI as Jobs UI
+    participant API as Cancel API
+    participant Redis
+    participant Worker
+    participant Container
+
+    User->>UI: Click "Cancel" button
+    UI->>API: POST /api/runs/{runId}/cancel
+    API->>API: Validate RBAC permissions
+    API->>Redis: SET supercheck:cancel:{runId} = 1
+    
+    alt Job Waiting in Queue
+        API->>API: Remove from BullMQ queue
+        API->>API: Update DB status → error
+    else Job Running
+        API->>API: Update DB status → error
+        Worker->>Redis: Poll every 1 second
+        Redis-->>Worker: Cancellation detected
+        Worker->>Container: docker kill
+        Worker->>Redis: Clear cancellation signal
+    end
+    
+    API-->>UI: { success: true }
+    UI-->>User: Show "Cancelled" status
+```
+
+### API Endpoint
+
+**Endpoint:** `POST /api/runs/:runId/cancel`
+
+**Authentication:** Session cookie (same as Manual Trigger)
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Run cancelled successfully",
+  "runId": "uuid",
+  "queueRemoved": true,
+  "jobType": "playwright"
+}
+```
+
+### Cancellation States
+
+| Original State | After Cancel | Notes |
+|----------------|--------------|-------|
+| `pending` | `error` | Removed from queue |
+| `running` | `error` | Container killed (exit code 137) |
+| `passed` | N/A | Cannot cancel completed |
+| `failed` | N/A | Cannot cancel completed |
+| `error` | N/A | Cannot cancel completed |
+
+### UI Confirmation Dialog
+
+Before cancelling, users see a confirmation dialog:
+- **Title**: "Cancel Execution?"
+- **Description**: "Are you sure you want to cancel this job execution? This action cannot be undone and the run will be marked as cancelled."
+- **Actions**: "Continue Running" (cancel) or "Cancel Execution" (confirm)
+
+### UI Status Display
+
+Cancelled runs display as "Cancelled" (not "Error") in the UI:
+- Database stores `status: 'error'` with `errorDetails: 'Cancellation requested by user'`
+- UI detects cancellation keywords in `errorDetails` and displays "Cancelled" with Ban icon
+- Faceted filters correctly count cancelled runs separately from other errors
+
+### Implementation Details
+
+- **Redis Signal TTL**: 1 hour (prevents stale signals)
+- **Polling Interval**: 1 second during container execution
+- **Container Kill**: Uses `docker kill` (SIGKILL) for immediate termination
+- **Cleanup**: Container removed, resources released automatically
 
 ### For Remote Triggers
 - Implement exponential backoff on 429 responses

@@ -6,6 +6,7 @@ import {
   Workflow,
   Timer,
   MousePointerClick,
+  Ban,
 } from "lucide-react";
 
 export const runStatuses = [
@@ -31,6 +32,12 @@ export const runStatuses = [
     value: "error",
     label: "Error",
     icon: AlertCircle,
+    color: "text-orange-500",
+  },
+  {
+    value: "cancelled",
+    label: "Cancelled",
+    icon: Ban,
     color: "text-orange-500",
   },
 ];

@@ -12,6 +12,7 @@ import Link from "next/link";
 import { PlaywrightLogo } from "../logo/playwright-logo";
 import { TimeoutErrorPage } from "./timeout-error-page";
 import { TimeoutErrorInfo } from "@/lib/timeout-utils";
+import { CancellationErrorPage, CancellationErrorInfo } from "./cancellation-error-page";
 import { useTheme } from "next-themes";
 
 interface ReportViewerProps {
@@ -58,6 +59,7 @@ export function ReportViewer({
   const [isValidationError, setIsValidationError] = useState(false);
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [timeoutInfo, setTimeoutInfo] = useState<TimeoutErrorInfo | null>(null);
+  const [cancellationInfo, setCancellationInfo] = useState<CancellationErrorInfo | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fullscreenIframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -74,6 +76,7 @@ export function ReportViewer({
       setIframeError(false);
       setReportError(null);
       setTimeoutInfo(null);
+      setCancellationInfo(null);
 
       // Check if the URL exists, but don't call the callback here
       // The onReportError callback will be called by the safety timeout or iframe error handlers
@@ -363,6 +366,21 @@ export function ReportViewer({
 
   // Error state - only show if it's not a validation error
   if (iframeError && !isRunning && !isValidationError) {
+    // Show cancellation-specific error page if cancellation detected
+    if (cancellationInfo?.isCancelled) {
+      return (
+        <div className={containerClassName}>
+          <CancellationErrorPage
+            cancellationInfo={cancellationInfo}
+            backToLabel={backToLabel}
+            backToUrl={backToUrl}
+            containerClassName={containerClassName}
+            isK6={isK6Report}
+          />
+        </div>
+      );
+    }
+
     // Show timeout-specific error page if timeout detected
     if (timeoutInfo?.isTimeout) {
       return (
@@ -499,8 +517,15 @@ export function ReportViewer({
                         errorData.error ||
                         "Unknown error";
 
-                      // Check if this is a timeout error based on the API response
+                      // Check if this is a cancellation error
                       if (
+                        errorData.cancellationInfo &&
+                        errorData.cancellationInfo.isCancelled
+                      ) {
+                        setCancellationInfo(errorData.cancellationInfo);
+                      } 
+                      // Check if this is a timeout error based on the API response
+                      else if (
                         errorData.timeoutInfo &&
                         errorData.timeoutInfo.isTimeout
                       ) {

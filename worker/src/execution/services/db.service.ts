@@ -162,11 +162,13 @@ export class DbService implements OnModuleInit {
    * @param runId The ID of the run to update
    * @param status The new status to set
    * @param duration The duration of the run (string like "3s" or "1m 30s")
+   * @param errorDetails Optional error details to store
    */
   async updateRunStatus(
     runId: string,
     status: TestRunStatus,
     duration?: string,
+    errorDetails?: string,
   ): Promise<void> {
     this.logger.debug(
       `Updating run ${runId} with status ${status} and duration ${duration}`,
@@ -210,6 +212,11 @@ export class DbService implements OnModuleInit {
       // Add completedAt timestamp for terminal statuses
       if (['failed', 'passed', 'error'].includes(status)) {
         updateData.completedAt = now;
+      }
+
+      // Add error details if provided
+      if (errorDetails) {
+        updateData.errorDetails = errorDetails;
       }
 
       // Update the database

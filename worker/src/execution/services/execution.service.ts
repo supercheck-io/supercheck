@@ -10,6 +10,7 @@ import { DbService } from './db.service';
 import { RedisService } from './redis.service';
 import { ReportUploadService } from '../../common/services/report-upload.service';
 import { ContainerExecutorService } from '../../common/security/container-executor.service';
+import { CancellationService } from '../../common/services/cancellation.service';
 import { findFirstFileByNames } from '../../common/utils/file-search';
 import {
   TestResult,
@@ -135,6 +136,7 @@ export class ExecutionService implements OnModuleDestroy {
     private redisService: RedisService,
     private reportUploadService: ReportUploadService,
     private containerExecutorService: ContainerExecutorService,
+    private cancellationService: CancellationService,
   ) {
     // Set timeouts: configurable via env vars with sensible defaults
     this.testExecutionTimeoutMs = this.configService.get<number>(
@@ -362,6 +364,12 @@ export class ExecutionService implements OnModuleDestroy {
         throw new Error('No test code provided.');
       }
 
+      // Check for cancellation signal before starting execution
+      if (task.runId && await this.cancellationService.isCancelled(task.runId)) {
+        this.logger.warn(`[${testId}] Execution cancelled before start - runId: ${task.runId}`);
+        throw new Error('Execution cancelled by user');
+      }
+
       // 2. Store initial metadata about the run
       await this.dbService.storeReportMetadata({
         entityId: executionId,
@@ -379,12 +387,27 @@ export class ExecutionService implements OnModuleDestroy {
         throw new Error(`Failed to prepare test: ${(error as Error).message}`);
       }
 
+      // Check for cancellation signal before executing Playwright
+      if (task.runId && await this.cancellationService.isCancelled(task.runId)) {
+        this.logger.warn(`[${testId}] Execution cancelled before Playwright execution - runId: ${task.runId}`);
+        throw new Error('Execution cancelled by user');
+      }
+
       // 4. Execute the test script using container-only execution with timeout
       const execResult = await this._executePlaywrightNativeRunner(
         testScript,
         extractedReportsDir,
         false,
+        undefined, // No additional files for single test
+        task.runId || undefined, // Pass runId for cancellation tracking
       );
+
+      // Check if this was a cancellation (exit code 137 = SIGKILL)
+      const wasCancelled = !execResult.success && execResult.error?.includes('code 137');
+      if (wasCancelled) {
+        this.logger.warn(`[${testId}] Execution was cancelled (exit code 137)`);
+        throw new Error('Execution cancelled by user');
+      }
 
       // 5. Process result and upload report
       // The report evaluation is the authoritative source for test status
@@ -503,19 +526,28 @@ export class ExecutionService implements OnModuleDestroy {
         // throw new Error(specificError); // OLD WAY
       }
     } catch (error: any) {
-      // Catch unexpected errors during the process
+      // Check if this is a cancellation error
+      const errorMessage = (error as Error).message;
+      const isCancellation = errorMessage.includes('cancelled') || 
+                             errorMessage.includes('cancellation') ||
+                             errorMessage.includes('code 137');
+      
+      // Use 'error' status for cancellation, 'failed' for other errors
+      const finalStatus = isCancellation ? 'error' : 'failed';
+      const errorDetails = isCancellation ? 'Cancellation requested by user' : errorMessage;
+      
       this.logger.error(
-        `[${testId}] Unhandled error during single test execution: ${(error as Error).message}`,
+        `[${testId}] ${isCancellation ? 'Cancelled' : 'Unhandled error'} during single test execution: ${errorMessage}`,
         (error as Error).stack,
       );
 
-      // Ensure DB status is marked as failed
+      // Ensure DB status is marked appropriately
       await this.dbService
         .storeReportMetadata({
           entityId: executionId,
           entityType,
           reportPath: s3ReportKeyPrefix,
-          status: 'failed',
+          status: finalStatus,
           s3Url: s3Url ?? undefined, // Use final s3Url
         })
         .catch((dbErr) =>
@@ -526,13 +558,13 @@ export class ExecutionService implements OnModuleDestroy {
 
       finalResult = {
         success: false,
-        error: (error as Error).message,
+        error: errorDetails,
         reportUrl: null,
         testId: uniqueRunId, // Use unique execution ID instead of test ID
         stdout: '',
         stderr: (error as Error).stack || (error as Error).message,
       };
-      this.logger.error(`[Playwright Test] ${testId} crashed: ${(error as Error).message}`);
+      this.logger.error(`[Playwright Test] ${testId} ${isCancellation ? 'cancelled' : 'crashed'}: ${errorMessage}`);
       // Propagate the error to the BullMQ processor so the job is marked as failed
       throw error;
     } finally {
@@ -614,6 +646,12 @@ export class ExecutionService implements OnModuleDestroy {
         throw new Error('No test scripts provided for job execution');
       }
 
+      // Check for cancellation signal before starting job execution
+      if (await this.cancellationService.isCancelled(runId)) {
+        this.logger.warn(`[${runId}] Job execution cancelled before start`);
+        throw new Error('Execution cancelled by user');
+      }
+
       // 2. Store initial metadata
       await this.dbService.storeReportMetadata({
         entityId: runId,
@@ -631,6 +669,12 @@ export class ExecutionService implements OnModuleDestroy {
       let mainTestFile: string | null = null;
 
       for (let i = 0; i < testScripts.length; i++) {
+        // Check for cancellation between test preparations
+        if (await this.cancellationService.isCancelled(runId)) {
+          this.logger.warn(`[${runId}] Job execution cancelled during test preparation`);
+          throw new Error('Execution cancelled by user');
+        }
+
         const { id, script: originalScript, name } = testScripts[i];
         const testId = id;
         const testName = name || `Test ${i + 1}`;
@@ -720,6 +764,12 @@ export class ExecutionService implements OnModuleDestroy {
         additionalFiles[fileName] = content;
       });
 
+      // Check for cancellation signal before executing Playwright
+      if (await this.cancellationService.isCancelled(runId)) {
+        this.logger.warn(`[${runId}] Job execution cancelled before Playwright execution`);
+        throw new Error('Execution cancelled by user');
+      }
+
       const execResult = await this._executePlaywrightNativeRunner(
         {
           scriptContent: mainContent,
@@ -728,12 +778,20 @@ export class ExecutionService implements OnModuleDestroy {
         extractedReportsDir,
         true,
         additionalFiles, // Pass additional test files to execute in container
+        runId, // Pass runId for cancellation tracking
       );
 
       overallSuccess = execResult.success;
       stdout_log = execResult.stdout;
       stderr_log = execResult.stderr;
       finalError = execResult.error;
+      
+      // Check if this was a cancellation (exit code 137 = SIGKILL)
+      const wasCancelled = !execResult.success && execResult.error?.includes('code 137');
+      if (wasCancelled) {
+        this.logger.warn(`[${runId}] Execution was cancelled (exit code 137)`);
+        throw new Error('Execution cancelled by user');
+      }
 
       // 5. Process result and upload report
       // Removed log - only log errors and final summary
@@ -824,12 +882,21 @@ export class ExecutionService implements OnModuleDestroy {
       await this.dbService.updateRunStatus(runId, finalStatus, durationStr);
       this.logger.log(`[Playwright Job] ${runId} ${finalStatus} (${durationMs}ms, ${testScripts.length} tests)`);
     } catch (error) {
+      const errorMessage = (error as Error).message;
+      const isCancellation = errorMessage.includes('cancelled') || 
+                             errorMessage.includes('cancellation') ||
+                             errorMessage.includes('code 137');
+      
       this.logger.error(
-        `[${runId}] Unhandled error during job execution: ${(error as Error).message}`,
+        `[${runId}] Unhandled error during job execution: ${errorMessage}`,
         (error as Error).stack,
       );
-      const finalStatus = 'failed';
-      // Attempt to mark DB as failed
+      
+      // Use 'error' status for cancellation, 'failed' for other errors
+      const finalStatus = isCancellation ? 'error' : 'failed';
+      const errorDetails = isCancellation ? 'Cancellation requested by user' : errorMessage;
+      
+      // Attempt to mark DB with appropriate status
       await this.dbService
         .storeReportMetadata({
           entityId: runId,
@@ -844,21 +911,22 @@ export class ExecutionService implements OnModuleDestroy {
           ),
         );
 
-      // Store final run result with error
-      await this.dbService.updateRunStatus(runId, 'failed', '0ms');
-
+      // Store final run result with error - use error status for cancellation
+      await this.dbService.updateRunStatus(runId, finalStatus, '0ms', errorDetails);
+      
+      // Set finalResult for error case
       finalResult = {
         jobId: runId,
         success: false,
-        error: (error as Error).message,
+        error: errorDetails,
         reportUrl: null,
         results: [],
         timestamp,
         stdout: stdout_log,
         stderr: stderr_log + ((error as Error).stack || ''),
       };
-      this.logger.error(`[Playwright Job] ${runId} crashed: ${(error as Error).message}`);
-      throw error;
+      this.logger.error(`[Playwright Job] ${runId} ${isCancellation ? 'cancelled' : 'crashed'}: ${errorMessage}`);
+      return finalResult; // Return result to prevent further execution that would overwrite the error status
     } finally {
       // Remove from active executions
       this.activeExecutions.delete(uniqueRunId);
@@ -900,8 +968,9 @@ export class ExecutionService implements OnModuleDestroy {
     extractedReportsDir: string,
     isJob: boolean = false,
     additionalFiles?: Record<string, string>,
+    runId?: string,
   ): Promise<PlaywrightExecutionResult> {
-    return this.executePlaywrightDirectly(testScript, extractedReportsDir, isJob, additionalFiles);
+    return this.executePlaywrightDirectly(testScript, extractedReportsDir, isJob, additionalFiles, runId);
   }
 
   /**
@@ -917,6 +986,7 @@ export class ExecutionService implements OnModuleDestroy {
     extractedReportsDir: string,
     isJob: boolean,
     additionalFiles?: Record<string, string>,
+    runId?: string,
   ): Promise<PlaywrightExecutionResult> {
     // For jobs with multiple tests, run playwright test /tmp/ to execute all tests
     // For single tests, target specific file
@@ -984,6 +1054,7 @@ export class ExecutionService implements OnModuleDestroy {
         timeout: isJob ? this.jobExecutionTimeoutMs : this.testExecutionTimeoutMs,
         scriptPath: null, // No host path to mount - using inline script
         workingDir: '/worker',
+        runId, // Pass runId for cancellation tracking
         // Inline script execution mode
         inlineScriptContent: testScript.scriptContent,
         inlineScriptFileName: testScript.fileName,
@@ -997,11 +1068,13 @@ export class ExecutionService implements OnModuleDestroy {
         extractToHost: extractedReportsDir,
       });
 
-      // Improve error reporting
+      // Improve error reporting - but preserve original error for cancellation detection
       let extractedError: string | null = null;
       if (!execResult.success) {
-        // Prioritize stderr if it contains meaningful info, otherwise use stdout
-        if (
+        // IMPORTANT: Preserve the original error if it contains exit code info (for cancellation detection)
+        if (execResult.error && (execResult.error.includes('code 137') || execResult.error.includes('timed out'))) {
+          extractedError = execResult.error;
+        } else if (
           execResult.stderr &&
           execResult.stderr.trim().length > 0 &&
           !execResult.stderr.toLowerCase().includes('deprecationwarning')
@@ -1389,6 +1462,7 @@ export class ExecutionService implements OnModuleDestroy {
       timeout?: number;
       scriptPath?: string | null; // Path to the script being executed (for container mounting), null for inline mode
       workingDir?: string; // Working directory inside container
+      runId?: string; // Run ID for cancellation tracking
       extractFromContainer?: string; // Path inside container to extract
       extractToHost?: string; // Host path where extracted files should be placed
       inlineScriptContent?: string; // Inline script content for container-only execution
@@ -1401,6 +1475,7 @@ export class ExecutionService implements OnModuleDestroy {
     stdout: string;
     stderr: string;
     executionTimeMs?: number;
+    error?: string;
   }> {
     const startTime = Date.now();
 
@@ -1431,6 +1506,7 @@ export class ExecutionService implements OnModuleDestroy {
         [command, ...args],
         {
           timeoutMs: options.timeout,
+          runId: options.runId, // Pass runId for cancellation tracking
           env: options.env as Record<string, string>,
           workingDir: options.workingDir || '/worker',
           memoryLimitMb: this.containerMemoryLimitMb,
@@ -1459,6 +1535,7 @@ export class ExecutionService implements OnModuleDestroy {
       stdout: containerResult.stdout,
       stderr: containerResult.stderr,
       executionTimeMs: containerResult.duration,
+      error: containerResult.error,
     };
   }
 
