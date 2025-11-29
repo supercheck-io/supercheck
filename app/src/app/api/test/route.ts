@@ -188,6 +188,27 @@ export async function POST(request: NextRequest) {
           .returning({ id: runs.id });
 
         runIdForQueue = createdRun.id;
+      } else {
+        // Create run record for Playwright tests too
+        const [createdRun] = await db
+          .insert(runs)
+          .values({
+            id: crypto.randomUUID(),
+            jobId: null,
+            projectId: project.id,
+            status: "running",
+            trigger: "manual",
+            location: null,
+            metadata: {
+              source: "playground",
+              testType,
+              testId,
+            },
+            startedAt: new Date(),
+          })
+          .returning({ id: runs.id });
+
+        runIdForQueue = createdRun.id;
       }
 
       if (isPerformanceTest) {

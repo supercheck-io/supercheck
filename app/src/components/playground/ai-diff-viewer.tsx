@@ -33,7 +33,6 @@ export function AIDiffViewer({
   isStreaming = false,
   streamingContent = "",
 }: AIDiffViewerProps) {
-  console.log("[AIDiffViewer] isStreaming prop:", isStreaming, "fixedScript length:", fixedScript.length);
   const [currentFixedScript, setCurrentFixedScript] = useState(fixedScript);
   const editorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
   const monaco = useMonaco();
@@ -89,32 +88,15 @@ export function AIDiffViewer({
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
-      // Clean up editor models if they exist
+      // Clean up editor - let the editor handle its own model disposal
       if (editorRef.current) {
         try {
-          const modifiedEditor = editorRef.current.getModifiedEditor?.();
-          const originalEditor = editorRef.current.getOriginalEditor?.();
-
-          if (modifiedEditor?.getModel) {
-            const model = modifiedEditor.getModel();
-            if (model) {
-              model.dispose();
-            }
-          }
-
-          if (originalEditor?.getModel) {
-            const model = originalEditor.getModel();
-            if (model) {
-              model.dispose();
-            }
-          }
-
-          // Dispose the editor itself
+          // Dispose the editor itself - it will handle model cleanup
           if (typeof editorRef.current.dispose === "function") {
             editorRef.current.dispose();
           }
         } catch (error) {
-          console.warn("[AI Diff] Error during editor cleanup:", error);
+          // Silently ignore cleanup errors
         }
       }
     };
@@ -218,12 +200,6 @@ export function AIDiffViewer({
   };
 
   const handleAccept = () => {
-    // Check if component is still mounted
-    if (!isMountedRef.current) {
-      console.warn("[AI Diff] Component unmounted, cannot accept fix");
-      return;
-    }
-
     try {
       let acceptedScript = currentFixedScript; // Default to the fixed script
 
@@ -331,11 +307,14 @@ export function AIDiffViewer({
   const rejectButtonClasses = isDarkTheme
     ? "h-9 px-4 text-sm bg-transparent border-red-600 text-red-400 hover:bg-red-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
     : "h-9 px-4 text-sm bg-transparent border-red-500 text-red-600 hover:bg-red-500 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed";
+  const acceptButtonClasses = isDarkTheme
+    ? "h-9 px-4 text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+    : "h-9 px-4 text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed";
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div
-        className={`w-full max-w-5xl max-h-[95vh] flex flex-col shadow-2xl rounded-lg ${containerClasses}`}
+        className={`w-full max-w-5xl max-h-[95vh] flex flex-col shadow-2xl rounded-lg overflow-hidden ${containerClasses}`}
       >
         <div className={`flex-shrink-0 px-4 py-3 ${headerClasses}`}>
           <div className="flex items-center justify-between mb-2">
@@ -383,7 +362,7 @@ export function AIDiffViewer({
         </div>
 
         <div
-          className={`${isDarkTheme ? "bg-gray-900" : "bg-white"} relative overflow-hidden`}
+          className={`${isDarkTheme ? "bg-gray-900" : "bg-white"} relative`}
           style={{ height: "500px" }}
         >
           <style jsx>{`
@@ -433,7 +412,7 @@ export function AIDiffViewer({
           />
         </div>
 
-        <div className={`flex-shrink-0 px-4 py-2 ${footerClasses} relative z-40`}>
+        <div className={`flex-shrink-0 px-4 py-2 ${footerClasses}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2">
@@ -445,7 +424,7 @@ export function AIDiffViewer({
                 <span>AI Fixed</span>
               </div>
             </div>
-            <div className="flex items-center gap-3 relative z-50">
+            <div className="flex items-center gap-3">
               <Button
                 variant="outline"
                 type="button"
@@ -456,14 +435,15 @@ export function AIDiffViewer({
                 <X className="h-4 w-4 mr-1" />
                 Reject
               </Button>
-              <button
+              <Button
                 type="button"
                 onClick={handleAccept}
-                className="h-9 px-4 text-sm bg-green-600 hover:bg-green-700 text-white rounded-md font-medium transition-all pointer-events-auto relative z-50"
+                disabled={isStreaming}
+                className={acceptButtonClasses}
               >
-                <Check className="h-4 w-4 mr-1 inline" />
-                {isStreaming ? "Generating..." : "Accept & Apply"}
-              </button>
+                <Check className="h-4 w-4 mr-1" />
+                Accept & Apply
+              </Button>
             </div>
           </div>
         </div>

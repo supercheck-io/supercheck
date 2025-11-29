@@ -400,6 +400,50 @@ The system distinguishes between playground runs and scheduled job runs:
 - Playground runs have their own status handling via `/api/test-status/events/{testId}` (Playwright) or streaming events (K6)
 - The `ReportViewer` component uses a GET request (instead of HEAD) to detect cancellation errors immediately by reading the JSON response body
 
+### Playground Execution Database Tracking
+
+**All playground executions (Playwright & K6) create database records in the `runs` table:**
+
+| Field | Value | Purpose |
+|-------|-------|---------|
+| `id` | UUID | Unique run identifier |
+| `jobId` | `null` | Identifies as playground run (vs scheduled job) |
+| `status` | `"running"` → `"passed"` \| `"failed"` | Execution status |
+| `trigger` | `"manual"` | Indicates manual/ad-hoc execution |
+| `metadata.source` | `"playground"` | Identifies execution source |
+| `metadata.testType` | `"browser"` \| `"api"` \| `"custom"` \| `"performance"` | Maps to execution engine |
+| `startedAt` | Timestamp | Execution start time |
+| `completedAt` | Timestamp | Execution completion time |
+
+**Rationale for Database Tracking:**
+- ✅ Provides audit trail of playground usage
+- ✅ Enables execution visibility in UI (Executions Dialog)
+- ✅ Supports future analytics and usage reporting
+- ✅ Consistent architecture (K6 and Playwright behave the same)
+- ✅ Minimal storage impact with automated cleanup
+
+**Data Lifecycle Management:**
+
+Playground runs are automatically cleaned up by the `job_runs` cleanup strategy:
+
+| Cleanup Type | Retention Period | Schedule |
+|--------------|------------------|----------|
+| **Database Records** | 30 days | Daily at 3 AM UTC |
+| **S3 Artifacts** | 24 hours | Every 6 hours |
+
+The cleanup strategy distinguishes between job runs and playground runs for monitoring and reporting:
+
+```typescript
+// Example cleanup log output
+[DATA_LIFECYCLE] job_runs: Deleted 150 runs (120 jobs, 30 playground) and 450 S3 objects
+```
+
+**Cleanup Implementation:**
+- Uses `JobRunsCleanupStrategy` in `data-lifecycle-service.ts`
+- Identifies playground runs by `jobId IS NULL`
+- Tracks and reports job vs playground run counts separately
+- Cleans associated S3 artifacts and report records
+
 #### Why Redis-Based Signaling?
 
 - ✅ **Distributed**: Works across multiple worker instances
