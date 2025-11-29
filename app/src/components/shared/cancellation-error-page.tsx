@@ -19,7 +19,6 @@ interface CancellationErrorPageProps {
 }
 
 export function CancellationErrorPage({
-  cancellationInfo,
   backToLabel,
   backToUrl,
   containerClassName = "w-full h-full relative",
@@ -55,8 +54,7 @@ export function CancellationErrorPage({
             <CardContent className="pt-0">
               <p className="text-sm text-muted-foreground">
                 A user requested to cancel this execution. The test was stopped
-                immediately and no results were generated. You can re-run the
-                test when ready.
+                immediately and no results were generated for this run.
               </p>
             </CardContent>
           </Card>

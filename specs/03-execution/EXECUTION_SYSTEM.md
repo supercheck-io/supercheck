@@ -378,6 +378,22 @@ Both Jobs and Playground pages show a confirmation dialog before cancelling:
 - **Description**: Warns that the action cannot be undone
 - **Actions**: "Continue Running" (cancel) or "Cancel Execution" (confirm)
 
+#### Playground vs Job Cancellation
+
+The system distinguishes between playground runs and scheduled job runs:
+
+| Aspect | Playground Runs | Job Runs |
+|--------|-----------------|----------|
+| **Job ID** | `null` (no associated job) | UUID of parent job |
+| **SSE Events** | Filtered out from `/api/job-status/events` | Broadcast to all subscribers |
+| **Cancellation Toast** | Simple "Run cancelled" message | "Job execution cancelled" with report link |
+| **Report Detection** | Immediate cancellation detection via GET pre-check | Standard SSE notification flow |
+
+**Implementation Details:**
+- The `/api/job-status/events` SSE endpoint filters out runs without a `jobId` to prevent duplicate notifications for playground executions
+- Playground runs have their own status handling via `/api/test-status/events/{testId}` (Playwright) or streaming events (K6)
+- The `ReportViewer` component uses a GET request (instead of HEAD) to detect cancellation errors immediately by reading the JSON response body
+
 #### Why Redis-Based Signaling?
 
 - ✅ **Distributed**: Works across multiple worker instances

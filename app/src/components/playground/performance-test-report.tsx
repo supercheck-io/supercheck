@@ -12,8 +12,16 @@ import {
   type K6RunStatus,
 } from "@/lib/k6-runs";
 import { MonacoConsoleViewer } from "@/components/k6/monaco-console-viewer";
-import { Loader2, Terminal, Download, ChartSpline, WifiOff, RefreshCw, AlertTriangle } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Loader2,
+  Terminal,
+  Download,
+  ChartSpline,
+  WifiOff,
+  RefreshCw,
+  AlertTriangle,
+} from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const HEARTBEAT_STALE_THRESHOLD_MS = 45_000;
 const HEARTBEAT_CHECK_INTERVAL_MS = 15_000;
@@ -240,7 +248,6 @@ export function PerformanceTestReport({
             location: details.location ?? null,
             duration: computeDuration(details),
           });
-
         } else {
           console.warn("Could not fetch k6 run details after retries");
           onStatusChangeRef.current?.(displayStatus);
@@ -573,9 +580,12 @@ export function PerformanceTestReport({
               </div>
             )}
             {status !== "running" && consoleFetchState === "loading" ? (
-              <div className="absolute top-20 left-4 right-4 z-10">
-                <Alert className="border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950/50 dark:text-blue-200">
-                  <RefreshCw className="h-4 w-4 animate-spin" />
+              <div className="absolute top-20 left-30 right-30 z-10">
+                <Alert className="border-muted bg-muted/95 text-muted-foreground shadow-sm">
+                  <RefreshCw className="h-4 w-4 animate-spin text-blue-500 dark:text-blue-400" />
+                  <AlertTitle className="text-sm font-medium">
+                    Loading logs
+                  </AlertTitle>
                   <AlertDescription>
                     Loading full log from artifact storage…
                   </AlertDescription>
@@ -583,11 +593,14 @@ export function PerformanceTestReport({
               </div>
             ) : null}
             {status !== "running" && consoleFetchState === "error" ? (
-              <div className="absolute top-20 left-4 right-4 z-10">
-                <Alert className="border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-200">
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>
-                    Unable to load archived logs. Showing partial output instead.
+              <div className="absolute top-20 left-30 right-30 z-10">
+                <Alert className="border-muted bg-muted/95 text-muted-foreground shadow-sm">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 dark:text-amber-400" />
+                  <AlertTitle className="text-sm font-medium">
+                    Logs not fully available
+                  </AlertTitle>
+                  <AlertDescription className="text-sm">
+                    Execution may have been cancelled by user or the system encountered an issue while saving the log.
                   </AlertDescription>
                 </Alert>
               </div>

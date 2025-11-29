@@ -58,6 +58,7 @@ export function ReportViewer({
   );
   const [isValidationError, setIsValidationError] = useState(false);
   const [showFullscreen, setShowFullscreen] = useState(false);
+  const [preCheckComplete, setPreCheckComplete] = useState(false);
   const [timeoutInfo, setTimeoutInfo] = useState<TimeoutErrorInfo | null>(null);
   const [cancellationInfo, setCancellationInfo] = useState<CancellationErrorInfo | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -77,18 +78,55 @@ export function ReportViewer({
       setReportError(null);
       setTimeoutInfo(null);
       setCancellationInfo(null);
+      setPreCheckComplete(false);
 
-      // Check if the URL exists, but don't call the callback here
-      // The onReportError callback will be called by the safety timeout or iframe error handlers
-      fetch(finalUrl, { method: "HEAD" })
-        .then((response) => {
+      // Pre-check the URL to detect cancellation or timeout errors early
+      // Use GET instead of HEAD to get the response body for error details
+      fetch(finalUrl, { method: "GET" })
+        .then(async (response) => {
           if (!response.ok) {
+            // Try to parse the response body for error details
+            try {
+              const contentType = response.headers.get("content-type");
+              if (contentType?.includes("application/json")) {
+                const errorData = await response.json();
+                
+                // Check if this is a cancellation error
+                if (errorData.cancellationInfo?.isCancelled) {
+                  setCancellationInfo(errorData.cancellationInfo);
+                  setIframeError(true);
+                  setIsReportLoading(false);
+                  return;
+                }
+                
+                // Check if this is a timeout error
+                if (errorData.timeoutInfo?.isTimeout) {
+                  setTimeoutInfo(errorData.timeoutInfo);
+                  setIframeError(true);
+                  setIsReportLoading(false);
+                  return;
+                }
+                
+                // Generic error with message
+                if (errorData.error || errorData.message) {
+                  setReportError(errorData.message || errorData.error);
+                  setIframeError(true);
+                  setIsReportLoading(false);
+                  return;
+                }
+              }
+            } catch {
+              // Failed to parse JSON, continue with generic error
+            }
+            
             if (response.status === 404) {
               setIsReportLoading(false);
               setIframeError(true);
               setReportError("The test report could not be found.");
-              // Don't call onReportError here to prevent redirect loops
             }
+          } else {
+            // Pre-check passed, allow iframe to load
+            setPreCheckComplete(true);
           }
         })
         .catch((error) => {
@@ -98,7 +136,6 @@ export function ReportViewer({
           setReportError(
             "Failed to load test report. The report server might be unreachable."
           );
-          // Don't call onReportError here to prevent redirect loops
         });
     } else {
       setCurrentReportUrl(null);
@@ -439,7 +476,7 @@ export function ReportViewer({
           <iframe
             ref={iframeRef}
             key={currentReportUrl}
-            src={currentReportUrl}
+            src={preCheckComplete ? currentReportUrl : undefined}
             className={`${iframeClassName} ${
               isReportLoading ? "opacity-0 pointer-events-none" : "opacity-100"
             } ${isValidationError ? "h-4/5 flex-grow" : "h-full"} ${!isK6Report ? "bg-card" : ""}`}
@@ -617,7 +654,7 @@ export function ReportViewer({
             <div className="flex-grow overflow-hidden">
               <iframe
                 ref={fullscreenIframeRef}
-                src={currentReportUrl}
+                src={preCheckComplete ? currentReportUrl : undefined}
                 className="w-full h-full border-0"
                 sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"
                 title="Fullscreen Report"
