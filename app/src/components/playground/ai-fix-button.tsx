@@ -48,9 +48,6 @@ export function AIFixButton({
     confidence: number;
   } => {
     try {
-      console.log("Parsing AI Fix response, text length:", fullText.length);
-      console.log("First 200 chars:", fullText.substring(0, 200));
-
       // Try to extract FIXED_SCRIPT, EXPLANATION, and CONFIDENCE sections
       const scriptMatch = fullText.match(
         /FIXED_SCRIPT:\s*```(?:javascript|typescript|js|ts)?\s*([\s\S]*?)```/i
@@ -62,12 +59,10 @@ export function AIFixButton({
 
       // If standard format fails, try to find any code block
       if (!scriptMatch) {
-        console.log("Standard format not found, looking for code blocks...");
         const codeBlocks = fullText.match(
           /```(?:javascript|typescript|js|ts)?\s*([\s\S]*?)```/gi
         );
         if (codeBlocks && codeBlocks.length > 0) {
-          console.log("Found", codeBlocks.length, "code blocks");
           // Find the largest code block (most likely the full script)
           let largestBlock = "";
           for (const block of codeBlocks) {
@@ -79,8 +74,6 @@ export function AIFixButton({
               largestBlock = content;
             }
           }
-
-          console.log("Largest code block length:", largestBlock.length);
 
           const explanation = explanationMatch
             ? explanationMatch[1].trim()
@@ -94,11 +87,7 @@ export function AIFixButton({
             explanation,
             confidence,
           };
-        } else {
-          console.log("No code blocks found in response");
         }
-      } else {
-        console.log("Found script in standard format, length:", scriptMatch[1].trim().length);
       }
 
       const script = scriptMatch ? scriptMatch[1].trim() : "";
@@ -114,9 +103,7 @@ export function AIFixButton({
         explanation,
         confidence,
       };
-    } catch (error) {
-      console.error("Error parsing AI Fix response:", error);
-      console.error("Full text:", fullText);
+    } catch {
       // Return empty to trigger error handling
       return {
         script: "",
@@ -245,19 +232,16 @@ export function AIFixButton({
                   onStreamingUpdate?.(fullText);
                 } else if (data.type === "done") {
                   // Streaming complete
-                  console.log("AI Fix completed:", data);
-                  console.log("Total text received:", fullText.length, "characters");
                   endStreamingSafely();
                 } else if (data.type === "error") {
-                  console.error("Stream error:", data.error);
                   throw new Error(data.error || "AI fix generation error");
                 }
               } catch (parseError) {
-                // Only log if it's not a JSON parse error (empty lines are expected in SSE)
+                // Only skip if it's a JSON parse error (empty lines are expected in SSE)
                 if (parseError instanceof SyntaxError && line.trim() === "") {
                   continue;
                 }
-                console.error("Error parsing SSE data:", parseError, "Line:", line);
+                // Silently ignore parsing errors
               }
             }
           }
@@ -277,13 +261,10 @@ export function AIFixButton({
       const { script, explanation, confidence } = parseAIResponse(fullText);
 
       if (!script || script.length < 10) {
-        console.error("Parsing failed. Full text received:", fullText);
         throw new Error(
           `AI generated invalid or empty fix. Received ${fullText.length} characters but could not extract valid code. The issue may require manual investigation.`
         );
       }
-
-      console.log("Successfully parsed fix script, length:", script.length);
 
       toast.success("AI fix generated successfully", {
         description: `Confidence: ${Math.round(confidence * 100)}%`,
@@ -292,7 +273,6 @@ export function AIFixButton({
       onAIFixSuccess(script, explanation, confidence);
     } catch (error) {
       endStreamingSafely();
-      console.error("AI fix request failed:", error);
 
       // Provide specific error messages
       let errorDescription = "Please try again in a few moments or investigate manually.";
@@ -309,8 +289,6 @@ export function AIFixButton({
           errorDescription = error.message;
         }
       }
-
-      console.error("AI Fix final error:", errorDescription);
 
       toast.error("AI fix service unavailable", {
         description: errorDescription,

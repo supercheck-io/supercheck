@@ -7,6 +7,7 @@ import { createLogger } from "@/lib/logger/index";
 import { calculateJobStatus, canCancelRun, type RunStatus } from "@/lib/job-status-utils";
 import { requireAuth } from "@/lib/rbac/middleware";
 import { setCancellationSignal } from "@/lib/cancellation-service";
+import { logAuditEvent } from "@/lib/audit-logger";
 
 const logger = createLogger({ module: "cancel-run-api" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -319,6 +320,25 @@ export async function POST(
           "Updated job status after run cancellation"
         );
       }
+    });
+
+    // Log audit event for cancellation
+    await logAuditEvent({
+      userId,
+      organizationId: organizationIdForRbac,
+      action: 'run_cancelled',
+      resource: 'run', // Standardized resource name
+      resourceId: runId,
+      metadata: {
+        subtype: isPlaygroundRun ? 'playground' : 'job',
+        jobId: run.runJobId || null,
+        jobName: run.jobName || null,
+        projectId: run.runProjectId || run.jobProjectId,
+        jobType,
+        queueRemoved: !!queueToSearch,
+        isPlaygroundRun,
+      },
+      success: true,
     });
 
     return NextResponse.json({

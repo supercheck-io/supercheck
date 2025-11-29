@@ -8,6 +8,7 @@ import {
   reports,
   runs,
   tests,
+  projects,
 } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { fetchFromS3 } from "@/lib/s3-proxy";
@@ -187,6 +188,89 @@ export async function GET(request: Request) {
       .orderBy(desc(reports.updatedAt));
 
     if (!reportRows.length) {
+      // If no report found, check if it's a run that was cancelled or failed
+      // This handles cases where execution stopped before report generation
+      const runRecord = await db
+        .select({
+          status: runs.status,
+          errorDetails: runs.errorDetails,
+          projectId: runs.projectId,
+          jobId: runs.jobId,
+          metadata: runs.metadata,
+        })
+        .from(runs)
+        .where(eq(runs.id, entityId))
+        .limit(1);
+
+      if (runRecord.length > 0) {
+        const run = runRecord[0];
+        
+        // Check permissions for this run
+        try {
+          // Determine organizationId (need to fetch from project or job)
+          let organizationId: string | null = null;
+          
+          if (run.projectId) {
+             const project = await db.query.projects.findFirst({
+               where: eq(projects.id, run.projectId),
+               columns: { organizationId: true }
+             });
+             if (project) organizationId = project.organizationId;
+          }
+          
+          if (organizationId && run.projectId) {
+            const authorized = await hasPermission("run", "view", {
+              organizationId,
+              projectId: run.projectId,
+            });
+            
+            if (!authorized) {
+               return NextResponse.json(
+                { error: "Insufficient permissions" },
+                { status: 403 }
+              );
+            }
+          }
+        } catch (e) {
+          // Ignore permission check errors here, fall through to 404 if critical
+          console.error("Error checking permissions for missing report run:", e);
+        }
+
+        // Check for cancellation
+        const isCancellation = 
+          (run.status as string) === "cancelled" || 
+          (run.errorDetails?.toLowerCase().includes("cancellation") ?? false) ||
+          (run.errorDetails?.toLowerCase().includes("cancelled") ?? false);
+
+        if (isCancellation) {
+          return NextResponse.json(
+            {
+              error: "Execution cancelled",
+              message: "This execution was cancelled by a user",
+              details: run.errorDetails || "Cancellation requested by user",
+              cancellationInfo: {
+                isCancelled: true,
+              },
+              entityType: run.jobId ? "job" : "test",
+              status: "cancelled",
+            },
+            { status: 499 }
+          );
+        }
+        
+        // Check for running state
+        const status = run.status as string;
+        if (status === "running" || status === "queued" || status === "pending") {
+           return NextResponse.json(
+            {
+              error: "Report not ready",
+              details: "The test is still running. Please wait for it to complete.",
+            },
+            { status: 202 }
+          );
+        }
+      }
+
       return notFound();
     }
 

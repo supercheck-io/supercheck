@@ -271,9 +271,13 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
  * Job Runs Cleanup Strategy
  *
  * Manages retention of runs table with:
- * - Time-based retention
+ * - Time-based retention for both job runs and playground runs
  * - Associated S3 artifacts cleanup
  * - Report table cleanup
+ * 
+ * Note: This strategy handles ALL runs in the database:
+ * - Job runs (where jobId is not null)
+ * - Playground runs (where jobId is null and metadata.source = 'playground')
  */
 export class JobRunsCleanupStrategy implements ICleanupStrategy {
   entityType: CleanupEntityType = "job_runs";
@@ -297,17 +301,60 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
       Date.now() - this.config.retentionDays! * 24 * 60 * 60 * 1000
     );
 
-    const [total, old] = await Promise.all([
+    // Get stats for all runs (job + playground)
+    const [total, old, jobRuns, playgroundRuns, oldJobRuns, oldPlaygroundRuns] = await Promise.all([
+      // Total runs count
       db.select({ count: sql<number>`count(*)` }).from(runs),
+      // Old runs count (all types)
       db
         .select({ count: sql<number>`count(*)` })
         .from(runs)
         .where(lt(runs.createdAt, cutoffDate)),
+      // Current job runs (jobId not null)
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(runs)
+        .where(sql`${runs.jobId} IS NOT NULL`),
+      // Current playground runs (jobId is null)
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(runs)
+        .where(sql`${runs.jobId} IS NULL`),
+      // Old job runs
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(runs)
+        .where(and(
+          lt(runs.createdAt, cutoffDate),
+          sql`${runs.jobId} IS NOT NULL`
+        )),
+      // Old playground runs
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(runs)
+        .where(and(
+          lt(runs.createdAt, cutoffDate),
+          sql`${runs.jobId} IS NULL`
+        )),
     ]);
 
+    const totalCount = Number(total[0]?.count || 0);
+    const oldCount = Number(old[0]?.count || 0);
+    const jobRunsCount = Number(jobRuns[0]?.count || 0);
+    const playgroundRunsCount = Number(playgroundRuns[0]?.count || 0);
+    const oldJobRunsCount = Number(oldJobRuns[0]?.count || 0);
+    const oldPlaygroundRunsCount = Number(oldPlaygroundRuns[0]?.count || 0);
+
+    // Log breakdown for visibility
+    console.log(
+      `[DATA_LIFECYCLE] [${this.entityType}] Stats: ` +
+      `Total=${totalCount} (Jobs=${jobRunsCount}, Playground=${playgroundRunsCount}), ` +
+      `Old=${oldCount} (Jobs=${oldJobRunsCount}, Playground=${oldPlaygroundRunsCount})`
+    );
+
     return {
-      totalRecords: Number(total[0]?.count || 0),
-      oldRecords: Number(old[0]?.count || 0),
+      totalRecords: totalCount,
+      oldRecords: oldCount,
     };
   }
 
@@ -329,10 +376,11 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
     };
 
     try {
-      // Get old runs
+      // Get old runs (both job runs and playground runs)
       const oldRuns = await db
         .select({
           id: runs.id,
+          jobId: runs.jobId,
           artifactPaths: runs.artifactPaths,
         })
         .from(runs)
@@ -343,6 +391,15 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
         result.duration = Date.now() - startTime;
         return result;
       }
+
+      // Separate job runs from playground runs for reporting
+      const jobRuns = oldRuns.filter((r) => r.jobId !== null);
+      const playgroundRuns = oldRuns.filter((r) => r.jobId === null);
+
+      console.log(
+        `[DATA_LIFECYCLE] [${this.entityType}] Processing ${oldRuns.length} old runs: ` +
+        `${jobRuns.length} job runs, ${playgroundRuns.length} playground runs`
+      );
 
       if (!dryRun) {
         // Clean up S3 artifacts for each run
@@ -390,12 +447,16 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
             );
         }
 
-        // Delete runs
+        // Delete runs (both job and playground)
         await db.delete(runs).where(sql`${runs.id} = ANY(${runIds})`);
 
         result.recordsDeleted = oldRuns.length;
+        result.details.jobRunsDeleted = jobRuns.length;
+        result.details.playgroundRunsDeleted = playgroundRuns.length;
       } else {
         result.recordsDeleted = oldRuns.length;
+        result.details.jobRunsDeleted = jobRuns.length;
+        result.details.playgroundRunsDeleted = playgroundRuns.length;
       }
 
       result.duration = Date.now() - startTime;
@@ -403,7 +464,8 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
         console.log(
           `[DATA_LIFECYCLE] ${this.entityType}: ${
             dryRun ? "Would delete" : "Deleted"
-          } ${result.recordsDeleted} runs${
+          } ${result.recordsDeleted} runs ` +
+          `(${jobRuns.length} jobs, ${playgroundRuns.length} playground)${
             result.s3ObjectsDeleted
               ? ` and ${result.s3ObjectsDeleted} S3 objects`
               : ""

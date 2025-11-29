@@ -40,34 +40,53 @@ export function AICreateViewer({
   const isDarkTheme = resolvedTheme !== "light";
   const editorTheme = isDarkTheme ? "vs-dark" : "warm-light";
 
-  // Drive Monaco directly during streaming to avoid React re-render flicker
+  // Update editor during streaming - avoid setState to prevent re-renders
   useEffect(() => {
-    const model = editorRef.current?.getModel();
-    if (isStreaming && streamingContent && model) {
-      model.setValue(streamingContent);
-      return;
+    if (!isStreaming || !streamingContent) return;
+
+    try {
+      const model = editorRef.current?.getModel();
+      if (model && !model.isDisposed?.()) {
+        model.setValue(streamingContent);
+      }
+    } catch {
+      // Silently ignore model errors during streaming
     }
 
-    if (!isStreaming && generatedScript && model) {
-      model.setValue(generatedScript);
-      return;
-    }
+    // Return cleanup function to suppress promise rejection warnings
+    return () => {
+      // Cleanup
+    };
+  }, [streamingContent, isStreaming]);
 
-    if (!isStreaming && generatedScript) {
-      setCurrentGeneratedScript(generatedScript);
+  // Update editor when streaming ends
+  useEffect(() => {
+    if (isStreaming) return;
+
+    if (generatedScript) {
+      try {
+        const model = editorRef.current?.getModel();
+        if (model && !model.isDisposed?.()) {
+          model.setValue(generatedScript);
+        } else {
+          setCurrentGeneratedScript(generatedScript);
+        }
+      } catch {
+        setCurrentGeneratedScript(generatedScript);
+      }
     }
-  }, [generatedScript, isStreaming, streamingContent]);
+  }, [generatedScript, isStreaming]);
 
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
-      const instance = editorRef.current;
-      if (instance) {
-        const model = instance.getModel();
-        if (model) {
-          model.dispose();
+      // Let Monaco handle its own cleanup
+      try {
+        if (editorRef.current && typeof editorRef.current.dispose === "function") {
+          editorRef.current.dispose();
         }
-        instance.dispose();
+      } catch {
+        // Silently ignore cleanup errors
       }
     };
   }, []);
