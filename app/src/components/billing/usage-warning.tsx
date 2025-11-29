@@ -24,7 +24,7 @@ interface UsageWarningProps {
 
 const RESOURCE_LABELS: Record<ResourceType, string> = {
   playwright: "Playwright minutes",
-  k6: "K6 VU hours",
+  k6: "K6 VU minutes",
   monitors: "monitors",
   statusPages: "status pages",
   projects: "projects",
@@ -33,7 +33,7 @@ const RESOURCE_LABELS: Record<ResourceType, string> = {
 
 const RESOURCE_UNITS: Record<ResourceType, string> = {
   playwright: "minutes",
-  k6: "VU hours",
+  k6: "VU minutes",
   monitors: "",
   statusPages: "",
   projects: "",

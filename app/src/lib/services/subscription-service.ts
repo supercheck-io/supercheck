@@ -21,7 +21,7 @@ const FALLBACK_UNLIMITED_LIMITS = {
   maxMonitors: 999999,
   minCheckIntervalMinutes: 1,
   playwrightMinutesIncluded: 999999,
-  k6VuHoursIncluded: 999999,
+  k6VuMinutesIncluded: 999999,
   runningCapacity: 999,
   queuedCapacity: 9999,
   maxTeamMembers: 999,
@@ -40,7 +40,7 @@ const BLOCKED_PLAN_LIMITS = {
   maxMonitors: 0,
   minCheckIntervalMinutes: 1,
   playwrightMinutesIncluded: 0,
-  k6VuHoursIncluded: 0,
+  k6VuMinutesIncluded: 0,
   runningCapacity: 0,
   queuedCapacity: 0,
   maxTeamMembers: 0,
@@ -377,6 +377,9 @@ export class SubscriptionService {
       subscriptionStatus?: "active" | "canceled" | "past_due" | "none";
       subscriptionId?: string;
       polarCustomerId?: string;
+      // Polar subscription billing period dates
+      subscriptionStartedAt?: Date | null;
+      subscriptionEndsAt?: Date | null;
     }
   ) {
     // SECURITY: Block unlimited plans in cloud mode
@@ -418,10 +421,10 @@ export class SubscriptionService {
   }
 
   /**
-   * Track K6 VU hours for an organization
+   * Track K6 VU minutes for an organization
    * Increments the usage counter for the current billing period
    */
-  async trackK6Usage(organizationId: string, vuHours: number) {
+  async trackK6Usage(organizationId: string, vuMinutes: number) {
     if (!isPolarEnabled()) {
       // Don't track for self-hosted
       return;
@@ -430,7 +433,7 @@ export class SubscriptionService {
     await db
       .update(organization)
       .set({
-        k6VuHoursUsed: sql`COALESCE(${organization.k6VuHoursUsed}, 0) + ${vuHours}`,
+        k6VuMinutesUsed: sql`COALESCE(${organization.k6VuMinutesUsed}, 0) + ${vuMinutes}`,
       })
       .where(eq(organization.id, organizationId));
   }
@@ -459,12 +462,12 @@ export class SubscriptionService {
           (org.playwrightMinutesUsed || 0) - plan.playwrightMinutesIncluded
         ),
       },
-      k6VuHours: {
-        used: org.k6VuHoursUsed || 0,
-        included: plan.k6VuHoursIncluded,
+      k6VuMinutes: {
+        used: org.k6VuMinutesUsed || 0,
+        included: plan.k6VuMinutesIncluded,
         overage: Math.max(
           0,
-          (org.k6VuHoursUsed || 0) - plan.k6VuHoursIncluded
+          (org.k6VuMinutesUsed || 0) - plan.k6VuMinutesIncluded
         ),
       },
       periodStart: org.usagePeriodStart,
@@ -496,12 +499,12 @@ export class SubscriptionService {
           (org.playwrightMinutesUsed || 0) - plan.playwrightMinutesIncluded
         ),
       },
-      k6VuHours: {
-        used: org.k6VuHoursUsed || 0,
-        included: plan.k6VuHoursIncluded,
+      k6VuMinutes: {
+        used: org.k6VuMinutesUsed || 0,
+        included: plan.k6VuMinutesIncluded,
         overage: Math.max(
           0,
-          (org.k6VuHoursUsed || 0) - plan.k6VuHoursIncluded
+          (org.k6VuMinutesUsed || 0) - plan.k6VuMinutesIncluded
         ),
       },
       periodStart: org.usagePeriodStart,
@@ -512,19 +515,75 @@ export class SubscriptionService {
   /**
    * Reset usage counters for a new billing period
    * Called when subscription renews or manually for testing
+   * @deprecated Use resetUsageCountersWithDates instead for proper Polar billing
    */
   async resetUsageCounters(organizationId: string) {
+    // Fetch organization to get subscription dates
+    const org = await db.query.organization.findFirst({
+      where: eq(organization.id, organizationId),
+    });
+
+    if (org?.subscriptionStartedAt && org?.subscriptionEndsAt) {
+      // Use existing Polar subscription dates
+      await this.resetUsageCountersWithDates(
+        organizationId,
+        org.subscriptionStartedAt,
+        org.subscriptionEndsAt
+      );
+    } else {
+      // Fallback: calculate 30-day period from now (for testing or self-hosted)
+      const now = new Date();
+      const thirtyDaysLater = new Date(now);
+      thirtyDaysLater.setDate(thirtyDaysLater.getDate() + 30);
+
+      await db
+        .update(organization)
+        .set({
+          playwrightMinutesUsed: 0,
+          k6VuMinutesUsed: 0,
+          usagePeriodStart: now,
+          usagePeriodEnd: thirtyDaysLater,
+        })
+        .where(eq(organization.id, organizationId));
+    }
+  }
+
+  /**
+   * Reset usage counters using Polar's subscription dates
+   * This ensures billing period matches the actual subscription cycle
+   * @param organizationId - Organization to reset
+   * @param startsAt - Subscription period start from Polar (or null to use now)
+   * @param endsAt - Subscription period end from Polar (or null to calculate 30 days)
+   */
+  async resetUsageCountersWithDates(
+    organizationId: string,
+    startsAt: Date | null,
+    endsAt: Date | null
+  ) {
     const now = new Date();
-    // Set billing period to next month
-    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    
+    // Use Polar dates if available, otherwise calculate defaults
+    const periodStart = startsAt || now;
+    
+    // If no end date from Polar, calculate 30 days from start (monthly billing)
+    let periodEnd: Date;
+    if (endsAt) {
+      periodEnd = endsAt;
+    } else {
+      periodEnd = new Date(periodStart);
+      periodEnd.setDate(periodEnd.getDate() + 30);
+    }
 
     await db
       .update(organization)
       .set({
         playwrightMinutesUsed: 0,
-        k6VuHoursUsed: 0,
-        usagePeriodStart: now,
-        usagePeriodEnd: nextMonth,
+        k6VuMinutesUsed: 0,
+        usagePeriodStart: periodStart,
+        usagePeriodEnd: periodEnd,
+        // Also update the subscription dates for reference
+        subscriptionStartedAt: startsAt,
+        subscriptionEndsAt: endsAt,
       })
       .where(eq(organization.id, organizationId));
   }

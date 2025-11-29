@@ -7,6 +7,7 @@ import {
   PlayCircle,
   XCircle,
   AlertCircle,
+  Ban,
 } from "lucide-react"
 
 export const jobStatuses = [
@@ -38,6 +39,12 @@ export const jobStatuses = [
     value: "error",
     label: "Error",
     icon: AlertCircle,
+    color: "text-orange-500",
+  },
+  {
+    value: "cancelled",
+    label: "Cancelled",
+    icon: Ban,
     color: "text-orange-500",
   },
 ]

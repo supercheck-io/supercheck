@@ -28,7 +28,7 @@ export interface UsageIngestionParams {
   eventType: UsageEventType;
   eventName: string;
   units: number;
-  unitType: "minutes" | "vu_hours";
+  unitType: "minutes" | "vu_minutes";
   metadata?: Record<string, unknown>;
 }
 
@@ -40,7 +40,7 @@ export interface UsageMetrics {
     overageCostCents: number;
     percentage: number;
   };
-  k6VuHours: {
+  k6VuMinutes: {
     used: number;
     included: number;
     overage: number;
@@ -149,11 +149,11 @@ class PolarUsageService {
             playwrightMinutesUsed: sql`COALESCE(${organization.playwrightMinutesUsed}, 0) + ${Math.ceil(units)}`,
           })
           .where(eq(organization.id, organizationId));
-      } else if (unitType === "vu_hours") {
+      } else if (unitType === "vu_minutes") {
         await db
           .update(organization)
           .set({
-            k6VuHoursUsed: sql`COALESCE(${organization.k6VuHoursUsed}, 0) + ${units}`,
+            k6VuMinutesUsed: sql`COALESCE(${organization.k6VuMinutesUsed}, 0) + ${units}`,
           })
           .where(eq(organization.id, organizationId));
       }
@@ -176,7 +176,8 @@ class PolarUsageService {
   }
 
   /**
-   * Sync a usage event to Polar
+   * Sync a usage event to Polar using their Events Ingestion API
+   * Uses Polar SDK's usage metering endpoint
    */
   private async syncEventToPolar(eventId: string): Promise<void> {
     try {
@@ -186,22 +187,93 @@ class PolarUsageService {
         return;
       }
 
+      // Fetch the usage event
+      const usageEvent = await db.query.usageEvents.findFirst({
+        where: eq(usageEvents.id, eventId),
+      });
+
+      if (!usageEvent) {
+        console.warn(`[PolarUsage] Event ${eventId} not found`);
+        return;
+      }
+
+      // Get organization with Polar customer ID
+      const org = await db.query.organization.findFirst({
+        where: eq(organization.id, usageEvent.organizationId),
+      });
+
+      if (!org?.polarCustomerId) {
+        console.warn(`[PolarUsage] No Polar customer ID for org ${usageEvent.organizationId}`);
+        return;
+      }
+
+      // Get the Polar config
+      const config = getPolarConfig();
+      if (!config?.accessToken) {
+        console.warn("[PolarUsage] No Polar access token configured");
+        return;
+      }
+
+      // Determine the meter name based on event type
+      // These meter names should match what's configured in Polar dashboard
+      const meterName = usageEvent.eventType === 'k6_execution' 
+        ? 'k6_vu_minutes' 
+        : 'playwright_minutes';
+
       // Use Polar's event ingestion API
-      // Note: This uses the Polar SDK directly for usage events
-      // The Better Auth usage plugin handles this via authClient.usage.ingestion()
-      // but we need server-side ingestion from the worker
+      // POST to /v1/events/ingest (correct endpoint)
+      const polarUrl = config.server === 'sandbox' 
+        ? 'https://sandbox-api.polar.sh' 
+        : 'https://api.polar.sh';
+
+      const response = await fetch(
+        `${polarUrl}/v1/events/ingest`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${config.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            events: [{
+              // Customer ID for this event
+              customer_id: org.polarCustomerId,
+              // Event name matches the meter filter in Polar
+              name: meterName,
+              // Timestamp when the usage occurred
+              timestamp: usageEvent.createdAt?.toISOString() || new Date().toISOString(),
+              // Metadata including the usage value
+              metadata: {
+                event_id: eventId,
+                event_type: usageEvent.eventType,
+                unit_type: usageEvent.unitType,
+                value: Number(usageEvent.units),
+                ...(usageEvent.metadata ? JSON.parse(usageEvent.metadata) : {}),
+              },
+            }],
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Polar API error (${response.status}): ${errorText}`);
+      }
+
+      const result = await response.json();
       
-      // For now, mark as synced - actual Polar integration depends on their API
-      // The Better Auth plugin handles client-side ingestion
+      // Mark as synced
       await db
         .update(usageEvents)
         .set({
           syncedToPolar: true,
+          polarEventId: result.id || eventId,
           lastSyncAttempt: new Date(),
+          syncError: null,
         })
         .where(eq(usageEvents.id, eventId));
 
-      console.log(`[PolarUsage] Synced event ${eventId} to Polar`);
+      console.log(`[PolarUsage] ✅ Synced event ${eventId.substring(0, 8)}... to Polar`);
     } catch (error) {
       console.error("[PolarUsage] Failed to sync event to Polar:", error);
       
@@ -237,13 +309,13 @@ class PolarUsageService {
     const pricing = await this.getOveragePricing(org.subscriptionPlan || "plus");
 
     const playwrightUsed = org.playwrightMinutesUsed || 0;
-    const k6Used = org.k6VuHoursUsed || 0;
+    const k6Used = org.k6VuMinutesUsed || 0;
 
     const playwrightOverage = Math.max(0, playwrightUsed - plan.playwrightMinutesIncluded);
-    const k6Overage = Math.max(0, k6Used - plan.k6VuHoursIncluded);
+    const k6Overage = Math.max(0, k6Used - plan.k6VuMinutesIncluded);
 
     const playwrightOverageCost = playwrightOverage * (pricing?.playwrightMinutePriceCents || 10);
-    const k6OverageCost = Math.ceil(k6Overage * (pricing?.k6VuHourPriceCents || 50));
+    const k6OverageCost = Math.ceil(k6Overage * (pricing?.k6VuMinutePriceCents || 1));
 
     return {
       playwrightMinutes: {
@@ -253,12 +325,12 @@ class PolarUsageService {
         overageCostCents: playwrightOverageCost,
         percentage: Math.round((playwrightUsed / plan.playwrightMinutesIncluded) * 100),
       },
-      k6VuHours: {
+      k6VuMinutes: {
         used: k6Used,
-        included: plan.k6VuHoursIncluded,
+        included: plan.k6VuMinutesIncluded,
         overage: k6Overage,
         overageCostCents: k6OverageCost,
-        percentage: Math.round((k6Used / plan.k6VuHoursIncluded) * 100),
+        percentage: Math.round((k6Used / plan.k6VuMinutesIncluded) * 100),
       },
       totalOverageCostCents: playwrightOverageCost + k6OverageCost,
       periodStart: org.usagePeriodStart,
@@ -367,12 +439,83 @@ class PolarUsageService {
   }
 
   /**
-   * Helper to get next month date
+   * Helper to calculate billing period end (30 days from start)
+   * Uses 30-day intervals instead of calendar months for consistency
+   */
+  private getNextBillingPeriodEnd(from: Date): Date {
+    const next = new Date(from);
+    next.setDate(next.getDate() + 30);
+    return next;
+  }
+
+  /**
+   * @deprecated Use getNextBillingPeriodEnd instead
    */
   private getNextMonthDate(from: Date): Date {
-    const next = new Date(from);
-    next.setMonth(next.getMonth() + 1);
-    return next;
+    return this.getNextBillingPeriodEnd(from);
+  }
+
+  /**
+   * Sync all pending usage events to Polar
+   * Should be called periodically via scheduled job (e.g., every 5 minutes)
+   */
+  async syncPendingEvents(batchSize: number = 50): Promise<{ 
+    processed: number; 
+    succeeded: number; 
+    failed: number;
+    errors: string[];
+  }> {
+    if (!isPolarEnabled()) {
+      return { processed: 0, succeeded: 0, failed: 0, errors: [] };
+    }
+
+    const errors: string[] = [];
+
+    try {
+      // Find events that haven't been synced yet
+      const pendingEvents = await db.query.usageEvents.findMany({
+        where: and(
+          eq(usageEvents.syncedToPolar, false),
+          sql`${usageEvents.syncAttempts} < 5` // Don't retry more than 5 times
+        ),
+        limit: batchSize,
+        orderBy: (events, { asc }) => [asc(events.createdAt)],
+      });
+
+      let succeeded = 0;
+      let failed = 0;
+
+      for (const event of pendingEvents) {
+        try {
+          await this.syncEventToPolar(event.id);
+          succeeded++;
+        } catch (error) {
+          failed++;
+          const errorMsg = `Event ${event.id.substring(0, 8)}...: ${error instanceof Error ? error.message : 'Unknown error'}`;
+          errors.push(errorMsg);
+          console.error(`[PolarUsage] Sync failed for event:`, errorMsg);
+        }
+      }
+
+      if (pendingEvents.length > 0) {
+        console.log(`[PolarUsage] Batch sync complete: ${succeeded}/${pendingEvents.length} succeeded, ${failed} failed`);
+      }
+
+      return { 
+        processed: pendingEvents.length, 
+        succeeded, 
+        failed,
+        errors 
+      };
+    } catch (error) {
+      console.error("[PolarUsage] Batch sync failed:", error);
+      return { 
+        processed: 0, 
+        succeeded: 0, 
+        failed: 0, 
+        errors: [error instanceof Error ? error.message : 'Unknown error'] 
+      };
+    }
   }
 
   /**

@@ -68,11 +68,11 @@ export async function GET() {
           overage: usage.playwrightMinutes.overage,
           percentage: Math.round((usage.playwrightMinutes.used / usage.playwrightMinutes.included) * 100),
         },
-        k6VuHours: {
-          used: usage.k6VuHours.used,
-          included: usage.k6VuHours.included,
-          overage: usage.k6VuHours.overage,
-          percentage: Math.round((usage.k6VuHours.used / usage.k6VuHours.included) * 100),
+        k6VuMinutes: {
+          used: usage.k6VuMinutes.used,
+          included: usage.k6VuMinutes.included,
+          overage: usage.k6VuMinutes.overage,
+          percentage: Math.round((usage.k6VuMinutes.used / usage.k6VuMinutes.included) * 100),
         },
       },
       limits: {

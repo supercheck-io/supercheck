@@ -1,15 +1,18 @@
-# Polar Billing Integration - Technical Specification
+# Polar Billing Integration - Complete Guide
 
 ## Table of Contents
 1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Implementation](#implementation)
-4. [API Reference](#api-reference)
-5. [UI Components](#ui-components)
-6. [Database Schema](#database-schema)
-7. [Testing](#testing)
-8. [Deployment](#deployment)
-9. [Troubleshooting](#troubleshooting)
+2. [Quick Start](#quick-start)
+3. [Setup Guide](#setup-guide)
+4. [Pricing & Plans](#pricing--plans)
+5. [Architecture](#architecture)
+6. [Implementation](#implementation)
+7. [API Reference](#api-reference)
+8. [UI Components](#ui-components)
+9. [Database Schema](#database-schema)
+10. [Testing](#testing)
+11. [Deployment](#deployment)
+12. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -19,7 +22,7 @@
 Integrate Polar.sh payment platform to provide subscription-based billing for cloud-hosted Supercheck installations while maintaining a free, unlimited self-hosted option.
 
 ### Goals
-- ✅ Implement usage-based billing for Playwright minutes and K6 VU hours
+- ✅ Implement usage-based billing for Playwright minutes and K6 VU minutes
 - ✅ Enforce plan limits for monitors, status pages, projects, and team members
 - ✅ Provide seamless upgrade/downgrade flows
 - ✅ Support self-hosted installations without billing dependencies
@@ -32,6 +35,516 @@ Integrate Polar.sh payment platform to provide subscription-based billing for cl
 - Multi-currency support (Polar handles this)
 - Annual billing (monthly only for now)
 - Free tier for cloud users (self-hosted is free and unlimited)
+
+---
+
+## Quick Start
+
+**For immediate setup, jump to the [Setup Guide](#setup-guide) section.**
+
+**Key requirements:**
+- Polar account with Plus/Pro products created
+- Environment variables configured
+- Database migration run
+- Webhook endpoint configured
+
+**Estimated setup time:** 30 minutes
+
+---
+
+## Setup Guide
+
+### Prerequisites
+
+- Polar account (production or sandbox)
+- Organization created in Polar dashboard
+- Plus and Pro products created in Polar
+
+### Environment Variables
+
+Add the following environment variables to your `.env` file:
+
+```bash
+# Self-Hosted Mode (set to 'true' for unlimited features without billing)
+SELF_HOSTED=false
+
+# Polar Configuration
+POLAR_ACCESS_TOKEN=your_polar_access_token_here
+POLAR_SERVER=production  # or 'sandbox' for testing
+POLAR_WEBHOOK_SECRET=your_webhook_secret_here
+
+# Product IDs from Polar Dashboard
+POLAR_PLUS_PRODUCT_ID=your_plus_product_id
+POLAR_PRO_PRODUCT_ID=your_pro_product_id
+```
+
+### Database Migration
+
+Run the database migration to add subscription fields:
+
+```bash
+cd app
+npm run db:migrate
+```
+
+This will:
+- Add subscription fields to `organization` table
+- Create `plan_limits` table with Plus/Pro/Unlimited configurations
+- Seed plan limits with default values
+
+### Polar Dashboard Setup
+
+#### 1. Create Organization Access Token
+
+1. Go to Polar Dashboard → Settings → Access Tokens
+2. Click "Create Organization Access Token"
+3. Give it a name (e.g., "Supercheck Production")
+4. Copy the token and add to `POLAR_ACCESS_TOKEN`
+
+#### 2. Create Products with Usage-Based Billing
+
+Create two products in Polar Dashboard with overage pricing:
+
+**Plus Product**:
+- Name: "Plus"
+- Price: $49/month
+- Description: "Advanced monitoring with 3,000 Playwright minutes, 20,000 K6 VU minutes"
+- **Billing Mode**: "Usage-based" (enable overage billing)
+- **Included Usage**: 3,000 playwright minutes, 20,000 K6 VU minutes
+
+**Pro Product**:
+- Name: "Pro"  
+- Price: $199/month
+- Description: "Professional monitoring with 10,000 Playwright minutes, 75,000 K6 VU minutes"
+- **Billing Mode**: "Usage-based" (enable overage billing)
+- **Included Usage**: 10,000 playwright minutes, 75,000 K6 VU minutes
+
+Copy the Product IDs from URL or product settings to your environment variables.
+
+#### 3. Configure Usage Meters for Overage Reporting
+
+For usage-based overage billing, create meters in Polar:
+
+1. Go to Polar Dashboard → Products → Meters
+2. Click "Create Meter" for each usage type
+
+---
+
+**Meter 1: Playwright Execution Minutes**
+
+| Field | Value |
+|-------|-------|
+| **Name** | `Playwright Execution Minutes` |
+| **Filters → Condition group** | |
+| - First dropdown (Name) | `Name` |
+| - Second dropdown | `equals` |
+| - Third dropdown (Select event name) | `playwright_minutes` |
+| **Aggregation** | Select **Sum** |
+| **Over property** | `value` |
+
+---
+
+**Meter 2: K6 Virtual User Minutes**
+
+| Field | Value |
+|-------|-------|
+| **Name** | `K6 Virtual User Minutes` |
+| **Filters → Condition group** | |
+| - First dropdown (Name) | `Name` |
+| - Second dropdown | `equals` |
+| - Third dropdown (Select event name) | `k6_vu_minutes` |
+| **Aggregation** | Select **Sum** |
+| **Over property** | `value` |
+
+---
+
+> **How it works**: 
+> - The **Name** field is the display name shown on invoices
+> - The **Filter** matches incoming usage events by their event name (`playwright_minutes` or `k6_vu_minutes`)
+> - **Sum** aggregation adds up all the `value` property from matched events
+> - The `value` property contains the number of minutes used per event
+
+#### 4. Configure Overage Pricing
+
+After creating meters, set up overage pricing:
+
+1. Go to Polar Dashboard → Products → Select your product
+2. In "Pricing" section, configure overage rates:
+   - **Plus Plan**:
+     - Playwright Minutes: $0.03 per minute beyond included quota
+     - K6 VU Minutes: $0.005 per VU-minute beyond included quota
+   - **Pro Plan**:
+     - Playwright Minutes: $0.015 per minute beyond included quota
+     - K6 VU Minutes: $0.003 per VU-minute beyond included quota
+3. Enable "Charge for overage" option
+4. Set billing cycle to "Monthly"
+
+#### 5. Enable Usage Reporting
+
+Configure usage reporting and notifications:
+
+1. Go to Polar Dashboard → Settings → Usage Reporting
+2. Enable "Real-time usage tracking"
+3. Set up usage alerts:
+   - Alert at 80% of included quota
+   - Alert at 100% of included quota
+4. Configure customer notifications for overage charges
+5. Enable "Usage breakdown in customer portal"
+
+> [!IMPORTANT]
+> The meter names (`playwright_minutes` and `k6_vu_minutes`) must exactly match what's configured in the code. These names are used when syncing usage events to Polar.
+
+#### 6. Configure Webhook
+
+1. Go to Polar Dashboard → Settings → Webhooks
+2. Click "Create Webhook"
+3. Set URL to: `https://your-domain.com/api/auth/polar/webhooks`
+4. Select these events:
+   - `subscription.active`
+   - `subscription.updated`
+   - `subscription.canceled`
+   - `order.paid`
+   - `customer.updated`
+5. Copy the webhook secret to `POLAR_WEBHOOK_SECRET`
+
+### Set Up Scheduled Sync Job
+
+To automatically sync usage events to Polar, create a cron job:
+
+```bash
+# Add to crontab: crontab -e
+# Sync usage events every 5 minutes
+*/5 * * * * curl -X POST http://localhost:3000/api/admin/sync-usage-events \
+  -H "Authorization: Bearer YOUR_ADMIN_API_KEY"
+```
+
+The sync endpoint calls the Polar usage service to batch sync pending events:
+
+```typescript
+// app/api/admin/sync-usage-events/route.ts
+import { polarUsageService } from "@/lib/services/polar-usage-service";
+import { NextResponse } from "next/server";
+
+export async function POST() {
+  try {
+    const result = await polarUsageService.syncPendingEvents(50);
+    
+    return NextResponse.json({
+      success: true,
+      processed: result.processed,
+      succeeded: result.succeeded,
+      failed: result.failed,
+      errors: result.errors,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Sync failed", details: error instanceof Error ? error.message : "Unknown" },
+      { status: 500 }
+    );
+  }
+}
+```
+
+### Usage Sync with Polar
+
+**Sync Frequency**:
+- **Real-time**: Usage events are recorded locally immediately after execution
+- **Batch Sync**: Pending events are synced to Polar every 5 minutes via scheduled job
+- **Retry Logic**: Failed syncs are retried up to 5 times with exponential backoff
+
+**Sync Process**:
+1. Event occurs (Playwright/K6 execution)
+2. UsageTracker records event to `usage_events` table locally
+3. Updates organization usage counters immediately
+4. Background job syncs pending events to Polar meters
+5. Events marked as `synced_to_polar = true` on success
+
+**Error Handling & Robustness**:
+- ✅ **Decoupled Architecture**: Local tracking works even if Polar is down
+- ✅ **Automatic Retries**: Failed syncs are retried with increasing delays
+- ✅ **Circuit Breaker**: Stops retrying after 5 failed attempts
+- ✅ **Audit Trail**: All events stored locally with sync status
+- ✅ **Graceful Degradation**: Usage continues to be tracked even if sync fails
+- ✅ **Monitoring**: Detailed logging for troubleshooting sync issues
+
+**What Happens if Sync Fails**:
+1. Event remains in `usage_events` table with `synced_to_polar = false`
+2. `sync_attempts` counter increments
+3. `sync_error` stores the error message
+4. Retry mechanism attempts again every 5 minutes
+5. After 5 failures, event is marked as permanently failed
+6. Manual intervention may be needed (check logs, fix Polar config)
+
+**Best Practices**:
+- Monitor `usage_events` table for failed syncs
+- Set up alerts for high sync failure rates
+- Keep Polar access tokens fresh and valid
+- Ensure webhook endpoints are always accessible
+- Regularly audit usage vs. Polar billing reports
+
+### Testing
+
+#### Self-Hosted Mode
+
+Test that self-hosted mode works correctly:
+
+```bash
+# Set in .env
+SELF_HOSTED=true
+
+# Restart server
+npm run dev
+```
+
+Expected behavior:
+- All plan limits return "unlimited"  
+- No Polar customer creation on signup
+- No usage tracking to Polar
+- Full access to all features
+
+#### Cloud Mode with Polar
+
+```bash
+# Set in .env
+SELF_HOSTED=false
+POLAR_ACCESS_TOKEN=...
+POLAR_SERVER=sandbox  # Use sandbox for testing
+
+# Restart server  
+npm run dev
+```
+
+Expected behavior:
+- Customer created in Polar on signup
+- Plan limits enforced based on subscription
+- Usage tracked to Polar for billing
+- Checkout flows work correctly
+
+### API Integration
+
+#### Check Plan Limits
+
+```typescript
+import {checkMonitorLimit} from "@/lib/middleware/plan-enforcement";
+
+const limitCheck = await checkMonitorLimit(organizationId, currentCount);
+if (!limitCheck.allowed) {
+  return res.status(403).json({ error: limitCheck.error });
+}
+```
+
+#### Track Usage
+
+```typescript
+import { usageTracker } from "@/lib/services/usage-tracker";
+
+// After Playwright execution
+await usageTracker.trackPlaywrightExecution(
+  organizationId,
+  executionTimeMs,
+  { testId, jobId }
+);
+
+// After K6 execution
+await usageTracker.trackK6Execution(
+  organizationId,
+  virtualUsers,
+  durationMs, 
+  { testId, jobId }
+);
+```
+
+#### Get Usage Stats
+
+```typescript
+import { subscriptionService } from "@/lib/services/subscription-service";
+
+const usage = await subscriptionService.getUsage(organizationId);
+console.log(usage.playwrightMinutes.used); // Current usage
+console.log(usage.playwrightMinutes.overage); // Overage amount
+```
+
+### Production Checklist
+
+Before deploying to production:
+
+- [ ] Set `POLAR_SERVER=production`
+- [ ] Use production Polar access token
+- [ ] Create production Plus/Pro products  
+- [ ] Configure production webhook
+- [ ] Create usage meters (`playwright_minutes`, `k6_vu_minutes`)
+- [ ] Test full checkout flow
+- [ ] Verify webhook processing
+- [ ] Test plan limit enforcement
+- [ ] Test usage tracking and sync to Polar
+- [ ] Set up scheduled sync job (cron/Vercel/GitHub Actions)
+- [ ] Set up monitoring for sync failures
+- [ ] Set up billing alerts
+- [ ] Verify billing period calculation uses subscription dates
+
+### Support
+
+For issues with Polar integration:
+- Check [Polar Documentation](https://polar.sh/docs)
+- Review implementation logs
+- Contact Polar support for payment issues
+
+---
+
+## Pricing & Plans
+
+> **Important**: This pricing is for cloud-hosted Supercheck. Self-hosted installations have unlimited usage.
+
+### Plans Overview
+
+| Feature | Plus | Pro |
+|---------|------|-----|
+| **Monthly Price** | $49/month | $149/month |
+| **Monitors** | 25 monitors | 100 monitors |
+| **Playwright Minutes** | 2,500 minutes/month | 7,500 minutes/month |
+| **K6 VU Minutes** | 6,000 VU-minutes/month | 40,000 VU-minutes/month |
+| **Concurrent Executions** | 5 | 10 |
+| **Queued Jobs** | 50 | 100 |
+| **Team Members** | 5 users | 25 users |
+| **Organizations** | 2 organizations | 10 organizations |
+| **Projects** | 10 projects | 50 projects |
+| **Monitoring Locations** | All 3 locations | All 3 locations |
+| **Check Interval** | 1 minute (Synthetic: 5 min) | 1 minute (Synthetic: 5 min) |
+| **Data Retention** | 30 days | 90 days |
+| **Email Support** | ✓ | ✓ Priority |
+| **Slack/Webhook Alerts** | ✓ | ✓ |
+| **Status Pages** | 3 status pages | 15 status pages |
+| **Custom Domains** | ✗ | ✓ |
+| **API Access** | ✓ | ✓ Enhanced |
+| **SSO/SAML** | ✗ | ✓ |
+
+### Usage-Based Billing
+
+#### Playwright Execution Minutes
+
+Billed per minute of browser test execution time. All test executions are timed to the nearest minute and rounded up.
+
+- **Plus Plan**: $0.10 per additional minute after 2,500 minutes
+- **Pro Plan**: $0.08 per additional minute after 7,500 minutes
+
+**Example 1**: Running a 5-minute Playwright test:
+- Consumes: 5 execution minutes
+- Cost per execution (if over quota): $0.50 (Plus) or $0.40 (Pro)
+
+**Example 2**: Running 30 Playwright tests averaging 1 minute each:
+- Consumes: 30 execution minutes
+- Plus plan includes 2,500 minutes, Pro includes 7,500 minutes
+- Both plans: No overage charge ✓
+
+#### K6 VU Minutes
+
+Billed per Virtual User minute for load testing. Calculated as: Virtual Users × Duration (in minutes), rounded up.
+
+- **Plus Plan**: $0.01 per additional VU-minute after 6,000 minutes
+- **Pro Plan**: $0.01 per additional VU-minute after 40,000 minutes
+
+**Example 1**: Running a load test with 100 VUs for 10 minutes:
+- Consumes: 100 VUs × 10 minutes = 1,000 VU-minutes
+- Cost per test (if over quota): **$10.00 (Plus)** or **$10.00 (Pro)**
+
+#### Monitor Executions (Synthetic Monitors)
+
+Synthetic monitors count against Playwright minutes for each execution. Monitor execution time is typically much shorter than full Playwright tests.
+
+**Example**: 25 monitors checking every 5 minutes for 30 days:
+- Executions per month: 25 × (30 days × 24 hours × 60 minutes / 5 minutes) = 216,000 executions
+- Average execution time per check: ~0.2 minutes (12 seconds)
+- Total minutes: ~43,200 minutes per month
+- Plus plan includes: 2,500 minutes
+- **Overage cost**: 40,700 minutes × $0.10 = **$4,070/month** (upgrade to Pro recommended)
+- Pro plan includes: 7,500 minutes
+- **Overage cost**: 35,700 minutes × $0.08 = **$2,856/month** (still high, reduce check frequency)
+
+### Plan Features
+
+#### Plus Plan - $49/month
+
+**Best for**: Startups and small teams (2-5 developers)
+
+- 25 uptime monitors with 1-minute intervals
+- Synthetic monitors: 5-minute minimum intervals
+- 2,500 Playwright execution minutes/month
+- 6,000 K6 VU-minutes/month for load testing
+- Up to 5 team members
+- 2 organizations, 10 projects
+- 3 public status pages
+- Email support
+- Slack and Webhook notifications
+- 30-day data retention
+- All monitoring locations (US, EU, APAC)
+- Standard API access
+
+#### Pro Plan - $149/month
+
+**Best for**: Growing teams and production applications (10-25 developers)
+
+- 100 uptime monitors with 1-minute intervals
+- Synthetic monitors: 5-minute minimum intervals
+- 7,500 Playwright execution minutes/month
+- 40,000 K6 VU-minutes/month for load testing
+- Up to 25 team members
+- 10 organizations, 50 projects
+- 15 public status pages with custom domains
+- Priority email support
+- Slack and Webhook notifications
+- 90-day data retention
+- SSO/SAML authentication
+- All monitoring locations (US, EU, APAC)
+- Enhanced API access with higher rate limits
+
+### Self-Hosted Edition
+
+For teams that want to run Supercheck on their own infrastructure:
+
+- **Free and Open Source**
+- Unlimited monitors, executions, and usage
+- No subscription fees
+- Full control over data and infrastructure
+- Community support
+- All features included
+
+Visit our [GitHub repository](https://github.com/supercheck-io/supercheck) to get started.
+
+### FAQs
+
+#### How is usage tracked?
+
+- **Playwright Minutes**: Total browser execution time (rounded up to nearest minute)
+  - Example: 45-second test = 1 minute, 65-second test = 2 minutes
+- **K6 VU Minutes**: Virtual users × execution duration (rounded up)
+  - Example: 100 VUs × 5.5 minutes = 550 VU-minutes (rounded from 550)
+- **Monitors**: Count against Playwright minutes for each check execution
+  - Example: 25 monitors, 5-minute interval = 288 Playwright minutes/day = 8,640 minutes/month
+
+#### What happens if I exceed my limits?
+
+Usage-based billing automatically applies:
+- Overage charges are billed monthly
+- Real-time usage tracking in dashboard
+- Automatic email alerts at 80% and 100% of quota
+
+#### Can I change plans?
+
+Yes! Upgrade or downgrade anytime:
+- **Upgrades**: Immediate access to new features and limits
+- **Downgrades**: Effective at next billing cycle
+- Pro-rated billing for mid-cycle changes
+
+#### Do unused minutes roll over?
+
+No, plan quotas reset monthly on your billing date.
+
+#### What payment methods do you accept?
+
+We accept all major credit cards through Polar.sh:
+- Visa, Mastercard, American Express, Discover
+- Automatic tax/VAT calculation and collection
+- Secure payment processing
 
 ---
 
@@ -124,7 +637,7 @@ graph TB
 - Location: `app/src/utils/auth.ts`
 - Purpose: Integrate Polar checkout, customer management, and webhooks
 - Features:
-  - Conditional loading based on `NEXT_PUBLIC_SELF_HOSTED` flag
+  - Conditional loading based on `SELF_HOSTED` flag
   - Customer creation on signup
   - Checkout sessions for plan upgrades
   - Webhook signature verification
@@ -136,59 +649,204 @@ graph TB
   - `requiresSubscription()` - Check if running in cloud mode (requires Polar)
   - `hasActiveSubscription(orgId)` - Verify org has active paid subscription
   - `getOrganizationPlan()` - Retrieve plan limits (throws if cloud + no subscription)
-  - `getOrganizationPlanSafe()` - Non-throwing version for display purposes (returns "blocked" state for deleted customers)
+  - `getOrganizationPlanSafe()` - Non-throwing version for display purposes
   - `getEffectivePlan(orgId)` - Get plan with better error messages
   - `blockUntilSubscribed(orgId)` - Throw error if subscription required but missing
   - `trackPlaywrightUsage()` - Increment Playwright minutes
-  - `trackK6Usage()` - Increment K6 VU hours (NUMERIC for precision)
+  - `trackK6Usage()` - Increment K6 VU minutes
   - `getUsage()` - Get current usage with overage calculations
   - `getUsageSafe()` - Non-throwing version using safe plan lookup
   - `updateSubscription()` - Update plan from webhooks
   - `resetUsageCounters()` - Reset for new billing period
+  - `resetUsageCountersWithDates()` - Reset using Polar's subscription dates
   - `validatePolarCustomer(orgId, customerId)` - Check if customer exists in Polar API
   - `requireValidPolarCustomer(orgId)` - Block operations if Polar customer doesn't exist
 
-#### 2.1. **Polar Customer Validation**
-- **Purpose**: Handle scenarios where Polar customers are deleted from Polar but still exist in local database
-- **Validation Flow**:
-  1. When accessing resources, `validatePolarCustomer()` calls Polar API to check customer existence
-  2. If customer returns 404, `requireValidPolarCustomer()` blocks the operation with error message
-  3. `getOrganizationPlanSafe()` returns "blocked" state with zero limits for deleted customers
-- **Error Message**: "Polar customer not found. Please contact support or subscribe to a new plan."
-- **Applied Endpoints**: Monitor creation, project creation, test execution, remote job trigger, and all resource operations
-- **Behavior**: Users can log in and view existing resources but cannot create new ones or execute tests
-
-#### 2.2. **Security & Performance Enhancements**
-- **API Timeout**: All Polar API calls have a 5-second timeout to prevent request blocking
-- **Result Caching**: Customer validation results cached for 60 seconds to reduce API load
-- **Safe Logging**: Organization/customer IDs are truncated in logs to prevent data exposure
-- **Constants**: Plan limits extracted to constants (`FALLBACK_UNLIMITED_LIMITS`, `BLOCKED_PLAN_LIMITS`) for maintainability
-- **Environment URLs**: Correct sandbox (`sandbox-api.polar.sh`) vs production (`api.polar.sh`) URL handling
-
-#### 3. **Plan Enforcement Middleware**  
+#### 3. **Plan Enforcement Middleware**
 - Location: `app/src/lib/middleware/plan-enforcement.ts`
-- Purpose: Check limits before resource creation
-- Functions:
-  - `checkMonitorLimit()` - Verify monitor count
-  - `checkStatusPageLimit()` - Verify status page count
-  - `checkProjectLimit()` - Verify project count
-  - `checkTeamMemberLimit()` - Verify team member count
-  - `checkCapacityLimits()` - Get execution capacity limits
-  - `checkFeatureAvailability()` - Check feature flags (SSO, custom domains)
-- Returns:
-  - **Cloud + No Subscription**: `{ allowed: false, requiresSubscription: true, availablePlans: ["plus", "pro"] }`
-  - **Cloud + Deleted Customer**: `{ allowed: false, error: "Polar customer not found. Please contact support or subscribe to a new plan." }`
-  - **Cloud + At Limit**: `{ allowed: false, error: "...", upgrade: "pro" }`
-  - **Self-Hosted**: `{ allowed: true }` (always unlimited)
+- Purpose: Enforce plan limits at API level
+- Features:
+  - Monitor count limits
+  - Project count limits
+  - Status page count limits
+  - Team member limits
+  - Organization count limits
 
 #### 4. **Usage Tracker (Worker)**
 - Location: `worker/src/execution/services/usage-tracker.service.ts`
-- Purpose: Track execution usage from background jobs
+- Purpose: Track usage from test executions
 - Features:
   - Integrated into Playwright execution processor
   - Integrated into K6 execution processor
   - Unconditional tracking (tracks usage for both cloud and self-hosted)
   - Error handling without breaking execution
+
+**Execution Points Where Usage is Tracked:**
+
+| Execution Type | Processor/Service | Usage Tracked |
+|----------------|-------------------|---------------|
+| Job Executions (scheduled/triggered) | `PlaywrightExecutionProcessor.processJob()` | ✅ Playwright minutes |
+| Single Test Executions (playground/manual) | `PlaywrightExecutionProcessor.processTest()` | ✅ Playwright minutes |
+| Synthetic Monitor Executions | `MonitorService.executeSyntheticTest()` | ✅ Playwright minutes |
+| K6 Load Tests | `K6ExecutionProcessor` | ✅ K6 VU minutes |
+| HTTP/Ping/Port Monitors | `MonitorService` | ❌ Not tracked (not Playwright) |
+
+**Calculation Logic:**
+
+- **Playwright Minutes**: `Math.ceil(executionTimeMs / 1000 / 60)` - Rounds UP to nearest minute
+  - Example: 30 seconds = 1 minute, 61 seconds = 2 minutes
+- **K6 VU Minutes**: `Math.ceil(virtualUsers * durationMinutes)` - VUs × duration rounded UP
+
+**Overage Calculation:**
+
+Overage is calculated ONLY after included quota is exhausted:
+
+```typescript
+const playwrightOverage = Math.max(0, playwrightMinutesUsed - includedPlaywrightMinutes);
+const k6Overage = Math.max(0, k6VuMinutesUsed - includedK6VuMinutes);
+const totalOverageCents = (playwrightOverage * playwrightPriceCents) + (k6Overage * k6PriceCents);
+```
+
+**Plan Included Quotas** (from `0001_seed_plan_limits.sql`):
+
+| Plan | Playwright Minutes | K6 VU Minutes |
+|------|-------------------|---------------|
+| Plus | 3,000/month | 20,000/month |
+| Pro | 10,000/month | 75,000/month |
+| Unlimited | Unlimited | Unlimited |
+
+**Overage Pricing** (competitive, protocol-only K6):
+
+| Plan | Playwright | K6 VU Minutes |
+|------|-----------|---------------|
+| Plus | $0.03/min | $0.005/VU-min |
+| Pro | $0.015/min | $0.003/VU-min |
+
+**K6 Pricing Justification (Protocol-Only Tests):**
+- Supercheck only supports **HTTP/protocol-based** K6 tests (no browser-based)
+- Protocol tests are cheaper to run than browser tests (~10-20x less resource intensive)
+- Pricing is competitive with Grafana k6 Cloud ($0.0025/VU-min at scale)
+- Value-add: integrated status pages, monitoring, alerting, and single dashboard
+
+**Polar Sync:**
+
+Usage events are synced to Polar in real-time:
+1. Worker records event locally with `synced_to_polar = false`
+2. Worker immediately syncs to Polar API (`POST /v1/events/ingest`)
+3. On success, event is marked `synced_to_polar = true`
+4. On failure, event is marked with `sync_error` for retry
+
+**Fallback Sync Endpoint:**
+
+For failed syncs, a cron job should call:
+```
+POST /api/admin/sync-usage-events
+Header: x-cron-secret: YOUR_CRON_SECRET
+```
+
+**Retry Configuration for Test Executions:**
+
+Tests have `attempts: 3` with exponential backoff configured in `app/src/lib/queue.ts`:
+
+```typescript
+const defaultJobOptions = {
+  attempts: 3, // Retry up to 3 times for transient failures
+  backoff: {
+    type: 'exponential',
+    delay: 5000, // Start with 5 second delay, then 10s, 20s
+  },
+};
+```
+
+**Why retries are safe for billing:**
+- Usage tracking only happens on **successful completion**
+- Retries help with transient failures (container startup, network issues)
+- Failed attempts don't trigger usage recording
+- Only the final successful execution is billed
+
+**Architecture: Worker vs App Polar Integration**
+
+Usage tracking happens in the **worker** (not the app) because:
+- Executions happen in the worker process
+- Worker has direct access to execution timing
+- Real-time sync requires worker-to-Polar communication
+
+The worker makes direct Polar API calls (not via Better Auth) because:
+- Better Auth's `usage()` plugin requires authenticated user session
+- Worker runs independently without user context
+- Direct API calls with `POLAR_ACCESS_TOKEN` are the correct approach
+
+**Troubleshooting: Meter Events Not Showing in Polar**
+
+If K6 or Playwright meter events don't appear in Polar dashboard:
+
+1. **Check Worker Environment Variables:**
+   ```bash
+   # Required in worker/.env
+   POLAR_ACCESS_TOKEN=your_polar_access_token
+   POLAR_SERVER=sandbox  # or production
+   ```
+
+2. **Check Organization has `polarCustomerId`:**
+   - User must subscribe via Polar checkout first
+   - Check database: `SELECT polar_customer_id FROM organization WHERE id = 'org-id'`
+   - If NULL, events won't sync (user hasn't subscribed)
+
+3. **Check Meter Filter Configuration in Polar:**
+   - Go to Polar Dashboard → Products → Meters → Edit Meter
+   - **CRITICAL**: Set Filter to `Name` equals `k6_vu_minutes` (or `playwright_minutes`)
+   - The filter must match the `name` field in the event payload
+   - Without this filter, the meter won't aggregate events
+
+4. **Check Worker Logs:**
+   - Look for: `[Usage] Syncing k6_vu_minutes=X to Polar for customer...`
+   - Look for: `[Usage] ✅ Synced event...`
+   - Look for: `[Usage] POLAR_ACCESS_TOKEN not configured` (error)
+   - Look for: `[Usage] No Polar customer ID for org...` (user hasn't subscribed)
+   - Look for: `Polar API error (404)` - This means the API endpoint was wrong (fixed)
+
+5. **Check `usage_events` Table:**
+   ```sql
+   SELECT id, event_name, units, synced_to_polar, sync_error 
+   FROM usage_events 
+   WHERE organization_id = 'org-id'
+   ORDER BY created_at DESC LIMIT 10;
+   ```
+   - `synced_to_polar = false` with `sync_error` shows failed syncs
+   - `synced_to_polar = true` means events were sent to Polar
+
+6. **Retry Failed Syncs:**
+   ```bash
+   curl -X POST https://your-app/api/admin/sync-usage-events \
+     -H "x-cron-secret: YOUR_CRON_SECRET"
+   ```
+
+7. **Update Plan Limits (if not applied):**
+   ```bash
+   cd app && npm run db:update-limits
+   ```
+
+**Polar API Endpoint:**
+
+The worker uses the correct Polar Events Ingestion API:
+```
+POST https://api.polar.sh/v1/events/ingest
+# or for sandbox:
+POST https://sandbox-api.polar.sh/v1/events/ingest
+
+Body:
+{
+  "events": [{
+    "customer_id": "polar-customer-uuid",
+    "name": "k6_vu_minutes",  // Must match meter filter
+    "timestamp": "2024-01-01T00:00:00.000Z",
+    "metadata": {
+      "event_id": "usage-event-uuid",
+      "value": 1000  // VU minutes used
+    }
+  }]
+}
+```
 
 #### 5. **Webhook Handlers**
 - Location: `app/src/lib/webhooks/polar-webhooks.ts`
@@ -199,325 +857,127 @@ graph TB
   - Uses **specific event handlers** for critical events + `onPayload` catch-all for logging
 - **Handlers configured** (in `app/src/utils/auth.ts`):
   ```typescript
-  webhooks({
-    secret: config.webhookSecret!,
-    onSubscriptionActive: (payload) => handleSubscriptionActive(payload),
-    onSubscriptionCreated: (payload) => handleSubscriptionActive(payload),
-    onSubscriptionUpdated: (payload) => handleSubscriptionUpdated(payload),
-    onSubscriptionCanceled: (payload) => handleSubscriptionCanceled(payload),
-    onOrderPaid: (payload) => handleOrderPaid(payload),
-    onCustomerStateChanged: (payload) => handleCustomerStateChanged(),
-    onPayload: (payload) => console.log('[Polar] Webhook:', payload.type),
-  })
+  onSubscriptionActive: async (payload) => {
+    // Extract customerId, productId, orgId from payload
+    // Update organization subscription status
+    // Reset usage counters for new billing period
+  },
+  onSubscriptionUpdated: async (payload) => {
+    // Handle plan changes (upgrade/downgrade)
+    // Update limits accordingly
+  },
+  onSubscriptionCanceled: async (payload) => {
+    // Mark as canceled but keep access until period ends
+    // Send cancellation notifications
+  },
+  onOrderPaid: async (payload) => {
+    // Log payment confirmation
+    // Handle one-time purchases if any
+  }
   ```
-- **Events handled**:
-  - `subscription.active` / `subscription.created` - New subscription activation
-  - `subscription.updated` - Plan changes
-  - `subscription.canceled` - Cancellation
-  - `order.paid` - Payment confirmation
-  - `customer.state_changed` - Customer state sync
-- **Important**: Polar sends webhook payloads with **camelCase** field names:
-  - `customerId` (not `customer_id`)
-  - `productId` (not `product_id`)
-  - `endsAt` (not `ends_at`)
-- Organization linking: Two methods to find organization:
-  1. **Primary**: `referenceId` in checkout metadata (organization ID passed during checkout)
-  2. **Fallback**: `polarCustomerId` stored on organization (linked during signup via `setup-defaults`)
-- Product mapping: Maps Polar product IDs to plan names (plus/pro) via environment variables
-- Logging: Minimal logs with truncated IDs for security (e.g., `[Polar] ✅ Activated plus for org abc12345...`)
 
-#### 5.1. **Webhook Security & Reliability**
-
-##### Security Considerations
-- **Automatic Signature Verification**: Better Auth's `@polar-sh/better-auth` plugin handles webhook signature verification automatically using the Standard Webhooks specification
-  - No custom verification code needed
-  - Uses `webhook-id`, `webhook-timestamp`, `webhook-signature` headers
-  - Computes HMAC-SHA256 with format: `${msg_id}.${timestamp}.${body}`
-- **Secret Management**: `POLAR_WEBHOOK_SECRET` must match the secret configured in Polar dashboard exactly
-  - Store as environment variable, never commit to version control
-  - Rotate periodically for security
-- **Type Safety**: Using specific handlers (`onSubscriptionActive`, etc.) provides typed payloads and prevents runtime errors
-
-##### Reliability Features
-- **Idempotency**: All webhook handlers check if event was already processed using in-memory cache with 24-hour TTL
-  - **Note**: Cache resets on app restart - consider Redis for production if this is problematic
-- **Cache Cleanup**: Automatic cleanup when cache exceeds 1000 entries to prevent memory leaks
-- **Safe Logging**: All IDs are truncated to 8 characters in logs to prevent data exposure
-- **Duplicate Detection**: Both webhook-level (by webhook ID) and database-level (by subscription state) idempotency
-- **Event Types with Idempotency**:
-  - `subscription.active` - Prevents duplicate activations
-  - `subscription.updated` - Prevents duplicate plan changes
-  - `subscription.canceled` - Prevents duplicate cancellations
-  - `order.paid` - Prevents duplicate order processing
-
-##### Production Monitoring
-- **Error Tracking**: Integrate with monitoring service (Sentry, Datadog) to capture webhook handler failures
-- **Timeout Guards**: Each webhook handler should have a timeout (default 30s) to prevent hanging
-- **Retry Handling**: Polar automatically retries failed webhooks with exponential backoff (up to 10 attempts)
-- **Metrics to Monitor**:
-  - Webhook processing success/failure rate
-  - Handler execution duration
-  - Idempotency cache hit rate
-  - Subscription update latency
-
-#### 6. **Billing Success Page**
-- Location: `app/src/app/(main)/billing/success/page.tsx`
-- Purpose: Handle post-checkout redirect and verify subscription activation
+#### 6. **Polar Usage Service**
+- Location: `app/src/lib/services/polar-usage.service.ts`
+- Purpose: Sync usage events to Polar for billing
 - Features:
-  - Polls `/api/billing/current` every second to verify subscription is active
-  - Waits up to 30 seconds for webhook to process (never gives up early)
-  - Shows "Activating Subscription..." while verifying
-  - Only redirects to dashboard **after subscription is confirmed active**
-  - Shows "Retry Verification" button if taking longer than 30 seconds
-  - Continues polling slowly (every 3 seconds) in background after timeout
-  - Prevents redirect loop by never auto-redirecting without verified subscription
+  - Event ingestion API integration
+  - Batch sync with retry logic
+  - Spending limit enforcement
+  - Usage metrics calculation
 
-#### 7. **Subscription Guard**
-- Location: `app/src/components/subscription-guard.tsx`
-- Purpose: Client-side route protection for cloud mode
-- Features:
-  - Checks actual subscription status in `/api/billing/current` response (not just HTTP status)
-  - Verifies both `subscription.status === 'active'` AND `subscription.plan` exists
-  - Allows access to: `/billing/*`, `/subscribe`, `/settings`, `/sign-out`, `/org-admin`
-  - Redirects unsubscribed users to `/subscribe?required=true`
+### Data Flow
 
----
-
-## Sequence Diagrams
-
-### 1. User Signup Flow (Cloud Mode)
-
-> [!NOTE]
-> This flow applies to **all signup methods**: email/password, GitHub OAuth, and Google OAuth. All methods trigger Polar customer creation in cloud mode.
-
-The signup flow involves two phases:
-1. **User Creation**: Better Auth creates the user and Polar plugin creates a customer with `externalId = user.id`
-2. **Organization Setup**: The `setup-defaults` API creates the organization and links it to the Polar customer
-
+#### 1. **Customer Creation Flow**
 ```mermaid
 sequenceDiagram
-    actor User
-    participant UI as Signup Form
-    participant BetterAuth as Better Auth
-    participant PolarPlugin as Polar Plugin
-    participant PolarAPI as Polar API
-    participant SetupAPI as /api/auth/setup-defaults
-    participant DB as Database
+    participant User
+    participant UI
+    participant Auth
+    participant Polar
+    participant DB
 
-    User->>UI: Submit signup form\n(Email/Password, GitHub, or Google)
-    UI->>BetterAuth: createUser(email, password)\nor OAuth callback
-    BetterAuth->>DB: Create user record
-
-    Note over BetterAuth,PolarPlugin: Polar plugin hook triggered
-
-    BetterAuth->>PolarPlugin: onUserCreated(user)
-    PolarPlugin->>PolarAPI: createCustomer({ email, externalId: user.id })
-    PolarAPI-->>PolarPlugin: Customer created
-
-    BetterAuth-->>UI: User created
-
-    Note over UI,SetupAPI: Frontend calls setup-defaults
-
-    UI->>SetupAPI: POST /api/auth/setup-defaults
-    SetupAPI->>DB: Create organization\n(subscription_plan=NULL, status='none')
-    SetupAPI->>DB: Create default project
-    SetupAPI->>PolarAPI: getCustomerByExternalId(user.id)
-    PolarAPI-->>SetupAPI: customerId
-    SetupAPI->>DB: UPDATE organization\nSET polar_customer_id = customerId
-    SetupAPI-->>UI: Organization created
-
-    UI-->>User: Redirect to /subscribe
-
-    Note over DB: Organization linked to Polar customer.\nUser must subscribe to Plus/Pro.
+    User->>UI: Sign up
+    UI->>Auth: POST /api/auth/sign-up
+    Auth->>Polar: Create customer (if cloud mode)
+    Polar-->>Auth: Customer ID
+    Auth->>DB: INSERT organization WITH polar_customer_id
+    Auth-->>UI: User created
+    UI-->>User: Welcome! Please select a plan
 ```
 
-### 2. User Signup Flow (Self-Hosted Mode)
-
-> [!NOTE]
-> Self-hosted mode supports all authentication methods: email/password, GitHub OAuth, and Google OAuth. No Polar integration occurs. Users get immediate unlimited access.
-
+#### 2. **Subscription Activation Flow**
 ```mermaid
 sequenceDiagram
-    actor User
-    participant UI as Sign Up Page
-    participant BetterAuth as Better Auth
-    participant DB as Database
+    participant User
+    participant UI
+    participant Polar
+    participant Webhook
+    participant SubService
+    participant DB
 
-    User->>UI: Submit signup form\n(Email/Password, GitHub, or Google)
-    UI->>BetterAuth: createUser(email, password)\nor OAuth callback
-    BetterAuth->>DB: Create user record
-    BetterAuth->>DB: Create organization
-
-    Note over BetterAuth,DB: Polar plugin check: SELF_HOSTED=true<br/>Skip Polar integration
-
-    BetterAuth->>DB: SET subscription_plan = 'unlimited'
-    BetterAuth->>DB: SET subscription_status = 'active'
-    BetterAuth->>DB: SET polar_customer_id = NULL
-
-    BetterAuth-->>UI: User created
-    UI-->>User: Redirect to dashboard
-
-    Note over DB: Organization ready with<br/>unlimited plan (no Polar)<br/>Full feature access immediately
-```
-
-### 3. Subscription Upgrade Flow
-
-```mermaid
-sequenceDiagram
-    actor User
-    participant UI as Billing Page
-    participant API as /api/billing/*
-    participant SubService as Subscription Service
-    participant PolarPlugin as Polar Plugin
-    participant PolarAPI as Polar API
-    participant Polar as Polar Checkout
-    participant Webhook as Polar Webhooks
-    participant DB as Database
-
-    User->>UI: Click "Upgrade to Pro"
-    UI->>PolarPlugin: initiateCheckout(productId)
-    PolarPlugin->>PolarAPI: createCheckoutSession({<br/>  customerId,<br/>  productId: PRO_PRODUCT_ID<br/>})
-    PolarAPI-->>PolarPlugin: checkoutUrl
-    PolarPlugin-->>UI: checkoutUrl
-    UI-->>User: Redirect to Polar checkout
-
+    User->>UI: Click "Upgrade to Plus"
+    UI->>Polar: Open checkout session
     User->>Polar: Complete payment
-    Polar->>PolarAPI: Process payment
-
-    Note over Polar,Webhook: Webhook event triggered
-
-    PolarAPI->>Webhook: POST /api/auth/polar/webhooks<br/>{type: "subscription.active"}
-    Webhook->>API: handleSubscriptionActive(payload)
-    API->>SubService: updateSubscription(orgId, {<br/>  plan: "pro",<br/>  status: "active",<br/>  subscriptionId<br/>})
-    SubService->>DB: UPDATE organization SET<br/>  subscription_plan = 'pro',<br/>  subscription_status = 'active',<br/>  subscription_id = id,<br/>  usage_period_start = NOW(),<br/>  usage_period_end = NOW() + 30 days
-    SubService->>DB: RESET playwright_minutes_used = 0<br/>RESET k6_vu_hours_used = 0
-
-    Webhook-->>PolarAPI: 200 OK
-    PolarAPI-->>Polar: Webhook processed
-    Polar-->>User: Redirect to success page
-
-    User->>UI: Return to billing page
+    Polar->>Webhook: POST subscription.active
+    Webhook->>SubService: handleSubscriptionActive(payload)
+    SubService->>DB: UPDATE organization SET plan='plus', status='active'
+    SubService->>DB: RESET usage counters
+    SubService-->>Webhook: Success
+    Webhook-->>Polar: 200 OK
     UI->>API: GET /api/billing/current
-    API->>SubService: getUsage(orgId)
-    SubService->>DB: SELECT plan, usage, limits
-    DB-->>SubService: subscription data
-    SubService-->>API: {plan: "pro", status: "active"}
-    API-->>UI: Billing data
-    UI-->>User: Show Pro plan active
+    API-->>UI: { plan: 'plus', status: 'active' }
+    UI-->>User: ✅ Plus plan activated!
 ```
 
-### 4. Usage Tracking Flow (Playwright)
-
+#### 3. **Usage Tracking Flow**
 ```mermaid
 sequenceDiagram
-    actor User
-    participant UI as Dashboard
-    participant API as Job API
-    participant Queue as Job Queue
-    participant Worker as Worker Service
-    participant PWProc as Playwright Processor
-    participant UsageTracker as Usage Tracker
-    participant DB as Database
+    participant Worker
+    participant UsageTracker
+    participant DB
+    participant PolarSync
+    participant PolarAPI
 
-    User->>UI: Run Playwright test
-    UI->>API: POST /api/jobs/execute
-    API->>Queue: Add job to queue
-    Queue-->>API: jobId
-    API-->>UI: Job queued
-
-    Note over Queue,Worker: Worker picks up job
-
-    Queue->>Worker: Job data
-    Worker->>PWProc: execute(jobData)
-
-    Note over PWProc: Start timer
-
-    PWProc->>PWProc: Launch browser
-    PWProc->>PWProc: Run test script
-    PWProc->>PWProc: Capture results
-
-    Note over PWProc: Stop timer<br/>durationMs = 125000 (2m 5s)
-
-    PWProc->>DB: Save execution results
-
-    Note over PWProc,UsageTracker: Track usage unconditionally
-
-    PWProc->>UsageTracker: trackPlaywrightExecution(<br/>  orgId,<br/>  durationMs: 125000,<br/>  metadata<br/>)
-    UsageTracker->>UsageTracker: minutes = ceil(125000/1000/60) = 3
-    UsageTracker->>DB: UPDATE organization<br/>SET playwright_minutes_used += 3<br/>WHERE id = orgId
-    UsageTracker-->>PWProc: Tracked: 3 minutes
-
-    PWProc-->>Worker: Execution complete
-    Worker->>Queue: Mark job complete
-
-    Note over UI: User views usage
-
-    User->>UI: Navigate to /billing
-    UI->>API: GET /api/billing/current
-    API->>DB: SELECT playwright_minutes_used, ...<br/>FROM organization
-    DB-->>API: {<br/>  used: 503,<br/>  included: 500,<br/>  overage: 3<br/>}
-    API-->>UI: Usage data
-    UI-->>User: Show 503/500 minutes (3 overage)
+    Worker->>UsageTracker: trackPlaywrightExecution(orgId, durationMs)
+    UsageTracker->>UsageTracker: minutes = ceil(durationMs / 1000 / 60)
+    UsageTracker->>DB: UPDATE organization SET playwright_minutes_used += minutes
+    UsageTracker->>DB: INSERT INTO usage_events (type, units, synced=false)
+    Note over UsageTracker: Local tracking complete
+    
+    loop Every 5 minutes
+        PolarSync->>DB: SELECT * FROM usage_events WHERE synced=false
+        PolarSync->>PolarAPI: POST /customers/{id}/meters/events
+        PolarAPI-->>PolarSync: Event recorded
+        PolarSync->>DB: UPDATE usage_events SET synced=true
+    end
 ```
 
-### 5. Plan Enforcement Flow
-
+#### 4. **Plan Enforcement Flow**
 ```mermaid
 sequenceDiagram
-    actor User
-    participant UI as Monitors Page
-    participant API as /api/monitors
-    participant Enforcement as Plan Enforcement
-    participant SubService as Subscription Service
-    participant DB as Database
+    participant User
+    participant UI
+    participant API
+    participant Enforcement
+    participant SubService
+    participant DB
 
-    User->>UI: Click "Create Monitor"
-    UI->>UI: Fill monitor form
-    User->>UI: Submit
-
+    User->>UI: Create new monitor
     UI->>API: POST /api/monitors
-    API->>DB: SELECT COUNT(*)<br/>FROM monitors<br/>WHERE org_id = orgId
-    DB-->>API: currentCount = 24
-
-    API->>Enforcement: checkMonitorLimit(orgId, 24)
-    Enforcement->>SubService: getOrganizationPlan(orgId)
-    SubService->>DB: SELECT subscription_plan<br/>FROM organization<br/>WHERE id = orgId
-    DB-->>SubService: subscription_plan = "plus"
-
-    SubService->>DB: SELECT * FROM plan_limits<br/>WHERE plan = 'plus'
-    DB-->>SubService: {<br/>  maxMonitors: 25,<br/>  playwrightMinutes: 500,<br/>  ...<br/>}
-    SubService-->>Enforcement: PlanLimits
-
-    Enforcement->>Enforcement: Check: 24 < 25 ✓
-    Enforcement-->>API: {<br/>  allowed: true,<br/>  remaining: 1<br/>}
-
-    API->>DB: INSERT INTO monitors
-    DB-->>API: Monitor created
-    API-->>UI: 201 Created
-    UI-->>User: "Monitor created successfully"
-
-    Note over User,DB: User tries to create 26th monitor
-
-    User->>UI: Create another monitor
-    UI->>API: POST /api/monitors
-    API->>DB: SELECT COUNT(*)
-    DB-->>API: currentCount = 25
-
-    API->>Enforcement: checkMonitorLimit(orgId, 25)
+    API->>Enforcement: checkMonitorLimit(orgId)
     Enforcement->>SubService: getOrganizationPlan(orgId)
     SubService->>DB: Get plan limits
     DB-->>SubService: maxMonitors: 25
     SubService-->>Enforcement: PlanLimits
 
-    Enforcement->>Enforcement: Check: 25 >= 25 ✗
+    Enforcement->>Enforcement: Check: currentCount >= maxMonitors ✗
     Enforcement-->>API: {<br/>  allowed: false,<br/>  error: "Monitor limit reached",<br/>  currentPlan: "plus",<br/>  upgrade: "pro"<br/>}
 
     API-->>UI: 403 Forbidden
     UI-->>User: "Monitor limit reached.<br/>Upgrade to Pro for 100 monitors."
 ```
 
-### 6. Webhook Processing Flow
-
+#### 5. **Webhook Processing Flow**
 ```mermaid
 sequenceDiagram
     participant Polar as Polar.sh
@@ -539,16 +999,19 @@ sequenceDiagram
         Webhook->>Handler: Route event by type
 
         alt subscription.updated
-            Handler->>Handler: Extract customerId, productId, status
+            Handler->>Handler: Extract customerId, productId, status, startsAt, endsAt
             Handler->>DB: SELECT * FROM organization<br/>WHERE polar_customer_id = customerId
             DB-->>Handler: Organization
 
             Handler->>Handler: Map productId to plan<br/>(plus/pro/unlimited)
 
-            Handler->>SubService: updateSubscription(orgId, {<br/>  plan: "pro",<br/>  status: "active"<br/>})
+            Handler->>SubService: updateSubscription(orgId, {<br/>  plan: "pro",<br/>  status: "active",<br/>  subscriptionStartedAt: startsAt,<br/>  subscriptionEndsAt: endsAt<br/>})
 
-            SubService->>DB: UPDATE organization SET<br/>  subscription_plan = 'pro',<br/>  subscription_status = 'active'
+            SubService->>DB: UPDATE organization SET<br/>  subscription_plan = 'pro',<br/>  subscription_status = 'active',<br/>  subscription_started_at = startsAt,<br/>  subscription_ends_at = endsAt
             DB-->>SubService: Updated
+
+            SubService->>SubService: resetUsageCountersWithDates(orgId, startsAt, endsAt)
+            SubService->>DB: RESET usage counters<br/>SET usage_period_start = startsAt<br/>SET usage_period_end = endsAt
 
             SubService->>Audit: Log subscription change
             Audit->>DB: INSERT INTO audit_logs
@@ -571,8 +1034,7 @@ sequenceDiagram
     Note over Polar: Webhook delivery confirmed
 ```
 
-### 7. Data Flow Diagram
-
+#### 6. **Data Flow Diagram**
 ```mermaid
 graph LR
     subgraph "User Actions"
@@ -586,11 +1048,13 @@ graph LR
         CreateCustomer[Create Customer]
         Checkout[Checkout Session]
         Webhooks[Webhook Events]
+        UsageSync[Usage Sync]
     end
 
     subgraph "Database State"
-        OrgData[(Organization<br/>- polar_customer_id<br/>- subscription_plan<br/>- subscription_status<br/>- usage counters)]
+        OrgData[(Organization<br/>- polar_customer_id<br/>- subscription_plan<br/>- subscription_status<br/>- subscription_started_at<br/>- subscription_ends_at<br/>- usage counters)]
         PlanData[(Plan Limits<br/>- max resources<br/>- included usage<br/>- features)]
+        UsageEvents[(Usage Events<br/>- event_type<br/>- units<br/>- synced_to_polar)]
     end
 
     subgraph "Enforcement & Tracking"
@@ -601,337 +1065,305 @@ graph LR
 
     Signup --> CreateCustomer
     CreateCustomer --> OrgData
-
     Upgrade --> Checkout
     Checkout --> Webhooks
     Webhooks --> OrgData
-
-    Create --> CheckLimits
-    CheckLimits --> PlanData
-    CheckLimits --> OrgData
-    CheckLimits -->|Allowed| Create
-    CheckLimits -->|Denied| Upgrade
-
     Execute --> TrackUsage
     TrackUsage --> UpdateDB
     UpdateDB --> OrgData
+    TrackUsage --> UsageEvents
+    UsageEvents --> UsageSync
+    Create --> CheckLimits
+    CheckLimits --> PlanData
+    PlanData --> OrgData
 
-    style Signup fill:#e3f2fd
-    style Upgrade fill:#fff3e0
-    style Execute fill:#f3e5f5
-    style Create fill:#e8f5e9
-    style OrgData fill:#ffebee
-    style PlanData fill:#ffebee
+    style OrgData fill:#e8f5e9
+    style PlanData fill:#fff3e0
+    style UsageEvents fill:#f3e5f5
 ```
 
 ---
 
 ## Implementation
 
-### Prerequisites
+### Environment Configuration
 
-#### Environment Variables
-```bash
-# Self-Hosted Mode (set to 'true' for unlimited features)
-# Client-side code fetches this from /api/config/hosting-mode at runtime
-SELF_HOSTED=false
+**Feature Flag System**: Controls Polar integration based on deployment mode
+- `isPolarEnabled()` - Returns true only in cloud mode with valid Polar token
+- `getPolarConfig()` - Retrieves Polar configuration from environment variables
+- Required env vars: `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, `POLAR_SERVER`, product IDs
 
-# Polar Configuration
-POLAR_ACCESS_TOKEN=polar_at_xxxxxxxxxxxxx
-POLAR_SERVER=production  # or 'sandbox'
-POLAR_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxx
+### Better Auth Integration
 
-# Product IDs from Polar Dashboard
-POLAR_PLUS_PRODUCT_ID=prod_xxxxxxxxxxxxx
-POLAR_PRO_PRODUCT_ID=prod_xxxxxxxxxxxxx
-```
+**Polar Plugin Setup**: Conditional plugin loading based on feature flags
+- Polar SDK client initialization with server (sandbox/production)
+- Customer creation on signup with metadata linking to user ID
+- Checkout session configuration for Plus/Pro products
+- Webhook handlers for subscription lifecycle events
+- Customer portal access for subscription management
 
-#### Polar Dashboard Setup
+### Subscription Service
 
-1. **Create Organization Access Token**
-   - Navigate to: Polar Dashboard → Settings → Access Tokens
-   - Create token with required scopes
-   - Copy to `POLAR_ACCESS_TOKEN`
+**Core Service**: Manages subscription state and usage tracking
+- **Plan Validation**: `requiresSubscription()`, `hasActiveSubscription()`, `blockUntilSubscribed()`
+- **Plan Retrieval**: `getOrganizationPlan()` (throws), `getOrganizationPlanSafe()` (non-throwing)
+- **Usage Tracking**: `trackPlaywrightUsage()`, `trackK6Usage()`, `getUsage()`
+- **Subscription Updates**: `updateSubscription()`, `resetUsageCounters()`, `resetUsageCountersWithDates()`
+- **Customer Validation**: `validatePolarCustomer()`, `requireValidPolarCustomer()`
+- **Security**: Blocks unlimited plans in cloud mode
 
-2. **Create Products**
+### Webhook Handlers
 
-   **Plus Plan**:
-   - Name: "Supercheck Plus"
-   - Price: $49/month
-   - Copy Product ID to `POLAR_PLUS_PRODUCT_ID`
+**Event Processing**: Handles Polar webhook events with signature verification
+- **Subscription Active**: Extracts customer/product info, updates org subscription, resets usage counters using Polar's subscription dates
+- **Subscription Updated**: Handles plan changes and status updates
+- **Subscription Canceled**: Marks as canceled but maintains access until period end
+- **Order Paid**: Logs payment confirmation
+- **Date Extraction**: Processes `startsAt` and `endsAt` from webhook payload for accurate billing periods
 
-   **Pro Plan**:
-   - Name: "Supercheck Pro"
-   - Price: $149/month
-   - Copy Product ID to `POLAR_PRO_PRODUCT_ID`
+### Usage Tracking (Worker)
 
-3. **Configure Webhook**
-   - URL: `https://your-domain.com/api/auth/polar/webhooks`
-   - Events: `subscription.*`, `order.paid`, `customer.updated`
-   - Copy secret to `POLAR_WEBHOOK_SECRET`
+**Service Integration**: Tracks usage from test executions in worker processes
+- **Execution Tracking**: Integrated into Playwright and K6 processors
+- **Unconditional Recording**: Tracks usage for both cloud and self-hosted modes
+- **Local Updates**: Increments organization usage counters immediately
+- **Event Recording**: Stores detailed usage events in `usage_events` table for Polar sync
+- **Error Handling**: Non-blocking usage tracking with comprehensive logging
 
-### Database Migration
+### Polar Usage Sync
 
-```bash
-cd app
-npm run db:migrate
-```
+**Event Synchronization**: Syncs usage events to Polar for billing
+- **API Integration**: Uses Polar's `/customers/{id}/meters/events` endpoint
+- **Meter Mapping**: Maps `playwright_execution` → `playwright_minutes`, `k6_execution` → `k6_vu_minutes`
+- **Batch Processing**: Processes pending events in configurable batch sizes
+- **Retry Logic**: Automatic retries with exponential backoff, max 5 attempts
+- **Error Tracking**: Records sync errors and attempt counts in database
+- **Circuit Breaker**: Stops retrying permanently failed events
 
-This migration:
-- Adds subscription fields to `organization` table
-- Creates `plan_limits` table with plan configurations
-- **Seeds plan limits as part of migration** (Plus, Pro, Unlimited)
-- **Verifies seeding was successful** before completing
+### Related Files
 
-**Important**: Plan limits seeding is now integrated directly into the migration system (`0001_seed_plan_limits.sql`) for reliability. The migration will fail if plan_limits are not properly seeded, preventing the app from starting without required data.
-
-### Integration Points
-
-#### API Routes Modified
-
-1. **Monitor Creation** - `app/src/app/api/monitors/route.ts:248-266`
-```typescript
-const limitCheck = await checkMonitorLimit(organizationId, currentMonitorCount.length);
-if (!limitCheck.allowed) {
-  return NextResponse.json({ error: limitCheck.error }, { status: 403 });
-}
-```
-
-2. **Status Page Creation** - `app/src/actions/create-status-page.ts:54-67`
-```typescript
-const limitCheck = await checkStatusPageLimit(organizationId, currentStatusPageCount.length);
-if (!limitCheck.allowed) {
-  return { success: false, message: limitCheck.error };
-}
-```
-
-3. **Team Member Invitation** - `app/src/app/api/organizations/members/invite/route.ts:95-108`
-```typescript
-const limitCheck = await checkTeamMemberLimit(activeOrg.id, currentMemberCount.length);
-if (!limitCheck.allowed) {
-  return NextResponse.json({ error: limitCheck.error }, { status: 403 });
-}
-```
-
-4. **Project Creation** - `app/src/app/api/projects/route.ts:128-141`
-```typescript
-const limitCheck = await checkProjectLimit(targetOrgId, allProjectsInOrg.length);
-if (!limitCheck.allowed) {
-  return NextResponse.json({ error: limitCheck.error }, { status: 403 });
-}
-```
-
-#### Worker Integration
-
-**Playwright Execution** - `worker/src/execution/processors/playwright-execution.processor.ts:104-117`
-```typescript
-await this.usageTrackerService.trackPlaywrightExecution(
-  jobData.organizationId,
-  durationMs,
-  { runId, jobId: originalJobId }
-);
-```
-
-**K6 Execution** - `worker/src/k6/processors/k6-execution.processor.ts:243-258`
-```typescript
-await this.usageTrackerService.trackK6Execution(
-  taskData.organizationId,
-  metrics.maxVUs,
-  result.durationMs,
-  { runId, jobId, testId }
-);
-```
+- `app/src/lib/feature-flags.ts` - Feature flag and configuration utilities
+- `app/src/utils/auth.ts` - Better Auth setup with Polar plugin
+- `app/src/lib/services/subscription-service.ts` - Core subscription management
+- `app/src/lib/webhooks/polar-webhooks.ts` - Webhook event handlers
+- `app/src/lib/services/polar-usage.service.ts` - Usage sync to Polar
+- `worker/src/execution/services/usage-tracker.service.ts` - Usage tracking in worker
 
 ---
 
 ## API Reference
 
-### GET /api/billing/current
+### Billing Endpoints
 
-Retrieve current subscription, usage, and limits for the active organization.
+#### Current Billing Status
+- **Endpoint**: `GET /api/billing/current`
+- **Purpose**: Retrieve organization subscription status, usage metrics, and plan limits
+- **Response includes**: Organization details (plan, status, dates), usage breakdown (Playwright/K6 minutes), resource limits (monitors, projects, team members), current billing period, overage calculations
 
-**Response:**
-```json
-{
-  "subscription": {
-    "plan": "plus",
-    "status": "active",
-    "currentPeriodStart": "2025-01-01T00:00:00Z",
-    "currentPeriodEnd": "2025-02-01T00:00:00Z"
-  },
-  "usage": {
-    "playwrightMinutes": {
-      "used": 350,
-      "included": 500,
-      "overage": 0,
-      "percentage": 70
-    },
-    "k6VuHours": {
-      "used": 45,
-      "included": 100,
-      "overage": 0,
-      "percentage": 45
-    }
-  },
-  "limits": {
-    "monitors": {
-      "current": 15,
-      "limit": 25,
-      "remaining": 10,
-      "percentage": 60
-    },
-    "statusPages": { /* ... */ },
-    "projects": { /* ... */ },
-    "teamMembers": { /* ... */ }
-  }
-}
-```
+#### Available Plans
+- **Endpoint**: `GET /api/billing/plans`
+- **Purpose**: List all available subscription plans with features and pricing
+- **Response includes**: Plan IDs, names, pricing, feature limits, overage rates
 
-### GET /api/billing/pricing
+#### Checkout Session
+- **Endpoint**: `POST /api/billing/checkout`
+- **Purpose**: Create Polar checkout session for plan upgrades
+- **Request**: Plan ID, success/cancel URLs
+- **Response**: Polar checkout URL for redirect
 
-Get available plans and pricing information.
+#### Usage History
+- **Endpoint**: `GET /api/billing/usage?period=current&limit=100`
+- **Purpose**: Retrieve detailed usage events and history
+- **Response includes**: Usage totals, overage costs, event list with metadata
 
-**Response:**
-```json
-{
-  "plans": [
-    {
-      "id": "plus",
-      "name": "Plus",
-      "price": 49,
-      "interval": "month",
-      "features": {
-        "monitors": 25,
-        "playwrightMinutes": 500,
-        "k6VuHours": 100,
-        /* ... */
-      },
-      "overagePricing": {
-        "playwrightMinutes": 0.10,
-        "k6VuHours": 0.50
-      }
-    },
-    /* ... */
-  ]
-}
-```
+### Plan Enforcement API
+
+#### Resource Limit Checks
+- **checkMonitorLimit(orgId, currentCount)** - Returns allowed/error status
+- **checkProjectLimit(orgId, currentCount)** - Project limit validation
+- **checkStatusPageLimit(orgId, currentCount)** - Status page limit validation
+- **checkTeamMemberLimit(orgId, currentCount)** - Team member limit validation
+
+### Usage Tracking API
+
+#### Usage Recording
+- **trackPlaywrightExecution(orgId, durationMs, metadata)** - Record Playwright usage
+- **trackK6Execution(orgId, virtualUsers, durationMs, metadata)** - Record K6 usage
+- **getUsage(organizationId)** - Get current usage with overage calculations
+
+### Polar Integration
+
+#### Event Ingestion
+- Usage events recorded locally in `usage_events` table
+- Synced to Polar via `/customers/{id}/meters/events` endpoint
+- Meter names: `playwright_minutes`, `k6_vu_minutes`
+- Batch processing with retry logic
+
+#### Better Auth Usage Plugin
+- Client-side event ingestion via `authClient.usage.ingestion()`
+- Customer meter listing via `authClient.usage.meters.list()`
 
 ---
 
 ## UI Components
 
-### UsageWarning
+### Billing Page Integration
 
-Display warnings when resources reach 80% or 100% of limits.
+The billing system integrates seamlessly with the existing UI:
 
-**Location**: `app/src/components/billing/usage-warning.tsx`
-
-**Usage:**
-```tsx
-import { UsageWarning } from "@/components/billing/usage-warning";
-
-<UsageWarning
-  type="playwright"
-  used={450}
-  limit={500}
-  percentage={90}
-/>
-```
-
-**Props:**
-- `type`: Resource type (playwright, k6, monitors, statusPages, projects, teamMembers)
-- `used`: Current usage count
-- `limit`: Plan limit
-- `percentage`: Usage percentage (0-100)
-- `className?`: Additional CSS classes
-- `onUpgradeClick?`: Custom upgrade handler
-
-### UpgradePrompt
-
-Prompt users to upgrade when hitting limits.
-
-**Location**: `app/src/components/billing/upgrade-prompt.tsx`
-
-**Usage:**
-```tsx
-import { UpgradePrompt } from "@/components/billing/upgrade-prompt";
-
-<UpgradePrompt
-  resource="monitors"
-  currentPlan="Plus"
-  limit={25}
-  nextPlan={{ name: "Pro", limit: 100, price: 149 }}
-  variant="card"
-/>
-```
-
-**Props:**
-- `resource`: Resource name (e.g., "monitors")
-- `currentPlan`: Current plan name
-- `limit`: Current plan limit
-- `nextPlan?`: Upgrade option details
-- `variant?`: Display style ("inline" | "card")
-- `className?`: Additional CSS classes
-
-### UsageDashboard
-
-Complete dashboard showing all usage and limits.
-
-**Location**: `app/src/components/billing/usage-dashboard.tsx`
-
-**Usage:**
-```tsx
-import { UsageDashboard } from "@/components/billing/usage-dashboard";
-
-<UsageDashboard
-  usage={billingData.usage}
-  limits={billingData.limits}
-  plan={{ name: "Plus", overagePricing: { ... } }}
-  periodEnd={new Date("2025-02-01")}
-/>
-```
-
-**Sub-components:**
-- `UsageMeter`: Individual resource meter with progress bar
-- `LimitCard`: Resource limit display card
-
-### Subscription Tab (Organization Admin)
-
-Full-featured subscription management integrated into the Organization Admin page.
-
-**Location**: `app/src/components/org-admin/subscription-tab.tsx`
-
-**Features:**
-- Current plan display with status badge
-- Plan renewal information
-- "Manage Subscription" button (opens Polar customer portal in new tab)
-- Real-time usage meters (Playwright minutes, K6 VU hours)
-- Plan features display (data retention, custom domains, SSO)
-- Resource limits with progress bars (monitors, status pages, projects, team members)
-
-**Access:**
-- Navigate to `/org-admin` and click the "Subscription" tab
-- Or access directly via `/org-admin?tab=subscription`
-
-**Note:** The standalone `/billing` page now redirects to the Subscription tab in Organization Admin.
-
-### Customer Portal Integration
-
-The "Manage Subscription" button uses the Better Auth Polar customer portal:
+#### Billing Dashboard
 
 ```typescript
-// Opens Polar customer portal in new tab
-const result = await authClient.customer.portal();
-if (result?.data?.url) {
-  window.open(result.data.url, '_blank', 'noopener,noreferrer');
+// app/components/billing/billing-dashboard.tsx
+import { BillingDashboard } from "@/components/billing/billing-dashboard";
+
+export default function BillingPage() {
+  return (
+    <div className="container mx-auto py-8">
+      <BillingDashboard />
+    </div>
+  );
 }
 ```
 
-The portal allows customers to:
-- View subscription details
-- Update payment method
-- Cancel subscription
-- View invoices and receipts
+#### Usage Display Components
+
+**UsageMeter Component**:
+```typescript
+<UsageMeter
+  label="Playwright Execution Minutes"
+  used={usage.playwrightMinutes.used}
+  included={usage.playwrightMinutes.included}
+  unit="minutes"
+  icon={<Activity className="h-4 w-4" />}
+  showOverage
+  overage={usage.playwrightMinutes.overage}
+  overageCost={playwrightOverageCost}
+/>
+```
+
+**UsageDashboard Component**:
+```typescript
+<UsageDashboard
+  usage={billingData.usage}
+  limits={billingData.limits}
+  plan={{ name: "Plus", overagePricing: pricing }}
+  periodEnd={billingData.currentPeriod.end}
+/>
+```
+
+### Subscription Management
+
+#### Plan Selection
+
+```typescript
+// app/components/billing/plan-selection.tsx
+export function PlanSelection() {
+  const { data: plans } = useQuery({
+    queryKey: ["billing-plans"],
+    queryFn: () => fetch("/api/billing/plans").then(r => r.json()),
+  });
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {plans?.map((plan) => (
+        <PlanCard
+          key={plan.id}
+          plan={plan}
+          currentPlan={currentPlan}
+          onUpgrade={() => handleUpgrade(plan.id)}
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+#### Upgrade Flow
+
+```typescript
+// app/components/billing/upgrade-button.tsx
+export function UpgradeButton({ planId }: { planId: string }) {
+  const handleUpgrade = async () => {
+    const response = await fetch("/api/billing/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ planId }),
+    });
+    
+    const { checkoutUrl } = await response.json();
+    window.location.href = checkoutUrl;
+  };
+
+  return (
+    <Button onClick={handleUpgrade}>
+      Upgrade to {planId === "pro" ? "Pro" : "Plus"}
+    </Button>
+  );
+}
+```
+
+### Customer Portal
+
+```typescript
+// app/components/billing/manage-subscription.tsx
+export function ManageSubscription() {
+  const { data: billing } = useQuery({
+    queryKey: ["billing-current"],
+    queryFn: () => fetch("/api/billing/current").then(r => r.json()),
+  });
+
+  const openPortal = async () => {
+    const response = await fetch("/api/billing/portal", {
+      method: "POST",
+    });
+    
+    const { portalUrl } = await response.json();
+    window.location.href = portalUrl;
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Current Plan: {billing?.organization?.subscriptionPlan}</CardTitle>
+        <CardDescription>
+          Status: {billing?.organization?.subscriptionStatus}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button onClick={openPortal}>
+          Manage Subscription
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+```
+
+### Usage Alerts
+
+```typescript
+// app/components/billing/usage-alerts.tsx
+export function UsageAlerts({ usage }: { usage: UsageData }) {
+  const isNearLimit = usage.playwrightMinutes.percentage >= 80;
+  const isOverLimit = usage.playwrightMinutes.percentage >= 100;
+
+  if (!isNearLimit) return null;
+
+  return (
+    <Alert variant={isOverLimit ? "destructive" : "default"}>
+      <AlertTriangle className="h-4 w-4" />
+      <AlertTitle>
+        {isOverLimit ? "Usage Limit Exceeded" : "Approaching Usage Limit"}
+      </AlertTitle>
+      <AlertDescription>
+        You've used {usage.playwrightMinutes.percentage}% of your Playwright minutes.
+        {isOverLimit && " Overage charges will apply."}
+      </AlertDescription>
+    </Alert>
+  );
+}
+```
 
 ---
 
@@ -946,11 +1378,21 @@ ALTER TABLE organization ADD COLUMN polar_customer_id VARCHAR(255);
 ALTER TABLE organization ADD COLUMN subscription_plan VARCHAR(50); -- Nullable: cloud users start without plan
 ALTER TABLE organization ADD COLUMN subscription_status VARCHAR(50) DEFAULT 'none';
 ALTER TABLE organization ADD COLUMN subscription_id VARCHAR(255);
+
+-- Subscription period dates from Polar webhooks (startsAt/endsAt)
+-- These track the actual billing cycle for accurate billing period calculation
+ALTER TABLE organization ADD COLUMN subscription_started_at TIMESTAMP; -- When subscription period starts
+ALTER TABLE organization ADD COLUMN subscription_ends_at TIMESTAMP;    -- When subscription period ends
+
+-- Usage tracking fields
 ALTER TABLE organization ADD COLUMN playwright_minutes_used INTEGER DEFAULT 0;
-ALTER TABLE organization ADD COLUMN k6_vu_hours_used NUMERIC(10,4) DEFAULT 0; -- Changed from INTEGER for fractional hours
-ALTER TABLE organization ADD COLUMN usage_period_start TIMESTAMP;
-ALTER TABLE organization ADD COLUMN usage_period_end TIMESTAMP;
+ALTER TABLE organization ADD COLUMN k6_vu_minutes_used INTEGER DEFAULT 0; -- Integer for whole VU-minutes
+ALTER TABLE organization ADD COLUMN usage_period_start TIMESTAMP;  -- Start of current usage/billing period
+ALTER TABLE organization ADD COLUMN usage_period_end TIMESTAMP;    -- End of current usage/billing period
 ```
+
+> [!NOTE]
+> **Billing Period Calculation**: The `usage_period_start` and `usage_period_end` fields are set from Polar's `startsAt` and `endsAt` webhook payload fields. This ensures billing periods align with the actual subscription cycle (e.g., subscription starting Nov 15 → billing period Nov 15 - Dec 15) rather than calendar months (which would incorrectly be Nov 15 - Dec 1).
 
 > [!IMPORTANT]
 > **Cloud Mode Defaults**: Organizations created in cloud mode start with `subscription_plan = NULL` and `subscription_status = 'none'`. Users must subscribe to Plus or Pro via Polar to create resources.
@@ -970,7 +1412,7 @@ CREATE TABLE plan_limits (
   max_organizations INTEGER NOT NULL,
   max_projects INTEGER NOT NULL,
   playwright_minutes_included INTEGER NOT NULL,
-  k6_vu_hours_included INTEGER NOT NULL,
+  k6_vu_minutes_included INTEGER NOT NULL,
   running_capacity INTEGER NOT NULL,
   queued_capacity INTEGER NOT NULL,
   data_retention_days INTEGER NOT NULL,
@@ -980,58 +1422,105 @@ CREATE TABLE plan_limits (
 
 -- Seed data (Plus, Pro, Unlimited only - no free tier)
 INSERT INTO plan_limits VALUES
-('plus', 25, 5, 5, 1, 10, 500, 100, 5, 50, 30, false, false),
-('pro', 100, 20, 20, 3, 50, 2000, 500, 10, 100, 90, true, true),
+('plus', 25, 5, 5, 1, 10, 500, 6000, 5, 50, 30, false, false),
+('pro', 100, 20, 20, 3, 50, 2000, 30000, 10, 100, 90, true, true),
 ('unlimited', 999999, 999999, 999999, 999999, 999999, 999999, 999999, 999, 9999, 365, true, true);
 ```
 
-> [!NOTE]
-> There is no "free" plan. Cloud users must subscribe to Plus or Pro. Self-hosted users get unlimited automatically.
+### Usage Events Table (New)
 
-### Capacity Limits Enforcement
+Tracks individual usage events for audit and billing:
 
-Capacity limits (`running_capacity` and `queued_capacity`) control concurrent job execution:
+```sql
+CREATE TABLE usage_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organization(id),
+  event_type VARCHAR(50) NOT NULL, -- 'playwright_execution', 'k6_execution', 'monitor_execution'
+  event_name VARCHAR(100) NOT NULL, -- 'playwright_minutes', 'k6_vu_minutes'
+  units NUMERIC(10,4) NOT NULL,
+  unit_type TEXT NOT NULL, -- 'minutes', 'vu_minutes'
+  metadata TEXT, -- JSON
+  synced_to_polar BOOLEAN DEFAULT false,
+  polar_event_id TEXT,
+  sync_attempts INTEGER DEFAULT 0,
+  sync_error TEXT,
+  last_sync_attempt TIMESTAMP,
+  billing_period_start TIMESTAMP,
+  billing_period_end TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW()
+);
 
-| Plan | Running Capacity | Queued Capacity |
-|------|------------------|-----------------|
-| Plus | 5 concurrent | 50 queued |
-| Pro | 10 concurrent | 100 queued |
-| Unlimited | 999 concurrent | 9999 queued |
+-- Indexes for performance
+CREATE INDEX idx_usage_events_org_id ON usage_events(organization_id);
+CREATE INDEX idx_usage_events_synced ON usage_events(synced_to_polar);
+CREATE INDEX idx_usage_events_period ON usage_events(billing_period_start, billing_period_end);
+```
 
-**How Capacity Enforcement Works:**
+### Billing Settings Table (New)
 
-1. **API Layer**: Before adding a job to the queue, `verifyQueueCapacityOrThrow(organizationId)` checks:
-   - If running jobs < `runningCapacity`: job is accepted immediately
-   - If running jobs >= `runningCapacity`: check if queued jobs < `queuedCapacity`
-   - Returns 429 (Too Many Requests) if both limits are exceeded
+Organization-specific billing preferences:
 
-2. **Real-time Display**: The `ParallelThreads` component shows current capacity via SSE:
-   - Fetches organization-specific limits based on subscription plan
-   - Updates every second with running/queued counts
+```sql
+CREATE TABLE billing_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organization(id) UNIQUE,
+  enable_spending_limit BOOLEAN DEFAULT false,
+  hard_stop_on_limit BOOLEAN DEFAULT false,
+  monthly_spending_limit_cents INTEGER,
+  email_notifications BOOLEAN DEFAULT true,
+  slack_webhook_url TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+```
 
-3. **Self-Hosted Mode**: Environment variables override database limits:
-   ```bash
-   RUNNING_CAPACITY=10    # Override max concurrent executions
-   QUEUED_CAPACITY=100    # Override max queued jobs
-   ```
+### Overage Pricing Table (New)
 
-**Edge Cases & Limitations:**
-- **Race Conditions**: ✅ **FIXED** - Implemented Redis-based atomic counters using Lua scripts. All capacity checks and slot reservations happen atomically to prevent concurrent requests from exceeding limits.
-- **Plan Downgrades**: When an organization downgrades from Pro to Plus mid-execution, existing queued jobs might exceed new limits. The system allows existing jobs to continue but new submissions will be enforced at the lower plan limits.
-- **Counter Leaks**: 24-hour TTL on Redis counters prevents permanent leaks. Job lifecycle events (completed/failed/stalled/active) properly release counters.
-- **Monitor Execution**: ✅ **BYPASSES CAPACITY** - Critical health monitors are not subject to capacity limits and use dedicated queues to ensure uninterrupted monitoring.
+Configures overage rates for each plan:
 
-**Production Safety Features:**
-- **Reconciliation Function**: Periodic comparison of Redis counters vs actual BullMQ job counts to detect and fix counter drift
-- **Event-Driven Cleanup**: Comprehensive job lifecycle event handling ensures accurate counter management
-- **Per-Organization Isolation**: Capacity keys are isolated per organization: `capacity:running:{orgId}`, `capacity:queued:{orgId}`
+```sql
+CREATE TABLE overage_pricing (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  plan VARCHAR(50) NOT NULL,
+  playwright_minute_price_cents INTEGER NOT NULL, -- Price per minute in cents
+  k6_vu_minute_price_cents INTEGER NOT NULL,     -- Price per VU-minute in cents
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(plan)
+);
 
-**Implementation Files:**
-- `app/src/lib/capacity-manager.ts` - **NEW**: Core atomic capacity management with Lua scripts
-- `app/src/lib/queue-stats.ts` - Capacity tracking with org-specific limits
-- `app/src/lib/queue.ts` - `verifyQueueCapacityOrThrow()` enforcement and event listeners
-- `app/src/lib/middleware/plan-enforcement.ts` - `checkCapacityLimits()` lookup
-- `app/src/components/parallel-threads.tsx` - UI display
+-- Seed overage pricing
+INSERT INTO overage_pricing VALUES
+(gen_random_uuid(), 'plus', 10, 1),   -- $0.10/min, $0.01/VU-min
+(gen_random_uuid(), 'pro', 8, 1);    -- $0.08/min, $0.01/VU-min
+```
+
+### Migration Script
+
+```sql
+-- File: 0002_add_subscription_dates.sql
+-- Add subscription date fields to organization table
+ALTER TABLE organization ADD COLUMN IF NOT EXISTS subscription_started_at TIMESTAMP;
+ALTER TABLE organization ADD COLUMN IF NOT EXISTS subscription_ends_at TIMESTAMP;
+
+-- Add comments
+COMMENT ON COLUMN organization.subscription_started_at IS 'Start of current subscription period from Polar webhook (startsAt)';
+COMMENT ON COLUMN organization.subscription_ends_at IS 'End of current subscription period from Polar webhook (endsAt) - used for billing cycle';
+
+-- Migrate existing data
+UPDATE organization
+SET 
+  usage_period_start = COALESCE(usage_period_start, subscription_started_at, created_at),
+  usage_period_end = COALESCE(usage_period_end, subscription_ends_at, 
+    CASE 
+      WHEN subscription_started_at IS NOT NULL THEN subscription_started_at + INTERVAL '30 days'
+      WHEN usage_period_start IS NOT NULL THEN usage_period_start + INTERVAL '30 days'
+      ELSE created_at + INTERVAL '30 days'
+    END
+  )
+WHERE subscription_status = 'active' 
+  AND (usage_period_start IS NULL OR usage_period_end IS NULL);
+```
 
 ---
 
@@ -1040,139 +1529,592 @@ Capacity limits (`running_capacity` and `queued_capacity`) control concurrent jo
 ### Unit Tests
 
 #### Subscription Service Tests
+
 ```typescript
-describe("SubscriptionService", () => {
-  test("should return unlimited plan for self-hosted", async () => {
-    process.env.NEXT_PUBLIC_SELF_HOSTED = "true";
-    const plan = await subscriptionService.getOrganizationPlan(orgId);
-    expect(plan.plan).toBe("unlimited");
+// tests/unit/subscription-service.test.ts
+describe('SubscriptionService', () => {
+  let service: SubscriptionService;
+  let mockDb: jest.Mocked<Database>;
+
+  beforeEach(() => {
+    mockDb = createMockDatabase();
+    service = new SubscriptionService(mockDb);
   });
 
-  test("should track Playwright usage correctly", async () => {
-    await subscriptionService.trackPlaywrightUsage(orgId, 100);
-    const usage = await subscriptionService.getUsage(orgId);
-    expect(usage.playwrightMinutes.used).toBeGreaterThanOrEqual(100);
+  describe('requiresSubscription', () => {
+    it('should return false in self-hosted mode', () => {
+      process.env.SELF_HOSTED = 'true';
+      expect(service.requiresSubscription()).toBe(false);
+    });
+
+    it('should return true in cloud mode with Polar configured', () => {
+      process.env.SELF_HOSTED = 'false';
+      process.env.POLAR_ACCESS_TOKEN = 'test_token';
+      expect(service.requiresSubscription()).toBe(true);
+    });
+  });
+
+  describe('hasActiveSubscription', () => {
+    it('should return true for active Plus subscription', async () => {
+      mockDb.query.organization.findFirst.mockResolvedValue({
+        subscriptionStatus: 'active',
+        subscriptionPlan: 'plus',
+      });
+
+      const result = await service.hasActiveSubscription('org_123');
+      expect(result).toBe(true);
+    });
+
+    it('should return false for canceled subscription', async () => {
+      mockDb.query.organization.findFirst.mockResolvedValue({
+        subscriptionStatus: 'canceled',
+        subscriptionPlan: 'plus',
+      });
+
+      const result = await service.hasActiveSubscription('org_123');
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('blockUntilSubscribed', () => {
+    it('should throw error in cloud mode without subscription', async () => {
+      process.env.SELF_HOSTED = 'false';
+      process.env.POLAR_ACCESS_TOKEN = 'test_token';
+      
+      jest.spyOn(service, 'hasActiveSubscription').mockResolvedValue(false);
+      
+      await expect(service.blockUntilSubscribed('org_123'))
+        .rejects.toThrow('requires an active subscription');
+    });
+
+    it('should pass in self-hosted mode', async () => {
+      process.env.SELF_HOSTED = 'true';
+      
+      await expect(service.blockUntilSubscribed('org_123'))
+        .resolves.not.toThrow();
+    });
   });
 });
 ```
 
-#### Plan Enforcement Tests
+#### Webhook Handler Tests
+
 ```typescript
-describe("Plan Enforcement", () => {
-  test("should allow creation within limits", async () => {
-    const result = await checkMonitorLimit(orgId, 10); // Plus plan: 25
-    expect(result.allowed).toBe(true);
+// tests/unit/polar-webhooks.test.ts
+describe('Polar Webhooks', () => {
+  describe('handleSubscriptionActive', () => {
+    it('should activate Plus subscription', async () => {
+      const payload = {
+        type: 'subscription.active',
+        data: {
+          id: 'sub_123',
+          customerId: 'cus_456',
+          productId: 'prod_plus',
+          status: 'active',
+          startsAt: '2025-01-15T00:00:00Z',
+          endsAt: '2025-02-15T00:00:00Z',
+        },
+      };
+
+      mockDb.query.organization.findFirst.mockResolvedValue({
+        id: 'org_789',
+        polarCustomerId: 'cus_456',
+      });
+
+      await handleSubscriptionActive(payload);
+
+      expect(mockSubscriptionService.updateSubscription).toHaveBeenCalledWith(
+        'org_789',
+        expect.objectContaining({
+          subscriptionPlan: 'plus',
+          subscriptionStatus: 'active',
+          subscriptionStartedAt: new Date('2025-01-15T00:00:00Z'),
+          subscriptionEndsAt: new Date('2025-02-15T00:00:00Z'),
+        })
+      );
+    });
+
+    it('should handle missing customer ID', async () => {
+      const payload = {
+        type: 'subscription.active',
+        data: { id: 'sub_123' },
+      };
+
+      await handleSubscriptionActive(payload);
+
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining('Missing customerId')
+      );
+    });
+  });
+});
+```
+
+#### Usage Tracker Tests
+
+```typescript
+// tests/unit/usage-tracker.test.ts
+describe('UsageTrackerService', () => {
+  let service: UsageTrackerService;
+  let mockDb: jest.Mocked<Database>;
+
+  beforeEach(() => {
+    mockDb = createMockDatabase();
+    service = new UsageTrackerService(mockDb);
   });
 
-  test("should block creation at limit", async () => {
-    const result = await checkMonitorLimit(orgId, 25); // Plus plan: 25
-    expect(result.allowed).toBe(false);
-    expect(result.error).toContain("limit reached");
+  describe('trackPlaywrightExecution', () => {
+    it('should track usage and update counters', async () => {
+      const organizationId = 'org_123';
+      const executionTimeMs = 125000; // ~3 minutes
+
+      mockDb.query.organization.findFirst.mockResolvedValue({
+        id: organizationId,
+        usagePeriodStart: new Date(),
+        usagePeriodEnd: new Date(),
+      });
+
+      const result = await service.trackPlaywrightExecution(
+        organizationId,
+        executionTimeMs
+      );
+
+      expect(result.blocked).toBe(false);
+      expect(mockDb.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          playwrightMinutesUsed: expect.any(Object),
+        })
+      );
+    });
+
+    it('should handle errors gracefully', async () => {
+      mockDb.query.organization.findFirst.mockRejectedValue(
+        new Error('Database error')
+      );
+
+      const result = await service.trackPlaywrightExecution(
+        'org_123',
+        60000
+      );
+
+      expect(result.blocked).toBe(false);
+      expect(console.error).toHaveBeenCalled();
+    });
   });
 });
 ```
 
 ### Integration Tests
 
-#### API Route Tests
+#### End-to-End Subscription Flow
+
 ```typescript
-describe("POST /api/monitors", () => {
-  test("should enforce monitor limit", async () => {
-    // Create 25 monitors (Plus plan limit)
-    for (let i = 0; i < 25; i++) {
-      await createMonitor({ name: `Monitor ${i}` });
+// tests/integration/subscription-flow.test.ts
+describe('Subscription Flow', () => {
+  let testApp: TestApplication;
+  let polarClient: MockPolarClient;
+
+  beforeAll(async () => {
+    testApp = await createTestApplication();
+    polarClient = createMockPolarClient();
+  });
+
+  it('should complete full subscription flow', async () => {
+    // 1. User signs up
+    const signupResponse = await testApp.request
+      .post('/api/auth/sign-up')
+      .send({
+        email: 'test@example.com',
+        password: 'password123',
+        name: 'Test User',
+      });
+
+    expect(signupResponse.status).toBe(200);
+    const { user } = signupResponse.body;
+
+    // 2. Customer created in Polar
+    expect(polarClient.customers.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'test@example.com',
+        name: 'Test User',
+      })
+    );
+
+    // 3. User creates organization
+    const orgResponse = await testApp.request
+      .post('/api/organizations')
+      .set('Authorization', `Bearer ${user.sessionToken}`)
+      .send({
+        name: 'Test Org',
+      });
+
+    expect(orgResponse.status).toBe(200);
+    const { organization } = orgResponse.body;
+
+    // 4. User subscribes to Plus plan
+    const checkoutResponse = await testApp.request
+      .post('/api/billing/checkout')
+      .set('Authorization', `Bearer ${user.sessionToken}`)
+      .send({
+        planId: 'plus',
+      });
+
+    expect(checkoutResponse.status).toBe(200);
+    const { checkoutUrl } = checkoutResponse.body;
+
+    // 5. Simulate successful payment webhook
+    const webhookResponse = await testApp.request
+      .post('/api/auth/polar/webhooks')
+      .set('X-Polar-Signature', 'valid_signature')
+      .send({
+        type: 'subscription.active',
+        data: {
+          id: 'sub_123',
+          customerId: organization.polarCustomerId,
+          productId: process.env.POLAR_PLUS_PRODUCT_ID,
+          status: 'active',
+          startsAt: '2025-01-15T00:00:00Z',
+          endsAt: '2025-02-15T00:00:00Z',
+        },
+      });
+
+    expect(webhookResponse.status).toBe(200);
+
+    // 6. Verify subscription activated
+    const billingResponse = await testApp.request
+      .get('/api/billing/current')
+      .set('Authorization', `Bearer ${user.sessionToken}`);
+
+    expect(billingResponse.status).toBe(200);
+    expect(billingResponse.body.organization.subscriptionPlan).toBe('plus');
+    expect(billingResponse.body.organization.subscriptionStatus).toBe('active');
+  });
+});
+```
+
+#### Usage Tracking Integration
+
+```typescript
+// tests/integration/usage-tracking.test.ts
+describe('Usage Tracking Integration', () => {
+  it('should track usage and sync to Polar', async () => {
+    const organizationId = 'org_123';
+    
+    // 1. Track Playwright usage
+    await usageTracker.trackPlaywrightExecution(
+      organizationId,
+      125000, // ~3 minutes
+      { testId: 'test_456' }
+    );
+
+    // 2. Verify local tracking
+    const org = await db.query.organization.findFirst({
+      where: eq(organization.id, organizationId),
+    });
+
+    expect(org?.playwrightMinutesUsed).toBe(3);
+
+    // 3. Verify usage event recorded
+    const events = await db.query.usageEvents.findMany({
+      where: eq(usageEvents.organizationId, organizationId),
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0].eventType).toBe('playwright_execution');
+    expect(events[0].units).toBe('3');
+    expect(events[0].syncedToPolar).toBe(false);
+
+    // 4. Sync to Polar
+    const syncResult = await polarUsageService.syncPendingEvents();
+
+    expect(syncResult.succeeded).toBe(1);
+    expect(syncResult.failed).toBe(0);
+
+    // 5. Verify synced
+    const syncedEvents = await db.query.usageEvents.findFirst({
+      where: eq(usageEvents.id, events[0].id),
+    });
+
+    expect(syncedEvents?.syncedToPolar).toBe(true);
+  });
+});
+```
+
+### Performance Tests
+
+#### Usage Tracking Performance
+
+```typescript
+// tests/performance/usage-tracking.test.ts
+describe('Usage Tracking Performance', () => {
+  it('should handle high-volume usage tracking', async () => {
+    const startTime = Date.now();
+    const promises = [];
+
+    // Track 1000 usage events concurrently
+    for (let i = 0; i < 1000; i++) {
+      promises.push(
+        usageTracker.trackPlaywrightExecution(
+          `org_${i % 10}`, // 10 different orgs
+          Math.random() * 60000, // Random execution time
+          { testId: `test_${i}` }
+        )
+      );
     }
 
-    // 26th monitor should fail
-    const response = await createMonitor({ name: "Monitor 26" });
-    expect(response.status).toBe(403);
-    expect(response.body.error).toContain("limit reached");
+    await Promise.all(promises);
+    const duration = Date.now() - startTime;
+
+    // Should complete within 5 seconds
+    expect(duration).toBeLessThan(5000);
+
+    // Verify all events recorded
+    const eventCount = await db.query.usageEvents.findMany();
+    expect(eventCount).toHaveLength(1000);
   });
 });
 ```
-
-#### Webhook Tests
-```typescript
-describe("Polar Webhooks", () => {
-  test("should update subscription on active event", async () => {
-    const payload = {
-      type: "subscription.active",
-      data: { /* ... */ }
-    };
-
-    await handleWebhook(payload);
-
-    const org = await db.organization.findById(orgId);
-    expect(org.subscriptionStatus).toBe("active");
-  });
-});
-```
-
-### Manual Testing Checklist
-
-#### Self-Hosted Mode
-- [ ] All features available without Polar configuration
-- [ ] No customer creation on signup
-- [ ] No usage tracking to database
-- [ ] All limits return "unlimited"
-
-#### Cloud Mode
-- [ ] Customer created in Polar on signup
-- [ ] Plan limits enforced correctly
-- [ ] Usage tracked after execution
-- [ ] Webhook events processed correctly
-
-#### UI Testing
-- [ ] Billing page loads correctly
-- [ ] Usage meters display accurate data
-- [ ] Warnings appear at 80% and 100%
-- [ ] Upgrade buttons function correctly
-- [ ] Plan comparison renders properly
 
 ---
 
 ## Deployment
 
-### Production Checklist
+### Environment Configuration
 
-#### 1. Environment Configuration
-- [ ] Set `NEXT_PUBLIC_SELF_HOSTED=false`
-- [ ] Configure `POLAR_ACCESS_TOKEN` (production)
-- [ ] Set `POLAR_SERVER=production`
-- [ ] Add `POLAR_WEBHOOK_SECRET`
-- [ ] Add `POLAR_PLUS_PRODUCT_ID`
-- [ ] Add `POLAR_PRO_PRODUCT_ID`
+#### Production Environment Variables
 
-#### 2. Database Migration
 ```bash
+# Production .env
+NODE_ENV=production
+NEXT_PUBLIC_APP_URL=https://app.supercheck.io
+BETTER_AUTH_URL=https://app.supercheck.io
+BETTER_AUTH_SECRET=your_production_secret
+
+# Polar Production
+SELF_HOSTED=false
+POLAR_ACCESS_TOKEN=prod_live_xxxx
+POLAR_SERVER=production
+POLAR_WEBHOOK_SECRET=whsec_xxxx
+POLAR_PLUS_PRODUCT_ID=prod_plus_xxxx
+POLAR_PRO_PRODUCT_ID=prod_pro_xxxx
+
+# Database
+DATABASE_URL=postgresql://user:pass@host:5432/supercheck_prod
+
+# Redis (for caching)
+REDIS_URL=redis://user:pass@host:6379
+
+# Email (for billing notifications)
+SMTP_HOST=smtp.sendgrid.net
+SMTP_USER=apikey
+SMTP_PASS=your_sendgrid_api_key
+```
+
+#### Staging Environment
+
+```bash
+# Staging .env
+NODE_ENV=staging
+NEXT_PUBLIC_APP_URL=https://staging.supercheck.io
+BETTER_AUTH_URL=https://staging.supercheck.io
+
+# Polar Sandbox
+POLAR_ACCESS_TOKEN=sandbox_test_xxxx
+POLAR_SERVER=sandbox
+POLAR_WEBHOOK_SECRET=whsec_test_xxxx
+POLAR_PLUS_PRODUCT_ID=sandbox_plus_xxxx
+POLAR_PRO_PRODUCT_ID=sandbox_pro_xxxx
+```
+
+### Database Migration
+
+```bash
+# Run migrations in production
 cd app
 npm run db:migrate
+
+# Verify migration success
+npm run db:studio
+# Check that new columns exist in organization table
 ```
 
-Verify plan limits:
+### Webhook Configuration
+
+#### Production Webhook Setup
+
+1. **Configure Polar Webhook**:
+   - URL: `https://app.supercheck.io/api/auth/polar/webhooks`
+   - Secret: Copy from `POLAR_WEBHOOK_SECRET`
+   - Events: `subscription.active`, `subscription.updated`, `subscription.canceled`, `order.paid`
+
+2. **Verify Webhook Reachability**:
+   ```bash
+   curl -v -X POST https://app.supercheck.io/api/auth/polar/webhooks \
+     -H "Content-Type: application/json" \
+     -d '{"test": true}'
+   # Expected: 401 (signature verification failed)
+   ```
+
+3. **Test Webhook Delivery**:
+   - Create test subscription in Polar sandbox
+   - Check application logs for webhook processing
+   - Verify subscription status updates in database
+
+### Monitoring Setup
+
+#### Metrics to Monitor
+
+```typescript
+// Custom metrics for billing system
+const billingMetrics = {
+  // Subscription metrics
+  activeSubscriptions: new Counter('billing_active_subscriptions_total'),
+  subscriptionActivations: new Counter('billing_subscription_activations_total'),
+  subscriptionFailures: new Counter('billing_subscription_failures_total'),
+
+  // Usage metrics
+  usageEventsTracked: new Counter('billing_usage_events_total'),
+  usageSyncAttempts: new Counter('billing_usage_sync_attempts_total'),
+  usageSyncFailures: new Counter('billing_usage_sync_failures_total'),
+
+  // Enforcement metrics
+  planEnforcementBlocks: new Counter('billing_plan_enforcement_blocks_total'),
+  limitExceededEvents: new Counter('billing_limit_exceeded_total'),
+};
+```
+
+#### Alert Rules
+
+```yaml
+# alerts/billing.yml
+groups:
+  - name: billing
+    rules:
+      - alert: HighSyncFailureRate
+        expr: billing_usage_sync_failures_total / billing_usage_sync_attempts_total > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Usage sync failure rate is above 5%"
+
+      - alert: PendingUsageEvents
+        expr: billing_pending_events_count > 1000
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Too many pending usage events"
+
+      - alert: SubscriptionWebhookFailure
+        expr: increase(billing_subscription_failures_total[1h]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Subscription webhook failures detected"
+```
+
+### Cron Job Setup
+
+#### Production Sync Job
+
+```bash
+# Add to production crontab
+# Sync usage events every 5 minutes
+*/5 * * * * curl -X POST https://app.supercheck.io/api/admin/sync-usage-events \
+  -H "Authorization: Bearer $ADMIN_API_KEY" \
+  >> /var/log/supercheck/sync.log 2>&1
+
+# Daily billing report
+0 8 * * * curl -X POST https://app.supercheck.io/api/admin/billing-report \
+  -H "Authorization: Bearer $ADMIN_API_KEY" \
+  >> /var/log/supercheck/billing-report.log 2>&1
+```
+
+#### Kubernetes CronJob
+
+```yaml
+# k8s/cronjobs/sync-usage.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sync-usage-events
+spec:
+  schedule: "*/5 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: sync-usage
+            image: supercheck/app:latest
+            command:
+            - curl
+            - -X POST
+            - http://app:3000/api/admin/sync-usage-events
+            - -H
+            - Authorization: Bearer $ADMIN_API_KEY
+            env:
+            - name: ADMIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: admin-api-key
+          restartPolicy: OnFailure
+```
+
+### Security Considerations
+
+#### Webhook Security
+
+```typescript
+// Verify webhook signatures in production
+app.post('/api/auth/polar/webhooks', (req, res) => {
+  const signature = req.headers['x-polar-signature'];
+  const payload = req.body;
+  
+  if (!verifyWebhookSignature(payload, signature, process.env.POLAR_WEBHOOK_SECRET!)) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+  
+  // Process webhook...
+});
+```
+
+#### API Rate Limiting
+
+```typescript
+// Rate limit billing endpoints
+import rateLimit from 'express-rate-limit';
+
+const billingRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per window
+  message: 'Too many billing requests',
+});
+
+app.use('/api/billing', billingRateLimit);
+```
+
+#### Database Security
+
 ```sql
-SELECT * FROM plan_limits;
--- Should return 3 rows: plus, pro, unlimited
+-- Restrict access to billing tables
+CREATE ROLE billing_readonly;
+GRANT SELECT ON plan_limits, overage_pricing TO billing_readonly;
+GRANT SELECT, INSERT, UPDATE ON usage_events TO billing_service;
+
+-- Row Level Security for organization data
+ALTER TABLE organization ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY org_isolation ON organization
+  FOR ALL TO application_user
+  USING (id IN (
+    SELECT organization_id FROM organization_members 
+    WHERE user_id = current_user_id()
+  ));
 ```
-
-#### 3. Polar Dashboard
-- [ ] Create production products (Plus, Pro)
-- [ ] Configure webhook endpoint
-- [ ] Test webhook delivery
-- [ ] Verify product IDs match environment variables
-
-#### 4. Smoke Tests
-- [ ] Sign up new user → verify customer created in Polar
-- [ ] Create monitors up to limit → verify enforcement
-- [ ] Run Playwright test → verify usage tracked
-- [ ] Run K6 test → verify VU hours tracked
-- [ ] Check `/billing` page → verify data displayed
-
-#### 5. Monitoring
-- [ ] Set up logging for Polar API calls
-- [ ] Monitor webhook delivery success rate
-- [ ] Track usage tracking errors
-- [ ] Alert on failed subscription updates
 
 ---
 
@@ -1180,841 +2122,159 @@ SELECT * FROM plan_limits;
 
 ### Common Issues
 
-#### 1. Webhook Not Receiving Events
+#### 1. Polar Plugin Not Loading
 
-**Symptoms:**
-- Subscription changes not reflected in app
-- Database not updating after Polar events
+**Symptoms**: 
+- No customer created on signup
+- `/billing` page shows "Polar not configured"
+- Webhook events not being processed
 
-**Solutions:**
-- Verify webhook URL is publicly accessible
-- Check `POLAR_WEBHOOK_SECRET` matches Polar dashboard
-- Review webhook logs in Polar dashboard
-- Ensure Better Auth is properly configured
+**Debug Steps**:
+```bash
+# Check environment variables
+echo $POLAR_ACCESS_TOKEN
+echo $POLAR_WEBHOOK_SECRET
+echo $SELF_HOSTED
 
-**Debug:**
+# Check application logs
+tail -f logs/app.log | grep -i polar
+
+# Verify plugin initialization
+curl http://localhost:3000/api/auth/session | jq .
+```
+
+**Solution**:
+1. Verify all Polar environment variables are set
+2. Check that `SELF_HOSTED=false` for cloud mode
+3. Restart the application after fixing environment variables
+4. Ensure Polar access token is valid and has proper permissions
+
+#### 2. Webhook Not Receiving Events
+
+**Symptoms**:
+- Subscription not activating after payment
+- Plan limits not updating
+- No webhook logs in application
+
+**Debug Steps**:
 ```bash
 # Test webhook endpoint
-curl -X POST https://your-domain.com/api/auth/polar/webhooks \
+curl -v -X POST https://your-domain.com/api/auth/polar/webhooks \
   -H "Content-Type: application/json" \
-  -d '{"test": "payload"}'
+  -d '{"test": true}'
+
+# Check webhook configuration in Polar dashboard
+# Verify URL matches exactly
+# Check webhook secret matches POLAR_WEBHOOK_SECRET
+
+# Check webhook delivery logs in Polar dashboard
+# Look for failed deliveries and error messages
 ```
 
-#### 2. Customer Not Created on Signup
+**Solution**:
+1. Ensure webhook URL is publicly accessible (not localhost)
+2. Verify webhook secret matches environment variable exactly
+3. Check SSL certificate is valid for production URLs
+4. Review Polar webhook delivery logs for specific errors
 
-**Symptoms:**
-- `polar_customer_id` is null in organization table
-- Users can't access checkout
+#### 3. Usage Not Tracking
 
-**Solutions:**
-- Verify `POLAR_ACCESS_TOKEN` is valid
-- Check `NEXT_PUBLIC_SELF_HOSTED` is set to `false`
-- Review application logs for Polar API errors
-- Ensure Better Auth Polar plugin is loaded
+**Symptoms**:
+- Usage meters showing 0 despite test executions
+- No overage charges when expected
+- `usage_events` table empty
 
-**Debug:**
-```typescript
-// Check if Polar is enabled
-import { isPolarEnabled } from "@/lib/feature-flags";
-console.log("Polar enabled:", isPolarEnabled());
-```
-
-#### 3. Plan Limits Not Enforcing
-
-**Symptoms:**
-- Users can create resources beyond limits
-- Limit checks always return allowed
-
-**Solutions:**
-- Verify database migration ran successfully
-- Check `plan_limits` table has 3 rows
-- Confirm organization has correct `subscription_plan`
-- Review middleware integration in API routes
-
-**Debug:**
+**Debug Steps**:
 ```sql
--- Check organization subscription
-SELECT id, name, subscription_plan, subscription_status
-FROM organization
-WHERE id = 'org_id';
+-- Check organization has subscription
+SELECT id, subscription_plan, subscription_status, polar_customer_id 
+FROM organization 
+WHERE id = 'your-org-id';
 
--- Check plan limits
-SELECT * FROM plan_limits WHERE plan = 'plus';
+-- Check recent usage events
+SELECT * FROM usage_events 
+WHERE organization_id = 'your-org-id' 
+  AND created_at > NOW() - INTERVAL '1 hour'
+ORDER BY created_at DESC;
+
+-- Check worker logs for usage tracking
+tail -f logs/worker.log | grep "Usage"
 ```
 
-#### 4. Usage Not Tracking
+**Solution**:
+1. Verify organization has active subscription in cloud mode
+2. Check that usage tracking is called after test execution
+3. Ensure worker service is running and connected to database
+4. Review worker logs for tracking errors
 
-**Symptoms:**
-- Playwright minutes remain at 0 after execution
-- K6 VU hours not incrementing
+#### 4. Usage Sync Failing
 
-**Solutions:**
-- Verify `UsageTrackerService` is injected in worker processors
-- Check `SELF_HOSTED` flag (tracking disabled if true)
-- Review worker logs for tracking errors
-- Ensure organization exists in database
+**Symptoms**:
+- Growing number of pending usage events
+- `synced_to_polar = false` in database
+- Overages not billed to customers
 
-**Debug:**
-```typescript
-// In worker processor
-this.logger.log(`Tracking Playwright usage for org ${organizationId}: ${durationMs}ms`);
-```
-
-#### 5. Overage Charges Not Calculated
-
-**Symptoms:**
-- Usage shows overage but cost is $0
-- Billing page doesn't display overage cost
-
-**Solutions:**
-- Verify `plan_limits` table has correct overage pricing
-- Check `subscriptionService.getUsage()` calculations
-- Ensure `currentPlan.overagePricing` is populated
-
-**Debug:**
-```typescript
-const usage = await subscriptionService.getUsage(orgId);
-console.log("Overage:", usage.playwrightMinutes.overage);
-console.log("Cost per minute:", plan.overagePricing.playwrightMinutes);
-```
-
-### Error Codes
-
-| Code | Message | Solution |
-|------|---------|----------|
-| `POLAR_001` | Customer creation failed | Check Polar API token and permissions |
-| `POLAR_002` | Webhook signature invalid | Verify `POLAR_WEBHOOK_SECRET` |
-| `POLAR_003` | Subscription not found | Check `subscription_id` in database |
-| `LIMIT_001` | Monitor limit reached | User needs to upgrade plan |
-| `LIMIT_002` | Usage limit exceeded | Overage charges will apply |
-
-### Logging
-
-Logging is kept minimal to reduce noise. Only essential success/error messages are logged.
-
-#### Webhook Logs
-```typescript
-// Event received (single line)
-console.log('[Polar] Webhook:', payload.type);
-
-// Successful activation
-console.log(`[Polar] ✅ Activated plus for OrgName`);
-
-// Error case
-console.error('[Polar] Org not found for subscription', { orgId, customerId });
-```
-
-#### Plan Enforcement Logs
-```typescript
-// Errors only
-console.warn(`Monitor limit reached for org ${orgId}: ${error}`);
-```
-
-#### Worker Logs
-```typescript
-// Playwright execution
-this.logger.log(`[Usage] Tracked Playwright execution: ${minutes} minutes`);
-
-// K6 execution
-this.logger.log(`[Usage] Tracked K6 usage: ${vuHours} VU hours`);
-```
-
-> **Note**: Verbose logging was removed in v1.2.0 to improve console readability. Use database queries for debugging subscription issues.
-
----
-
-## Performance Considerations
-
-### Database Optimization
-
-#### Indexes
+**Debug Steps**:
 ```sql
--- Index on polar_customer_id for quick lookups
-CREATE INDEX idx_organization_polar_customer ON organization(polar_customer_id);
+-- Check sync status
+SELECT 
+  COUNT(*) as total,
+  COUNT(CASE WHEN synced_to_polar = true THEN 1 END) as synced,
+  COUNT(CASE WHEN synced_to_polar = false THEN 1 END) as pending
+FROM usage_events;
 
--- Index on subscription_plan for filtering
-CREATE INDEX idx_organization_subscription_plan ON organization(subscription_plan);
+-- Check recent sync errors
+SELECT event_type, sync_error, sync_attempts, last_sync_attempt
+FROM usage_events 
+WHERE synced_to_polar = false 
+  AND sync_error IS NOT NULL
+ORDER BY last_sync_attempt DESC 
+LIMIT 10;
+
+-- Test Polar API connection
+curl -H "Authorization: Bearer $POLAR_ACCESS_TOKEN" \
+  https://api.polar.sh/v1/customers
 ```
 
-#### Query Optimization
-- Use `db.query.organization.findFirst()` with specific columns
-- Cache plan limits in application memory
-- Batch usage updates where possible
+**Solution**:
+1. Verify Polar access token is valid and not expired
+2. Check that meters are created in Polar dashboard
+3. Ensure customer IDs match between database and Polar
+4. Run manual sync to test connection
 
-### Caching Strategy
+#### 5. Plan Enforcement Not Working
 
-#### Plan Limits (Memory Cache)
+**Symptoms**:
+- Users can exceed monitor limits
+- Resource creation not blocked
+- Enforcement middleware not triggered
+
+**Debug Steps**:
 ```typescript
-const planCache = new Map<string, PlanLimits>();
+// Check enforcement middleware is applied
+console.log(app._router.stack); // Look for enforcement middleware
 
-async function getCachedPlanLimits(plan: string) {
-  if (!planCache.has(plan)) {
-    const limits = await db.query.planLimits.findFirst({ where: eq(planLimits.plan, plan) });
-    planCache.set(plan, limits);
-  }
-  return planCache.get(plan);
-}
-```
+// Test plan enforcement directly
+const result = await checkMonitorLimit(orgId, currentCount);
+console.log(result); // Should show blocked: true
 
-#### Usage Data (Short TTL)
-- Cache usage metrics for 5 minutes to reduce database load
-- Invalidate cache on usage updates
-- Use stale-while-revalidate pattern
-
-### Rate Limiting
-
-#### Polar API Calls
-- Limit: 100 requests/minute
-- Implement exponential backoff for retries
-- Queue non-critical operations
-
-#### Webhook Processing
-- Process webhooks asynchronously
-- Use job queue for heavy operations
-- Implement idempotency for retry safety
-
----
-
-## Security
-
-### API Key Management 
-- Store `POLAR_ACCESS_TOKEN` in secure environment variables
-- Never commit secrets to version control
-- Rotate tokens periodically (recommended: quarterly)
-
-### Webhook Security 
-- **Signature Verification**: Better Auth Polar plugin verifies signatures using `POLAR_WEBHOOK_SECRET` BEFORE any database operations
-- **Idempotency**: Webhook handlers check if subscription already active to prevent duplicate processing
-- **Event Types**: Only processes trusted event types (`subscription.*`, `order.*`, `checkout.*`)
-- **Audit Trail**: Logs webhook events for debugging (no sensitive data)
-
-### Data Protection 
-- Minimal PII storage (only Polar customer ID)
-- No sensitive data logged (removed verbose JSON dumps in v1.2.0)
-- Comply with GDPR for European customers
-
-### Server-Side Enforcement 
-- All protected API routes validate subscription via `subscriptionService.getOrganizationPlan()`
-- Throws error for unsubscribed cloud users before any resource creation
-- Client-side `SubscriptionGuard` is UX enhancement only, not security boundary
-
-### Race Condition Mitigation 
-- Webhooks primarily use `referenceId` from checkout metadata (reliable)
-- `polarCustomerId` linking is fallback mechanism (graceful if fails)
-- No artificial delays or fragile workarounds
-
----
-
-## Maintenance
-
-### Monthly Tasks
-- [ ] Review overage charges and notify customers
-- [ ] Check webhook delivery success rate
-- [ ] Verify usage tracking accuracy
-- [ ] Update plan limits if needed
-
-### Quarterly Tasks
-- [ ] Rotate Polar API tokens
-- [ ] Review and optimize database queries
-- [ ] Analyze customer usage patterns
-- [ ] Update pricing if market changes
-
-### Annual Tasks
-- [ ] Security audit of billing integration
-- [ ] Review Polar contract and fees
-- [ ] Plan feature additions (e.g., annual billing)
-- [ ] Customer satisfaction survey on pricing
-
----
-
-## References
-
-### Documentation
-- [Polar API Documentation](https://polar.sh/docs)
-- [Better Auth Polar Plugin](https://www.better-auth.com/plugins/polar)
-- [Drizzle ORM Documentation](https://orm.drizzle.team/)
-
-### Related Files
-- `docs/pricing.md` - Public pricing information
-- `docs/polar-setup.md` - Initial setup guide
-- `docs/polar-implementation-status.md` - Implementation checklist
-
-### Support
-- **Polar Issues**: https://polar.sh/support
-- **Supercheck Issues**: https://github.com/supercheck-io/supercheck/issues
-- **Email**: [email protected]
-
----
-
-## Changelog
-
-### v1.0.0 (2025-01-25)
-- ✅ Initial implementation
-- ✅ Plus and Pro plan support
-- ✅ Usage tracking (Playwright + K6)
-- ✅ Plan enforcement middleware
-- ✅ Billing UI components
-- ✅ Webhook handlers
-- ✅ Self-hosted mode support
-
-### v1.1.0 (2025-11-26)
-- ✅ Usage-based billing with Polar event ingestion
-- ✅ Spending limits with hard stop capability
-- ✅ Usage notification emails (50%, 80%, 90%, 100% thresholds)
-- ✅ Overage pricing configuration
-- ✅ Billing settings API endpoints
-- ✅ Spending limits UI component
-
-### v1.2.0 (2025-11-27)
-- ✅ **Fixed redirect loop**: Billing success page now properly waits for subscription verification
-- ✅ **Improved UX**: Added retry button and extended polling (30s + continuous background polling)
-- ✅ **Fixed webhook payload parsing**: Updated to use camelCase fields (`customerId`, `productId`, `endsAt`)
-- ✅ **Added checkout/order events**: Handle `order.created`, `order.updated`, `checkout.created`, `checkout.updated`
-- ✅ **Minimal logging**: Removed verbose JSON dumps, kept only essential success/error logs
-- ✅ **SubscriptionGuard fix**: Now checks actual subscription status in response, not just HTTP 200
-- ✅ **Better Auth Polar integration**: Wrapped billing_settings calls in try-catch to prevent transaction rollbacks
-
-### Future Enhancements
-- [ ] Annual billing option
-- [ ] Enterprise plan with custom pricing
-- [ ] Usage forecasting and predictions
-- [ ] Cost estimation before execution
-- [ ] Usage analytics dashboard
-
----
-
-## Usage-Based Billing Implementation
-
-### Overview
-
-SuperCheck implements a hybrid usage-based billing model:
-1. **Base Subscription**: Monthly fee for Plus/Pro plans with included quotas
-2. **Overage Charges**: Per-unit charges when exceeding included quotas
-3. **Spending Limits**: User-configurable caps to control costs
-
-### Architecture
-
-```mermaid
-graph TB
-    subgraph "Worker Service"
-        Execution[Test/K6 Execution]
-        UsageTracker[Usage Tracker Service]
-    end
-
-    subgraph "App Service"
-        PolarUsage[Polar Usage Service]
-        BillingSettings[Billing Settings Service]
-        NotificationService[Usage Notification Service]
-    end
-
-    subgraph "Database"
-        UsageEvents[(usage_events)]
-        BillingSettingsTable[(billing_settings)]
-        OveragePricing[(overage_pricing)]
-        UsageNotifications[(usage_notifications)]
-    end
-
-    subgraph "External"
-        PolarAPI[Polar API]
-        EmailService[Email Service]
-    end
-
-    Execution --> UsageTracker
-    UsageTracker --> UsageEvents
-    UsageTracker --> PolarUsage
-    PolarUsage --> PolarAPI
-    PolarUsage --> BillingSettings
-    BillingSettings --> BillingSettingsTable
-    BillingSettings --> NotificationService
-    NotificationService --> UsageNotifications
-    NotificationService --> EmailService
-```
-
-### Database Schema
-
-#### billing_settings
-Stores per-organization billing preferences:
-```sql
-CREATE TABLE billing_settings (
-  id UUID PRIMARY KEY,
-  organization_id UUID NOT NULL UNIQUE,
-  monthly_spending_limit_cents INTEGER,
-  enable_spending_limit BOOLEAN DEFAULT false,
-  hard_stop_on_limit BOOLEAN DEFAULT false,
-  notify_at_50_percent BOOLEAN DEFAULT false,
-  notify_at_80_percent BOOLEAN DEFAULT true,
-  notify_at_90_percent BOOLEAN DEFAULT true,
-  notify_at_100_percent BOOLEAN DEFAULT true,
-  notification_emails TEXT, -- JSON array
-  notifications_sent_this_period TEXT, -- JSON array of sent thresholds
-  created_at TIMESTAMP,
-  updated_at TIMESTAMP
-);
-```
-
-#### usage_events
-Tracks all usage events for billing reconciliation:
-```sql
-CREATE TABLE usage_events (
-  id UUID PRIMARY KEY,
-  organization_id UUID NOT NULL,
-  event_type TEXT NOT NULL, -- 'playwright_execution', 'k6_execution', 'monitor_execution'
-  event_name TEXT NOT NULL,
-  units NUMERIC(10,4) NOT NULL,
-  unit_type TEXT NOT NULL, -- 'minutes', 'vu_hours'
-  metadata TEXT, -- JSON
-  synced_to_polar BOOLEAN DEFAULT false,
-  polar_event_id TEXT,
-  billing_period_start TIMESTAMP,
-  billing_period_end TIMESTAMP,
-  created_at TIMESTAMP
-);
-```
-
-#### overage_pricing
-Per-plan overage rates:
-```sql
-CREATE TABLE overage_pricing (
-  id UUID PRIMARY KEY,
-  plan TEXT NOT NULL UNIQUE, -- 'plus', 'pro'
-  playwright_minute_price_cents INTEGER NOT NULL, -- e.g., 10 = $0.10
-  k6_vu_hour_price_cents INTEGER NOT NULL, -- e.g., 50 = $0.50
-  created_at TIMESTAMP,
-  updated_at TIMESTAMP
-);
-```
-
-### API Endpoints
-
-#### GET /api/billing/settings
-Returns billing settings for the active organization.
-
-#### PATCH /api/billing/settings
-Updates billing settings:
-```json
-{
-  "monthlySpendingLimitDollars": 100,
-  "enableSpendingLimit": true,
-  "hardStopOnLimit": false,
-  "notifyAt50Percent": false,
-  "notifyAt80Percent": true,
-  "notifyAt90Percent": true,
-  "notifyAt100Percent": true,
-  "notificationEmails": ["billing@example.com"]
-}
-```
-
-#### GET /api/billing/usage
-Returns detailed usage metrics including overage costs:
-```json
-{
-  "usage": {
-    "playwrightMinutes": {
-      "used": 550,
-      "included": 500,
-      "overage": 50,
-      "overageCostCents": 500,
-      "percentage": 110
-    },
-    "k6VuHours": {
-      "used": 80,
-      "included": 100,
-      "overage": 0,
-      "overageCostCents": 0,
-      "percentage": 80
-    },
-    "totalOverageCostCents": 500
-  },
-  "spending": {
-    "currentDollars": 5.00,
-    "limitDollars": 100,
-    "limitEnabled": true,
-    "hardStopEnabled": false,
-    "percentageUsed": 5,
-    "isAtLimit": false,
-    "remainingDollars": 95
-  }
-}
-```
-
-#### GET /api/billing/notifications
-Returns notification history for the organization.
-
-### Spending Limits
-
-#### Soft Limit (Default)
-- Sends email notifications at configured thresholds
-- Does NOT block executions
-- Allows unlimited overage charges
-
-#### Hard Stop
-- Blocks new executions when limit is reached
-- Existing scheduled jobs continue running
-- Manual executions are prevented
-- User must increase limit or disable hard stop
-
-### Usage Notifications
-
-Notifications are sent via email when usage reaches configured thresholds:
-
-| Threshold | Default | Description |
-|-----------|---------|-------------|
-| 50% | Off | Early warning |
-| 80% | On | Approaching limit |
-| 90% | On | Critical warning |
-| 100% | On | Limit reached |
-
-Recipients:
-- Organization admins (always)
-- Custom email addresses (configurable)
-
-### Polar Integration
-
-#### Event Ingestion
-Usage events are recorded locally and can be synced to Polar for billing:
-
-```typescript
-// Worker tracks usage
-await usageTrackerService.trackPlaywrightExecution(
-  organizationId,
-  durationMs,
-  { runId, jobId }
-);
-
-// App service syncs to Polar
-await polarUsageService.ingestUsageEvent({
-  organizationId,
-  eventType: "playwright_execution",
-  eventName: "playwright_minutes",
-  units: minutes,
-  unitType: "minutes",
-  metadata: { runId, jobId }
+// Check organization plan
+const org = await db.query.organization.findFirst({
+  where: eq(organization.id, orgId),
 });
+console.log(org.subscriptionPlan); // Should be 'plus' or 'pro'
 ```
-
-#### Better Auth Usage Plugin
-The `usage()` plugin from `@polar-sh/better-auth` provides:
-- `authClient.usage.ingestion()` - Client-side event ingestion
-- `authClient.usage.meters.list()` - List customer meters
-
-### UI Components
-
-#### SpendingLimits Component
-Located at `app/src/components/billing/spending-limits.tsx`:
-- Enable/disable spending limit
-- Set monthly limit amount
-- Toggle hard stop
-- Configure notification thresholds
-- Add custom notification recipients
-
-#### Integration
-The SpendingLimits component is integrated into the Subscription tab in Organization Admin for cloud plans (Plus/Pro).
-
-### Migration
-
-Run the migration to add billing tables:
-```bash
-cd app
-npm run db:migrate
-```
-
-The migration creates:
-- `billing_settings` table
-- `usage_events` table
-- `usage_notifications` table
-- `overage_pricing` table with default pricing
-
-### Environment Variables
-
-No additional environment variables required. The feature uses existing Polar configuration:
-- `POLAR_ACCESS_TOKEN`
-- `POLAR_SERVER`
-- `POLAR_WEBHOOK_SECRET`
-- `POLAR_PLUS_PRODUCT_ID`
-- `POLAR_PRO_PRODUCT_ID`
-
-### Testing
-
-#### Manual Testing Checklist
-- [ ] Enable spending limit and verify it saves
-- [ ] Set hard stop and verify executions are blocked at limit
-- [ ] Trigger usage threshold and verify email notification
-- [ ] Verify notification is only sent once per period
-- [ ] Verify notifications reset on subscription renewal
-
-#### API Testing
-```bash
-# Get billing settings
-curl -X GET /api/billing/settings
-
-# Update spending limit
-curl -X PATCH /api/billing/settings \
-  -H "Content-Type: application/json" \
-  -d '{"monthlySpendingLimitDollars": 50, "enableSpendingLimit": true}'
-
-# Get usage with spending status
-curl -X GET /api/billing/usage
-```
-
----
-
-## Security Architecture
-
-### Defense-in-Depth Protection
-
-The Polar billing integration implements multiple layers of security to prevent unauthorized access to unlimited plans in cloud mode:
-
-#### 1. Application Layer Security
-
-**Webhook Validation**
-```typescript
-// getPlanFromProductId() - Never returns unlimited plans
-if (productId === plusProductId) return "plus";
-if (productId === proProductId) return "pro";
-// SECURITY: Defaults to plus, never unlimited
-return "plus";
-```
-
-**Update Validation**
-```typescript
-// updateSubscription() - Blocks unlimited plans in cloud mode
-if (isPolarEnabled() && data.subscriptionPlan === "unlimited") {
-  throw new Error("Unlimited plan is only available in self-hosted mode");
-}
-```
-
-**Read Validation**
-```typescript
-// getOrganizationPlan() & getOrganizationPlanSafe() - Validate on read
-if (org.subscriptionPlan === "unlimited") {
-  throw new Error("Invalid subscription plan detected. Please contact support.");
-}
-```
-
-#### 2. Database Layer Security
-
-**CHECK Constraint**
-```sql
--- organization table constraint
-CHECK (
-  subscription_plan != 'unlimited' OR polar_customer_id IS NULL
-)
-```
-- Prevents unlimited plans when Polar customer ID exists (cloud mode)
-- Only allows unlimited plans without Polar customer ID (self-hosted mode)
-
-#### 3. Self-Hosted Mode Bypass
-
-```typescript
-// isPolarEnabled() - Complete bypass when SELF_HOSTED=true
-export const isPolarEnabled = (): boolean => {
-  return isCloudHosted() && !!process.env.POLAR_ACCESS_TOKEN;
-};
-```
-
-- When `SELF_HOSTED=true`, all Polar functionality is disabled
-- Unlimited plans are only available in self-hosted mode
-- No API calls to Polar, no webhook processing, no subscription validation
-
-### Security Monitoring
-
-All security violations are logged with:
-- Organization ID (truncated for privacy)
-- Specific violation type
-- Context (which function detected the issue)
-
-```typescript
-console.error(`[SubscriptionService] SECURITY: Organization ${orgId.substring(0, 8)}... has unlimited plan in cloud mode - possible database tampering`);
-```
-
-### Attack Vector Protection
-
-| Attack Vector | Protection Layer | Status |
-|---------------|------------------|---------|
-| Webhook manipulation | Webhook validation | ✅ Blocked |
-| API endpoint bypass | Update validation | ✅ Blocked |
-| Database tampering | Read validation + DB constraint | ✅ Blocked |
-| Admin override | Endpoint restrictions | ✅ Blocked |
-| Frontend bypass | Server-side validation | ✅ Blocked |
-
----
-
-## Production Deployment Checklist
-
-### Pre-Deployment Requirements
-- [ ] All required environment variables are set and verified
-- [ ] `POLAR_WEBHOOK_SECRET` is generated and configured in Polar dashboard
-- [ ] Polar product IDs match the configured plans (`POLAR_PLUS_PRODUCT_ID`, `POLAR_PRO_PRODUCT_ID`)
-- [ ] Database is accessible and has connection permissions
-
-### Post-Deployment Verification
-- [ ] App starts without Polar configuration errors
-- [ ] Check startup logs: `[Instrumentation] ✅ Polar configuration validated`
-- [ ] Database has plan_limits data: `SELECT COUNT(*) FROM plan_limits;` → `3`
-- [ ] Test webhook delivery from Polar dashboard succeeds (Better Auth handles POST at `/api/auth/polar/webhooks`)
-- [ ] Webhook handlers are called: Check logs for `[Polar] Webhook: subscription.active` etc.
-
-### Environment Variables Validation
-```bash
-# Verify all required variables are set
-echo "POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN:0:20}..."
-echo "POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET:0:20}..."
-echo "POLAR_PLUS_PRODUCT_ID: $POLAR_PLUS_PRODUCT_ID"
-echo "POLAR_PRO_PRODUCT_ID: $POLAR_PRO_PRODUCT_ID"
-echo "POLAR_SERVER: $POLAR_SERVER"
-```
-
----
-
-## Troubleshooting Guide
-
-### Critical Issues
-
-#### 1. Webhook Returns 404
-**Symptom**: Polar dashboard shows "404 Not Found" for webhook deliveries
-
-**Root Cause**: Better Auth's Polar plugin is not properly configured or the `[...all]` catch-all route is missing
 
 **Solution**:
-1. Ensure Better Auth Polar plugin is enabled with webhooks in `app/src/utils/auth.ts`:
-   ```typescript
-   polar({
-     client: polarClient,
-     use: [
-       webhooks({
-         secret: config.webhookSecret!,
-         onPayload: async (payload) => { /* handlers */ }
-       })
-     ]
-   })
-   ```
-2. Ensure `/api/auth/[...all]/route.ts` exists and exports `toNextJsHandler(auth)`
-3. **Important**: Do NOT create a custom `/api/auth/polar/webhooks/route.ts` file - this will intercept requests before Better Auth can handle them
-4. Redeliver failed webhooks from Polar dashboard
-
-#### 2. Webhook Signature Verification Failed (401 Unauthorized)
-**Symptom**: Polar dashboard shows webhook failures with 401 status, logs show "Invalid signature"
-
-**Root Cause**: Custom webhook route intercepting requests instead of Better Auth handling them
-
-**Solution**:
-1. **Delete any custom webhook route**: Remove `/app/src/app/api/auth/polar/webhooks/route.ts` if it exists
-2. **Delete the polar directory**: Remove `/app/src/app/api/auth/polar/` directory entirely
-3. Let Better Auth's `[...all]` catch-all handle the webhook at `/api/auth/polar/webhooks`
-4. Better Auth's `@polar-sh/better-auth` plugin handles signature verification automatically using the Standard Webhooks specification
-5. Ensure `POLAR_WEBHOOK_SECRET` matches the secret configured in Polar dashboard
-
-**Why This Works**: The `@polar-sh/better-auth` webhooks plugin uses the Standard Webhooks library internally which correctly:
-- Base64 decodes the secret
-- Uses `webhook-id`, `webhook-timestamp`, `webhook-signature` headers
-- Computes HMAC-SHA256 with format: `${msg_id}.${timestamp}.${body}`
-
-#### 3. Plan Limits Not Found
-**Symptom**: `CRITICAL: Plan limits not found for plan: plus in cloud mode. Database may not be seeded.`
-
-**Root Cause**: Database migration did not complete successfully (plan_limits seeding is now part of migrations)
-
-**IMPORTANT**: In cloud mode, the app will **throw an error** instead of falling back to unlimited. This prevents accidental unlimited access.
-
-**Solution**:
-```bash
-# Re-run migrations (includes seeding)
-docker compose exec app node scripts/db-migrate.js
-
-# Verify data exists
-docker compose exec postgres psql -U postgres -d supercheck -c "SELECT plan, max_monitors FROM plan_limits;"
-```
-
-**Expected Output**:
-```
-   plan    | max_monitors 
------------+-------------
- plus      |          25
- pro       |         100
- unlimited |     999999
-```
-
-**Prevention**: The migration system now:
-1. Seeds plan_limits as part of `0001_seed_plan_limits.sql` migration
-2. Verifies all required plans exist after migrations
-3. Fails to complete if plan_limits are not properly seeded
-4. App startup will fail if migrations fail (prevents running without required data)
-
-#### 3. Security Validation Errors
-**Symptom**: "Invalid subscription plan detected" or "Unlimited plan is only available in self-hosted mode"
-
-**Root Cause**: Attempt to set unlimited plan in cloud mode (security protection)
-
-**Solution**:
-```bash
-# Check if organization has Polar customer ID (cloud mode)
-psql $DATABASE_URL -c "SELECT id, name, polar_customer_id, subscription_plan FROM organization WHERE subscription_plan = 'unlimited';"
-
-# If polar_customer_id is NOT NULL, this is a security violation
-# Fix by updating to valid plan or removing Polar customer ID for self-hosted
-```
-
-#### 4. Environment Variable Validation Errors
-**Symptom**: App fails to start with "Missing required Polar environment variables"
-
-**Root Cause**: Required environment variables not configured
-
-**Solution**:
-```bash
-# Check all required variables
-grep -E "POLAR_|SELF_HOSTED" .env
-
-# Required for cloud mode:
-# POLAR_ACCESS_TOKEN=pol_live_...
-# POLAR_WEBHOOK_SECRET=whsec_...
-# POLAR_PLUS_PRODUCT_ID=prod_...
-# POLAR_PRO_PRODUCT_ID=prod_...
-# POLAR_SERVER=production
-
-# Restart app after fixing variables
-```
-
-#### 4. Webhook Signature Verification Fails
-**Symptom**: `Invalid webhook signature` errors in logs
-
-**Root Cause**: `POLAR_WEBHOOK_SECRET` mismatch between app and Polar
-
-**Solution**:
-1. Generate new secure secret:
-   ```bash
-   openssl rand -hex 32
-   ```
-2. Update environment variable in deployment
-3. Update Polar webhook configuration with same secret
-4. Redeliver failed webhooks from Polar dashboard
-
-#### 5. Subscription Not Activating After Payment
-**Symptom**: Billing success page stuck on "Activating Subscription..."
-
-**Root Cause**: Webhook not processed or organization lookup failed
-
-**Solution**:
-1. Check webhook logs for `[Polar Webhook]` messages:
-   ```bash
-   tail -f logs/app.log | grep "\[Polar Webhook\]"
-   ```
-2. Verify organization has `polarCustomerId` set:
-   ```sql
-   SELECT id, name, polar_customer_id, subscription_status 
-   FROM organization 
-   WHERE id = 'your-org-id';
-   ```
-3. Check Polar webhook deliveries and redeliver if failed
-4. Manual activation (emergency only):
-   ```sql
-   UPDATE organization 
-   SET subscription_status = 'active', subscription_plan = 'plus'
-   WHERE id = 'your-org-id';
-   ```
+1. Verify enforcement middleware is applied to relevant routes
+2. Check that database migration ran successfully
+3. Ensure organization has correct subscription plan set
+4. Review plan limits table has correct values
 
 ### Debugging Tools
 
 #### Webhook Endpoint Testing
+
 ```bash
 # Webhook endpoint only accepts POST requests (handled by Better Auth)
 # Test by triggering a webhook redelivery from Polar dashboard
@@ -2028,6 +2288,7 @@ curl -v -X POST https://demo.supercheck.io/api/auth/polar/webhooks \
 ```
 
 #### Database Verification
+
 ```sql
 -- Check plan limits are seeded correctly
 SELECT plan, max_monitors, running_capacity, max_team_members 
@@ -2039,74 +2300,217 @@ SELECT id, name, subscription_plan, subscription_status, polar_customer_id
 FROM organization 
 WHERE polar_customer_id IS NOT NULL;
 
--- Check recent subscription activity
-SELECT id, created_at, subscription_plan, subscription_status 
+-- Check subscription dates are properly set
+SELECT id, name, subscription_started_at, subscription_ends_at, 
+       usage_period_start, usage_period_end
 FROM organization 
-WHERE subscription_status = 'active' 
-ORDER BY updated_at DESC 
-LIMIT 5;
+WHERE subscription_status = 'active';
+
+-- Check usage sync status
+SELECT 
+  event_type,
+  COUNT(*) as total_events,
+  COUNT(CASE WHEN synced_to_polar = true THEN 1 END) as synced,
+  COUNT(CASE WHEN synced_to_polar = false THEN 1 END) as pending,
+  MAX(last_sync_attempt) as last_sync
+FROM usage_events 
+WHERE created_at > NOW() - INTERVAL '24 hours'
+GROUP BY event_type;
 ```
 
-#### Log Monitoring
-```bash
-# Watch for webhook events
-tail -f logs/app.log | grep "\[Polar Webhook\]"
+#### Manual Sync Testing
 
-# Watch for subscription activations
-tail -f logs/app.log | grep "Activated.*for org"
+```typescript
+// Test manual sync of pending events
+const polarUsageService = new PolarUsageService();
+const result = await polarUsageService.syncPendingEvents(10);
 
-# Watch for configuration validation
-tail -f logs/app.log | grep "Polar configuration"
+console.log(`Synced ${result.succeeded}/${result.processed} events`);
+if (result.errors.length > 0) {
+  console.error('Sync errors:', result.errors);
+}
 ```
 
-### Performance Monitoring
+#### Plan Enforcement Testing
 
-Webhook processing includes comprehensive monitoring:
-- **Request ID Tracking**: `[Polar Webhook:a1b2c3d4]`
-- **Processing Time**: `Processed subscription.active in 45ms`
-- **Error Details**: Full stack traces for debugging
-- **Security Logging**: Signature verification attempts logged
+```typescript
+// Test each enforcement function
+const enforcementResults = {
+  monitors: await checkMonitorLimit(orgId, currentMonitorCount),
+  projects: await checkProjectLimit(orgId, currentProjectCount),
+  statusPages: await checkStatusPageLimit(orgId, currentPageCount),
+  teamMembers: await checkTeamMemberLimit(orgId, currentMemberCount),
+};
 
-**Monitor for**:
-- Processing times >1000ms (indicates database issues)
-- Signature verification failures (security concern)
-- Organization lookup failures (data consistency)
-- Database connection errors (infrastructure issue)
+console.log(enforcementResults);
+// Each should show: { allowed: boolean, error?: string }
+```
 
-### Common Error Messages
+### Performance Issues
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Missing required Polar environment variables` | Env vars not set | Set all required POLAR_* variables |
-| `Invalid webhook signature` | Secret mismatch | Update POLAR_WEBHOOK_SECRET in both places |
-| `CRITICAL: Plan limits not found for plan: plus in cloud mode` | Migration incomplete | Run `docker compose exec app node scripts/db-migrate.js` |
-| `CRITICAL: plan_limits table is empty` | Migration failed | Check migration logs, re-run migrations |
-| `Plan limits not found for plan: plus, falling back to unlimited` | Self-hosted mode, no seed | Re-run migrations (optional in self-hosted) |
-| `Organization not found for customer` | Data inconsistency | Check organization.polar_customer_id |
-| `Polar not configured` | SELF_HOSTED=true | Set SELF_HOSTED=false for cloud mode |
+#### High Database Load
+
+**Symptoms**:
+- Slow billing API responses
+- Database connection exhaustion
+- Usage tracking delays
+
+**Solutions**:
+```sql
+-- Add indexes for better performance
+CREATE INDEX CONCURRENTLY idx_organization_polar_customer 
+  ON organization(polar_customer_id);
+
+CREATE INDEX CONCURRENTLY idx_usage_events_sync_batch 
+  ON usage_events(synced_to_polar, created_at) 
+  WHERE synced_to_polar = false;
+
+-- Partition usage_events table by month
+CREATE TABLE usage_events_y2025m01 PARTITION OF usage_events
+  FOR VALUES FROM ('2025-01-01') TO ('2025-02-01');
+```
+
+#### Sync Job Performance
+
+**Optimizations**:
+```typescript
+// Batch size optimization
+const optimalBatchSize = 100; // Adjust based on testing
+const result = await polarUsageService.syncPendingEvents(optimalBatchSize);
+
+// Parallel sync processing
+const events = await getPendingEvents(500);
+const chunks = chunk(events, 50); // Process in parallel chunks
+await Promise.all(chunks.map(chunk => syncChunk(chunk)));
+```
 
 ### Emergency Procedures
 
 #### Manual Subscription Activation
-```sql
--- Find the organization by Polar customer ID
-SELECT id, name FROM organization WHERE polar_customer_id = 'customer-id-from-polar';
 
--- Manually activate subscription
+```sql
+-- Emergency: Activate subscription manually
 UPDATE organization 
 SET 
   subscription_status = 'active',
-  subscription_plan = 'plus', -- or 'pro'
-  subscription_id = 'webhook-id-from-polar',
-  updated_at = NOW()
-WHERE id = 'organization-id';
+  subscription_plan = 'plus',
+  subscription_started_at = NOW(),
+  subscription_ends_at = NOW() + INTERVAL '30 days',
+  usage_period_start = NOW(),
+  usage_period_end = NOW() + INTERVAL '30 days'
+WHERE id = 'org-id-here';
 ```
 
-#### Reset Failed Webhook Processing
-```bash
-# Restart app to clear webhook cache
-docker-compose restart app
+#### Reset Usage Counters
 
-# Or clear specific webhook cache (if implemented)
-# This depends on your caching implementation
+```sql
+-- Emergency: Reset usage for organization
+UPDATE organization 
+SET 
+  playwright_minutes_used = 0,
+  k6_vu_minutes_used = 0,
+  usage_period_start = NOW(),
+  usage_period_end = NOW() + INTERVAL '30 days'
+WHERE id = 'org-id-here';
 ```
+
+#### Force Sync All Events
+
+```typescript
+// Emergency: Force resync of all events
+await db.execute(sql`
+  UPDATE usage_events 
+  SET synced_to_polar = false, 
+      sync_attempts = 0, 
+      sync_error = NULL
+  WHERE created_at > NOW() - INTERVAL '7 days'
+`);
+
+// Then run sync job
+const result = await polarUsageService.syncPendingEvents(1000);
+```
+
+---
+
+## Monitoring & Alerting
+
+### Key Metrics
+
+#### Subscription Metrics
+- Active subscriptions by plan
+- Subscription activation rate
+- Churn rate (cancellations)
+- Failed webhook deliveries
+
+#### Usage Metrics
+- Usage events per minute
+- Sync success rate
+- Pending event count
+- Overages by plan
+
+#### Business Metrics
+- Monthly recurring revenue (MRR)
+- Average revenue per user (ARPU)
+- Customer acquisition cost (CAC)
+- Lifetime value (LTV)
+
+### Dashboard Configuration
+
+```typescript
+// Grafana dashboard panels
+const dashboardPanels = [
+  {
+    title: "Active Subscriptions",
+    type: "stat",
+    query: "sum by (plan) (billing_active_subscriptions_total)",
+  },
+  {
+    title: "Usage Sync Success Rate",
+    type: "gauge",
+    query: "rate(billing_usage_sync_success_total[5m]) / rate(billing_usage_sync_attempts_total[5m])",
+  },
+  {
+    title: "Pending Usage Events",
+    type: "stat",
+    query: "billing_pending_events_count",
+  },
+  {
+    title: "Plan Enforcement Blocks",
+    type: "graph",
+    query: "rate(billing_plan_enforcement_blocks_total[1h])",
+  },
+];
+```
+
+### Health Checks
+
+```typescript
+// app/api/health/billing/route.ts
+export async function GET() {
+  const health = {
+    polar: {
+      configured: isPolarEnabled(),
+      tokenValid: await validatePolarToken(),
+      webhookWorking: await testWebhookEndpoint(),
+    },
+    database: {
+      connected: await testDatabaseConnection(),
+      migrationsCurrent: await checkMigrations(),
+    },
+    sync: {
+      lastSync: await getLastSuccessfulSync(),
+      pendingEvents: await getPendingEventCount(),
+    },
+  };
+
+  const isHealthy = Object.values(health).every(
+    category => Object.values(category).every(status => status !== false)
+  );
+
+  return NextResponse.json(health, {
+    status: isHealthy ? 200 : 503,
+  });
+}
+```
+
+---

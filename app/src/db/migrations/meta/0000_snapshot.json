@@ -1,5 +1,5 @@
 {
-  "id": "9c6fb0c8-512f-414c-8dfc-1415fe23bc48",
+  "id": "e355902e-c4d8-4013-a6cc-a9fa5d2efb81",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1020,8 +1020,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "k6_vu_hour_price_cents": {
-          "name": "k6_vu_hour_price_cents",
+        "k6_vu_minute_price_cents": {
+          "name": "k6_vu_minute_price_cents",
           "type": "integer",
           "primaryKey": false,
           "notNull": true
@@ -1737,6 +1737,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "subscription_started_at": {
+          "name": "subscription_started_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subscription_ends_at": {
+          "name": "subscription_ends_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
         "playwright_minutes_used": {
           "name": "playwright_minutes_used",
           "type": "integer",
@@ -1744,8 +1756,8 @@
           "notNull": false,
           "default": 0
         },
-        "k6_vu_hours_used": {
-          "name": "k6_vu_hours_used",
+        "k6_vu_minutes_used": {
+          "name": "k6_vu_minutes_used",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,
@@ -6042,8 +6054,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "k6_vu_hours_included": {
-          "name": "k6_vu_hours_included",
+        "k6_vu_minutes_included": {
+          "name": "k6_vu_minutes_included",
           "type": "integer",
           "primaryKey": false,
           "notNull": true

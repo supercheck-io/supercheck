@@ -62,6 +62,18 @@ export const testSchema = z.object({
 
 export type Test = z.infer<typeof testSchema>;
 
+// Last run schema for job's last run info
+export const lastRunSchema = z.object({
+  id: z.string(),
+  status: z.string(),
+  startedAt: z.string().nullable(),
+  completedAt: z.string().nullable(),
+  duration: z.string().nullable().optional(),
+  errorDetails: z.string().nullable().optional(),
+});
+
+export type LastRun = z.infer<typeof lastRunSchema>;
+
 // Job schema matching the database schema
 export const jobSchema = z.object({
   id: z.string(),
@@ -79,6 +91,7 @@ export const jobSchema = z.object({
   updatedAt: z.string().optional(),
   tests: z.array(testSchema).optional(),
   alertConfig: alertConfigSchema.optional(),
+  lastRun: lastRunSchema.nullable().optional(),
 });
 
 export type Job = z.infer<typeof jobSchema>;

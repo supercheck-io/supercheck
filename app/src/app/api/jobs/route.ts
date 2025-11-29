@@ -104,7 +104,7 @@ interface TestResult {
   stderr?: string;
 }
 
-// GET all jobs
+// GET all jobs - OPTIMIZED: Uses batch queries instead of N+1 pattern
 export async function GET() {
   try {
     const { project, organizationId } = await requireProjectContext();
@@ -112,7 +112,6 @@ export async function GET() {
     // Use current project context
     const targetProjectId = project.id;
     
-    // Build permission context and check access
     // Check permission to view jobs
     const canView = await hasPermission('job', 'view', { organizationId, projectId: targetProjectId });
     
@@ -123,8 +122,8 @@ export async function GET() {
       );
     }
 
-    // Get all jobs with their associated tests and last run status (scoped to project)
-    const result = await db
+    // Query 1: Get all jobs for this project (scoped to project)
+    const jobsResult = await db
       .select({
         id: jobs.id,
         name: jobs.name,
@@ -146,90 +145,124 @@ export async function GET() {
         eq(jobs.projectId, targetProjectId),
         eq(jobs.organizationId, organizationId)
       ))
-      .orderBy(desc(jobs.id)); // UUIDv7 is time-ordered (PostgreSQL 18+)
+      .orderBy(desc(jobs.id)); // UUIDv7 is time-ordered
 
-    // For each job, get its associated tests
-    const jobsWithTests = await Promise.all(
-      result.map(async (job) => {
-        const jobTestsResult = await db
-          .select({
-            id: testsTable.id,
-            title: testsTable.title,
-            description: testsTable.description,
-            type: testsTable.type,
-            priority: testsTable.priority,
-            script: testsTable.script,
-            createdAt: testsTable.createdAt,
-            updatedAt: testsTable.updatedAt,
-          })
-          .from(testsTable)
-          .innerJoin(jobTests, eq(testsTable.id, jobTests.testId))
-          .where(eq(jobTests.jobId, job.id));
+    if (jobsResult.length === 0) {
+      return NextResponse.json({ success: true, jobs: [] });
+    }
 
-        // Get tags for all tests in this job
-        const testIds = jobTestsResult.map(test => test.id);
-        const testTagsForJob = testIds.length > 0 ? await db
-          .select({
-            testId: testTags.testId,
-            tagId: tags.id,
-            tagName: tags.name,
-            tagColor: tags.color,
-          })
-          .from(testTags)
-          .innerJoin(tags, eq(testTags.tagId, tags.id))
-          .where(inArray(testTags.testId, testIds)) : [];
+    const jobIds = jobsResult.map(job => job.id);
 
-        // Group tags by test ID
-        const testTagsMap = new Map<string, Array<{ id: string; name: string; color: string | null }>>();
-        testTagsForJob.forEach(({ testId, tagId, tagName, tagColor }) => {
-          if (!testTagsMap.has(testId)) {
-            testTagsMap.set(testId, []);
-          }
-          testTagsMap.get(testId)!.push({
-            id: tagId,
-            name: tagName,
-            color: tagColor,
-          });
-        });
-
-        // Get the last run for this job
-        const lastRunResult = await db
-          .select({
-            id: runs.id,
-            status: runs.status,
-            startedAt: runs.startedAt,
-            completedAt: runs.completedAt,
-            duration: runs.duration,
-          })
-          .from(runs)
-          .where(eq(runs.jobId, job.id))
-          .orderBy(desc(runs.startedAt))
-          .limit(1);
-
-        const lastRun = lastRunResult[0] || null;
-
-        return {
-          ...job,
-          lastRunAt: job.lastRunAt ? job.lastRunAt.toISOString() : null,
-          nextRunAt: job.nextRunAt ? job.nextRunAt.toISOString() : null,
-          tests: jobTestsResult.map((test) => ({
-            ...test,
-            name: test.title || "",
-            script: test.script,
-            tags: testTagsMap.get(test.id) || [],
-            createdAt: test.createdAt ? test.createdAt.toISOString() : null,
-            updatedAt: test.updatedAt ? test.updatedAt.toISOString() : null,
-          })),
-          lastRun: lastRun ? {
-            ...lastRun,
-            startedAt: lastRun.startedAt ? lastRun.startedAt.toISOString() : null,
-            completedAt: lastRun.completedAt ? lastRun.completedAt.toISOString() : null,
-          } : null,
-          createdAt: job.createdAt ? job.createdAt.toISOString() : null,
-          updatedAt: job.updatedAt ? job.updatedAt.toISOString() : null,
-        };
+    // Query 2: Batch fetch all tests for all jobs in one query
+    const allJobTests = await db
+      .select({
+        jobId: jobTests.jobId,
+        testId: testsTable.id,
+        title: testsTable.title,
+        description: testsTable.description,
+        type: testsTable.type,
+        priority: testsTable.priority,
+        script: testsTable.script,
+        createdAt: testsTable.createdAt,
+        updatedAt: testsTable.updatedAt,
       })
-    );
+      .from(jobTests)
+      .innerJoin(testsTable, eq(testsTable.id, jobTests.testId))
+      .where(inArray(jobTests.jobId, jobIds));
+
+    // Query 3: Batch fetch all tags for all tests in one query
+    const allTestIds = [...new Set(allJobTests.map(t => t.testId))];
+    const allTestTags = allTestIds.length > 0 ? await db
+      .select({
+        testId: testTags.testId,
+        tagId: tags.id,
+        tagName: tags.name,
+        tagColor: tags.color,
+      })
+      .from(testTags)
+      .innerJoin(tags, eq(testTags.tagId, tags.id))
+      .where(inArray(testTags.testId, allTestIds)) : [];
+
+    // Query 4: Batch fetch last run for all jobs using a subquery with DISTINCT ON
+    // This gets the most recent run for each job in a single query
+    const allLastRuns = await db
+      .select({
+        jobId: runs.jobId,
+        id: runs.id,
+        status: runs.status,
+        startedAt: runs.startedAt,
+        completedAt: runs.completedAt,
+        duration: runs.duration,
+        errorDetails: runs.errorDetails,
+      })
+      .from(runs)
+      .where(inArray(runs.jobId, jobIds))
+      .orderBy(runs.jobId, desc(runs.startedAt));
+
+    // Build lookup maps for O(1) access
+    // Map: jobId -> tests[]
+    const jobTestsMap = new Map<string, typeof allJobTests>();
+    allJobTests.forEach(test => {
+      if (!jobTestsMap.has(test.jobId)) {
+        jobTestsMap.set(test.jobId, []);
+      }
+      jobTestsMap.get(test.jobId)!.push(test);
+    });
+
+    // Map: testId -> tags[]
+    const testTagsMap = new Map<string, Array<{ id: string; name: string; color: string | null }>>();
+    allTestTags.forEach(({ testId, tagId, tagName, tagColor }) => {
+      if (!testTagsMap.has(testId)) {
+        testTagsMap.set(testId, []);
+      }
+      testTagsMap.get(testId)!.push({
+        id: tagId,
+        name: tagName,
+        color: tagColor,
+      });
+    });
+
+    // Map: jobId -> lastRun (only keep the first/most recent run per job)
+    const lastRunMap = new Map<string, typeof allLastRuns[0]>();
+    allLastRuns.forEach(run => {
+      if (run.jobId && !lastRunMap.has(run.jobId)) {
+        lastRunMap.set(run.jobId, run);
+      }
+    });
+
+    // Assemble the final result using the lookup maps
+    const jobsWithTests = jobsResult.map(job => {
+      const testsForJob = jobTestsMap.get(job.id) || [];
+      const lastRun = lastRunMap.get(job.id) || null;
+
+      return {
+        ...job,
+        lastRunAt: job.lastRunAt ? job.lastRunAt.toISOString() : null,
+        nextRunAt: job.nextRunAt ? job.nextRunAt.toISOString() : null,
+        tests: testsForJob.map(test => ({
+          id: test.testId,
+          title: test.title,
+          description: test.description,
+          type: test.type,
+          priority: test.priority,
+          script: test.script,
+          name: test.title || "",
+          tags: testTagsMap.get(test.testId) || [],
+          createdAt: test.createdAt ? test.createdAt.toISOString() : null,
+          updatedAt: test.updatedAt ? test.updatedAt.toISOString() : null,
+        })),
+        lastRun: lastRun ? {
+          id: lastRun.id,
+          status: lastRun.status,
+          errorDetails: lastRun.errorDetails,
+          duration: lastRun.duration,
+          startedAt: lastRun.startedAt ? lastRun.startedAt.toISOString() : null,
+          completedAt: lastRun.completedAt ? lastRun.completedAt.toISOString() : null,
+        } : null,
+        createdAt: job.createdAt ? job.createdAt.toISOString() : null,
+        updatedAt: job.updatedAt ? job.updatedAt.toISOString() : null,
+      };
+    });
 
     return NextResponse.json({
       success: true,

@@ -379,6 +379,48 @@ export function TestForm({
     performanceMode,
   ]);
 
+  // Check if ONLY form fields changed (not the script)
+  const onlyFormFieldsChanged = useMemo(() => {
+    const initialLocation = initialFormValues.location ?? null;
+    const currentLocation = testCase.location ?? null;
+    const locationChanged =
+      (performanceMode || initialFormValues.type === "performance") &&
+      currentLocation !== initialLocation;
+
+    const formFieldsChanged =
+      testCase.title !== (initialFormValues.title || "") ||
+      testCase.description !== (initialFormValues.description || "") ||
+      testCase.priority !== (initialFormValues.priority || "medium") ||
+      testCase.type !== (initialFormValues.type || "browser") ||
+      locationChanged;
+
+    // Check if tags have changed
+    const tagsChanged = (() => {
+      if (!initialTags) return selectedTags.length > 0;
+      if (initialTags.length !== selectedTags.length) return true;
+      const initialTagIds = new Set(initialTags.map((tag: Tag) => tag.id));
+      const selectedTagIds = new Set(selectedTags.map((tag: Tag) => tag.id));
+      return (
+        initialTagIds.size !== selectedTagIds.size ||
+        !Array.from(initialTagIds).every((id: string) => selectedTagIds.has(id))
+      );
+    })();
+
+    // Script has NOT changed
+    const scriptUnchanged = editorContent === initialEditorContentProp;
+
+    // Only form fields changed if: (form or tags changed) AND script is unchanged
+    return (formFieldsChanged || tagsChanged) && scriptUnchanged;
+  }, [
+    testCase,
+    editorContent,
+    initialFormValues,
+    initialEditorContentProp,
+    selectedTags,
+    initialTags,
+    performanceMode,
+  ]);
+
   // Update formChanged state whenever form values change
   useEffect(() => {
     const hasChanges = hasChangesLocal();
@@ -399,11 +441,25 @@ export function TestForm({
     // Disabled if no changes
     if (!formChanged) return true;
 
-    // STRICT: Disabled if current script has not been validated AND successfully executed
+    // For NEW tests (no testId): script must pass before saving
+    if (!testId) {
+      if (!isCurrentScriptReadyToSave) return true;
+      return false;
+    }
+
+    // For EXISTING tests (has testId):
+    // - If only form fields changed (not script): allow save without rerun
+    // - If script changed: require rerun
+    if (onlyFormFieldsChanged) {
+      // Only form/tags changed, script unchanged - allow save
+      return false;
+    }
+
+    // Script changed - require validation and execution
     if (!isCurrentScriptReadyToSave) return true;
 
     return false;
-  }, [isRunning, isSubmitting, formChanged, isCurrentScriptReadyToSave]);
+  }, [isRunning, isSubmitting, formChanged, isCurrentScriptReadyToSave, onlyFormFieldsChanged, testId]);
 
   // Get the save button message with validation feedback
   const getSaveButtonMessage = () => {
@@ -411,7 +467,12 @@ export function TestForm({
     if (!formChanged) return "No changes detected, nothing to save";
     if (isSubmitting) return "Saving...";
 
-    // Check validation status first
+    // For existing tests with only form changes, no message needed
+    if (testId && onlyFormFieldsChanged) {
+      return null;
+    }
+
+    // For new tests or when script changed, check validation and execution
     if (!isCurrentScriptValidated) {
       return "Script must be validated before saving";
     }
@@ -1036,13 +1097,13 @@ export function TestForm({
                 }
 
                 // Priority 3: Show ready state
-                if (
-                  !saveButtonMessage &&
+                const isReadyToSave = !saveButtonMessage &&
                   formChanged &&
                   !isRunning &&
                   !isSubmitting &&
-                  isCurrentScriptReadyToSave
-                ) {
+                  (isCurrentScriptReadyToSave || (testId && onlyFormFieldsChanged));
+                  
+                if (isReadyToSave) {
                   return (
                     <div className="flex items-center justify-end gap-1.5 mt-2">
                       <div className="w-2 h-2 rounded-full bg-emerald-500"></div>

@@ -91,7 +91,8 @@ export class UsageTrackerService {
 
   /**
    * Track K6 load testing execution
-   * Calculates VU hours from virtual users and duration
+   * Calculates VU minutes from virtual users and duration (consistent with Playwright)
+   * Formula: ceil(VUs * duration in minutes)
    */
   async trackK6Execution(
     organizationId: string,
@@ -100,9 +101,10 @@ export class UsageTrackerService {
     metadata?: Record<string, any>,
   ): Promise<{ blocked: boolean; reason?: string }> {
     try {
-      // Calculate VU hours: (VUs * duration in hours)
-      const hours = (virtualUsers * durationMs) / 1000 / 60 / 60;
-      const vuHours = parseFloat(hours.toFixed(4)); // Round to 4 decimal places
+      // Calculate VU minutes: ceil((VUs * duration in minutes))
+      // Rounds UP for consistent billing with Playwright
+      const durationMinutes = durationMs / 1000 / 60;
+      const vuMinutes = Math.ceil(virtualUsers * durationMinutes);
 
       // Check spending limit before tracking
       if (isPolarEnabled()) {
@@ -123,7 +125,7 @@ export class UsageTrackerService {
       await this.db
         .update(schema.organization)
         .set({
-          k6VuHoursUsed: sql`COALESCE(${schema.organization.k6VuHoursUsed}, 0) + ${vuHours}`,
+          k6VuMinutesUsed: sql`COALESCE(${schema.organization.k6VuMinutesUsed}, 0) + ${vuMinutes}`,
         })
         .where(eq(schema.organization.id, organizationId));
 
@@ -132,9 +134,9 @@ export class UsageTrackerService {
         await this.recordUsageEvent(
           organizationId,
           'k6_execution',
-          'k6_vu_hours',
-          vuHours,
-          'vu_hours',
+          'k6_vu_minutes',
+          vuMinutes,
+          'vu_minutes',
           metadata,
           org.usagePeriodStart,
           org.usagePeriodEnd,
@@ -142,7 +144,7 @@ export class UsageTrackerService {
       }
 
       this.logger.log(
-        `[Usage] Tracked ${vuHours} K6 VU hours for org ${organizationId}`,
+        `[Usage] Tracked ${vuMinutes} K6 VU minutes for org ${organizationId}`,
         metadata,
       );
 
@@ -172,7 +174,7 @@ export class UsageTrackerService {
   }
 
   /**
-   * Record a usage event for Polar billing sync
+   * Record a usage event and sync to Polar
    */
   private async recordUsageEvent(
     organizationId: string,
@@ -184,14 +186,14 @@ export class UsageTrackerService {
     periodStart: Date | null,
     periodEnd: Date | null,
   ): Promise<void> {
-    try {
-      // Check if usage_events table exists (it may not in older installations)
-      // This is a defensive check - the table should exist after migration
-      const now = new Date();
-      const defaultPeriodStart = periodStart || now;
-      const defaultPeriodEnd = periodEnd || new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const now = new Date();
+    const defaultPeriodStart = periodStart || now;
+    const defaultPeriodEnd = periodEnd || new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    let eventId: string | null = null;
 
-      await this.db.execute(sql`
+    try {
+      // Record usage event locally first
+      const result = await this.db.execute<{ id: string }>(sql`
         INSERT INTO usage_events (
           id, organization_id, event_type, event_name, units, unit_type,
           metadata, synced_to_polar, billing_period_start, billing_period_end, created_at
@@ -204,18 +206,116 @@ export class UsageTrackerService {
           ${unitType},
           ${metadata ? JSON.stringify(metadata) : null},
           false,
-          ${defaultPeriodStart},
-          ${defaultPeriodEnd},
+          ${defaultPeriodStart.toISOString()},
+          ${defaultPeriodEnd.toISOString()},
           NOW()
         )
+        RETURNING id
       `);
+
+      const resultArray = result as unknown as Array<{ id: string }>;
+      eventId = resultArray[0]?.id;
 
       this.logger.debug(`[Usage] Recorded usage event: ${eventType} for org ${organizationId}`);
     } catch (error) {
       // Don't fail if usage_events table doesn't exist yet
       this.logger.warn(
-        `[Usage] Failed to record usage event (table may not exist): ${error instanceof Error ? error.message : String(error)}`,
+        `[Usage] Failed to record usage event: ${error instanceof Error ? error.message : String(error)}`,
       );
+      return;
+    }
+
+    // Sync to Polar immediately (non-blocking)
+    if (eventId) {
+      this.syncEventToPolar(organizationId, eventId, eventName, units, now)
+        .catch((err) => this.logger.warn(`[Usage] Failed to sync to Polar: ${err.message}`));
+    }
+  }
+
+  /**
+   * Sync a usage event directly to Polar API
+   */
+  private async syncEventToPolar(
+    organizationId: string,
+    eventId: string,
+    meterName: string,
+    units: number,
+    timestamp: Date,
+  ): Promise<void> {
+    const accessToken = process.env.POLAR_ACCESS_TOKEN;
+    if (!accessToken) {
+      this.logger.debug(`[Usage] POLAR_ACCESS_TOKEN not configured, skipping Polar sync`);
+      return;
+    }
+
+    try {
+      // Get organization's Polar customer ID
+      const org = await this.db.query.organization.findFirst({
+        where: eq(schema.organization.id, organizationId),
+        columns: { polarCustomerId: true },
+      });
+
+      if (!org?.polarCustomerId) {
+        this.logger.warn(`[Usage] No Polar customer ID for org ${organizationId}, skipping sync. User must subscribe via Polar first.`);
+        return;
+      }
+      
+      this.logger.debug(`[Usage] Syncing ${meterName}=${units} to Polar for customer ${org.polarCustomerId}`);
+    
+
+      // Determine Polar API URL
+      const isSandbox = process.env.POLAR_SERVER === 'sandbox';
+      const polarUrl = isSandbox
+        ? 'https://sandbox-api.polar.sh'
+        : 'https://api.polar.sh';
+
+      // Sync to Polar using the correct /v1/events/ingest endpoint
+      const response = await fetch(
+        `${polarUrl}/v1/events/ingest`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            events: [{
+              customer_id: org.polarCustomerId,
+              name: meterName,
+              timestamp: timestamp.toISOString(),
+              metadata: { 
+                event_id: eventId,
+                value: units,
+              },
+            }],
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Polar API error (${response.status}): ${errorText}`);
+      }
+
+      // Mark as synced
+      await this.db.execute(sql`
+        UPDATE usage_events 
+        SET synced_to_polar = true, last_sync_attempt = NOW(), sync_error = NULL
+        WHERE id = ${eventId}::uuid
+      `);
+
+      this.logger.debug(`[Usage] ✅ Synced event ${eventId.substring(0, 8)}... to Polar`);
+    } catch (error) {
+      // Update sync error but don't fail
+      await this.db.execute(sql`
+        UPDATE usage_events 
+        SET sync_attempts = sync_attempts + 1, 
+            last_sync_attempt = NOW(),
+            sync_error = ${error instanceof Error ? error.message : 'Unknown error'}
+        WHERE id = ${eventId}::uuid
+      `).catch(() => { /* ignore */ });
+
+      throw error;
     }
   }
 
@@ -268,18 +368,18 @@ export class UsageTrackerService {
       // Get plan limits
       const planLimitsResult = await this.db.execute<{
         playwright_minutes_included: number;
-        k6_vu_hours_included: number;
+        k6_vu_minutes_included: number;
       }>(sql`
-        SELECT 
+        SELECT
           playwright_minutes_included,
-          k6_vu_hours_included
+          k6_vu_minutes_included
         FROM plan_limits
         WHERE plan = ${org.subscriptionPlan || 'plus'}
       `);
 
       const planLimitsArray = planLimitsResult as unknown as Array<{
         playwright_minutes_included: number;
-        k6_vu_hours_included: number;
+        k6_vu_minutes_included: number;
       }>;
 
       if (!planLimitsArray || planLimitsArray.length === 0) {
@@ -291,18 +391,18 @@ export class UsageTrackerService {
       // Get overage pricing
       const pricingResult = await this.db.execute<{
         playwright_minute_price_cents: number;
-        k6_vu_hour_price_cents: number;
+        k6_vu_minute_price_cents: number;
       }>(sql`
-        SELECT 
+        SELECT
           playwright_minute_price_cents,
-          k6_vu_hour_price_cents
+          k6_vu_minute_price_cents
         FROM overage_pricing
         WHERE plan = ${org.subscriptionPlan || 'plus'}
       `);
 
       const pricingArray = pricingResult as unknown as Array<{
         playwright_minute_price_cents: number;
-        k6_vu_hour_price_cents: number;
+        k6_vu_minute_price_cents: number;
       }>;
 
       if (!pricingArray || pricingArray.length === 0) {
@@ -313,11 +413,11 @@ export class UsageTrackerService {
 
       // Calculate current overage cost
       const playwrightOverage = Math.max(0, (org.playwrightMinutesUsed || 0) - limits.playwright_minutes_included);
-      const k6Overage = Math.max(0, (org.k6VuHoursUsed || 0) - limits.k6_vu_hours_included);
+      const k6Overage = Math.max(0, (org.k6VuMinutesUsed || 0) - limits.k6_vu_minutes_included);
 
-      const totalOverageCents = 
+      const totalOverageCents =
         (playwrightOverage * prices.playwright_minute_price_cents) +
-        Math.ceil(k6Overage * prices.k6_vu_hour_price_cents);
+        (k6Overage * prices.k6_vu_minute_price_cents);
 
       if (totalOverageCents >= row.monthly_spending_limit_cents) {
         return {

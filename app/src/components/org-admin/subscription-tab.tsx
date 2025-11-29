@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Calendar, 
@@ -15,7 +14,8 @@ import {
   ExternalLink,
   AlertCircle,
   Database,
-  DollarSign
+  DollarSign,
+  TrendingUp
 } from "lucide-react";
 import { authClient } from "@/utils/auth-client";
 import { toast } from "sonner";
@@ -34,7 +34,7 @@ interface SubscriptionData {
   };
   usage: {
     playwrightMinutes: { used: number; included: number; overage: number; percentage: number };
-    k6VuHours: { used: number; included: number; overage: number; percentage: number };
+    k6VuMinutes: { used: number; included: number; overage: number; percentage: number };
   };
   limits: {
     monitors: { current: number; limit: number; remaining: number; percentage: number };
@@ -162,30 +162,22 @@ export function SubscriptionTab() {
             <CardTitle className="text-base font-medium">Usage This Period</CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 font-medium">
-                  <PlaywrightLogo width={20} height={20} className="text-[#E2574C]" />
-                  Playwright Execution Minutes
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  {data.usage.playwrightMinutes.used.toLocaleString()} / {data.usage.playwrightMinutes.included.toLocaleString()}
-                </span>
-              </div>
-              <Progress value={Math.min(data.usage.playwrightMinutes.percentage, 100)} className="h-2" />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 font-medium">
-                  <K6Logo width={18} height={18} className="text-[#7d64ff]" />
-                  K6 Virtual User Hours
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  {data.usage.k6VuHours.used.toLocaleString()} / {data.usage.k6VuHours.included.toLocaleString()}
-                </span>
-              </div>
-              <Progress value={Math.min(data.usage.k6VuHours.percentage, 100)} className="h-2" />
-            </div>
+            <UsageProgressBar
+              icon={<PlaywrightLogo width={20} height={20} className="text-[#E2574C]" />}
+              label="Playwright Execution Minutes"
+              used={data.usage.playwrightMinutes.used}
+              included={data.usage.playwrightMinutes.included}
+              overage={data.usage.playwrightMinutes.overage}
+              percentage={data.usage.playwrightMinutes.percentage}
+            />
+            <UsageProgressBar
+              icon={<K6Logo width={18} height={18} className="text-[#7d64ff]" />}
+              label="K6 Virtual User Minutes"
+              used={data.usage.k6VuMinutes.used}
+              included={data.usage.k6VuMinutes.included}
+              overage={data.usage.k6VuMinutes.overage}
+              percentage={data.usage.k6VuMinutes.percentage}
+            />
           </CardContent>
         </Card>
 
@@ -243,6 +235,94 @@ export function SubscriptionTab() {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+/**
+ * Usage progress bar with overage visualization
+ * - Shows included usage in blue
+ * - Shows overage in red with proper bar scaling
+ */
+function UsageProgressBar({
+  icon,
+  label,
+  used,
+  included,
+  overage,
+  percentage,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  used: number;
+  included: number;
+  overage: number;
+  percentage: number;
+}) {
+  const hasOverage = overage > 0;
+  
+  // For overage: scale so 100% of bar = total used, with included portion marked
+  // For normal: scale so 100% of bar = included amount
+  const normalizedPercentage = hasOverage
+    ? 100 // Full bar represents total usage
+    : Math.min(percentage, 100);
+  
+  // Calculate the portion of the bar that represents included usage
+  const includedPortion = hasOverage
+    ? (included / used) * 100
+    : normalizedPercentage;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-2 font-medium">
+          {icon}
+          {label}
+        </span>
+        <div className="flex items-center gap-2">
+          {hasOverage && (
+            <Badge variant="destructive" className="text-xs px-1.5 py-0 h-5">
+              <TrendingUp className="h-3 w-3 mr-1" />
+              +{overage.toLocaleString()} overage
+            </Badge>
+          )}
+          <span className={`text-sm ${hasOverage ? 'text-red-500 font-medium' : 'text-muted-foreground'}`}>
+            {used.toLocaleString()} / {included.toLocaleString()}
+          </span>
+        </div>
+      </div>
+      
+      {/* Custom progress bar with overage visualization */}
+      <div className="relative h-2 w-full overflow-hidden rounded-full bg-primary/20">
+        {hasOverage ? (
+          <>
+            {/* Included portion (blue) */}
+            <div
+              className="absolute h-full bg-primary transition-all duration-300 ease-in-out rounded-l-full"
+              style={{ width: `${includedPortion}%` }}
+            />
+            {/* Overage portion (red) */}
+            <div
+              className="absolute h-full bg-red-500 transition-all duration-300 ease-in-out rounded-r-full"
+              style={{ 
+                left: `${includedPortion}%`, 
+                width: `${100 - includedPortion}%` 
+              }}
+            />
+            {/* Marker line at the included threshold */}
+            <div 
+              className="absolute h-full w-0.5 bg-white/80 z-10"
+              style={{ left: `${includedPortion}%` }}
+            />
+          </>
+        ) : (
+          /* Normal usage - single blue bar */
+          <div
+            className="h-full bg-primary transition-all duration-300 ease-in-out"
+            style={{ width: `${normalizedPercentage}%` }}
+          />
+        )}
+      </div>
     </div>
   );
 }

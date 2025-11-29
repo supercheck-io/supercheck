@@ -228,20 +228,32 @@ export async function getQueues(): Promise<{
       try {
         const connection = await getRedisConnection();
 
-        // Memory-optimized job options
+        // Memory-optimized job options with retry for transient failures
+        // Retries help with container startup issues, network problems, etc.
+        // Usage is only tracked on successful completion, so retries don't cause duplicate billing
         const defaultJobOptions = {
           removeOnComplete: { count: 500, age: 24 * 3600 }, // Keep completed jobs for 24 hours (500 max)
           removeOnFail: { count: 1000, age: 7 * 24 * 3600 }, // Keep failed jobs for 7 days (1000 max)
-          attempts: 3,
-          backoff: { type: "exponential", delay: 1000 },
+          attempts: 3, // Retry up to 3 times for transient failures
+          backoff: {
+            type: 'exponential',
+            delay: 5000, // Start with 5 second delay, then 10s, 20s
+          },
         };
 
         // Queue settings with Redis TTL and auto-cleanup options
+        // CRITICAL: lockDuration and stallInterval must accommodate max execution times:
+        // - Tests: up to 5 minutes (300s)
+        // - Jobs: up to 1 hour (3600s)
+        // - lockDuration: 70 minutes (4200s) - max execution time + buffer for cleanup
+        // - stallInterval: 30 seconds - check frequently for stalled jobs
         const queueSettings = {
           connection,
           defaultJobOptions,
-          // Settings to prevent orphaned Redis keys
-          stalledInterval: 30000, // Check for stalled jobs every 30 seconds
+          // Settings to prevent orphaned Redis keys and handle long-running jobs
+          lockDuration: 70 * 60 * 1000, // 70 minutes - must be >= max execution time (60 min for jobs)
+          stallInterval: 30000, // Check for stalled jobs every 30 seconds
+          maxStalledCount: 2, // Move job back to waiting max 2 times before failing
           metrics: {
             maxDataPoints: 60, // Limit metrics storage to 60 data points (1 hour at 1 min interval)
             collectDurations: true,
@@ -657,13 +669,9 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<string> {
     // Setting timeout
 
     // Use runId as job name for direct matching
+    // Note: Uses queue's defaultJobOptions for attempts/backoff
     await queue.add(runId, task, {
       jobId: runId, // Use runId as BullMQ job ID for consistency
-      attempts: 3,
-      backoff: {
-        type: "exponential" as const,
-        delay: 5000,
-      },
     });
     // Job added successfully
     return runId;
@@ -691,13 +699,9 @@ export async function addK6TestToQueue(
     // Enforce parallel execution limits (with org-specific limits)
     await verifyQueueCapacityOrThrow(task.organizationId);
 
+    // Note: Uses queue's defaultJobOptions for attempts/backoff
     await queue.add(jobName, task, {
       jobId: task.runId,
-      attempts: 3,
-      backoff: {
-        type: "exponential" as const,
-        delay: 5000,
-      },
     });
     return task.runId;
   } catch (error) {
@@ -725,13 +729,9 @@ export async function addK6JobToQueue(
     // Enforce parallel execution limits (with org-specific limits)
     await verifyQueueCapacityOrThrow(task.organizationId);
 
+    // Note: Uses queue's defaultJobOptions for attempts/backoff
     await queue.add(jobName, task, {
       jobId: task.runId,
-      attempts: 3,
-      backoff: {
-        type: "exponential" as const,
-        delay: 5000,
-      },
     });
     return task.runId;
   } catch (error) {

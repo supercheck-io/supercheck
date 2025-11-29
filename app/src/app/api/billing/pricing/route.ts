@@ -16,10 +16,10 @@ export async function GET() {
           description: "Best for small teams and growing projects",
           features: {
             monitors: 25,
-            playwrightMinutes: 500,
-            k6VuHours: 100,
-            concurrentExecutions: 3,
-            queuedJobs: 25,
+            playwrightMinutes: 2500,
+            k6VuMinutes: 6000,
+            concurrentExecutions: 5,
+            queuedJobs: 50,
             teamMembers: 5,
             organizations: 2,
             projects: 10,
@@ -30,8 +30,8 @@ export async function GET() {
             support: "Email support",
           },
           overagePricing: {
-            playwrightMinutes: 0.10,
-            k6VuHours: 0.50,
+            playwrightMinutes: 0.03,
+            k6VuMinutes: 0.005,
           },
         },
         {
@@ -42,8 +42,8 @@ export async function GET() {
           description: "Best for production applications and larger teams",
           features: {
             monitors: 100,
-            playwrightMinutes: 2000,
-            k6VuHours: 500,
+            playwrightMinutes: 7500,
+            k6VuMinutes: 40000,
             concurrentExecutions: 10,
             queuedJobs: 100,
             teamMembers: 25,
@@ -56,8 +56,8 @@ export async function GET() {
             support: "Priority email support",
           },
           overagePricing: {
-            playwrightMinutes: 0.08,
-            k6VuHours: 0.40,
+            playwrightMinutes: 0.015,
+            k6VuMinutes: 0.003,
           },
         },
       ],
@@ -73,10 +73,10 @@ export async function GET() {
         {
           category: "Testing",
           features: [
-            { name: "Playwright Minutes", plus: "500/month", pro: "2,000/month" },
-            { name: "K6 VU Hours", plus: "100/month", pro: "500/month" },
-            { name: "Concurrent Executions", plus: "3", pro: "10" },
-            { name: "Queued Jobs", plus: "25", pro: "100" },
+            { name: "Playwright Minutes", plus: "2,500/month", pro: "7,500/month" },
+            { name: "K6 VU Minutes", plus: "6,000/month", pro: "40,000/month" },
+            { name: "Concurrent Executions", plus: "5", pro: "10" },
+            { name: "Queued Jobs", plus: "50", pro: "100" },
           ],
         },
         {
@@ -111,7 +111,7 @@ export async function GET() {
         features: {
           monitors: "Unlimited",
           playwrightMinutes: "Unlimited",
-          k6VuHours: "Unlimited",
+          k6VuMinutes: "Unlimited",
           concurrentExecutions: "Environment-based",
           queuedJobs: "Environment-based",
           teamMembers: "Unlimited",
@@ -127,7 +127,7 @@ export async function GET() {
       faqs: [
         {
           question: "How is usage tracked?",
-          answer: "Playwright Minutes count total browser execution time. K6 VU Hours are calculated as Virtual Users × execution time in hours. Monitors count against Playwright minutes for each check.",
+          answer: "Playwright Minutes count total browser execution time. K6 VU Minutes are calculated as Virtual Users × execution time in minutes. Monitors count against Playwright minutes for each check.",
         },
         {
           question: "What happens if I exceed my limits?",

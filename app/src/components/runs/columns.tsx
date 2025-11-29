@@ -19,6 +19,37 @@ import { cn } from "@/lib/utils";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
 
+// Helper to validate status is one of the allowed values
+function mapDbStatusToDisplayStatus(dbStatus: string, errorDetails?: string | null): string {
+  // Convert the dbStatus to lowercase for case-insensitive comparison
+  const status = typeof dbStatus === "string" ? dbStatus.toLowerCase() : "";
+
+  // Check if this is a cancelled run (status is error but errorDetails contains cancellation)
+  if (status === "error" && errorDetails) {
+    const lowerErrorDetails = errorDetails.toLowerCase();
+    if (lowerErrorDetails.includes("cancellation") || lowerErrorDetails.includes("cancelled")) {
+      return "cancelled";
+    }
+  }
+
+  // Only return one of the allowed status values
+  switch (status) {
+    case "running":
+      return "running";
+    case "passed":
+      return "passed";
+    case "failed":
+      return "failed";
+    case "error":
+      return "error";
+    case "cancelled":
+      return "cancelled";
+    default:
+      console.warn(`Unknown status: ${dbStatus}, defaulting to running`);
+      return "running";
+  }
+}
+
 // Separate component for job name with popover
 function JobNameWithPopover({ jobName }: { jobName: string | undefined }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -158,15 +189,15 @@ export const createColumns = (
     enableSorting: true,
   },
   {
-    accessorKey: "status",
+    id: "status",
+    // Use accessorFn to return the mapped status (including cancelled)
+    // This ensures facet counts are correct
+    accessorFn: (row) => mapDbStatusToDisplayStatus(row.status, row.errorDetails),
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Status" />
     ),
     cell: ({ row }) => {
-      const status = row.getValue("status") as string;
-
-      // Map the status to a valid status for display
-      const mappedStatus = mapDbStatusToDisplayStatus(status);
+      const mappedStatus = row.getValue("status") as string;
       const statusInfo = runStatuses.find((s) => s.value === mappedStatus);
 
       return (
@@ -182,7 +213,7 @@ export const createColumns = (
             </div>
           ) : (
             <JobStatus
-              runId={row.getValue("id")}
+              runId={row.original.id}
               initialStatus={mappedStatus}
             />
           )}
@@ -284,24 +315,3 @@ export const createColumns = (
 
 // Export a default set of columns for backward compatibility
 export const columns = createColumns();
-
-// Helper to validate status is one of the allowed values
-function mapDbStatusToDisplayStatus(dbStatus: string): string {
-  // Convert the dbStatus to lowercase for case-insensitive comparison
-  const status = typeof dbStatus === "string" ? dbStatus.toLowerCase() : "";
-
-  // Only return one of the allowed status values
-  switch (status) {
-    case "running":
-      return "running";
-    case "passed":
-      return "passed";
-    case "failed":
-      return "failed";
-    case "error":
-      return "error";
-    default:
-      console.warn(`Unknown status: ${dbStatus}, defaulting to running`);
-      return "running";
-  }
-}

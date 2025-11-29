@@ -168,6 +168,12 @@ The system manages distinct queues for different execution types and regions:
 - ✅ **Geographic accuracy**: Regional queues ensure correct execution location
 - ✅ **Simple scaling**: Scale by region (3 deployments vs 8)
 
+**Single Cluster Deployment:**
+In a single cluster setup, geographic isolation is achieved via **Node Affinity**.
+- Nodes must be labeled with `region={us-east|eu-central|asia-pacific}`.
+- Worker deployments use `nodeSelector` to target specific nodes.
+- This allows logical separation of "regions" even within the same physical cluster if needed, or physical separation if nodes are in different zones/regions but connected to the same control plane.
+
 **Local Development:** Set `WORKER_REGION=local` to process all queues on a single worker. Configured automatically in Docker Compose.
 
 ### Active Queues (14 Total)
@@ -246,15 +252,18 @@ graph TB
 stateDiagram-v2
     [*] --> Waiting: Job Added to Queue
     Waiting --> Active: Worker Picks Up
+    Waiting --> Cancelled: User Cancels (Queue)
     Active --> Processing: Test Execution
     Processing --> Uploading: Tests Complete
     Uploading --> Completed: Artifacts Saved
     Processing --> Failed: Test Error
+    Processing --> Cancelled: User Cancels (Running)
     Active --> Stalled: Worker Timeout
     Stalled --> Active: Retry
     Stalled --> Failed: Max Retries Exceeded
     Completed --> [*]
     Failed --> [*]
+    Cancelled --> [*]
 
     note right of Active
         Worker claims job
@@ -270,7 +279,133 @@ stateDiagram-v2
         Capacity decremented
         SSE notification sent
     end note
+
+    note right of Cancelled
+        Container killed
+        Resources released
+    end note
 ```
+
+### Job Cancellation System
+
+The execution system supports **real-time cancellation** of running and queued jobs via Redis-based signaling.
+
+#### Cancellation Architecture
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant API as Cancel API
+    participant Redis as Redis
+    participant Queue as BullMQ Queue
+    participant Worker as Worker
+    participant Container as Container
+
+    User->>API: POST /api/runs/{runId}/cancel
+    API->>API: Validate permissions (RBAC)
+    API->>Redis: SET supercheck:cancel:{runId} = 1 (TTL 1h)
+    
+    alt Job in Queue (Waiting)
+        API->>Queue: job.remove()
+        Queue-->>API: Job removed
+        API->>API: Update DB status → error
+    else Job Running (Active)
+        API->>API: Update DB status → error
+        Note over Worker: Polling every 1s
+        Worker->>Redis: GET supercheck:cancel:{runId}
+        Redis-->>Worker: "1" (cancelled)
+        Worker->>Container: docker kill {containerName}
+        Container-->>Worker: Killed
+        Worker->>Redis: DEL supercheck:cancel:{runId}
+    end
+    
+    API-->>User: { success: true }
+```
+
+#### Cancellation Flow
+
+**1. API Layer (App)**
+- Validates user has permission to cancel (organization membership)
+- Sets cancellation signal in Redis with 1-hour TTL
+- Attempts to remove job from BullMQ queue (works for waiting/delayed jobs)
+- Updates database status to 'error' with "Cancellation requested by user"
+
+**2. Worker Layer**
+- **Pre-execution check**: Processor checks for cancellation signal before starting
+- **During execution**: `ContainerExecutorService` polls Redis every 1 second
+- **On cancellation detected**: Kills Docker container immediately, clears signal
+
+#### Key Components
+
+| Component | Location | Responsibility |
+|-----------|----------|----------------|
+| `setCancellationSignal()` | `app/src/lib/cancellation-service.ts` | Set Redis flag from API |
+| `CancellationService` | `worker/src/common/services/cancellation.service.ts` | Redis operations in worker |
+| `CancellationModule` | `worker/src/common/services/cancellation.module.ts` | NestJS module for DI |
+| `ContainerExecutorService` | `worker/src/common/security/container-executor.service.ts` | Polls & kills containers |
+
+#### Redis Key Format
+
+```
+supercheck:cancel:{runId}
+```
+
+- **Value**: `"1"` when cancelled
+- **TTL**: 3600 seconds (1 hour) - prevents stale signals
+- **Cleared**: After worker acknowledges cancellation
+
+#### Container Cancellation
+
+When a cancellation signal is detected during container execution:
+
+1. **Immediate Kill**: `docker kill {containerName}` (SIGKILL, exit code 137)
+2. **Container Cleanup**: `docker rm -f {containerName}`
+3. **Signal Clear**: Redis key deleted
+4. **Status Update**: Run marked as `error` in database with `errorDetails: "Cancellation requested by user"`
+
+#### UI Status Display
+
+Cancelled runs are displayed distinctly in the UI:
+
+| Database Status | Error Details | UI Display | Icon |
+|-----------------|---------------|------------|------|
+| `error` | Contains "cancellation" or "cancelled" | **Cancelled** | Ban (🚫) |
+| `error` | Other errors | **Error** | AlertCircle |
+| `failed` | Any | **Failed** | XCircle |
+| `passed` | Any | **Passed** | CheckCircle |
+| `running` | Any | **Running** | Loader |
+
+The UI maps the database `error` status to "Cancelled" when the `errorDetails` field contains cancellation-related keywords. This allows the faceted filters to correctly count and filter cancelled runs separately from other errors.
+
+#### Cancellation Confirmation
+
+Both Jobs and Playground pages show a confirmation dialog before cancelling:
+- **Title**: "Cancel Execution?"
+- **Description**: Warns that the action cannot be undone
+- **Actions**: "Continue Running" (cancel) or "Cancel Execution" (confirm)
+
+#### Playground vs Job Cancellation
+
+The system distinguishes between playground runs and scheduled job runs:
+
+| Aspect | Playground Runs | Job Runs |
+|--------|-----------------|----------|
+| **Job ID** | `null` (no associated job) | UUID of parent job |
+| **SSE Events** | Filtered out from `/api/job-status/events` | Broadcast to all subscribers |
+| **Cancellation Toast** | Simple "Run cancelled" message | "Job execution cancelled" with report link |
+| **Report Detection** | Immediate cancellation detection via GET pre-check | Standard SSE notification flow |
+
+**Implementation Details:**
+- The `/api/job-status/events` SSE endpoint filters out runs without a `jobId` to prevent duplicate notifications for playground executions
+- Playground runs have their own status handling via `/api/test-status/events/{testId}` (Playwright) or streaming events (K6)
+- The `ReportViewer` component uses a GET request (instead of HEAD) to detect cancellation errors immediately by reading the JSON response body
+
+#### Why Redis-Based Signaling?
+
+- ✅ **Distributed**: Works across multiple worker instances
+- ✅ **Real-time**: Sub-second detection with 1s polling interval
+- ✅ **Reliable**: TTL prevents orphaned signals
+- ✅ **Simple**: No complex coordination required
 
 ### Queue Configuration
 
@@ -363,8 +498,8 @@ sequenceDiagram
 ```mermaid
 graph TB
     subgraph "Redis Atomic Counters"
-        K1["capacity:running:{orgId}"<br/>Running Jobs Count]
-        K2["capacity:queued:{orgId}"<br/>Queued Jobs Count]
+        K1["capacity:running:{orgId}<br/>Current: 4"]
+        K2["capacity:queued:{orgId}<br/>Current: 15"]
         K3["TTL: 24 hours<br/>Prevents leaks"]
     end
 
@@ -868,16 +1003,15 @@ graph TB
 Health checks and monitors can run from multiple locations for global coverage:
 
 **Location Configuration:**
-- US East (Default)
-- US West
-- Europe
-- Asia Pacific
+- US_EAST (Default)
+- EU_CENTRAL 
+- ASIA_PACIFIC
 - Additional custom locations
 
 **Execution Modes:**
 
 **Single Location Mode (Default):**
-- Monitor runs from US East only
+- Monitor runs from EU_CENTRAL only
 - Fastest execution
 - Lower resource usage
 
@@ -896,7 +1030,7 @@ Health checks and monitors can run from multiple locations for global coverage:
 
 ```mermaid
 graph TB
-    A["Monitor Execution Request<br/>locations: US_EAST, EU, APAC<br/>strategy: majority"]
+    A["Monitor Execution Request<br/>locations: US_EAST, EU_CENTRAL, ASIA_PACIFIC<br/>strategy: majority"]
     C["Create Execution Group ID<br/>monitor-{monitorId}-{timestamp}-{random}"]
     D["For each location"]
     E["Add to monitor-execution queue<br/>with location & group ID"]
@@ -932,20 +1066,19 @@ The location service manages location configurations:
 
 **Available Monitoring Locations:**
 - US_EAST: United States (East Coast)
-- US_WEST: United States (West Coast)
-- EU: Europe
-- APAC: Asia Pacific
+- EU_CENTRAL: Europe (Central)
+- ASIA_PACIFIC: Asia Pacific
 
 **Default Configuration:**
 - Enabled: false (single location mode)
-- Primary location: US_EAST
+- Primary location: EU_CENTRAL
 - Threshold: 50% (majority strategy)
 - Strategy: Majority
 
 **Effective Locations Logic:**
-- If multi-location disabled: Use default primary location (US_EAST)
+- If multi-location disabled: Use default primary location (EU_CENTRAL)
 - If multi-location enabled: Use configured locations
-- Fallback: Default to US_EAST if no locations specified
+- Fallback: Default to EU_CENTRAL if no locations specified
 
 ---
 
@@ -1131,9 +1264,9 @@ graph LR
 
 ### Test Container Resource Limits
 
-**Container Security Configuration:**
-- Memory: 2048m (2GB limit)
-- CPUs: 2 (2 vCPU limit)
+**Container Resource Configuration:**
+- Memory: 2048m (2GB limit from CONTAINER_MEMORY_LIMIT_MB)
+- CPUs: 1.5 (1.5 vCPU limit from CONTAINER_CPU_LIMIT)
 - PIDs Limit: 100 (max 100 processes)
 - Shared Memory: 512m (for browsers)
 - Temporary Files: Uses regular container filesystem
@@ -1275,9 +1408,9 @@ graph TB
 ### Retry Strategy
 
 **Default job options for all execution queues:**
-- Attempts: 3 retries for execution jobs, 2 for job execution
+- Attempts: 3 retries for execution jobs
 - Backoff type: Exponential
-- Initial delay: 1 second
+- Initial delay: 5 seconds
 - Keep completed jobs: 500 max, 24 hours
 - Keep failed jobs: 1000 max, 7 days
 
@@ -1419,19 +1552,19 @@ graph TB
 
 | Type | Memory | CPUs | Notes |
 |------|--------|------|-------|
-| **Playwright** | 4GB | 4.0 | Supports 2 parallel workers with stable execution |
-| **K6** | 4GB | 4.0 | For high-concurrency load tests (multiple VUs) |
-| **Process Limits** | — | — | `--pids-limit=256` for parallel browser instances |
-| **Shared Memory** | 2GB | — | `--shm-size=2048m` for browser/ffmpeg operations |
+| **Playwright** | 2048MB | 1.5 | Default container limits |
+| **K6** | 2048MB | 1.5 | Default container limits |
+| **Process Limits** | — | — | `--pids-limit=100` for process isolation |
+| **Shared Memory** | — | — | Default container configuration |
 
 **Worker Container Resource Allocation (docker-compose deployment):**
 
 | Environment | CPU Limits | Memory Limits | CPU Reservations | Memory Reservations |
 |-------------|-----------|---------------|------------------|-------------------|
-| **Production** (docker-compose.yml) | 5.0 | 6GB | 1.0 | 2GB |
-| **Staging/Secure** (docker-compose-secure.yml) | 5.0 | 6GB | 1.0 | 2GB |
-| **External** (docker-compose-external.yml) | 5.0 | 6GB | 1.0 | 2GB |
-| **Local Dev** (docker-compose-local.yml) | 5.0 | 6GB | 1.0 | 2GB |
+| **Production** (docker-compose.yml) | 1.8 | 3.0G | 0.5 | 1.5G |
+| **Staging/Secure** (docker-compose-secure.yml) | 1.8 | 3.0G | 0.5 | 1.5G |
+| **External** (docker-compose-external.yml) | 1.8 | 3.0G | 0.5 | 1.5G |
+| **Local Dev** (docker-compose-local.yml) | 1.8 | 3.0G | 0.5 | 1.5G |
 
 Worker container resources provide overhead for:
 - Docker socket communication with execution containers
@@ -1446,27 +1579,30 @@ Worker container resources provide overhead for:
 - `K6_MAX_CONCURRENCY=1` (Single k6 test container per worker)
 - `RUNNING_CAPACITY=6` (Global queue system parallelism, 3 replicas × 2 concurrent)
 - `QUEUED_CAPACITY=50` (Queue depth limit)
+- `CONTAINER_CPU_LIMIT=1.5` (CPU limit per execution container)
+- `CONTAINER_MEMORY_LIMIT_MB=2048` (Memory limit per execution container in MB)
 
 **Playwright Performance Tuning:**
 - **Test Timeout**: 240s per individual test (global timeout 5 minutes)
 - **Worker Count**: 2 workers run tests in parallel inside container
 - **Retry Strategy**: 1 retry on failure
 - **Expected throughput**: 2 parallel workers × multiple tests = 1.5-2x faster execution
-- **Container Resources**: 4GB RAM, 4 CPUs per execution container (increased from 2GB/2CPU)
+- **Container Resources**: 2048MB RAM, 1.5 CPUs per execution container (configurable via env vars)
 
 **K6 Performance Tuning:**
 - **VU Limit**: 100-500 concurrent virtual users depending on endpoint complexity
-- **Container Resources**: 4GB RAM, 4 CPUs per execution container
+- **Container Resources**: 2048MB RAM, 1.5 CPUs per execution container
 - **Expected throughput**: Can handle high-concurrency load tests efficiently
-- **Shared Memory**: 2GB for dashboard exports and data processing
+- **Shared Memory**: Default container configuration for dashboard exports
 
 **Tuning Guidelines:**
 - Increase `MAX_CONCURRENT_EXECUTIONS` if worker has spare resources (CPU/RAM)
 - Increase `PLAYWRIGHT_WORKERS` for faster test execution (requires more memory)
 - Increase `TEST_EXECUTION_TIMEOUT_MS` if tests consistently timeout
+- Adjust `CONTAINER_CPU_LIMIT` and `CONTAINER_MEMORY_LIMIT_MB` for container resources
 - Adjust `RUNNING_CAPACITY` based on available system resources (scale horizontally with replicas)
 - Monitor queue depth to detect bottlenecks
-- Each worker replica requires: 5 CPUs limit, 6GB memory limit (for orchestration)
+- Each worker replica requires: 1.8 CPUs limit, 3.0GB memory limit (for orchestration)
 
 ### Key Performance Metrics
 
@@ -1477,8 +1613,8 @@ Worker container resources provide overhead for:
 | Test Execution Time (K6) | < 10 min | 5-8 min avg | ✅ | High-concurrency load testing |
 | Artifact Upload Time | < 10s | 8s avg | ✅ | S3/MinIO transfer with optimized chunks |
 | Worker Utilization | 70-80% | 75% avg | ✅ | 3 replicas with balanced load |
-| Memory per Container | 4GB | 4GB (Playwright/K6) | ✅ | Increased from 2GB for stable execution |
-| CPU per Container | 4.0 | 4.0 (Playwright/K6) | ✅ | Increased from 2.0 for parallel workers |
+| Memory per Container | 2048MB | 2048MB (Playwright/K6) | ✅ | Configurable via CONTAINER_MEMORY_LIMIT_MB |
+| CPU per Container | 1.5 | 1.5 (Playwright/K6) | ✅ | Configurable via CONTAINER_CPU_LIMIT |
 | Concurrent Executions | 2 per worker | 2 | ✅ | Scale horizontally with replicas |
 | Global Throughput (3 replicas) | 6 concurrent | 6 | ✅ | 3 workers × 2 concurrent executions |
 
@@ -1569,6 +1705,11 @@ graph TB
 
 > **Note:** These defaults are placeholders. When subscription-aware capacity management ships, limits will be derived from organization settings stored in the database.
 
+**Redis Capacity Keys:**
+- `capacity:running:{orgId}` - Running job counter per organization
+- `capacity:queued:{orgId}` - Queued job counter per organization
+- TTL: 24 hours for all capacity keys
+
 **Timeout Configuration:**
 - `TEST_EXECUTION_TIMEOUT_MS` - Single test timeout (default: 120000 = 2 min)
 - `JOB_EXECUTION_TIMEOUT_MS` - Job timeout (default: 900000 = 15 min)
@@ -1581,6 +1722,151 @@ graph TB
 **Resource Configuration:**
 - `WORKER_MEMORY_LIMIT` - Memory limit (default: 3GB)
 - `CLEANUP_INTERVAL_MS` - Cleanup frequency (default: 1800000 = 30 min)
+
+---
+
+## Database Connection Management
+
+### Connection Pooling Configuration
+
+The system uses **postgres.js** with Drizzle ORM for database operations, configured with production-ready connection pooling.
+
+**Worker Implementation:** `worker/src/db/db.service.ts`
+
+```typescript
+const queryClient = postgres(process.env.DATABASE_URL!, {
+  max: parseInt(process.env.DB_POOL_MAX || '10', 10),           // Max connections
+  idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || '30', 10),  // Idle timeout (seconds)
+  connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || '10', 10), // Connect timeout (seconds)
+  max_lifetime: parseInt(process.env.DB_MAX_LIFETIME || '1800', 10),  // Max connection age (seconds)
+});
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | Required | PostgreSQL connection string |
+| `DB_POOL_MAX` | `10` | Maximum connections per worker instance |
+| `DB_IDLE_TIMEOUT` | `30` | Seconds before idle connection is closed |
+| `DB_CONNECT_TIMEOUT` | `10` | Seconds to wait for connection establishment |
+| `DB_MAX_LIFETIME` | `1800` | Maximum connection age (30 minutes) |
+
+### Connection Pool Sizing
+
+**Recommended Configuration:**
+- **Next.js App**: 10 connections per instance
+- **Worker Service**: 10 connections per instance
+- **Total Budget**: 100-200 connections for PostgreSQL
+
+**Calculation:**
+```
+Total Connections = (# Next.js instances × 10) + (# Worker instances × 10)
+
+Example Production:
+- 2 Next.js instances × 10 = 20 connections
+- 3 Worker instances × 10 = 30 connections
+- Total: 50 connections (well within PostgreSQL limits)
+```
+
+### Resource Manager (Worker)
+
+The worker includes a comprehensive `ResourceManagerService` for HTTP connection pooling:
+
+**Implementation:** `worker/src/common/resources/resource-manager.service.ts`
+
+**Features:**
+- ✅ Connection pooling for HTTP monitors
+- ✅ Automatic resource cleanup (idle timeout)
+- ✅ Memory limit enforcement
+- ✅ Concurrent connection limits
+- ✅ Performance metrics tracking
+
+**Configuration:**
+```typescript
+MAX_CONCURRENT_CONNECTIONS=100  // Max concurrent HTTP connections
+MAX_MEMORY_USAGE_MB=512         // Memory limit per worker
+CONNECTION_TIMEOUT_MS=30000     // 30s connection timeout
+IDLE_TIMEOUT_MS=60000           // 60s idle cleanup
+```
+
+### Transaction Best Practices
+
+**Use Transactions for Atomic Operations:**
+
+```typescript
+// ✅ GOOD: Atomic status updates
+await db.transaction(async (tx) => {
+  await tx.update(runs).set({status: "error"}).where(eq(runs.id, runId));
+  await tx.update(jobs).set({status: jobStatus}).where(eq(jobs.id, jobId));
+});
+```
+
+**Example:** `app/src/app/api/runs/[runId]/cancel/route.ts` (lines 284-322)
+
+### Query Optimization Patterns
+
+**Batch Queries (Avoid N+1):**
+```typescript
+// ❌ BAD: N+1 queries
+for (const id of ids) {
+  await db.query.jobs.findFirst({where: eq(jobs.id, id)});
+}
+
+// ✅ GOOD: Single query
+const jobs = await db.query.jobs.findMany({
+  where: inArray(jobs.id, ids)
+});
+```
+
+**Parallel Independent Queries:**
+```typescript
+// ✅ GOOD: Concurrent execution
+const [jobs, runs, monitors] = await Promise.all([
+  db.query.jobs.findMany(),
+  db.query.runs.findMany(),
+  db.query.monitors.findMany()
+]);
+```
+
+### Monitoring Recommendations
+
+**Key Metrics to Track:**
+- Active connections per instance
+- Query duration (p50, p95, p99)
+- Connection pool saturation
+- Slow queries (>100ms)
+
+**PostgreSQL Queries:**
+```sql
+-- Check active connections
+SELECT count(*) FROM pg_stat_activity;
+
+-- Find slow queries
+SELECT query, query_start, state 
+FROM pg_stat_activity 
+WHERE state = 'active' AND query_start < now() - interval '1 second';
+```
+
+### Performance Best Practices
+
+1. **Connection Reuse**: postgres.js automatically reuses connections
+2. **Prepared Statements**: Drizzle ORM uses prepared statements by default
+3. **Index Strategy**: Ensure indexes on foreign keys (`jobId`, `projectId`, `organizationId`)
+4. **Pagination**: Use `limit` and `offset` for large result sets
+5. **Column Selection**: Specify only needed columns with `columns: {...}`
+
+### Scaling Considerations
+
+**Horizontal Scaling:**
+- Each instance maintains its own connection pool
+- PostgreSQL max_connections should accommodate all instances
+- Recommended: PostgreSQL max_connections = 200-500
+
+**Vertical Scaling:**
+- Increase `DB_POOL_MAX` if single instance needs more throughput
+- Monitor connection saturation before increasing
+- Balance against PostgreSQL's total connection limit
 
 ---
 
@@ -1598,4 +1884,6 @@ The execution system provides:
 ✅ **Global monitoring coverage** with location-based execution
 ✅ **Horizontal scaling** for high throughput
 ✅ **Security isolation** with containerized environments
+✅ **Production-ready connection pooling** with postgres.js
+✅ **Resource management** for HTTP connections and memory
 

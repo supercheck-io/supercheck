@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Skeleton } from "./ui/skeleton";
+import { ExecutionsDialog } from "./executions/executions-dialog";
 
 // Define our queue stats interface here for reference
 interface QueueStats {
@@ -22,6 +23,7 @@ export function ParallelThreads() {
   const [connectionStatus, setConnectionStatus] = useState<
     "connected" | "connecting" | "disconnected"
   >("connecting");
+  const [activeDialogTab, setActiveDialogTab] = useState<"running" | "queued" | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -133,100 +135,100 @@ export function ParallelThreads() {
 
   // Just show the data even if we're reconnecting - the user doesn't need to know about temporary connectivity issues
   return (
-    <div className="flex items-center mr-2">
-      <div className="flex items-center text-[11px]">
-        <div className="font-medium text-gray-500 mr-2 text-[10px]">
-          PARALLEL
-          <div className="font-medium text-gray-500 mr-2 text-[10px]">
-            EXECUTIONS
+    <>
+      <div
+        className="flex items-center mr-2 border border-border rounded-md px-3 py-1.5 cursor-pointer hover:bg-accent/50 transition-colors group"
+        onClick={() => setActiveDialogTab("running")}
+        title="Click to manage parallel executions"
+      >
+        <div className="flex items-center text-[11px]">
+          <div className="flex flex-col mr-3 text-[10px] font-semibold text-muted-foreground leading-tight">
+            <span>PARALLEL</span>
+            <span>EXECUTIONS</span>
           </div>
-        </div>
 
-        <div className="flex flex-col mr-4">
-          <div className="flex items-center justify-between mb-0.5">
-            <span
-              className={`font-medium ${
-                stats.running > 0
+          <div className="flex flex-col mr-4">
+            <div className="flex items-center justify-between mb-1">
+              <span
+                className={`font-medium text-[10px] ${stats.running > 0
                   ? "text-blue-600 dark:text-blue-500"
-                  : "text-gray-500"
-              }`}
-            >
-              RUNNING
-            </span>
-            <span className="text-gray-700 dark:text-gray-300">
-              {stats.running}/{stats.runningCapacity}
-            </span>
+                  : "text-muted-foreground"
+                  }`}
+              >
+                RUNNING
+              </span>
+              <span className="text-muted-foreground ml-2 text-[10px]">
+                {stats.running}/{stats.runningCapacity}
+              </span>
+            </div>
+            <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 rounded-full transition-all duration-500 ease-in-out"
+                style={{ width: `${runningProgress}%` }}
+              />
+            </div>
           </div>
-          <div className="w-28 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-blue-500 rounded-full"
-              style={{ width: `${runningProgress}%` }}
-            />
-          </div>
-        </div>
 
-        <div className="flex flex-col">
-          <div className="flex items-center justify-between mb-0.5">
-            <span
-              className={`font-medium ${
-                stats.queued > 0
+          <div className="flex flex-col">
+            <div className="flex items-center justify-between mb-1">
+              <span
+                className={`font-medium text-[10px] ${stats.queued > 0
                   ? "text-amber-600 dark:text-amber-500"
-                  : "text-gray-500"
-              }`}
-            >
-              QUEUED
-            </span>
-            <span className="text-gray-700 dark:text-gray-300">
-              {stats.queued}/{stats.queuedCapacity}
-            </span>
-          </div>
-          <div className="w-28 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-amber-600 rounded-full"
-              style={{ width: `${queuedProgress}%` }}
-            />
+                  : "text-muted-foreground"
+                  }`}
+              >
+                QUEUED
+              </span>
+              <span className="text-muted-foreground ml-2 text-[10px]">
+                {stats.queued}/{stats.queuedCapacity}
+              </span>
+            </div>
+            <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
+              <div
+                className="h-full bg-amber-600 rounded-full transition-all duration-500 ease-in-out"
+                style={{ width: `${queuedProgress}%` }}
+              />
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      <ExecutionsDialog
+        open={activeDialogTab !== null}
+        onOpenChange={(open) => !open && setActiveDialogTab(null)}
+        defaultTab={activeDialogTab || "running"}
+      />
+    </>
   );
 }
 
 // Loading skeleton for parallel executions component
 function LoadingSkeleton() {
   return (
-    <div className="flex items-center mr-2">
+    <div className="flex items-center mr-2 border border-border rounded-md px-3 py-1.5">
       <div className="flex items-center text-[11px]">
-        <div className="font-medium text-gray-500 mr-2 text-[10px]">
-          PARALLEL
-          <div className="font-medium text-gray-500 mr-2 text-[10px]">
-            EXECUTIONS
-          </div>
+        <div className="flex flex-col mr-3 text-[10px] font-semibold text-muted-foreground leading-tight">
+          <span>PARALLEL</span>
+          <span>EXECUTIONS</span>
         </div>
 
         <div className="flex flex-col mr-4">
-          <div className="flex items-center justify-between mb-0.5">
-            <span className="font-medium text-gray-500">RUNNING</span>
-            <Skeleton className="h-3 w-8" />
+          <div className="flex items-center justify-between mb-1">
+            <span className="font-medium text-[10px] text-muted-foreground">RUNNING</span>
+            <Skeleton className="h-3 w-8 ml-2" />
           </div>
-          <div className="w-28 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-blue-500 rounded-full"
-              style={{ width: "0%" }}
-            />
+          <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
+            <Skeleton className="h-full w-full opacity-20" />
           </div>
         </div>
 
         <div className="flex flex-col">
-          <div className="flex items-center justify-between mb-0.5">
-            <span className="font-medium text-gray-500">QUEUED</span>
-            <Skeleton className="h-3 w-8" />
+          <div className="flex items-center justify-between mb-1">
+            <span className="font-medium text-[10px] text-muted-foreground">QUEUED</span>
+            <Skeleton className="h-3 w-8 ml-2" />
           </div>
-          <div className="w-28 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-amber-600 rounded-full"
-              style={{ width: "0%" }}
-            />
+          <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
+            <Skeleton className="h-full w-full opacity-20" />
           </div>
         </div>
       </div>
