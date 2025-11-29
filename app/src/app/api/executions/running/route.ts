@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
-import { runs, jobs, projects } from '@/db/schema';
+import { runs, jobs, projects, tests } from '@/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 import { getQueues } from '@/lib/queue';
 import { requireProjectContext } from '@/lib/project-context';
@@ -31,6 +31,8 @@ export async function GET() {
       );
     }
 
+    console.log(`[API] Querying database for running runs in org ${organizationId}`);
+
     // Get all running runs for this organization
     // Join with projects table since runs doesn't have organizationId directly
     const activeRuns = await db
@@ -50,8 +52,17 @@ export async function GET() {
       );
 
     console.log(`[API] Found ${activeRuns.length} running runs in DB for org ${organizationId}`);
+    if (activeRuns.length > 0) {
+      console.log('[API] Active runs:', activeRuns.map(r => ({
+        id: r.id,
+        jobId: r.jobId,
+        metadata: r.metadata,
+        startedAt: r.startedAt
+      })));
+    }
 
     if (activeRuns.length === 0) {
+      console.log('[API] No running runs found, returning empty arrays');
       return NextResponse.json({
         running: [],
         queued: [],
@@ -90,9 +101,14 @@ export async function GET() {
     // Check each run against queues in parallel
     const verifiedRunning: ExecutionItem[] = [];
 
+    console.log(`[API] Checking ${activeRuns.length} runs against ${allQueues.length} queues`);
+
     await Promise.all(
       activeRuns.map(async (run) => {
         let foundState: string | null = null;
+        let foundQueueName: string | null = null;
+
+        console.log(`[API] Checking run ${run.id}, jobId: ${run.jobId}, metadata:`, run.metadata);
 
         // Check all queues in parallel and find if any match
         await Promise.all(
@@ -101,28 +117,29 @@ export async function GET() {
               const job = await queue.getJob(run.id);
               if (job) {
                 const state = await job.getState();
+                console.log(`[API] Run ${run.id} found in queue ${queue.name} with state: ${state}`);
                 // Only 'active' means the job is actually running
                 // 'waiting' and 'delayed' are queued states, not running
                 if (state === 'active') {
                   foundState = state;
-                  console.log(`[API] Run ${run.id} found in queue ${queue.name} with state: ${state}`);
+                  foundQueueName = queue.name;
                 }
               }
-            } catch {
+            } catch (error) {
               // Ignore errors from individual queue checks
+              console.log(`[API] Error checking run ${run.id} in queue ${queue.name}:`, error);
             }
           })
         );
 
-        // If found in queue OR if it's a playground run (which might be short-lived but we trust DB status for now if queue check fails? 
-        // No, we should still rely on queue check to avoid stuck runs. 
-        // But for playground runs, we need to extract info from metadata if jobId is null.
-        
+        console.log(`[API] Run ${run.id} verification result: foundState=${foundState}, foundQueueName=${foundQueueName}`);
+
         if (foundState) {
           if (run.jobId) {
             // It's a Job run
             const jobDetail = jobMap.get(run.jobId);
             if (jobDetail) {
+              console.log(`[API] Adding Job run ${run.id} to verified list`);
               verifiedRunning.push({
                 runId: run.id,
                 jobId: run.jobId,
@@ -139,20 +156,51 @@ export async function GET() {
             // It's a Playground run (or other ad-hoc run)
             const metadata = (run.metadata as Record<string, unknown>) || {};
             const isPlayground = metadata.source === 'playground';
-            const testType = metadata.testType || 'playwright'; // Default to playwright if unknown
+            const testType = metadata.testType as string || 'browser';
+            const testId = metadata.testId as string;
             
+            console.log(`[API] Processing playground/ad-hoc run ${run.id}: isPlayground=${isPlayground}, testType=${testType}, testId=${testId}`);
+            
+            // Map test types to execution engines
+            // browser, api, database, custom -> playwright
+            // performance -> k6
+            const jobType: 'playwright' | 'k6' = testType === 'performance' ? 'k6' : 'playwright';
+            
+            // Try to fetch test name from tests table if we have a testId
+            let displayName = isPlayground ? 'Playground Execution' : 'Ad-hoc Execution';
+            if (testId) {
+              try {
+                const test = await db.query.tests.findFirst({
+                  where: eq(tests.id, testId),
+                  columns: { title: true },
+                });
+                if (test?.title) {
+                  // Show full test name
+                  displayName = test.title;
+                } else {
+                  // Test not found or has no title, use full testId as fallback
+                  displayName = testId;
+                }
+              } catch (error) {
+                console.log(`[API] Could not fetch test name for testId ${testId}:`, error);
+                // Use full testId as fallback if name fetch fails
+                displayName = testId;
+              }
+            }
+            
+            console.log(`[API] Adding playground run ${run.id} to verified list with jobType=${jobType}, name=${displayName}`);
             verifiedRunning.push({
               runId: run.id,
               jobId: null,
-              jobName: isPlayground ? 'Playground Execution' : 'Ad-hoc Execution',
-              jobType: testType as 'playwright' | 'k6',
+              jobName: displayName,
+              jobType,
               status: 'running',
               startedAt: run.startedAt,
-              source: isPlayground ? 'playground' : 'job', // Default to job if not explicitly playground
+              source: isPlayground ? 'playground' : 'job',
             });
           }
         } else {
-            console.log(`[API] Run ${run.id} failed verification. Found state: ${foundState}`);
+          console.log(`[API] Run ${run.id} failed verification - not found in any queue with active state`);
         }
       }),
     );

@@ -1,9 +1,10 @@
+
 import { NextResponse } from "next/server";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
 import { requireProjectContext } from "@/lib/project-context";
 import { hasPermission } from "@/lib/rbac/middleware";
 import { db } from "@/utils/db";
-import { runs, jobs } from "@/db/schema";
+import { runs, jobs, projects, tests } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 const encoder = new TextEncoder();
@@ -55,18 +56,13 @@ export async function GET(request: Request) {
               return;
             }
 
-            // Skip playground runs (runs without a jobId) - they have their own status handling
-            if (!run.jobId) {
-              return;
-            }
-
             // Verify the run belongs to the user's project
             if (run.projectId !== project.id) {
               // Run belongs to a different project, skip this event
               return;
             }
 
-            // Verify the job belongs to the project
+            // For job runs (not playground), verify the job belongs to the project
             if (run.jobId) {
               const job = await db.query.jobs.findFirst({
                 where: eq(jobs.id, run.jobId),
@@ -77,6 +73,55 @@ export async function GET(request: Request) {
                 return;
               }
             }
+            // Playground runs (jobId is null) are allowed through if they belong to the project
+
+            // Fetch job name or test name
+            let jobName = "Unknown Execution";
+            
+            if (run.jobId) {
+              // It's a job run
+              const job = await db.query.jobs.findFirst({
+                where: eq(jobs.id, run.jobId),
+                columns: { name: true },
+              });
+              if (job?.name) jobName = job.name;
+            } else {
+              // It's a playground run
+              const metadata = (run.metadata as Record<string, unknown>) || {};
+              const testId = metadata.testId as string;
+              const isPlayground = metadata.source === 'playground';
+              
+              jobName = isPlayground ? 'Playground Execution' : 'Ad-hoc Execution';
+              
+              if (testId) {
+                try {
+                  const test = await db.query.tests.findFirst({
+                    where: eq(tests.id, testId),
+                    columns: { title: true },
+                  });
+                  if (test?.title) {
+                    // Show full test name
+                    jobName = test.title;
+                  }
+                } catch (error) {
+                  // Ignore error, keep default name
+                }
+              }
+            }
+
+            // Determine job type
+            let jobType = "playwright"; // Default
+            if (run.jobId) {
+               const job = await db.query.jobs.findFirst({
+                where: eq(jobs.id, run.jobId),
+                columns: { jobType: true },
+              });
+              if (job?.jobType) jobType = job.jobType;
+            } else {
+               const metadata = (run.metadata as Record<string, unknown>) || {};
+               const testType = metadata.testType as string;
+               if (testType === 'performance') jobType = 'k6';
+            }
 
             // Event is authorized, send it
             const payload = {
@@ -85,10 +130,13 @@ export async function GET(request: Request) {
               status: event.status,
               runId: event.queueJobId,
               jobId: event.entityId ?? event.queueJobId,
+              jobName, // Add job name to payload
+              jobType, // Add job type to payload
               trigger: event.trigger,
               timestamp: event.timestamp,
               returnValue: event.returnValue,
               failedReason: event.failedReason,
+              hasJobId: !!run.jobId, // Add flag to distinguish job runs from playground runs
             };
 
             controller.enqueue(
