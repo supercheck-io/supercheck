@@ -369,9 +369,14 @@ function RunButton({ job }: { job: Job }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Continue Running</AlertDialogCancel>
+            <AlertDialogCancel onClick={(e) => e.stopPropagation()}>
+              Continue Running
+            </AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleCancelRun}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCancelRun(e);
+              }}
               className="bg-red-500 hover:bg-red-600"
             >
               Cancel Execution
