@@ -141,11 +141,11 @@ export class ExecutionService implements OnModuleDestroy {
     // Set timeouts: configurable via env vars with sensible defaults
     this.testExecutionTimeoutMs = this.configService.get<number>(
       'TEST_EXECUTION_TIMEOUT_MS',
-      120000, // 2 minutes default
+      5 * 60 * 1000, // 5 minutes default
     );
     this.jobExecutionTimeoutMs = this.configService.get<number>(
       'JOB_EXECUTION_TIMEOUT_MS',
-      900000, // 15 minutes default
+      60 * 60 * 1000, // 1 hour default
     );
 
     const maxConcurrencyRaw =
@@ -154,7 +154,7 @@ export class ExecutionService implements OnModuleDestroy {
     const parsedConcurrency = Number.parseInt(maxConcurrencyRaw ?? '', 10);
     this.maxConcurrentExecutions = Number.isFinite(parsedConcurrency)
       ? Math.max(1, parsedConcurrency)
-      : 5; // Default to 5 concurrent executions if not provided
+      : 1; // Default to 1 concurrent execution (scale horizontally via replicas instead)
 
     // Container resource limits
     this.containerCpuLimit = parseFloat(

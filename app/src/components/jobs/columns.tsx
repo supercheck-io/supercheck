@@ -74,15 +74,19 @@ function DescriptionWithPopover({
 
 // Create a proper React component for the run button
 function RunButton({ job }: { job: Job }) {
-  const { isJobRunning, setJobRunning, startJobRun } = useJobContext();
+  const { isJobRunning, setJobRunning, startJobRun, activeRuns } = useJobContext();
   const { currentProject } = useProjectContext();
   const eventSourceRef = useRef<EventSource | null>(null);
-  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  const [localRunId, setLocalRunId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   // Get job running state from global context
   const isRunning = isJobRunning(job.id);
+
+  // Get the current run ID from context (preferred) or local state
+  // This ensures we can recover the run ID after a page refresh
+  const currentRunId = activeRuns[job.id]?.runId || localRunId;
 
   // Check if user has permission to trigger jobs
   const hasPermission = currentProject?.userRole
@@ -180,7 +184,7 @@ function RunButton({ job }: { job: Job }) {
 
       if (data.runId) {
         // Store the runId for cancellation
-        setCurrentRunId(data.runId);
+        setLocalRunId(data.runId);
         // Use the global job context to manage toast notifications and SSE
         startJobRun(data.runId, job.id, job.name);
       } else {
@@ -262,7 +266,7 @@ function RunButton({ job }: { job: Job }) {
 
         // Reset state
         setJobRunning(false, job.id);
-        setCurrentRunId(null);
+        setLocalRunId(null);
         closeSSEConnection();
       } else {
         toast.error("Failed to cancel run", {
@@ -292,7 +296,7 @@ function RunButton({ job }: { job: Job }) {
           "flex items-center justify-center",
           "h-7 px-2 rounded-md",
           "gap-1.5",
-          "min-w-[85px]",
+
           isRunning && "cursor-default"
         )}
         disabled={
@@ -302,10 +306,10 @@ function RunButton({ job }: { job: Job }) {
           !hasPermission && !isRunning
             ? "Insufficient permissions to trigger jobs"
             : isRunning
-            ? "Job is currently running"
-            : !job.tests || job.tests.length === 0
-            ? "No tests available to run"
-            : "Run job"
+              ? "Job is currently running"
+              : !job.tests || job.tests.length === 0
+                ? "No tests available to run"
+                : "Run job"
         }
       >
         {isRunning ? (
@@ -316,7 +320,7 @@ function RunButton({ job }: { job: Job }) {
         ) : (
           <>
             <Zap className="h-4 w-4" />
-            <span className="text-xs">Run</span>
+            <span className="text-xs mr-1">Run</span>
           </>
         )}
       </Button>
@@ -337,7 +341,7 @@ function RunButton({ job }: { job: Job }) {
                   "bg-red-500 hover:bg-red-600",
                   "shadow-md",
                   "transition-colors",
-                  isCancelling && "cursor-not-allowed opacity-50"
+                  isCancelling && "cursor-not-allowed"
                 )}
                 title={isCancelling ? "Cancelling..." : "Cancel run"}
               >
@@ -463,14 +467,12 @@ export const columns: ColumnDef<Job>[] = [
       return (
         <div className="flex items-center max-w-[120px]">
           <TimerIcon
-            className={`${
-              cronSchedule ? "text-sky-500" : "text-muted-foreground"
-            } mr-2 h-4 w-4 flex-shrink-0`}
+            className={`${cronSchedule ? "text-sky-500" : "text-muted-foreground"
+              } mr-2 h-4 w-4 flex-shrink-0`}
           />
           <span
-            className={`${
-              cronSchedule ? "text-foreground" : "text-muted-foreground"
-            } truncate`}
+            className={`${cronSchedule ? "text-foreground" : "text-muted-foreground"
+              } truncate`}
           >
             {cronSchedule || "None"}
           </span>
