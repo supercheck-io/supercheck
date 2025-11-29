@@ -1725,6 +1725,151 @@ graph TB
 
 ---
 
+## Database Connection Management
+
+### Connection Pooling Configuration
+
+The system uses **postgres.js** with Drizzle ORM for database operations, configured with production-ready connection pooling.
+
+**Worker Implementation:** `worker/src/db/db.service.ts`
+
+```typescript
+const queryClient = postgres(process.env.DATABASE_URL!, {
+  max: parseInt(process.env.DB_POOL_MAX || '10', 10),           // Max connections
+  idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || '30', 10),  // Idle timeout (seconds)
+  connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || '10', 10), // Connect timeout (seconds)
+  max_lifetime: parseInt(process.env.DB_MAX_LIFETIME || '1800', 10),  // Max connection age (seconds)
+});
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | Required | PostgreSQL connection string |
+| `DB_POOL_MAX` | `10` | Maximum connections per worker instance |
+| `DB_IDLE_TIMEOUT` | `30` | Seconds before idle connection is closed |
+| `DB_CONNECT_TIMEOUT` | `10` | Seconds to wait for connection establishment |
+| `DB_MAX_LIFETIME` | `1800` | Maximum connection age (30 minutes) |
+
+### Connection Pool Sizing
+
+**Recommended Configuration:**
+- **Next.js App**: 10 connections per instance
+- **Worker Service**: 10 connections per instance
+- **Total Budget**: 100-200 connections for PostgreSQL
+
+**Calculation:**
+```
+Total Connections = (# Next.js instances × 10) + (# Worker instances × 10)
+
+Example Production:
+- 2 Next.js instances × 10 = 20 connections
+- 3 Worker instances × 10 = 30 connections
+- Total: 50 connections (well within PostgreSQL limits)
+```
+
+### Resource Manager (Worker)
+
+The worker includes a comprehensive `ResourceManagerService` for HTTP connection pooling:
+
+**Implementation:** `worker/src/common/resources/resource-manager.service.ts`
+
+**Features:**
+- ✅ Connection pooling for HTTP monitors
+- ✅ Automatic resource cleanup (idle timeout)
+- ✅ Memory limit enforcement
+- ✅ Concurrent connection limits
+- ✅ Performance metrics tracking
+
+**Configuration:**
+```typescript
+MAX_CONCURRENT_CONNECTIONS=100  // Max concurrent HTTP connections
+MAX_MEMORY_USAGE_MB=512         // Memory limit per worker
+CONNECTION_TIMEOUT_MS=30000     // 30s connection timeout
+IDLE_TIMEOUT_MS=60000           // 60s idle cleanup
+```
+
+### Transaction Best Practices
+
+**Use Transactions for Atomic Operations:**
+
+```typescript
+// ✅ GOOD: Atomic status updates
+await db.transaction(async (tx) => {
+  await tx.update(runs).set({status: "error"}).where(eq(runs.id, runId));
+  await tx.update(jobs).set({status: jobStatus}).where(eq(jobs.id, jobId));
+});
+```
+
+**Example:** `app/src/app/api/runs/[runId]/cancel/route.ts` (lines 284-322)
+
+### Query Optimization Patterns
+
+**Batch Queries (Avoid N+1):**
+```typescript
+// ❌ BAD: N+1 queries
+for (const id of ids) {
+  await db.query.jobs.findFirst({where: eq(jobs.id, id)});
+}
+
+// ✅ GOOD: Single query
+const jobs = await db.query.jobs.findMany({
+  where: inArray(jobs.id, ids)
+});
+```
+
+**Parallel Independent Queries:**
+```typescript
+// ✅ GOOD: Concurrent execution
+const [jobs, runs, monitors] = await Promise.all([
+  db.query.jobs.findMany(),
+  db.query.runs.findMany(),
+  db.query.monitors.findMany()
+]);
+```
+
+### Monitoring Recommendations
+
+**Key Metrics to Track:**
+- Active connections per instance
+- Query duration (p50, p95, p99)
+- Connection pool saturation
+- Slow queries (>100ms)
+
+**PostgreSQL Queries:**
+```sql
+-- Check active connections
+SELECT count(*) FROM pg_stat_activity;
+
+-- Find slow queries
+SELECT query, query_start, state 
+FROM pg_stat_activity 
+WHERE state = 'active' AND query_start < now() - interval '1 second';
+```
+
+### Performance Best Practices
+
+1. **Connection Reuse**: postgres.js automatically reuses connections
+2. **Prepared Statements**: Drizzle ORM uses prepared statements by default
+3. **Index Strategy**: Ensure indexes on foreign keys (`jobId`, `projectId`, `organizationId`)
+4. **Pagination**: Use `limit` and `offset` for large result sets
+5. **Column Selection**: Specify only needed columns with `columns: {...}`
+
+### Scaling Considerations
+
+**Horizontal Scaling:**
+- Each instance maintains its own connection pool
+- PostgreSQL max_connections should accommodate all instances
+- Recommended: PostgreSQL max_connections = 200-500
+
+**Vertical Scaling:**
+- Increase `DB_POOL_MAX` if single instance needs more throughput
+- Monitor connection saturation before increasing
+- Balance against PostgreSQL's total connection limit
+
+---
+
 ## Summary
 
 The execution system provides:
@@ -1739,4 +1884,6 @@ The execution system provides:
 ✅ **Global monitoring coverage** with location-based execution
 ✅ **Horizontal scaling** for high throughput
 ✅ **Security isolation** with containerized environments
+✅ **Production-ready connection pooling** with postgres.js
+✅ **Resource management** for HTTP connections and memory
 

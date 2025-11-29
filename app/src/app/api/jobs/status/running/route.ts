@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "@/utils/db";
-import { jobs, runs } from "@/db/schema";
+import { jobs, runs, JobStatus, TestRunStatus } from "@/db/schema";
+import { getQueues } from "@/lib/queue";
 
 /**
  * API endpoint to return all currently running jobs
  * Used by the JobContext to maintain state across page refreshes
+ * 
+ * Also verifies that DB status matches actual queue status and fixes inconsistencies
  */
 export async function GET(): Promise<NextResponse> {
   try {
@@ -18,15 +21,109 @@ export async function GET(): Promise<NextResponse> {
       }
     });
     
-    // Only if we have active runs, get the corresponding job data
+    // Only if we have active runs, verify their actual status in the queue
     if (activeRuns.length === 0) {
       return NextResponse.json({ runningJobs: [] });
     }
+
+    // Get queue instances to check job status
+    const { playwrightQueues, k6Queues } = await getQueues();
+    const allQueues = [
+      ...Object.values(playwrightQueues),
+      ...Object.values(k6Queues)
+    ];
+
+    // ✅ OPTIMIZED: Parallel batch queries instead of N×M loop
+    // For each run, check all queues in parallel using Promise.race
+    // This finds the first queue that has the job, dramatically reducing query count
+    const statusChecks = await Promise.all(
+      activeRuns.map(async (run) => {
+        let isActuallyRunning = false;
+
+        // Check all queues in parallel and return as soon as we find the job
+        try {
+          await Promise.race([
+            // Race all queues - whoever finds the job first wins
+            ...allQueues.map(async (queue) => {
+              const job = await queue.getJob(run.id);
+              if (job) {
+                const state = await job.getState();
+                // Job is truly running if it's active or waiting
+                if (state === 'active' || state === 'waiting' || state === 'delayed') {
+                  isActuallyRunning = true;
+                  // Throw to break the race - we found it!
+                  throw new Error('FOUND');
+                }
+              }
+            }),
+            // Timeout after 500ms to prevent hanging
+            new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 500))
+          ]);
+        } catch (error) {
+          // 'FOUND' error means we found the job running
+          if (error instanceof Error && error.message === 'FOUND') {
+            isActuallyRunning = true;
+          }
+          // Timeout or other errors mean job not found - treat as not running
+        }
+
+        return {
+          runId: run.id,
+          jobId: run.jobId,
+          isActuallyRunning
+        };
+      })
+    );
+
+    // Separate valid and stale runs based on results
+    const staleRunIds: string[] = [];
+    const validRunIds: string[] = [];
+
+    for (const check of statusChecks) {
+      if (check.isActuallyRunning) {
+        validRunIds.push(check.runId);
+      } else {
+        staleRunIds.push(check.runId);
+      }
+    }
+
+    // Fix stale runs in the database
+    if (staleRunIds.length > 0) {
+      console.log(`[JobStatus] Found ${staleRunIds.length} stale runs. Syncing with queue state...`);
+      
+      const staleJobIds = activeRuns
+        .filter(run => staleRunIds.includes(run.id) && run.jobId)
+        .map(run => run.jobId as string);
+
+      // Update stale runs to error
+      await db
+        .update(runs)
+        .set({
+          status: "error" as TestRunStatus,
+          completedAt: new Date(),
+          errorDetails: "Job status inconsistency detected - not found in execution queue",
+        })
+        .where(inArray(runs.id, staleRunIds));
+
+      // Update corresponding jobs to error
+      if (staleJobIds.length > 0) {
+        await db
+          .update(jobs)
+          .set({
+            status: "error" as JobStatus,
+            lastRunAt: new Date()
+          })
+          .where(inArray(jobs.id, staleJobIds));
+      }
+      
+      console.log(`[JobStatus] Synced ${staleRunIds.length} stale runs to error status`);
+    }
     
-    // Extract job IDs from active runs
+    // Extract job IDs from valid running runs
+    const validRuns = activeRuns.filter(run => validRunIds.includes(run.id));
     const jobIds = [
       ...new Set(
-        activeRuns
+        validRuns
           .map((run) => run.jobId)
           .filter((jobId): jobId is string => Boolean(jobId))
       ),
@@ -49,7 +146,7 @@ export async function GET(): Promise<NextResponse> {
         });
         
         // Match with run ID
-        const run = activeRuns.find(run => run.jobId === jobId);
+        const run = validRuns.find(run => run.jobId === jobId);
         
         if (job && run) {
           return {
