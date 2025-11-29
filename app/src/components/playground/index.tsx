@@ -774,7 +774,13 @@ const Playground: React.FC<PlaygroundProps> = ({
                   ? data.reportStatus.toLowerCase()
                   : null;
 
+              const isCancelled = 
+                normalizedStatus === "cancelled" ||
+                derivedStatus === "cancelled" ||
+                reportStatus === "cancelled";
+                
               const isTerminalStatus =
+                isCancelled ||
                 normalizedStatus === "completed" ||
                 normalizedStatus === "passed" ||
                 normalizedStatus === "failed" ||
@@ -823,20 +829,21 @@ const Playground: React.FC<PlaygroundProps> = ({
                   });
                 }
 
-                // Only "passed" status indicates success
-                const isSuccess = testPassed;
-
-                toast[isSuccess ? "success" : "error"](
-                  isSuccess
-                    ? "Script execution passed"
-                    : "Script execution failed",
-                  {
-                    description: isSuccess
-                      ? "All checks completed successfully."
-                      : "Test execution completed with failures or errors. Please review the report before saving.",
-                    duration: 10000,
-                  }
-                );
+                // Show appropriate toast based on status (skip cancelled - already shown by handleCancelRun)
+                if (!isCancelled) {
+                  const isSuccess = testPassed;
+                  toast[isSuccess ? "success" : "error"](
+                    isSuccess
+                      ? "Script execution passed"
+                      : "Script execution failed",
+                    {
+                      description: isSuccess
+                        ? "All checks completed successfully."
+                        : "Test execution completed with failures or errors. Please review the report before saving.",
+                      duration: 10000,
+                    }
+                  );
+                }
               }
             }
           } catch (e) {
@@ -1031,9 +1038,18 @@ const Playground: React.FC<PlaygroundProps> = ({
 
         // Reset state
         setIsRunning(false);
-        setCurrentRunId(null);
         setIsReportLoading(false);
-        setTestExecutionStatus("none");
+        setTestExecutionStatus("failed");
+        
+        // Update report URL to trigger refresh with cancellation info
+        // The ReportViewer will detect the cancellation from the API response
+        if (currentRunId) {
+          const apiUrl = `/api/test-results/${currentRunId}/report/index.html?t=${Date.now()}&forceIframe=true`;
+          setReportUrl(apiUrl);
+          setActiveTab("report");
+        }
+        
+        setCurrentRunId(null);
       } else {
         toast.error("Failed to cancel run", {
           description: data.message || "Unknown error occurred",
