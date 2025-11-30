@@ -487,4 +487,218 @@ describe('AlertService', () => {
       });
     });
   });
+
+  // ==========================================================================
+  // ADDITIONAL COVERAGE TESTS
+  // ==========================================================================
+
+  describe('Alert Types', () => {
+    const alertTypes = [
+      'monitor_up',
+      'monitor_down',
+      'ssl_expiring',
+      'job_success',
+      'job_failed',
+      'job_timeout',
+    ];
+
+    alertTypes.forEach(alertType => {
+      it(`should save alert history for type: ${alertType}`, async () => {
+        const mockInsertChain = {
+          values: jest.fn().mockResolvedValue(undefined),
+        };
+        mockDb.insert.mockReturnValue(mockInsertChain as any);
+        
+        await service.saveAlertHistory({
+          ...mockAlertHistory,
+          type: alertType as any,
+        });
+        
+        expect(mockInsertChain.values).toHaveBeenCalledWith(
+          expect.objectContaining({ type: alertType })
+        );
+      });
+    });
+  });
+
+  describe('Alert Status', () => {
+    const alertStatuses = ['sent', 'failed', 'pending'];
+
+    alertStatuses.forEach(status => {
+      it(`should handle status: ${status}`, async () => {
+        const mockInsertChain = {
+          values: jest.fn().mockResolvedValue(undefined),
+        };
+        mockDb.insert.mockReturnValue(mockInsertChain as any);
+        
+        await service.saveAlertHistory({
+          ...mockAlertHistory,
+          status: status as any,
+        });
+        
+        expect(mockInsertChain.values).toHaveBeenCalledWith(
+          expect.objectContaining({ status })
+        );
+      });
+    });
+  });
+
+  describe('Provider Handling', () => {
+    it('should include provider ID in alert history', async () => {
+      const mockInsertChain = {
+        values: jest.fn().mockResolvedValue(undefined),
+      };
+      mockDb.insert.mockReturnValue(mockInsertChain as any);
+      
+      await service.saveAlertHistory(mockAlertHistory);
+      
+      expect(mockInsertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: testProviderId })
+      );
+    });
+
+    it('should handle different provider IDs', async () => {
+      const mockInsertChain = {
+        values: jest.fn().mockResolvedValue(undefined),
+      };
+      mockDb.insert.mockReturnValue(mockInsertChain as any);
+      
+      const providers = ['email-provider', 'slack-provider', 'discord-provider'];
+      
+      for (const providerId of providers) {
+        await service.saveAlertHistory({
+          ...mockAlertHistory,
+          providerId,
+        });
+      }
+      
+      expect(mockInsertChain.values).toHaveBeenCalledTimes(providers.length);
+    });
+  });
+
+  describe('Multiple Alerts', () => {
+    it('should handle fetching many alerts for monitor', async () => {
+      const manyAlerts = Array.from({ length: 50 }, (_, i) => ({
+        ...mockAlert,
+        id: `alert-${i}`,
+      }));
+      mockDb.query.alerts.findMany.mockResolvedValue(manyAlerts);
+      
+      const result = await service.getAlertsForMonitor(testMonitorId);
+      
+      expect(result).toHaveLength(50);
+    });
+
+    it('should handle concurrent alert creation', async () => {
+      const mockInsertChain = {
+        values: jest.fn().mockReturnThis(),
+        returning: jest.fn().mockResolvedValue([mockAlert]),
+      };
+      mockDb.insert.mockReturnValue(mockInsertChain as any);
+      
+      const promises = Array.from({ length: 10 }, () =>
+        service.createAlert({ name: 'Test', monitorId: testMonitorId } as any)
+      );
+      
+      const results = await Promise.all(promises);
+      
+      results.forEach(result => {
+        expect(result).toEqual(mockAlert);
+      });
+    });
+  });
+
+  describe('Update Operations', () => {
+    it('should update alert name', async () => {
+      const updateChain = {
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        returning: jest.fn().mockResolvedValue([{ ...mockAlert, name: 'Updated' }]),
+      };
+      mockDb.update.mockReturnValue(updateChain as any);
+      
+      const result = await service.updateAlert(testAlertId, { name: 'Updated' });
+      
+      expect(result.name).toBe('Updated');
+    });
+
+    it('should update alert enabled status', async () => {
+      const updateChain = {
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        returning: jest.fn().mockResolvedValue([{ ...mockAlert, enabled: false }]),
+      };
+      mockDb.update.mockReturnValue(updateChain as any);
+      
+      const result = await service.updateAlert(testAlertId, { enabled: false });
+      
+      expect(result.enabled).toBe(false);
+    });
+
+    it('should update multiple fields at once', async () => {
+      const updateChain = {
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        returning: jest.fn().mockResolvedValue([{
+          ...mockAlert,
+          name: 'New Name',
+          description: 'New Description',
+          enabled: false,
+        }]),
+      };
+      mockDb.update.mockReturnValue(updateChain as any);
+      
+      const result = await service.updateAlert(testAlertId, {
+        name: 'New Name',
+        description: 'New Description',
+        enabled: false,
+      });
+      
+      expect(result.name).toBe('New Name');
+      expect(result.description).toBe('New Description');
+      expect(result.enabled).toBe(false);
+    });
+  });
+
+  describe('Delete Operations', () => {
+    it('should call delete with correct alert ID', async () => {
+      const deleteChain = {
+        where: jest.fn().mockResolvedValue(undefined),
+      };
+      mockDb.delete.mockReturnValue(deleteChain as any);
+      
+      await service.deleteAlert(testAlertId);
+      
+      expect(mockDb.delete).toHaveBeenCalled();
+      expect(deleteChain.where).toHaveBeenCalled();
+    });
+
+    it('should handle deleting non-existent alert gracefully', async () => {
+      const deleteChain = {
+        where: jest.fn().mockResolvedValue(undefined),
+      };
+      mockDb.delete.mockReturnValue(deleteChain as any);
+      
+      // Should not throw even if alert doesn't exist
+      await expect(service.deleteAlert('non-existent')).resolves.not.toThrow();
+    });
+  });
+
+  describe('Query Operations', () => {
+    it('should query alert with correct parameters', async () => {
+      mockDb.query.alerts.findFirst.mockResolvedValue(mockAlert);
+      
+      await service.getAlertById(testAlertId);
+      
+      expect(mockDb.query.alerts.findFirst).toHaveBeenCalled();
+    });
+
+    it('should query alerts for monitor with correct parameters', async () => {
+      mockDb.query.alerts.findMany.mockResolvedValue([mockAlert]);
+      
+      await service.getAlertsForMonitor(testMonitorId);
+      
+      expect(mockDb.query.alerts.findMany).toHaveBeenCalled();
+    });
+  });
 });

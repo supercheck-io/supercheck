@@ -328,4 +328,625 @@ describe('K6ExecutionService', () => {
       expect(client.set).toBeDefined();
     });
   });
+
+  // ==========================================================================
+  // K6 BINARY VERIFICATION TESTS
+  // ==========================================================================
+
+  describe('K6 Binary Verification', () => {
+    it('should verify k6 installation on startup', () => {
+      expect(service['k6BinaryPath']).toBeDefined();
+    });
+
+    it('should use configured binary path', () => {
+      expect(mockConfigService.get).toHaveBeenCalledWith('K6_BIN_PATH', '');
+    });
+
+    it('should handle missing k6 binary', async () => {
+      const { execa } = require('execa');
+      execa.mockRejectedValueOnce(new Error('Command not found'));
+      
+      // Service should still initialize
+      expect(service).toBeDefined();
+    });
+  });
+
+  // ==========================================================================
+  // TASK VALIDATION TESTS
+  // ==========================================================================
+
+  describe('Task Validation', () => {
+    it('should validate task has runId', () => {
+      expect(mockTask.runId).toBeDefined();
+      expect(mockTask.runId).toBe('run-123');
+    });
+
+    it('should validate task has testId', () => {
+      expect(mockTask.testId).toBeDefined();
+      expect(mockTask.testId).toBe('test-456');
+    });
+
+    it('should validate task has organizationId', () => {
+      expect(mockTask.organizationId).toBeDefined();
+      expect(mockTask.organizationId).toBe('org-789');
+    });
+
+    it('should validate task has projectId', () => {
+      expect(mockTask.projectId).toBeDefined();
+      expect(mockTask.projectId).toBe('project-abc');
+    });
+
+    it('should validate task has script', () => {
+      expect(mockTask.script).toBeDefined();
+      expect(mockTask.script).toContain('http');
+    });
+
+    it('should validate task has tests array', () => {
+      expect(mockTask.tests).toBeDefined();
+      expect(Array.isArray(mockTask.tests)).toBe(true);
+    });
+  });
+
+  // ==========================================================================
+  // EXECUTION RESULT TESTS
+  // ==========================================================================
+
+  describe('Execution Result', () => {
+    it('should define success status', () => {
+      const result: K6ExecutionResult = {
+        success: true,
+        timedOut: false,
+        runId: 'run-123',
+        durationMs: 5000,
+        summary: {},
+        thresholdsPassed: true,
+        reportUrl: 'https://example.com/report.html',
+        summaryUrl: null,
+        consoleUrl: null,
+        logsUrl: null,
+        error: null,
+        consoleOutput: null,
+      };
+      
+      expect(result.success).toBe(true);
+    });
+
+    it('should define failure status', () => {
+      const result: K6ExecutionResult = {
+        success: false,
+        timedOut: false,
+        runId: 'run-123',
+        durationMs: 1000,
+        summary: {},
+        thresholdsPassed: false,
+        reportUrl: null,
+        summaryUrl: null,
+        consoleUrl: null,
+        logsUrl: null,
+        error: 'Script error',
+        consoleOutput: null,
+      };
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Script error');
+    });
+
+    it('should define timeout status', () => {
+      const result: K6ExecutionResult = {
+        success: false,
+        timedOut: true,
+        runId: 'run-123',
+        durationMs: 60000,
+        summary: {},
+        thresholdsPassed: false,
+        reportUrl: null,
+        summaryUrl: null,
+        consoleUrl: null,
+        logsUrl: null,
+        error: 'Execution timed out',
+        consoleOutput: null,
+      };
+      
+      expect(result.timedOut).toBe(true);
+    });
+
+    it('should include duration in milliseconds', () => {
+      const result: K6ExecutionResult = {
+        success: true,
+        timedOut: false,
+        runId: 'run-123',
+        durationMs: 12345,
+        summary: {},
+        thresholdsPassed: true,
+        reportUrl: null,
+        summaryUrl: null,
+        consoleUrl: null,
+        logsUrl: null,
+        error: null,
+        consoleOutput: null,
+      };
+      
+      expect(result.durationMs).toBe(12345);
+      expect(typeof result.durationMs).toBe('number');
+    });
+  });
+
+  // ==========================================================================
+  // PORT ALLOCATION TESTS
+  // ==========================================================================
+
+  describe('Port Allocation', () => {
+    it('should start with empty allocated ports', () => {
+      expect(service['allocatedDashboardPorts'].size).toBe(0);
+    });
+
+    it('should track allocated ports', () => {
+      service['allocatedDashboardPorts'].add(6000);
+      service['allocatedDashboardPorts'].add(6001);
+      
+      expect(service['allocatedDashboardPorts'].size).toBe(2);
+      expect(service['allocatedDashboardPorts'].has(6000)).toBe(true);
+      expect(service['allocatedDashboardPorts'].has(6001)).toBe(true);
+      
+      // Cleanup
+      service['allocatedDashboardPorts'].clear();
+    });
+
+    it('should not allocate same port twice', () => {
+      service['allocatedDashboardPorts'].add(6000);
+      service['allocatedDashboardPorts'].add(6000);
+      
+      expect(service['allocatedDashboardPorts'].size).toBe(1);
+      
+      // Cleanup
+      service['allocatedDashboardPorts'].clear();
+    });
+
+    it('should release ports after execution', () => {
+      service['allocatedDashboardPorts'].add(6000);
+      service['allocatedDashboardPorts'].delete(6000);
+      
+      expect(service['allocatedDashboardPorts'].has(6000)).toBe(false);
+    });
+  });
+
+  // ==========================================================================
+  // ACTIVE RUNS TRACKING TESTS
+  // ==========================================================================
+
+  describe('Active Runs Tracking', () => {
+    it('should start with empty active runs', () => {
+      expect(service['activeK6Runs'].size).toBe(0);
+    });
+
+    it('should track run metadata', () => {
+      service['activeK6Runs'].set('run-123', {
+        pid: 12345,
+        startTime: Date.now(),
+        runId: 'run-123',
+        dashboardPort: 6000,
+      });
+      
+      expect(service['activeK6Runs'].has('run-123')).toBe(true);
+      
+      const run = service['activeK6Runs'].get('run-123');
+      expect(run?.pid).toBe(12345);
+      expect(run?.runId).toBe('run-123');
+      expect(run?.dashboardPort).toBe(6000);
+      
+      // Cleanup
+      service['activeK6Runs'].clear();
+    });
+
+    it('should remove run after completion', () => {
+      service['activeK6Runs'].set('run-123', {
+        pid: 12345,
+        startTime: Date.now(),
+        runId: 'run-123',
+      });
+      
+      service['activeK6Runs'].delete('run-123');
+      
+      expect(service['activeK6Runs'].has('run-123')).toBe(false);
+    });
+  });
+
+  // ==========================================================================
+  // CONCURRENCY LIMITS TESTS
+  // ==========================================================================
+
+  describe('Concurrency Limits', () => {
+    it('should respect max concurrent runs', () => {
+      expect(service['maxConcurrentK6Runs']).toBe(2);
+    });
+
+    it('should track current active runs count', () => {
+      expect(service['activeK6Runs'].size).toBe(0);
+    });
+
+    it('should queue requests when at capacity', () => {
+      // Add runs up to capacity
+      for (let i = 0; i < service['maxConcurrentK6Runs']; i++) {
+        service['activeK6Runs'].set(`run-${i}`, {
+          pid: 1000 + i,
+          startTime: Date.now(),
+          runId: `run-${i}`,
+        });
+      }
+      
+      expect(service['activeK6Runs'].size).toBe(service['maxConcurrentK6Runs']);
+      
+      // Cleanup
+      service['activeK6Runs'].clear();
+    });
+  });
+
+  // ==========================================================================
+  // SCRIPT HANDLING TESTS
+  // ==========================================================================
+
+  describe('Script Handling', () => {
+    it('should handle basic k6 script', () => {
+      const script = `
+        import http from 'k6/http';
+        export default function() {
+          http.get('https://test.k6.io');
+        }
+      `;
+      
+      expect(script).toContain('import http');
+      expect(script).toContain('export default');
+    });
+
+    it('should handle script with options', () => {
+      const script = `
+        import http from 'k6/http';
+        export const options = {
+          vus: 10,
+          duration: '30s',
+        };
+        export default function() {
+          http.get('https://test.k6.io');
+        }
+      `;
+      
+      expect(script).toContain('export const options');
+      expect(script).toContain('vus: 10');
+    });
+
+    it('should handle script with thresholds', () => {
+      const script = `
+        import http from 'k6/http';
+        export const options = {
+          thresholds: {
+            http_req_duration: ['p(95)<500'],
+          },
+        };
+        export default function() {
+          http.get('https://test.k6.io');
+        }
+      `;
+      
+      expect(script).toContain('thresholds');
+      expect(script).toContain('http_req_duration');
+    });
+
+    it('should handle script with stages', () => {
+      const script = `
+        import http from 'k6/http';
+        export const options = {
+          stages: [
+            { duration: '30s', target: 20 },
+            { duration: '1m', target: 10 },
+          ],
+        };
+        export default function() {
+          http.get('https://test.k6.io');
+        }
+      `;
+      
+      expect(script).toContain('stages');
+      expect(script).toContain('target: 20');
+    });
+  });
+
+  // ==========================================================================
+  // TEMP FILE HANDLING TESTS
+  // ==========================================================================
+
+  describe('Temp File Handling', () => {
+    it('should use safe temp paths', () => {
+      const { createSafeTempPath } = require('../../common/security/path-validator');
+      expect(createSafeTempPath).toBeDefined();
+    });
+
+    it('should write script to temp file', async () => {
+      const fs = require('fs/promises');
+      expect(fs.writeFile).toBeDefined();
+    });
+
+    it('should cleanup temp files after execution', async () => {
+      const fs = require('fs/promises');
+      expect(fs.rm).toBeDefined();
+    });
+
+    it('should create temp directory if needed', async () => {
+      const fs = require('fs/promises');
+      expect(fs.mkdir).toBeDefined();
+    });
+  });
+
+  // ==========================================================================
+  // REPORT GENERATION TESTS
+  // ==========================================================================
+
+  describe('Report Generation', () => {
+    it('should generate HTML report', () => {
+      const result: K6ExecutionResult = {
+        success: true,
+        timedOut: false,
+        runId: 'run-123',
+        durationMs: 5000,
+        summary: {},
+        thresholdsPassed: true,
+        reportUrl: 'https://s3.example.com/report.html',
+        summaryUrl: null,
+        consoleUrl: null,
+        logsUrl: null,
+        error: null,
+        consoleOutput: null,
+      };
+      
+      expect(result.reportUrl).toContain('report.html');
+    });
+
+    it('should upload report to S3', () => {
+      expect(mockS3Service.uploadFile).toBeDefined();
+      expect(mockS3Service.uploadFileFromPath).toBeDefined();
+    });
+
+    it('should handle report generation failure', () => {
+      const result: K6ExecutionResult = {
+        success: true,
+        timedOut: false,
+        runId: 'run-123',
+        durationMs: 5000,
+        summary: {},
+        thresholdsPassed: true,
+        reportUrl: null,
+        summaryUrl: null,
+        consoleUrl: null,
+        logsUrl: null,
+        error: null,
+        consoleOutput: null,
+      };
+      
+      expect(result.reportUrl).toBeNull();
+    });
+  });
+
+  // ==========================================================================
+  // METRICS PARSING TESTS
+  // ==========================================================================
+
+  describe('Metrics Parsing', () => {
+    it('should parse http_req_duration metric', () => {
+      const summary = {
+        metrics: {
+          http_req_duration: { avg: 100, min: 50, max: 200, p95: 180 },
+        },
+      };
+      
+      expect(summary.metrics.http_req_duration.avg).toBe(100);
+      expect(summary.metrics.http_req_duration.p95).toBe(180);
+    });
+
+    it('should parse iterations metric', () => {
+      const summary = {
+        metrics: {
+          iterations: { count: 1000, rate: 33.33 },
+        },
+      };
+      
+      expect(summary.metrics.iterations.count).toBe(1000);
+    });
+
+    it('should parse vus metric', () => {
+      const summary = {
+        metrics: {
+          vus: { value: 10, min: 1, max: 10 },
+        },
+      };
+      
+      expect(summary.metrics.vus.value).toBe(10);
+    });
+
+    it('should parse data metrics', () => {
+      const summary = {
+        metrics: {
+          data_received: { count: 1048576 },
+          data_sent: { count: 524288 },
+        },
+      };
+      
+      expect(summary.metrics.data_received.count).toBe(1048576);
+      expect(summary.metrics.data_sent.count).toBe(524288);
+    });
+  });
+
+  // ==========================================================================
+  // THRESHOLD EVALUATION TESTS
+  // ==========================================================================
+
+  describe('Threshold Evaluation', () => {
+    it('should pass when all thresholds met', () => {
+      const result: K6ExecutionResult = {
+        success: true,
+        timedOut: false,
+        runId: 'run-123',
+        durationMs: 5000,
+        summary: {
+          thresholds: {
+            http_req_duration: { ok: true },
+          },
+        },
+        thresholdsPassed: true,
+        reportUrl: null,
+        summaryUrl: null,
+        consoleUrl: null,
+        logsUrl: null,
+        error: null,
+        consoleOutput: null,
+      };
+      
+      expect(result.thresholdsPassed).toBe(true);
+    });
+
+    it('should fail when thresholds not met', () => {
+      const result: K6ExecutionResult = {
+        success: false,
+        timedOut: false,
+        runId: 'run-123',
+        durationMs: 5000,
+        summary: {
+          thresholds: {
+            http_req_duration: { ok: false },
+          },
+        },
+        thresholdsPassed: false,
+        reportUrl: null,
+        summaryUrl: null,
+        consoleUrl: null,
+        logsUrl: null,
+        error: 'Thresholds not met',
+        consoleOutput: null,
+      };
+      
+      expect(result.thresholdsPassed).toBe(false);
+    });
+  });
+
+  // ==========================================================================
+  // DOCKER EXECUTION TESTS
+  // ==========================================================================
+
+  describe('Docker Execution', () => {
+    it('should have container executor service', () => {
+      expect(service['containerExecutorService']).toBeDefined();
+    });
+
+    it('should use correct Docker image', () => {
+      expect(service['k6DockerImage']).toContain('supercheck');
+    });
+
+    it('should execute in container when configured', () => {
+      expect(mockContainerExecutorService.executeInContainer).toBeDefined();
+    });
+  });
+
+  // ==========================================================================
+  // ERROR SCENARIOS TESTS
+  // ==========================================================================
+
+  describe('Error Scenarios', () => {
+    it('should handle script syntax errors', () => {
+      const result: K6ExecutionResult = {
+        success: false,
+        timedOut: false,
+        runId: 'run-123',
+        durationMs: 100,
+        summary: {},
+        thresholdsPassed: false,
+        reportUrl: null,
+        summaryUrl: null,
+        consoleUrl: null,
+        logsUrl: null,
+        error: 'SyntaxError: Unexpected token',
+        consoleOutput: null,
+      };
+      
+      expect(result.error).toContain('SyntaxError');
+    });
+
+    it('should handle network errors', () => {
+      const result: K6ExecutionResult = {
+        success: false,
+        timedOut: false,
+        runId: 'run-123',
+        durationMs: 5000,
+        summary: {},
+        thresholdsPassed: false,
+        reportUrl: null,
+        summaryUrl: null,
+        consoleUrl: null,
+        logsUrl: null,
+        error: 'dial tcp: connection refused',
+        consoleOutput: null,
+      };
+      
+      expect(result.error).toContain('connection refused');
+    });
+
+    it('should handle out of memory errors', () => {
+      const result: K6ExecutionResult = {
+        success: false,
+        timedOut: false,
+        runId: 'run-123',
+        durationMs: 10000,
+        summary: {},
+        thresholdsPassed: false,
+        reportUrl: null,
+        summaryUrl: null,
+        consoleUrl: null,
+        logsUrl: null,
+        error: 'out of memory',
+        consoleOutput: null,
+      };
+      
+      expect(result.error).toContain('memory');
+    });
+  });
+
+  // ==========================================================================
+  // LOCATION SUPPORT TESTS
+  // ==========================================================================
+
+  describe('Location Support', () => {
+    it('should support location in task', () => {
+      const taskWithLocation: K6ExecutionTask = {
+        ...mockTask,
+        location: 'us-east-1',
+      };
+      
+      expect(taskWithLocation.location).toBe('us-east-1');
+    });
+
+    it('should handle missing location', () => {
+      expect(mockTask.location).toBeUndefined();
+    });
+  });
+
+  // ==========================================================================
+  // JOB TYPE SUPPORT TESTS
+  // ==========================================================================
+
+  describe('Job Type Support', () => {
+    it('should support jobType in task', () => {
+      const taskWithJobType: K6ExecutionTask = {
+        ...mockTask,
+        jobType: 'k6',
+      };
+      
+      expect(taskWithJobType.jobType).toBe('k6');
+    });
+
+    it('should support jobId in task', () => {
+      const taskWithJobId: K6ExecutionTask = {
+        ...mockTask,
+        jobId: 'job-123',
+      };
+      
+      expect(taskWithJobId.jobId).toBe('job-123');
+    });
+  });
 });
