@@ -508,6 +508,54 @@ export async function handleOrderPaid(payload: PolarWebhookPayload) {
 }
 
 /**
+ * Handle customer creation
+ * Links the new Polar customer to the user's organization
+ * This is critical for the checkout flow to work correctly
+ */
+export async function handleCustomerCreated(payload: PolarWebhookPayload) {
+  const customerId = payload.data.id;
+  
+  if (!customerId) {
+    console.error('[Polar] customer.created webhook missing customer ID');
+    return;
+  }
+
+  // Get userId from customer metadata or externalId
+  // The Polar plugin sets externalId = user.id when creating customers
+  const externalId = (payload.data as any).externalId; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const metadataUserId = (payload.data as any).metadata?.userId; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const userId = externalId || metadataUserId;
+
+  if (!userId) {
+    console.log(`[Polar] customer.created: No userId found in payload for customer ${truncateId(customerId)}`);
+    return;
+  }
+
+  console.log(`[Polar] customer.created: Linking customer ${truncateId(customerId)} to user ${truncateId(userId)}`);
+
+  // Find the user's organization
+  const org = await findOrganizationByUserId(userId);
+  
+  if (!org) {
+    console.log(`[Polar] customer.created: No organization found for user ${truncateId(userId)}`);
+    return;
+  }
+
+  // Link customer to organization if not already linked
+  if (!org.polarCustomerId) {
+    await db
+      .update(organization)
+      .set({ polarCustomerId: customerId })
+      .where(eq(organization.id, org.id));
+    console.log(`[Polar] ✅ customer.created: Linked customer ${truncateId(customerId)} to org ${truncateId(org.id)}`);
+  } else if (org.polarCustomerId !== customerId) {
+    console.log(`[Polar] customer.created: Org ${truncateId(org.id)} already has different customer ${truncateId(org.polarCustomerId)}`);
+  } else {
+    console.log(`[Polar] customer.created: Org ${truncateId(org.id)} already linked to customer ${truncateId(customerId)}`);
+  }
+}
+
+/**
  * Handle customer state changes
  * Aggregated event for any customer-related changes
  */

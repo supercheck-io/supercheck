@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,18 +9,19 @@ import {
   Calendar, 
   Users, 
   FolderOpen, 
-  Monitor,
-  FileText,
   ExternalLink,
   AlertCircle,
   Database,
   DollarSign,
   TrendingUp,
-  Sparkles
+  Sparkles,
+  Globe,
+  Tally4
 } from "lucide-react";
 import { authClient } from "@/utils/auth-client";
 import { toast } from "sonner";
 import { SpendingLimits } from "@/components/billing/spending-limits";
+import { HardStopAlert } from "@/components/billing/hard-stop-alert";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
 
@@ -34,9 +35,10 @@ interface SubscriptionData {
     currentPeriodEnd: string;
   };
   usage: {
-    playwrightMinutes: { used: number; included: number; overage: number; percentage: number };
-    k6VuMinutes: { used: number; included: number; overage: number; percentage: number };
-    aiCredits: { used: number; included: number; overage: number; percentage: number };
+    playwrightMinutes: { used: number; included: number; overage: number; overageCostCents?: number; percentage: number };
+    k6VuMinutes: { used: number; included: number; overage: number; overageCostCents?: number; percentage: number };
+    aiCredits: { used: number; included: number; overage: number; overageCostCents?: number; percentage: number };
+    totalOverageCostCents?: number;
   };
   limits: {
     monitors: { current: number; limit: number; remaining: number; percentage: number };
@@ -51,6 +53,16 @@ interface SubscriptionData {
   };
 }
 
+interface SpendingData {
+  currentDollars: number;
+  limitDollars: number | null;
+  limitEnabled: boolean;
+  hardStopEnabled: boolean;
+  percentageUsed: number;
+  isAtLimit: boolean;
+  remainingDollars: number | null;
+}
+
 const planDetails: Record<string, { name: string; color: string }> = {
   plus: { name: "Plus", color: "bg-blue-500" },
   pro: { name: "Pro", color: "bg-purple-500" },
@@ -59,6 +71,7 @@ const planDetails: Record<string, { name: string; color: string }> = {
 
 export function SubscriptionTab() {
   const [data, setData] = useState<SubscriptionData | null>(null);
+  const [spending, setSpending] = useState<SpendingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [openingPortal, setOpeningPortal] = useState(false);
 
@@ -68,13 +81,33 @@ export function SubscriptionTab() {
 
   const fetchSubscriptionData = async () => {
     try {
-      const response = await fetch("/api/billing/current");
-      if (response.ok) {
-        const result = await response.json();
+      // Fetch both subscription data and usage data in parallel
+      const [subscriptionRes, usageRes] = await Promise.all([
+        fetch("/api/billing/current"),
+        fetch("/api/billing/usage"),
+      ]);
+
+      if (subscriptionRes.ok) {
+        const result = await subscriptionRes.json();
         setData(result);
+      } else {
+        const errorData = await subscriptionRes.json().catch(() => ({}));
+        toast.error("Failed to load subscription data", {
+          description: errorData.error || "Unable to fetch subscription information",
+          duration: 5000,
+        });
+      }
+
+      if (usageRes.ok) {
+        const usageData = await usageRes.json();
+        setSpending(usageData.spending);
       }
     } catch (error) {
       console.error("Error fetching subscription data:", error);
+      toast.error("Failed to load subscription data", {
+        description: error instanceof Error ? error.message : "Network error occurred",
+        duration: 5000,
+      });
     } finally {
       setLoading(false);
     }
@@ -86,11 +119,23 @@ export function SubscriptionTab() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (authClient as any).customer.portal();
       if (result?.data?.url) {
+        toast.success("Opening Polar customer portal...", {
+          description: "You'll be redirected to manage your subscription.",
+          duration: 3000,
+        });
         window.location.href = result.data.url;
+      } else {
+        toast.error("Failed to open subscription portal", {
+          description: "No portal URL returned. Please try again.",
+          duration: 5000,
+        });
       }
     } catch (error) {
       console.error("Error opening portal:", error);
-      toast.error("Failed to open subscription portal");
+      toast.error("Failed to open subscription portal", {
+        description: error instanceof Error ? error.message : "Unable to connect to Polar. Please try again.",
+        duration: 5000,
+      });
     } finally {
       setOpeningPortal(false);
     }
@@ -106,7 +151,14 @@ export function SubscriptionTab() {
         <div className="text-center space-y-2">
           <AlertCircle className="h-10 w-10 text-muted-foreground mx-auto" />
           <p className="text-sm text-muted-foreground">Unable to load subscription data</p>
-          <Button variant="outline" size="sm" onClick={fetchSubscriptionData}>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => {
+              setLoading(true);
+              fetchSubscriptionData();
+            }}
+          >
             Retry
           </Button>
         </div>
@@ -117,6 +169,14 @@ export function SubscriptionTab() {
   const plan = planDetails[data.subscription.plan] || planDetails.plus;
   const periodEnd = new Date(data.subscription.currentPeriodEnd);
   const daysRemaining = Math.max(0, Math.ceil((periodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+
+  // Check if hard stop is active
+  const isHardStopActive = spending?.hardStopEnabled && spending?.isAtLimit;
+
+  // Calculate current period estimate
+  const basePrice = data.subscription.plan === "pro" ? 99 : 49; // Plus: $49, Pro: $99
+  const currentOverage = spending?.currentDollars || 0;
+  const estimatedTotal = basePrice + currentOverage;
 
   return (
     <div className="space-y-4">
@@ -129,6 +189,14 @@ export function SubscriptionTab() {
               <Badge className={`${plan.color} text-white text-sm`}>
                 {data.subscription.status}
               </Badge>
+              {/* Hard Stop Alert - Inline with status */}
+              {isHardStopActive && spending && (
+                <HardStopAlert
+                  isActive={true}
+                  currentSpending={spending.currentDollars}
+                  limit={spending.limitDollars || 0}
+                />
+              )}
             </div>
             <div className="flex items-center gap-4 text-sm text-muted-foreground mt-2">
               <span className="flex items-center gap-2">
@@ -144,15 +212,29 @@ export function SubscriptionTab() {
           </div>
         </div>
         {data.subscription.plan !== "unlimited" && (
-          <Button 
-            variant="outline"
-            onClick={handleManageSubscription}
-            disabled={openingPortal}
-          >
-            <DollarSign className="h-4 w-4 mr-2" />
-            {openingPortal ? "Opening..." : "Manage Subscription"}
-            <ExternalLink className="h-3.5 w-3.5 ml-2" />
-          </Button>
+          <div className="flex items-center gap-4">
+            {/* Current Period Estimate - Minimal display */}
+            <div className="text-right hidden sm:block">
+              <p className="text-xs text-muted-foreground">This Period</p>
+              <p className="text-lg font-semibold">
+                ${estimatedTotal.toFixed(2)}
+                {currentOverage > 0 && (
+                  <span className="text-xs font-normal text-muted-foreground ml-1">
+                    (${basePrice} + ${currentOverage.toFixed(2)} overage)
+                  </span>
+                )}
+              </p>
+            </div>
+            <Button 
+              variant="outline"
+              onClick={handleManageSubscription}
+              disabled={openingPortal}
+            >
+              <DollarSign className="h-4 w-4 mr-2" />
+              {openingPortal ? "Opening..." : "Manage Subscription"}
+              <ExternalLink className="h-3.5 w-3.5 ml-2" />
+            </Button>
+          </div>
         )}
       </div>
 
@@ -163,7 +245,7 @@ export function SubscriptionTab() {
           <CardHeader className="pb-4">
             <CardTitle className="text-base font-medium">Usage This Period</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-5 text-sm">
+          <CardContent className="space-y-5 text-sm text-muted-foreground">
             <UsageProgressBar
               icon={<PlaywrightLogo width={20} height={20} className="text-[#E2574C]" />}
               label="Playwright Execution Minutes"
@@ -199,13 +281,13 @@ export function SubscriptionTab() {
           <CardContent className="text-sm space-y-5">
             <div className="grid grid-cols-2 gap-4">
               <CompactResourceCard
-                icon={Monitor}
+                icon={Globe}
                 label="Monitors"
                 current={data.limits.monitors.current}
                 limit={data.limits.monitors.limit}
               />
               <CompactResourceCard
-                icon={FileText}
+                icon={Tally4}
                 label="Status Pages"
                 current={data.limits.statusPages.current}
                 limit={data.limits.statusPages.limit}
@@ -229,21 +311,7 @@ export function SubscriptionTab() {
 
       {/* Billing Controls - Only for cloud plans */}
       {data.subscription.plan !== "unlimited" && (
-        <Card>
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-base font-medium">Billing Controls</CardTitle>
-                <CardDescription className="text-sm">
-                  Control overage spending and get usage alerts
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <SpendingLimits />
-          </CardContent>
-        </Card>
+        <SpendingLimits />
       )}
     </div>
   );
