@@ -78,13 +78,13 @@ export const usageEvents = pgTable(
 
     // Event details
     eventType: text("event_type")
-      .$type<"playwright_execution" | "k6_execution" | "monitor_execution">()
+      .$type<"playwright_execution" | "k6_execution" | "monitor_execution" | "ai_usage">()
       .notNull(),
-    eventName: text("event_name").notNull(), // e.g., "playwright_minutes", "k6_vu_minutes"
+    eventName: text("event_name").notNull(), // e.g., "playwright_minutes", "k6_vu_minutes", "ai_credits"
 
     // Usage amount
     units: numeric("units", { precision: 10, scale: 4 }).notNull(),
-    unitType: text("unit_type").notNull(), // "minutes", "vu_minutes"
+    unitType: text("unit_type").notNull(), // "minutes", "vu_minutes", "credits"
 
     // Metadata for the event
     metadata: text("metadata"), // JSON - runId, jobId, testId, etc.
@@ -202,6 +202,7 @@ export const overagePricing = pgTable("overage_pricing", {
   // Overage pricing (in cents per unit)
   playwrightMinutePriceCents: integer("playwright_minute_price_cents").notNull(), // e.g., 10 = $0.10
   k6VuMinutePriceCents: integer("k6_vu_minute_price_cents").notNull(), // e.g., 1 = $0.01 per VU minute
+  aiCreditPriceCents: integer("ai_credit_price_cents").notNull().default(5), // e.g., 5 = $0.05 per AI credit
 
   // Metadata
   createdAt: timestamp("created_at").defaultNow().notNull(),
