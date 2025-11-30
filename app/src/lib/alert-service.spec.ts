@@ -1,8 +1,8 @@
 /**
  * Alert Service Tests
- * 
+ *
  * Comprehensive test coverage for alert management
- * 
+ *
  * Test Categories:
  * - Alert CRUD Operations (create, read, update, delete)
  * - Alert History (save and query)
@@ -12,6 +12,22 @@
  */
 
 import { AlertService } from './alert-service';
+
+// Type definitions for mock chains
+type DbInsertMock = {
+  values: jest.Mock<unknown, unknown[]>;
+  returning?: jest.Mock<Promise<unknown[]>, unknown[]>;
+};
+
+type DbUpdateMock = {
+  set: jest.Mock<unknown, unknown[]>;
+  where: jest.Mock<unknown, unknown[]>;
+  returning?: jest.Mock<Promise<unknown[]>, unknown[]>;
+};
+
+type DbDeleteMock = {
+  where: jest.Mock<Promise<void>, unknown[]>;
+};
 
 // Mock database
 jest.mock('@/utils/db', () => ({
@@ -70,23 +86,23 @@ describe('AlertService', () => {
     mockDb.query.alerts.findFirst.mockResolvedValue(mockAlert);
     mockDb.query.alerts.findMany.mockResolvedValue([mockAlert]);
     
-    const mockInsertChain = {
+    const mockInsertChain: DbInsertMock = {
       values: jest.fn().mockReturnThis(),
       returning: jest.fn().mockResolvedValue([mockAlert]),
     };
-    mockDb.insert.mockReturnValue(mockInsertChain as any);
-    
-    const mockUpdateChain = {
+    mockDb.insert.mockReturnValue(mockInsertChain);
+
+    const mockUpdateChain: DbUpdateMock = {
       set: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       returning: jest.fn().mockResolvedValue([mockAlert]),
     };
-    mockDb.update.mockReturnValue(mockUpdateChain as any);
-    
-    const mockDeleteChain = {
+    mockDb.update.mockReturnValue(mockUpdateChain);
+
+    const mockDeleteChain: DbDeleteMock = {
       where: jest.fn().mockResolvedValue(undefined),
     };
-    mockDb.delete.mockReturnValue(mockDeleteChain as any);
+    mockDb.delete.mockReturnValue(mockDeleteChain);
   });
 
   // ==========================================================================
@@ -110,10 +126,10 @@ describe('AlertService', () => {
     describe('saveAlertHistory', () => {
       describe('Positive Cases', () => {
         it('should save alert history for monitor', async () => {
-          const mockInsertChain = {
+          const mockInsertChain: DbInsertMock = {
             values: jest.fn().mockResolvedValue(undefined),
           };
-          mockDb.insert.mockReturnValue(mockInsertChain as any);
+          mockDb.insert.mockReturnValue(mockInsertChain);
           
           await service.saveAlertHistory(mockAlertHistory);
           
@@ -130,10 +146,10 @@ describe('AlertService', () => {
         });
 
         it('should save alert history for job', async () => {
-          const mockInsertChain = {
+          const mockInsertChain: DbInsertMock = {
             values: jest.fn().mockResolvedValue(undefined),
           };
-          mockDb.insert.mockReturnValue(mockInsertChain as any);
+          mockDb.insert.mockReturnValue(mockInsertChain);
           
           const jobAlert = {
             ...mockAlertHistory,
@@ -153,10 +169,10 @@ describe('AlertService', () => {
         });
 
         it('should include error message when provided', async () => {
-          const mockInsertChain = {
+          const mockInsertChain: DbInsertMock = {
             values: jest.fn().mockResolvedValue(undefined),
           };
-          mockDb.insert.mockReturnValue(mockInsertChain as any);
+          mockDb.insert.mockReturnValue(mockInsertChain);
           
           const alertWithError = {
             ...mockAlertHistory,
@@ -175,10 +191,10 @@ describe('AlertService', () => {
         });
 
         it('should set sentAt timestamp', async () => {
-          const mockInsertChain = {
+          const mockInsertChain: DbInsertMock = {
             values: jest.fn().mockResolvedValue(undefined),
           };
-          mockDb.insert.mockReturnValue(mockInsertChain as any);
+          mockDb.insert.mockReturnValue(mockInsertChain);
           
           await service.saveAlertHistory(mockAlertHistory);
           
@@ -192,10 +208,10 @@ describe('AlertService', () => {
 
       describe('Negative Cases', () => {
         it('should handle database error gracefully', async () => {
-          const mockInsertChain = {
+          const mockInsertChain: DbInsertMock = {
             values: jest.fn().mockRejectedValue(new Error('DB error')),
           };
-          mockDb.insert.mockReturnValue(mockInsertChain as any);
+          mockDb.insert.mockReturnValue(mockInsertChain);
           
           // Should not throw
           await expect(service.saveAlertHistory(mockAlertHistory)).resolves.not.toThrow();
@@ -204,10 +220,10 @@ describe('AlertService', () => {
 
       describe('Edge Cases', () => {
         it('should handle null monitorId', async () => {
-          const mockInsertChain = {
+          const mockInsertChain: DbInsertMock = {
             values: jest.fn().mockResolvedValue(undefined),
           };
-          mockDb.insert.mockReturnValue(mockInsertChain as any);
+          mockDb.insert.mockReturnValue(mockInsertChain);
           
           const alertNoMonitor = {
             ...mockAlertHistory,
@@ -224,10 +240,10 @@ describe('AlertService', () => {
         });
 
         it('should handle null errorMessage', async () => {
-          const mockInsertChain = {
+          const mockInsertChain: DbInsertMock = {
             values: jest.fn().mockResolvedValue(undefined),
           };
-          mockDb.insert.mockReturnValue(mockInsertChain as any);
+          mockDb.insert.mockReturnValue(mockInsertChain);
           
           await service.saveAlertHistory(mockAlertHistory);
           
@@ -285,8 +301,8 @@ describe('AlertService', () => {
             monitorId: testMonitorId,
             enabled: true,
           };
-          
-          const result = await service.createAlert(newAlertData as any);
+
+          const result = await service.createAlert(newAlertData as object);
           
           expect(result).toEqual(mockAlert);
           expect(mockDb.insert).toHaveBeenCalled();
@@ -295,13 +311,13 @@ describe('AlertService', () => {
 
       describe('Negative Cases', () => {
         it('should throw error on database failure', async () => {
-          const mockInsertChain = {
+          const mockInsertChain: DbInsertMock = {
             values: jest.fn().mockReturnThis(),
             returning: jest.fn().mockRejectedValue(new Error('DB error')),
           };
-          mockDb.insert.mockReturnValue(mockInsertChain as any);
-          
-          await expect(service.createAlert({} as any))
+          mockDb.insert.mockReturnValue(mockInsertChain);
+
+          await expect(service.createAlert({} as object))
             .rejects.toThrow('Could not create alert');
         });
       });
@@ -320,24 +336,24 @@ describe('AlertService', () => {
 
       describe('Negative Cases', () => {
         it('should throw error when alert not found', async () => {
-          const mockUpdateChain = {
+          const mockUpdateChain: DbUpdateMock = {
             set: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             returning: jest.fn().mockResolvedValue([]),
           };
-          mockDb.update.mockReturnValue(mockUpdateChain as any);
+          mockDb.update.mockReturnValue(mockUpdateChain);
           
           await expect(service.updateAlert('non-existent', {}))
             .rejects.toThrow('Could not update alert');
         });
 
         it('should throw error on database failure', async () => {
-          const mockUpdateChain = {
+          const mockUpdateChain: DbUpdateMock = {
             set: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             returning: jest.fn().mockRejectedValue(new Error('DB error')),
           };
-          mockDb.update.mockReturnValue(mockUpdateChain as any);
+          mockDb.update.mockReturnValue(mockUpdateChain);
           
           await expect(service.updateAlert(testAlertId, {}))
             .rejects.toThrow('Could not update alert');
@@ -355,10 +371,10 @@ describe('AlertService', () => {
 
       describe('Negative Cases', () => {
         it('should throw error on database failure', async () => {
-          const mockDeleteChain = {
+          const mockDeleteChain: DbDeleteMock = {
             where: jest.fn().mockRejectedValue(new Error('DB error')),
           };
-          mockDb.delete.mockReturnValue(mockDeleteChain as any);
+          mockDb.delete.mockReturnValue(mockDeleteChain);
           
           await expect(service.deleteAlert(testAlertId))
             .rejects.toThrow('Could not delete alert');
@@ -476,13 +492,13 @@ describe('AlertService', () => {
 
     describe('Error Messages', () => {
       it('should use generic error messages', async () => {
-        const mockInsertChain = {
+        const mockInsertChain: DbInsertMock = {
           values: jest.fn().mockReturnThis(),
           returning: jest.fn().mockRejectedValue(new Error('Sensitive DB error')),
         };
-        mockDb.insert.mockReturnValue(mockInsertChain as any);
-        
-        await expect(service.createAlert({} as any))
+        mockDb.insert.mockReturnValue(mockInsertChain);
+
+        await expect(service.createAlert({} as object))
           .rejects.toThrow('Could not create alert');
       });
     });
@@ -504,14 +520,14 @@ describe('AlertService', () => {
 
     alertTypes.forEach(alertType => {
       it(`should save alert history for type: ${alertType}`, async () => {
-        const mockInsertChain = {
+        const mockInsertChain: DbInsertMock = {
           values: jest.fn().mockResolvedValue(undefined),
         };
-        mockDb.insert.mockReturnValue(mockInsertChain as any);
-        
+        mockDb.insert.mockReturnValue(mockInsertChain);
+
         await service.saveAlertHistory({
           ...mockAlertHistory,
-          type: alertType as any,
+          type: alertType as object,
         });
         
         expect(mockInsertChain.values).toHaveBeenCalledWith(
@@ -526,14 +542,14 @@ describe('AlertService', () => {
 
     alertStatuses.forEach(status => {
       it(`should handle status: ${status}`, async () => {
-        const mockInsertChain = {
+        const mockInsertChain: DbInsertMock = {
           values: jest.fn().mockResolvedValue(undefined),
         };
-        mockDb.insert.mockReturnValue(mockInsertChain as any);
-        
+        mockDb.insert.mockReturnValue(mockInsertChain);
+
         await service.saveAlertHistory({
           ...mockAlertHistory,
-          status: status as any,
+          status: status as object,
         });
         
         expect(mockInsertChain.values).toHaveBeenCalledWith(
@@ -545,10 +561,10 @@ describe('AlertService', () => {
 
   describe('Provider Handling', () => {
     it('should include provider ID in alert history', async () => {
-      const mockInsertChain = {
+      const mockInsertChain: DbInsertMock = {
         values: jest.fn().mockResolvedValue(undefined),
       };
-      mockDb.insert.mockReturnValue(mockInsertChain as any);
+      mockDb.insert.mockReturnValue(mockInsertChain);
       
       await service.saveAlertHistory(mockAlertHistory);
       
@@ -558,10 +574,10 @@ describe('AlertService', () => {
     });
 
     it('should handle different provider IDs', async () => {
-      const mockInsertChain = {
+      const mockInsertChain: DbInsertMock = {
         values: jest.fn().mockResolvedValue(undefined),
       };
-      mockDb.insert.mockReturnValue(mockInsertChain as any);
+      mockDb.insert.mockReturnValue(mockInsertChain);
       
       const providers = ['email-provider', 'slack-provider', 'discord-provider'];
       
@@ -590,14 +606,14 @@ describe('AlertService', () => {
     });
 
     it('should handle concurrent alert creation', async () => {
-      const mockInsertChain = {
+      const mockInsertChain: DbInsertMock = {
         values: jest.fn().mockReturnThis(),
         returning: jest.fn().mockResolvedValue([mockAlert]),
       };
-      mockDb.insert.mockReturnValue(mockInsertChain as any);
-      
+      mockDb.insert.mockReturnValue(mockInsertChain);
+
       const promises = Array.from({ length: 10 }, () =>
-        service.createAlert({ name: 'Test', monitorId: testMonitorId } as any)
+        service.createAlert({ name: 'Test', monitorId: testMonitorId } as object)
       );
       
       const results = await Promise.all(promises);
@@ -610,12 +626,12 @@ describe('AlertService', () => {
 
   describe('Update Operations', () => {
     it('should update alert name', async () => {
-      const updateChain = {
+      const updateChain: DbUpdateMock = {
         set: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         returning: jest.fn().mockResolvedValue([{ ...mockAlert, name: 'Updated' }]),
       };
-      mockDb.update.mockReturnValue(updateChain as any);
+      mockDb.update.mockReturnValue(updateChain);
       
       const result = await service.updateAlert(testAlertId, { name: 'Updated' });
       
@@ -623,12 +639,12 @@ describe('AlertService', () => {
     });
 
     it('should update alert enabled status', async () => {
-      const updateChain = {
+      const updateChain: DbUpdateMock = {
         set: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         returning: jest.fn().mockResolvedValue([{ ...mockAlert, enabled: false }]),
       };
-      mockDb.update.mockReturnValue(updateChain as any);
+      mockDb.update.mockReturnValue(updateChain);
       
       const result = await service.updateAlert(testAlertId, { enabled: false });
       
@@ -636,7 +652,7 @@ describe('AlertService', () => {
     });
 
     it('should update multiple fields at once', async () => {
-      const updateChain = {
+      const updateChain: DbUpdateMock = {
         set: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         returning: jest.fn().mockResolvedValue([{
@@ -646,7 +662,7 @@ describe('AlertService', () => {
           enabled: false,
         }]),
       };
-      mockDb.update.mockReturnValue(updateChain as any);
+      mockDb.update.mockReturnValue(updateChain);
       
       const result = await service.updateAlert(testAlertId, {
         name: 'New Name',
@@ -662,10 +678,10 @@ describe('AlertService', () => {
 
   describe('Delete Operations', () => {
     it('should call delete with correct alert ID', async () => {
-      const deleteChain = {
+      const deleteChain: DbDeleteMock = {
         where: jest.fn().mockResolvedValue(undefined),
       };
-      mockDb.delete.mockReturnValue(deleteChain as any);
+      mockDb.delete.mockReturnValue(deleteChain);
       
       await service.deleteAlert(testAlertId);
       
@@ -674,10 +690,10 @@ describe('AlertService', () => {
     });
 
     it('should handle deleting non-existent alert gracefully', async () => {
-      const deleteChain = {
+      const deleteChain: DbDeleteMock = {
         where: jest.fn().mockResolvedValue(undefined),
       };
-      mockDb.delete.mockReturnValue(deleteChain as any);
+      mockDb.delete.mockReturnValue(deleteChain);
       
       // Should not throw even if alert doesn't exist
       await expect(service.deleteAlert('non-existent')).resolves.not.toThrow();

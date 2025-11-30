@@ -69,7 +69,7 @@ describe('CapacityManager', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    capacityManager = new CapacityManager(mockRedis as any);
+    capacityManager = new CapacityManager(mockRedis as object);
     
     // Default mock implementations
     mockCheckCapacityLimits.mockResolvedValue(defaultCapacityLimits);
@@ -686,9 +686,9 @@ describe('CapacityManager', () => {
         mockRedisGet
           .mockResolvedValueOnce('5')
           .mockResolvedValueOnce('10');
-        
-        const result = await capacityManager.getCurrentUsage('org-1');
-        
+
+        await capacityManager.getCurrentUsage('org-1');
+
         expect(mockRedisGet).toHaveBeenCalledWith('capacity:running:org-1');
         expect(mockRedisGet).not.toHaveBeenCalledWith('capacity:running:org-2');
       });

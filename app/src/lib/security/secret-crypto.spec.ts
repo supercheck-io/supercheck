@@ -293,7 +293,7 @@ describe('Secret Crypto', () => {
     it('should derive different keys for different contexts', () => {
       const plaintext = 'same secret';
       const envelope1 = encryptSecret(plaintext, { context: 'context-A' });
-      const envelope2 = encryptSecret(plaintext, { context: 'context-B' });
+      encryptSecret(plaintext, { context: 'context-B' });
 
       // Different contexts should produce different derived keys
       // We can't directly test the key, but we can verify that
