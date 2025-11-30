@@ -12,6 +12,7 @@ import { RedisService } from './execution/services/redis.service';
 import { JobNotificationService } from './execution/services/job-notification.service';
 import { UsageTrackerService } from './execution/services/usage-tracker.service';
 import { StalledJobHandlerService } from './execution/services/stalled-job-handler.service';
+import { HardStopNotificationService } from './execution/services/hard-stop-notification.service';
 import { PlaywrightExecutionProcessor } from './execution/processors/playwright-execution.processor';
 import { NotificationModule } from './notification/notification.module';
 import { ReportUploadService } from './common/services/report-upload.service';
@@ -87,6 +88,7 @@ const drizzleProvider: Provider = {
     JobNotificationService,
     UsageTrackerService,
     ReportUploadService,
+    HardStopNotificationService,
     // Stalled job handler - monitors for jobs stuck in "running" status
     // and marks them as error to prevent indefinite hanging
     StalledJobHandlerService,
@@ -98,6 +100,7 @@ const drizzleProvider: Provider = {
     RedisService,
     JobNotificationService,
     UsageTrackerService,
+    HardStopNotificationService,
     ExecutionService,
     S3Service,
     StalledJobHandlerService,

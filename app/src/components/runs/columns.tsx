@@ -32,6 +32,11 @@ function mapDbStatusToDisplayStatus(dbStatus: string, errorDetails?: string | nu
     }
   }
 
+  // Check if this is a billing-blocked run
+  if (status === "blocked" || (errorDetails && errorDetails.includes("BILLING_BLOCKED"))) {
+    return "blocked";
+  }
+
   // Only return one of the allowed status values
   switch (status) {
     case "running":
@@ -44,6 +49,8 @@ function mapDbStatusToDisplayStatus(dbStatus: string, errorDetails?: string | nu
       return "error";
     case "cancelled":
       return "cancelled";
+    case "blocked":
+      return "blocked";
     default:
       console.warn(`Unknown status: ${dbStatus}, defaulting to running`);
       return "running";

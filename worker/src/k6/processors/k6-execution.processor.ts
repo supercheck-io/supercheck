@@ -9,6 +9,7 @@ import {
 } from '../services/k6-execution.service';
 import { DbService } from '../../execution/services/db.service';
 import { UsageTrackerService } from '../../execution/services/usage-tracker.service';
+import { HardStopNotificationService } from '../../execution/services/hard-stop-notification.service';
 import { CancellationService } from '../../common/services/cancellation.service';
 import * as schema from '../../db/schema';
 import { JobNotificationService } from '../../execution/services/job-notification.service';
@@ -36,6 +37,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     protected readonly configService: ConfigService,
     protected readonly jobNotificationService: JobNotificationService,
     protected readonly usageTrackerService: UsageTrackerService,
+    protected readonly hardStopNotificationService: HardStopNotificationService,
     protected readonly cancellationService: CancellationService,
   ) {
     super();
@@ -134,6 +136,44 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       await this.cancellationService.clearCancellationSignal(runId);
 
       throw new Error('Execution cancelled by user');
+    }
+
+    // Check for hard stop before execution (billing limit enforcement)
+    const blockCheck = await this.usageTrackerService.shouldBlockExecution(taskData.organizationId);
+    if (blockCheck.blocked) {
+      this.logger.warn(
+        `[${runId}] K6 execution blocked by spending limit for org ${taskData.organizationId}`,
+      );
+
+      // Update run status to blocked
+      await this.dbService.db
+        .update(schema.runs)
+        .set({
+          status: 'blocked',
+          completedAt: new Date(),
+          errorDetails: blockCheck.reason,
+        })
+        .where(eq(schema.runs.id, runId));
+
+      // Update job status if this is a job run
+      if (taskData.jobId) {
+        await this.dbService.db
+          .update(schema.jobs)
+          .set({ status: 'error', lastRunAt: new Date() })
+          .where(eq(schema.jobs.id, taskData.jobId))
+          .catch(() => {});
+      }
+
+      // Send notification (non-blocking)
+      this.hardStopNotificationService
+        .notify(taskData.organizationId, runId, blockCheck.reason || 'Spending limit reached')
+        .catch(() => {});
+
+      return {
+        success: false,
+        timedOut: false,
+        error: `BILLING_BLOCKED: ${blockCheck.reason}`,
+      };
     }
 
     try {
@@ -554,6 +594,7 @@ export class K6ExecutionProcessor extends BaseK6ExecutionProcessor {
     configService: ConfigService,
     jobNotificationService: JobNotificationService,
     usageTrackerService: UsageTrackerService,
+    hardStopNotificationService: HardStopNotificationService,
     cancellationService: CancellationService,
   ) {
     super(
@@ -563,6 +604,7 @@ export class K6ExecutionProcessor extends BaseK6ExecutionProcessor {
       configService,
       jobNotificationService,
       usageTrackerService,
+      hardStopNotificationService,
       cancellationService,
     );
   }
@@ -610,6 +652,7 @@ export class K6ExecutionProcessorUS extends K6ExecutionProcessor {
     configService: ConfigService,
     jobNotificationService: JobNotificationService,
     usageTrackerService: UsageTrackerService,
+    hardStopNotificationService: HardStopNotificationService,
     cancellationService: CancellationService,
   ) {
     super(
@@ -618,6 +661,7 @@ export class K6ExecutionProcessorUS extends K6ExecutionProcessor {
       configService,
       jobNotificationService,
       usageTrackerService,
+      hardStopNotificationService,
       cancellationService,
     );
     // Override logger name
@@ -633,6 +677,7 @@ export class K6ExecutionProcessorEU extends K6ExecutionProcessor {
     configService: ConfigService,
     jobNotificationService: JobNotificationService,
     usageTrackerService: UsageTrackerService,
+    hardStopNotificationService: HardStopNotificationService,
     cancellationService: CancellationService,
   ) {
     super(
@@ -641,6 +686,7 @@ export class K6ExecutionProcessorEU extends K6ExecutionProcessor {
       configService,
       jobNotificationService,
       usageTrackerService,
+      hardStopNotificationService,
       cancellationService,
     );
     (this as any).logger = new Logger('K6ExecutionProcessorEUCentral');
@@ -655,6 +701,7 @@ export class K6ExecutionProcessorAPAC extends K6ExecutionProcessor {
     configService: ConfigService,
     jobNotificationService: JobNotificationService,
     usageTrackerService: UsageTrackerService,
+    hardStopNotificationService: HardStopNotificationService,
     cancellationService: CancellationService,
   ) {
     super(
@@ -663,6 +710,7 @@ export class K6ExecutionProcessorAPAC extends K6ExecutionProcessor {
       configService,
       jobNotificationService,
       usageTrackerService,
+      hardStopNotificationService,
       cancellationService,
     );
     (this as any).logger = new Logger('K6ExecutionProcessorAsiaPacific');

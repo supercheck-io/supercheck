@@ -7,12 +7,13 @@
 4. [Pricing & Plans](#pricing--plans)
 5. [Architecture](#architecture)
 6. [Implementation](#implementation)
-7. [API Reference](#api-reference)
-8. [UI Components](#ui-components)
-9. [Database Schema](#database-schema)
-10. [Testing](#testing)
-11. [Deployment](#deployment)
-12. [Troubleshooting](#troubleshooting)
+7. [Hard Stop Limits](#hard-stop-limits)
+8. [API Reference](#api-reference)
+9. [UI Components](#ui-components)
+10. [Database Schema](#database-schema)
+11. [Testing](#testing)
+12. [Deployment](#deployment)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -936,6 +937,25 @@ Body:
   - Batch sync with retry logic
   - Spending limit enforcement
   - Usage metrics calculation
+  - Spending status tracking for hard stop enforcement
+
+#### 7. **Billing Settings Service**
+- Location: `app/src/lib/services/billing-settings.service.ts`
+- Purpose: Manage organization billing settings
+- Features:
+  - Spending limit configuration
+  - Notification preference management
+  - Notification threshold tracking
+  - Prevents duplicate notifications in billing period
+
+#### 8. **Usage Notification Service**
+- Location: `app/src/lib/services/usage-notification.service.ts`
+- Purpose: Send usage and spending notifications
+- Features:
+  - Threshold-based notification triggering
+  - Email delivery with retry
+  - Duplicate prevention using notification history
+  - Support for multiple recipient emails
 
 ### Data Flow
 
@@ -1199,7 +1219,237 @@ graph LR
 - `app/src/lib/services/subscription-service.ts` - Core subscription management
 - `app/src/lib/webhooks/polar-webhooks.ts` - Webhook event handlers
 - `app/src/lib/services/polar-usage.service.ts` - Usage sync to Polar
+- `app/src/lib/services/billing-settings.service.ts` - Billing settings management
+- `app/src/lib/services/usage-notification.service.ts` - Notification delivery
 - `worker/src/execution/services/usage-tracker.service.ts` - Usage tracking in worker
+- `app/src/components/billing/spending-limits.tsx` - Spending limit UI
+- `app/src/components/billing/hard-stop-alert.tsx` - Hard stop status indicator
+
+## Hard Stop Limits
+
+### Overview
+
+Hard stop limits allow organizations to automatically block test executions when their monthly overage spending reaches a configured threshold. This prevents unexpected large bills while still allowing graceful planning and temporary disabling of the limit.
+
+### Features
+
+**Spending Limit Configuration**:
+- Set monthly spending cap in dollars (e.g., $100/month)
+- Enable/disable hard stop enforcement
+- Automatically syncs to billing system
+
+**Usage Alerts**:
+- Configurable notification thresholds: 50%, 80%, 90%, 100%
+- Custom recipient emails (in addition to org admins)
+- Prevents duplicate notifications per billing period
+- Email notifications with current usage breakdown
+
+**Hard Stop Behavior**:
+- When limit is reached, test executions are blocked
+- Explicit error message: "Hard stop limit reached - executions blocked"
+- Org admins can temporarily disable limit without waiting
+- Non-blocking: existing running jobs complete normally
+
+### API Endpoints
+
+#### GET /api/billing/settings
+Retrieve organization's billing settings including spending limit configuration.
+
+```typescript
+Response: {
+  id: string;
+  organizationId: string;
+  monthlySpendingLimitCents: number | null;
+  monthlySpendingLimitDollars: number | null;
+  enableSpendingLimit: boolean;
+  hardStopOnLimit: boolean;
+  notifyAt50Percent: boolean;
+  notifyAt80Percent: boolean;
+  notifyAt90Percent: boolean;
+  notifyAt100Percent: boolean;
+  notificationEmails: string[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+#### PATCH /api/billing/settings
+Update billing settings including spending limits and notification preferences.
+
+```typescript
+Request: {
+  enableSpendingLimit?: boolean;
+  monthlySpendingLimitDollars?: number | null;
+  hardStopOnLimit?: boolean;
+  notifyAt50Percent?: boolean;
+  notifyAt80Percent?: boolean;
+  notifyAt90Percent?: boolean;
+  notifyAt100Percent?: boolean;
+  notificationEmails?: string[];
+}
+
+Response: BillingSettingsResponse
+```
+
+#### GET /api/billing/usage
+Retrieve current usage metrics and spending status.
+
+```typescript
+Response: {
+  usage: {
+    playwrightMinutes: { used: number; included: number; overage: number };
+    k6VuMinutes: { used: number; included: number; overage: number };
+    aiCredits: { used: number; included: number; overage: number };
+    totalOverageCents: number;
+  };
+  spending: {
+    currentDollars: number;
+    limitDollars: number | null;
+    limitEnabled: boolean;
+    hardStopEnabled: boolean;
+    percentageUsed: number;
+    isAtLimit: boolean;
+    remainingDollars: number | null;
+  };
+}
+```
+
+#### POST /api/auth/sync-polar-customer
+Ensures Polar customer exists and syncs user data (called on signup and profile changes).
+
+```typescript
+Response: {
+  success: boolean;
+  customerId: string;
+  action: 'created' | 'updated' | 'linked';
+  message: string;
+}
+```
+
+### Implementation Details
+
+#### Spending Status Calculation
+
+```typescript
+// From PolarUsageService.getSpendingStatus()
+interface SpendingStatus {
+  currentSpendingCents: number;    // Total overage charges this period
+  limitCents: number | null;        // Monthly spending limit
+  limitEnabled: boolean;
+  hardStopEnabled: boolean;
+  percentageUsed: number;           // currentSpending / limit * 100
+  isAtLimit: boolean;               // currentSpending >= limit
+  remainingCents: number | null;    // limit - currentSpending
+}
+
+// Calculation:
+percentageUsed = (currentSpendingCents / limitCents) * 100
+isAtLimit = currentSpendingCents >= limitCents
+remainingCents = Math.max(0, limitCents - currentSpendingCents)
+```
+
+#### Hard Stop Enforcement
+
+Hard stop is checked before test execution:
+
+```typescript
+// In test execution routes
+const spending = await polarUsageService.getSpendingStatus(orgId);
+if (spending.hardStopEnabled && spending.isAtLimit) {
+  return NextResponse.json({
+    error: 'Hard stop limit reached - executions blocked',
+    currentSpending: spending.currentSpendingCents / 100,
+    limit: spending.limitCents / 100
+  }, { status: 429 });
+}
+```
+
+#### Notification Flow
+
+1. **Usage events trigger notifications**:
+   - After each test execution, usage is updated
+   - If usage crosses a threshold (80%, 90%, 100%), notification is queued
+   - `billingSettingsService.markNotificationSent()` prevents duplicates
+
+2. **Notification dispatch**:
+   - `usageNotificationService` sends emails asynchronously
+   - Records in `usage_notifications` table for audit
+   - Includes current usage, limit, and remaining budget
+
+3. **Email content**:
+   - Shows usage breakdown (Playwright, K6, AI minutes/credits)
+   - Displays overage charges and costs
+   - Provides action links (manage settings, upgrade plan)
+   - Always includes org admin notification
+
+#### Notification Recipients
+
+Notifications are sent to:
+1. Organization admins (always)
+2. Additional emails configured in `notificationEmails` array
+
+Org admins can customize recipients without affecting other billing settings.
+
+### UI Components
+
+#### SpendingLimits Component
+Location: `app/src/components/billing/spending-limits.tsx`
+
+**Features:**
+- Two-column layout: Spending Limit | Usage Alerts
+- Dollar amount input with validation
+- Switch to enable/disable limit
+- Email list management (add/remove)
+- Real-time spending display with color indicators
+- Save button with loading state
+
+```typescript
+<SpendingLimits
+  className="billing-section"
+/>
+```
+
+#### HardStopAlert Component
+Location: `app/src/components/billing/hard-stop-alert.tsx`
+
+**Features:**
+- Compact badge indicator
+- Shows current spending vs limit
+- Destructive (red) styling
+- Displays when hard stop is active
+
+```typescript
+<HardStopAlert
+  isActive={spending.hardStopEnabled && spending.isAtLimit}
+  currentSpending={spending.currentSpendingCents / 100}
+  limit={spending.limitCents / 100}
+/>
+```
+
+### Billing Period Reset
+
+When billing period resets (new subscription or monthly reset):
+
+```typescript
+// From subscriptionService.resetUsageCountersWithDates()
+// Hard stop limits carry over to new period
+// Previously sent notifications are cleared
+await billingSettingsService.resetNotificationsForPeriod(orgId);
+```
+
+### Monitoring & Alerts
+
+**Key Metrics to Monitor:**
+- Organizations with hard stop enabled
+- Percentage of orgs hitting hard stop limit
+- Average spending vs limit ratio
+- Notification delivery failures
+- Execution blocks due to hard stop
+
+**Alert Thresholds:**
+- Alert if >5% of orgs hit hard stop daily (potential revenue impact)
+- Alert if notification delivery failure rate >2%
+- Alert if spending limit feature is disabled (monitoring)
 
 ---
 
@@ -1223,10 +1473,29 @@ graph LR
 - **Request**: Plan ID, success/cancel URLs
 - **Response**: Polar checkout URL for redirect
 
-#### Usage History
-- **Endpoint**: `GET /api/billing/usage?period=current&limit=100`
-- **Purpose**: Retrieve detailed usage events and history
-- **Response includes**: Usage totals, overage costs, event list with metadata
+#### Usage Metrics and Spending Status
+- **Endpoint**: `GET /api/billing/usage`
+- **Purpose**: Retrieve detailed usage metrics and spending status
+- **Response includes**:
+  - Usage breakdown (Playwright, K6, AI minutes/credits with overage)
+  - Spending status (current, limit, percentage, hard stop status)
+  - Remaining budget information
+
+#### Billing Settings
+- **Endpoint**: `GET /api/billing/settings`
+- **Purpose**: Retrieve organization's billing settings
+- **Response includes**: Spending limit, notification thresholds, recipient emails
+
+- **Endpoint**: `PATCH /api/billing/settings`
+- **Purpose**: Update billing settings (spending limits, notification preferences)
+- **Request**: Spending limit amount, thresholds, recipient emails
+- **Response**: Updated billing settings
+
+#### Sync Polar Customer
+- **Endpoint**: `POST /api/auth/sync-polar-customer`
+- **Purpose**: Ensure Polar customer exists and syncs user data
+- **Called**: On signup, social auth, and profile changes
+- **Response**: Customer ID, action (created/updated/linked)
 
 ### Plan Enforcement API
 
@@ -1510,21 +1779,92 @@ CREATE INDEX idx_usage_events_period ON usage_events(billing_period_start, billi
 
 ### Billing Settings Table (New)
 
-Organization-specific billing preferences:
+Organization-specific billing preferences including spending limits and notification controls:
 
 ```sql
 CREATE TABLE billing_settings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organization(id) UNIQUE,
+
+  -- Spending limits (in cents to avoid floating point issues)
+  monthly_spending_limit_cents INTEGER, -- null = no limit
   enable_spending_limit BOOLEAN DEFAULT false,
-  hard_stop_on_limit BOOLEAN DEFAULT false,
-  monthly_spending_limit_cents INTEGER,
-  email_notifications BOOLEAN DEFAULT true,
-  slack_webhook_url TEXT,
+  hard_stop_on_limit BOOLEAN DEFAULT false, -- Hard stop when limit reached vs soft warning
+
+  -- Usage notification thresholds (percentages)
+  notify_at_50_percent BOOLEAN DEFAULT false,
+  notify_at_80_percent BOOLEAN DEFAULT true,
+  notify_at_90_percent BOOLEAN DEFAULT true,
+  notify_at_100_percent BOOLEAN DEFAULT true,
+
+  -- Notification recipients (JSON array of emails, null = org admins only)
+  notification_emails TEXT, -- JSON array
+
+  -- Track which notifications have been sent this period
+  last_notification_sent_at TIMESTAMP,
+  notifications_sent_this_period TEXT, -- JSON array of thresholds
+
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
 ```
+
+**Features:**
+- **Spending Limits**: Set monthly overage spending cap in dollars
+- **Hard Stop Enforcement**: When enabled, blocks test executions when limit is reached
+- **Usage Alerts**: Configurable notifications at 50%, 80%, 90%, 100% of quota
+- **Custom Recipients**: Specify additional emails for notifications beyond org admins
+- **Notification Tracking**: Prevents duplicate notifications in same billing period
+
+### Usage Notifications Table (New)
+
+Tracks all usage-related notifications sent to organizations:
+
+```sql
+CREATE TABLE usage_notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  organization_id UUID NOT NULL REFERENCES organization(id),
+
+  -- Notification type
+  notification_type VARCHAR(50) NOT NULL, -- 'usage_50_percent', 'usage_80_percent',
+                                          -- 'usage_90_percent', 'usage_100_percent',
+                                          -- 'spending_limit_warning', 'spending_limit_reached'
+
+  -- Resource type (playwright, k6, combined, or spending)
+  resource_type VARCHAR(50) NOT NULL, -- 'playwright', 'k6', 'combined', 'spending'
+
+  -- Usage details at time of notification
+  usage_amount NUMERIC(10,4) NOT NULL,
+  usage_limit NUMERIC(10,4) NOT NULL,
+  usage_percentage INTEGER NOT NULL,
+
+  -- Spending details (for spending limit notifications)
+  current_spending_cents INTEGER,
+  spending_limit_cents INTEGER,
+
+  -- Recipients
+  sent_to TEXT NOT NULL, -- JSON array of emails
+
+  -- Delivery status
+  delivery_status VARCHAR(50) DEFAULT 'pending', -- 'pending', 'sent', 'failed'
+  delivery_error TEXT,
+
+  -- Billing period
+  billing_period_start TIMESTAMP NOT NULL,
+  billing_period_end TIMESTAMP NOT NULL,
+
+  created_at TIMESTAMP DEFAULT NOW(),
+  sent_at TIMESTAMP
+);
+
+CREATE INDEX idx_usage_notifications_org_id ON usage_notifications(organization_id);
+CREATE INDEX idx_usage_notifications_type ON usage_notifications(notification_type);
+```
+
+**Purpose**: Audit trail of all notifications sent, enabling:
+- Duplicate prevention within billing period
+- Delivery failure tracking and retry
+- Historical record for support and debugging
 
 ### Overage Pricing Table (New)
 
@@ -1533,18 +1873,21 @@ Configures overage rates for each plan:
 ```sql
 CREATE TABLE overage_pricing (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  plan VARCHAR(50) NOT NULL,
-  playwright_minute_price_cents INTEGER NOT NULL, -- Price per minute in cents
-  k6_vu_minute_price_cents INTEGER NOT NULL,     -- Price per VU-minute in cents
+  plan VARCHAR(50) NOT NULL UNIQUE,
+
+  -- Overage pricing (in cents per unit)
+  playwright_minute_price_cents INTEGER NOT NULL, -- e.g., 10 = $0.10 per minute
+  k6_vu_minute_price_cents INTEGER NOT NULL,     -- e.g., 1 = $0.01 per VU-minute
+  ai_credit_price_cents INTEGER NOT NULL DEFAULT 5, -- e.g., 5 = $0.05 per credit
+
   created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(plan)
+  updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Seed overage pricing
 INSERT INTO overage_pricing VALUES
-(gen_random_uuid(), 'plus', 10, 1),   -- $0.10/min, $0.01/VU-min
-(gen_random_uuid(), 'pro', 8, 1);    -- $0.08/min, $0.01/VU-min
+(gen_random_uuid(), 'plus', 10, 1, 5),   -- $0.10/min, $0.01/VU-min, $0.05/credit
+(gen_random_uuid(), 'pro', 8, 1, 3);    -- $0.08/min, $0.01/VU-min, $0.03/credit
 ```
 
 ### Migration Script
