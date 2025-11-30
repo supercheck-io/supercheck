@@ -20,8 +20,6 @@ import {
 } from './variable-resolver';
 
 // Mock dependencies
-const mockSelect = jest.fn();
-const mockFrom = jest.fn();
 const mockWhere = jest.fn();
 
 jest.mock('@/utils/db', () => ({
@@ -90,7 +88,7 @@ describe('Variable Resolver', () => {
     // Default mock implementations
     mockWhere.mockResolvedValue(mockVariables);
     
-    mockDecryptValue.mockImplementation((encrypted, projectId) => {
+    mockDecryptValue.mockImplementation((encrypted) => {
       if (encrypted === 'encrypted:abc123') return 'secret-api-key-value';
       if (encrypted === 'encrypted:xyz789') return 'secret-password-value';
       throw new Error('Decryption failed');

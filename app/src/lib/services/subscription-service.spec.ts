@@ -232,7 +232,7 @@ describe('SubscriptionService', () => {
         it('should reject invalid plan names in cloud mode', async () => {
           mockDbQuery.organization.findFirst.mockResolvedValue({
             ...mockOrganization,
-            subscriptionPlan: 'enterprise' as any,
+            subscriptionPlan: 'enterprise' as object,
           });
           
           await expect(service.getOrganizationPlan(testOrgId))
@@ -242,7 +242,7 @@ describe('SubscriptionService', () => {
         it('should reject free plan in cloud mode', async () => {
           mockDbQuery.organization.findFirst.mockResolvedValue({
             ...mockOrganization,
-            subscriptionPlan: 'free' as any,
+            subscriptionPlan: 'free' as object,
           });
           
           await expect(service.getOrganizationPlan(testOrgId))
@@ -607,7 +607,7 @@ describe('SubscriptionService', () => {
 
         it('should block invalid plan names in cloud mode', async () => {
           await expect(service.updateSubscription(testOrgId, {
-            subscriptionPlan: 'enterprise' as any,
+            subscriptionPlan: 'enterprise' as object,
           })).rejects.toThrow('Invalid plan');
         });
 

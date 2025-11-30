@@ -174,8 +174,8 @@ describe('Jobs API Handler Logic', () => {
 
     it('should validate run request has tests array', () => {
       const runData = { jobId: 'job-001' };
-      
-      const hasTests = 'tests' in runData && Array.isArray((runData as any).tests);
+
+      const hasTests = 'tests' in runData && Array.isArray((runData as object).tests as unknown);
       expect(hasTests).toBe(false);
     });
 
@@ -306,8 +306,8 @@ describe('Monitors API Handler Logic', () => {
   describe('POST Monitors - Input Sanitization', () => {
     it('should sanitize monitor name', () => {
       const name = '<script>alert("xss")</script>';
-      const sanitized = mockSanitizeString(name);
-      
+      mockSanitizeString(name);
+
       expect(mockSanitizeString).toHaveBeenCalledWith(name);
     });
 
@@ -441,16 +441,16 @@ describe('Tests API Handler Logic', () => {
     it('should use default priority when not provided', () => {
       const testData = { title: 'Test' };
       const defaultPriority = 'medium';
-      
-      const priority = (testData as any).priority || defaultPriority;
+
+      const priority = (testData as object).priority || defaultPriority;
       expect(priority).toBe('medium');
     });
 
     it('should use default type when not provided', () => {
       const testData = { title: 'Test' };
       const defaultType = 'e2e';
-      
-      const type = (testData as any).type || defaultType;
+
+      const type = (testData as object).type || defaultType;
       expect(type).toBe('e2e');
     });
   });
@@ -662,7 +662,7 @@ describe('Monitor Types', () => {
     it('should not require target', () => {
       const monitor = { name: 'App Heartbeat', type: 'heartbeat' };
       expect(monitor.type).toBe('heartbeat');
-      expect((monitor as any).target).toBeUndefined();
+      expect((monitor as object).target).toBeUndefined();
     });
   });
 
@@ -721,7 +721,7 @@ describe('Edge Cases', () => {
   describe('Special Characters', () => {
     it('should handle special characters in names', () => {
       const specialName = 'Test <script>alert("xss")</script> & "quotes"';
-      const sanitized = mockSanitizeString(specialName);
+      mockSanitizeString(specialName);
       expect(mockSanitizeString).toHaveBeenCalled();
     });
 

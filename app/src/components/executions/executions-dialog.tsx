@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
     Dialog,
     DialogContent,
@@ -68,6 +68,7 @@ export function ExecutionsDialog({ open, onOpenChange, defaultTab = "running" }:
     const [loading, setLoading] = useState(true);
     const [cancellingId, setCancellingId] = useState<string | null>(null);
     const [runIdToCancel, setRunIdToCancel] = useState<string | null>(null);
+    const runIdToCancelRef = useRef<string | null>(null);
     const [activeTab, setActiveTab] = useState<string>(defaultTab);
     const [currentPage, setCurrentPage] = useState(1);
 
@@ -83,6 +84,11 @@ export function ExecutionsDialog({ open, onOpenChange, defaultTab = "running" }:
     useEffect(() => {
         setCurrentPage(1);
     }, [activeTab]);
+
+    // Keep ref in sync with state for SSE handler closure
+    useEffect(() => {
+        runIdToCancelRef.current = runIdToCancel;
+    }, [runIdToCancel]);
 
     // Fetch initial data
     useEffect(() => {
@@ -156,6 +162,14 @@ export function ExecutionsDialog({ open, onOpenChange, defaultTab = "running" }:
                 ) {
                     setRunning((prev) => prev.filter((item) => item.runId !== data.runId));
                     setQueued((prev) => prev.filter((item) => item.runId !== data.runId));
+                    
+                    // Close confirmation dialog if this run was being cancelled
+                    // This prevents calling cancel API on an already-completed run
+                    if (data.runId === runIdToCancelRef.current) {
+                        setRunIdToCancel(null);
+                        setCancellingId(null);
+                        toast.info("Execution completed before cancellation could be processed");
+                    }
                 }
             } catch (error) {
                 console.error("Error processing SSE event:", error);
@@ -178,6 +192,16 @@ export function ExecutionsDialog({ open, onOpenChange, defaultTab = "running" }:
 
     const handleCancelConfirm = async () => {
         if (!runIdToCancel) return;
+
+        // Pre-check: verify run still exists in running/queued lists
+        // This handles the case where SSE updated faster than React state
+        const stillExists = running.some(item => item.runId === runIdToCancel) || 
+                            queued.some(item => item.runId === runIdToCancel);
+        if (!stillExists) {
+            toast.info("Execution already completed");
+            setRunIdToCancel(null);
+            return;
+        }
 
         setCancellingId(runIdToCancel);
         try {
