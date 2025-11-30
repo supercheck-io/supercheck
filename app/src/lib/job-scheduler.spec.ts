@@ -43,7 +43,7 @@ const mockDbModule = {
 
 jest.mock('./queue', () => ({
   getQueues: () => mockQueuesModule.getQueues(),
-  addJobToQueue: (...args: any[]) => mockQueuesModule.addJobToQueue(...args),
+  addJobToQueue: (...args: unknown[]) => mockQueuesModule.addJobToQueue(...args),
 }));
 
 jest.mock('@/utils/db', () => ({
@@ -476,8 +476,8 @@ describe('Job Scheduler', () => {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue([]),
         });
-        
-        await handleScheduledJobTrigger(mockBullJob as any);
+
+        await handleScheduledJobTrigger(mockBullJob as object);
         
         expect(mockQueuesModule.addJobToQueue).toHaveBeenCalled();
       });
@@ -500,8 +500,8 @@ describe('Job Scheduler', () => {
           where: jest.fn().mockResolvedValue(undefined),
         };
         mockDbModule.update.mockReturnValue(updateChain);
-        
-        await handleScheduledJobTrigger(mockBullJob as any);
+
+        await handleScheduledJobTrigger(mockBullJob as object);
         
         expect(updateChain.set).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -517,8 +517,8 @@ describe('Job Scheduler', () => {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue([{ status: 'running' }]),
         });
-        
-        await handleScheduledJobTrigger(mockBullJob as any);
+
+        await handleScheduledJobTrigger(mockBullJob as object);
         
         expect(mockQueuesModule.addJobToQueue).not.toHaveBeenCalled();
       });
@@ -534,7 +534,7 @@ describe('Job Scheduler', () => {
         });
         
         // Should handle error gracefully
-        await handleScheduledJobTrigger(jobNoTests as any);
+        await handleScheduledJobTrigger(jobNoTests as object);
         
         // Job status should be updated to error
         expect(mockDbModule.update).toHaveBeenCalled();
@@ -617,8 +617,8 @@ describe('Job Scheduler', () => {
         where: jest.fn().mockReturnThis(),
         limit: jest.fn().mockResolvedValue([mockJob]),
       });
-      
-      await handleScheduledJobTrigger(mockBullJob as any);
+
+      await handleScheduledJobTrigger(mockBullJob as object);
       
       expect(mockQueuesModule.addJobToQueue).toHaveBeenCalledWith(
         expect.objectContaining({

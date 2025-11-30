@@ -152,7 +152,7 @@ describe('RBAC Middleware', () => {
       where: jest.fn().mockReturnThis(),
       limit: jest.fn().mockResolvedValue([mockMemberRecord]),
     };
-    mockDb.select.mockReturnValue(mockSelectChain as any);
+    mockDb.select.mockReturnValue(mockSelectChain as object);
   });
 
   // ==========================================================================
@@ -275,7 +275,7 @@ describe('RBAC Middleware', () => {
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([]),
           };
-          mockDb.select.mockReturnValue(mockSelectChain as any);
+          mockDb.select.mockReturnValue(mockSelectChain as object);
           
           const result = await getUserRole(testUserId, testOrgId);
           
@@ -328,7 +328,7 @@ describe('RBAC Middleware', () => {
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([]),
           };
-          mockDb.select.mockReturnValue(mockSelectChain as any);
+          mockDb.select.mockReturnValue(mockSelectChain as object);
           
           const result = await getUserOrgRole(testUserId, testOrgId);
           
@@ -355,7 +355,7 @@ describe('RBAC Middleware', () => {
         mockDb.select.mockReturnValue({
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue(mockProjects),
-        } as any);
+        } as object);
         
         const result = await getUserAssignedProjects(testUserId);
         
@@ -366,7 +366,7 @@ describe('RBAC Middleware', () => {
         mockDb.select.mockReturnValue({
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue([]),
-        } as any);
+        } as object);
         
         const result = await getUserAssignedProjects(testUserId);
         
@@ -380,7 +380,7 @@ describe('RBAC Middleware', () => {
         mockDb.select.mockReturnValue({
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue(mockProjects),
-        } as any);
+        } as object);
         
         const result = await getUserAssignedProjects(testUserId);
         
@@ -401,13 +401,13 @@ describe('RBAC Middleware', () => {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue([mockMemberRecord]),
-            } as any;
+            } as object;
           }
           // Second call: getUserAssignedProjects
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockResolvedValue([{ projectId: 'proj-1' }]),
-          } as any;
+          } as object;
         });
         
         const result = await buildPermissionContext(testUserId, testOrgId, testProjectId);
@@ -428,12 +428,12 @@ describe('RBAC Middleware', () => {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue([{ role: 'editor' }]),
-            } as any;
+            } as object;
           }
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockResolvedValue([{ projectId: 'proj-1' }]),
-          } as any;
+          } as object;
         });
         
         const result = await buildPermissionContext(testUserId, testOrgId);
@@ -448,7 +448,7 @@ describe('RBAC Middleware', () => {
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([{ role: 'owner' }]),
         };
-        mockDb.select.mockReturnValue(mockSelectChain as any);
+        mockDb.select.mockReturnValue(mockSelectChain as object);
         
         const result = await buildPermissionContext(testUserId, testOrgId);
         
@@ -470,7 +470,7 @@ describe('RBAC Middleware', () => {
         from: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         limit: jest.fn().mockResolvedValue(mockProject),
-      } as any));
+      } as object));
     });
 
     describe('canCreateVariableInProject', () => {
@@ -500,13 +500,13 @@ describe('RBAC Middleware', () => {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue(mockProject),
-            } as any;
+            } as object;
           }
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_ADMIN }]),
-          } as any;
+          } as object;
         });
         
         const result = await canCreateVariableInProject(testUserId, testProjectId);
@@ -524,13 +524,13 @@ describe('RBAC Middleware', () => {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue(mockProject),
-            } as any;
+            } as object;
           }
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_EDITOR }]),
-          } as any;
+          } as object;
         });
         
         const result = await canCreateVariableInProject(testUserId, testProjectId);
@@ -548,13 +548,13 @@ describe('RBAC Middleware', () => {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue(mockProject),
-            } as any;
+            } as object;
           }
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_VIEWER }]),
-          } as any;
+          } as object;
         });
         
         const result = await canCreateVariableInProject(testUserId, testProjectId);
@@ -567,7 +567,7 @@ describe('RBAC Middleware', () => {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]),
-        } as any);
+        } as object);
         
         const result = await canCreateVariableInProject(testUserId, 'non-existent');
         
@@ -584,13 +584,13 @@ describe('RBAC Middleware', () => {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue(mockProject),
-            } as any;
+            } as object;
           }
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([]),
-          } as any;
+          } as object;
         });
         
         const result = await canCreateVariableInProject(testUserId, testProjectId);
@@ -628,13 +628,13 @@ describe('RBAC Middleware', () => {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue(mockProject),
-            } as any;
+            } as object;
           }
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_EDITOR }]),
-          } as any;
+          } as object;
         });
         
         const result = await canUpdateVariableInProject(testUserId, testProjectId);
@@ -652,13 +652,13 @@ describe('RBAC Middleware', () => {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue(mockProject),
-            } as any;
+            } as object;
           }
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_VIEWER }]),
-          } as any;
+          } as object;
         });
         
         const result = await canUpdateVariableInProject(testUserId, testProjectId);
@@ -686,13 +686,13 @@ describe('RBAC Middleware', () => {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue(mockProject),
-            } as any;
+            } as object;
           }
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_ADMIN }]),
-          } as any;
+          } as object;
         });
         
         const result = await canDeleteVariableInProject(testUserId, testProjectId);
@@ -710,13 +710,13 @@ describe('RBAC Middleware', () => {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue(mockProject),
-            } as any;
+            } as object;
           }
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_EDITOR }]),
-          } as any;
+          } as object;
         });
         
         const result = await canDeleteVariableInProject(testUserId, testProjectId);
@@ -744,13 +744,13 @@ describe('RBAC Middleware', () => {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue(mockProject),
-            } as any;
+            } as object;
           }
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_EDITOR }]),
-          } as any;
+          } as object;
         });
         
         const result = await canViewSecretVariableInProject(testUserId, testProjectId);
@@ -768,13 +768,13 @@ describe('RBAC Middleware', () => {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue(mockProject),
-            } as any;
+            } as object;
           }
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_VIEWER }]),
-          } as any;
+          } as object;
         });
         
         const result = await canViewSecretVariableInProject(testUserId, testProjectId);
@@ -795,7 +795,7 @@ describe('RBAC Middleware', () => {
           url: 'http://localhost/api/projects/proj-123/tests',
         } as MockNextRequest;
         
-        const result = getProjectIdFromUrl(req as any);
+        const result = getProjectIdFromUrl(req as object);
         
         expect(result).toBe('proj-123');
       });
@@ -805,7 +805,7 @@ describe('RBAC Middleware', () => {
           url: 'http://localhost/api/users',
         } as MockNextRequest;
         
-        const result = getProjectIdFromUrl(req as any);
+        const result = getProjectIdFromUrl(req as object);
         
         expect(result).toBeNull();
       });
@@ -815,7 +815,7 @@ describe('RBAC Middleware', () => {
           url: 'http://localhost/api/projects/proj-456',
         } as MockNextRequest;
         
-        const result = getProjectIdFromUrl(req as any);
+        const result = getProjectIdFromUrl(req as object);
         
         expect(result).toBe('proj-456');
       });
@@ -825,7 +825,7 @@ describe('RBAC Middleware', () => {
           url: 'http://localhost/api/v1/org/123/projects/proj-789/tests/results',
         } as MockNextRequest;
         
-        const result = getProjectIdFromUrl(req as any);
+        const result = getProjectIdFromUrl(req as object);
         
         expect(result).toBe('proj-789');
       });
@@ -835,7 +835,7 @@ describe('RBAC Middleware', () => {
           url: 'http://localhost/api/projects/proj-1/subprojects/proj-2',
         } as MockNextRequest;
         
-        const result = getProjectIdFromUrl(req as any);
+        const result = getProjectIdFromUrl(req as object);
         
         // Returns first one after 'projects'
         expect(result).toBe('proj-1');
@@ -855,7 +855,7 @@ describe('RBAC Middleware', () => {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]),
-        } as any);
+        } as object);
         
         const result = await canCreateVariableInProject(testUserId, 'other-project');
         
@@ -868,7 +868,7 @@ describe('RBAC Middleware', () => {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]),
-        } as any);
+        } as object);
         
         const result = await canCreateVariableInProject(testUserId, 'non-existent');
         
@@ -883,7 +883,7 @@ describe('RBAC Middleware', () => {
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]),
         };
-        mockDb.select.mockReturnValue(mockSelectChain as any);
+        mockDb.select.mockReturnValue(mockSelectChain as object);
         
         const result = await getUserOrgRole(testUserId, 'other-org');
         
@@ -930,13 +930,13 @@ describe('RBAC Middleware', () => {
               from: jest.fn().mockReturnThis(),
               where: jest.fn().mockReturnThis(),
               limit: jest.fn().mockResolvedValue([{ id: testProjectId, organizationId: testOrgId }]),
-            } as any;
+            } as object;
           }
           return {
             from: jest.fn().mockReturnThis(),
             where: jest.fn().mockReturnThis(),
             limit: jest.fn().mockResolvedValue([{ role: Role.PROJECT_ADMIN }]),
-          } as any;
+          } as object;
         });
         
         const result = await canDeleteVariableInProject(testUserId, testProjectId);
@@ -959,8 +959,8 @@ describe('RBAC Middleware', () => {
       });
 
       it('should handle empty organization ID', async () => {
-        const result = await getUserOrgRole(testUserId, '');
-        
+        await getUserOrgRole(testUserId, '');
+
         // Should still make the query
         expect(mockDb.select).toHaveBeenCalled();
       });
@@ -970,7 +970,7 @@ describe('RBAC Middleware', () => {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]),
-        } as any);
+        } as object);
         
         const result = await canCreateVariableInProject(testUserId, '');
         

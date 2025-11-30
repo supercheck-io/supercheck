@@ -3,7 +3,6 @@ import {
   validateK6Script,
   getK6ScriptTemplate,
   K6_LOCATIONS,
-  K6ValidationResult,
 } from './k6-validator';
 
 describe('K6Validator', () => {
