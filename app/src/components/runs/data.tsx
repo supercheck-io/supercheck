@@ -7,6 +7,7 @@ import {
   Timer,
   MousePointerClick,
   Ban,
+  ShieldOff,
 } from "lucide-react";
 
 export const runStatuses = [
@@ -39,6 +40,12 @@ export const runStatuses = [
     label: "Cancelled",
     icon: Ban,
     color: "text-orange-500",
+  },
+  {
+    value: "blocked",
+    label: "Blocked",
+    icon: ShieldOff,
+    color: "text-red-600",
   },
 ];
 

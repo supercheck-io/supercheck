@@ -9,55 +9,129 @@ import { randomUUID } from 'crypto';
 import { isCloudHosted, isPolarEnabled, getPolarConfig } from '@/lib/feature-flags';
 
 /**
- * Link Polar customer to organization
- * Looks up the customer by externalId (user ID) and stores the polarCustomerId on the organization
+ * Ensure Polar customer exists and is linked to organization
+ * This is critical for social auth (GitHub/Google) signups where:
+ * - The Polar customer may not have been created (if Better Auth plugin didn't trigger)
+ * - The customer data (email, name) may be incomplete
+ * 
+ * This function will:
+ * 1. Try to find existing customer by externalId (user.id)
+ * 2. If not found, try to find by email
+ * 3. If still not found, CREATE a new customer
+ * 4. Link the customer to the organization
+ * 5. Update the customer with correct email/name
  */
-async function linkPolarCustomerToOrganization(userId: string, organizationId: string): Promise<void> {
+async function ensurePolarCustomerAndLink(
+  userId: string, 
+  userEmail: string, 
+  userName: string | null,
+  organizationId: string
+): Promise<string | null> {
   if (!isPolarEnabled()) {
-    return;
+    return null;
+  }
+
+  const config = getPolarConfig();
+  if (!config) {
+    console.log('[Polar] Config not available, skipping customer setup');
+    return null;
   }
 
   try {
-    const config = getPolarConfig();
-    if (!config) {
-      console.log('[Polar] Config not available, skipping customer link');
-      return;
-    }
-
-    // Dynamically import Polar SDK
     const { Polar } = await import('@polar-sh/sdk');
     const polarClient = new Polar({
       accessToken: config.accessToken,
       server: config.server,
     });
 
-    // Look up customer by externalId (which is the user ID set during signup)
-    // The Polar plugin creates customers with externalId = user.id
+    let customerId: string | null = null;
+
+    // Step 1: Try to find customer by externalId (user.id)
     try {
-      const customer = await polarClient.customers.getExternal({
+      const existingCustomer = await polarClient.customers.getExternal({
         externalId: userId,
       });
-
-      if (customer?.id) {
-        console.log(`[Polar] Found customer ${customer.id} for user ${userId}, linking to organization ${organizationId}`);
-        
-        // Update organization with Polar customer ID
-        await db
-          .update(orgTable)
-          .set({ polarCustomerId: customer.id })
-          .where(eq(orgTable.id, organizationId));
-        
-        console.log(`[Polar] ✅ Linked customer ${customer.id} to organization ${organizationId}`);
-      } else {
-        console.log(`[Polar] No customer found for user ${userId} - customer may not have been created yet`);
+      if (existingCustomer?.id) {
+        customerId = existingCustomer.id;
+        console.log(`[Polar] Found existing customer by externalId: ${customerId}`);
       }
-    } catch (lookupError) {
-      // Customer not found is expected if Polar customer creation failed or hasn't completed
-      console.log(`[Polar] Customer lookup failed for user ${userId}:`, lookupError instanceof Error ? lookupError.message : lookupError);
+    } catch {
+      console.log(`[Polar] No customer found by externalId for user ${userId}`);
     }
+
+    // Step 2: If not found by externalId, try to find by email
+    if (!customerId) {
+      try {
+        const { result: customersByEmail } = await polarClient.customers.list({
+          email: userEmail,
+        });
+        const existingCustomer = customersByEmail.items[0];
+        if (existingCustomer?.id) {
+          customerId = existingCustomer.id;
+          console.log(`[Polar] Found existing customer by email: ${customerId}`);
+          
+          // Link this customer to the user by setting externalId
+          await polarClient.customers.update({
+            id: customerId,
+            customerUpdate: {
+              externalId: userId,
+              name: userName || userEmail,
+            },
+          });
+          console.log(`[Polar] ✅ Linked existing customer to user ${userId}`);
+        }
+      } catch (emailLookupError) {
+        console.log(`[Polar] Could not lookup customer by email:`, emailLookupError instanceof Error ? emailLookupError.message : emailLookupError);
+      }
+    }
+
+    // Step 3: If still not found, CREATE a new customer
+    if (!customerId) {
+      try {
+        const newCustomer = await polarClient.customers.create({
+          email: userEmail,
+          name: userName || userEmail,
+          externalId: userId,
+          metadata: {
+            userId: userId,
+            source: 'supercheck-setup-defaults',
+          },
+        });
+        customerId = newCustomer.id;
+        console.log(`[Polar] ✅ Created new customer ${customerId} for user ${userId} (${userEmail})`);
+      } catch (createError) {
+        console.error(`[Polar] Failed to create customer for user ${userId}:`, createError instanceof Error ? createError.message : createError);
+        return null;
+      }
+    }
+
+    // Step 4: Link customer to organization
+    if (customerId) {
+      await db
+        .update(orgTable)
+        .set({ polarCustomerId: customerId })
+        .where(eq(orgTable.id, organizationId));
+      console.log(`[Polar] ✅ Linked customer ${customerId} to organization ${organizationId}`);
+
+      // Step 5: Update customer with correct email/name (in case it was created with incomplete data)
+      try {
+        await polarClient.customers.updateExternal({
+          externalId: userId,
+          customerUpdateExternalID: {
+            email: userEmail,
+            name: userName || userEmail,
+          },
+        });
+        console.log(`[Polar] ✅ Updated customer data for user ${userId}`);
+      } catch (updateError) {
+        console.log(`[Polar] Could not update customer data:`, updateError instanceof Error ? updateError.message : updateError);
+      }
+    }
+
+    return customerId;
   } catch (error) {
-    // Log but don't fail - the webhook will still work via referenceId
-    console.error('[Polar] Error linking customer to organization:', error);
+    console.error('[Polar] Error in ensurePolarCustomerAndLink:', error);
+    return null;
   }
 }
 
@@ -162,11 +236,12 @@ export async function POST() {
 
     console.log(`✅ Created default org "${newOrg.name}" and project "${newProject.name}" for user ${user.email}`);
 
-    // Link Polar customer to organization (for cloud mode)
-    // This allows webhooks to find the organization by polarCustomerId
-    // Note: Webhooks primarily use referenceId from checkout metadata
-    // This customer linking is a fallback mechanism
-    await linkPolarCustomerToOrganization(user.id, newOrg.id);
+    // Ensure Polar customer exists and is linked to organization (for cloud mode)
+    // This is critical for social auth (GitHub/Google) signups where:
+    // - The Polar customer may not have been created by the Better Auth plugin
+    // - The customer data (email, name) may be incomplete
+    // This function will create the customer if needed and link to the organization
+    await ensurePolarCustomerAndLink(user.id, user.email, user.name, newOrg.id);
 
     return NextResponse.json({
       success: true,

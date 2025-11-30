@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { AIStreamingService } from "@/lib/ai-streaming-service";
 import { AISecurityService, AuthService } from "@/lib/ai-security";
 import { AIPromptBuilder } from "@/lib/ai-prompts";
+import { getActiveOrganization } from "@/lib/session";
+import { usageTracker } from "@/lib/services/usage-tracker";
 
 export async function POST(request: NextRequest) {
   try {
@@ -82,7 +84,19 @@ export async function POST(request: NextRequest) {
       testType,
     });
 
-    // Step 5: Return streaming response with appropriate headers
+    // Step 5: Track AI credit usage
+    try {
+      const activeOrg = await getActiveOrganization();
+      if (activeOrg) {
+        await usageTracker.trackAIUsage(activeOrg.id, "ai_create", {
+          testType,
+        });
+      }
+    } catch (trackingError) {
+      console.error("[AI Create] Failed to track AI usage:", trackingError);
+    }
+
+    // Step 6: Return streaming response with appropriate headers
     return new NextResponse(aiResponse.stream, {
       headers: {
         "Content-Type": "text/event-stream",

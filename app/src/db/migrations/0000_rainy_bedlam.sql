@@ -111,6 +111,7 @@ CREATE TABLE "overage_pricing" (
 	"plan" text NOT NULL,
 	"playwright_minute_price_cents" integer NOT NULL,
 	"k6_vu_minute_price_cents" integer NOT NULL,
+	"ai_credit_price_cents" integer DEFAULT 5 NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "overage_pricing_plan_unique" UNIQUE("plan")
@@ -188,6 +189,7 @@ CREATE TABLE "organization" (
 	"subscription_ends_at" timestamp,
 	"playwright_minutes_used" integer DEFAULT 0,
 	"k6_vu_minutes_used" integer DEFAULT 0,
+	"ai_credits_used" integer DEFAULT 0,
 	"usage_period_start" timestamp,
 	"usage_period_end" timestamp,
 	CONSTRAINT "organization_slug_unique" UNIQUE("slug")
@@ -673,6 +675,7 @@ CREATE TABLE "plan_limits" (
 	"min_check_interval_minutes" integer NOT NULL,
 	"playwright_minutes_included" integer NOT NULL,
 	"k6_vu_minutes_included" integer NOT NULL,
+	"ai_credits_included" integer NOT NULL,
 	"running_capacity" integer NOT NULL,
 	"queued_capacity" integer NOT NULL,
 	"max_team_members" integer NOT NULL,

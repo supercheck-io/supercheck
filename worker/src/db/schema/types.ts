@@ -25,7 +25,7 @@ export type JobConfig = {
 };
 
 // Test run types
-export type TestRunStatus = "running" | "passed" | "failed" | "error";
+export type TestRunStatus = "running" | "passed" | "failed" | "error" | "blocked";
 export type ArtifactPaths = {
   logs?: string;
   video?: string;

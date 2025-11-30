@@ -13,6 +13,8 @@ import {
   ListObjectsV2Command,
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
+import { getActiveOrganization } from "@/lib/session";
+import { usageTracker } from "@/lib/services/usage-tracker";
 
 // Rate limiting store (in production, use Redis)
 // const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
@@ -148,6 +150,19 @@ export async function POST(request: NextRequest) {
           // Use AI confidence if available, otherwise use default for basic analysis
           const basicConfidence = aiResponse.aiConfidence || 0.7;
 
+          // Track AI credit usage
+          try {
+            const activeOrg = await getActiveOrganization();
+            if (activeOrg) {
+              await usageTracker.trackAIUsage(activeOrg.id, "ai_fix", {
+                testId,
+                contextSource: "basic_analysis",
+              });
+            }
+          } catch (trackingError) {
+            console.error("[AI Fix] Failed to track AI usage:", trackingError);
+          }
+
           return NextResponse.json({
             success: true,
             fixedScript: sanitizedScript,
@@ -211,6 +226,19 @@ export async function POST(request: NextRequest) {
 
     // Use AI confidence if available, otherwise use fix decision confidence
     const finalConfidence = aiResponse.aiConfidence || fixDecision.confidence;
+
+    // Track AI credit usage
+    try {
+      const activeOrg = await getActiveOrganization();
+      if (activeOrg) {
+        await usageTracker.trackAIUsage(activeOrg.id, "ai_fix", {
+          testId,
+          contextSource,
+        });
+      }
+    } catch (trackingError) {
+      console.error("[AI Fix] Failed to track AI usage:", trackingError);
+    }
 
     return NextResponse.json({
       success: true,

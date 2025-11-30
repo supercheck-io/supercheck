@@ -41,18 +41,18 @@ function getPolarPlugin() {
     return polar({
       client: polarClient,
       // Enable automatic customer creation on signup
-      // This ensures the user's email is pre-filled in checkout
+      // The plugin automatically uses user.email and user.name from the user object
       createCustomerOnSignUp: true,
-      // Provide customer metadata - user object should have id after DB insert
+      // Provide additional customer metadata
+      // Note: email and name are handled by the plugin from the user object
+      // For social auth users, data sync happens in /api/auth/setup-defaults after OAuth completes
       getCustomerCreateParams: async ({ user }: { user: { id?: string; email?: string; name?: string } }) => {
-        // Log for debugging
         console.log('[Polar] Creating customer for user:', { id: user.id, email: user.email, name: user.name });
         
+        // Only return metadata - the plugin handles email/name from user object
+        // Social auth users get their data synced via syncPolarCustomerData() in setup-defaults
         return {
-          email: user.email || '',
-          name: user.name || user.email || '',
           metadata: {
-            // Only include userId if it exists
             ...(user.id ? { userId: String(user.id) } : {}),
             source: 'supercheck-signup',
           },
@@ -83,6 +83,13 @@ function getPolarPlugin() {
         usage(),
         webhooks({
           secret: config.webhookSecret!,
+          // Customer lifecycle handlers - critical for linking customer to organization
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onCustomerCreated: async (payload: any) => {
+            console.log('[Polar] Webhook: customer.created');
+            const { handleCustomerCreated } = await import("@/lib/webhooks/polar-webhooks");
+            await handleCustomerCreated(payload);
+          },
           // Subscription lifecycle handlers
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           onSubscriptionActive: async (payload: any) => {

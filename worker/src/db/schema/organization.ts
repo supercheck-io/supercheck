@@ -44,6 +44,7 @@ export const organization = pgTable("organization", {
   // Usage tracking fields
   playwrightMinutesUsed: integer("playwright_minutes_used").default(0),
   k6VuMinutesUsed: integer("k6_vu_minutes_used").default(0), // VU minutes (whole numbers)
+  aiCreditsUsed: integer("ai_credits_used").default(0), // AI credits used for AI fix and AI create features
   usagePeriodStart: timestamp("usage_period_start"),
   usagePeriodEnd: timestamp("usage_period_end"),
 });
