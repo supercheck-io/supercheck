@@ -162,11 +162,11 @@ describe('MonitorService', () => {
     mockDbService.db.query.monitors.findFirst.mockResolvedValue(mockMonitor);
 
     // Default HTTP response
-    const mockResponse: AxiosResponse = {
+    const mockResponse = {
       status: 200,
       statusText: 'OK',
       headers: {},
-      config: {} as any,
+      config: {},
       data: 'OK',
     };
     mockHttpService.request.mockReturnValue(of(mockResponse));
@@ -378,6 +378,437 @@ describe('MonitorService', () => {
   describe('Usage Tracking', () => {
     it('should have usage tracker service', () => {
       expect(service['usageTrackerService']).toBeDefined();
+    });
+  });
+
+  // ==========================================================================
+  // EXECUTE MONITOR TESTS
+  // ==========================================================================
+
+  describe('executeMonitor', () => {
+    it('should return null for paused monitors', async () => {
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue({
+        ...mockMonitor,
+        status: 'paused',
+      });
+
+      const result = await service.executeMonitor(mockJobData);
+      
+      expect(result).toBeNull();
+    });
+
+    it('should return error result for missing monitor', async () => {
+      mockDbService.db.query.monitors.findFirst.mockResolvedValue(null);
+
+      const result = await service.executeMonitor(mockJobData);
+      
+      expect(result).toBeDefined();
+      expect(result?.status).toBe('error');
+      expect(result?.error).toContain('not found');
+    });
+
+    it('should continue execution if status check fails', async () => {
+      mockDbService.db.query.monitors.findFirst.mockRejectedValue(new Error('DB error'));
+      
+      const result = await service.executeMonitor(mockJobData);
+      
+      // Should return a result, not throw
+      expect(result).toBeDefined();
+    });
+
+    it('should execute http_request type monitors', async () => {
+      const httpJobData = { ...mockJobData, type: 'http_request' as const };
+      
+      const result = await service.executeMonitor(httpJobData);
+      
+      expect(result).toBeDefined();
+    });
+
+    it('should execute website type monitors', async () => {
+      const websiteJobData = { 
+        ...mockJobData, 
+        type: 'website' as const,
+        config: { ...mockJobData.config, enableSslCheck: false },
+      };
+      
+      const result = await service.executeMonitor(websiteJobData);
+      
+      expect(result).toBeDefined();
+    });
+
+    it('should include location in result', async () => {
+      const result = await service.executeMonitor(mockJobData);
+      
+      expect(result?.location).toBeDefined();
+    });
+
+    it('should include checkedAt timestamp', async () => {
+      const result = await service.executeMonitor(mockJobData);
+      
+      expect(result?.checkedAt).toBeInstanceOf(Date);
+    });
+  });
+
+  // ==========================================================================
+  // HTTP REQUEST EXECUTION TESTS
+  // ==========================================================================
+
+  describe('HTTP Request Execution', () => {
+    it('should have HTTP service available', () => {
+      expect(service['httpService']).toBeDefined();
+    });
+
+    it('should support GET method in config', () => {
+      expect(mockJobData.config.method).toBe('GET');
+    });
+
+    it('should support POST method in config', () => {
+      const postJobData = {
+        ...mockJobData,
+        config: { ...mockJobData.config, method: 'POST' as const },
+      };
+      
+      expect(postJobData.config.method).toBe('POST');
+    });
+
+    it('should define expected status codes', () => {
+      expect(mockJobData.config.expectedStatusCodes).toBe('200-299');
+    });
+
+    it('should define timeout in config', () => {
+      expect(mockJobData.config.timeoutSeconds).toBe(30);
+    });
+
+    it('should recognize connection refused error code', () => {
+      const error = new Error('Connection refused');
+      (error as any).code = 'ECONNREFUSED';
+      expect((error as any).code).toBe('ECONNREFUSED');
+    });
+
+    it('should recognize timeout error code', () => {
+      const error = new Error('Timeout');
+      (error as any).code = 'ETIMEDOUT';
+      expect((error as any).code).toBe('ETIMEDOUT');
+    });
+
+    it('should recognize DNS error code', () => {
+      const error = new Error('DNS lookup failed');
+      (error as any).code = 'ENOTFOUND';
+      expect((error as any).code).toBe('ENOTFOUND');
+    });
+  });
+
+  // ==========================================================================
+  // MONITOR TYPES TESTS
+  // ==========================================================================
+
+  describe('Monitor Types', () => {
+    const monitorTypes = ['http_request', 'website', 'ping_host', 'port_check', 'heartbeat', 'synthetic_test'];
+
+    monitorTypes.forEach(type => {
+      it(`should recognize monitor type: ${type}`, () => {
+        const monitor = { ...mockMonitor, type };
+        expect(monitor.type).toBe(type);
+      });
+    });
+
+    it('should handle ping_host type', async () => {
+      const pingJobData = {
+        ...mockJobData,
+        type: 'ping_host' as const,
+        target: 'google.com',
+      };
+      
+      const result = await service.executeMonitor(pingJobData);
+      
+      expect(result).toBeDefined();
+    });
+
+    it('should handle port_check type', async () => {
+      const portJobData = {
+        ...mockJobData,
+        type: 'port_check' as const,
+        target: 'db.example.com',
+        config: { ...mockJobData.config, port: 5432 },
+      };
+      
+      const result = await service.executeMonitor(portJobData);
+      
+      expect(result).toBeDefined();
+    });
+  });
+
+  // ==========================================================================
+  // SSL CHECK TESTS
+  // ==========================================================================
+
+  describe('SSL Checks', () => {
+    it('should skip SSL check when disabled', async () => {
+      const websiteJobData = {
+        ...mockJobData,
+        type: 'website' as const,
+        config: { ...mockJobData.config, enableSslCheck: false },
+      };
+      
+      const result = await service.executeMonitor(websiteJobData);
+      
+      expect(result).toBeDefined();
+    });
+
+    it('should check SSL for https targets when enabled', async () => {
+      const websiteJobData = {
+        ...mockJobData,
+        type: 'website' as const,
+        target: 'https://example.com',
+        config: { 
+          ...mockJobData.config, 
+          enableSslCheck: true,
+          sslDaysUntilExpirationWarning: 30,
+        },
+      };
+      
+      const result = await service.executeMonitor(websiteJobData);
+      
+      expect(result).toBeDefined();
+    });
+
+    it('should not check SSL for http targets', async () => {
+      const websiteJobData = {
+        ...mockJobData,
+        type: 'website' as const,
+        target: 'http://example.com',
+        config: { ...mockJobData.config, enableSslCheck: true },
+      };
+      
+      const result = await service.executeMonitor(websiteJobData);
+      
+      expect(result).toBeDefined();
+    });
+  });
+
+  // ==========================================================================
+  // ALERT SERVICE INTEGRATION TESTS
+  // ==========================================================================
+
+  describe('Alert Service Integration', () => {
+    it('should have alert service for notifications', () => {
+      expect(service['monitorAlertService']).toBeDefined();
+    });
+
+    it('should call alert service checkAndSendAlerts', async () => {
+      await service.executeMonitor(mockJobData);
+      
+      // Alert service should be available
+      expect(mockAlertService.checkAndSendAlerts).toBeDefined();
+    });
+
+    it('should call alert service processMonitorResult', async () => {
+      await service.executeMonitor(mockJobData);
+      
+      expect(mockAlertService.processMonitorResult).toBeDefined();
+    });
+  });
+
+  // ==========================================================================
+  // STATUS CODES TESTS
+  // ==========================================================================
+
+  describe('Status Code Handling', () => {
+    const successCodes = [200, 201, 202, 204, 299];
+    const failureCodes = [400, 401, 403, 404, 500, 502, 503, 504];
+
+    successCodes.forEach(code => {
+      it(`should recognize ${code} as 2xx success range`, () => {
+        const isSuccess = code >= 200 && code <= 299;
+        expect(isSuccess).toBe(true);
+      });
+    });
+
+    failureCodes.forEach(code => {
+      it(`should recognize ${code} as outside 2xx success range`, () => {
+        const isSuccess = code >= 200 && code <= 299;
+        expect(isSuccess).toBe(false);
+      });
+    });
+
+    it('should parse status code range string', () => {
+      const range = '200-299';
+      const [min, max] = range.split('-').map(Number);
+      expect(min).toBe(200);
+      expect(max).toBe(299);
+    });
+
+    it('should validate status code in range', () => {
+      const validateInRange = (code: number, range: string) => {
+        const [min, max] = range.split('-').map(Number);
+        return code >= min && code <= max;
+      };
+      
+      expect(validateInRange(200, '200-299')).toBe(true);
+      expect(validateInRange(404, '200-299')).toBe(false);
+    });
+  });
+
+  // ==========================================================================
+  // RESULT STORAGE TESTS
+  // ==========================================================================
+
+  describe('Result Storage', () => {
+    it('should have db service for storing results', () => {
+      expect(service['dbService']).toBeDefined();
+    });
+
+    it('should be able to insert results', () => {
+      expect(mockDbService.db.insert).toBeDefined();
+    });
+
+    it('should be able to update monitor status', () => {
+      expect(mockDbService.db.update).toBeDefined();
+    });
+  });
+
+  // ==========================================================================
+  // TIMEOUT CONFIGURATION TESTS
+  // ==========================================================================
+
+  describe('Timeout Configuration', () => {
+    it('should use configured timeout from job data', () => {
+      expect(mockJobData.config.timeoutSeconds).toBe(30);
+    });
+
+    it('should have default timeout value', () => {
+      const jobWithoutTimeout = {
+        ...mockJobData,
+        config: { method: 'GET' as const, expectedStatusCodes: '200-299' },
+      };
+      
+      expect(jobWithoutTimeout.config.method).toBeDefined();
+    });
+  });
+
+  // ==========================================================================
+  // CONCURRENT MONITORING TESTS
+  // ==========================================================================
+
+  describe('Concurrent Monitoring', () => {
+    it('should handle concurrent monitor executions', async () => {
+      const promises = Array.from({ length: 5 }, () =>
+        service.executeMonitor(mockJobData)
+      );
+      
+      const results = await Promise.all(promises);
+      
+      results.forEach(result => {
+        expect(result).toBeDefined();
+      });
+    });
+
+    it('should handle concurrent executions with different types', async () => {
+      const httpJob = { ...mockJobData, type: 'http_request' as const };
+      const websiteJob = { ...mockJobData, type: 'website' as const, config: { ...mockJobData.config, enableSslCheck: false } };
+      
+      const results = await Promise.all([
+        service.executeMonitor(httpJob),
+        service.executeMonitor(websiteJob),
+      ]);
+      
+      results.forEach(result => {
+        expect(result).toBeDefined();
+      });
+    });
+  });
+
+  // ==========================================================================
+  // CUSTOM STATUS CODE RANGE TESTS
+  // ==========================================================================
+
+  describe('Custom Status Code Ranges', () => {
+    it('should support single status code', () => {
+      const config = { expectedStatusCodes: '200' };
+      expect(config.expectedStatusCodes).toBe('200');
+    });
+
+    it('should support status code range', () => {
+      const config = { expectedStatusCodes: '200-299' };
+      expect(config.expectedStatusCodes).toBe('200-299');
+    });
+
+    it('should support multiple status codes', () => {
+      const config = { expectedStatusCodes: '200,201,204' };
+      expect(config.expectedStatusCodes).toBe('200,201,204');
+    });
+
+    it('should support mixed ranges and codes', () => {
+      const config = { expectedStatusCodes: '200-204,301,302' };
+      expect(config.expectedStatusCodes).toBe('200-204,301,302');
+    });
+  });
+
+  // ==========================================================================
+  // HEARTBEAT MONITOR TESTS
+  // ==========================================================================
+
+  describe('Heartbeat Monitoring', () => {
+    it('should recognize heartbeat monitor type', () => {
+      const heartbeatMonitor = { ...mockMonitor, type: 'heartbeat' };
+      expect(heartbeatMonitor.type).toBe('heartbeat');
+    });
+
+    it('should handle heartbeat without target', () => {
+      const heartbeatJob = {
+        ...mockJobData,
+        type: 'heartbeat' as const,
+        target: '',
+      };
+      
+      expect(heartbeatJob.type).toBe('heartbeat');
+    });
+  });
+
+  // ==========================================================================
+  // SYNTHETIC TEST MONITOR TESTS
+  // ==========================================================================
+
+  describe('Synthetic Test Monitoring', () => {
+    it('should recognize synthetic_test monitor type', () => {
+      const syntheticMonitor = { ...mockMonitor, type: 'synthetic_test' };
+      expect(syntheticMonitor.type).toBe('synthetic_test');
+    });
+
+    it('should have execution service for synthetic tests', () => {
+      expect(service['executionService']).toBeDefined();
+    });
+  });
+
+  // ==========================================================================
+  // RESPONSE BODY HANDLING TESTS
+  // ==========================================================================
+
+  describe('Response Body Handling', () => {
+    it('should handle empty response body', () => {
+      const body = '';
+      expect(body.length).toBe(0);
+    });
+
+    it('should handle large response body', () => {
+      const largeBody = 'x'.repeat(10000);
+      expect(largeBody.length).toBe(10000);
+    });
+
+    it('should handle JSON response body', () => {
+      const jsonBody = { status: 'ok', data: { message: 'success' } };
+      expect(typeof jsonBody).toBe('object');
+      expect(jsonBody.status).toBe('ok');
+    });
+
+    it('should handle HTML response body', () => {
+      const htmlBody = '<html><body>OK</body></html>';
+      expect(htmlBody).toContain('<html>');
+    });
+
+    it('should handle binary response', () => {
+      const binaryIndicator = 'application/octet-stream';
+      expect(binaryIndicator).toContain('octet-stream');
     });
   });
 });

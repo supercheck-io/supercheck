@@ -579,4 +579,234 @@ describe('Session Management', () => {
       });
     });
   });
+
+  // ==========================================================================
+  // ADDITIONAL COVERAGE TESTS
+  // ==========================================================================
+
+  describe('Role Conversion Coverage', () => {
+    const roleConversions = [
+      { dbRole: 'org_owner', expectedRole: Role.ORG_OWNER },
+      { dbRole: 'org_admin', expectedRole: Role.ORG_ADMIN },
+      { dbRole: 'project_admin', expectedRole: Role.PROJECT_ADMIN },
+      { dbRole: 'project_editor', expectedRole: Role.PROJECT_EDITOR },
+      { dbRole: 'project_viewer', expectedRole: Role.PROJECT_VIEWER },
+      { dbRole: 'super_admin', expectedRole: Role.SUPER_ADMIN },
+    ];
+
+    roleConversions.forEach(({ dbRole, expectedRole }) => {
+      it(`should convert "${dbRole}" to ${expectedRole}`, async () => {
+        const selectChain = {
+          from: jest.fn().mockReturnThis(),
+          innerJoin: jest.fn().mockReturnThis(),
+          where: jest.fn().mockResolvedValue([{
+            ...mockOrganization,
+            memberRole: dbRole,
+          }]),
+        };
+        mockDbModule.select.mockReturnValue(selectChain);
+        
+        const result = await getUserOrganizations(testUserId);
+        
+        expect(result[0].role).toBe(expectedRole);
+      });
+    });
+  });
+
+  describe('Project Role Assignment', () => {
+    it('should use org role for ORG_OWNER on all projects', async () => {
+      mockRbacModule.getUserOrgRole.mockResolvedValue(Role.ORG_OWNER);
+      
+      const result = await getUserProjectRole(testUserId, testOrgId, testProjectId);
+      
+      expect(result).toBe(Role.ORG_OWNER);
+    });
+
+    it('should check project membership for PROJECT_EDITOR', async () => {
+      mockRbacModule.getUserOrgRole.mockResolvedValue(Role.PROJECT_EDITOR);
+      
+      const selectChain = {
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue([{ projectId: testProjectId }]),
+      };
+      mockDbModule.select.mockReturnValue(selectChain);
+      
+      const result = await getUserProjectRole(testUserId, testOrgId, testProjectId);
+      
+      expect(result).toBe(Role.PROJECT_EDITOR);
+    });
+
+    it('should return PROJECT_VIEWER when PROJECT_EDITOR not assigned', async () => {
+      mockRbacModule.getUserOrgRole.mockResolvedValue(Role.PROJECT_EDITOR);
+      
+      const selectChain = {
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue([]),
+      };
+      mockDbModule.select.mockReturnValue(selectChain);
+      
+      const result = await getUserProjectRole(testUserId, testOrgId, testProjectId);
+      
+      expect(result).toBe(Role.PROJECT_VIEWER);
+    });
+  });
+
+  describe('Organization Operations', () => {
+    it('should return organizations with isActive false by default', async () => {
+      const selectChain = {
+        from: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([mockOrganization]),
+      };
+      mockDbModule.select.mockReturnValue(selectChain);
+      
+      const result = await getUserOrganizations(testUserId);
+      
+      expect(result[0].isActive).toBe(false);
+    });
+
+    it('should handle organizations with all fields populated', async () => {
+      const fullOrg = {
+        id: testOrgId,
+        name: 'Full Organization',
+        slug: 'full-org',
+        logo: 'https://logo.example.com/logo.png',
+        createdAt: new Date(),
+        memberRole: 'org_admin',
+      };
+      
+      const selectChain = {
+        from: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([fullOrg]),
+      };
+      mockDbModule.select.mockReturnValue(selectChain);
+      
+      const result = await getUserOrganizations(testUserId);
+      
+      expect(result[0].id).toBe(testOrgId);
+      expect(result[0].name).toBe('Full Organization');
+      expect(result[0].slug).toBe('full-org');
+      expect(result[0].logo).toBe('https://logo.example.com/logo.png');
+    });
+
+    it('should handle multiple organizations', async () => {
+      const orgs = [
+        { ...mockOrganization, id: 'org-1', memberRole: 'org_owner' },
+        { ...mockOrganization, id: 'org-2', memberRole: 'org_admin' },
+        { ...mockOrganization, id: 'org-3', memberRole: 'project_viewer' },
+      ];
+      
+      const selectChain = {
+        from: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue(orgs),
+      };
+      mockDbModule.select.mockReturnValue(selectChain);
+      
+      const result = await getUserOrganizations(testUserId);
+      
+      expect(result).toHaveLength(3);
+      expect(result[0].role).toBe(Role.ORG_OWNER);
+      expect(result[1].role).toBe(Role.ORG_ADMIN);
+      expect(result[2].role).toBe(Role.PROJECT_VIEWER);
+    });
+  });
+
+  describe('Session Token Handling', () => {
+    it('should use session token for user lookup', async () => {
+      const selectChain = {
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockResolvedValue([mockDbSession]),
+      };
+      mockDbModule.select.mockReturnValue(selectChain);
+      
+      await getCurrentUser();
+      
+      expect(mockAuthModule.getSession).toHaveBeenCalled();
+    });
+  });
+
+  describe('User Data Fields', () => {
+    it('should include all user fields in response', async () => {
+      const result = await getCurrentUser();
+      
+      expect(result).toHaveProperty('id');
+      expect(result).toHaveProperty('name');
+      expect(result).toHaveProperty('email');
+      expect(result).toHaveProperty('role');
+    });
+
+    it('should handle user with verified email', async () => {
+      const result = await getCurrentUser();
+      
+      expect(result?.email).toBe('test@example.com');
+    });
+  });
+
+  describe('Error Recovery', () => {
+    it('should recover from auth service errors', async () => {
+      mockAuthModule.getSession.mockRejectedValueOnce(new Error('Auth service down'));
+      
+      const result = await getCurrentUser();
+      
+      expect(result).toBeNull();
+    });
+
+    it('should recover from db errors in getUserOrganizations', async () => {
+      const selectChain = {
+        from: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockRejectedValue(new Error('DB connection lost')),
+      };
+      mockDbModule.select.mockReturnValue(selectChain);
+      
+      const result = await getUserOrganizations(testUserId);
+      
+      expect(result).toEqual([]);
+    });
+
+    it('should recover from rbac errors in getUserProjectRole', async () => {
+      mockRbacModule.getUserOrgRole.mockRejectedValue(new Error('RBAC service error'));
+      
+      const result = await getUserProjectRole(testUserId, testOrgId, testProjectId);
+      
+      expect(result).toBe(Role.PROJECT_VIEWER);
+    });
+  });
+
+  describe('Boundary Values', () => {
+    it('should handle very long user IDs', async () => {
+      const longId = 'u'.repeat(500);
+      const selectChain = {
+        from: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([]),
+      };
+      mockDbModule.select.mockReturnValue(selectChain);
+      
+      const result = await getUserOrganizations(longId);
+      
+      expect(result).toEqual([]);
+    });
+
+    it('should handle UUIDs correctly', async () => {
+      const uuidUserId = '550e8400-e29b-41d4-a716-446655440000';
+      const selectChain = {
+        from: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([mockOrganization]),
+      };
+      mockDbModule.select.mockReturnValue(selectChain);
+      
+      const result = await getUserOrganizations(uuidUserId);
+      
+      expect(result).toHaveLength(1);
+    });
+  });
 });

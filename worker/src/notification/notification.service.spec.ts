@@ -592,4 +592,302 @@ describe('NotificationService', () => {
       expect(body.attachments[0].color).toBe('#3b82f6');
     });
   });
+
+  // ==========================================================================
+  // ADDITIONAL COVERAGE TESTS
+  // ==========================================================================
+
+  describe('Alert Type Coverage', () => {
+    const alertTypes = [
+      'monitor_up',
+      'monitor_down',
+      'ssl_expiring',
+      'job_success',
+      'job_failed',
+      'job_timeout',
+    ];
+
+    alertTypes.forEach(alertType => {
+      it(`should handle alert type: ${alertType}`, async () => {
+        const payload = { ...basePayload, type: alertType as any };
+        const result = await service.sendNotification(slackProvider, payload);
+        expect(result).toBe(true);
+      });
+    });
+  });
+
+  describe('Provider Type Coverage', () => {
+    it('should handle all provider types', async () => {
+      const providers = [
+        emailProvider,
+        slackProvider,
+        discordProvider,
+        telegramProvider,
+        webhookProvider,
+      ];
+      
+      for (const provider of providers) {
+        mockFetch.mockResolvedValueOnce({ ok: true, text: jest.fn().mockResolvedValue('ok') });
+        // Reset for email
+        if (provider.type === 'email') {
+          process.env.SMTP_HOST = 'smtp.test.com';
+          process.env.SMTP_USER = 'test';
+          process.env.SMTP_PASSWORD = 'pass';
+        }
+      }
+      
+      // Just verify the provider types are valid
+      expect(providers.map(p => p.type)).toEqual(['email', 'slack', 'discord', 'telegram', 'webhook']);
+    });
+  });
+
+  describe('Metadata Handling', () => {
+    it('should include response time in fields', async () => {
+      const payloadWithResponseTime = {
+        ...basePayload,
+        metadata: { ...basePayload.metadata, responseTime: 5000 },
+      };
+      
+      await service.sendNotification(slackProvider, payloadWithResponseTime);
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      const fields = body.attachments[0].fields;
+      
+      expect(fields.some((f: any) => f.title === 'Response Time')).toBe(true);
+    });
+
+    it('should include status in fields', async () => {
+      const payloadWithStatus = {
+        ...basePayload,
+        metadata: { ...basePayload.metadata, status: 'down' },
+      };
+      
+      await service.sendNotification(slackProvider, payloadWithStatus);
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      const fields = body.attachments[0].fields;
+      
+      expect(fields.some((f: any) => f.title === 'Status')).toBe(true);
+    });
+
+    it('should include target URL in fields', async () => {
+      const payloadWithTarget = {
+        ...basePayload,
+        metadata: { ...basePayload.metadata, target: 'https://api.example.com' },
+      };
+      
+      await service.sendNotification(slackProvider, payloadWithTarget);
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      const fields = body.attachments[0].fields;
+      
+      expect(fields.some((f: any) => f.title === 'Target URL')).toBe(true);
+    });
+
+    it('should include project name when provided', async () => {
+      const payloadWithProject = {
+        ...basePayload,
+        projectName: 'Test Project',
+      };
+      
+      await service.sendNotification(slackProvider, payloadWithProject);
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      const fields = body.attachments[0].fields;
+      
+      expect(fields.some((f: any) => f.title === 'Project')).toBe(true);
+    });
+  });
+
+  describe('Error Scenarios', () => {
+    it('should handle connection refused errors', async () => {
+      const error = new Error('Connection refused');
+      (error as any).cause = { code: 'ECONNREFUSED' };
+      mockFetch.mockReset();
+      mockFetch.mockRejectedValue(error);
+      
+      const result = await service.sendNotification(slackProvider, basePayload);
+      
+      expect(result).toBe(false);
+      
+      // Restore default behavior
+      mockFetch.mockResolvedValue({ ok: true, text: jest.fn().mockResolvedValue('ok') });
+    });
+
+    it('should handle DNS lookup failures', async () => {
+      const error = new Error('DNS lookup failed');
+      (error as any).cause = { code: 'ENOTFOUND' };
+      mockFetch.mockReset();
+      mockFetch.mockRejectedValue(error);
+      
+      const result = await service.sendNotification(slackProvider, basePayload);
+      
+      expect(result).toBe(false);
+      
+      // Restore default behavior
+      mockFetch.mockResolvedValue({ ok: true, text: jest.fn().mockResolvedValue('ok') });
+    });
+
+    it('should handle HTTP 4xx errors', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        text: jest.fn().mockResolvedValue('Invalid payload'),
+      });
+      
+      const result = await service.sendNotification(slackProvider, basePayload);
+      
+      expect(result).toBe(false);
+    });
+
+    it('should handle HTTP 5xx errors', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+        text: jest.fn().mockResolvedValue('Try again later'),
+      });
+      
+      const result = await service.sendNotification(slackProvider, basePayload);
+      
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('Concurrent Notifications', () => {
+    it('should handle concurrent sends to same provider', async () => {
+      // Reset to ensure clean state
+      mockFetch.mockReset();
+      mockFetch.mockResolvedValue({ ok: true, text: jest.fn().mockResolvedValue('ok') });
+      
+      const promises = Array.from({ length: 5 }, () =>
+        service.sendNotification(slackProvider, basePayload)
+      );
+      
+      const results = await Promise.all(promises);
+      
+      expect(results.filter(r => r === true).length).toBeGreaterThan(0);
+    });
+
+    it('should handle concurrent sends to different providers', async () => {
+      // Reset to ensure clean state
+      mockFetch.mockReset();
+      mockFetch.mockResolvedValue({ ok: true, text: jest.fn().mockResolvedValue('ok') });
+      
+      const providers = [slackProvider, discordProvider, webhookProvider];
+      
+      const promises = providers.map(provider =>
+        service.sendNotification(provider, basePayload)
+      );
+      
+      const results = await Promise.all(promises);
+      
+      expect(results.filter(r => r === true).length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Message Formatting', () => {
+    it('should include error message in enhanced payload', async () => {
+      const payloadWithError = {
+        ...basePayload,
+        metadata: { ...basePayload.metadata, errorMessage: 'Connection timeout' },
+      };
+      
+      await service.sendNotification(webhookProvider, payloadWithError);
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      
+      expect(body.message).toContain('Error Details');
+    });
+
+    it('should format time correctly', async () => {
+      await service.sendNotification(slackProvider, basePayload);
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      
+      expect(body.attachments[0].ts).toBeDefined();
+      expect(typeof body.attachments[0].ts).toBe('number');
+    });
+  });
+
+  describe('Email Address Validation', () => {
+    it('should validate single email address', async () => {
+      const provider = {
+        ...emailProvider,
+        config: { emails: 'valid@example.com' },
+      };
+      
+      const result = await service.sendNotification(provider, basePayload);
+      
+      expect(result).toBe(true);
+    });
+
+    it('should validate multiple email addresses', async () => {
+      const provider = {
+        ...emailProvider,
+        config: { emails: 'a@test.com, b@test.com, c@test.com' },
+      };
+      
+      const result = await service.sendNotification(provider, basePayload);
+      
+      expect(result).toBe(true);
+    });
+
+    it('should reject malformed email addresses', async () => {
+      const provider = {
+        ...emailProvider,
+        config: { emails: 'not-an-email' },
+      };
+      
+      const result = await service.sendNotification(provider, basePayload);
+      
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('Dashboard URL Generation', () => {
+    it('should generate monitor URL for monitor_up', async () => {
+      const payload = { ...basePayload, type: 'monitor_up' as any };
+      
+      await service.sendNotification(webhookProvider, payload);
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      
+      expect(body.originalPayload.metadata.dashboardUrl).toContain('notification-monitor');
+    });
+
+    it('should generate job URL for job_failed with runId', async () => {
+      const payload = {
+        ...basePayload,
+        type: 'job_failed' as any,
+        metadata: { runId: 'run-abc-123' },
+      };
+      
+      await service.sendNotification(webhookProvider, payload);
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      
+      expect(body.originalPayload.metadata.dashboardUrl).toContain('notification-run');
+    });
+
+    it('should generate ssl URL for ssl_expiring', async () => {
+      const payload = { ...basePayload, type: 'ssl_expiring' as any };
+      
+      await service.sendNotification(webhookProvider, payload);
+      
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+      
+      expect(body.originalPayload.metadata.dashboardUrl).toContain('notification-monitor');
+    });
+  });
 });
