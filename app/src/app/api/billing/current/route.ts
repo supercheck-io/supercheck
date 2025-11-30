@@ -74,6 +74,12 @@ export async function GET() {
           overage: usage.k6VuMinutes.overage,
           percentage: Math.round((usage.k6VuMinutes.used / usage.k6VuMinutes.included) * 100),
         },
+        aiCredits: {
+          used: usage.aiCredits.used,
+          included: usage.aiCredits.included,
+          overage: usage.aiCredits.overage,
+          percentage: Math.round((usage.aiCredits.used / usage.aiCredits.included) * 100),
+        },
       },
       limits: {
         monitors: {

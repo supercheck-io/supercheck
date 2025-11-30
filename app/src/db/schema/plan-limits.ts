@@ -37,6 +37,7 @@ export const planLimits = pgTable("plan_limits", {
   // Execution limits - included quotas
   playwrightMinutesIncluded: integer("playwright_minutes_included").notNull(),
   k6VuMinutesIncluded: integer("k6_vu_minutes_included").notNull(), // Changed from hours to minutes for consistency
+  aiCreditsIncluded: integer("ai_credits_included").notNull(), // AI credits for AI fix and AI create features
   
   // Capacity limits - concurrent and queued
   runningCapacity: integer("running_capacity").notNull(), // concurrent executions

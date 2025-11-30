@@ -158,11 +158,25 @@ For usage-based overage billing, create meters in Polar:
 
 ---
 
+**Meter 3: AI Credits**
+
+| Field | Value |
+|-------|-------|
+| **Name** | `AI Credits` |
+| **Filters → Condition group** | |
+| - First dropdown (Name) | `Name` |
+| - Second dropdown | `equals` |
+| - Third dropdown (Select event name) | `ai_credits` |
+| **Aggregation** | Select **Sum** |
+| **Over property** | `value` |
+
+---
+
 > **How it works**: 
 > - The **Name** field is the display name shown on invoices
-> - The **Filter** matches incoming usage events by their event name (`playwright_minutes` or `k6_vu_minutes`)
+> - The **Filter** matches incoming usage events by their event name (`playwright_minutes`, `k6_vu_minutes`, or `ai_credits`)
 > - **Sum** aggregation adds up all the `value` property from matched events
-> - The `value` property contains the number of minutes used per event
+> - The `value` property contains the number of minutes/credits used per event
 
 #### 4. Configure Overage Pricing
 
@@ -173,9 +187,11 @@ After creating meters, set up overage pricing:
    - **Plus Plan**:
      - Playwright Minutes: $0.03 per minute beyond included quota
      - K6 VU Minutes: $0.005 per VU-minute beyond included quota
+     - AI Credits: $0.05 per credit beyond included quota
    - **Pro Plan**:
      - Playwright Minutes: $0.015 per minute beyond included quota
      - K6 VU Minutes: $0.003 per VU-minute beyond included quota
+     - AI Credits: $0.03 per credit beyond included quota
 3. Enable "Charge for overage" option
 4. Set billing cycle to "Monthly"
 
@@ -192,7 +208,7 @@ Configure usage reporting and notifications:
 5. Enable "Usage breakdown in customer portal"
 
 > [!IMPORTANT]
-> The meter names (`playwright_minutes` and `k6_vu_minutes`) must exactly match what's configured in the code. These names are used when syncing usage events to Polar.
+> The meter names (`playwright_minutes`, `k6_vu_minutes`, and `ai_credits`) must exactly match what's configured in the code. These names are used when syncing usage events to Polar.
 
 #### 6. Configure Webhook
 
@@ -352,6 +368,13 @@ await usageTracker.trackK6Execution(
   durationMs, 
   { testId, jobId }
 );
+
+// After AI fix or create action
+await usageTracker.trackAIUsage(
+  organizationId,
+  "ai_fix", // or "ai_create"
+  { testId }
+);
 ```
 
 #### Get Usage Stats
@@ -372,7 +395,7 @@ Before deploying to production:
 - [ ] Use production Polar access token
 - [ ] Create production Plus/Pro products  
 - [ ] Configure production webhook
-- [ ] Create usage meters (`playwright_minutes`, `k6_vu_minutes`)
+- [ ] Create usage meters (`playwright_minutes`, `k6_vu_minutes`, `ai_credits`)
 - [ ] Test full checkout flow
 - [ ] Verify webhook processing
 - [ ] Test plan limit enforcement
@@ -403,6 +426,7 @@ For issues with Polar integration:
 | **Monitors** | 25 monitors | 100 monitors |
 | **Playwright Minutes** | 2,500 minutes/month | 7,500 minutes/month |
 | **K6 VU Minutes** | 6,000 VU-minutes/month | 40,000 VU-minutes/month |
+| **AI Credits** | 100 credits/month | 300 credits/month |
 | **Concurrent Executions** | 5 | 10 |
 | **Queued Jobs** | 50 | 100 |
 | **Team Members** | 5 users | 25 users |
@@ -447,6 +471,28 @@ Billed per Virtual User minute for load testing. Calculated as: Virtual Users ×
 - Consumes: 100 VUs × 10 minutes = 1,000 VU-minutes
 - Cost per test (if over quota): **$10.00 (Plus)** or **$10.00 (Pro)**
 
+#### AI Credits
+
+Billed per AI action (AI Fix or AI Create). Each action consumes 1 credit.
+
+- **Plus Plan**: $0.05 per additional credit after 100 credits
+- **Pro Plan**: $0.03 per additional credit after 300 credits
+
+**Example 1**: Using AI Fix 10 times in a month:
+- Consumes: 10 AI credits
+- Plus plan includes 100 credits: No overage charge ✓
+- Pro plan includes 300 credits: No overage charge ✓
+
+**Example 2**: Heavy AI usage with 100 AI Fix + 50 AI Create:
+- Consumes: 150 AI credits
+- Plus plan: 50 credits overage × $0.05 = **$2.50 overage**
+- Pro plan includes 300 credits: No overage charge ✓
+
+**What counts as an AI Credit:**
+- Each AI Fix request (fix failing test) = 1 credit
+- Each AI Create request (generate new test) = 1 credit
+- Failed requests are NOT charged
+
 #### Monitor Executions (Synthetic Monitors)
 
 Synthetic monitors count against Playwright minutes for each execution. Monitor execution time is typically much shorter than full Playwright tests.
@@ -470,6 +516,7 @@ Synthetic monitors count against Playwright minutes for each execution. Monitor 
 - Synthetic monitors: 5-minute minimum intervals
 - 2,500 Playwright execution minutes/month
 - 6,000 K6 VU-minutes/month for load testing
+- 100 AI credits/month for AI Fix and AI Create
 - Up to 5 team members
 - 2 organizations, 10 projects
 - 3 public status pages
@@ -487,6 +534,7 @@ Synthetic monitors count against Playwright minutes for each execution. Monitor 
 - Synthetic monitors: 5-minute minimum intervals
 - 7,500 Playwright execution minutes/month
 - 40,000 K6 VU-minutes/month for load testing
+- 300 AI credits/month for AI Fix and AI Create
 - Up to 25 team members
 - 10 organizations, 50 projects
 - 15 public status pages with custom domains
@@ -520,6 +568,9 @@ Visit our [GitHub repository](https://github.com/supercheck-io/supercheck) to ge
   - Example: 100 VUs × 5.5 minutes = 550 VU-minutes (rounded from 550)
 - **Monitors**: Count against Playwright minutes for each check execution
   - Example: 25 monitors, 5-minute interval = 288 Playwright minutes/day = 8,640 minutes/month
+- **AI Credits**: Each successful AI Fix or AI Create action = 1 credit
+  - Example: 10 AI Fix + 5 AI Create = 15 AI credits used
+  - Failed AI requests are NOT charged
 
 #### What happens if I exceed my limits?
 
@@ -704,23 +755,24 @@ Overage is calculated ONLY after included quota is exhausted:
 ```typescript
 const playwrightOverage = Math.max(0, playwrightMinutesUsed - includedPlaywrightMinutes);
 const k6Overage = Math.max(0, k6VuMinutesUsed - includedK6VuMinutes);
-const totalOverageCents = (playwrightOverage * playwrightPriceCents) + (k6Overage * k6PriceCents);
+const aiCreditsOverage = Math.max(0, aiCreditsUsed - includedAiCredits);
+const totalOverageCents = (playwrightOverage * playwrightPriceCents) + (k6Overage * k6PriceCents) + (aiCreditsOverage * aiCreditPriceCents);
 ```
 
 **Plan Included Quotas** (from `0001_seed_plan_limits.sql`):
 
-| Plan | Playwright Minutes | K6 VU Minutes |
-|------|-------------------|---------------|
-| Plus | 3,000/month | 20,000/month |
-| Pro | 10,000/month | 75,000/month |
-| Unlimited | Unlimited | Unlimited |
+| Plan | Playwright Minutes | K6 VU Minutes | AI Credits |
+|------|-------------------|---------------|------------|
+| Plus | 3,000/month | 20,000/month | 100/month |
+| Pro | 10,000/month | 75,000/month | 300/month |
+| Unlimited | Unlimited | Unlimited | Unlimited |
 
 **Overage Pricing** (competitive, protocol-only K6):
 
-| Plan | Playwright | K6 VU Minutes |
-|------|-----------|---------------|
-| Plus | $0.03/min | $0.005/VU-min |
-| Pro | $0.015/min | $0.003/VU-min |
+| Plan | Playwright | K6 VU Minutes | AI Credits |
+|------|-----------|---------------|------------|
+| Plus | $0.03/min | $0.005/VU-min | $0.05/credit |
+| Pro | $0.015/min | $0.003/VU-min | $0.03/credit |
 
 **K6 Pricing Justification (Protocol-Only Tests):**
 - Supercheck only supports **HTTP/protocol-based** K6 tests (no browser-based)

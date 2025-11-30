@@ -15,7 +15,8 @@ import {
   AlertCircle,
   Database,
   DollarSign,
-  TrendingUp
+  TrendingUp,
+  Sparkles
 } from "lucide-react";
 import { authClient } from "@/utils/auth-client";
 import { toast } from "sonner";
@@ -35,6 +36,7 @@ interface SubscriptionData {
   usage: {
     playwrightMinutes: { used: number; included: number; overage: number; percentage: number };
     k6VuMinutes: { used: number; included: number; overage: number; percentage: number };
+    aiCredits: { used: number; included: number; overage: number; percentage: number };
   };
   limits: {
     monitors: { current: number; limit: number; remaining: number; percentage: number };
@@ -161,7 +163,7 @@ export function SubscriptionTab() {
           <CardHeader className="pb-4">
             <CardTitle className="text-base font-medium">Usage This Period</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-5">
+          <CardContent className="space-y-5 text-sm">
             <UsageProgressBar
               icon={<PlaywrightLogo width={20} height={20} className="text-[#E2574C]" />}
               label="Playwright Execution Minutes"
@@ -178,6 +180,14 @@ export function SubscriptionTab() {
               overage={data.usage.k6VuMinutes.overage}
               percentage={data.usage.k6VuMinutes.percentage}
             />
+            <UsageProgressBar
+              icon={<Sparkles className="h-5 w-5 text-amber-500" />}
+              label="AI Credits"
+              used={data.usage.aiCredits.used}
+              included={data.usage.aiCredits.included}
+              overage={data.usage.aiCredits.overage}
+              percentage={data.usage.aiCredits.percentage}
+            />
           </CardContent>
         </Card>
 
@@ -186,7 +196,7 @@ export function SubscriptionTab() {
           <CardHeader className="pb-4">
             <CardTitle className="text-base font-medium">Resource Limits</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="text-sm space-y-5">
             <div className="grid grid-cols-2 gap-4">
               <CompactResourceCard
                 icon={Monitor}
