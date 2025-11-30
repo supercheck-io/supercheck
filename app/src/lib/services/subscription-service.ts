@@ -22,6 +22,7 @@ const FALLBACK_UNLIMITED_LIMITS = {
   minCheckIntervalMinutes: 1,
   playwrightMinutesIncluded: 999999,
   k6VuMinutesIncluded: 999999,
+  aiCreditsIncluded: 999999,
   runningCapacity: 999,
   queuedCapacity: 9999,
   maxTeamMembers: 999,
@@ -41,6 +42,7 @@ const BLOCKED_PLAN_LIMITS = {
   minCheckIntervalMinutes: 1,
   playwrightMinutesIncluded: 0,
   k6VuMinutesIncluded: 0,
+  aiCreditsIncluded: 0,
   runningCapacity: 0,
   queuedCapacity: 0,
   maxTeamMembers: 0,
@@ -439,6 +441,24 @@ export class SubscriptionService {
   }
 
   /**
+   * Track AI credit usage for an organization
+   * Each AI fix or AI create action consumes 1 credit
+   */
+  async trackAIUsage(organizationId: string, credits: number = 1) {
+    if (!isPolarEnabled()) {
+      // Don't track for self-hosted
+      return;
+    }
+
+    await db
+      .update(organization)
+      .set({
+        aiCreditsUsed: sql`COALESCE(${organization.aiCreditsUsed}, 0) + ${credits}`,
+      })
+      .where(eq(organization.id, organizationId));
+  }
+
+  /**
    * Get current usage for an organization
    * Returns usage counters and plan limits
    */
@@ -468,6 +488,14 @@ export class SubscriptionService {
         overage: Math.max(
           0,
           (org.k6VuMinutesUsed || 0) - plan.k6VuMinutesIncluded
+        ),
+      },
+      aiCredits: {
+        used: org.aiCreditsUsed || 0,
+        included: plan.aiCreditsIncluded,
+        overage: Math.max(
+          0,
+          (org.aiCreditsUsed || 0) - plan.aiCreditsIncluded
         ),
       },
       periodStart: org.usagePeriodStart,
@@ -507,6 +535,14 @@ export class SubscriptionService {
           (org.k6VuMinutesUsed || 0) - plan.k6VuMinutesIncluded
         ),
       },
+      aiCredits: {
+        used: org.aiCreditsUsed || 0,
+        included: plan.aiCreditsIncluded,
+        overage: Math.max(
+          0,
+          (org.aiCreditsUsed || 0) - plan.aiCreditsIncluded
+        ),
+      },
       periodStart: org.usagePeriodStart,
       periodEnd: org.usagePeriodEnd,
     };
@@ -541,6 +577,7 @@ export class SubscriptionService {
         .set({
           playwrightMinutesUsed: 0,
           k6VuMinutesUsed: 0,
+          aiCreditsUsed: 0,
           usagePeriodStart: now,
           usagePeriodEnd: thirtyDaysLater,
         })
@@ -579,6 +616,7 @@ export class SubscriptionService {
       .set({
         playwrightMinutesUsed: 0,
         k6VuMinutesUsed: 0,
+        aiCreditsUsed: 0,
         usagePeriodStart: periodStart,
         usagePeriodEnd: periodEnd,
         // Also update the subscription dates for reference

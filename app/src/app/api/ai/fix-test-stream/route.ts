@@ -14,6 +14,8 @@ import {
   ListObjectsV2Command,
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
+import { getActiveOrganization } from "@/lib/session";
+import { usageTracker } from "@/lib/services/usage-tracker";
 
 // S3 Client configuration
 const s3Client = new S3Client({
@@ -162,7 +164,20 @@ export async function POST(request: NextRequest) {
       testType,
     });
 
-    // Step 5: Return streaming response with appropriate headers
+    // Step 5: Track AI credit usage
+    try {
+      const activeOrg = await getActiveOrganization();
+      if (activeOrg) {
+        await usageTracker.trackAIUsage(activeOrg.id, "ai_fix", {
+          testId,
+          testType,
+        });
+      }
+    } catch (trackingError) {
+      console.error("[AI Fix Stream] Failed to track AI usage:", trackingError);
+    }
+
+    // Step 6: Return streaming response with appropriate headers
     return new NextResponse(aiResponse.stream, {
       headers: {
         "Content-Type": "text/event-stream",

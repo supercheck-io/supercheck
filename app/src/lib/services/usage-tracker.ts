@@ -82,6 +82,33 @@ export class UsageTracker {
       ...metadata,
     });
   }
+
+  /**
+   * Track AI credit usage
+   * Each AI fix or AI create action consumes 1 credit
+   */
+  async trackAIUsage(
+    organizationId: string,
+    actionType: "ai_fix" | "ai_create",
+    metadata?: Record<string, unknown>
+  ) {
+    const credits = 1; // Each AI action costs 1 credit
+
+    // Update local database
+    await subscriptionService.trackAIUsage(organizationId, credits);
+
+    // Log usage for Polar if enabled
+    if (isPolarEnabled()) {
+      try {
+        console.log(
+          `[Usage] Tracked AI usage: ${credits} credit for ${actionType} for org ${organizationId}`,
+          metadata
+        );
+      } catch (error) {
+        console.error("[Usage] Failed to log AI usage:", error);
+      }
+    }
+  }
 }
 
 // Export singleton instance

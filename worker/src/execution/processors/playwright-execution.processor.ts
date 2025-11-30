@@ -6,6 +6,7 @@ import { ExecutionService } from '../services/execution.service';
 import { DbService } from '../services/db.service';
 import { JobNotificationService } from '../services/job-notification.service';
 import { UsageTrackerService } from '../services/usage-tracker.service';
+import { HardStopNotificationService } from '../services/hard-stop-notification.service';
 import { CancellationService } from '../../common/services/cancellation.service';
 import { JobExecutionTask, TestExecutionTask, TestExecutionResult, TestResult } from '../interfaces';
 import { eq } from 'drizzle-orm';
@@ -21,6 +22,7 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
     private readonly dbService: DbService,
     private readonly jobNotificationService: JobNotificationService,
     private readonly usageTrackerService: UsageTrackerService,
+    private readonly hardStopNotificationService: HardStopNotificationService,
     private readonly cancellationService: CancellationService,
   ) {
     super();
@@ -44,6 +46,41 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
     const startTime = new Date();
 
     try {
+      // Check for hard stop before execution (billing limit enforcement)
+      if (job.data.organizationId) {
+        const blockCheck = await this.usageTrackerService.shouldBlockExecution(job.data.organizationId);
+        if (blockCheck.blocked) {
+          this.logger.warn(
+            `[${testId}] Execution blocked by spending limit for org ${job.data.organizationId}`,
+          );
+
+          // Update run status to blocked
+          if (runId) {
+            await this.dbService
+              .updateRunStatus(runId, 'blocked', '0', blockCheck.reason)
+              .catch((err: Error) =>
+                this.logger.error(
+                  `[${testId}] Failed to update run status to blocked: ${err.message}`,
+                ),
+              );
+          }
+
+          // Send notification (non-blocking)
+          this.hardStopNotificationService
+            .notify(job.data.organizationId, runId || testId, blockCheck.reason || 'Spending limit reached')
+            .catch(() => {});
+
+          return {
+            success: false,
+            error: `BILLING_BLOCKED: ${blockCheck.reason}`,
+            reportUrl: null,
+            testId,
+            stdout: '',
+            stderr: '',
+          };
+        }
+      }
+
       await job.updateProgress(10);
 
       // Delegate the actual execution to the service
@@ -160,6 +197,44 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
       await this.cancellationService.clearCancellationSignal(runId);
 
       throw new Error('Execution cancelled by user');
+    }
+
+    // Check for hard stop before execution (billing limit enforcement)
+    const blockCheck = await this.usageTrackerService.shouldBlockExecution(jobData.organizationId);
+    if (blockCheck.blocked) {
+      this.logger.warn(
+        `[${runId}] Job execution blocked by spending limit for org ${jobData.organizationId}`,
+      );
+
+      // Update run status to blocked
+      await this.dbService
+        .updateRunStatus(runId, 'blocked', '0', blockCheck.reason)
+        .catch((err: Error) =>
+          this.logger.error(
+            `[${runId}] Failed to update run status to blocked: ${err.message}`,
+          ),
+        );
+
+      // Update job status
+      if (originalJobId) {
+        await this.updateJobStatus(originalJobId, 'error', runId);
+      }
+
+      // Send notification (non-blocking)
+      this.hardStopNotificationService
+        .notify(jobData.organizationId, runId, blockCheck.reason || 'Spending limit reached')
+        .catch(() => {});
+
+      return {
+        jobId: runId,
+        success: false,
+        error: `BILLING_BLOCKED: ${blockCheck.reason}`,
+        reportUrl: null,
+        results: [],
+        timestamp: new Date().toISOString(),
+        stdout: '',
+        stderr: '',
+      };
     }
 
     await job.updateProgress(10);

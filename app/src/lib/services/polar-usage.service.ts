@@ -21,14 +21,14 @@ import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
 import type { Polar } from "@polar-sh/sdk";
 
 // Event types for usage tracking
-export type UsageEventType = "playwright_execution" | "k6_execution" | "monitor_execution";
+export type UsageEventType = "playwright_execution" | "k6_execution" | "monitor_execution" | "ai_usage";
 
 export interface UsageIngestionParams {
   organizationId: string;
   eventType: UsageEventType;
   eventName: string;
   units: number;
-  unitType: "minutes" | "vu_minutes";
+  unitType: "minutes" | "vu_minutes" | "credits";
   metadata?: Record<string, unknown>;
 }
 
@@ -41,6 +41,13 @@ export interface UsageMetrics {
     percentage: number;
   };
   k6VuMinutes: {
+    used: number;
+    included: number;
+    overage: number;
+    overageCostCents: number;
+    percentage: number;
+  };
+  aiCredits: {
     used: number;
     included: number;
     overage: number;
@@ -156,6 +163,13 @@ class PolarUsageService {
             k6VuMinutesUsed: sql`COALESCE(${organization.k6VuMinutesUsed}, 0) + ${units}`,
           })
           .where(eq(organization.id, organizationId));
+      } else if (unitType === "credits") {
+        await db
+          .update(organization)
+          .set({
+            aiCreditsUsed: sql`COALESCE(${organization.aiCreditsUsed}, 0) + ${Math.ceil(units)}`,
+          })
+          .where(eq(organization.id, organizationId));
       }
 
       // Sync to Polar if enabled
@@ -216,9 +230,14 @@ class PolarUsageService {
 
       // Determine the meter name based on event type
       // These meter names should match what's configured in Polar dashboard
-      const meterName = usageEvent.eventType === 'k6_execution' 
-        ? 'k6_vu_minutes' 
-        : 'playwright_minutes';
+      let meterName: string;
+      if (usageEvent.eventType === 'k6_execution') {
+        meterName = 'k6_vu_minutes';
+      } else if (usageEvent.eventType === 'ai_usage') {
+        meterName = 'ai_credits';
+      } else {
+        meterName = 'playwright_minutes';
+      }
 
       // Use Polar's event ingestion API
       // POST to /v1/events/ingest (correct endpoint)
@@ -310,12 +329,15 @@ class PolarUsageService {
 
     const playwrightUsed = org.playwrightMinutesUsed || 0;
     const k6Used = org.k6VuMinutesUsed || 0;
+    const aiCreditsUsed = org.aiCreditsUsed || 0;
 
     const playwrightOverage = Math.max(0, playwrightUsed - plan.playwrightMinutesIncluded);
     const k6Overage = Math.max(0, k6Used - plan.k6VuMinutesIncluded);
+    const aiCreditsOverage = Math.max(0, aiCreditsUsed - plan.aiCreditsIncluded);
 
     const playwrightOverageCost = playwrightOverage * (pricing?.playwrightMinutePriceCents || 10);
     const k6OverageCost = Math.ceil(k6Overage * (pricing?.k6VuMinutePriceCents || 1));
+    const aiCreditsOverageCost = aiCreditsOverage * (pricing?.aiCreditPriceCents || 5);
 
     return {
       playwrightMinutes: {
@@ -332,7 +354,14 @@ class PolarUsageService {
         overageCostCents: k6OverageCost,
         percentage: Math.round((k6Used / plan.k6VuMinutesIncluded) * 100),
       },
-      totalOverageCostCents: playwrightOverageCost + k6OverageCost,
+      aiCredits: {
+        used: aiCreditsUsed,
+        included: plan.aiCreditsIncluded,
+        overage: aiCreditsOverage,
+        overageCostCents: aiCreditsOverageCost,
+        percentage: Math.round((aiCreditsUsed / plan.aiCreditsIncluded) * 100),
+      },
+      totalOverageCostCents: playwrightOverageCost + k6OverageCost + aiCreditsOverageCost,
       periodStart: org.usagePeriodStart,
       periodEnd: org.usagePeriodEnd,
     };

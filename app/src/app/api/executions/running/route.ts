@@ -104,8 +104,72 @@ export async function GET() {
 
     // Check each run against queues in parallel
     const verifiedRunning: ExecutionItem[] = [];
+    const queuedFromDb: ExecutionItem[] = []; // Runs that are in DB as 'running' but in BullMQ as 'waiting'
 
     console.log(`[API] Checking ${activeRuns.length} runs against ${allQueues.length} queues`);
+
+    // Helper function to build execution item from run data
+    const buildExecutionItem = async (
+      run: typeof activeRuns[0],
+      status: 'running' | 'queued',
+      queuePosition?: number
+    ): Promise<ExecutionItem | null> => {
+      if (run.jobId) {
+        // It's a Job run
+        const jobDetail = jobMap.get(run.jobId);
+        if (jobDetail) {
+          return {
+            runId: run.id,
+            jobId: run.jobId,
+            jobName: jobDetail.name,
+            jobType: jobDetail.type as 'playwright' | 'k6',
+            status,
+            startedAt: status === 'running' ? run.startedAt : null,
+            queuePosition,
+            source: 'job',
+            projectName: run.projectName,
+          };
+        }
+        return null;
+      } else {
+        // It's a Playground run (or other ad-hoc run)
+        const metadata = (run.metadata as Record<string, unknown>) || {};
+        const isPlayground = metadata.source === 'playground';
+        const testType = metadata.testType as string || 'browser';
+        const testId = metadata.testId as string;
+        
+        // Map test types to execution engines
+        const jobType: 'playwright' | 'k6' = testType === 'performance' ? 'k6' : 'playwright';
+        
+        // Try to fetch test name from tests table if we have a testId
+        let displayName = isPlayground ? 'Playground Execution' : 'Ad-hoc Execution';
+        if (testId) {
+          try {
+            const test = await db.query.tests.findFirst({
+              where: eq(tests.id, testId),
+              columns: { title: true },
+            });
+            if (test?.title) {
+              displayName = test.title;
+            }
+          } catch {
+            // Keep default name on error
+          }
+        }
+        
+        return {
+          runId: run.id,
+          jobId: null,
+          jobName: displayName,
+          jobType,
+          status,
+          startedAt: status === 'running' ? run.startedAt : null,
+          queuePosition,
+          source: isPlayground ? 'playground' : 'job',
+          projectName: run.projectName,
+        };
+      }
+    };
 
     await Promise.all(
       activeRuns.map(async (run) => {
@@ -122,9 +186,12 @@ export async function GET() {
               if (job) {
                 const state = await job.getState();
                 console.log(`[API] Run ${run.id} found in queue ${queue.name} with state: ${state}`);
-                // Only 'active' means the job is actually running
-                // 'waiting' and 'delayed' are queued states, not running
+                // Track both 'active' and 'waiting'/'delayed' states
                 if (state === 'active') {
+                  foundState = 'active';
+                  foundQueueName = queue.name;
+                } else if ((state === 'waiting' || state === 'delayed') && foundState !== 'active') {
+                  // Only set waiting/delayed if we haven't found active
                   foundState = state;
                   foundQueueName = queue.name;
                 }
@@ -138,81 +205,31 @@ export async function GET() {
 
         console.log(`[API] Run ${run.id} verification result: foundState=${foundState}, foundQueueName=${foundQueueName}`);
 
-        if (foundState) {
-          if (run.jobId) {
-            // It's a Job run
-            const jobDetail = jobMap.get(run.jobId);
-            if (jobDetail) {
-              console.log(`[API] Adding Job run ${run.id} to verified list`);
-              verifiedRunning.push({
-                runId: run.id,
-                jobId: run.jobId,
-                jobName: jobDetail.name,
-                jobType: jobDetail.type as 'playwright' | 'k6',
-                status: 'running',
-                startedAt: run.startedAt,
-                source: 'job',
-                projectName: run.projectName,
-              });
-            } else {
-              console.log(`[API] Run ${run.id} is running but job details not found for jobId ${run.jobId}`);
-            }
-          } else {
-            // It's a Playground run (or other ad-hoc run)
-            const metadata = (run.metadata as Record<string, unknown>) || {};
-            const isPlayground = metadata.source === 'playground';
-            const testType = metadata.testType as string || 'browser';
-            const testId = metadata.testId as string;
-            
-            console.log(`[API] Processing playground/ad-hoc run ${run.id}: isPlayground=${isPlayground}, testType=${testType}, testId=${testId}`);
-            
-            // Map test types to execution engines
-            // browser, api, database, custom -> playwright
-            // performance -> k6
-            const jobType: 'playwright' | 'k6' = testType === 'performance' ? 'k6' : 'playwright';
-            
-            // Try to fetch test name from tests table if we have a testId
-            let displayName = isPlayground ? 'Playground Execution' : 'Ad-hoc Execution';
-            if (testId) {
-              try {
-                const test = await db.query.tests.findFirst({
-                  where: eq(tests.id, testId),
-                  columns: { title: true },
-                });
-                if (test?.title) {
-                  // Show full test name
-                  displayName = test.title;
-                } else {
-                  // Test not found or has no title, use full testId as fallback
-                  displayName = testId;
-                }
-              } catch (error) {
-                console.log(`[API] Could not fetch test name for testId ${testId}:`, error);
-                // Use full testId as fallback if name fetch fails
-                displayName = testId;
-              }
-            }
-            
-            console.log(`[API] Adding playground run ${run.id} to verified list with jobType=${jobType}, name=${displayName}`);
-            verifiedRunning.push({
-              runId: run.id,
-              jobId: null,
-              jobName: displayName,
-              jobType,
-              status: 'running',
-              startedAt: run.startedAt,
-              source: isPlayground ? 'playground' : 'job',
-              projectName: run.projectName,
-            });
+        if (foundState === 'active') {
+          // Job is actually running - add to running list
+          const item = await buildExecutionItem(run, 'running');
+          if (item) {
+            console.log(`[API] Adding run ${run.id} to verified running list`);
+            verifiedRunning.push(item);
+          }
+        } else if (foundState === 'waiting' || foundState === 'delayed') {
+          // Job is in queue but not yet picked up by worker - add to queued list
+          const item = await buildExecutionItem(run, 'queued');
+          if (item) {
+            console.log(`[API] Adding run ${run.id} to queued list (DB status=running, BullMQ state=${foundState})`);
+            queuedFromDb.push(item);
           }
         } else {
-          console.log(`[API] Run ${run.id} failed verification - not found in any queue with active state`);
+          console.log(`[API] Run ${run.id} failed verification - not found in any queue`);
         }
       }),
     );
 
     // Get queued jobs from BullMQ waiting lists
     const queuedJobs: ExecutionItem[] = [];
+
+    // Track run IDs we've already added from DB check to avoid duplicates
+    const queuedRunIds = new Set(queuedFromDb.map(item => item.runId));
 
     // Check all waiting queues
     for (const queue of allQueues) {
@@ -228,19 +245,73 @@ export async function GET() {
             continue;
           }
 
-          // Get job details
-          const jobDetail = jobMap.get(jobData.jobId);
-          if (jobDetail) {
+          // Skip if we already added this run from DB check
+          if (queuedRunIds.has(bullJob.id as string)) {
+            continue;
+          }
+
+          if (jobData.jobId) {
+            // It's a Job run - use existing logic
+            const jobDetail = jobMap.get(jobData.jobId);
+            if (jobDetail) {
+              queuedJobs.push({
+                runId: bullJob.id as string,
+                jobId: jobData.jobId,
+                jobName: jobDetail.name,
+                jobType: jobDetail.type as 'playwright' | 'k6',
+                status: 'queued',
+                startedAt: null,
+                queuePosition: i + 1,
+                source: 'job',
+                projectName: jobDetail.projectName,
+              });
+            }
+          } else {
+            // It's a Playground run (no jobId) - handle K6 and Playwright
+            const isK6Queue = queue.name.startsWith('k6-');
+            const jobType: 'playwright' | 'k6' = isK6Queue ? 'k6' : 'playwright';
+            
+            // Try to get test name
+            let displayName = 'Playground Execution';
+            const testId = jobData.testId;
+            if (testId) {
+              try {
+                const test = await db.query.tests.findFirst({
+                  where: eq(tests.id, testId),
+                  columns: { title: true },
+                });
+                if (test?.title) {
+                  displayName = test.title;
+                }
+              } catch {
+                // Keep default name on error
+              }
+            }
+            
+            // Get project name
+            let projectName: string | undefined;
+            if (jobData.projectId) {
+              try {
+                const project = await db.query.projects.findFirst({
+                  where: eq(projects.id, jobData.projectId),
+                  columns: { name: true },
+                });
+                projectName = project?.name;
+              } catch {
+                // Keep undefined on error
+              }
+            }
+            
             queuedJobs.push({
               runId: bullJob.id as string,
-              jobId: jobData.jobId,
-              jobName: jobDetail.name,
-              jobType: jobDetail.type as 'playwright' | 'k6',
+              jobId: null,
+              jobName: displayName,
+              jobType,
               status: 'queued',
               startedAt: null,
               queuePosition: i + 1,
-              source: 'job',
-              projectName: jobDetail.projectName,
+              source: 'playground',
+              projectName,
             });
           }
         }
@@ -249,13 +320,17 @@ export async function GET() {
       }
     }
 
+    // Merge queued from DB (runs with status='running' but BullMQ state='waiting')
+    // with queued from BullMQ waiting list
+    const allQueued = [...queuedFromDb, ...queuedJobs];
+
     return NextResponse.json({
       running: verifiedRunning.sort((a, b) => {
         const aTime = a.startedAt?.getTime() || 0;
         const bTime = b.startedAt?.getTime() || 0;
         return bTime - aTime; // Most recent first
       }),
-      queued: queuedJobs.slice(0, 20), // Limit to 20 queued jobs
+      queued: allQueued.slice(0, 20), // Limit to 20 queued jobs
     });
   } catch (error) {
     console.error('Error fetching running/queued executions:', error);

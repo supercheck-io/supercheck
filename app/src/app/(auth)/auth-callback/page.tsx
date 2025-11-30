@@ -37,12 +37,30 @@ export default function AuthCallbackPage() {
 
         // Try to set up defaults (organization and project)
         // The endpoint will check if user already has an org and skip if so
+        // It also creates and syncs Polar customer for social auth users
+        console.log("[auth-callback] Calling setup-defaults...");
         const setupResponse = await fetch("/api/auth/setup-defaults", {
           method: "POST",
         });
+        const setupResult = await setupResponse.json().catch(() => ({}));
+        console.log("[auth-callback] setup-defaults result:", setupResult);
 
         if (!setupResponse.ok) {
           console.warn("Setup defaults failed, but user is authenticated");
+        }
+
+        // CRITICAL: Always sync Polar customer data to ensure email/name are correct
+        // This runs even if setup-defaults returned early (user already has org)
+        // For social auth (GitHub/Google), this ensures the Polar customer exists
+        // and has correct email/name from the OAuth profile
+        console.log("[auth-callback] Calling sync-polar-customer...");
+        try {
+          const syncResponse = await fetch("/api/auth/sync-polar-customer", { method: "POST" });
+          const syncResult = await syncResponse.json().catch(() => ({}));
+          console.log("[auth-callback] sync-polar-customer result:", syncResult);
+        } catch (syncErr) {
+          // Sync failure is non-critical - user can still proceed
+          console.log("[auth-callback] Polar customer sync error:", syncErr);
         }
 
         // Small delay to ensure database consistency
