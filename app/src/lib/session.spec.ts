@@ -24,7 +24,7 @@ const mockDbModule = {
 jest.mock('@/utils/auth', () => ({
   auth: {
     api: {
-      getSession: (...args: any[]) => mockAuthModule.getSession(...args),
+      getSession: (...args: unknown[]) => mockAuthModule.getSession(...args),
     },
   },
 }));
@@ -35,8 +35,8 @@ jest.mock('next/headers', () => ({
 
 jest.mock('@/utils/db', () => ({
   db: {
-    select: (...args: any[]) => mockDbModule.select(...args),
-    update: (...args: any[]) => mockDbModule.update(...args),
+    select: (...args: unknown[]) => mockDbModule.select(...args),
+    update: (...args: unknown[]) => mockDbModule.update(...args),
   },
 }));
 
@@ -60,8 +60,8 @@ const mockRbacModule = {
 };
 
 jest.mock('./rbac/middleware', () => ({
-  getUserRole: (...args: any[]) => mockRbacModule.getUserRole(...args),
-  getUserOrgRole: (...args: any[]) => mockRbacModule.getUserOrgRole(...args),
+  getUserRole: (...args: unknown[]) => mockRbacModule.getUserRole(...args),
+  getUserOrgRole: (...args: unknown[]) => mockRbacModule.getUserOrgRole(...args),
 }));
 
 jest.mock('./rbac/permissions', () => ({

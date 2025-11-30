@@ -10,9 +10,6 @@ import {
   validateEncryptionKey,
 } from './encryption';
 
-// Mock the crypto module for key generation
-const mockRandomValues = jest.fn();
-
 describe('Encryption', () => {
   const testKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
