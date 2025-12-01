@@ -79,7 +79,7 @@ export async function updateJob(data: UpdateJobData) {
 
       // Check notification channel limit
       const maxJobChannels = parseInt(
-        process.env.NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS || "10",
+        process.env.MAX_JOB_NOTIFICATION_CHANNELS || "10",
         10
       );
       if (

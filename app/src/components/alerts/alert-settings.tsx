@@ -16,10 +16,7 @@ import { type NotificationProviderType, type NotificationProviderConfig, type Al
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canCreateNotifications } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
-
-// Get limits from environment variables
-const MAX_JOB_NOTIFICATION_CHANNELS = parseInt(process.env.NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS || '10', 10);
-const MAX_MONITOR_NOTIFICATION_CHANNELS = parseInt(process.env.NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS || '10', 10);
+import { useAppConfig } from "@/hooks/use-app-config";
 
 interface AlertSettingsProps {
   value?: AlertConfig;
@@ -63,6 +60,7 @@ export function AlertSettings({
   monitorType,
   sslCheckEnabled = false
 }: AlertSettingsProps) {
+  const { maxJobNotificationChannels, maxMonitorNotificationChannels } = useAppConfig();
   const [providers, setProviders] = useState<NotificationProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [isProviderDialogOpen, setIsProviderDialogOpen] = useState(false);
@@ -196,7 +194,7 @@ export function AlertSettings({
 
   const toggleProvider = (providerId: string) => {
     const currentProviders = config.notificationProviders || [];
-    const maxChannels = context === 'job' ? MAX_JOB_NOTIFICATION_CHANNELS : MAX_MONITOR_NOTIFICATION_CHANNELS;
+    const maxChannels = context === 'job' ? maxJobNotificationChannels : maxMonitorNotificationChannels;
     
     if (currentProviders.includes(providerId)) {
       // Remove provider
@@ -523,7 +521,7 @@ export function AlertSettings({
               {/* Channel count display */}
               {!validationErrors.notificationProviders && (<div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>
-                  {config.notificationProviders?.length || 0} of {context === 'job' ? MAX_JOB_NOTIFICATION_CHANNELS : MAX_MONITOR_NOTIFICATION_CHANNELS} channels selected
+                  {config.notificationProviders?.length || 0} of {context === 'job' ? maxJobNotificationChannels : maxMonitorNotificationChannels} channels selected
                 </span>
               </div>)}
             </div>
