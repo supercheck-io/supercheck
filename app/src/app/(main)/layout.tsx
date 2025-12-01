@@ -56,7 +56,7 @@ export default async function MainLayout({
                     <BreadcrumbDisplay />
                   </div>
                   <div className="flex items-center gap-6 px-4">
-                    <DemoBadge isDemoMode={process.env.NEXT_PUBLIC_DEMO_MODE === "true"} />
+                    <DemoBadge />
                     <CommandSearch />
                     <ParallelThreads />
                     <NavUser />

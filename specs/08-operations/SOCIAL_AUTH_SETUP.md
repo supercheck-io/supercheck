@@ -68,9 +68,9 @@ Add the following to your `.env` file:
 
 ```bash
 # GitHub OAuth
+# Social auth buttons are automatically shown when credentials are configured
 GITHUB_CLIENT_ID=your-github-client-id
 GITHUB_CLIENT_SECRET=your-github-client-secret
-NEXT_PUBLIC_GITHUB_ENABLED=true
 ```
 
 ### Common GitHub Issues
@@ -120,9 +120,9 @@ Add the following to your `.env` file:
 
 ```bash
 # Google OAuth
+# Social auth buttons are automatically shown when credentials are configured
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-NEXT_PUBLIC_GOOGLE_ENABLED=true
 ```
 
 ### Google OAuth Configuration
@@ -169,16 +169,16 @@ Your `.env` file should include:
 BETTER_AUTH_SECRET=your-super-secret-key-change-this-in-production
 BETTER_AUTH_URL=http://localhost:3000
 
-# GitHub OAuth (Optional - enable to show GitHub sign-in button)
+# GitHub OAuth (Optional - buttons shown automatically when configured)
 GITHUB_CLIENT_ID=your-github-client-id
 GITHUB_CLIENT_SECRET=your-github-client-secret
-NEXT_PUBLIC_GITHUB_ENABLED=true
 
-# Google OAuth (Optional - enable to show Google sign-in button)
+# Google OAuth (Optional - buttons shown automatically when configured)
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-NEXT_PUBLIC_GOOGLE_ENABLED=true
 ```
+
+> **Note:** Social auth buttons are automatically shown in the UI when the corresponding client ID and secret are configured. No additional `NEXT_PUBLIC_*` variables are needed.
 
 ### Production Configuration
 
@@ -256,10 +256,12 @@ Social auth works in both cloud and self-hosted modes:
 ### Button Not Showing
 
 **Check:**
-1. Environment variables are set correctly
-2. `NEXT_PUBLIC_GITHUB_ENABLED=true` or `NEXT_PUBLIC_GOOGLE_ENABLED=true`
-3. Clear browser cache and reload
-4. Check browser console for errors
+1. Both `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` are set (for GitHub)
+2. Both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set (for Google)
+3. Restart the server after changing environment variables
+4. Clear browser cache and reload
+5. Check browser console for errors
+6. Verify `/api/config/auth-providers` returns the expected enabled status
 
 ### Authentication Fails
 

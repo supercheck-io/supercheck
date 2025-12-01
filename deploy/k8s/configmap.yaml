@@ -13,7 +13,8 @@ data:
   APP_URL: "https://app.supercheck.example.com"
   BETTER_AUTH_URL: "https://app.supercheck.example.com"
   STATUS_PAGE_DOMAIN: "status.supercheck.example.com"
-  NEXT_PUBLIC_DEMO_MODE: "false"
+  # Demo mode - shows demo badge in UI (runtime configurable)
+  DEMO_MODE: "false"
 
   DB_HOST: "postgres.example.com"
   DB_PORT: "5432"
@@ -68,8 +69,9 @@ data:
   PLAYGROUND_CLEANUP_CRON: "0 */12 * * *"
   PLAYGROUND_CLEANUP_MAX_AGE_HOURS: "24"
 
-  NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS: "10"
-  NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS: "10"
+  # Notification channel limits (runtime configurable)
+  MAX_JOB_NOTIFICATION_CHANNELS: "10"
+  MAX_MONITOR_NOTIFICATION_CHANNELS: "10"
 
   WORKER_LOCATION: "local"
 
@@ -95,5 +97,6 @@ data:
   POLAR_PRO_PRODUCT_ID: ""
 
   # OAuth Configuration (optional - enable social login)
-  NEXT_PUBLIC_GITHUB_ENABLED: "false"
-  NEXT_PUBLIC_GOOGLE_ENABLED: "false"
+  # Social auth buttons are automatically shown when GITHUB_CLIENT_ID/GOOGLE_CLIENT_ID are set in secrets
+  # Configure OAuth secrets (GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
+  # in a separate Kubernetes Secret resource
