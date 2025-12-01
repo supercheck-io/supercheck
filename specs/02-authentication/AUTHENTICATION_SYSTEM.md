@@ -385,16 +385,16 @@ socialProviders: {
 
 **Environment Variables:**
 ```bash
-# GitHub OAuth (Optional)
+# GitHub OAuth (Optional - buttons shown automatically when configured)
 GITHUB_CLIENT_ID=your-github-client-id
 GITHUB_CLIENT_SECRET=your-github-client-secret
-NEXT_PUBLIC_GITHUB_ENABLED=true  # Show GitHub button
 
-# Google OAuth (Optional)
+# Google OAuth (Optional - buttons shown automatically when configured)
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-client-secret
-NEXT_PUBLIC_GOOGLE_ENABLED=true  # Show Google button
 ```
+
+> **Note:** Social auth buttons are dynamically loaded via `/api/config/auth-providers` endpoint, allowing runtime configuration without rebuilding the application.
 
 **Callback URLs:**
 - GitHub: `{BASE_URL}/api/auth/callback/github`

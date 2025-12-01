@@ -46,8 +46,9 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   S3_MAX_RETRIES: ${S3_MAX_RETRIES:-3}
 
   # Notification Channel Limits
-  NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS: ${NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS:-10}
-  NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS: ${NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS:-10}
+  # Notification channel limits (runtime configurable)
+  MAX_JOB_NOTIFICATION_CHANNELS: ${MAX_JOB_NOTIFICATION_CHANNELS:-10}
+  MAX_MONITOR_NOTIFICATION_CHANNELS: ${MAX_MONITOR_NOTIFICATION_CHANNELS:-10}
 
   # Playwright Configuration - Optimized for Supercheck execution service
   # PLAYWRIGHT_HEADLESS: ${PLAYWRIGHT_HEADLESS:-true}
@@ -122,12 +123,11 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   POLAR_PRO_PRODUCT_ID: ${POLAR_PRO_PRODUCT_ID:-}
 
   # OAuth Configuration (optional - enable social login)
+  # Social auth buttons are automatically shown when client ID and secret are configured
   GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
   GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
-  NEXT_PUBLIC_GITHUB_ENABLED: ${NEXT_PUBLIC_GITHUB_ENABLED:-false}
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-  NEXT_PUBLIC_GOOGLE_ENABLED: ${NEXT_PUBLIC_GOOGLE_ENABLED:-false}
 
 services:
   # Traefik Reverse Proxy with HTTPS

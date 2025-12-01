@@ -73,8 +73,9 @@ x-common-env: &common-env # Database Configuration
   S3_MAX_RETRIES: 3
 
   # Notification Channel Limits
-  NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS: 10
-  NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS: 10
+  # Notification channel limits (runtime configurable)
+  MAX_JOB_NOTIFICATION_CHANNELS: 10
+  MAX_MONITOR_NOTIFICATION_CHANNELS: 10
 
   # Playwright Configuration
   # PLAYWRIGHT_HEADLESS: true
@@ -139,12 +140,11 @@ x-common-env: &common-env # Database Configuration
   POLAR_PRO_PRODUCT_ID: ""
 
   # OAuth Configuration (optional - enable social login)
+  # Social auth buttons are automatically shown when client ID and secret are configured
   GITHUB_CLIENT_ID: ""
   GITHUB_CLIENT_SECRET: ""
-  NEXT_PUBLIC_GITHUB_ENABLED: "false"
   GOOGLE_CLIENT_ID: ""
   GOOGLE_CLIENT_SECRET: ""
-  NEXT_PUBLIC_GOOGLE_ENABLED: "false"
 
 services:
   # App (Next.js Frontend)

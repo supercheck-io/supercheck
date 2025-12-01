@@ -51,6 +51,7 @@ import { UrlTriggerTooltip } from "./url-trigger-tooltip";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canDeleteJobs } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
+import { useAppConfig } from "@/hooks/use-app-config";
 
 
 interface AlertConfiguration {
@@ -82,6 +83,7 @@ export default function EditJob({ jobId }: EditJobProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const stepFromUrl = searchParams.get('step') as 'job' | 'alerts' | 'cicd' | null;
+  const { maxJobNotificationChannels } = useAppConfig();
 
   const [selectedTests, setSelectedTests] = useState<Test[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -313,10 +315,9 @@ export default function EditJob({ jobId }: EditJobProps) {
         }
 
         // Check notification channel limit
-        const maxJobChannels = parseInt(process.env.NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS || '10', 10);
-        if (alertConfig.notificationProviders.length > maxJobChannels) {
+        if (alertConfig.notificationProviders.length > maxJobNotificationChannels) {
           toast.error("Validation Error", {
-            description: `You can only select up to ${maxJobChannels} notification channels`,
+            description: `You can only select up to ${maxJobNotificationChannels} notification channels`,
           });
           return;
         }

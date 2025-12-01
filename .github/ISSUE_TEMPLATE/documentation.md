@@ -3,7 +3,6 @@ name: Documentation Issue
 about: Report documentation issues
 title: "[DOCS] "
 labels: "documentation"
-assignees: ""
 ---
 
 ## Location

@@ -1,16 +1,17 @@
+"use client";
+
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useAppConfig } from "@/hooks/use-app-config";
 
-interface DemoBadgeProps {
-  isDemoMode?: boolean;
-}
+export function DemoBadge() {
+  const { isDemoMode, isLoading } = useAppConfig();
 
-export function DemoBadge({ isDemoMode = false }: DemoBadgeProps = {}) {
-  if (!isDemoMode) {
+  if (isLoading || !isDemoMode) {
     return null;
   }
 

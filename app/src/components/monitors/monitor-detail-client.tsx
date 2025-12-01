@@ -89,6 +89,7 @@ import type {
   LocationConfig,
 } from "@/lib/location-service";
 import type { MonitorConfig } from "@/db/schema";
+import { useAppConfig } from "@/hooks/use-app-config";
 
 export interface MonitorResultItem {
   id: string;
@@ -154,6 +155,7 @@ export function MonitorDetailClient({
   isNotificationView = false,
 }: MonitorDetailClientProps) {
   const router = useRouter();
+  const { recentMonitorResultsLimit } = useAppConfig();
   const [monitor, setMonitor] = useState<MonitorWithResults>(initialMonitor);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -1310,12 +1312,8 @@ export function MonitorDetailClient({
                     "MMMM dd, yyyy"
                   )}`
                 : `Showing ${currentResultsCount} of ${totalResultsCount}${
-                    process.env.NEXT_PUBLIC_RECENT_MONITOR_RESULTS_LIMIT &&
-                    totalResultsCount >=
-                      parseInt(
-                        process.env.NEXT_PUBLIC_RECENT_MONITOR_RESULTS_LIMIT,
-                        10
-                      )
+                    recentMonitorResultsLimit &&
+                    totalResultsCount >= recentMonitorResultsLimit
                       ? "+"
                       : ""
                   } recent checks.`}

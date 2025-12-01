@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { Card, CardContent } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 
 // Routes that don't require subscription
@@ -112,11 +113,13 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   // Still checking subscription - only shown in cloud mode, never in self-hosted
   if (isChecking && !isSelfHosted) {
     return (
-      <div className="flex min-h-[calc(100vh-200px)] items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-          <p className="text-lg text-muted-foreground">Please wait, loading...</p>
-        </div>
+      <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
+        <Card className="w-full max-w-lg shadow-sm">
+          <CardContent className="flex flex-col items-center gap-3 py-12">
+            <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
+            <p className="text-lg text-muted-foreground">Please wait, loading...</p>
+          </CardContent>
+        </Card>
       </div>
     );
   }

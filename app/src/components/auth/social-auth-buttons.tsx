@@ -5,6 +5,7 @@ import { signIn } from "@/utils/auth-client";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { GitHubIcon, GoogleIcon } from "./social-icons";
+import { useAuthProviders } from "@/hooks/use-auth-providers";
 
 interface SocialAuthButtonsProps {
   mode: "signin" | "signup";
@@ -20,6 +21,7 @@ export function SocialAuthButtons({
   const [isGithubLoading, setIsGithubLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { isGithubEnabled, isGoogleEnabled, isLoading: isProvidersLoading } = useAuthProviders();
 
   const handleGitHubSignIn = async () => {
     try {
@@ -60,18 +62,10 @@ export function SocialAuthButtons({
   };
 
   const isLoading = isGithubLoading || isGoogleLoading;
-  const isDisabled = disabled || isLoading;
+  const isDisabled = disabled || isLoading || isProvidersLoading;
 
-  // Check if social providers are enabled via environment variables
-  const isGithubEnabled = !!(
-    process.env.NEXT_PUBLIC_GITHUB_ENABLED === "true"
-  );
-  const isGoogleEnabled = !!(
-    process.env.NEXT_PUBLIC_GOOGLE_ENABLED === "true"
-  );
-
-  // Don't render if no social providers are enabled
-  if (!isGithubEnabled && !isGoogleEnabled) {
+  // Don't render if loading providers or no social providers are enabled
+  if (isProvidersLoading || (!isGithubEnabled && !isGoogleEnabled)) {
     return null;
   }
 
