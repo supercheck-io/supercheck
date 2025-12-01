@@ -103,7 +103,7 @@ jobs:
 
       - name: Lint code
         working-directory: ./worker
-        run: eslint "{src,apps,libs}/**/*.ts" --max-warnings 0
+        run: npx eslint "{src,apps,libs}/**/*.ts" --max-warnings 0
 
       - name: Run tests
         working-directory: ./worker
