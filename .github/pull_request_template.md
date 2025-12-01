@@ -10,15 +10,6 @@
 - [ ] Documentation
 - [ ] Other
 
-## Related Issues
-
-Closes #
-
-## Changes
-
--
--
-
 ## Testing
 
 <!-- How was this tested? -->
