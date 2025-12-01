@@ -34,27 +34,34 @@
 
 ## App Test Files (19 files)
 
+### Library & Utility Tests (18 files)
+
 | # | File | Tests | Domain | Priority |
 |---|------|-------|--------|----------|
 | 1 | `input-sanitizer.spec.ts` | 101 | Security - XSS Prevention | Critical |
 | 2 | `subscription-service.spec.ts` | 83 | Billing - Subscription Management | Critical |
 | 3 | `role-normalizer.spec.ts` | 65 | RBAC - Role Conversion | High |
-| 4 | `api-route-handlers.spec.ts` | 62 | API - Route Handler Logic | High |
-| 5 | `permissions.spec.ts` | 61 | RBAC - Permission Matrix | High |
-| 6 | `middleware.spec.ts` | 61 | RBAC - Permission Middleware | High |
-| 7 | `capacity-manager.spec.ts` | 58 | Queue - Redis Capacity | High |
-| 8 | `ai-classifier.spec.ts` | 54 | AI - Error Classification | Medium |
-| 9 | `k6-validator.spec.ts` | 46 | Validation - K6 Scripts | Medium |
-| 10 | `secret-crypto.spec.ts` | 45 | Security - AES-128-GCM | Critical |
-| 11 | `session.spec.ts` | 43 | Auth - Session Management | High |
-| 12 | `variable-resolver.spec.ts` | 42 | Variables - Resolution | High |
-| 13 | `alert-service.spec.ts` | 40 | Alerts - CRUD & History | High |
-| 14 | `plan-enforcement.spec.ts` | 39 | Billing - Plan Limits | Critical |
-| 15 | `date-utils.spec.ts` | 38 | Utilities - Date Formatting | Low |
-| 16 | `job-scheduler.spec.ts` | 26 | Jobs - BullMQ Scheduling | High |
-| 17 | `encryption.spec.ts` | 22 | Security - Encryption Wrapper | Medium |
-| 18 | `cron-utils.spec.ts` | 21 | Utilities - Cron Parsing | Low |
-| 19 | `use-form-validation.spec.tsx` | 18 | Hooks - Form Validation | Medium |
+| 4 | `permissions.spec.ts` | 61 | RBAC - Permission Matrix | High |
+| 5 | `middleware.spec.ts` | 61 | RBAC - Permission Middleware | High |
+| 6 | `capacity-manager.spec.ts` | 58 | Queue - Redis Capacity | High |
+| 7 | `ai-classifier.spec.ts` | 54 | AI - Error Classification | Medium |
+| 8 | `k6-validator.spec.ts` | 46 | Validation - K6 Scripts | Medium |
+| 9 | `secret-crypto.spec.ts` | 45 | Security - AES-128-GCM | Critical |
+| 10 | `session.spec.ts` | 43 | Auth - Session Management | High |
+| 11 | `variable-resolver.spec.ts` | 42 | Variables - Resolution | High |
+| 12 | `alert-service.spec.ts` | 40 | Alerts - CRUD & History | High |
+| 13 | `plan-enforcement.spec.ts` | 39 | Billing - Plan Limits | Critical |
+| 14 | `date-utils.spec.ts` | 38 | Utilities - Date Formatting | Low |
+| 15 | `job-scheduler.spec.ts` | 26 | Jobs - BullMQ Scheduling | High |
+| 16 | `encryption.spec.ts` | 22 | Security - Encryption Wrapper | Medium |
+| 17 | `cron-utils.spec.ts` | 21 | Utilities - Cron Parsing | Low |
+| 18 | `use-form-validation.spec.tsx` | 18 | Hooks - Form Validation | Medium |
+
+### API Route Tests (1 file - COLOCATED)
+
+| # | File | Tests | Domain | Priority |
+|---|------|-------|--------|----------|
+| 1 | `handlers.spec.ts` | 74 | API - Route Handler Logic | High |
 
 ---
 
@@ -87,7 +94,7 @@
 | Notifications | ~60 | 75% |
 | Monitoring | ~83 | 70% |
 | Utilities | ~79 | 90% |
-| API Route Logic | ~62 | 60% |
+| API Route Logic | ~74 | 60% |
 | Session & Auth | ~43 | 60% |
 
 ### By Test Type
@@ -195,13 +202,14 @@
 
 ### API Route Tests
 
-**api-route-handlers.spec.ts (62 tests)**
-- Jobs API logic (permissions, validation, execution)
-- Monitors API logic (CRUD, plan limits, audit)
-- Tests API logic (CRUD, project scoping)
-- Security (auth, subscription validation)
-- Input sanitization
-- Error handling
+**handlers.spec.ts (74 tests) - Colocated at `/app/src/app/api/`**
+- Jobs API handler logic (permissions, validation, execution)
+- Monitors API handler logic (CRUD, plan limits, audit, sanitization)
+- Tests API handler logic (CRUD, project scoping, script handling)
+- Monitor types (6 types: HTTP, Website, Ping, Port, Heartbeat, Synthetic)
+- Test priorities and types (5 priorities × 5 types)
+- API Security (auth, subscription validation, error handling)
+- Edge cases (long values, special characters, concurrent operations)
 
 ### Session & Auth Tests
 
@@ -320,8 +328,10 @@ describe('ServiceName', () => {
 
 ```
 app/src/
-├── lib/
-│   ├── api-route-handlers.spec.ts
+├── app/
+│   └── api/                          # API Route Tests (1 file - COLOCATED)
+│       └── handlers.spec.ts
+├── lib/                              # Library & Utility Tests (18 files)
 │   ├── ai-classifier.spec.ts
 │   ├── alert-service.spec.ts
 │   ├── capacity-manager.spec.ts
