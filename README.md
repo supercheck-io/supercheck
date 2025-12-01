@@ -100,20 +100,13 @@ supercheck/
 
 ## Documentation
 
-- [Contributing](CONTRIBUTING.md) - Development guidelines
 - [Code of Conduct](CODE_OF_CONDUCT.md) - Community standards
 - [Support](SUPPORT.md) - Getting help
 - [Security](SECURITY.md) - Vulnerability reporting
-
-## Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## Community
 
 - [GitHub Issues](https://github.com/supercheck-io/supercheck/issues)
 - [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions)
 
-## License
 
-MIT License - see [LICENSE](LICENSE) for details.
