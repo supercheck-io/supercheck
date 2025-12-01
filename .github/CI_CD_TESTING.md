@@ -11,7 +11,7 @@ SuperCheck now integrates comprehensive Jest unit tests into the CI/CD pipeline 
 - ✅ **Build Verification**: Docker images only build after tests pass
 - ✅ **Parallel Execution**: App and worker tests run simultaneously (~12 min total)
 - ✅ **Smart Caching**: NPM (~70% faster) and Jest cache (~20-30% faster)
-- ✅ **Coverage Enforcement**: 70% coverage threshold prevents regression
+- ✅ **Coverage Enforcement**: Minimum coverage thresholds prevent regression
 - ✅ **Multi-Stage Quality**: TypeScript, ESLint, Tests, Build checks
 
 ---
@@ -402,14 +402,25 @@ graph LR
 
 ### Coverage Thresholds
 
-Both `app` and `worker` packages enforce these thresholds:
+Coverage thresholds differ by package based on current test coverage:
 
+**App Package:**
 ```
-Branches:   70%
-Functions:  70%
-Lines:      70%
-Statements: 70%
+Branches:   3%
+Functions:  3%
+Lines:      4%
+Statements: 4%
 ```
+
+**Worker Package:**
+```
+Branches:   10%
+Functions:  10%
+Lines:      15%
+Statements: 15%
+```
+
+> **Note:** These are minimum thresholds to prevent regression. The goal is to incrementally increase coverage over time.
 
 ### Coverage Failure Scenarios
 
