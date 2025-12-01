@@ -18,6 +18,7 @@ import { MonitorType, AlertConfig } from "@/db/schema";
 import { FormValues } from "./monitor-form";
 import { DEFAULT_LOCATION_CONFIG } from "@/lib/location-service";
 import type { LocationConfig } from "@/lib/location-service";
+import { useAppConfig } from "@/hooks/use-app-config";
 
 type WizardStep = "monitor" | "location" | "alerts";
 
@@ -25,6 +26,7 @@ export function MonitorCreationWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const stepFromUrl = searchParams?.get('wizardStep') as WizardStep | null;
+  const { maxMonitorNotificationChannels } = useAppConfig();
 
   // Restore draft data from sessionStorage
   const getInitialMonitorData = () => {
@@ -221,13 +223,9 @@ export function MonitorCreationWizard() {
       }
 
       // Check notification channel limit
-      const maxMonitorChannels = parseInt(
-        process.env.NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS || "10",
-        10
-      );
-      if (alertConfig.notificationProviders.length > maxMonitorChannels) {
+      if (alertConfig.notificationProviders.length > maxMonitorNotificationChannels) {
         toast.error("Validation Error", {
-          description: `You can only select up to ${maxMonitorChannels} notification channels`,
+          description: `You can only select up to ${maxMonitorNotificationChannels} notification channels`,
         });
         return;
       }

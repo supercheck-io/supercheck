@@ -7,7 +7,7 @@ interface HostingMode {
 
 /**
  * Hook to check the hosting mode (self-hosted vs cloud)
- * Fetches the runtime hosting mode from the server
+ * Uses the unified /api/config/app endpoint for runtime configuration
  *
  * This hook should be used to conditionally show UI elements based on deployment mode
  */
@@ -22,15 +22,15 @@ export function useHostingMode() {
         setIsLoading(true);
         setError(null);
 
-        const response = await fetch("/api/config/hosting-mode");
+        const response = await fetch("/api/config/app");
         if (!response.ok) {
-          throw new Error("Failed to fetch hosting mode");
+          throw new Error("Failed to fetch app config");
         }
 
         const data = await response.json();
         setHostingMode({
-          selfHosted: data.selfHosted || false,
-          cloudHosted: data.cloudHosted || false,
+          selfHosted: data.hosting?.selfHosted ?? true,
+          cloudHosted: data.hosting?.cloudHosted ?? false,
         });
       } catch (err) {
         const error = err instanceof Error ? err : new Error("Unknown error");
@@ -52,7 +52,7 @@ export function useHostingMode() {
     hostingMode,
     isLoading,
     error,
-    isSelfHosted: hostingMode?.selfHosted ?? false,
+    isSelfHosted: hostingMode?.selfHosted ?? true,
     isCloudHosted: hostingMode?.cloudHosted ?? false,
   };
 }

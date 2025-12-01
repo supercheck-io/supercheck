@@ -59,7 +59,7 @@ const PLAYWRIGHT_RUNTIME: RuntimeInfo = {
   description: "Pre-approved modules available to Playwright-based tests.",
   libraries: PLAYWRIGHT_LIBRARIES,
   footer:
-    "Scripts are validated for security. Node.js core modules are blocked and test execution has a 2-minute timeout.",
+    "Scripts are validated for security. Node.js core modules are blocked and test execution has a 5-minute timeout.",
 };
 
 const PERFORMANCE_RUNTIME: RuntimeInfo = {

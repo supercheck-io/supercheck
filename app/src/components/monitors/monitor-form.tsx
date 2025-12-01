@@ -67,6 +67,7 @@ import { Switch } from "@/components/ui/switch";
 import { canCreateMonitors } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { useProjectContext } from "@/hooks/use-project-context";
+import { useAppConfig } from "@/hooks/use-app-config";
 
 // Define presets for Expected Status Codes
 const statusCodePresets = [
@@ -405,6 +406,7 @@ export function MonitorForm({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { maxMonitorNotificationChannels } = useAppConfig();
 
   // Get user permissions
   const { currentProject } = useProjectContext();
@@ -930,13 +932,9 @@ export function MonitorForm({
       }
 
       // Check notification channel limit
-      const maxMonitorChannels = parseInt(
-        process.env.NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS || "10",
-        10
-      );
-      if (alertConfig.notificationProviders.length > maxMonitorChannels) {
+      if (alertConfig.notificationProviders.length > maxMonitorNotificationChannels) {
         toast.error("Validation Error", {
-          description: `You can only select up to ${maxMonitorChannels} notification channels`,
+          description: `You can only select up to ${maxMonitorNotificationChannels} notification channels`,
         });
         return;
       }

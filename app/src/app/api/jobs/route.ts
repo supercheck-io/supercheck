@@ -354,7 +354,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Check notification channel limit
-      const maxJobChannels = parseInt(process.env.NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS || '10', 10);
+      const maxJobChannels = parseInt(process.env.MAX_JOB_NOTIFICATION_CHANNELS || '10', 10);
       if (jobData.alertConfig.notificationProviders.length > maxJobChannels) {
         return NextResponse.json(
           { error: `You can only select up to ${maxJobChannels} notification channels` },

@@ -295,7 +295,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Check notification channel limit
-      const maxMonitorChannels = parseInt(process.env.NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS || '10', 10);
+      const maxMonitorChannels = parseInt(process.env.MAX_MONITOR_NOTIFICATION_CHANNELS || '10', 10);
       if (alertConfig.notificationProviders.length > maxMonitorChannels) {
         return NextResponse.json(
           { error: `You can only select up to ${maxMonitorChannels} notification channels` },
@@ -497,7 +497,7 @@ export async function PUT(req: NextRequest) {
       }
 
       // Check notification channel limit
-      const maxMonitorChannels = parseInt(process.env.NEXT_PUBLIC_MAX_MONITOR_NOTIFICATION_CHANNELS || '10', 10);
+      const maxMonitorChannels = parseInt(process.env.MAX_MONITOR_NOTIFICATION_CHANNELS || '10', 10);
       if (alertConfig.notificationProviders.length > maxMonitorChannels) {
         return NextResponse.json(
           { error: `You can only select up to ${maxMonitorChannels} notification channels` },

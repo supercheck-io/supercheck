@@ -15,6 +15,7 @@ import {
 import { toast } from "sonner";
 import { Test } from "./schema";
 import { type AlertConfig } from "@/db/schema";
+import { useAppConfig } from "@/hooks/use-app-config";
 
 type JobAlertConfig = AlertConfig;
 
@@ -22,6 +23,7 @@ export function JobCreationWizardK6() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const stepFromUrl = searchParams.get('step') as "job" | "alerts" | null;
+  const { maxJobNotificationChannels } = useAppConfig();
 
   // Restore form data from sessionStorage if available (survives page refresh)
   const getInitialFormData = () => {
@@ -172,13 +174,9 @@ export function JobCreationWizardK6() {
       }
 
       // Check notification channel limit
-      const maxJobChannels = parseInt(
-        process.env.NEXT_PUBLIC_MAX_JOB_NOTIFICATION_CHANNELS || "10",
-        10
-      );
-      if (alertConfig.notificationProviders.length > maxJobChannels) {
+      if (alertConfig.notificationProviders.length > maxJobNotificationChannels) {
         toast.error("Validation Error", {
-          description: `You can only select up to ${maxJobChannels} notification channels`,
+          description: `You can only select up to ${maxJobNotificationChannels} notification channels`,
         });
         return;
       }
