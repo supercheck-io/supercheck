@@ -741,8 +741,14 @@ sequenceDiagram
 
 - **Parallel Batch Queries**: Checks all runs concurrently using `Promise.all()`
 - **Early Exit**: Uses `Promise.race()` to return as soon as job is found in any queue
-- **Timeout Protection**: 500ms timeout per run to prevent hanging
+- **Timeout Protection**: 2000ms timeout per run (increased for connection stability)
 - **Complexity**: O(N) instead of O(N×M) where N=runs, M=queues
+
+### Stale Threshold
+
+- Only runs older than **60 minutes** (platform max execution time) are marked as stale
+- Recent runs not found in queue are kept as valid (handles transient BullMQ connection issues)
+- Prevents legitimate running jobs from being incorrectly marked as errors during page refresh
 
 ### Error Messages
 

@@ -20,7 +20,57 @@ env:
   IMAGE_NAME: supercheck-io/supercheck
 
 jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      matrix:
+        package: [app, worker]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ${{ matrix.package }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./${{ matrix.package }}
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Type check
+        working-directory: ./${{ matrix.package }}
+        run: npx tsc --noEmit
+
+      - name: Lint
+        working-directory: ./${{ matrix.package }}
+        run: |
+          if [ "${{ matrix.package }}" = "app" ]; then
+            npm run lint -- --max-warnings 0
+          else
+            eslint "{src,apps,libs}/**/*.ts" --max-warnings 0
+          fi
+
+      - name: Run tests
+        working-directory: ./${{ matrix.package }}
+        run: npm run test:cov -- --maxWorkers=2
+        env:
+          NODE_ENV: test
+
+      - name: Build check
+        working-directory: ./${{ matrix.package }}
+        run: npm run build
+        env:
+          SKIP_ENV_VALIDATION: ${{ matrix.package == 'app' && 'true' || 'false' }}
+
   build-and-push:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -136,7 +186,6 @@ jobs:
           labels: ${{ steps.app-meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          build-args: |
 
       - name: Clean up after app build
         run: |

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
     Dialog,
     DialogContent,
@@ -71,12 +71,18 @@ export function ExecutionsDialog({ open, onOpenChange, defaultTab = "running" }:
     const runIdToCancelRef = useRef<string | null>(null);
     const [activeTab, setActiveTab] = useState<string>(defaultTab);
     const [currentPage, setCurrentPage] = useState(1);
+    
+    // SSE connection management refs
+    const eventSourceRef = useRef<EventSource | null>(null);
+    const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const reconnectAttemptsRef = useRef(0);
+    const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     // Update active tab when dialog opens or defaultTab changes
     useEffect(() => {
         if (open) {
             setActiveTab(defaultTab);
-            setCurrentPage(1); // Reset to first page on open/tab change
+            setCurrentPage(1);
         }
     }, [open, defaultTab]);
 
@@ -90,101 +96,206 @@ export function ExecutionsDialog({ open, onOpenChange, defaultTab = "running" }:
         runIdToCancelRef.current = runIdToCancel;
     }, [runIdToCancel]);
 
-    // Fetch initial data
-    useEffect(() => {
-        if (!open) return;
+    // Fetch executions data with error handling
+    const fetchExecutions = useCallback(async (showLoadingToast = false) => {
+        try {
+            const res = await fetch("/api/executions/running", {
+                cache: "no-store",
+                headers: {
+                    "Cache-Control": "no-cache",
+                },
+            });
+            if (!res.ok) throw new Error("Failed to fetch executions");
 
-        async function fetchExecutions() {
-            try {
-                const res = await fetch("/api/executions/running");
-                if (!res.ok) throw new Error("Failed to fetch executions");
-
-                const data = await res.json();
-                setRunning(
-                    (data.running as ExecutionItem[]).map((item) => ({
-                        ...item,
-                        startedAt: item.startedAt ? new Date(item.startedAt) : null,
-                    }))
-                );
-                setQueued(data.queued as ExecutionItem[]);
-            } catch (error) {
-                console.error("Error fetching executions:", error);
+            const data = await res.json();
+            setRunning(
+                (data.running as ExecutionItem[]).map((item) => ({
+                    ...item,
+                    startedAt: item.startedAt ? new Date(item.startedAt) : null,
+                }))
+            );
+            setQueued(
+                (data.queued as ExecutionItem[]).map((item) => ({
+                    ...item,
+                    startedAt: item.startedAt ? new Date(item.startedAt) : null,
+                }))
+            );
+        } catch (error) {
+            console.error("Error fetching executions:", error);
+            if (showLoadingToast) {
                 toast.error("Failed to load executions");
-            } finally {
-                setLoading(false);
             }
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    // Set up SSE connection with reconnection logic
+    const setupEventSource = useCallback(() => {
+        if (eventSourceRef.current) {
+            eventSourceRef.current.close();
         }
 
-        fetchExecutions();
-    }, [open]);
+        try {
+            // Use organization-scoped SSE endpoint for cross-project visibility
+            const source = new EventSource("/api/executions/events");
+            eventSourceRef.current = source;
 
-    // SSE for real-time updates
-    useEffect(() => {
-        if (!open) return;
+            source.onopen = () => {
+                reconnectAttemptsRef.current = 0;
+            };
 
-        const eventSource = new EventSource("/api/job-status/events");
+            source.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
 
-        eventSource.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
+                    // Update running jobs
+                    if (data.status === "running" && data.runId) {
+                        setRunning((prev) => {
+                            const exists = prev.find((item) => item.runId === data.runId);
+                            if (!exists && data.jobName && data.jobType) {
+                                return [
+                                    ...prev,
+                                    {
+                                        runId: data.runId,
+                                        jobId: data.jobId,
+                                        jobName: data.jobName,
+                                        jobType: data.jobType as "playwright" | "k6",
+                                        status: "running",
+                                        startedAt: data.startedAt ? new Date(data.startedAt) : new Date(),
+                                        source: data.source,
+                                        projectName: data.projectName,
+                                    },
+                                ];
+                            }
+                            return prev;
+                        });
 
-                // Update running jobs
-                if (data.status === "running" && data.runId) {
-                    setRunning((prev) => {
-                        const exists = prev.find((item) => item.runId === data.runId);
-                        if (!exists && data.jobName && data.jobType) {
-                            return [
-                                ...prev,
-                                {
-                                    runId: data.runId,
-                                    jobId: data.jobId,
-                                    jobName: data.jobName,
-                                    jobType: data.jobType as "playwright" | "k6",
-                                    status: "running",
-                                    startedAt: new Date(),
-                                    source: data.source, // Assuming SSE also sends source, or we default
-                                },
-                            ];
-                        }
-                        return prev;
-                    });
-
-                    // Remove from queued if it was there
-                    setQueued((prev) => prev.filter((item) => item.runId !== data.runId));
-                }
-
-                // Remove completed/failed/cancelled jobs
-                // Note: 'passed' is the status for successful completion from queue-event-hub
-                // Also check for 'completed' event directly as a catch-all
-                if (
-                    ["completed", "passed", "failed", "cancelled", "error"].includes(data.status) ||
-                    data.event === "completed"
-                ) {
-                    setRunning((prev) => prev.filter((item) => item.runId !== data.runId));
-                    setQueued((prev) => prev.filter((item) => item.runId !== data.runId));
-                    
-                    // Close confirmation dialog if this run was being cancelled
-                    // This prevents calling cancel API on an already-completed run
-                    if (data.runId === runIdToCancelRef.current) {
-                        setRunIdToCancel(null);
-                        setCancellingId(null);
-                        toast.info("Execution completed before cancellation could be processed");
+                        // Remove from queued if it was there
+                        setQueued((prev) => prev.filter((item) => item.runId !== data.runId));
                     }
+
+                    // Remove completed/failed/cancelled jobs
+                    if (
+                        ["completed", "passed", "failed", "cancelled", "error"].includes(data.status) ||
+                        data.event === "completed"
+                    ) {
+                        setRunning((prev) => prev.filter((item) => item.runId !== data.runId));
+                        setQueued((prev) => prev.filter((item) => item.runId !== data.runId));
+                        
+                        // Close confirmation dialog if this run was being cancelled
+                        if (data.runId === runIdToCancelRef.current) {
+                            setRunIdToCancel(null);
+                            setCancellingId(null);
+                            toast.info("Execution completed before cancellation could be processed");
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error processing SSE event:", error);
                 }
-            } catch (error) {
-                console.error("Error processing SSE event:", error);
+            };
+
+            source.onerror = () => {
+                source.close();
+                eventSourceRef.current = null;
+
+                // Exponential backoff for reconnection
+                const backoffTime = Math.min(
+                    1000 * Math.pow(1.5, reconnectAttemptsRef.current),
+                    10000
+                );
+                reconnectAttemptsRef.current++;
+
+                if (reconnectTimeoutRef.current) {
+                    clearTimeout(reconnectTimeoutRef.current);
+                }
+
+                reconnectTimeoutRef.current = setTimeout(() => {
+                    if (document.visibilityState !== "hidden") {
+                        setupEventSource();
+                    }
+                }, backoffTime);
+            };
+
+            return source;
+        } catch (err) {
+            console.error("Failed to initialize SSE:", err);
+            return null;
+        }
+    }, []);
+
+    // Fetch initial data when dialog opens
+    useEffect(() => {
+        if (!open) {
+            setLoading(true);
+            return;
+        }
+
+        // Fetch immediately when dialog opens, show toast on error
+        fetchExecutions(true);
+    }, [open, fetchExecutions]);
+
+    // SSE connection management with polling fallback
+    useEffect(() => {
+        if (!open) {
+            // Cleanup when dialog closes
+            if (eventSourceRef.current) {
+                eventSourceRef.current.close();
+                eventSourceRef.current = null;
+            }
+            if (reconnectTimeoutRef.current) {
+                clearTimeout(reconnectTimeoutRef.current);
+                reconnectTimeoutRef.current = null;
+            }
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
+            }
+            return;
+        }
+
+        // Handle visibility changes to reconnect when tab becomes visible
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "visible" && open) {
+                // Re-fetch data when tab becomes visible
+                fetchExecutions();
+                // Reconnect SSE if not connected
+                if (!eventSourceRef.current) {
+                    setupEventSource();
+                }
             }
         };
 
-        eventSource.onerror = () => {
-            console.error("SSE connection error");
-            eventSource.close();
-        };
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
+        // Initial SSE setup
+        const source = setupEventSource();
+
+        // Polling fallback: refresh data every 10 seconds to catch any missed SSE events
+        // This ensures robustness against SSE connection issues
+        pollingIntervalRef.current = setInterval(() => {
+            if (document.visibilityState === "visible") {
+                fetchExecutions();
+            }
+        }, 10000);
 
         return () => {
-            eventSource.close();
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+
+            if (reconnectTimeoutRef.current) {
+                clearTimeout(reconnectTimeoutRef.current);
+            }
+
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+            }
+
+            if (source) {
+                source.close();
+            }
+            eventSourceRef.current = null;
         };
-    }, [open]);
+    }, [open, setupEventSource, fetchExecutions]);
 
     const handleCancelClick = (runId: string) => {
         setRunIdToCancel(runId);

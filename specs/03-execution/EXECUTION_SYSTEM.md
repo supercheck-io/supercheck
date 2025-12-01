@@ -481,7 +481,9 @@ The system includes automatic detection and recovery for stale runs (database sh
 
 **Detection Mechanism:**
 - `/api/jobs/status/running` endpoint verifies each "running" run against BullMQ queue state
-- Runs not found in queue with active/waiting/delayed state are marked as stale
+- Uses 2000ms timeout for BullMQ lookups (increased for connection stability)
+- Only runs older than **60 minutes** (platform max execution time) are marked as stale
+- Recent runs not found in queue are kept as valid (handles transient connection issues)
 - Stale runs are automatically updated to `error` status with appropriate error details
 
 **Recovery Actions:**
