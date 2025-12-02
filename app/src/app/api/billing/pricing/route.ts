@@ -160,11 +160,6 @@ export async function GET() {
             pro: plans.find((p) => p.plan === "pro")?.maxTeamMembers || "25",
           },
           {
-            name: "Organizations",
-            plus: plans.find((p) => p.plan === "plus")?.maxOrganizations || "2",
-            pro: plans.find((p) => p.plan === "pro")?.maxOrganizations || "10",
-          },
-          {
             name: "Projects",
             plus: plans.find((p) => p.plan === "plus")?.maxProjects || "10",
             pro: plans.find((p) => p.plan === "pro")?.maxProjects || "50",
@@ -236,10 +231,28 @@ export async function GET() {
       },
     ];
 
+    // Build overage pricing data from database
+    const plusOverage = overagePricingMap.get("plus");
+    const proOverage = overagePricingMap.get("pro");
+    
+    const overagePricingResponse = {
+      plus: {
+        playwrightMinutes: plusOverage ? plusOverage.playwrightMinutePriceCents / 100 : 0.03,
+        k6VuMinutes: plusOverage ? plusOverage.k6VuMinutePriceCents / 100 : 0.01,
+        aiCredits: plusOverage ? plusOverage.aiCreditPriceCents / 100 : 0.05,
+      },
+      pro: {
+        playwrightMinutes: proOverage ? proOverage.playwrightMinutePriceCents / 100 : 0.02,
+        k6VuMinutes: proOverage ? proOverage.k6VuMinutePriceCents / 100 : 0.01,
+        aiCredits: proOverage ? proOverage.aiCreditPriceCents / 100 : 0.03,
+      },
+    };
+
     return NextResponse.json({
       plans: pricingPlans,
       featureComparison,
       faqs,
+      overagePricing: overagePricingResponse,
     });
   } catch (error) {
     console.error("Error fetching pricing information:", error);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Accordion,
@@ -59,10 +59,24 @@ interface FeatureCategory {
   features: FeatureRow[];
 }
 
+interface OveragePricingData {
+  plus: {
+    playwrightMinutes: number;
+    k6VuMinutes: number;
+    aiCredits: number;
+  };
+  pro: {
+    playwrightMinutes: number;
+    k6VuMinutes: number;
+    aiCredits: number;
+  };
+}
+
 interface PricingData {
   plans: PricingPlan[];
   featureComparison: FeatureCategory[];
   faqs: Array<{ question: string; answer: string }>;
+  overagePricing?: OveragePricingData;
 }
 
 const defaultFaqs = [
@@ -166,7 +180,7 @@ export default function SubscribePage() {
 
       {/* Pricing Tier Cards */}
       <section className="max-w-5xl mx-auto">
-        <div className="grid gap-5 md:grid-cols-2 max-w-4xl mx-auto">
+        <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
           {plans.map((plan) => (
             <PricingTierCard
               key={plan.id}
@@ -176,13 +190,17 @@ export default function SubscribePage() {
               tagline={plan.description}
               badge={plan.id === "pro" ? "Most Popular" : undefined}
               keyFeatures={[
-                `${plan.features.monitors.toLocaleString()} monitors`,
-                `${plan.features.playwrightMinutes.toLocaleString()} Playwright minutes`,
-                `${plan.features.k6VuMinutes.toLocaleString()} K6 VU-minutes`,
-                `${plan.features.aiCredits.toLocaleString()} AI credits`,
+                `${plan.features.monitors.toLocaleString()} uptime monitors`,
+                `${plan.features.playwrightMinutes.toLocaleString()} Playwright mins/mo`,
+                `${plan.features.k6VuMinutes.toLocaleString()} K6 VU-mins/mo`,
+                `${plan.features.aiCredits.toLocaleString()} AI credits/mo`,
+                `${plan.features.teamMembers} team members`,
+                `${plan.features.projects} projects`,
+                `${plan.features.dataRetention} data retention`,
+                plan.features.customDomains ? "Custom domains" : "Standard domains",
               ]}
-              overageText={`Overage: $${plan.overagePricing.playwrightMinutes}/min · $${plan.overagePricing.k6VuMinutes}/VU-min · $${plan.overagePricing.aiCredits}/credit AI`}
-              ctaText={`Get ${plan.name}`}
+              overageText={`Overage: $${plan.overagePricing.playwrightMinutes}/min · $${plan.overagePricing.k6VuMinutes}/VU-min · $${plan.overagePricing.aiCredits}/credit`}
+              ctaText={`Get Started with ${plan.name}`}
               ctaVariant={plan.id === "pro" ? "default" : "outline"}
               onCtaClick={() => handleSubscribe(plan.id)}
               loading={subscribing === plan.id}
@@ -190,6 +208,19 @@ export default function SubscribePage() {
             />
           ))}
         </div>
+        
+        {/* Self-hosted mention */}
+        <p className="text-center text-sm text-muted-foreground mt-6">
+          Want unlimited usage?{" "}
+          <a 
+            href="https://github.com/supercheck-io/supercheck" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-primary hover:underline font-medium"
+          >
+            Self-host Supercheck for free
+          </a>
+        </p>
       </section>
 
       <Separator className="my-8" />
@@ -204,7 +235,12 @@ export default function SubscribePage() {
             All the details you need to make the right choice
           </p>
         </div>
-        {pricingData && <PricingComparisonTable categories={pricingData.featureComparison} />}
+        {pricingData && (
+          <PricingComparisonTable 
+            categories={pricingData.featureComparison} 
+            overagePricing={pricingData.overagePricing}
+          />
+        )}
       </section>
 
       <Separator className="my-8" />
@@ -260,38 +296,60 @@ function SubscribeSkeleton() {
       </div>
 
       {/* Pricing Cards Skeleton */}
-      <div className="grid gap-5 md:grid-cols-2 max-w-4xl mx-auto">
+      <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
         {[1, 2].map((i) => (
-          <Card key={i} className="p-5">
-            <Skeleton className="h-7 w-20 mb-2" />
-            <Skeleton className="h-4 w-48 mb-4" />
-            <Skeleton className="h-11 w-32 mb-5" />
-            <div className="space-y-2.5 mb-5">
-              {[1, 2, 3, 4].map((j) => (
-                <Skeleton key={j} className="h-4 w-full" />
+          <Card key={i} className="p-6 border">
+            {/* Plan name and tagline */}
+            <Skeleton className="h-8 w-24 mb-1" />
+            <Skeleton className="h-4 w-56 mb-4" />
+            {/* Price */}
+            <Skeleton className="h-14 w-36 mb-6" />
+            {/* Features - 8 items to match actual card */}
+            <div className="space-y-3 mb-6">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((j) => (
+                <div key={j} className="flex items-center gap-3">
+                  <Skeleton className="h-5 w-5 rounded-full flex-shrink-0" />
+                  <Skeleton className="h-4 w-full" />
+                </div>
               ))}
             </div>
-            <Skeleton className="h-10 w-full mb-3" />
-            <Skeleton className="h-3 w-full" />
+            {/* CTA Button */}
+            <Skeleton className="h-11 w-full mb-4" />
+            {/* Overage text */}
+            <div className="pt-4 border-t">
+              <Skeleton className="h-3 w-full mx-auto" />
+            </div>
           </Card>
         ))}
       </div>
 
+      {/* Self-hosted link skeleton */}
+      <div className="text-center">
+        <Skeleton className="h-4 w-72 mx-auto" />
+      </div>
+
+      <Skeleton className="h-px w-full" />
+
       {/* Table Skeleton */}
-      <div className="space-y-4">
+      <div className="space-y-4 max-w-7xl mx-auto">
         <div className="text-center space-y-1.5 mb-6">
           <Skeleton className="h-7 w-56 mx-auto" />
           <Skeleton className="h-4 w-72 mx-auto" />
         </div>
         <div className="rounded-lg border overflow-hidden">
-          <div className="space-y-0">
-            <Skeleton className="h-12 w-full" />
-            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-              <Skeleton key={i} className="h-11 w-full" />
-            ))}
-          </div>
+          <Skeleton className="h-12 w-full" />
+          {[1, 2, 3, 4, 5].map((cat) => (
+            <div key={cat}>
+              <Skeleton className="h-10 w-full bg-muted/40" />
+              {[1, 2, 3].map((row) => (
+                <Skeleton key={row} className="h-11 w-full" />
+              ))}
+            </div>
+          ))}
         </div>
       </div>
+
+      <Skeleton className="h-px w-full" />
 
       {/* FAQ Skeleton */}
       <div className="space-y-4 max-w-3xl mx-auto">
@@ -300,10 +358,17 @@ function SubscribeSkeleton() {
           <Skeleton className="h-4 w-80 mx-auto" />
         </div>
         <div className="space-y-2">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-14 w-full" />
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+            <Skeleton key={i} className="h-14 w-full rounded-lg" />
           ))}
         </div>
+      </div>
+
+      {/* Contact Sales Skeleton */}
+      <div className="text-center space-y-3 max-w-xl mx-auto pb-4">
+        <Skeleton className="h-6 w-64 mx-auto" />
+        <Skeleton className="h-4 w-80 mx-auto" />
+        <Skeleton className="h-10 w-32 mx-auto" />
       </div>
     </div>
   );
