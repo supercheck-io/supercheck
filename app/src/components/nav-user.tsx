@@ -49,10 +49,10 @@ export function NavUser() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className=" h-8 w-8 rounded-lg focus-visible:ring-ring flex items-center  focus-visible:outline-none">
-          <Avatar className="h-8 w-8 rounded-lg">
+        <button className="h-8 w-8 rounded-full focus-visible:ring-ring flex items-center focus-visible:outline-none">
+          <Avatar className="h-8 w-8 rounded-full">
             <AvatarImage src={user?.image || ""} alt={user?.name || ""} />
-            <AvatarFallback className="rounded-lg">
+            <AvatarFallback className="rounded-full">
               {user?.name?.charAt(0).toUpperCase()}
               {/* {user?.name?.charAt(1).toUpperCase()} */}
             </AvatarFallback>

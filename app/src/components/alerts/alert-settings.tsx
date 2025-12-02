@@ -1,18 +1,42 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Bell, ChevronLeft, ChevronRight } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { NotificationProviderForm } from "@/components/alerts/notification-provider-form";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { getNotificationProviderConfig } from "@/components/alerts/data";
 import { toast } from "sonner";
-import { type NotificationProviderType, type NotificationProviderConfig, type AlertConfig, type MonitorType } from "@/db/schema";
+import {
+  type NotificationProviderType,
+  type NotificationProviderConfig,
+  type AlertConfig,
+  type MonitorType,
+} from "@/db/schema";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canCreateNotifications } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
@@ -24,7 +48,7 @@ interface AlertSettingsProps {
   title?: string;
   description?: string;
   hideTitle?: boolean;
-  context?: 'monitor' | 'job';
+  context?: "monitor" | "job";
   monitorType?: MonitorType;
   sslCheckEnabled?: boolean;
 }
@@ -34,8 +58,6 @@ interface NotificationProvider {
   type: NotificationProviderType;
   config: NotificationProviderConfig;
 }
-
-
 
 const defaultConfig: AlertConfig = {
   enabled: false,
@@ -50,17 +72,18 @@ const defaultConfig: AlertConfig = {
   customMessage: "",
 };
 
-export function AlertSettings({ 
-  value = defaultConfig, 
-  onChange, 
+export function AlertSettings({
+  value = defaultConfig,
+  onChange,
   title = "Alert Settings",
   description = "Configure how you want to be notified when this check fails or recovers",
   hideTitle = true,
-  context = 'monitor',
+  context = "monitor",
   monitorType,
-  sslCheckEnabled = false
+  sslCheckEnabled = false,
 }: AlertSettingsProps) {
-  const { maxJobNotificationChannels, maxMonitorNotificationChannels } = useAppConfig();
+  const { maxJobNotificationChannels, maxMonitorNotificationChannels } =
+    useAppConfig();
   const [providers, setProviders] = useState<NotificationProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [isProviderDialogOpen, setIsProviderDialogOpen] = useState(false);
@@ -71,9 +94,14 @@ export function AlertSettings({
     ...value,
     notificationProviders: value?.notificationProviders || [],
     // Auto-enable SSL alerts if SSL checking is enabled, force disable if SSL checking is disabled
-    alertOnSslExpiration: (monitorType === 'website' && sslCheckEnabled) ? true : (monitorType === 'website' && !sslCheckEnabled) ? false : (value?.alertOnSslExpiration || false),
+    alertOnSslExpiration:
+      monitorType === "website" && sslCheckEnabled
+        ? true
+        : monitorType === "website" && !sslCheckEnabled
+          ? false
+          : value?.alertOnSslExpiration || false,
     // Auto-enable job success alerts for job context
-    alertOnSuccess: context === 'job' ? true : (value?.alertOnSuccess || false),
+    alertOnSuccess: context === "job" ? true : value?.alertOnSuccess || false,
   });
 
   // Validation state
@@ -91,16 +119,16 @@ export function AlertSettings({
     // Load providers from API
     const loadProviders = async () => {
       try {
-        const response = await fetch('/api/notification-providers');
+        const response = await fetch("/api/notification-providers");
         if (response.ok) {
           const data = await response.json();
           setProviders(data);
         } else {
-          console.error('Failed to fetch notification providers');
+          console.error("Failed to fetch notification providers");
           setProviders([]);
         }
       } catch (error) {
-        console.error('Error loading notification providers:', error);
+        console.error("Error loading notification providers:", error);
         setProviders([]);
       } finally {
         setLoading(false);
@@ -122,26 +150,31 @@ export function AlertSettings({
       ...value,
       notificationProviders: value?.notificationProviders || [],
       // Auto-enable SSL alerts if SSL checking is enabled, force disable if SSL checking is disabled
-      alertOnSslExpiration: (monitorType === 'website' && sslCheckEnabled) ? true : (monitorType === 'website' && !sslCheckEnabled) ? false : (value?.alertOnSslExpiration || false),
+      alertOnSslExpiration:
+        monitorType === "website" && sslCheckEnabled
+          ? true
+          : monitorType === "website" && !sslCheckEnabled
+            ? false
+            : value?.alertOnSslExpiration || false,
       // Auto-enable job success alerts for job context
-      alertOnSuccess: context === 'job' ? true : (value?.alertOnSuccess || false),
+      alertOnSuccess: context === "job" ? true : value?.alertOnSuccess || false,
     };
     setConfig(safeConfig);
   }, [value, monitorType, sslCheckEnabled, context]);
 
-  const updateConfig = useCallback((updates: Partial<AlertConfig>) => {
-    const newConfig = { ...config, ...updates };
-    setConfig(newConfig);
-    
-    // Validate the new configuration
-    validateConfig(newConfig);
-    
-    onChange?.(newConfig);
-  }, [config, onChange]);
+  const updateConfig = useCallback(
+    (updates: Partial<AlertConfig>) => {
+      const newConfig = { ...config, ...updates };
+      setConfig(newConfig);
+      // Validation is handled by the useEffect below
+      onChange?.(newConfig);
+    },
+    [config, onChange]
+  );
 
   // Auto-enable SSL alerts when SSL checking is enabled, disable when disabled
   useEffect(() => {
-    if (monitorType === 'website') {
+    if (monitorType === "website") {
       if (sslCheckEnabled && !config.alertOnSslExpiration) {
         // Auto-enable SSL alerts when SSL checking is enabled
         updateConfig({ alertOnSslExpiration: true });
@@ -154,51 +187,59 @@ export function AlertSettings({
 
   // Auto-enable job success alerts for job context
   useEffect(() => {
-    if (context === 'job' && !config.alertOnSuccess) {
+    if (context === "job" && !config.alertOnSuccess) {
       updateConfig({ alertOnSuccess: true });
     }
   }, [context, config.alertOnSuccess, updateConfig]);
 
-  const validateConfig = (configToValidate: AlertConfig) => {
+  // Validate config whenever it changes - using stable reference to avoid loops
+  useEffect(() => {
     const errors: { notificationProviders?: string; alertTypes?: string } = {};
 
-    if (configToValidate.enabled) {
-      // Check if at least one notification provider is selected
-      if (!configToValidate.notificationProviders || configToValidate.notificationProviders.length === 0) {
-        errors.notificationProviders = "At least one notification channel must be selected when alerts are enabled";
+    if (config.enabled) {
+      if (
+        !config.notificationProviders ||
+        config.notificationProviders.length === 0
+      ) {
+        errors.notificationProviders =
+          "At least one notification channel must be selected when alerts are enabled";
       }
 
-      // Check if at least one alert type is selected
       const alertTypesSelected = [
-        configToValidate.alertOnFailure,
-        configToValidate.alertOnRecovery,
-        configToValidate.alertOnSuccess,
-        configToValidate.alertOnTimeout,
-        configToValidate.alertOnSslExpiration
+        config.alertOnFailure,
+        config.alertOnRecovery,
+        config.alertOnSuccess,
+        config.alertOnTimeout,
+        config.alertOnSslExpiration,
       ].some(Boolean);
 
       if (!alertTypesSelected) {
-        errors.alertTypes = "At least one alert type must be selected when alerts are enabled";
+        errors.alertTypes =
+          "At least one alert type must be selected when alerts are enabled";
       }
     }
 
     setValidationErrors(errors);
-  };
-
-  // Validate config whenever it changes
-  useEffect(() => {
-    validateConfig(config);
-  }, [config]);
-
-
+  }, [
+    config.enabled,
+    config.notificationProviders,
+    config.alertOnFailure,
+    config.alertOnRecovery,
+    config.alertOnSuccess,
+    config.alertOnTimeout,
+    config.alertOnSslExpiration,
+  ]);
 
   const toggleProvider = (providerId: string) => {
     const currentProviders = config.notificationProviders || [];
-    const maxChannels = context === 'job' ? maxJobNotificationChannels : maxMonitorNotificationChannels;
-    
+    const maxChannels =
+      context === "job"
+        ? maxJobNotificationChannels
+        : maxMonitorNotificationChannels;
+
     if (currentProviders.includes(providerId)) {
       // Remove provider
-      const newProviders = currentProviders.filter(id => id !== providerId);
+      const newProviders = currentProviders.filter((id) => id !== providerId);
       updateConfig({ notificationProviders: newProviders });
     } else {
       // Add provider - check limit
@@ -208,7 +249,7 @@ export function AlertSettings({
         });
         return;
       }
-      
+
       const newProviders = [...currentProviders, providerId];
       updateConfig({ notificationProviders: newProviders });
     }
@@ -254,21 +295,25 @@ export function AlertSettings({
                   <Checkbox
                     id="alert-failure"
                     checked={config.alertOnFailure}
-                    onCheckedChange={(checked) => updateConfig({ alertOnFailure: checked as boolean })}
+                    onCheckedChange={(checked) =>
+                      updateConfig({ alertOnFailure: checked as boolean })
+                    }
                     className="data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500  :border-blue-500 data-[state=checked]:text-white"
                   />
                   <Label htmlFor="alert-failure" className="text-sm">
-                    {context === 'job' ? 'Job failures' : 'Alert on failure'}
+                    {context === "job" ? "Job failures" : "Alert on failure"}
                   </Label>
                 </div>
-                
-                {context === 'monitor' && (
+
+                {context === "monitor" && (
                   <>
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="alert-recovery"
                         checked={config.alertOnRecovery || false}
-                        onCheckedChange={(checked) => updateConfig({ alertOnRecovery: checked as boolean })}
+                        onCheckedChange={(checked) =>
+                          updateConfig({ alertOnRecovery: checked as boolean })
+                        }
                         className="data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500  :border-blue-500 data-[state=checked]:text-white"
                       />
                       <Label htmlFor="alert-recovery" className="text-sm">
@@ -276,12 +321,16 @@ export function AlertSettings({
                       </Label>
                     </div>
                     {/* Only show SSL alerts for website monitors with SSL checking enabled */}
-                    {monitorType === 'website' && sslCheckEnabled && (
+                    {monitorType === "website" && sslCheckEnabled && (
                       <div className="flex items-center space-x-2">
                         <Checkbox
                           id="alert-ssl"
                           checked={config.alertOnSslExpiration || false}
-                          onCheckedChange={(checked) => updateConfig({ alertOnSslExpiration: checked as boolean })}
+                          onCheckedChange={(checked) =>
+                            updateConfig({
+                              alertOnSslExpiration: checked as boolean,
+                            })
+                          }
                           className="data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500  :border-blue-500 data-[state=checked]:text-white"
                         />
                         <Label htmlFor="alert-ssl" className="text-sm">
@@ -292,24 +341,31 @@ export function AlertSettings({
                   </>
                 )}
 
-                {context === 'job' && (
+                {context === "job" && (
                   <>
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="alert-success"
                         checked={config.alertOnSuccess || false}
-                        onCheckedChange={(checked) => updateConfig({ alertOnSuccess: checked as boolean })}
+                        onCheckedChange={(checked) =>
+                          updateConfig({ alertOnSuccess: checked as boolean })
+                        }
                         className="data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500  :border-blue-500 data-[state=checked]:text-white"
                       />
                       <Label htmlFor="alert-success" className="text-sm">
-                        Job success <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">completion</span>
+                        Job success{" "}
+                        <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                          completion
+                        </span>
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="alert-timeout"
                         checked={config.alertOnTimeout || false}
-                        onCheckedChange={(checked) => updateConfig({ alertOnTimeout: checked as boolean })}
+                        onCheckedChange={(checked) =>
+                          updateConfig({ alertOnTimeout: checked as boolean })
+                        }
                         className="data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500  :border-blue-500 data-[state=checked]:text-white"
                       />
                       <Label htmlFor="alert-timeout" className="text-sm">
@@ -320,14 +376,19 @@ export function AlertSettings({
                 )}
               </div>
               {validationErrors.alertTypes && (
-                <p className="text-sm text-destructive">{validationErrors.alertTypes}</p>
+                <p className="text-sm text-destructive">
+                  {validationErrors.alertTypes}
+                </p>
               )}
             </div>
 
             {/* Thresholds */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="failure-threshold" className="text-sm font-medium">
+                <Label
+                  htmlFor="failure-threshold"
+                  className="text-sm font-medium"
+                >
                   Failure Threshold
                 </Label>
                 <p className="text-sm text-muted-foreground">
@@ -335,7 +396,9 @@ export function AlertSettings({
                 </p>
                 <Select
                   value={(config.failureThreshold || 1).toString()}
-                  onValueChange={(value) => updateConfig({ failureThreshold: parseInt(value) })}
+                  onValueChange={(value) =>
+                    updateConfig({ failureThreshold: parseInt(value) })
+                  }
                 >
                   <SelectTrigger id="failure-threshold">
                     <SelectValue placeholder="Select threshold" />
@@ -350,7 +413,10 @@ export function AlertSettings({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="recovery-threshold" className="text-sm font-medium">
+                <Label
+                  htmlFor="recovery-threshold"
+                  className="text-sm font-medium"
+                >
                   Recovery Threshold
                 </Label>
                 <p className="text-sm text-muted-foreground">
@@ -358,7 +424,9 @@ export function AlertSettings({
                 </p>
                 <Select
                   value={(config.recoveryThreshold || 1).toString()}
-                  onValueChange={(value) => updateConfig({ recoveryThreshold: parseInt(value) })}
+                  onValueChange={(value) =>
+                    updateConfig({ recoveryThreshold: parseInt(value) })
+                  }
                 >
                   <SelectTrigger id="recovery-threshold">
                     <SelectValue placeholder="Select threshold" />
@@ -377,8 +445,13 @@ export function AlertSettings({
             {/* Notification Providers */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">Notification Channels</Label>
-                <Dialog open={isProviderDialogOpen} onOpenChange={setIsProviderDialogOpen}>
+                <Label className="text-sm font-medium">
+                  Notification Channels
+                </Label>
+                <Dialog
+                  open={isProviderDialogOpen}
+                  onOpenChange={setIsProviderDialogOpen}
+                >
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm" disabled={!canCreate}>
                       <Plus className="h-4 w-4 mr-2" />
@@ -392,29 +465,37 @@ export function AlertSettings({
                         Configure a new notification channel for alerts
                       </DialogDescription>
                     </DialogHeader>
-                    <NotificationProviderForm 
+                    <NotificationProviderForm
                       onSuccess={async (newProvider) => {
                         try {
-                          const response = await fetch('/api/notification-providers', {
-                            method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({
-                              type: newProvider.type,
-                              config: newProvider.config,
-                            }),
-                          });
+                          const response = await fetch(
+                            "/api/notification-providers",
+                            {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                              },
+                              body: JSON.stringify({
+                                type: newProvider.type,
+                                config: newProvider.config,
+                              }),
+                            }
+                          );
 
                           if (response.ok) {
                             const createdProvider = await response.json();
-                            setProviders(prev => [...prev, createdProvider]);
+                            setProviders((prev) => [...prev, createdProvider]);
                             setIsProviderDialogOpen(false);
                           } else {
-                            console.error('Failed to create notification provider');
+                            console.error(
+                              "Failed to create notification provider"
+                            );
                           }
                         } catch (error) {
-                          console.error('Error creating notification provider:', error);
+                          console.error(
+                            "Error creating notification provider:",
+                            error
+                          );
                         }
                       }}
                       onCancel={() => setIsProviderDialogOpen(false)}
@@ -435,10 +516,13 @@ export function AlertSettings({
                       <div className="flex flex-col items-center space-y-3">
                         <Bell className="h-8 w-8 text-muted-foreground" />
                         <div>
-                                                  <p className="text-sm font-medium">No notification channels configured</p>
-                        <p className="text-xs text-muted-foreground mt-1 mb-4 text-center">
-                          Create a notification channel first to receive alerts
-                        </p>
+                          <p className="text-sm font-medium">
+                            No notification channels configured
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1 mb-4 text-center">
+                            Create a notification channel first to receive
+                            alerts
+                          </p>
                         </div>
                         {/* <Button
                           variant="outline"
@@ -454,57 +538,89 @@ export function AlertSettings({
                     <>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                         {providers
-                          .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                          .slice(
+                            (currentPage - 1) * itemsPerPage,
+                            currentPage * itemsPerPage
+                          )
                           .map((provider) => {
-                          const providerConfig = getNotificationProviderConfig(provider.type);
-                          const IconComponent = providerConfig.icon;
-                          const isSelected = (config.notificationProviders || []).includes(provider.id);
-                          
-                          return (
-                            <div 
-                              key={provider.id}
-                              onClick={() => toggleProvider(provider.id)}
-                              className={"flex items-center p-3 rounded-lg transition-all duration-200 cursor-pointer bg-secondary hover:shadow-sm hover:bg-muted/50"}
-                            >
-                              <div className="flex items-center justify-center w-8 h-8 rounded-full mr-3 shrink-0 bg-muted/50">
-                                <IconComponent className={`h-4 w-4 ${providerConfig.color}`} />
+                            const providerConfig =
+                              getNotificationProviderConfig(provider.type);
+                            const IconComponent = providerConfig.icon;
+                            const isSelected = (
+                              config.notificationProviders || []
+                            ).includes(provider.id);
+
+                            return (
+                              <div
+                                key={provider.id}
+                                onClick={() => toggleProvider(provider.id)}
+                                className={
+                                  "flex items-center p-3 rounded-lg transition-all duration-200 cursor-pointer bg-secondary hover:shadow-sm hover:bg-muted/50"
+                                }
+                              >
+                                <div className="flex items-center justify-center w-8 h-8 rounded-full mr-3 shrink-0 bg-muted/50">
+                                  <IconComponent
+                                    className={`h-4 w-4 ${providerConfig.color}`}
+                                  />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-sm truncate">
+                                    {
+                                      (
+                                        provider.config as Record<
+                                          string,
+                                          unknown
+                                        >
+                                      ).name as string
+                                    }
+                                  </p>
+                                  <p className="text-xs text-muted-foreground capitalize truncate">
+                                    {provider.type}
+                                  </p>
+                                </div>
+                                <Checkbox
+                                  checked={isSelected}
+                                  onChange={() => {}} // Handled by parent onClick
+                                  className="ml-2 shrink-0 data-[state=checked]:bg-blue-500  :border-blue-500 data-[state=checked]:border-blue-500 data-[state=checked]:text-white"
+                                  onClick={(e) => e.stopPropagation()} // Prevent double toggle
+                                />
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-sm truncate">{(provider.config as Record<string, unknown>).name as string}</p>
-                                <p className="text-xs text-muted-foreground capitalize truncate">
-                                  {provider.type}
-                                </p>
-                              </div>
-                              <Checkbox
-                                checked={isSelected}
-                                onChange={() => {}} // Handled by parent onClick
-                                className="ml-2 shrink-0 data-[state=checked]:bg-blue-500  :border-blue-500 data-[state=checked]:border-blue-500 data-[state=checked]:text-white"
-                                onClick={(e) => e.stopPropagation()} // Prevent double toggle
-                              />
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
                       </div>
-                      
+
                       {/* Pagination */}
                       {providers.length > itemsPerPage && (
                         <div className="flex items-center justify-center space-x-2 mt-4">
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                            onClick={() =>
+                              setCurrentPage((prev) => Math.max(1, prev - 1))
+                            }
                             disabled={currentPage === 1}
                           >
                             <ChevronLeft className="h-4 w-4" />
                           </Button>
                           <span className="text-sm text-muted-foreground">
-                            Page {currentPage} of {Math.ceil(providers.length / itemsPerPage)}
+                            Page {currentPage} of{" "}
+                            {Math.ceil(providers.length / itemsPerPage)}
                           </span>
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setCurrentPage(prev => Math.min(Math.ceil(providers.length / itemsPerPage), prev + 1))}
-                            disabled={currentPage === Math.ceil(providers.length / itemsPerPage)}
+                            onClick={() =>
+                              setCurrentPage((prev) =>
+                                Math.min(
+                                  Math.ceil(providers.length / itemsPerPage),
+                                  prev + 1
+                                )
+                              )
+                            }
+                            disabled={
+                              currentPage ===
+                              Math.ceil(providers.length / itemsPerPage)
+                            }
                           >
                             <ChevronRight className="h-4 w-4" />
                           </Button>
@@ -515,19 +631,27 @@ export function AlertSettings({
                 </div>
               )}
               {validationErrors.notificationProviders && (
-                <p className="text-sm text-destructive">{validationErrors.notificationProviders}</p>
+                <p className="text-sm text-destructive">
+                  {validationErrors.notificationProviders}
+                </p>
               )}
-              
+
               {/* Channel count display */}
-              {!validationErrors.notificationProviders && (<div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>
-                  {config.notificationProviders?.length || 0} of {context === 'job' ? maxJobNotificationChannels : maxMonitorNotificationChannels} channels selected
-                </span>
-              </div>)}
+              {!validationErrors.notificationProviders && (
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    {config.notificationProviders?.length || 0} of{" "}
+                    {context === "job"
+                      ? maxJobNotificationChannels
+                      : maxMonitorNotificationChannels}{" "}
+                    channels selected
+                  </span>
+                </div>
+              )}
             </div>
           </>
         )}
       </CardContent>
     </Card>
   );
-} 
+}

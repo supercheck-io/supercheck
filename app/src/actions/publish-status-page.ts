@@ -2,14 +2,23 @@
 
 import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { z } from "zod";
 
 export async function publishStatusPage(statusPageId: string) {
   try {
+    // Validate UUID format
+    if (!z.string().uuid().safeParse(statusPageId).success) {
+      return {
+        success: false,
+        message: "Invalid status page ID",
+      };
+    }
+
     // Get current project context (includes auth verification)
     const { userId, project, organizationId } = await requireProjectContext();
 
@@ -35,6 +44,25 @@ export async function publishStatusPage(statusPageId: string) {
       };
     }
 
+    // SECURITY: Verify ownership - status page must belong to this organization AND project
+    const statusPage = await db.query.statusPages.findFirst({
+      where: and(
+        eq(statusPages.id, statusPageId),
+        eq(statusPages.organizationId, organizationId),
+        eq(statusPages.projectId, project.id)
+      ),
+    });
+
+    if (!statusPage) {
+      console.warn(
+        `[SECURITY] User ${userId} attempted to publish status page ${statusPageId} without ownership`
+      );
+      return {
+        success: false,
+        message: "Status page not found or access denied",
+      };
+    }
+
     // Update status page status to published
     const [updatedStatusPage] = await db
       .update(statusPages)
@@ -42,13 +70,18 @@ export async function publishStatusPage(statusPageId: string) {
         status: "published",
         updatedAt: new Date(),
       })
-      .where(eq(statusPages.id, statusPageId))
+      .where(
+        and(
+          eq(statusPages.id, statusPageId),
+          eq(statusPages.organizationId, organizationId)
+        )
+      )
       .returning();
 
     if (!updatedStatusPage) {
       return {
         success: false,
-        message: "Status page not found",
+        message: "Failed to publish status page",
       };
     }
 
@@ -78,22 +111,32 @@ export async function publishStatusPage(statusPageId: string) {
     return {
       success: true,
       message: "Status page published successfully",
-      statusPage: updatedStatusPage,
+      statusPage: {
+        id: updatedStatusPage.id,
+        name: updatedStatusPage.name,
+        subdomain: updatedStatusPage.subdomain,
+        status: updatedStatusPage.status,
+      },
     };
   } catch (error) {
     console.error("Error publishing status page:", error);
     return {
       success: false,
-      message: `Failed to publish status page: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-      error,
+      message: "Failed to publish status page. Please try again.",
     };
   }
 }
 
 export async function unpublishStatusPage(statusPageId: string) {
   try {
+    // Validate UUID format
+    if (!z.string().uuid().safeParse(statusPageId).success) {
+      return {
+        success: false,
+        message: "Invalid status page ID",
+      };
+    }
+
     // Get current project context (includes auth verification)
     const { userId, project, organizationId } = await requireProjectContext();
 
@@ -119,6 +162,25 @@ export async function unpublishStatusPage(statusPageId: string) {
       };
     }
 
+    // SECURITY: Verify ownership
+    const statusPage = await db.query.statusPages.findFirst({
+      where: and(
+        eq(statusPages.id, statusPageId),
+        eq(statusPages.organizationId, organizationId),
+        eq(statusPages.projectId, project.id)
+      ),
+    });
+
+    if (!statusPage) {
+      console.warn(
+        `[SECURITY] User ${userId} attempted to unpublish status page ${statusPageId} without ownership`
+      );
+      return {
+        success: false,
+        message: "Status page not found or access denied",
+      };
+    }
+
     // Update status page status to draft
     const [updatedStatusPage] = await db
       .update(statusPages)
@@ -126,13 +188,18 @@ export async function unpublishStatusPage(statusPageId: string) {
         status: "draft",
         updatedAt: new Date(),
       })
-      .where(eq(statusPages.id, statusPageId))
+      .where(
+        and(
+          eq(statusPages.id, statusPageId),
+          eq(statusPages.organizationId, organizationId)
+        )
+      )
       .returning();
 
     if (!updatedStatusPage) {
       return {
         success: false,
-        message: "Status page not found",
+        message: "Failed to unpublish status page",
       };
     }
 
@@ -162,16 +229,18 @@ export async function unpublishStatusPage(statusPageId: string) {
     return {
       success: true,
       message: "Status page unpublished successfully",
-      statusPage: updatedStatusPage,
+      statusPage: {
+        id: updatedStatusPage.id,
+        name: updatedStatusPage.name,
+        subdomain: updatedStatusPage.subdomain,
+        status: updatedStatusPage.status,
+      },
     };
   } catch (error) {
     console.error("Error unpublishing status page:", error);
     return {
       success: false,
-      message: `Failed to unpublish status page: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-      error,
+      message: "Failed to unpublish status page. Please try again.",
     };
   }
 }

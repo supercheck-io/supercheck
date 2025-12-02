@@ -13,6 +13,10 @@ import {
   Copy,
   Activity,
   Tally4,
+  Boxes,
+  AlertTriangle,
+  Users,
+  LayoutDashboard,
 } from "lucide-react";
 import Link from "next/link";
 import { ComponentsTab } from "./components-tab";
@@ -20,6 +24,7 @@ import { IncidentsTab } from "./incidents-tab";
 import { SubscribersTab } from "./subscribers-tab";
 import { SettingsTab } from "./settings-tab";
 import { StatusPageInfoPopover } from "./status-page-info-popover";
+import { Settings } from "lucide-react";
 import {
   publishStatusPage,
   unpublishStatusPage,
@@ -44,6 +49,8 @@ type StatusPage = {
   allowEmailSubscribers: boolean | null;
   allowWebhookSubscribers: boolean | null;
   allowIncidentSubscribers: boolean | null;
+  allowSlackSubscribers: boolean | null;
+  allowRssFeed: boolean | null;
   notificationsFromEmail: string | null;
   notificationsEmailFooter: string | null;
   customDomain: string | null;
@@ -255,34 +262,77 @@ export function StatusPageDetail({
           </div>
         </div>
 
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="components">Components</TabsTrigger>
-          <TabsTrigger value="incidents">Incidents</TabsTrigger>
-          <TabsTrigger value="subscribers">Subscribers</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-flex">
+          <TabsTrigger value="overview" className="flex items-center gap-2">
+            <LayoutDashboard className="h-4 w-4" />
+            <span className="hidden sm:inline">Overview</span>
+          </TabsTrigger>
+          <TabsTrigger value="components" className="flex items-center gap-2">
+            <Boxes className="h-4 w-4" />
+            <span className="hidden sm:inline">Components</span>
+          </TabsTrigger>
+          <TabsTrigger value="incidents" className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4" />
+            <span className="hidden sm:inline">Incidents</span>
+          </TabsTrigger>
+          <TabsTrigger value="subscribers" className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            <span className="hidden sm:inline">Subscribers</span>
+          </TabsTrigger>
+          <TabsTrigger value="settings" className="flex items-center gap-2">
+            <Settings className="h-4 w-4" />
+            <span className="hidden sm:inline">Settings</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
+          {/* Stats Cards */}
           <div className="grid gap-4 md:grid-cols-3">
-            <Card>
+            <Card className="overflow-hidden">
               <CardContent className="p-6">
-                <div className="text-2xl font-bold">{components.length}</div>
-                <div className="text-sm text-muted-foreground">Components</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-6">
-                <div className="text-2xl font-bold">0</div>
-                <div className="text-sm text-muted-foreground">
-                  Active Incidents
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/50">
+                    <Boxes className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold">
+                      {components.length}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Components
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
-            <Card>
+            <Card className="overflow-hidden">
               <CardContent className="p-6">
-                <div className="text-2xl font-bold">0</div>
-                <div className="text-sm text-muted-foreground">Subscribers</div>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-amber-100 dark:bg-amber-900/50">
+                    <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold">0</div>
+                    <div className="text-sm text-muted-foreground">
+                      Active Incidents
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="overflow-hidden">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/50">
+                    <Users className="h-6 w-6 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold">0</div>
+                    <div className="text-sm text-muted-foreground">
+                      Subscribers
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -291,7 +341,10 @@ export function StatusPageDetail({
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Linked Monitors</h3>
+                <div className="flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-muted-foreground" />
+                  <h3 className="text-lg font-semibold">Linked Monitors</h3>
+                </div>
                 <Badge variant="secondary">
                   {(() => {
                     // Collect all monitor IDs from all components
@@ -318,11 +371,16 @@ export function StatusPageDetail({
 
                 return uniqueMonitorIds.length;
               })() === 0 ? (
-                <div className="text-center py-8 text-sm text-muted-foreground">
-                  <Activity className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No monitors linked yet</p>
-                  <p className="mt-1">
-                    Link monitors to components in the Components tab
+                <div className="text-center py-12 border-2 border-dashed rounded-lg bg-muted/20">
+                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-muted mb-4">
+                    <Activity className="h-7 w-7 text-muted-foreground" />
+                  </div>
+                  <h4 className="text-base font-semibold mb-1">
+                    No monitors linked yet
+                  </h4>
+                  <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+                    Link monitors to components in the Components tab to track
+                    their status
                   </p>
                 </div>
               ) : (
@@ -345,7 +403,7 @@ export function StatusPageDetail({
                             createdAt: new Date().toISOString(), // Required field but not available in StatusPageMonitor
                             updatedAt: new Date().toISOString(), // Required field but not available in StatusPageMonitor
                             componentName: c.name, // Add component name for reference
-                          } as Monitor & { componentName: string })
+                          }) as Monitor & { componentName: string }
                       )
                     );
 

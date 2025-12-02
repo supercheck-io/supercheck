@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { z } from "zod";
 import { useForm, Resolver } from "react-hook-form";
@@ -344,7 +344,9 @@ const mapApiTestToTest = (testData: Record<string, unknown>): Test => {
     "database",
     "performance",
   ];
-  const validTestType: Test["type"] = validTypes.includes(testData.type as Test["type"])
+  const validTestType: Test["type"] = validTypes.includes(
+    testData.type as Test["type"]
+  )
     ? (testData.type as Test["type"])
     : "browser";
 
@@ -356,7 +358,11 @@ const mapApiTestToTest = (testData: Record<string, unknown>): Test => {
     status: "running",
     lastRunAt: testData.updatedAt as string | undefined,
     duration: null,
-    tags: (Array.isArray(testData.tags) ? testData.tags : []) as Array<{ id: string; name: string; color: string | null }>,
+    tags: (Array.isArray(testData.tags) ? testData.tags : []) as Array<{
+      id: string;
+      name: string;
+      color: string | null;
+    }>,
   };
 };
 
@@ -416,16 +422,18 @@ export function MonitorForm({
   const [isKeywordSectionOpen, setIsKeywordSectionOpen] = useState(false);
   const [isCustomStatusCode, setIsCustomStatusCode] = useState(false);
   // Store initial alert config for change detection
-  const initialAlertConfigValue = initialAlertConfig || {
-    enabled: false,
-    notificationProviders: [] as string[],
-    alertOnFailure: true,
-    alertOnRecovery: true,
-    alertOnSslExpiration: false,
-    failureThreshold: 1,
-    recoveryThreshold: 1,
-    customMessage: "" as string,
-  };
+  const initialAlertConfigValue = useMemo(() => {
+    return initialAlertConfig || {
+      enabled: false,
+      notificationProviders: [] as string[],
+      alertOnFailure: true,
+      alertOnRecovery: true,
+      alertOnSslExpiration: false,
+      failureThreshold: 1,
+      recoveryThreshold: 1,
+      customMessage: "" as string,
+    };
+  }, [initialAlertConfig]);
 
   const [alertConfig, setAlertConfig] = useState(initialAlertConfigValue);
 
@@ -440,15 +448,6 @@ export function MonitorForm({
     initialLocationConfig
   );
   const [selectedTests, setSelectedTests] = useState<Test[]>([]);
-
-  const hasAnyConfigChanged = (): boolean => {
-    const formDirty = form.formState.isDirty;
-    const locationChanged =
-      JSON.stringify(locationConfig) !== JSON.stringify(initialLocationConfig);
-    const alertChanged =
-      JSON.stringify(alertConfig) !== JSON.stringify(initialAlertConfigValue);
-    return formDirty || locationChanged || alertChanged;
-  };
 
   // Get current monitor type from URL params if not provided as prop
   const urlType = searchParams.get("type") as FormValues["type"];
@@ -509,6 +508,22 @@ export function MonitorForm({
       type: currentMonitorType, // Ensure type is set correctly from URL
     },
   });
+
+  // Memoize the config change detection - must be after form initialization
+  const hasAnyConfigChanged = useCallback((): boolean => {
+    const formDirty = form.formState.isDirty;
+    const locationChanged =
+      JSON.stringify(locationConfig) !== JSON.stringify(initialLocationConfig);
+    const alertChanged =
+      JSON.stringify(alertConfig) !== JSON.stringify(initialAlertConfigValue);
+    return formDirty || locationChanged || alertChanged;
+  }, [
+    form.formState.isDirty,
+    locationConfig,
+    initialLocationConfig,
+    alertConfig,
+    initialAlertConfigValue,
+  ]);
 
   const type = form.watch("type");
   const httpMethod = form.watch("httpConfig_method");
@@ -657,7 +672,9 @@ export function MonitorForm({
       target: sanitizedData.target || "",
       type: sanitizedData.type,
       // Convert interval from seconds to minutes
-      frequencyMinutes: Math.round(parseInt(sanitizedData.interval || "1800", 10) / 60),
+      frequencyMinutes: Math.round(
+        parseInt(sanitizedData.interval || "1800", 10) / 60
+      ),
       config,
     };
 
@@ -665,12 +682,16 @@ export function MonitorForm({
     if (sanitizedData.type === "http_request") {
       config = {
         method: sanitizedData.httpConfig_method || "GET",
-        expectedStatusCodes: sanitizedData.httpConfig_expectedStatusCodes || "200-299",
+        expectedStatusCodes:
+          sanitizedData.httpConfig_expectedStatusCodes || "200-299",
         timeoutSeconds: 30, // Default timeout
       };
 
       // Add headers if provided
-      if (sanitizedData.httpConfig_headers && sanitizedData.httpConfig_headers.trim()) {
+      if (
+        sanitizedData.httpConfig_headers &&
+        sanitizedData.httpConfig_headers.trim()
+      ) {
         try {
           const parsedHeaders = JSON.parse(sanitizedData.httpConfig_headers);
           if (typeof parsedHeaders === "object" && parsedHeaders !== null) {
@@ -685,14 +706,23 @@ export function MonitorForm({
       }
 
       // Add body if provided
-      if (sanitizedData.httpConfig_body && sanitizedData.httpConfig_body.trim()) {
+      if (
+        sanitizedData.httpConfig_body &&
+        sanitizedData.httpConfig_body.trim()
+      ) {
         config.body = sanitizedData.httpConfig_body;
       }
 
       // Add auth if configured
-      if (sanitizedData.httpConfig_authType && sanitizedData.httpConfig_authType !== "none") {
+      if (
+        sanitizedData.httpConfig_authType &&
+        sanitizedData.httpConfig_authType !== "none"
+      ) {
         if (sanitizedData.httpConfig_authType === "basic") {
-          if (!sanitizedData.httpConfig_authUsername || !sanitizedData.httpConfig_authPassword) {
+          if (
+            !sanitizedData.httpConfig_authUsername ||
+            !sanitizedData.httpConfig_authPassword
+          ) {
             throw new Error(
               "Username and password are required for Basic Auth"
             );
@@ -730,14 +760,21 @@ export function MonitorForm({
       // Website monitoring is essentially HTTP GET with simplified config
       config = {
         method: "GET",
-        expectedStatusCodes: sanitizedData.httpConfig_expectedStatusCodes || "200-299",
+        expectedStatusCodes:
+          sanitizedData.httpConfig_expectedStatusCodes || "200-299",
         timeoutSeconds: 30, // Default timeout
       };
 
       // Add auth if configured
-      if (sanitizedData.httpConfig_authType && sanitizedData.httpConfig_authType !== "none") {
+      if (
+        sanitizedData.httpConfig_authType &&
+        sanitizedData.httpConfig_authType !== "none"
+      ) {
         if (data.httpConfig_authType === "basic") {
-          if (!sanitizedData.httpConfig_authUsername || !sanitizedData.httpConfig_authPassword) {
+          if (
+            !sanitizedData.httpConfig_authUsername ||
+            !sanitizedData.httpConfig_authPassword
+          ) {
             throw new Error(
               "Username and password are required for Basic Auth"
             );
@@ -773,7 +810,9 @@ export function MonitorForm({
       }
 
       // Add SSL checking configuration - handle boolean properly
-      const sslCheckEnabled = Boolean(sanitizedData.websiteConfig_enableSslCheck);
+      const sslCheckEnabled = Boolean(
+        sanitizedData.websiteConfig_enableSslCheck
+      );
       config.enableSslCheck = sslCheckEnabled;
 
       if (sslCheckEnabled) {
@@ -932,7 +971,10 @@ export function MonitorForm({
       }
 
       // Check notification channel limit
-      if (alertConfig.notificationProviders.length > maxMonitorNotificationChannels) {
+      if (
+        alertConfig.notificationProviders.length >
+        maxMonitorNotificationChannels
+      ) {
         toast.error("Validation Error", {
           description: `You can only select up to ${maxMonitorNotificationChannels} notification channels`,
         });
@@ -1392,8 +1434,8 @@ export function MonitorForm({
                         const dropdownValue = isCustomStatusCode
                           ? "custom"
                           : presetValues.includes(currentValue)
-                          ? currentValue
-                          : "200-299";
+                            ? currentValue
+                            : "200-299";
 
                         return (
                           <FormItem>
@@ -1681,8 +1723,8 @@ export function MonitorForm({
                                           value === "true"
                                             ? true
                                             : value === "false"
-                                            ? false
-                                            : undefined
+                                              ? false
+                                              : undefined
                                         )
                                       }
                                       value={
@@ -1773,8 +1815,8 @@ export function MonitorForm({
                         const dropdownValue = isCustomStatusCode
                           ? "custom"
                           : presetValues.includes(currentValue)
-                          ? currentValue
-                          : "200-299";
+                            ? currentValue
+                            : "200-299";
 
                         return (
                           <FormItem>
@@ -2080,8 +2122,8 @@ export function MonitorForm({
                                           value === "true"
                                             ? true
                                             : value === "false"
-                                            ? false
-                                            : undefined
+                                              ? false
+                                              : undefined
                                         )
                                       }
                                       value={
@@ -2208,8 +2250,8 @@ export function MonitorForm({
                   {hideAlerts
                     ? "Next: Alerts"
                     : editMode
-                    ? "Update Monitor"
-                    : "Create"}
+                      ? "Update Monitor"
+                      : "Create"}
                 </Button>
               </div>
             </form>

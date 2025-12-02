@@ -32,6 +32,8 @@ import {
   Activity,
   TrendingUp,
   Calendar,
+  LayoutDashboard,
+  ListOrdered,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
@@ -270,11 +272,26 @@ export default function AdminDashboard() {
             className="space-y-4"
             onValueChange={handleTabChange}
           >
-            <TabsList>
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="users">Users</TabsTrigger>
-              <TabsTrigger value="organizations">Organizations</TabsTrigger>
-              <TabsTrigger value="queues">Queues</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex">
+              <TabsTrigger value="overview" className="flex items-center gap-2">
+                <LayoutDashboard className="h-4 w-4" />
+                <span className="hidden sm:inline">Overview</span>
+              </TabsTrigger>
+              <TabsTrigger value="users" className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                <span className="hidden sm:inline">Users</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="organizations"
+                className="flex items-center gap-2"
+              >
+                <Building2 className="h-4 w-4" />
+                <span className="hidden sm:inline">Organizations</span>
+              </TabsTrigger>
+              <TabsTrigger value="queues" className="flex items-center gap-2">
+                <ListOrdered className="h-4 w-4" />
+                <span className="hidden sm:inline">Queues</span>
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-4">
@@ -587,10 +604,18 @@ export default function AdminDashboard() {
               </div> */}
               <div className="rounded-lg border bg-background overflow-hidden">
                 {!iframeLoaded && (
-                  <div className="flex justify-center items-center" style={{ height: "calc(100vh - 250px)", minHeight: "600px" }}>
+                  <div
+                    className="flex justify-center items-center"
+                    style={{
+                      height: "calc(100vh - 250px)",
+                      minHeight: "600px",
+                    }}
+                  >
                     <div className="flex flex-col items-center space-y-4">
                       <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                      <span className="text-muted-foreground">Loading Queue Dashboard...</span>
+                      <span className="text-muted-foreground">
+                        Loading Queue Dashboard...
+                      </span>
                     </div>
                   </div>
                 )}
