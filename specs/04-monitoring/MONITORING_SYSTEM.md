@@ -124,30 +124,30 @@ graph TB
 
 The system uses distributed multi-location monitoring by default. Every monitor run is expanded into per-location jobs handled by regional workers, providing global coverage out of the box.
 
-| Region | Worker Location Code | Description |
-|--------|----------------------|-------------|
-| US East | `us-east` (Ashburn) | Primary North American vantage point with low-latency access to US-based services. |
-| EU Central | `eu-central` (Frankfurt) | Core European vantage point ensuring GDPR-compliant monitoring coverage. **Default for monitors.** |
-| Asia Pacific | `asia-pacific` (Mumbai) | High-availability APAC vantage point for latency-sensitive checks. |
+| Region       | Worker Location Code     | Description                                                                                        |
+| ------------ | ------------------------ | -------------------------------------------------------------------------------------------------- |
+| US East      | `us-east` (Ashburn)      | Primary North American vantage point with low-latency access to US-based services.                 |
+| EU Central   | `eu-central` (Frankfurt) | Core European vantage point ensuring GDPR-compliant monitoring coverage. **Default for monitors.** |
+| Asia Pacific | `asia-pacific` (Mumbai)  | High-availability APAC vantage point for latency-sensitive checks.                                 |
 
 #### Worker Architecture
 
 **Production:** 3 location-based workers, each handling regional + global queues:
 
-| Worker | Location | Regional Queues | Global Queues |
-|--------|----------|----------------|---------------|
-| `supercheck-worker-us` | us-east | `k6-us-east`, `monitor-us-east` | `playwright-global`, `k6-global` |
-| `supercheck-worker-eu` | eu-central | `k6-eu-central`, `monitor-eu-central` | `playwright-global`, `k6-global` |
+| Worker                   | Location     | Regional Queues                           | Global Queues                    |
+| ------------------------ | ------------ | ----------------------------------------- | -------------------------------- |
+| `supercheck-worker-us`   | us-east      | `k6-us-east`, `monitor-us-east`           | `playwright-global`, `k6-global` |
+| `supercheck-worker-eu`   | eu-central   | `k6-eu-central`, `monitor-eu-central`     | `playwright-global`, `k6-global` |
 | `supercheck-worker-apac` | asia-pacific | `k6-asia-pacific`, `monitor-asia-pacific` | `playwright-global`, `k6-global` |
 
 **Key Points:**
+
 - Each worker handles **multiple job types** (Playwright, K6, Monitor)
 - **Regional queues** ensure geographic accuracy for monitors and K6 tests
 - **Global queues** (`playwright-global`, `k6-global`) are processed by **any available** worker
 - Automatic load balancing via BullMQ - first available worker gets the job
 
 **Local Development:** Set `WORKER_LOCATION=local` to process all queues on a single worker. All locations execute sequentially without simulated delay. Results still carry their location code so the UI behaves consistently. This is handled automatically in Docker Compose configurations.
-
 
 #### Distributed Execution Flow
 
@@ -368,18 +368,21 @@ graph LR
 **Overlapping Execution Behavior**:
 
 If a synthetic monitor's check interval is shorter than the test execution time, the system will:
+
 - ✅ **Not break** - Each execution is queued as a separate job with unique job ID
 - ⚠️ **Allow concurrent executions** - Multiple instances of the same test can run simultaneously
 - ⚠️ **Increase resource usage** - Each concurrent execution consumes worker capacity, memory, and browser resources
 - ⚠️ **Generate overlapping results** - Results will be saved at different timestamps, potentially causing confusion
 
 **Example Scenario:**
+
 - Monitor interval: 1 minute
 - Test execution time: 2 minutes
 - Result: At any given time, 2 instances of the test may be running concurrently
 
 **Recommended Configuration:**
 For a test with 2-minute timeout, set monitor frequency to 5+ minutes to ensure:
+
 - No overlapping executions
 - Predictable resource usage
 - Clear result timelines
@@ -397,6 +400,7 @@ For a test with 2-minute timeout, set monitor frequency to 5+ minutes to ensure:
 **Architecture Integration**:
 
 The Synthetic Test Monitor bridges two existing Supercheck systems:
+
 - **Monitor System**: Scheduling, status tracking, alerting, and dashboard integration
 - **Test Execution System**: Playwright execution, artifact generation, and report storage
 
@@ -820,7 +824,7 @@ The monitoring system uses a comprehensive sanitization utility that provides de
 
 - **ReDoS Protection**: Input length limited to 100KB to prevent regex-based denial of service
 - **Comprehensive Tag Removal**: Removes 13+ dangerous HTML tags including SVG and math elements
-- **Protocol Sanitization**: Blocks javascript:, vbscript:, and data:text/* protocols
+- **Protocol Sanitization**: Blocks javascript:, vbscript:, and data:text/\* protocols
 - **Template Literal Protection**: Removes `${...}` patterns to prevent template injection
 - **HTML Entity Decoding**: Removes encoded characters that could bypass filters
 - **Expression Filtering**: Blocks CSS expression() and url(javascript:) patterns
@@ -829,37 +833,53 @@ The monitoring system uses a comprehensive sanitization utility that provides de
 
 ```typescript
 const DANGEROUS_TAGS = [
-  'script', 'iframe', 'object', 'embed', 'form', 'input',
-  'svg', 'math', 'link', 'style', 'base', 'meta', 'applet'
+  "script",
+  "iframe",
+  "object",
+  "embed",
+  "form",
+  "input",
+  "svg",
+  "math",
+  "link",
+  "style",
+  "base",
+  "meta",
+  "applet",
 ];
 ```
 
 #### **Core Sanitization Functions**
 
 - **`sanitizeString()`**: General-purpose string sanitization
+
   - Removes null bytes and control characters (except common whitespace)
   - Strips all dangerous HTML tags (script, iframe, svg, etc.)
-  - Removes all event handlers (on* attributes)
-  - Blocks dangerous protocols (javascript:, vbscript:, data:*)
+  - Removes all event handlers (on\* attributes)
+  - Blocks dangerous protocols (javascript:, vbscript:, data:\*)
   - Removes template literals `${...}` to prevent injection
   - Removes CSS expressions and javascript URLs
 
 - **`sanitizeUrl()`**: URL-specific validation
+
   - Ensures valid URL structure
   - Restricts to HTTP/HTTPS protocols only
   - Validates and normalizes URL components
 
 - **`sanitizeHostname()`**: Hostname/IP validation
+
   - Removes invalid characters
   - Validates hostname and IP address formats
   - Prevents hostname-based injection attacks
 
 - **`sanitizeJson()`**: JSON input validation
+
   - Verifies valid JSON structure
   - Re-stringifies to prevent injection
   - Returns empty string for invalid JSON
 
 - **`sanitizeCredential()`**: Authentication data sanitization
+
   - More permissive for credential formats
   - Removes HTML and script content
   - Preserves special characters needed for passwords/tokens
@@ -933,18 +953,19 @@ graph TD
 
 ```typescript
 interface MonitorCleanupConfig {
-  enabled: boolean;                    // Default: true
-  cronSchedule: string;                // Default: "0 2 * * *" (2 AM daily)
-  retentionDays: number;               // Default: 30
-  batchSize: number;                   // Default: 1000
-  preserveStatusChanges: boolean;      // Default: true
-  safetyLimit: number;                 // Default: 1000000
+  enabled: boolean; // Default: true
+  cronSchedule: string; // Default: "0 2 * * *" (2 AM daily)
+  retentionDays: number; // Default: 30
+  batchSize: number; // Default: 1000
+  preserveStatusChanges: boolean; // Default: true
+  safetyLimit: number; // Default: 1000000
 }
 ```
 
 **Environment Variables:**
+
 - `MONITOR_CLEANUP_ENABLED`: Enable/disable cleanup (default: true)
-- `MONITOR_CLEANUP_CRON`: Cron schedule (default: "0 2 * * *")
+- `MONITOR_CLEANUP_CRON`: Cron schedule (default: "0 2 \* \* \*")
 - `MONITOR_RETENTION_DAYS`: Days to retain data (default: 30)
 - `MONITOR_CLEANUP_BATCH_SIZE`: Batch size for deletions (default: 1000)
 - `MONITOR_PRESERVE_STATUS_CHANGES`: Keep status changes (default: true)
@@ -954,19 +975,20 @@ interface MonitorCleanupConfig {
 
 Current implementation with 30-day retention:
 
-| Scale | Records/Year (No Cleanup) | Records/Year (With Cleanup) | Reduction |
-|-------|---------------------------|----------------------------|-----------|
-| 1 monitor | 525,600 | 43,200 (30 days) | 91.8% |
-| 100 monitors | 52.6M | 4.3M | 91.8% |
-| 500 monitors | 263M | 21.6M | 91.8% |
+| Scale        | Records/Year (No Cleanup) | Records/Year (With Cleanup) | Reduction |
+| ------------ | ------------------------- | --------------------------- | --------- |
+| 1 monitor    | 525,600                   | 43,200 (30 days)            | 91.8%     |
+| 100 monitors | 52.6M                     | 4.3M                        | 91.8%     |
+| 500 monitors | 263M                      | 21.6M                       | 91.8%     |
 
-*Assumes 1-minute check intervals*
+_Assumes 1-minute check intervals_
 
 #### **Future Enhancement: Tiered Aggregation**
 
 For even greater data reduction (99%+) while preserving long-term trends, a tiered aggregation strategy is recommended:
 
 **Proposed Strategy:**
+
 - **Last 24 hours**: Keep ALL records (full granularity)
 - **Last 7 days**: Keep 1 record every 10 minutes (6/hour)
 - **Last 30 days**: Keep 1 record every hour (24/day)
@@ -975,11 +997,11 @@ For even greater data reduction (99%+) while preserving long-term trends, a tier
 
 **Enhanced Data Reduction:**
 
-| Scale | Current (30-day delete) | Tiered Aggregation | Additional Savings |
-|-------|------------------------|--------------------|--------------------|
-| 1 monitor | 43,200/year | 4,383/year | 89.9% further |
-| 100 monitors | 4.3M/year | 438K/year | 89.9% further |
-| 500 monitors | 21.6M/year | 2.2M/year | 89.9% further |
+| Scale        | Current (30-day delete) | Tiered Aggregation | Additional Savings |
+| ------------ | ----------------------- | ------------------ | ------------------ |
+| 1 monitor    | 43,200/year             | 4,383/year         | 89.9% further      |
+| 100 monitors | 4.3M/year               | 438K/year          | 89.9% further      |
+| 500 monitors | 21.6M/year              | 2.2M/year          | 89.9% further      |
 
 This would require implementing aggregate tables and a more sophisticated cleanup service.
 
@@ -993,20 +1015,20 @@ graph TD
     B --> C[Load 50 Recent Results for Charts]
     C --> D[Initialize Pagination State]
     D --> E[Load First Page of Table Results]
-    
+
     F[User Pagination Action] --> G[API Request with Page/Limit]
     G --> H[Server-side Query with LIMIT/OFFSET]
     H --> I[Return Paginated Data + Metadata]
     I --> J[Update Table Display]
-    
+
     K[Date Filter Applied] --> L[API Request with Date Filter]
     L --> M[Server-side Date Filtering]
     M --> I
-    
+
     N[Location Filter Applied] --> O[API Request with Location]
     O --> P[Server-side Location Filtering]
     P --> I
-    
+
     style A fill:#e1f0ff
     style E fill:#e8f5e8
     style I fill:#f0f8e1
@@ -1083,12 +1105,12 @@ Response:
 
 #### **Performance Impact**
 
-| Metric | Before Pagination | After Pagination | Improvement |
-|--------|-------------------|------------------|--------------|
-| Initial Load Time | 2-8 seconds | 0.2-0.5 seconds | 95%+ faster |
-| Memory Usage | 1-10 MB | 50-200 KB | 95%+ reduction |
-| Network Transfer | 1-50 MB | 10-100 KB | 99%+ reduction |
-| Rendering Time | 500-2000ms | 50-100ms | 90%+ faster |
+| Metric            | Before Pagination | After Pagination | Improvement    |
+| ----------------- | ----------------- | ---------------- | -------------- |
+| Initial Load Time | 2-8 seconds       | 0.2-0.5 seconds  | 95%+ faster    |
+| Memory Usage      | 1-10 MB           | 50-200 KB        | 95%+ reduction |
+| Network Transfer  | 1-50 MB           | 10-100 KB        | 99%+ reduction |
+| Rendering Time    | 500-2000ms        | 50-100ms         | 90%+ faster    |
 
 ## Configuration
 
@@ -1142,9 +1164,9 @@ interface MonitorConfig {
 }
 
 type MonitoringLocation =
-  | "us-east"         // Ashburn, USA
-  | "eu-central"      // Frankfurt, Germany
-  | "asia-pacific";   // Mumbai, India
+  | "us-east" // Ashburn, USA
+  | "eu-central" // Frankfurt, Germany
+  | "asia-pacific"; // Mumbai, India
 ```
 
 ### Security Configuration
@@ -1181,20 +1203,36 @@ interface AlertConfig {
 
 ### Smart Alert Limiting System
 
-The monitoring system implements intelligent alert limiting to prevent notification fatigue while ensuring critical status changes are communicated:
+The monitoring system implements intelligent threshold-based alerting with limiting to prevent notification fatigue while ensuring critical status changes are communicated:
+
+#### Alert Thresholds
+
+**Failure Threshold:**
+
+- Configurable value from 1-5 consecutive failures
+- First failure alert is sent only when the threshold is reached
+- Example: With `failureThreshold: 3`, alert is sent after 3 consecutive failures
+
+**Recovery Threshold:**
+
+- Configurable value from 1-5 consecutive successes
+- First recovery alert is sent only when the threshold is reached
+- Ensures the monitor is truly stable before alerting recovery
+- Example: With `recoveryThreshold: 2`, recovery alert is sent after 2 consecutive successes
 
 #### Alert Limiting Rules
 
 **Failure Alerts (Maximum 3 per failure sequence):**
 
-1. **Status Change Alert**: Sent immediately when monitor status changes from 'up' to 'down'
-2. **Continuation Alerts**: Up to 2 additional alerts sent during extended failures
+1. **Threshold Alert**: Sent when consecutive failures reach the configured `failureThreshold`
+2. **Continuation Alerts**: Up to 2 additional alerts sent during extended failures (every N failures based on threshold)
 3. **Alert Suppression**: After 3 alerts, no additional failure notifications until recovery
 
-**Recovery Alerts (Unlimited):**
+**Recovery Alerts (Maximum 3 per recovery sequence):**
 
-- Always sent when monitor status changes from 'down' to 'up'
-- Resets the failure alert counter for future failure sequences
+1. **Threshold Alert**: Sent when consecutive successes reach the configured `recoveryThreshold`
+2. **Continuation Alerts**: Up to 2 additional alerts sent during extended stability (every N successes based on threshold)
+3. **Alert Suppression**: After 3 alerts, no additional recovery notifications until next failure
 
 #### Database Schema Extensions
 
@@ -1202,7 +1240,9 @@ The monitoring system implements intelligent alert limiting to prevent notificat
 // Additional fields in monitor_results table
 interface MonitorResultExtensions {
   consecutiveFailureCount: number; // Tracks consecutive failures
-  alertsSentForFailure: number; // Tracks alerts sent for current failure sequence
+  consecutiveSuccessCount: number; // Tracks consecutive successes
+  alertsSentForFailure: number; // Alerts sent for current failure sequence (max 3)
+  alertsSentForRecovery: number; // Alerts sent for current recovery sequence (max 3)
   isStatusChange: boolean; // Indicates if this result represents a status change
 }
 ```
@@ -1212,56 +1252,69 @@ interface MonitorResultExtensions {
 ```mermaid
 graph TD
     A[Monitor Check Complete] --> B{Is Monitor Down?}
-    B -->|Yes| C{Status Changed?}
-    B -->|No| D[Reset Alert Counters]
+
+    B -->|Yes| C{Consecutive Failures >= Threshold?}
+    B -->|No| D{Was Previously Down?}
 
     C -->|Yes| E{Alerts Sent < 3?}
-    C -->|No| F{Meets Threshold & Alerts < 3?}
+    C -->|No| F[Wait for Threshold]
 
-    E -->|Yes| G[Send Status Change Alert]
-    E -->|No| H[Suppress Alert - Limit Reached]
+    E -->|Yes| G[Send Failure Alert]
+    E -->|No| H[Suppress - Limit Reached]
 
-    F -->|Yes| I[Send Continuation Alert]
-    F -->|No| H
+    G --> I[Increment Failure Alert Counter]
+    F --> J[Continue Tracking]
 
-    G --> J[Increment Alert Counter]
-    I --> J
+    D -->|Yes| K{Consecutive Successes >= Threshold?}
+    D -->|No| L[Continue Tracking]
 
-    D --> K{Status Changed to Up?}
-    K -->|Yes| L[Send Recovery Alert]
-    K -->|No| M[No Alert Needed]
+    K -->|Yes| M{Recovery Alerts < 3?}
+    K -->|No| N[Wait for Threshold]
+
+    M -->|Yes| O[Send Recovery Alert]
+    M -->|No| P[Suppress - Limit Reached]
+
+    O --> Q[Increment Recovery Alert Counter]
 
     style G fill:#ff9999
-    style I fill:#ff9999
-    style L fill:#99ff99
+    style O fill:#99ff99
     style H fill:#cccccc
+    style P fill:#cccccc
+    style F fill:#fff3e0
+    style N fill:#fff3e0
 ```
 
 #### Implementation Details
 
-The alert limiting system is implemented in the `MonitorService.saveMonitorResult()` method with the following key features:
+The threshold-based alert system is implemented in `MonitorService.saveMonitorResult()` with these features:
 
 1. **Consecutive Failure Tracking**: Each monitor result tracks the number of consecutive failures
-2. **Alert Counter Management**: Tracks how many alerts have been sent for the current failure sequence
-3. **Status Change Detection**: Identifies when a monitor transitions between up/down states
-4. **Threshold-Based Alerting**: Respects configured failure thresholds before triggering alerts
-5. **Counter Reset on Recovery**: Resets all counters when monitor returns to 'up' status
+2. **Consecutive Success Tracking**: Each monitor result tracks the number of consecutive successes
+3. **Dual Alert Counters**: Separate counters for failure and recovery alerts (max 3 each)
+4. **Threshold-Based Alerting**: Respects configured thresholds before triggering alerts
+5. **Counter Reset on State Change**:
+   - Recovery resets failure counters
+   - Failure resets success counters
 
-**Example Alert Sequence:**
+**Example Alert Sequence (failureThreshold: 2, recoveryThreshold: 2):**
 
 ```
-Monitor Status: UP → DOWN (Alert #1: Status Change)
-Monitor Status: DOWN → DOWN (Alert #2: Continuation)
-Monitor Status: DOWN → DOWN (Alert #3: Continuation)
-Monitor Status: DOWN → DOWN (Suppressed: Limit reached)
-Monitor Status: DOWN → UP (Recovery Alert: Always sent)
+Monitor Status: UP                              (No alert - stable)
+Monitor Status: DOWN (1st failure)              (No alert - below threshold)
+Monitor Status: DOWN (2nd failure)              (Alert #1: Threshold reached)
+Monitor Status: DOWN (3rd failure)              (No alert - not at interval)
+Monitor Status: DOWN (4th failure)              (Alert #2: 2nd threshold interval)
+Monitor Status: UP (1st success)                (No alert - below recovery threshold)
+Monitor Status: UP (2nd success)                (Recovery Alert: Threshold reached)
+Monitor Status: UP (3rd success)                (No alert - stable)
 ```
 
 #### Benefits
 
-- **Prevents Alert Fatigue**: Maximum 3 failure alerts per incident
-- **Maintains Visibility**: Critical status changes always reported
-- **Smart Recovery**: Recovery alerts always sent to confirm resolution
+- **Prevents Alert Fatigue**: Maximum 3 alerts per incident (both failure and recovery)
+- **Configurable Sensitivity**: Thresholds allow tuning for flaky vs. stable monitors
+- **False Positive Reduction**: Recovery threshold prevents premature "recovered" alerts
+- **Maintains Visibility**: Critical status changes reported when thresholds are met
 - **Audit Trail**: Complete tracking of alert history and suppression decisions
 
 ## Capacity Management for Monitors
@@ -1273,12 +1326,14 @@ Monitor Status: DOWN → UP (Recovery Alert: Always sent)
 ### Capacity Bypass Design
 
 **Monitor executions DO NOT consume capacity slots:**
+
 - **Synthetic Test Monitors**: ✅ Bypass capacity limits
-- **HTTP/HTTPS Monitors**: ✅ Bypass capacity limits  
+- **HTTP/HTTPS Monitors**: ✅ Bypass capacity limits
 - **Website Monitors**: ✅ Bypass capacity limits
 - **Ping/Port Monitors**: ✅ Bypass capacity limits
 
 **Implementation Details:**
+
 - Monitor scheduler does NOT call `verifyQueueCapacityOrThrow()`
 - Monitor queues are excluded from capacity calculations in queue stats
 - Monitor execution uses dedicated regional queues: `monitor-{region}`
@@ -1287,12 +1342,14 @@ Monitor Status: DOWN → UP (Recovery Alert: Always sent)
 ### Multi-Location Impact
 
 **Unlimited Multi-Location Execution:**
+
 - Each location can run monitors independently
 - Monitor running in 3 locations = 3 concurrent executions (no capacity limits)
 - Plan limits do NOT apply to monitor executions
 - Critical monitoring always takes priority
 
 **Example Scenario:**
+
 ```
 Pro Plan (10 concurrent slots for TESTS only)
 ├── Tests: 3 running, 4 queued (within plan limits)
@@ -1303,11 +1360,13 @@ Pro Plan (10 concurrent slots for TESTS only)
 ### Configuration Best Practices
 
 **Frequency vs Resource Planning:**
+
 - High-frequency monitors (1-minute) consume system resources but NOT capacity slots
 - Monitor frequency is limited by system resources, not plan capacity
 - Consider staggered schedules to optimize system resource usage
 
 **Multi-Location Strategy:**
+
 - Each additional location increases system resource usage but NOT capacity consumption
 - Use all available locations for comprehensive monitoring coverage
 - No need to reserve locations - all are available for monitor execution
@@ -1444,13 +1503,14 @@ The system provides enterprise-level reliability, security, and performance that
 When monitors are executed across multiple regions (e.g., US East, EU Central, Asia Pacific), the results must be aggregated to determine the overall status.
 
 **Aggregation Process:**
+
 1.  **Execution Group ID**: Each multi-location run is assigned a unique `executionGroupId`.
 2.  **Regional Execution**: Workers in each region execute the check and save their individual result with the `executionGroupId`.
 3.  **Aggregation Check**: As each result is saved, the worker checks if all expected locations have reported for that `executionGroupId`.
 4.  **Retry Mechanism**: To handle race conditions where results are committed slightly out of sync, the aggregation logic includes a retry mechanism:
-    -   **Max Retries**: 3 attempts
-    -   **Delay**: 500ms between attempts
-    -   This ensures robust status calculation even with slight network or database latency.
+    - **Max Retries**: 3 attempts
+    - **Delay**: 500ms between attempts
+    - This ensures robust status calculation even with slight network or database latency.
 5.  **Status Calculation**: Once all results are present (or retries exhausted), the system calculates the overall status (e.g., "Up" if majority of locations are up).
 
 ### Location Normalization

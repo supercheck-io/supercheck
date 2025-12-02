@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -138,9 +139,7 @@ function LocationConfigSectionComponent({
     onChange(newConfig);
   };
 
-  const handleStrategyChange = (
-    strategy: "all" | "majority" | "any"
-  ) => {
+  const handleStrategyChange = (strategy: "all" | "majority" | "any") => {
     const currentConfig = value || DEFAULT_LOCATION_CONFIG;
     const newConfig = { ...currentConfig, strategy };
     // Auto-adjust threshold based on strategy
@@ -527,7 +526,4 @@ function SimpleGlobe({
   );
 }
 
-// Helper function for cn utility (if not already in your utils)
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(" ");
-}
+// cn utility is imported from @/lib/utils

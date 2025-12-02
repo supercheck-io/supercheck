@@ -531,8 +531,12 @@ export class MonitorService {
     };
 
     let latestByLocation = new Map<MonitoringLocation, MonitorResultRow>();
-    
-    for (let attempt = 1; attempt <= MonitorService.AGGREGATION_MAX_RETRIES; attempt++) {
+
+    for (
+      let attempt = 1;
+      attempt <= MonitorService.AGGREGATION_MAX_RETRIES;
+      attempt++
+    ) {
       const groupRows = await this.dbService.db
         .select({
           monitorId: schema.monitorResults.monitorId,
@@ -568,9 +572,11 @@ export class MonitorService {
 
       if (attempt < MonitorService.AGGREGATION_MAX_RETRIES) {
         this.logger.debug(
-          `Attempt ${attempt}/${MonitorService.AGGREGATION_MAX_RETRIES}: Waiting for all locations. Got ${latestByLocation.size}/${expected.length}. Retrying in ${MonitorService.AGGREGATION_RETRY_DELAY_MS}ms...`
+          `Attempt ${attempt}/${MonitorService.AGGREGATION_MAX_RETRIES}: Waiting for all locations. Got ${latestByLocation.size}/${expected.length}. Retrying in ${MonitorService.AGGREGATION_RETRY_DELAY_MS}ms...`,
         );
-        await new Promise((resolve) => setTimeout(resolve, MonitorService.AGGREGATION_RETRY_DELAY_MS));
+        await new Promise((resolve) =>
+          setTimeout(resolve, MonitorService.AGGREGATION_RETRY_DELAY_MS),
+        );
       }
     }
 
@@ -617,7 +623,9 @@ export class MonitorService {
       `Calling saveMonitorResults for monitor ${result.monitorId} with ${aggregatedResults.length} results`,
     );
     await this.saveMonitorResults(aggregatedResults, { persisted: true });
-    this.logger.log(`Successfully aggregated and saved results for monitor ${result.monitorId}`);
+    this.logger.log(
+      `Successfully aggregated and saved results for monitor ${result.monitorId}`,
+    );
   }
 
   async saveMonitorResult(resultData: MonitorExecutionResult): Promise<void> {
@@ -655,7 +663,7 @@ export class MonitorService {
             `[ALERT_DEBUG] Checking alert thresholds for monitor ${resultData.monitorId}, currentStatus: ${currentStatus}, previousStatus: ${previousStatus}, isStatusChange: ${isStatusChange}`,
           );
 
-          // Get the latest result we just saved to get accurate consecutive failure tracking
+          // Get the latest result we just saved to get accurate consecutive tracking
           const latestResult =
             await this.dbService.db.query.monitorResults.findFirst({
               where: eq(schema.monitorResults.monitorId, resultData.monitorId),
@@ -665,10 +673,14 @@ export class MonitorService {
           const alertConfig = monitor.alertConfig;
           const consecutiveFailureCount =
             latestResult?.consecutiveFailureCount || 0;
+          const consecutiveSuccessCount =
+            (latestResult as any)?.consecutiveSuccessCount || 0;
           const alertsSentForFailure = latestResult?.alertsSentForFailure || 0;
+          const alertsSentForRecovery =
+            (latestResult as any)?.alertsSentForRecovery || 0;
 
           this.logger.debug(
-            `[ALERT_DEBUG] Monitor ${resultData.monitorId} - consecutiveFailureCount: ${consecutiveFailureCount}, alertsSentForFailure: ${alertsSentForFailure}, isStatusChange: ${isStatusChange}`,
+            `[ALERT_DEBUG] Monitor ${resultData.monitorId} - consecutiveFailureCount: ${consecutiveFailureCount}, consecutiveSuccessCount: ${consecutiveSuccessCount}, alertsSentForFailure: ${alertsSentForFailure}, alertsSentForRecovery: ${alertsSentForRecovery}, isStatusChange: ${isStatusChange}`,
           );
 
           // Determine if we should send alerts
@@ -677,15 +689,14 @@ export class MonitorService {
 
           if (currentStatus === 'down') {
             // Failure alert logic:
-            // 1st alert: when status changes from up to down
+            // 1st alert: when consecutive failures reach the threshold
             // 2nd & 3rd alerts: after every X failures (based on threshold) but max 3 total
             const failureThreshold = alertConfig?.failureThreshold || 1;
 
-            if (isStatusChange) {
-              // First alert: status change from up to down
+            if (consecutiveFailureCount === failureThreshold) {
+              // First alert: threshold just reached
               shouldSendFailureAlert =
-                alertConfig?.alertOnFailure &&
-                consecutiveFailureCount >= failureThreshold;
+                alertConfig?.alertOnFailure && alertsSentForFailure === 0;
             } else if (
               consecutiveFailureCount > failureThreshold &&
               (consecutiveFailureCount - failureThreshold) %
@@ -696,13 +707,28 @@ export class MonitorService {
               shouldSendFailureAlert =
                 alertConfig?.alertOnFailure && alertsSentForFailure < 3;
             }
-          } else if (
-            currentStatus === 'up' &&
-            isStatusChange &&
-            previousStatus === 'down'
-          ) {
-            // Recovery alert logic: send when status changes from down to up
-            shouldSendRecoveryAlert = alertConfig?.alertOnRecovery || false;
+          } else if (currentStatus === 'up' && previousStatus === 'down') {
+            // Recovery alert logic:
+            // Only send recovery alert when consecutive successes reach the recovery threshold
+            // This ensures the monitor is truly stable before alerting recovery
+            const recoveryThreshold = alertConfig?.recoveryThreshold || 1;
+
+            if (consecutiveSuccessCount === recoveryThreshold) {
+              // First recovery alert: threshold just reached
+              shouldSendRecoveryAlert =
+                (alertConfig?.alertOnRecovery || false) &&
+                alertsSentForRecovery === 0;
+            } else if (
+              consecutiveSuccessCount > recoveryThreshold &&
+              (consecutiveSuccessCount - recoveryThreshold) %
+                recoveryThreshold ===
+                0
+            ) {
+              // Subsequent recovery alerts: every X successes after threshold, but max 3 total
+              shouldSendRecoveryAlert =
+                (alertConfig?.alertOnRecovery || false) &&
+                alertsSentForRecovery < 3;
+            }
           }
 
           this.logger.debug(
@@ -719,7 +745,9 @@ export class MonitorService {
             const metadata = {
               responseTime: resultData.responseTimeMs,
               consecutiveFailureCount: consecutiveFailureCount,
+              consecutiveSuccessCount: consecutiveSuccessCount,
               alertsSentForFailure: alertsSentForFailure,
+              alertsSentForRecovery: alertsSentForRecovery,
               isStatusChange: isStatusChange,
             };
 
@@ -730,11 +758,20 @@ export class MonitorService {
               metadata,
             );
 
-            // Update alert counter for failure alerts
+            // Update alert counter for the appropriate alert type
             if (shouldSendFailureAlert && latestResult) {
               await this.dbService.db
                 .update(schema.monitorResults)
                 .set({ alertsSentForFailure: alertsSentForFailure + 1 })
+                .where(eq(schema.monitorResults.id, latestResult.id));
+            }
+
+            if (shouldSendRecoveryAlert && latestResult) {
+              await this.dbService.db
+                .update(schema.monitorResults)
+                .set({
+                  alertsSentForRecovery: alertsSentForRecovery + 1,
+                } as any)
                 .where(eq(schema.monitorResults.id, latestResult.id));
             }
 
@@ -748,6 +785,17 @@ export class MonitorService {
             this.logger.debug(
               `[ALERT_DEBUG] Skipping failure alert for monitor ${resultData.monitorId} - already sent 3 alerts for this failure sequence`,
             );
+          } else if (currentStatus === 'up' && previousStatus === 'down') {
+            const recoveryThreshold = alertConfig?.recoveryThreshold || 1;
+            if (consecutiveSuccessCount < recoveryThreshold) {
+              this.logger.debug(
+                `[ALERT_DEBUG] Skipping recovery alert for monitor ${resultData.monitorId} - waiting for ${recoveryThreshold - consecutiveSuccessCount} more consecutive successes (${consecutiveSuccessCount}/${recoveryThreshold})`,
+              );
+            } else if (alertsSentForRecovery >= 3) {
+              this.logger.debug(
+                `[ALERT_DEBUG] Skipping recovery alert for monitor ${resultData.monitorId} - already sent 3 alerts for this recovery sequence`,
+              );
+            }
           }
         }
 
@@ -1983,7 +2031,7 @@ export class MonitorService {
     resultData: MonitorExecutionResult,
   ): Promise<void> {
     try {
-      // Get the last monitor result to track consecutive failures
+      // Get the last monitor result to track consecutive failures and successes
       const lastResult = await this.dbService.db.query.monitorResults.findFirst(
         {
           where: eq(schema.monitorResults.monitorId, resultData.monitorId),
@@ -1992,10 +2040,13 @@ export class MonitorService {
       );
 
       let consecutiveFailureCount = 0;
+      let consecutiveSuccessCount = 0;
       let alertsSentForFailure = 0;
+      let alertsSentForRecovery = 0;
 
-      // Calculate consecutive failure count
+      // Calculate consecutive failure and success counts
       if (!resultData.isUp) {
+        // Monitor is down - track failure sequence
         if (lastResult && !lastResult.isUp) {
           // Continue failure sequence
           consecutiveFailureCount =
@@ -2006,8 +2057,23 @@ export class MonitorService {
           consecutiveFailureCount = 1;
           alertsSentForFailure = 0;
         }
+        // Reset success counters when down
+        consecutiveSuccessCount = 0;
+        alertsSentForRecovery = 0;
       } else {
-        // Monitor is up - reset counters
+        // Monitor is up - track success sequence
+        if (lastResult && lastResult.isUp) {
+          // Continue success sequence
+          consecutiveSuccessCount =
+            ((lastResult as any).consecutiveSuccessCount || 0) + 1;
+          alertsSentForRecovery =
+            (lastResult as any).alertsSentForRecovery || 0;
+        } else {
+          // Start new success sequence (just recovered)
+          consecutiveSuccessCount = 1;
+          alertsSentForRecovery = 0;
+        }
+        // Reset failure counters when up
         consecutiveFailureCount = 0;
         alertsSentForFailure = 0;
       }
@@ -2034,7 +2100,9 @@ export class MonitorService {
         isUp: resultData.isUp,
         isStatusChange: isStatusChange,
         consecutiveFailureCount: consecutiveFailureCount,
+        consecutiveSuccessCount: consecutiveSuccessCount,
         alertsSentForFailure: alertsSentForFailure,
+        alertsSentForRecovery: alertsSentForRecovery,
         // Store test execution metadata for synthetic monitors
         testExecutionId: resultData.testExecutionId || null,
         testReportS3Url: resultData.testReportS3Url || null,
@@ -2303,21 +2371,19 @@ export class MonitorService {
       const monitor = await this.dbService.db.query.monitors.findFirst({
         where: (monitors, { eq }) => eq(monitors.id, monitorId),
       });
-      
+
       if (monitor?.organizationId) {
-        await this.usageTrackerService.trackPlaywrightExecution(
-          monitor.organizationId,
-          responseTimeMs,
-          {
+        await this.usageTrackerService
+          .trackPlaywrightExecution(monitor.organizationId, responseTimeMs, {
             monitorId,
             testId: test.id,
             type: 'synthetic_monitor',
-          }
-        ).catch((err: Error) =>
-          this.logger.warn(
-            `[${monitorId}] Failed to track Playwright usage for synthetic test: ${err.message}`,
-          ),
-        );
+          })
+          .catch((err: Error) =>
+            this.logger.warn(
+              `[${monitorId}] Failed to track Playwright usage for synthetic test: ${err.message}`,
+            ),
+          );
       }
 
       // 6. Convert test result to monitor result format
