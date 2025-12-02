@@ -4,27 +4,71 @@ import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { generateProxyUrl } from "@/lib/asset-proxy";
+import { z } from "zod";
+
+// UUID validation schema
+const uuidSchema = z.string().uuid("Invalid status page ID format");
 
 /**
  * Public action to get a status page by ID without authentication
  * Only returns published status pages
+ *
+ * SECURITY NOTES:
+ * - Only returns published pages
+ * - Validates UUID format to prevent injection
+ * - Only returns public-safe fields (no sensitive data)
  */
 export async function getPublicStatusPage(id: string) {
   try {
-    // Validate input
-    if (!id) {
+    // Validate UUID format to prevent injection attacks
+    const validationResult = uuidSchema.safeParse(id);
+    if (!validationResult.success) {
       return {
         success: false,
-        message: "Status page ID is required",
+        message: "Invalid status page ID",
       };
     }
 
     // Get the status page - only if it's published
     const statusPage = await db.query.statusPages.findFirst({
-      where: and(
-        eq(statusPages.id, id),
-        eq(statusPages.status, "published")
-      ),
+      where: and(eq(statusPages.id, id), eq(statusPages.status, "published")),
+      columns: {
+        // Only select public-safe fields - exclude sensitive data
+        id: true,
+        name: true,
+        subdomain: true,
+        status: true,
+        pageDescription: true,
+        headline: true,
+        supportUrl: true,
+        timezone: true,
+        // Branding fields
+        cssBodyBackgroundColor: true,
+        cssFontColor: true,
+        cssLightFontColor: true,
+        cssGreens: true,
+        cssYellows: true,
+        cssOranges: true,
+        cssBlues: true,
+        cssReds: true,
+        cssBorderColor: true,
+        cssGraphColor: true,
+        cssLinkColor: true,
+        cssNoData: true,
+        faviconLogo: true,
+        transactionalLogo: true,
+        heroCover: true,
+        customDomain: true,
+        customDomainVerified: true,
+        // Subscriber settings (to determine what subscription options to show)
+        allowPageSubscribers: true,
+        allowEmailSubscribers: true,
+        allowWebhookSubscribers: true,
+        allowSlackSubscribers: true,
+        allowRssFeed: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     if (!statusPage) {
@@ -54,7 +98,6 @@ export async function getPublicStatusPage(id: string) {
     return {
       success: false,
       message: "Failed to fetch status page",
-      error,
     };
   }
 }

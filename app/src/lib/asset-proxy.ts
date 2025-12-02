@@ -5,6 +5,16 @@
  * This approach works consistently across all S3-compatible storage providers.
  */
 
+// Default bucket name - must match the default in upload route and assets API
+const DEFAULT_STATUS_BUCKET_NAME = "supercheck-status-artifacts";
+
+/**
+ * Get the status bucket name from environment or use default
+ */
+function getStatusBucketName(): string {
+  return process.env.S3_STATUS_BUCKET_NAME || DEFAULT_STATUS_BUCKET_NAME;
+}
+
 /**
  * Generate a proxy URL for an S3 asset
  * @param s3Reference - S3 reference in format: bucket/key
@@ -32,7 +42,8 @@ export function generateProxyUrl(
 
     // For now, we only proxy the status bucket
     // In the future, we could extend this to other buckets
-    if (bucket === process.env.S3_STATUS_BUCKET_NAME) {
+    const statusBucketName = getStatusBucketName();
+    if (bucket === statusBucketName) {
       return `/api/assets/${key}`;
     }
 
@@ -66,5 +77,5 @@ export function generateProxyUrls(
  * @returns True if bucket is supported for proxying
  */
 export function isBucketSupported(bucket: string): boolean {
-  return bucket === process.env.S3_STATUS_BUCKET_NAME;
+  return bucket === getStatusBucketName();
 }

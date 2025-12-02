@@ -47,6 +47,7 @@ class QueueEventHub extends EventEmitter {
   private queueEvents: QueueEvents[] = [];
   private closing = false;
   private runMetaCache = new Map<string, { entityId?: string; trigger?: string }>();
+  private static processListenersAttached = false;
 
   constructor() {
     super();
@@ -55,15 +56,22 @@ class QueueEventHub extends EventEmitter {
       eventHubLogger.error({ err: error }, "Fatal error during initialization");
       throw error;
     });
-    process.once("exit", () => {
-      void this.closeAll();
-    });
-    process.once("SIGINT", () => {
-      void this.closeAll();
-    });
-    process.once("SIGTERM", () => {
-      void this.closeAll();
-    });
+
+    // Only attach process listeners once per application lifecycle
+    // This prevents MaxListenersExceededWarning in development with hot reloading
+    if (!QueueEventHub.processListenersAttached) {
+      QueueEventHub.processListenersAttached = true;
+
+      process.once("exit", () => {
+        void this.closeAll();
+      });
+      process.once("SIGINT", () => {
+        void this.closeAll();
+      });
+      process.once("SIGTERM", () => {
+        void this.closeAll();
+      });
+    }
   }
 
   /**

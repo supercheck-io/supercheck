@@ -10,10 +10,13 @@ import {
   Wrench,
   ChevronLeft,
   ChevronRight,
+  Bell,
 } from "lucide-react";
 import { format, subDays, startOfDay, isSameDay } from "date-fns";
 import { SubscribeDialog } from "./subscribe-dialog";
+import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { useStatusPageFavicon } from "./use-status-page-favicon";
 
 type ComponentStatus =
   | "operational"
@@ -90,6 +93,9 @@ export function PublicStatusPage({
 }: PublicStatusPageProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const DAYS_PER_PAGE = 7;
+
+  // Apply custom favicon for client-side navigation
+  useStatusPageFavicon(statusPage.faviconLogo);
 
   // Calculate overall system status from components
   const calculateSystemStatus = () => {
@@ -352,18 +358,21 @@ export function PublicStatusPage({
         {/* Tooltip positioned below the bar */}
         {hoveredDay !== null && (
           <div
-            className="absolute top-full left-0 mt-3 px-4 py-3 bg-gray-900 dark:bg-gray-800 text-white rounded-md shadow-xl z-50"
+            className="absolute mt-3 px-4 py-3 bg-gray-900 dark:bg-gray-800 text-white rounded-lg shadow-2xl border border-gray-700"
             style={{
-              left: `${(hoveredDay / data.length) * 100}%`,
+              top: "100%",
+              left: `${Math.min(Math.max((hoveredDay / data.length) * 100, 15), 85)}%`,
               transform: "translateX(-50%)",
-              minWidth: "200px",
-              maxWidth: "700px",
+              minWidth: "220px",
+              maxWidth: "320px",
               width: "auto",
               fontSize: "13px",
+              zIndex: 9999,
+              pointerEvents: "none",
             }}
           >
-            <div className="font-semibold mb-2">
-              {format(data[hoveredDay].date, "d MMM yyyy")}
+            <div className="font-semibold mb-2 text-white">
+              {format(data[hoveredDay].date, "EEEE, MMM d, yyyy")}
             </div>
 
             {data[hoveredDay].status === "nodata" ? (
@@ -382,17 +391,20 @@ export function PublicStatusPage({
                     <div className="font-medium text-white">
                       {incident.name}
                     </div>
-                    <div className="text-xs text-gray-400 mt-0.5" style={{ whiteSpace: "nowrap" }}>
+                    <div
+                      className="text-xs text-gray-400 mt-0.5"
+                      style={{ whiteSpace: "nowrap" }}
+                    >
                       Impact:{" "}
                       <span
                         className={
                           incident.impact === "critical"
                             ? "text-red-400"
                             : incident.impact === "major"
-                            ? "text-orange-400"
-                            : incident.impact === "minor"
-                            ? "text-yellow-400"
-                            : "text-gray-400"
+                              ? "text-orange-400"
+                              : incident.impact === "minor"
+                                ? "text-yellow-400"
+                                : "text-gray-400"
                         }
                       >
                         {incident.impact}
@@ -417,8 +429,8 @@ export function PublicStatusPage({
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Header */}
       <div className="max-w-5xl mx-auto px-6 py-8">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
+        <div className="flex items-start justify-between gap-6">
+          <div className="flex-1 min-w-0">
             {statusPage.transactionalLogo && (
               <Image
                 src={statusPage.transactionalLogo}
@@ -429,54 +441,77 @@ export function PublicStatusPage({
                 unoptimized
               />
             )}
-            <h1 className="text-3xl font-semibold text-gray-900 dark:text-gray-100">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
               {statusPage.headline || statusPage.name}
             </h1>
             {statusPage.pageDescription && (
-              <p className="text-gray-600 dark:text-gray-400 mt-2">
+              <p className="text-gray-600 dark:text-gray-400 mt-2 max-w-2xl">
                 {statusPage.pageDescription}
               </p>
             )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-shrink-0">
             <SubscribeDialog
               statusPageId={statusPage.id}
               statusPageName={statusPage.headline || statusPage.name}
+              trigger={
+                <Button variant="outline" className="gap-2 shadow-sm">
+                  <Bell className="h-4 w-4" />
+                  Subscribe
+                </Button>
+              }
             />
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+      <div className="max-w-5xl mx-auto px-6 pb-12 space-y-8">
         {/* Current Status Banner */}
         <div
-          className="rounded-lg p-6"
+          className="rounded-xl p-6 shadow-sm"
           style={{ backgroundColor: statusDisplay.bgColor }}
         >
-          <div className="flex items-center gap-3">
-            <StatusIcon className="h-6 w-6 text-white" />
-            <span className="text-2xl font-medium text-white">
-              {statusDisplay.text}
-            </span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center justify-center w-12 h-12 rounded-full bg-white/20">
+              <StatusIcon className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-semibold text-white">
+                {statusDisplay.text}
+              </h2>
+              <p className="text-white/80 text-sm mt-0.5">
+                {statusDisplay.subtext}
+              </p>
+            </div>
           </div>
         </div>
 
         {/* Components Section */}
         <div className="space-y-4">
-          <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400 mb-2">
-            <span></span>
-            <span>Uptime over the past 90 days</span>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              System Status
+            </h2>
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              Uptime over the past 90 days
+            </span>
           </div>
 
           {visibleComponents.length === 0 ? (
-            <div className="bg-white dark:bg-gray-900 border dark:border-gray-800 rounded-lg p-8 text-center">
-              <p className="text-gray-500 dark:text-gray-400">
+            <div className="bg-white dark:bg-gray-900 border dark:border-gray-800 rounded-xl p-12 text-center shadow-sm">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-800 mb-4">
+                <CheckCircle2 className="h-7 w-7 text-gray-400" />
+              </div>
+              <p className="text-gray-500 dark:text-gray-400 font-medium">
                 No components configured yet
+              </p>
+              <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
+                Components will appear here once configured
               </p>
             </div>
           ) : (
-            <div className="space-y-0 bg-white dark:bg-gray-900 border dark:border-gray-800 rounded-lg divide-y dark:divide-gray-800">
+            <div className="space-y-0 bg-white dark:bg-gray-900 border dark:border-gray-800 rounded-xl divide-y dark:divide-gray-800 shadow-sm">
               {visibleComponents.map((component) => {
                 const componentStatus = getComponentStatusDisplay(
                   component.status
@@ -497,24 +532,30 @@ export function PublicStatusPage({
                     : "0.0";
 
                 return (
-                  <div key={component.id} className="p-4">
+                  <div key={component.id} className="p-5">
                     <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <h3 className="font-medium text-gray-900 dark:text-gray-100">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100">
                           {component.name}
                         </h3>
                         {component.description && (
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                             {component.description}
                           </p>
                         )}
                       </div>
-                      <span
-                        className="text-sm font-medium"
-                        style={{ color: componentStatus.color }}
+                      <div
+                        className="flex items-center gap-1.5 text-sm font-medium px-2.5 py-1 rounded-full"
+                        style={{
+                          color: componentStatus.color,
+                          backgroundColor: `${componentStatus.color}15`,
+                        }}
                       >
-                        {componentStatus.text}
-                      </span>
+                        {React.createElement(componentStatus.icon, {
+                          className: "h-3.5 w-3.5",
+                        })}
+                        <span>{componentStatus.text}</span>
+                      </div>
                     </div>
 
                     {/* 90-day uptime bar */}
@@ -535,7 +576,7 @@ export function PublicStatusPage({
 
         {/* Past Incidents Section */}
         <div className="space-y-6">
-          <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">
             Past Incidents
           </h2>
 
@@ -572,23 +613,23 @@ export function PublicStatusPage({
 
             return (
               <>
-                <div className="space-y-8">
+                <div className="space-y-6">
                   {paginatedDays.map(({ date, incidents: dayIncidents }) => (
                     <div
                       key={format(date, "yyyy-MM-dd")}
-                      className="pb-4 border-b dark:border-gray-800"
+                      className="pb-5 border-b dark:border-gray-800 last:border-b-0"
                     >
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
-                        {format(date, "MMM d, yyyy")}
+                      <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">
+                        {format(date, "EEEE, MMM d, yyyy")}
                       </h3>
 
                       {dayIncidents.length === 0 ? (
-                        <p className="text-gray-600 dark:text-gray-400">
+                        <p className="text-gray-500 dark:text-gray-400 text-sm">
                           No incidents reported
                           {isSameDay(date, new Date()) ? " today" : ""}.
                         </p>
                       ) : (
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                           {dayIncidents.map((incident) => {
                             // Status color mapping for badges
                             const getStatusColor = (status: IncidentStatus) => {
@@ -630,7 +671,7 @@ export function PublicStatusPage({
                               <Link
                                 key={incident.id}
                                 href={`${incidentLinkBase}/${incident.id}`}
-                                className="block px-4 py-3 rounded-lg bg-gray-50 dark:bg-gray-950 transition-all duration-200 hover:bg-gray-100 dark:hover:bg-gray-900"
+                                className="block px-4 py-3 rounded-lg bg-white dark:bg-gray-900 border dark:border-gray-800 transition-all duration-200 hover:shadow-md hover:border-gray-300 dark:hover:border-gray-700"
                               >
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="flex-1 min-w-0">
@@ -638,7 +679,7 @@ export function PublicStatusPage({
                                       {incident.name}
                                     </h4>
                                     {incident.latestUpdate && (
-                                      <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mt-1">
+                                      <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">
                                         {incident.latestUpdate.body}
                                       </p>
                                     )}
