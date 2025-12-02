@@ -16,7 +16,11 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { createInsertSchema, createSelectSchema, createUpdateSchema } from "drizzle-zod";
+import {
+  createInsertSchema,
+  createSelectSchema,
+  createUpdateSchema,
+} from "drizzle-zod";
 import { organization, projects } from "./organization";
 import { user } from "./auth";
 import type {
@@ -92,15 +96,24 @@ export const monitorResults = pgTable(
     consecutiveFailureCount: integer("consecutive_failure_count")
       .notNull()
       .default(0),
-    alertsSentForFailure: integer("alerts_sent_for_failure").notNull().default(0),
+    consecutiveSuccessCount: integer("consecutive_success_count")
+      .notNull()
+      .default(0),
+    alertsSentForFailure: integer("alerts_sent_for_failure")
+      .notNull()
+      .default(0),
+    alertsSentForRecovery: integer("alerts_sent_for_recovery")
+      .notNull()
+      .default(0),
     // For synthetic monitors - store test execution metadata
     testExecutionId: text("test_execution_id"), // Unique execution ID (for accessing reports)
     testReportS3Url: text("test_report_s3_url"), // Full S3 URL to the report
   },
   (table) => ({
     // Composite index for efficient location-based queries
-    monitorLocationIdx: index("monitor_results_monitor_location_checked_idx")
-      .on(table.monitorId, table.location, table.checkedAt),
+    monitorLocationIdx: index(
+      "monitor_results_monitor_location_checked_idx"
+    ).on(table.monitorId, table.location, table.checkedAt),
   })
 );
 

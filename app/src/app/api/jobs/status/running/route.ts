@@ -17,7 +17,8 @@ export async function GET(): Promise<NextResponse> {
       where: eq(runs.status, "running"),
       columns: {
         id: true,
-        jobId: true
+        jobId: true,
+        startedAt: true
       }
     });
     
@@ -56,8 +57,8 @@ export async function GET(): Promise<NextResponse> {
                 }
               }
             }),
-            // Timeout after 500ms to prevent hanging
-            new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 500))
+            // Timeout after 2000ms to prevent hanging (increased for connection stability)
+            new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 2000))
           ]);
         } catch (error) {
           // 'FOUND' error means we found the job running
@@ -76,6 +77,8 @@ export async function GET(): Promise<NextResponse> {
     );
 
     // Separate valid and stale runs based on results
+    // Only mark as stale if run started more than 60 minutes ago (max execution time)
+    const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes - platform max execution time
     const staleRunIds: string[] = [];
     const validRunIds: string[] = [];
 
@@ -83,7 +86,17 @@ export async function GET(): Promise<NextResponse> {
       if (check.isActuallyRunning) {
         validRunIds.push(check.runId);
       } else {
-        staleRunIds.push(check.runId);
+        // Only mark as stale if the run is older than the threshold
+        const run = activeRuns.find(r => r.id === check.runId);
+        const runAge = run?.startedAt ? Date.now() - new Date(run.startedAt).getTime() : 0;
+        
+        if (runAge > STALE_THRESHOLD_MS) {
+          // Run exceeded max execution time and not in queue - truly stale
+          staleRunIds.push(check.runId);
+        } else {
+          // Recent run not found in queue - likely transient issue, keep as valid
+          validRunIds.push(check.runId);
+        }
       }
     }
 

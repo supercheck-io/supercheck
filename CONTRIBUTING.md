@@ -6,5 +6,4 @@ This project does not accept external contributions at this time.
 
 For questions or inquiries, please refer to:
 
-- [README](README.md)
 - [SUPPORT](SUPPORT.md)

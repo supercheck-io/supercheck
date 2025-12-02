@@ -87,6 +87,7 @@ graph TB
 ```
 
 **Legend:**
+
 - 🔵 **Blue**: Next.js App components (frontend, schedulers, processors)
 - 🟡 **Orange**: Redis & BullMQ queues (message broker)
 - 🟣 **Purple**: Worker (NestJS) components (execution, notification)
@@ -101,6 +102,7 @@ graph TB
 **Purpose:** User interface, scheduling, and email template processing
 
 **Key Components:**
+
 - **React Email Templates** (`/app/src/emails`): Professional email templates built with react-email
 - **Email Renderer Service** (`/app/src/lib/email-renderer.ts`): Direct template rendering for app usage
 - **Email Template Processor**: Worker that processes email jobs using `react-email` templates. It handles rendering, fallback generation, and sending via SMTP.
@@ -108,6 +110,7 @@ graph TB
 - **Monitor Scheduler** (`/app/src/lib/monitor-scheduler.ts`): Schedules monitor checks based on frequency
 
 **Responsibilities:**
+
 - Manage user interface and configuration
 - Schedule jobs and monitors using BullMQ Job Schedulers
 - Process email template rendering requests via BullMQ
@@ -118,11 +121,13 @@ graph TB
 **Purpose:** Message broker and job queue system
 
 **Key Queues:**
+
 - **email-template-render**: Worker → App communication for email rendering
 - **test-execution**: Scheduled test execution jobs
 - **monitor-execution**: Scheduled monitor check jobs
 
 **Features:**
+
 - Persistent job storage (survives restarts)
 - Job retries and failure handling
 - Delayed/scheduled jobs
@@ -134,12 +139,14 @@ graph TB
 **Purpose:** Execute tests/monitors and send notifications
 
 **Key Components:**
+
 - **Test Executor**: Runs Playwright/K6 tests
 - **Monitor Executor**: Performs monitor checks (HTTP, SSL, etc.)
 - **Notification Service** (`/worker/src/notification/notification.service.ts`): Routes notifications to providers
 - **Email Template Service** (`/worker/src/email-template/email-template.service.ts`): Fetches rendered templates via BullMQ
 
 **Responsibilities:**
+
 - Execute tests and monitors
 - Evaluate alert conditions
 - Request email templates from app via queue
@@ -149,6 +156,7 @@ graph TB
 ### 4. External Notification Providers
 
 **Supported Providers:**
+
 - **Email (SMTP)**: Professional templated emails
 - **Slack**: Webhook-based notifications with rich formatting
 - **Discord**: Webhook-based embeds
@@ -229,6 +237,7 @@ sequenceDiagram
 7. **Fallback**: If queue fails or times out, worker generates basic HTML as fallback
 
 **Available Email Templates:**
+
 - **Monitor Alert**: Generic alert template with customizable fields and colors
 - **Job Failure**: Dedicated template for failed test runs with error details
 - **Job Success**: Success notification with test statistics
@@ -341,16 +350,19 @@ sequenceDiagram
 **Monitor Alert Types:**
 
 1. **Monitor Failure** (`monitor_failure`)
-   - Triggered when monitor check fails
+
+   - Triggered when consecutive failures reach the configured `failureThreshold`
    - Includes response time, status code, error details
    - Red color theme (#dc2626)
-   - Can include retry information
+   - Maximum 3 alerts per failure sequence
 
 2. **Monitor Recovery** (`monitor_recovery`)
-   - Triggered when monitor recovers after failure
+
+   - Triggered when consecutive successes reach the configured `recoveryThreshold`
    - Includes downtime duration
    - Green color theme (#22c55e)
-   - Shows last failure details
+   - Ensures monitor is truly stable before alerting
+   - Maximum 3 alerts per recovery sequence
 
 3. **SSL Certificate Expiring** (`ssl_expiring`)
    - Triggered when SSL cert expires within threshold
@@ -358,13 +370,15 @@ sequenceDiagram
    - Yellow/orange color theme (#f59e0b)
    - Configurable warning period
 
-**Alert Conditions:**
-- **First Failure**: Alert immediately on first failure
-- **Consecutive Failures**: Alert after N consecutive failures
-- **Recovery**: Always alert on recovery if monitor was down
+**Alert Thresholds:**
+
+- **Failure Threshold**: Configurable 1-5 consecutive failures before first alert
+- **Recovery Threshold**: Configurable 1-5 consecutive successes before recovery alert
+- **Alert Limiting**: Maximum 3 alerts per failure/recovery sequence
 - **SSL Warning**: Alert at configurable days before expiry (e.g., 30, 7, 1 days)
 
 **Notification Fields:**
+
 - Monitor name and type
 - Project name
 - Status (up/down)
@@ -473,6 +487,7 @@ sequenceDiagram
 **Job Notification Types:**
 
 1. **Job Success** (`job_success`)
+
    - Triggered when all tests pass
    - Green color theme (#22c55e)
    - Generic template (no test statistics in email)
@@ -480,6 +495,7 @@ sequenceDiagram
    - Optional: Only send for scheduled runs, not manual
 
 2. **Job Failure** (`job_failed`)
+
    - Triggered when one or more tests fail
    - Red color theme (#dc2626)
    - Generic template (no test statistics in email)
@@ -493,6 +509,7 @@ sequenceDiagram
    - Dashboard link to partial results
 
 **Notification Fields:**
+
 - Job name
 - Project name
 - Execution status (Success/Failed/Timeout)
@@ -505,6 +522,7 @@ sequenceDiagram
 **Note:** Test statistics (total tests, passed, failed) are NOT included in email notifications. Users can view detailed test results and statistics on the dashboard by clicking the provided link.
 
 **Conditional Notifications:**
+
 - Users can configure to receive notifications only on failure
 - Users can configure to receive all notifications (success + failure)
 - Timeout always triggers a notification
@@ -570,12 +588,14 @@ sequenceDiagram
 **Status Page Email Types:**
 
 1. **Verification Email** (`status-page-verification`)
+
    - Sent immediately after subscription
    - Contains verification link (24-hour expiry)
    - Blue color theme (#667eea)
    - Explains subscription benefits
 
 2. **Welcome Email** (`status-page-welcome`)
+
    - Sent after successful verification
    - Green color theme (#22c55e)
    - Includes status page link
@@ -595,12 +615,14 @@ sequenceDiagram
    - Contains unsubscribe link
 
 **Incident Statuses:**
+
 - **Investigating**: Initial response, issue being investigated
 - **Identified**: Root cause found, working on fix
 - **Monitoring**: Fix deployed, monitoring for stability
 - **Resolved**: Issue fully resolved
 
 **Impact Levels:**
+
 - **Critical**: Complete outage, all users affected
 - **Major**: Major degradation, most users affected
 - **Minor**: Partial degradation, some users affected
@@ -692,11 +714,13 @@ graph LR
 ### Email Provider (SMTP)
 
 **Configuration Required:**
+
 - Email addresses (comma-separated)
 - SMTP host, port, username, password
 - From email address
 
 **Features:**
+
 - Professional react-email templates
 - HTML + plain text versions
 - Queue-based template rendering
@@ -707,6 +731,7 @@ graph LR
 - Timeout protection (10 seconds)
 
 **Email Structure:**
+
 - Subject line based on alert type
 - Professional header with branding
 - Alert status badge
@@ -718,9 +743,11 @@ graph LR
 ### Slack Provider (Webhook)
 
 **Configuration Required:**
+
 - Webhook URL
 
 **Features:**
+
 - Rich message formatting with attachments
 - Color-coded message borders
 - Field-based data display (consistent with email)
@@ -731,6 +758,7 @@ graph LR
 - Retry on transient failures
 
 **Message Structure:**
+
 - Main text (title)
 - Attachment with:
   - Color bar (matches alert severity)
@@ -742,9 +770,11 @@ graph LR
 ### Discord Provider (Webhook)
 
 **Configuration Required:**
+
 - Discord webhook URL
 
 **Features:**
+
 - Rich embed formatting
 - Color-coded embeds
 - Field-based layout (inline/block fields)
@@ -754,6 +784,7 @@ graph LR
 - Color code conversion (hex to decimal)
 
 **Embed Structure:**
+
 - Title
 - Description (main message)
 - Color (based on severity)
@@ -764,10 +795,12 @@ graph LR
 ### Telegram Provider (Bot API)
 
 **Configuration Required:**
+
 - Bot token
 - Chat ID
 
 **Features:**
+
 - Markdown formatting
 - Bold text for field titles
 - Newline-separated fields
@@ -776,6 +809,7 @@ graph LR
 - API rate limiting handling
 
 **Message Structure:**
+
 - Title
 - Blank line
 - Message text
@@ -785,11 +819,13 @@ graph LR
 ### Custom Webhook Provider
 
 **Configuration Required:**
+
 - Target URL
 - HTTP method (POST/PUT/PATCH)
 - Custom headers (optional)
 
 **Features:**
+
 - Flexible JSON payload
 - Custom header support
 - Includes formatted notification
@@ -798,6 +834,7 @@ graph LR
 - 10-second request timeout
 
 **Payload Structure:**
+
 ```json
 {
   "title": "Alert title",
@@ -888,18 +925,21 @@ graph TB
 ### Template Rendering Reliability
 
 **1. Caching Strategy**
+
 - **Worker-side cache**: 5-minute TTL, 100 entry max
 - **Cache key**: Template type + parameters (JSON stringified)
 - **Benefit**: Reduces queue load for repeated alerts
 - **Example**: Monitor checking every minute uses cached template
 
 **2. Queue Timeout Protection**
+
 - **Timeout**: 10 seconds maximum wait
 - **Dual timeout**: Both Promise.race and queue waitUntilFinished
 - **Prevents**: Worker blocking indefinitely
 - **Fallback**: Generate basic HTML template
 
 **3. Fallback Template Generation**
+
 - **Trigger**: Queue unavailable or timeout
 - **Output**: Basic but functional HTML email
 - **Structure**: Simple table layout with all alert data
@@ -907,6 +947,7 @@ graph TB
 - **Ensures**: Notifications always sent, even if templates fail
 
 **4. Queue Health Monitoring**
+
 - **Health check method**: Returns queue status and job counts
 - **Metrics**: Waiting jobs, active jobs, failed jobs
 - **Logging**: Detailed logs for queue operations
@@ -915,6 +956,7 @@ graph TB
 ### Notification Delivery Reliability
 
 **1. Provider Validation**
+
 - **Pre-send check**: Validate provider configuration
 - **Email**: Regex validation of email addresses
 - **Webhooks**: URL format validation
@@ -922,30 +964,35 @@ graph TB
 - **Benefit**: Fail fast with clear error messages
 
 **2. Connection Verification**
+
 - **SMTP**: Verify connection before sending
 - **Timeout**: 10-second connection timeout
 - **TLS**: Support for secure connections
 - **Error handling**: Catch connection errors
 
 **3. Retry Logic (Provider-Specific)**
+
 - **HTTP requests**: Automatic retry on network errors
 - **SMTP**: Connection retry on transient failures
 - **Logging**: Track retry attempts
 - **Backoff**: Exponential backoff for rate limiting
 
 **4. Timeout Protection**
+
 - **All HTTP requests**: 10-second timeout
 - **SMTP**: Connection and greeting timeouts
 - **Abort controllers**: Clean cancellation of requests
 - **Prevents**: Indefinite hangs
 
 **5. Error Logging**
+
 - **Detailed errors**: Full error message and stack trace
 - **Provider context**: Which provider failed
 - **Alert context**: Which alert triggered notification
 - **Success tracking**: Log successful deliveries
 
 **6. Parallel Delivery**
+
 - **Multiple providers**: Notifications sent in parallel
 - **Independent failures**: One provider failure doesn't block others
 - **Promise.allSettled**: All providers attempted
@@ -954,18 +1001,21 @@ graph TB
 ### Data Persistence
 
 **1. Alert History**
+
 - **Database records**: All alerts stored in database
 - **Status tracking**: Monitor status changes recorded
 - **Alert tracking**: When alerts were sent
 - **Recovery tracking**: When monitors recovered
 
 **2. Job Results**
+
 - **Run records**: Every job run stored
 - **Test results**: Detailed test outcomes
 - **Artifacts**: Screenshots, traces, videos uploaded to S3
 - **Cleanup**: Optional lifecycle management for old data
 
 **3. Notification Logs**
+
 - **Delivery status**: Success/failure per provider
 - **Timestamps**: When notifications were attempted
 - **Error details**: Failure reasons logged
@@ -974,18 +1024,21 @@ graph TB
 ### Graceful Degradation
 
 **1. Queue Failure**
+
 - **Template service**: Falls back to basic HTML
 - **Notification still sent**: Email delivery continues
 - **User impact**: Emails less polished but functional
 - **Auto-recovery**: Resumes normal operation when queue available
 
 **2. SMTP Failure**
+
 - **Other providers work**: Slack, Discord, etc. still deliver
 - **Error logged**: SMTP failures tracked
 - **User notification**: Users see delivery failures in logs
 - **Retry**: Can retry notifications manually
 
 **3. Redis Failure**
+
 - **Scheduler impact**: Scheduled jobs won't trigger
 - **Manual execution**: Users can still manually run jobs
 - **Queue recovery**: Jobs resume when Redis available
@@ -998,6 +1051,7 @@ graph TB
 The Supercheck Alerts and Notifications system is designed with reliability and user experience as top priorities:
 
 **Key Strengths:**
+
 1. **Professional Templates**: All emails use react-email for consistent, beautiful design
 2. **Flexible Providers**: Support for email, Slack, Discord, Telegram, and custom webhooks
 3. **Reliable Delivery**: Multiple fallback mechanisms ensure notifications always get through
@@ -1006,6 +1060,7 @@ The Supercheck Alerts and Notifications system is designed with reliability and 
 6. **User Control**: Granular configuration of alert channels and conditions
 
 **Reliability Features:**
+
 - Template caching reduces queue load
 - Queue timeout prevents blocking
 - Fallback HTML ensures delivery
@@ -1015,6 +1070,7 @@ The Supercheck Alerts and Notifications system is designed with reliability and 
 - Graceful degradation at every layer
 
 **End-to-End Flows:**
+
 1. **Monitor Alerts**: Scheduled checks → Alert evaluation → Template rendering → Multi-provider delivery
 2. **Job Notifications**: Test execution → Result analysis → Template rendering → Multi-provider delivery
 3. **Status Page**: Subscription → Verification → Incident updates → Email delivery

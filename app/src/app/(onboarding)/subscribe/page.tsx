@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Accordion,
   AccordionContent,
@@ -12,14 +10,11 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Skeleton } from "@/components/ui/skeleton";
-import { 
-  Check, 
-  ArrowRight, 
-  Sparkles, 
-  Loader2
-} from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { authClient } from "@/utils/auth-client";
+import { PricingTierCard } from "@/components/billing/pricing-tier-card";
+import { PricingComparisonTable } from "@/components/billing/pricing-comparison-table";
 
 interface PricingPlan {
   id: string;
@@ -31,26 +26,57 @@ interface PricingPlan {
     monitors: string | number;
     playwrightMinutes: string | number;
     k6VuMinutes: string | number;
+    aiCredits: string | number;
+    concurrentExecutions: string | number;
+    queuedJobs: string | number;
     teamMembers: string | number;
+    organizations: string | number;
     projects: string | number;
     statusPages: string | number;
     dataRetention: string;
     customDomains?: boolean;
     ssoEnabled?: boolean;
+    support?: string;
+    checkInterval?: string;
+    monitoringLocations?: string;
   };
   overagePricing: {
     playwrightMinutes: number;
     k6VuMinutes: number;
+    aiCredits: number;
+  };
+}
+
+interface FeatureRow {
+  name: string;
+  plus: string | boolean | number;
+  pro: string | boolean | number;
+  selfHosted?: string | boolean | number;
+}
+
+interface FeatureCategory {
+  category: string;
+  features: FeatureRow[];
+}
+
+interface OveragePricingData {
+  plus: {
+    playwrightMinutes: number;
+    k6VuMinutes: number;
+    aiCredits: number;
+  };
+  pro: {
+    playwrightMinutes: number;
+    k6VuMinutes: number;
+    aiCredits: number;
   };
 }
 
 interface PricingData {
   plans: PricingPlan[];
-  featureComparison: Array<{
-    category: string;
-    features: Array<{ name: string; plus: string; pro: string }>;
-  }>;
+  featureComparison: FeatureCategory[];
   faqs: Array<{ question: string; answer: string }>;
+  overagePricing?: OveragePricingData;
 }
 
 const defaultFaqs = [
@@ -90,13 +116,9 @@ const defaultFaqs = [
 
 
 export default function SubscribePage() {
-  const searchParams = useSearchParams();
   const [pricingData, setPricingData] = useState<PricingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [subscribing, setSubscribing] = useState<string | null>(null);
-
-  const isNewUser = searchParams.get("setup") === "true";
-  const isRequired = searchParams.get("required") === "true";
 
   useEffect(() => {
     fetch("/api/billing/pricing")
@@ -145,189 +167,208 @@ export default function SubscribePage() {
   const faqs = pricingData?.faqs?.length ? pricingData.faqs : defaultFaqs;
 
   return (
-    <div className="max-w-6xl mx-auto space-y-12">
+    <div className="max-w-7xl mx-auto py-6 md:py-8 px-4 space-y-10 md:space-y-12">
       {/* Hero Section */}
-      <div className="text-center space-y-4">
-        <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium">
-          <Sparkles className="h-4 w-4" />
-          {isNewUser ? "Welcome to Supercheck!" : "Choose Your Plan"}
-        </div>
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
-          {isNewUser || isRequired 
-            ? "Start monitoring in minutes"
-            : "Simple, transparent pricing"
-          }
+      <section className="text-center space-y-2 pt-2">
+        <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
+          Choose your plan
         </h1>
-        <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          {isNewUser || isRequired
-            ? "Select a plan to unlock all features and start monitoring your applications with confidence."
-            : "Choose the plan that's right for your team. All plans include core features."
-          }
+        <p className="text-base text-muted-foreground max-w-2xl mx-auto">
+          Select the perfect plan for your team. Upgrade or downgrade anytime.
         </p>
-      </div>
+      </section>
 
-      {/* Pricing Cards */}
-      <div className="grid gap-8 md:grid-cols-2 max-w-4xl mx-auto">
-        {plans.map((plan) => (
-          <Card 
-            key={plan.id} 
-            className={`relative overflow-hidden transition-all hover:shadow-xl ${
-              plan.id === "pro" 
-                ? "border-primary shadow-lg scale-[1.02]" 
-                : "hover:border-primary/50"
-            }`}
+      {/* Pricing Tier Cards */}
+      <section className="max-w-5xl mx-auto">
+        <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
+          {plans.map((plan) => (
+            <PricingTierCard
+              key={plan.id}
+              name={plan.name}
+              price={plan.price}
+              priceInterval={plan.interval}
+              tagline={plan.description}
+              badge={plan.id === "pro" ? "Most Popular" : undefined}
+              keyFeatures={[
+                `${plan.features.monitors.toLocaleString()} uptime monitors`,
+                `${plan.features.playwrightMinutes.toLocaleString()} Playwright mins/mo`,
+                `${plan.features.k6VuMinutes.toLocaleString()} K6 VU-mins/mo`,
+                `${plan.features.aiCredits.toLocaleString()} AI credits/mo`,
+                `${plan.features.teamMembers} team members`,
+                `${plan.features.projects} projects`,
+                `${plan.features.dataRetention} data retention`,
+                plan.features.customDomains ? "Custom domains" : "Standard domains",
+              ]}
+              overageText={`Overage: $${plan.overagePricing.playwrightMinutes}/min · $${plan.overagePricing.k6VuMinutes}/VU-min · $${plan.overagePricing.aiCredits}/credit`}
+              ctaText={`Get Started with ${plan.name}`}
+              ctaVariant={plan.id === "pro" ? "default" : "outline"}
+              onCtaClick={() => handleSubscribe(plan.id)}
+              loading={subscribing === plan.id}
+              highlighted={plan.id === "pro"}
+            />
+          ))}
+        </div>
+        
+        {/* Self-hosted mention */}
+        <p className="text-center text-sm text-muted-foreground mt-6">
+          Want unlimited usage?{" "}
+          <a 
+            href="https://github.com/supercheck-io/supercheck" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-primary hover:underline font-medium"
           >
-            {plan.id === "pro" && (
-              <div className="absolute top-0 right-0">
-                <Badge className="rounded-none rounded-bl-lg bg-primary text-primary-foreground px-4 py-1">
-                  Most Popular
-                </Badge>
-              </div>
-            )}
-            <CardHeader className="pb-4">
-              <CardTitle className="text-2xl">{plan.name}</CardTitle>
-              <div className="flex items-baseline gap-1 mt-2">
-                <span className="text-5xl font-bold">${plan.price}</span>
-                <span className="text-muted-foreground text-lg">/{plan.interval}</span>
-              </div>
-              <CardDescription className="text-base mt-2">
-                {plan.description}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Key Features */}
-              <ul className="space-y-3">
-                <FeatureItem>
-                  <strong>{plan.features.monitors}</strong> monitors
-                </FeatureItem>
-                <FeatureItem>
-                  <strong>{plan.features.playwrightMinutes}</strong> Playwright minutes/mo
-                </FeatureItem>
-                <FeatureItem>
-                  <strong>{plan.features.k6VuMinutes}</strong> k6 VU-minutes/mo
-                </FeatureItem>
-                <FeatureItem>
-                  <strong>{plan.features.teamMembers}</strong> team members
-                </FeatureItem>
-                <FeatureItem>
-                  <strong>{plan.features.projects}</strong> projects
-                </FeatureItem>
-                <FeatureItem>
-                  <strong>{plan.features.dataRetention}</strong> data retention
-                </FeatureItem>
-                {plan.features.customDomains && (
-                  <FeatureItem>
-                    Custom domains for status pages
-                  </FeatureItem>
-                )}
-                {plan.features.ssoEnabled && (
-                  <FeatureItem>
-                    SSO authentication
-                  </FeatureItem>
-                )}
-              </ul>
-
-              {/* CTA Button */}
-              <Button 
-                className="w-full h-12 text-base font-medium"
-                size="lg"
-                variant={plan.id === "pro" ? "default" : "outline"}
-                onClick={() => handleSubscribe(plan.id)}
-                disabled={subscribing !== null}
-              >
-                {subscribing === plan.id ? (
-                  <>
-                    <Loader2 className="animate-spin mr-2 h-4 w-4" />
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    Get started with {plan.name}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
-
-              {/* Overage Pricing */}
-              <p className="text-xs text-muted-foreground text-center">
-                Overage: ${plan.overagePricing.playwrightMinutes}/min Playwright,
-                ${plan.overagePricing.k6VuMinutes}/VU-min k6
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* FAQs */}
-      <Card className="max-w-3xl mx-auto">
-        <CardHeader>
-          <CardTitle className="text-2xl text-center">Frequently Asked Questions</CardTitle>
-          <CardDescription className="text-center">
-            Everything you need to know about our plans
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Accordion type="single" collapsible className="w-full">
-            {faqs.map((faq, index) => (
-              <AccordionItem key={index} value={`item-${index}`}>
-                <AccordionTrigger className="text-left font-medium">
-                  {faq.question}
-                </AccordionTrigger>
-                <AccordionContent className="text-muted-foreground">
-                  {faq.answer}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </CardContent>
-      </Card>
-
-      {/* Contact CTA */}
-      <div className="text-center space-y-4 pb-8">
-        <p className="text-muted-foreground">
-          Need a custom enterprise plan or have questions?
+            Self-host Supercheck for free
+          </a>
         </p>
-        <Button variant="outline" size="lg" asChild>
+      </section>
+
+      <Separator className="my-8" />
+
+      {/* Feature Comparison Table */}
+      <section className="max-w-7xl mx-auto">
+        <div className="text-center space-y-1.5 mb-6">
+          <h2 className="text-2xl font-bold">
+            Full feature comparison
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            All the details you need to make the right choice
+          </p>
+        </div>
+        {pricingData && (
+          <PricingComparisonTable 
+            categories={pricingData.featureComparison} 
+            overagePricing={pricingData.overagePricing}
+          />
+        )}
+      </section>
+
+      <Separator className="my-8" />
+
+      {/* FAQ Section */}
+      <section className="max-w-3xl mx-auto">
+        <div className="text-center space-y-1.5 mb-6">
+          <h2 className="text-2xl font-bold">
+            Frequently asked questions
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Everything you need to know about pricing
+          </p>
+        </div>
+        <Accordion type="single" collapsible className="w-full">
+          {faqs.map((faq, index) => (
+            <AccordionItem key={index} value={`item-${index}`}>
+              <AccordionTrigger className="text-left text-sm font-medium py-4 hover:no-underline">
+                {faq.question}
+              </AccordionTrigger>
+              <AccordionContent className="text-sm text-muted-foreground pb-4">
+                {faq.answer}
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      </section>
+
+      {/* Contact Sales CTA */}
+      <section className="text-center space-y-3 max-w-xl mx-auto pb-4">
+        <h3 className="text-lg font-semibold">
+          Need a custom enterprise plan?
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          Contact us for volume discounts, custom SLAs, and dedicated support.
+        </p>
+        <Button size="default" asChild>
           <a href="mailto:support@supercheck.io">Contact Sales</a>
         </Button>
-      </div>
+      </section>
     </div>
   );
 }
 
-function FeatureItem({ children }: { children: React.ReactNode }) {
-  return (
-    <li className="flex items-center gap-3">
-      <div className="flex-shrink-0 h-5 w-5 rounded-full bg-green-500/10 flex items-center justify-center">
-        <Check className="h-3 w-3 text-green-500" />
-      </div>
-      <span className="text-sm">{children}</span>
-    </li>
-  );
-}
 
 function SubscribeSkeleton() {
   return (
-    <div className="max-w-6xl mx-auto space-y-12">
-      <div className="text-center space-y-4">
-        <Skeleton className="h-8 w-48 mx-auto" />
-        <Skeleton className="h-12 w-96 mx-auto" />
-        <Skeleton className="h-6 w-80 mx-auto" />
+    <div className="max-w-7xl mx-auto py-6 md:py-8 px-4 space-y-10 md:space-y-12">
+      {/* Hero Skeleton */}
+      <div className="text-center space-y-2 pt-2">
+        <Skeleton className="h-9 w-64 mx-auto" />
+        <Skeleton className="h-5 w-96 mx-auto max-w-full" />
       </div>
-      <div className="grid gap-8 md:grid-cols-2 max-w-4xl mx-auto">
+
+      {/* Pricing Cards Skeleton */}
+      <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
         {[1, 2].map((i) => (
-          <Card key={i} className="p-6">
-            <Skeleton className="h-8 w-24 mb-4" />
-            <Skeleton className="h-12 w-32 mb-4" />
-            <Skeleton className="h-4 w-full mb-6" />
-            <div className="space-y-3">
-              {[1, 2, 3, 4, 5].map((j) => (
-                <Skeleton key={j} className="h-4 w-full" />
+          <Card key={i} className="p-6 border">
+            {/* Plan name and tagline */}
+            <Skeleton className="h-8 w-24 mb-1" />
+            <Skeleton className="h-4 w-56 mb-4" />
+            {/* Price */}
+            <Skeleton className="h-14 w-36 mb-6" />
+            {/* Features - 8 items to match actual card */}
+            <div className="space-y-3 mb-6">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((j) => (
+                <div key={j} className="flex items-center gap-3">
+                  <Skeleton className="h-5 w-5 rounded-full flex-shrink-0" />
+                  <Skeleton className="h-4 w-full" />
+                </div>
               ))}
             </div>
-            <Skeleton className="h-12 w-full mt-6" />
+            {/* CTA Button */}
+            <Skeleton className="h-11 w-full mb-4" />
+            {/* Overage text */}
+            <div className="pt-4 border-t">
+              <Skeleton className="h-3 w-full mx-auto" />
+            </div>
           </Card>
         ))}
+      </div>
+
+      {/* Self-hosted link skeleton */}
+      <div className="text-center">
+        <Skeleton className="h-4 w-72 mx-auto" />
+      </div>
+
+      <Skeleton className="h-px w-full" />
+
+      {/* Table Skeleton */}
+      <div className="space-y-4 max-w-7xl mx-auto">
+        <div className="text-center space-y-1.5 mb-6">
+          <Skeleton className="h-7 w-56 mx-auto" />
+          <Skeleton className="h-4 w-72 mx-auto" />
+        </div>
+        <div className="rounded-lg border overflow-hidden">
+          <Skeleton className="h-12 w-full" />
+          {[1, 2, 3, 4, 5].map((cat) => (
+            <div key={cat}>
+              <Skeleton className="h-10 w-full bg-muted/40" />
+              {[1, 2, 3].map((row) => (
+                <Skeleton key={row} className="h-11 w-full" />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <Skeleton className="h-px w-full" />
+
+      {/* FAQ Skeleton */}
+      <div className="space-y-4 max-w-3xl mx-auto">
+        <div className="text-center space-y-1.5 mb-6">
+          <Skeleton className="h-7 w-64 mx-auto" />
+          <Skeleton className="h-4 w-80 mx-auto" />
+        </div>
+        <div className="space-y-2">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+            <Skeleton key={i} className="h-14 w-full rounded-lg" />
+          ))}
+        </div>
+      </div>
+
+      {/* Contact Sales Skeleton */}
+      <div className="text-center space-y-3 max-w-xl mx-auto pb-4">
+        <Skeleton className="h-6 w-64 mx-auto" />
+        <Skeleton className="h-4 w-80 mx-auto" />
+        <Skeleton className="h-10 w-32 mx-auto" />
       </div>
     </div>
   );

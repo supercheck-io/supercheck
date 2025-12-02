@@ -174,7 +174,6 @@ export async function GET() {
     await Promise.all(
       activeRuns.map(async (run) => {
         let foundState: string | null = null;
-        let foundQueueName: string | null = null;
 
         console.log(`[API] Checking run ${run.id}, jobId: ${run.jobId}, metadata:`, run.metadata);
 
@@ -189,38 +188,47 @@ export async function GET() {
                 // Track both 'active' and 'waiting'/'delayed' states
                 if (state === 'active') {
                   foundState = 'active';
-                  foundQueueName = queue.name;
                 } else if ((state === 'waiting' || state === 'delayed') && foundState !== 'active') {
-                  // Only set waiting/delayed if we haven't found active
                   foundState = state;
-                  foundQueueName = queue.name;
                 }
               }
             } catch (error) {
-              // Ignore errors from individual queue checks
               console.log(`[API] Error checking run ${run.id} in queue ${queue.name}:`, error);
             }
           })
         );
 
-        console.log(`[API] Run ${run.id} verification result: foundState=${foundState}, foundQueueName=${foundQueueName}`);
+        console.log(`[API] Run ${run.id} verification result: foundState=${foundState}`);
 
         if (foundState === 'active') {
-          // Job is actually running - add to running list
           const item = await buildExecutionItem(run, 'running');
           if (item) {
             console.log(`[API] Adding run ${run.id} to verified running list`);
             verifiedRunning.push(item);
           }
         } else if (foundState === 'waiting' || foundState === 'delayed') {
-          // Job is in queue but not yet picked up by worker - add to queued list
           const item = await buildExecutionItem(run, 'queued');
           if (item) {
             console.log(`[API] Adding run ${run.id} to queued list (DB status=running, BullMQ state=${foundState})`);
             queuedFromDb.push(item);
           }
         } else {
-          console.log(`[API] Run ${run.id} failed verification - not found in any queue`);
+          // IMPORTANT: Trust the database - if DB says running but not in queue,
+          // it's likely still running (BullMQ lookup can be unreliable after page refresh)
+          // Only exclude if the run was started more than 5 minutes ago and not in queue
+          const runAge = run.startedAt ? Date.now() - new Date(run.startedAt).getTime() : 0;
+          const isRecentRun = runAge < 5 * 60 * 1000; // Less than 5 minutes old
+          
+          if (isRecentRun || !run.startedAt) {
+            // Trust DB for recent runs or runs without startedAt
+            const item = await buildExecutionItem(run, 'running');
+            if (item) {
+              console.log(`[API] Adding run ${run.id} to running list (trusting DB - recent run or no startedAt)`);
+              verifiedRunning.push(item);
+            }
+          } else {
+            console.log(`[API] Run ${run.id} not found in queue and older than 5 minutes - skipping`);
+          }
         }
       }),
     );

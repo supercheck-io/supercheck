@@ -31,6 +31,9 @@ import {
   type UpdateComponentData,
 } from "@/actions/update-component";
 import { toast } from "sonner";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 
 type ComponentStatus =
   | "operational"
@@ -45,7 +48,7 @@ type Component = {
   description: string | null;
   status: ComponentStatus;
   monitorId: string | null;
-  monitorIds?: string[]; // For backward compatibility
+  monitorIds?: string[];
   showcase: boolean;
   onlyShowIfDegraded: boolean;
   position: number;
@@ -65,6 +68,21 @@ type ComponentFormDialogProps = {
   monitors: Monitor[];
   onSuccess: () => void;
 };
+
+const componentFormSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100, "Name is too long"),
+  description: z.string().max(500, "Description is too long").optional(),
+  status: z.enum([
+    "operational",
+    "degraded_performance",
+    "partial_outage",
+    "major_outage",
+    "under_maintenance",
+  ]),
+  monitorIds: z.array(z.string()),
+});
+
+type ComponentFormData = z.infer<typeof componentFormSchema>;
 
 const statusOptions: {
   value: ComponentStatus;
@@ -99,31 +117,43 @@ export function ComponentFormDialog({
   onSuccess,
 }: ComponentFormDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    name: component?.name || "",
-    description: component?.description || "",
-    status: component?.status || ("operational" as ComponentStatus),
-    monitorId: component?.monitorId || "none",
-    monitorIds: component?.monitorIds || [],
-  });
   const [monitorSearchTerm, setMonitorSearchTerm] = useState("");
   const [isMonitorDropdownOpen, setIsMonitorDropdownOpen] = useState(false);
   const monitorDropdownRef = useRef<HTMLDivElement>(null);
 
+  const {
+    register,
+    handleSubmit,
+    control,
+    watch,
+    reset,
+    setValue,
+    formState: { errors },
+  } = useForm<ComponentFormData>({
+    resolver: zodResolver(componentFormSchema),
+    defaultValues: {
+      name: "",
+      description: "",
+      status: "operational",
+      monitorIds: [],
+    },
+  });
+
+  const monitorIds = watch("monitorIds");
+
   // Reset form when dialog opens with new component data
   useEffect(() => {
     if (open) {
-      setFormData({
+      reset({
         name: component?.name || "",
         description: component?.description || "",
         status: component?.status || "operational",
-        monitorId: component?.monitorId || "none",
         monitorIds: component?.monitorIds || [],
       });
       setMonitorSearchTerm("");
       setIsMonitorDropdownOpen(false);
     }
-  }, [open, component]);
+  }, [open, component, reset]);
 
   // Click outside handler for dropdown
   useEffect(() => {
@@ -137,32 +167,27 @@ export function ComponentFormDialog({
     };
 
     document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Filter monitors based on search term
   const filteredMonitors = monitors.filter(
     (monitor) =>
       monitor.name.toLowerCase().includes(monitorSearchTerm.toLowerCase()) ||
       monitor.type.toLowerCase().includes(monitorSearchTerm.toLowerCase())
   );
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (data: ComponentFormData) => {
     setIsSubmitting(true);
 
     try {
       if (component) {
-        // Update existing component
         const updateData: UpdateComponentData = {
           id: component.id,
           statusPageId,
-          name: formData.name,
-          description: formData.description || null,
-          status: formData.status,
-          monitorIds: formData.monitorIds,
+          name: data.name,
+          description: data.description || null,
+          status: data.status,
+          monitorIds: data.monitorIds,
         };
 
         const result = await updateComponent(updateData);
@@ -177,13 +202,12 @@ export function ComponentFormDialog({
           });
         }
       } else {
-        // Create new component
         const createData: CreateComponentData = {
           statusPageId,
-          name: formData.name,
-          description: formData.description || undefined,
-          status: formData.status,
-          monitorIds: formData.monitorIds,
+          name: data.name,
+          description: data.description || undefined,
+          status: data.status,
+          monitorIds: data.monitorIds,
           showcase: true,
           onlyShowIfDegraded: false,
           position: 0,
@@ -215,135 +239,126 @@ export function ComponentFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
             {component ? "Edit Component" : "Add Component"}
           </DialogTitle>
           <DialogDescription>
             {component
-              ? "Update the component details and status"
-              : "Add a new component to track the health of a service or feature"}
+              ? "Update component details"
+              : "Track the health of a service or feature"}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="name">Component Name *</Label>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="name">Name *</Label>
             <Input
               id="name"
               placeholder="API Server"
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-              required
+              {...register("name")}
               disabled={isSubmitting}
             />
-            <p className="text-sm text-muted-foreground">
-              A descriptive name for this service component
-            </p>
+            {errors.name && (
+              <p className="text-xs text-red-500">{errors.name.message}</p>
+            )}
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="description">Description</Label>
             <Textarea
               id="description"
               placeholder="RESTful API for client applications"
-              value={formData.description}
-              onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
-              }
-              rows={3}
+              {...register("description")}
+              rows={2}
               disabled={isSubmitting}
             />
-            <p className="text-sm text-muted-foreground">
-              Optional description of what this component does
-            </p>
+            {errors.description && (
+              <p className="text-xs text-red-500">
+                {errors.description.message}
+              </p>
+            )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="status">Status *</Label>
-            <Select
-              value={formData.status}
-              onValueChange={(value: ComponentStatus) =>
-                setFormData({ ...formData, status: value })
-              }
-              disabled={isSubmitting}
-            >
-              <SelectTrigger id="status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {statusOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    <span className={option.color}>{option.label}</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-sm text-muted-foreground">
-              Current operational status of this component
-            </p>
+          <div className="space-y-1.5">
+            <Label>Status *</Label>
+            <Controller
+              control={control}
+              name="status"
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        <span className={option.color}>{option.label}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
 
-          <div className="space-y-2">
-            <Label>Linked Monitors (Optional)</Label>
+          <div className="space-y-1.5">
+            <Label>Linked Monitors</Label>
             <div ref={monitorDropdownRef} className="relative">
-              {/* Search input */}
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
-                  placeholder="Search monitors by name or type..."
+                  placeholder="Search monitors..."
                   value={monitorSearchTerm}
                   onChange={(e) => {
                     setMonitorSearchTerm(e.target.value);
                     setIsMonitorDropdownOpen(true);
                   }}
                   onFocus={() => setIsMonitorDropdownOpen(true)}
-                  className="pl-10"
+                  className="pl-8 h-9 text-sm"
                   disabled={isSubmitting}
                 />
               </div>
 
-              {/* Dropdown */}
               {isMonitorDropdownOpen && (
-                <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg max-h-40 overflow-y-auto">
                   {monitors.length === 0 ? (
-                    <div className="p-3 text-sm text-muted-foreground">
+                    <div className="p-2 text-xs text-muted-foreground">
                       No monitors available
                     </div>
                   ) : filteredMonitors.length === 0 ? (
-                    <div className="p-3 text-sm text-muted-foreground">
-                      No monitors found matching &quot;{monitorSearchTerm}&quot;
+                    <div className="p-2 text-xs text-muted-foreground">
+                      No matches found
                     </div>
                   ) : (
                     <div className="p-1">
                       {filteredMonitors.map((monitor) => (
                         <div
                           key={monitor.id}
-                          className="flex items-center p-2 hover:bg-accent rounded cursor-pointer"
+                          className="flex items-center p-2 hover:bg-accent rounded cursor-pointer text-sm"
                           onClick={() => {
-                            if (!formData.monitorIds.includes(monitor.id)) {
-                              setFormData({
-                                ...formData,
-                                monitorIds: [
-                                  ...formData.monitorIds,
-                                  monitor.id,
-                                ],
-                              });
+                            if (!monitorIds.includes(monitor.id)) {
+                              setValue("monitorIds", [
+                                ...monitorIds,
+                                monitor.id,
+                              ]);
                             }
                             setMonitorSearchTerm("");
                             setIsMonitorDropdownOpen(false);
                           }}
                         >
                           <Checkbox
-                            checked={formData.monitorIds.includes(monitor.id)}
-                            className="mr-3"
+                            checked={monitorIds.includes(monitor.id)}
+                            className="mr-2"
                             disabled={isSubmitting}
                           />
-                          <div className="flex-1">
-                            <div className="font-medium text-sm">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm truncate">
                               {monitor.name}
                             </div>
                             <div className="text-xs text-muted-foreground">
@@ -358,10 +373,9 @@ export function ComponentFormDialog({
               )}
             </div>
 
-            {/* Selected monitors badges */}
-            {formData.monitorIds.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {formData.monitorIds.map((monitorId) => {
+            {monitorIds.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {monitorIds.map((monitorId) => {
                   const monitor = monitors.find((m) => m.id === monitorId);
                   return monitor ? (
                     <Badge
@@ -372,47 +386,41 @@ export function ComponentFormDialog({
                       {monitor.name}
                       <button
                         type="button"
-                        onClick={() => {
-                          setFormData({
-                            ...formData,
-                            monitorIds: formData.monitorIds.filter(
-                              (id) => id !== monitorId
-                            ),
-                          });
-                        }}
+                        onClick={() =>
+                          setValue(
+                            "monitorIds",
+                            monitorIds.filter((id) => id !== monitorId)
+                          )
+                        }
                         className="ml-1 hover:text-destructive p-0.5"
                       >
-                        <X className="h-3 w-3" />
+                        <X className="h-2.5 w-2.5" />
                       </button>
                     </Badge>
                   ) : null;
                 })}
               </div>
             )}
-            <p className="text-sm text-muted-foreground">
-              Search and select multiple monitors to link with this component
-              for reference only (status updates are manual via incidents)
+            <p className="text-xs text-muted-foreground">
+              Link monitors to track component health (optional)
             </p>
           </div>
 
-          <div className="flex gap-3 justify-end pt-4 border-t">
+          <div className="flex gap-2 justify-end pt-2">
             <Button
               type="button"
               variant="outline"
+              size="sm"
               onClick={() => onOpenChange(false)}
               disabled={isSubmitting}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" size="sm" disabled={isSubmitting}>
               {isSubmitting && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
               )}
-              {isSubmitting
-                ? "Saving..."
-                : component
-                ? "Update Component"
-                : "Add Component"}
+              {component ? "Update" : "Add"} Component
             </Button>
           </div>
         </form>
