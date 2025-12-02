@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AIStreamingService } from "@/lib/ai-streaming-service";
-import { AISecurityService, AuthService } from "@/lib/ai-security";
-import { AIPromptBuilder } from "@/lib/ai-prompts";
+import { AIStreamingService } from "@/lib/ai/ai-streaming-service";
+import { AISecurityService, AuthService } from "@/lib/ai/ai-security";
+import { AIPromptBuilder } from "@/lib/ai/ai-prompts";
 import { getActiveOrganization } from "@/lib/session";
 import { usageTracker } from "@/lib/services/usage-tracker";
+import { headers } from "next/headers";
 
 export async function POST(request: NextRequest) {
   try {
@@ -43,7 +44,8 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           reason: "invalid_request",
-          message: "Please provide a more detailed description (at least 10 characters)",
+          message:
+            "Please provide a more detailed description (at least 10 characters)",
         },
         { status: 400 }
       );
@@ -60,14 +62,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Sanitize inputs
-    const sanitizedUserRequest = AISecurityService.sanitizeTextOutput(userRequest);
+    // Sanitize inputs using enhanced security service
+    const sanitizedUserRequest =
+      AISecurityService.sanitizeTextOutput(userRequest);
     const sanitizedCurrentScript = currentScript
-      ? AISecurityService.sanitizeCodeOutput(currentScript)
+      ? AISecurityService.sanitizeCodeInput(currentScript)
       : "";
 
-    // Step 2: Authentication and authorization
-    await AuthService.checkRateLimit();
+    // Step 2: Rate limiting check (with user/org context)
+    const headersList = await headers();
+    const clientIp =
+      headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      headersList.get("x-real-ip") ||
+      "unknown";
+
+    // Get auth context for rate limiting
+    let tier: string | undefined;
+    let userId: string | undefined;
+    let orgId: string | undefined;
+
+    try {
+      const { requireAuth } = await import("@/lib/rbac/middleware");
+      const authResult = await requireAuth();
+      userId = authResult.user.id;
+
+      const activeOrg = await getActiveOrganization();
+      orgId = activeOrg?.id;
+      tier = (activeOrg as unknown as Record<string, unknown> | undefined)
+        ?.tier as string | undefined;
+    } catch {
+      // Auth is optional for create - will use IP-based rate limiting
+    }
+
+    await AuthService.checkRateLimit({
+      userId,
+      orgId,
+      ip: clientIp,
+      tier,
+    });
 
     // Step 3: Build AI create prompt
     const prompt = AIPromptBuilder.buildCreatePrompt({
@@ -137,7 +169,8 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           reason: "rate_limited",
-          message: "Too many AI create requests. Please wait before trying again.",
+          message:
+            "Too many AI create requests. Please wait before trying again.",
           guidance:
             "Rate limiting helps ensure fair usage and service availability",
         },
@@ -151,8 +184,7 @@ export async function POST(request: NextRequest) {
           success: false,
           reason: "security_violation",
           message: "Request blocked for security reasons",
-          guidance:
-            "Please ensure your request follows security guidelines",
+          guidance: "Please ensure your request follows security guidelines",
         },
         { status: 400 }
       );

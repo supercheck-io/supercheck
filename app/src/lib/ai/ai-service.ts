@@ -1,11 +1,16 @@
 import { openai } from "@ai-sdk/openai";
 import { generateText } from "ai";
+import { aiRateLimiter } from "./ai-rate-limiter";
 
 interface AIFixRequest {
   prompt: string;
   maxTokens?: number;
   temperature?: number;
   testType?: "browser" | "api" | "custom" | "database";
+  // Optional rate limit context
+  userId?: string;
+  orgId?: string;
+  tier?: string;
 }
 
 interface AIFixResponse {
@@ -43,8 +48,30 @@ export class AIFixService {
     }
   }
 
-  private static async checkRateLimit(): Promise<void> {
-    // Rate limiting check - placeholder for Redis implementation
+  private static async checkRateLimit(
+    userId?: string,
+    orgId?: string,
+    tier?: string
+  ): Promise<void> {
+    // Skip rate limiting in self-hosted mode
+    if (process.env.SELF_HOSTED === "true") {
+      return;
+    }
+
+    // Check rate limits if we have user/org context
+    if (userId || orgId) {
+      const result = await aiRateLimiter.checkRateLimit({
+        userId,
+        orgId,
+        tier,
+      });
+
+      if (!result.allowed) {
+        throw new Error(
+          `Rate limit exceeded. Please try again in ${result.retryAfter || 60} seconds.`
+        );
+      }
+    }
   }
 
   private static getServiceConfiguration() {
@@ -200,6 +227,9 @@ EXPLANATION:
     maxTokens = 2000,
     temperature = 0.1,
     testType,
+    userId,
+    orgId,
+    tier,
   }: AIFixRequest): Promise<AIFixResponse> {
     // Note: maxTokens parameter is currently unused but kept for interface compatibility
     // We use the model's default token limits instead
@@ -208,7 +238,7 @@ EXPLANATION:
 
     try {
       // Security: Check rate limits before making request
-      await this.checkRateLimit();
+      await this.checkRateLimit(userId, orgId, tier);
 
       // Get universal service configuration
       const config = this.getServiceConfiguration();

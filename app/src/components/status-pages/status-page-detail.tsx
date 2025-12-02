@@ -13,8 +13,8 @@ import {
   Copy,
   Activity,
   Tally4,
-  Boxes,
-  AlertTriangle,
+  Layers,
+  OctagonAlert,
   Users,
   LayoutDashboard,
 } from "lucide-react";
@@ -220,8 +220,13 @@ export function StatusPageDetail({
               </Button>
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button asChild variant="outline" size="sm">
+          <div className="flex gap-3">
+            <Button
+              asChild
+              variant="outline"
+              size="default"
+              className="border-2 hover:bg-muted"
+            >
               <Link href={`/status-pages/${statusPage.id}/public`}>
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Preview
@@ -229,8 +234,8 @@ export function StatusPageDetail({
             </Button>
             {statusPage.status === "published" ? (
               <Button
-                variant="outline"
-                size="sm"
+                variant="destructive"
+                size="default"
                 onClick={handleUnpublish}
                 disabled={isPublishing || !canUpdate}
                 title={
@@ -246,9 +251,10 @@ export function StatusPageDetail({
               </Button>
             ) : (
               <Button
-                size="sm"
+                size="default"
                 onClick={handlePublish}
                 disabled={isPublishing || !canUpdate}
+                className="bg-green-600 hover:bg-green-700 text-white shadow-md"
                 title={!canUpdate ? "You don't have permission to publish" : ""}
               >
                 {isPublishing ? (
@@ -268,11 +274,11 @@ export function StatusPageDetail({
             <span className="hidden sm:inline">Overview</span>
           </TabsTrigger>
           <TabsTrigger value="components" className="flex items-center gap-2">
-            <Boxes className="h-4 w-4" />
+            <Layers className="h-4 w-4" />
             <span className="hidden sm:inline">Components</span>
           </TabsTrigger>
           <TabsTrigger value="incidents" className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4" />
+            <OctagonAlert className="h-4 w-4" />
             <span className="hidden sm:inline">Incidents</span>
           </TabsTrigger>
           <TabsTrigger value="subscribers" className="flex items-center gap-2">
@@ -292,7 +298,7 @@ export function StatusPageDetail({
               <CardContent className="p-6">
                 <div className="flex items-center gap-4">
                   <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/50">
-                    <Boxes className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                    <Layers className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div>
                     <div className="text-2xl font-bold">
@@ -308,8 +314,8 @@ export function StatusPageDetail({
             <Card className="overflow-hidden">
               <CardContent className="p-6">
                 <div className="flex items-center gap-4">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-amber-100 dark:bg-amber-900/50">
-                    <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                  <div className="flex items-center justify-center w-12 h-12 rounded-lg bg-orange-100 dark:bg-orange-900/50">
+                    <OctagonAlert className="h-6 w-6 text-orange-500 dark:text-orange-400" />
                   </div>
                   <div>
                     <div className="text-2xl font-bold">0</div>

@@ -23,7 +23,9 @@ export function ParallelThreads() {
   const [connectionStatus, setConnectionStatus] = useState<
     "connected" | "connecting" | "disconnected"
   >("connecting");
-  const [activeDialogTab, setActiveDialogTab] = useState<"running" | "queued" | null>(null);
+  const [activeDialogTab, setActiveDialogTab] = useState<
+    "running" | "queued" | null
+  >(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -150,14 +152,15 @@ export function ParallelThreads() {
           <div className="flex flex-col mr-4">
             <div className="flex items-center justify-between mb-1">
               <span
-                className={`font-medium text-[10px] ${stats.running > 0
-                  ? "text-blue-600 dark:text-blue-500"
-                  : "text-muted-foreground"
-                  }`}
+                className={`font-medium text-[11px] ${
+                  stats.running > 0
+                    ? "text-blue-600 dark:text-blue-500"
+                    : "text-muted-foreground"
+                }`}
               >
                 RUNNING
               </span>
-              <span className="text-muted-foreground ml-2 text-[10px]">
+              <span className="text-muted-foreground ml-2 text-[11px]">
                 {stats.running}/{stats.runningCapacity}
               </span>
             </div>
@@ -172,14 +175,15 @@ export function ParallelThreads() {
           <div className="flex flex-col">
             <div className="flex items-center justify-between mb-1">
               <span
-                className={`font-medium text-[10px] ${stats.queued > 0
-                  ? "text-amber-600 dark:text-amber-500"
-                  : "text-muted-foreground"
-                  }`}
+                className={`font-medium text-[11px] ${
+                  stats.queued > 0
+                    ? "text-amber-600 dark:text-amber-500"
+                    : "text-muted-foreground"
+                }`}
               >
                 QUEUED
               </span>
-              <span className="text-muted-foreground ml-2 text-[10px]">
+              <span className="text-muted-foreground ml-2 text-[11px]">
                 {stats.queued}/{stats.queuedCapacity}
               </span>
             </div>
@@ -214,8 +218,10 @@ function LoadingSkeleton() {
 
         <div className="flex flex-col mr-4">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-medium text-[10px] text-muted-foreground">RUNNING</span>
-            <Skeleton className="h-3 w-8 ml-2" />
+            <span className="font-medium text-[11px] text-muted-foreground">
+              RUNNING
+            </span>
+            <Skeleton className="h-3.5 w-8 ml-2" />
           </div>
           <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
             <Skeleton className="h-full w-full opacity-20" />
@@ -224,8 +230,10 @@ function LoadingSkeleton() {
 
         <div className="flex flex-col">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-medium text-[10px] text-muted-foreground">QUEUED</span>
-            <Skeleton className="h-3 w-8 ml-2" />
+            <span className="font-medium text-[11px] text-muted-foreground">
+              QUEUED
+            </span>
+            <Skeleton className="h-3.5 w-8 ml-2" />
           </div>
           <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
             <Skeleton className="h-full w-full opacity-20" />
