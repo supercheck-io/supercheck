@@ -3,6 +3,14 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -13,7 +21,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  AlertCircle,
+  OctagonAlert,
   Plus,
   Pencil,
   Trash2,
@@ -22,8 +30,12 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Component,
-  AlertTriangle,
+  Layers,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  CalendarIcon,
+  Loader2,
 } from "lucide-react";
 import {
   Select,
@@ -40,11 +52,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { toast } from "sonner";
+import { UUIDField } from "@/components/ui/uuid-field";
+import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import { getIncidents } from "@/actions/get-incidents";
 import { deleteIncident } from "@/actions/delete-incident";
 import { IncidentFormDialog } from "./incident-form-dialog";
 import { IncidentUpdateDialog } from "./incident-update-dialog";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 type IncidentStatus =
   | "investigating"
@@ -93,7 +108,11 @@ export function IncidentsTab({ statusPageId, components }: IncidentsTabProps) {
     null
   );
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(3);
+  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(
+    null
+  );
 
   const loadIncidents = useCallback(async () => {
     try {
@@ -192,10 +211,64 @@ export function IncidentsTab({ statusPageId, components }: IncidentsTabProps) {
     }
   };
 
+  // Sorting function
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      if (sortDirection === "asc") {
+        setSortDirection("desc");
+      } else if (sortDirection === "desc") {
+        setSortColumn(null);
+        setSortDirection(null);
+      }
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  };
+
+  // Sort incidents
+  const sortedIncidents = React.useMemo(() => {
+    if (!sortColumn || !sortDirection) return incidents;
+
+    return [...incidents].sort((a, b) => {
+      let aValue: string | Date | null = null;
+      let bValue: string | Date | null = null;
+
+      switch (sortColumn) {
+        case "name":
+          aValue = a.name;
+          bValue = b.name;
+          break;
+        case "status":
+          aValue = a.status;
+          bValue = b.status;
+          break;
+        case "impact":
+          aValue = a.impact;
+          bValue = b.impact;
+          break;
+        case "createdAt":
+          aValue = a.createdAt;
+          bValue = b.createdAt;
+          break;
+        default:
+          return 0;
+      }
+
+      if (aValue === null && bValue === null) return 0;
+      if (aValue === null) return sortDirection === "asc" ? 1 : -1;
+      if (bValue === null) return sortDirection === "asc" ? -1 : 1;
+
+      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [incidents, sortColumn, sortDirection]);
+
   // Pagination calculations
-  const totalPages = Math.ceil(incidents.length / itemsPerPage);
+  const totalPages = Math.ceil(sortedIncidents.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedIncidents = incidents.slice(
+  const paginatedIncidents = sortedIncidents.slice(
     startIndex,
     startIndex + itemsPerPage
   );
@@ -203,32 +276,48 @@ export function IncidentsTab({ statusPageId, components }: IncidentsTabProps) {
   if (loading) {
     return (
       <Card>
-        <CardContent className="p-6">
-          <div className="space-y-2 animate-pulse">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="border rounded-lg p-3 space-y-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="h-4 w-4 bg-muted rounded" />
-                      <div className="h-4 w-32 bg-muted rounded" />
+        <CardHeader className="flex flex-row items-start justify-between pb-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <OctagonAlert className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-lg">Incidents</CardTitle>
+            </div>
+            <CardDescription>
+              Manage incidents to communicate service disruptions to your users
+            </CardDescription>
+          </div>
+          <Button disabled size="sm">
+            <Plus className="h-4 w-4 mr-2" />
+            Create Incident
+          </Button>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="border rounded-lg">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[100px]">Incident ID</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Impact</TableHead>
+                  <TableHead>Affected Components</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell colSpan={7} className="h-24 text-center">
+                    <div className="flex justify-center items-center space-x-2">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      <span className="text-muted-foreground">
+                        Loading data...
+                      </span>
                     </div>
-                    <div className="flex gap-2">
-                      <div className="h-5 w-20 bg-muted rounded" />
-                      <div className="h-5 w-20 bg-muted rounded" />
-                    </div>
-                    <div className="space-y-1">
-                      <div className="h-3 w-48 bg-muted rounded" />
-                      <div className="h-3 w-40 bg-muted rounded" />
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <div className="h-8 w-8 bg-muted rounded" />
-                    <div className="h-8 w-8 bg-muted rounded" />
-                  </div>
-                </div>
-              </div>
-            ))}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
@@ -240,7 +329,7 @@ export function IncidentsTab({ statusPageId, components }: IncidentsTabProps) {
       <CardHeader className="flex flex-row items-start justify-between pb-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-muted-foreground" />
+            <OctagonAlert className="h-5 w-5 text-muted-foreground" />
             <CardTitle className="text-lg">Incidents</CardTitle>
           </div>
           <CardDescription>
@@ -262,7 +351,7 @@ export function IncidentsTab({ statusPageId, components }: IncidentsTabProps) {
       <CardContent className="pt-0">
         {components.length === 0 && (
           <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-lg flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+            <OctagonAlert className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
             <p className="text-sm text-amber-800 dark:text-amber-200">
               You need to create components before you can create incidents.
             </p>
@@ -291,107 +380,221 @@ export function IncidentsTab({ statusPageId, components }: IncidentsTabProps) {
           </div>
         ) : (
           <>
-            <div className="space-y-2">
-              {paginatedIncidents.map((incident) => (
-                <div
-                  key={incident.id}
-                  className="border rounded-lg p-3 hover:shadow-md transition-all duration-200 hover:bg-muted/30"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-8 mb-1">
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <AlertCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <h4 className="font-semibold text-sm truncate">
-                            {incident.name}
-                          </h4>
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[100px]">Incident ID</TableHead>
+                    <TableHead>
+                      <button
+                        className={cn(
+                          "flex items-center gap-1 hover:bg-muted/50 -ml-3 px-3 py-1.5 rounded-md transition-colors",
+                          sortColumn === "name" && "bg-muted font-semibold"
+                        )}
+                        onClick={() => handleSort("name")}
+                      >
+                        Name
+                        {sortColumn === "name" && sortDirection === "asc" ? (
+                          <ArrowUp className="ml-1 h-4 w-4 text-primary" />
+                        ) : sortColumn === "name" &&
+                          sortDirection === "desc" ? (
+                          <ArrowDown className="ml-1 h-4 w-4 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="ml-1 h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button
+                        className={cn(
+                          "flex items-center gap-1 hover:bg-muted/50 -ml-3 px-3 py-1.5 rounded-md transition-colors",
+                          sortColumn === "status" && "bg-muted font-semibold"
+                        )}
+                        onClick={() => handleSort("status")}
+                      >
+                        Status
+                        {sortColumn === "status" && sortDirection === "asc" ? (
+                          <ArrowUp className="ml-1 h-4 w-4 text-primary" />
+                        ) : sortColumn === "status" &&
+                          sortDirection === "desc" ? (
+                          <ArrowDown className="ml-1 h-4 w-4 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="ml-1 h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button
+                        className={cn(
+                          "flex items-center gap-1 hover:bg-muted/50 -ml-3 px-3 py-1.5 rounded-md transition-colors",
+                          sortColumn === "impact" && "bg-muted font-semibold"
+                        )}
+                        onClick={() => handleSort("impact")}
+                      >
+                        Impact
+                        {sortColumn === "impact" && sortDirection === "asc" ? (
+                          <ArrowUp className="ml-1 h-4 w-4 text-primary" />
+                        ) : sortColumn === "impact" &&
+                          sortDirection === "desc" ? (
+                          <ArrowDown className="ml-1 h-4 w-4 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="ml-1 h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead>Affected Components</TableHead>
+                    <TableHead>
+                      <button
+                        className={cn(
+                          "flex items-center gap-1 hover:bg-muted/50 -ml-3 px-3 py-1.5 rounded-md transition-colors",
+                          sortColumn === "createdAt" && "bg-muted font-semibold"
+                        )}
+                        onClick={() => handleSort("createdAt")}
+                      >
+                        Created
+                        {sortColumn === "createdAt" &&
+                        sortDirection === "asc" ? (
+                          <ArrowUp className="ml-1 h-4 w-4 text-primary" />
+                        ) : sortColumn === "createdAt" &&
+                          sortDirection === "desc" ? (
+                          <ArrowDown className="ml-1 h-4 w-4 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="ml-1 h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedIncidents.map((incident) => (
+                    <TableRow key={incident.id}>
+                      <TableCell>
+                        <UUIDField
+                          value={incident.id}
+                          maxLength={8}
+                          onCopy={() =>
+                            toast.success("Incident ID copied to clipboard")
+                          }
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <OctagonAlert className="h-4 w-4 text-orange-500 flex-shrink-0" />
+                          <TruncatedTextWithTooltip
+                            text={incident.name}
+                            className="font-medium"
+                            maxWidth="180px"
+                            maxLength={25}
+                          />
                         </div>
-                        {incident.affectedComponents &&
-                          incident.affectedComponents.length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                              {incident.affectedComponents.map((component) => (
-                                <Badge
-                                  key={component.id}
-                                  variant="secondary"
-                                  className="text-xs px-2 py-0.5 flex items-center gap-1"
-                                >
-                                  <Component className="h-3 w-3" />
-                                  {component.name}
-                                </Badge>
-                              ))}
-                            </div>
-                          )}
-                      </div>
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      </TableCell>
+                      <TableCell>
                         <Badge
-                          className={`${getStatusBadgeColor(incident.status)} text-xs px-2 py-0.5`}
+                          className={`${getStatusBadgeColor(incident.status)} capitalize`}
                         >
                           {incident.status.replace(/_/g, " ")}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
                         <Badge
-                          className={`${getImpactBadgeColor(incident.impact)} text-xs px-2 py-0.5`}
+                          className={`${getImpactBadgeColor(incident.impact)} capitalize`}
                         >
                           {incident.impact}
                         </Badge>
-                      </div>
-                      <div className="text-xs text-muted-foreground space-y-0.5">
-                        {incident.latestUpdate && (
-                          <p className="truncate">
-                            {incident.latestUpdate.body}
-                          </p>
+                      </TableCell>
+                      <TableCell>
+                        {incident.affectedComponents &&
+                        incident.affectedComponents.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {incident.affectedComponents
+                              .slice(0, 2)
+                              .map((component) => (
+                                <Badge
+                                  key={component.id}
+                                  variant="outline"
+                                  className="text-xs max-w-[120px]"
+                                >
+                                  <Layers className="h-3 w-3 mr-1 text-blue-600 flex-shrink-0" />
+                                  <span className="truncate">
+                                    {component.name}
+                                  </span>
+                                </Badge>
+                              ))}
+                            {incident.affectedComponents.length > 2 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{incident.affectedComponents.length - 2}
+                              </Badge>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">
+                            None
+                          </span>
                         )}
-                        <div className="flex items-center gap-3 flex-wrap">
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center w-[170px]">
+                          <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+                          <span>
+                            {incident.createdAt
+                              ? format(
+                                  new Date(incident.createdAt),
+                                  "MMM d, yyyy"
+                                )
+                              : "-"}
+                          </span>
                           {incident.createdAt && (
-                            <span>
-                              Created{" "}
-                              {formatDistanceToNow(
-                                new Date(incident.createdAt),
-                                { addSuffix: true }
-                              )}
-                            </span>
-                          )}
-                          {incident.resolvedAt && (
-                            <span className="text-green-600 dark:text-green-400">
-                              Resolved{" "}
-                              {formatDistanceToNow(
-                                new Date(incident.resolvedAt),
-                                { addSuffix: true }
-                              )}
+                            <span className="text-muted-foreground ml-1 text-xs">
+                              {format(new Date(incident.createdAt), "h:mm a")}
                             </span>
                           )}
                         </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleUpdateClick(incident)}
-                        className="h-8 w-8 p-0"
-                        title="Edit incident"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeleteClick(incident)}
-                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                        title="Delete incident"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                        {incident.resolvedAt && (
+                          <div className="text-xs text-green-600 dark:text-green-400 mt-1">
+                            Resolved{" "}
+                            {formatDistanceToNow(
+                              new Date(incident.resolvedAt),
+                              {
+                                addSuffix: true,
+                              }
+                            )}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleUpdateClick(incident)}
+                            className="h-8 w-8 p-0"
+                            title="Edit incident"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteClick(incident)}
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                            title="Delete incident"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
 
             {/* Pagination Controls */}
             {incidents.length > 0 && (
               <div className="flex items-center justify-between mt-4 px-2">
                 <div className="flex-1 text-sm text-muted-foreground">
-                  Total {incidents.length} incidents
+                  Total {sortedIncidents.length} incidents
                 </div>
                 <div className="flex items-center space-x-6 lg:space-x-8">
                   <div className="flex items-center space-x-2">

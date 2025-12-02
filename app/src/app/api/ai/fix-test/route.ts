@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AIFixService } from "@/lib/ai-service";
-import { AISecurityService, AuthService } from "@/lib/ai-security";
+import { AIFixService } from "@/lib/ai/ai-service";
+import { AISecurityService, AuthService } from "@/lib/ai/ai-security";
 import {
   PlaywrightMarkdownParser,
   AIFixDecisionEngine,
   FailureCategory,
-} from "@/lib/ai-classifier";
-import { AIPromptBuilder } from "@/lib/ai-prompts";
+} from "@/lib/ai/ai-classifier";
+import { AIPromptBuilder } from "@/lib/ai/ai-prompts";
 import { HTMLReportParser } from "@/lib/html-report-parser";
 import {
   S3Client,
@@ -15,9 +15,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getActiveOrganization } from "@/lib/session";
 import { usageTracker } from "@/lib/services/usage-tracker";
-
-// Rate limiting store (in production, use Redis)
-// const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+import { headers } from "next/headers";
 
 // S3 Client configuration
 const s3Client = new S3Client({
@@ -38,10 +36,23 @@ export async function POST(request: NextRequest) {
     const { failedScript, testType, testId } = validatedInput;
 
     // Step 2: Authentication and authorization
-    await AuthService.validateUserAccess(request, testId);
-    await AuthService.checkRateLimit();
+    const session = await AuthService.validateUserAccess(request, testId);
 
-    // Step 3: Try to get markdown report URL first
+    // Step 3: Rate limiting check (with user/org context)
+    const headersList = await headers();
+    const clientIp =
+      headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      headersList.get("x-real-ip") ||
+      "unknown";
+
+    await AuthService.checkRateLimit({
+      userId: session.user.id,
+      orgId: session.user.organizationId,
+      ip: clientIp,
+      tier: session.tier,
+    });
+
+    // Step 4: Try to get markdown report URL first
     const markdownReportUrl = await getMarkdownReportUrl(testId);
 
     let errorContext: string;
@@ -62,9 +73,8 @@ export async function POST(request: NextRequest) {
 
     if (markdownReportUrl) {
       // Step 4a: Securely fetch markdown content with validation
-      errorContext = await AISecurityService.securelyFetchMarkdownReport(
-        markdownReportUrl
-      );
+      errorContext =
+        await AISecurityService.securelyFetchMarkdownReport(markdownReportUrl);
 
       // Step 5a: Parse markdown for error classification
       errorClassifications =
@@ -86,9 +96,8 @@ export async function POST(request: NextRequest) {
       }
 
       // Step 5b: Parse HTML report for error information
-      const parsedHtmlReport = await HTMLReportParser.parseHTMLReport(
-        htmlContent
-      );
+      const parsedHtmlReport =
+        await HTMLReportParser.parseHTMLReport(htmlContent);
 
       errorContext =
         HTMLReportParser.convertErrorsToMarkdownFormat(parsedHtmlReport);
@@ -218,7 +227,15 @@ export async function POST(request: NextRequest) {
 
     // Step 9: Validate and sanitize AI output
     const sanitizedScript = AISecurityService.sanitizeCodeOutput(
-      aiResponse.fixedScript
+      aiResponse.fixedScript,
+      {
+        testType: testType as
+          | "browser"
+          | "api"
+          | "custom"
+          | "database"
+          | "performance",
+      }
     );
     const sanitizedExplanation = AISecurityService.sanitizeTextOutput(
       aiResponse.explanation
@@ -227,7 +244,7 @@ export async function POST(request: NextRequest) {
     // Use AI confidence if available, otherwise use fix decision confidence
     const finalConfidence = aiResponse.aiConfidence || fixDecision.confidence;
 
-    // Track AI credit usage
+    // Track AI credit usage and token usage
     try {
       const activeOrg = await getActiveOrganization();
       if (activeOrg) {
@@ -235,6 +252,15 @@ export async function POST(request: NextRequest) {
           testId,
           contextSource,
         });
+
+        // Track token usage for rate limiting
+        if (aiResponse.usage.totalTokens > 0) {
+          await AuthService.trackTokenUsage(
+            activeOrg.id,
+            aiResponse.usage.totalTokens,
+            session.tier
+          );
+        }
       }
     } catch (trackingError) {
       console.error("[AI Fix] Failed to track AI usage:", trackingError);
