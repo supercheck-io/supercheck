@@ -187,11 +187,11 @@ After creating meters, set up overage pricing:
 2. In "Pricing" section, configure overage rates:
    - **Plus Plan**:
      - Playwright Minutes: $0.03 per minute beyond included quota
-     - K6 VU Minutes: $0.005 per VU-minute beyond included quota
+     - K6 VU Minutes: $0.01 per VU-minute beyond included quota
      - AI Credits: $0.05 per credit beyond included quota
    - **Pro Plan**:
-     - Playwright Minutes: $0.015 per minute beyond included quota
-     - K6 VU Minutes: $0.003 per VU-minute beyond included quota
+     - Playwright Minutes: $0.02 per minute beyond included quota
+     - K6 VU Minutes: $0.01 per VU-minute beyond included quota
      - AI Credits: $0.03 per credit beyond included quota
 3. Enable "Charge for overage" option
 4. Set billing cycle to "Monthly"
@@ -425,8 +425,8 @@ For issues with Polar integration:
 |---------|------|-----|
 | **Monthly Price** | $49/month | $149/month |
 | **Monitors** | 25 monitors | 100 monitors |
-| **Playwright Minutes** | 2,500 minutes/month | 7,500 minutes/month |
-| **K6 VU Minutes** | 6,000 VU-minutes/month | 40,000 VU-minutes/month |
+| **Playwright Minutes** | 3,000 minutes/month | 10,000 minutes/month |
+| **K6 VU Minutes** | 20,000 VU-minutes/month | 75,000 VU-minutes/month |
 | **AI Credits** | 100 credits/month | 300 credits/month |
 | **Concurrent Executions** | 5 | 10 |
 | **Queued Jobs** | 50 | 100 |
@@ -449,24 +449,24 @@ For issues with Polar integration:
 
 Billed per minute of browser test execution time. All test executions are timed to the nearest minute and rounded up.
 
-- **Plus Plan**: $0.10 per additional minute after 2,500 minutes
-- **Pro Plan**: $0.08 per additional minute after 7,500 minutes
+- **Plus Plan**: $0.03 per additional minute after 3,000 minutes
+- **Pro Plan**: $0.02 per additional minute after 10,000 minutes
 
 **Example 1**: Running a 5-minute Playwright test:
 - Consumes: 5 execution minutes
-- Cost per execution (if over quota): $0.50 (Plus) or $0.40 (Pro)
+- Cost per execution (if over quota): $0.15 (Plus) or $0.10 (Pro)
 
 **Example 2**: Running 30 Playwright tests averaging 1 minute each:
 - Consumes: 30 execution minutes
-- Plus plan includes 2,500 minutes, Pro includes 7,500 minutes
+- Plus plan includes 3,000 minutes, Pro includes 10,000 minutes
 - Both plans: No overage charge ✓
 
 #### K6 VU Minutes
 
 Billed per Virtual User minute for load testing. Calculated as: Virtual Users × Duration (in minutes), rounded up.
 
-- **Plus Plan**: $0.01 per additional VU-minute after 6,000 minutes
-- **Pro Plan**: $0.01 per additional VU-minute after 40,000 minutes
+- **Plus Plan**: $0.01 per additional VU-minute after 20,000 minutes
+- **Pro Plan**: $0.01 per additional VU-minute after 75,000 minutes
 
 **Example 1**: Running a load test with 100 VUs for 10 minutes:
 - Consumes: 100 VUs × 10 minutes = 1,000 VU-minutes
@@ -502,10 +502,10 @@ Synthetic monitors count against Playwright minutes for each execution. Monitor 
 - Executions per month: 25 × (30 days × 24 hours × 60 minutes / 5 minutes) = 216,000 executions
 - Average execution time per check: ~0.2 minutes (12 seconds)
 - Total minutes: ~43,200 minutes per month
-- Plus plan includes: 2,500 minutes
-- **Overage cost**: 40,700 minutes × $0.10 = **$4,070/month** (upgrade to Pro recommended)
-- Pro plan includes: 7,500 minutes
-- **Overage cost**: 35,700 minutes × $0.08 = **$2,856/month** (still high, reduce check frequency)
+- Plus plan includes: 3,000 minutes
+- **Overage cost**: 40,200 minutes × $0.03 = **$1,206/month** (upgrade to Pro recommended)
+- Pro plan includes: 10,000 minutes
+- **Overage cost**: 33,200 minutes × $0.02 = **$664/month** (consider reducing check frequency)
 
 ### Plan Features
 
@@ -515,8 +515,8 @@ Synthetic monitors count against Playwright minutes for each execution. Monitor 
 
 - 25 uptime monitors with 1-minute intervals
 - Synthetic monitors: 5-minute minimum intervals
-- 2,500 Playwright execution minutes/month
-- 6,000 K6 VU-minutes/month for load testing
+- 3,000 Playwright execution minutes/month
+- 20,000 K6 VU-minutes/month for load testing
 - 100 AI credits/month for AI Fix and AI Create
 - Up to 5 team members
 - 2 organizations, 10 projects
@@ -533,8 +533,8 @@ Synthetic monitors count against Playwright minutes for each execution. Monitor 
 
 - 100 uptime monitors with 1-minute intervals
 - Synthetic monitors: 5-minute minimum intervals
-- 7,500 Playwright execution minutes/month
-- 40,000 K6 VU-minutes/month for load testing
+- 10,000 Playwright execution minutes/month
+- 75,000 K6 VU-minutes/month for load testing
 - 300 AI credits/month for AI Fix and AI Create
 - Up to 25 team members
 - 10 organizations, 50 projects
@@ -772,8 +772,8 @@ const totalOverageCents = (playwrightOverage * playwrightPriceCents) + (k6Overag
 
 | Plan | Playwright | K6 VU Minutes | AI Credits |
 |------|-----------|---------------|------------|
-| Plus | $0.03/min | $0.005/VU-min | $0.05/credit |
-| Pro | $0.015/min | $0.003/VU-min | $0.03/credit |
+| Plus | $0.03/min | $0.01/VU-min | $0.05/credit |
+| Pro | $0.02/min | $0.01/VU-min | $0.03/credit |
 
 **K6 Pricing Justification (Protocol-Only Tests):**
 - Supercheck only supports **HTTP/protocol-based** K6 tests (no browser-based)
