@@ -16,14 +16,26 @@ import {
   Plus,
   Pencil,
   Trash2,
-  Component,
+  Layers,
   Link as LinkIcon,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Boxes,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  CalendarIcon,
+  Loader2,
 } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -39,6 +51,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { toast } from "sonner";
+import { UUIDField } from "@/components/ui/uuid-field";
+import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
+import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 import { getComponents } from "@/actions/get-components";
 import { deleteComponent } from "@/actions/delete-component";
 import { ComponentFormDialog } from "./component-form-dialog";
@@ -105,7 +121,11 @@ export function ComponentsTab({
     null
   );
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(3);
+  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(
+    null
+  );
 
   const loadComponents = useCallback(async () => {
     try {
@@ -211,10 +231,60 @@ export function ComponentsTab({
     }
   };
 
+  // Sorting function
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      if (sortDirection === "asc") {
+        setSortDirection("desc");
+      } else if (sortDirection === "desc") {
+        setSortColumn(null);
+        setSortDirection(null);
+      }
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  };
+
+  // Sort components
+  const sortedComponents = React.useMemo(() => {
+    if (!sortColumn || !sortDirection) return components;
+
+    return [...components].sort((a, b) => {
+      let aValue: string | Date | null = null;
+      let bValue: string | Date | null = null;
+
+      switch (sortColumn) {
+        case "name":
+          aValue = a.name;
+          bValue = b.name;
+          break;
+        case "status":
+          aValue = a.status;
+          bValue = b.status;
+          break;
+        case "createdAt":
+          aValue = a.createdAt;
+          bValue = b.createdAt;
+          break;
+        default:
+          return 0;
+      }
+
+      if (aValue === null && bValue === null) return 0;
+      if (aValue === null) return sortDirection === "asc" ? 1 : -1;
+      if (bValue === null) return sortDirection === "asc" ? -1 : 1;
+
+      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [components, sortColumn, sortDirection]);
+
   // Pagination calculations
-  const totalPages = Math.ceil(components.length / itemsPerPage);
+  const totalPages = Math.ceil(sortedComponents.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedComponents = components.slice(
+  const paginatedComponents = sortedComponents.slice(
     startIndex,
     startIndex + itemsPerPage
   );
@@ -222,30 +292,49 @@ export function ComponentsTab({
   if (loading) {
     return (
       <Card>
-        <CardContent className="p-6">
-          <div className="space-y-2 animate-pulse">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="border rounded-lg p-3 space-y-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="h-4 w-4 bg-muted rounded" />
-                      <div className="h-4 w-32 bg-muted rounded" />
-                      <div className="h-5 w-20 bg-muted rounded" />
+        <CardHeader className="flex flex-row items-start justify-between pb-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Layers className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-lg">Service Components</CardTitle>
+            </div>
+            <CardDescription>
+              Manage the components that make up your service. Link monitors to
+              automatically track status.
+            </CardDescription>
+          </div>
+          <Button disabled size="sm">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Component
+          </Button>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="border rounded-lg">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[100px]">Component ID</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Linked Monitors</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell colSpan={7} className="h-24 text-center">
+                    <div className="flex justify-center items-center space-x-2">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      <span className="text-muted-foreground">
+                        Loading data...
+                      </span>
                     </div>
-                    <div className="h-3 w-40 bg-muted rounded" />
-                    <div className="flex gap-1">
-                      <div className="h-5 w-24 bg-muted rounded" />
-                      <div className="h-5 w-24 bg-muted rounded" />
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <div className="h-8 w-8 bg-muted rounded" />
-                    <div className="h-8 w-8 bg-muted rounded" />
-                  </div>
-                </div>
-              </div>
-            ))}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
@@ -258,7 +347,7 @@ export function ComponentsTab({
         <CardHeader className="flex flex-row items-start justify-between pb-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <Boxes className="h-5 w-5 text-muted-foreground" />
+              <Layers className="h-5 w-5 text-muted-foreground" />
               <CardTitle className="text-lg">Service Components</CardTitle>
             </div>
             <CardDescription>
@@ -281,8 +370,8 @@ export function ComponentsTab({
         <CardContent className="pt-0">
           {components.length === 0 ? (
             <div className="text-center py-12 border-2 border-dashed rounded-lg bg-muted/20">
-              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-muted mb-4">
-                <Component className="h-7 w-7 text-muted-foreground" />
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-900/50 mb-4">
+                <Layers className="h-7 w-7 text-blue-600 dark:text-blue-400" />
               </div>
               <h4 className="text-base font-semibold mb-1">
                 No components yet
@@ -307,96 +396,220 @@ export function ComponentsTab({
             </div>
           ) : (
             <>
-              <div className="space-y-2">
-                {paginatedComponents.map((component) => (
-                  <div
-                    key={component.id}
-                    className="border rounded-lg p-3 hover:shadow-md transition-all duration-200 hover:bg-muted/30"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Component className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <h4 className="font-semibold text-sm truncate">
-                            {component.name}
-                          </h4>
+              <div className="border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[100px]">Component ID</TableHead>
+                      <TableHead>
+                        <button
+                          className={cn(
+                            "flex items-center gap-1 hover:bg-muted/50 -ml-3 px-3 py-1.5 rounded-md transition-colors",
+                            sortColumn === "name" && "bg-muted font-semibold"
+                          )}
+                          onClick={() => handleSort("name")}
+                        >
+                          Name
+                          {sortColumn === "name" && sortDirection === "asc" ? (
+                            <ArrowUp className="ml-1 h-4 w-4 text-primary" />
+                          ) : sortColumn === "name" &&
+                            sortDirection === "desc" ? (
+                            <ArrowDown className="ml-1 h-4 w-4 text-primary" />
+                          ) : (
+                            <ArrowUpDown className="ml-1 h-4 w-4 text-muted-foreground" />
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead>
+                        <button
+                          className={cn(
+                            "flex items-center gap-1 hover:bg-muted/50 -ml-3 px-3 py-1.5 rounded-md transition-colors",
+                            sortColumn === "status" && "bg-muted font-semibold"
+                          )}
+                          onClick={() => handleSort("status")}
+                        >
+                          Status
+                          {sortColumn === "status" &&
+                          sortDirection === "asc" ? (
+                            <ArrowUp className="ml-1 h-4 w-4 text-primary" />
+                          ) : sortColumn === "status" &&
+                            sortDirection === "desc" ? (
+                            <ArrowDown className="ml-1 h-4 w-4 text-primary" />
+                          ) : (
+                            <ArrowUpDown className="ml-1 h-4 w-4 text-muted-foreground" />
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Linked Monitors</TableHead>
+                      <TableHead>
+                        <button
+                          className={cn(
+                            "flex items-center gap-1 hover:bg-muted/50 -ml-3 px-3 py-1.5 rounded-md transition-colors",
+                            sortColumn === "createdAt" &&
+                              "bg-muted font-semibold"
+                          )}
+                          onClick={() => handleSort("createdAt")}
+                        >
+                          Created
+                          {sortColumn === "createdAt" &&
+                          sortDirection === "asc" ? (
+                            <ArrowUp className="ml-1 h-4 w-4 text-primary" />
+                          ) : sortColumn === "createdAt" &&
+                            sortDirection === "desc" ? (
+                            <ArrowDown className="ml-1 h-4 w-4 text-primary" />
+                          ) : (
+                            <ArrowUpDown className="ml-1 h-4 w-4 text-muted-foreground" />
+                          )}
+                        </button>
+                      </TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedComponents.map((component) => (
+                      <TableRow key={component.id}>
+                        <TableCell>
+                          <UUIDField
+                            value={component.id}
+                            maxLength={8}
+                            onCopy={() =>
+                              toast.success("Component ID copied to clipboard")
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Layers className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                            <TruncatedTextWithTooltip
+                              text={component.name}
+                              className="font-medium"
+                              maxWidth="140px"
+                              maxLength={20}
+                            />
+                            {component.showcase && (
+                              <Badge
+                                variant="secondary"
+                                className="text-xs flex-shrink-0"
+                              >
+                                Visible
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
                           <Badge
-                            className={`${getStatusBadgeColor(
-                              component.status
-                            )} text-xs px-2 py-0.5`}
+                            className={`${getStatusBadgeColor(component.status)}`}
                           >
                             {getStatusLabel(component.status)}
                           </Badge>
-                        </div>
-                        {component.description && (
-                          <p className="text-xs text-muted-foreground truncate mb-1">
-                            {component.description}
-                          </p>
-                        )}
-                        <div className="flex items-center gap-2 flex-wrap">
+                        </TableCell>
+                        <TableCell>
+                          {component.description ? (
+                            <TruncatedTextWithTooltip
+                              text={component.description}
+                              className="text-sm text-muted-foreground"
+                              maxWidth="200px"
+                              maxLength={25}
+                            />
+                          ) : (
+                            <span className="text-muted-foreground text-sm">
+                              -
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
                           {component.monitors &&
                           component.monitors.length > 0 ? (
-                            <div className="flex items-center gap-1 flex-wrap">
-                              {component.monitors.map((monitor) => (
+                            <div className="flex flex-wrap gap-1">
+                              {component.monitors.slice(0, 2).map((monitor) => (
                                 <Badge
                                   key={monitor.id}
                                   variant="outline"
-                                  className="text-xs px-1.5 py-0.5 gap-0.5"
+                                  className="text-xs max-w-[120px]"
                                 >
-                                  <LinkIcon className="h-2.5 w-2.5" />
-                                  <span>{monitor.name}</span>
+                                  <LinkIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+                                  <span className="truncate">
+                                    {monitor.name}
+                                  </span>
                                 </Badge>
                               ))}
+                              {component.monitors.length > 2 && (
+                                <Badge variant="outline" className="text-xs">
+                                  +{component.monitors.length - 2}
+                                </Badge>
+                              )}
                             </div>
                           ) : component.monitor ? (
                             <Badge
                               variant="outline"
-                              className="text-xs px-1.5 py-0.5 gap-0.5"
+                              className="text-xs max-w-[120px]"
                             >
-                              <LinkIcon className="h-2.5 w-2.5" />
-                              <span>{component.monitor.name}</span>
+                              <LinkIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+                              <span className="truncate">
+                                {component.monitor.name}
+                              </span>
                             </Badge>
-                          ) : null}
-                          {component.showcase && (
-                            <Badge
-                              variant="secondary"
-                              className="text-xs px-1.5 py-0.5"
-                            >
-                              Visible
-                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">
+                              No monitors linked
+                            </span>
                           )}
-                        </div>
-                      </div>
-                      <div className="flex gap-1 flex-shrink-0">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEditComponent(component)}
-                          className="h-8 w-8 p-0"
-                          title="Edit component"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteClick(component)}
-                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                          title="Delete component"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center w-[170px]">
+                            <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+                            <span>
+                              {component.createdAt
+                                ? format(
+                                    new Date(component.createdAt),
+                                    "MMM d, yyyy"
+                                  )
+                                : "-"}
+                            </span>
+                            {component.createdAt && (
+                              <span className="text-muted-foreground ml-1 text-xs">
+                                {format(
+                                  new Date(component.createdAt),
+                                  "h:mm a"
+                                )}
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditComponent(component)}
+                              className="h-8 w-8 p-0"
+                              title="Edit component"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteClick(component)}
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                              title="Delete component"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
 
               {/* Pagination Controls */}
               {components.length > 0 && (
                 <div className="flex items-center justify-between mt-4 px-2">
                   <div className="flex-1 text-sm text-muted-foreground">
-                    Total {components.length} components
+                    Total {sortedComponents.length} components
                   </div>
                   <div className="flex items-center space-x-6 lg:space-x-8">
                     <div className="flex items-center space-x-2">

@@ -13,12 +13,6 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -30,7 +24,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Mail,
-  MoreVertical,
   Trash2,
   RefreshCw,
   Search,
@@ -43,7 +36,17 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Users,
+  Slack,
+  Webhook,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  CalendarIcon,
 } from "lucide-react";
+import { UUIDField } from "@/components/ui/uuid-field";
+import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -63,11 +66,11 @@ import {
   deleteSubscriber,
   resendVerificationEmail,
 } from "@/actions/get-status-page-subscribers";
-import { toast } from "sonner";
 
 type Subscriber = {
   id: string;
   email: string | null;
+  endpoint: string | null;
   mode: string;
   verifiedAt: Date | null;
   createdAt: Date | null;
@@ -93,6 +96,10 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc" | null>(
+    null
+  );
 
   const loadSubscribers = useCallback(async () => {
     setLoading(true);
@@ -115,10 +122,68 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
     } else {
       const query = searchQuery.toLowerCase();
       setFilteredSubscribers(
-        subscribers.filter((s) => s.email?.toLowerCase().includes(query))
+        subscribers.filter(
+          (s) =>
+            s.email?.toLowerCase().includes(query) ||
+            s.endpoint?.toLowerCase().includes(query)
+        )
       );
     }
   }, [searchQuery, subscribers]);
+
+  // Sorting function
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      if (sortDirection === "asc") {
+        setSortDirection("desc");
+      } else if (sortDirection === "desc") {
+        setSortColumn(null);
+        setSortDirection(null);
+      }
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+  };
+
+  // Sort subscribers
+  const sortedSubscribers = React.useMemo(() => {
+    if (!sortColumn || !sortDirection) return filteredSubscribers;
+
+    return [...filteredSubscribers].sort((a, b) => {
+      let aValue: string | Date | null = null;
+      let bValue: string | Date | null = null;
+
+      switch (sortColumn) {
+        case "identifier":
+          aValue = a.email || a.endpoint || "";
+          bValue = b.email || b.endpoint || "";
+          break;
+        case "mode":
+          aValue = a.mode;
+          bValue = b.mode;
+          break;
+        case "status":
+          aValue = a.verifiedAt ? "verified" : "pending";
+          bValue = b.verifiedAt ? "verified" : "pending";
+          break;
+        case "createdAt":
+          aValue = a.createdAt;
+          bValue = b.createdAt;
+          break;
+        default:
+          return 0;
+      }
+
+      if (aValue === null && bValue === null) return 0;
+      if (aValue === null) return sortDirection === "asc" ? 1 : -1;
+      if (bValue === null) return sortDirection === "asc" ? -1 : 1;
+
+      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [filteredSubscribers, sortColumn, sortDirection]);
 
   const handleDelete = async () => {
     if (!subscriberToDelete) return;
@@ -157,9 +222,9 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
 
   const handleExportCSV = () => {
     const csvContent = [
-      ["Email", "Mode", "Status", "Subscribed Date"],
+      ["Identifier", "Mode", "Status", "Subscribed Date"],
       ...subscribers.map((s) => [
-        s.email || "",
+        s.email || s.endpoint || "",
         s.mode,
         s.verifiedAt ? "Verified" : "Pending",
         s.createdAt ? format(new Date(s.createdAt), "yyyy-MM-dd HH:mm") : "",
@@ -179,9 +244,9 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
   };
 
   // Pagination calculations
-  const totalPages = Math.ceil(filteredSubscribers.length / itemsPerPage);
+  const totalPages = Math.ceil(sortedSubscribers.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedSubscribers = filteredSubscribers.slice(
+  const paginatedSubscribers = sortedSubscribers.slice(
     startIndex,
     startIndex + itemsPerPage
   );
@@ -189,24 +254,99 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
   if (loading) {
     return (
       <Card>
-        <CardContent className="p-6 space-y-4">
-          <div className="space-y-2 animate-pulse">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="border rounded p-3 flex items-center justify-between"
-              >
-                <div className="flex-1 space-y-2">
-                  <div className="h-4 w-48 bg-muted rounded" />
-                  <div className="h-3 w-32 bg-muted rounded" />
+        <CardHeader className="flex flex-row items-start justify-between pb-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-lg">Subscribers</CardTitle>
+            </div>
+            <CardDescription>
+              Manage users who receive notifications about your status page
+              updates
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by email or webhook URL..."
+                disabled
+                className="pl-9 w-[300px]"
+              />
+            </div>
+            <Button variant="outline" disabled size="sm">
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-6">
+          {/* Stats Cards */}
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="p-4 border rounded-lg bg-muted/30">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/50">
+                  <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 </div>
-                <div className="space-y-2">
-                  <div className="h-5 w-16 bg-muted rounded" />
-                  <div className="h-5 w-16 bg-muted rounded" />
+                <div>
+                  <div className="text-2xl font-bold">-</div>
+                  <div className="text-sm text-muted-foreground">
+                    Total Subscribers
+                  </div>
                 </div>
-                <div className="h-8 w-8 bg-muted rounded" />
               </div>
-            ))}
+            </div>
+            <div className="p-4 border rounded-lg bg-muted/30">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/50">
+                  <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">-</div>
+                  <div className="text-sm text-muted-foreground">Verified</div>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border rounded-lg bg-muted/30">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/50">
+                  <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">-</div>
+                  <div className="text-sm text-muted-foreground">
+                    Pending Verification
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* Table with loading spinner */}
+          <div className="border rounded-lg">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[100px]">Subscriber ID</TableHead>
+                  <TableHead>Identifier</TableHead>
+                  <TableHead>Mode</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Subscribed</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center">
+                    <div className="flex justify-center items-center space-x-2">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      <span className="text-muted-foreground">
+                        Loading data...
+                      </span>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
@@ -226,15 +366,26 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
             updates
           </CardDescription>
         </div>
-        <Button
-          variant="outline"
-          onClick={handleExportCSV}
-          disabled={subscribers.length === 0}
-          size="sm"
-        >
-          <Download className="h-4 w-4 mr-2" />
-          Export CSV
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by email or webhook URL..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 w-[300px]"
+            />
+          </div>
+          <Button
+            variant="outline"
+            onClick={handleExportCSV}
+            disabled={subscribers.length === 0}
+            size="sm"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="pt-0 space-y-6">
         {/* Stats Cards */}
@@ -278,21 +429,8 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
           </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by email..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-        </div>
-
         {/* Subscribers Table */}
-        {filteredSubscribers.length === 0 ? (
+        {sortedSubscribers.length === 0 ? (
           <div className="text-center py-12 border-2 border-dashed rounded-lg bg-muted/20">
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-muted mb-4">
               <Mail className="h-7 w-7 text-muted-foreground" />
@@ -312,23 +450,156 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Mode</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Subscribed</TableHead>
+                    <TableHead className="w-[100px]">Subscriber ID</TableHead>
+                    <TableHead>
+                      <button
+                        className={cn(
+                          "flex items-center gap-1 hover:bg-muted/50 -ml-3 px-3 py-1.5 rounded-md transition-colors",
+                          sortColumn === "identifier" &&
+                            "bg-muted font-semibold"
+                        )}
+                        onClick={() => handleSort("identifier")}
+                      >
+                        Identifier
+                        {sortColumn === "identifier" &&
+                        sortDirection === "asc" ? (
+                          <ArrowUp className="ml-1 h-4 w-4 text-primary" />
+                        ) : sortColumn === "identifier" &&
+                          sortDirection === "desc" ? (
+                          <ArrowDown className="ml-1 h-4 w-4 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="ml-1 h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button
+                        className={cn(
+                          "flex items-center gap-1 hover:bg-muted/50 -ml-3 px-3 py-1.5 rounded-md transition-colors",
+                          sortColumn === "mode" && "bg-muted font-semibold"
+                        )}
+                        onClick={() => handleSort("mode")}
+                      >
+                        Mode
+                        {sortColumn === "mode" && sortDirection === "asc" ? (
+                          <ArrowUp className="ml-1 h-4 w-4 text-primary" />
+                        ) : sortColumn === "mode" &&
+                          sortDirection === "desc" ? (
+                          <ArrowDown className="ml-1 h-4 w-4 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="ml-1 h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button
+                        className={cn(
+                          "flex items-center gap-1 hover:bg-muted/50 -ml-3 px-3 py-1.5 rounded-md transition-colors",
+                          sortColumn === "status" && "bg-muted font-semibold"
+                        )}
+                        onClick={() => handleSort("status")}
+                      >
+                        Status
+                        {sortColumn === "status" && sortDirection === "asc" ? (
+                          <ArrowUp className="ml-1 h-4 w-4 text-primary" />
+                        ) : sortColumn === "status" &&
+                          sortDirection === "desc" ? (
+                          <ArrowDown className="ml-1 h-4 w-4 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="ml-1 h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+                    </TableHead>
+                    <TableHead>
+                      <button
+                        className={cn(
+                          "flex items-center gap-1 hover:bg-muted/50 -ml-3 px-3 py-1.5 rounded-md transition-colors",
+                          sortColumn === "createdAt" && "bg-muted font-semibold"
+                        )}
+                        onClick={() => handleSort("createdAt")}
+                      >
+                        Subscribed
+                        {sortColumn === "createdAt" &&
+                        sortDirection === "asc" ? (
+                          <ArrowUp className="ml-1 h-4 w-4 text-primary" />
+                        ) : sortColumn === "createdAt" &&
+                          sortDirection === "desc" ? (
+                          <ArrowDown className="ml-1 h-4 w-4 text-primary" />
+                        ) : (
+                          <ArrowUpDown className="ml-1 h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+                    </TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedSubscribers.map((subscriber) => (
                     <TableRow key={subscriber.id}>
-                      <TableCell className="font-medium">
-                        {subscriber.email}
+                      <TableCell>
+                        <UUIDField
+                          value={subscriber.id}
+                          maxLength={8}
+                          onCopy={() =>
+                            toast.success("Subscriber ID copied to clipboard")
+                          }
+                        />
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="capitalize">
-                          {subscriber.mode}
-                        </Badge>
+                        {subscriber.mode === "email" ? (
+                          <TruncatedTextWithTooltip
+                            text={subscriber.email || "-"}
+                            className="font-medium"
+                            maxWidth="200px"
+                            maxLength={25}
+                          />
+                        ) : subscriber.mode === "slack" ||
+                          subscriber.mode === "webhook" ? (
+                          <TruncatedTextWithTooltip
+                            text={subscriber.endpoint || "-"}
+                            className="text-sm"
+                            maxWidth="200px"
+                            maxLength={30}
+                          />
+                        ) : (
+                          <TruncatedTextWithTooltip
+                            text={
+                              subscriber.email || subscriber.endpoint || "-"
+                            }
+                            className="font-medium"
+                            maxWidth="200px"
+                            maxLength={25}
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          {subscriber.mode === "email" && (
+                            <>
+                              <Mail className="h-4 w-4 text-blue-500" />
+                              <span className="capitalize">Email</span>
+                            </>
+                          )}
+                          {subscriber.mode === "slack" && (
+                            <>
+                              <Slack className="h-4 w-4 text-sky-500" />
+                              <span className="capitalize">Slack</span>
+                            </>
+                          )}
+                          {subscriber.mode === "webhook" && (
+                            <>
+                              <Webhook className="h-4 w-4 text-green-500" />
+                              <span className="capitalize">Webhook</span>
+                            </>
+                          )}
+                          {!["email", "slack", "webhook"].includes(
+                            subscriber.mode
+                          ) && (
+                            <span className="capitalize">
+                              {subscriber.mode}
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {subscriber.verifiedAt ? (
@@ -344,48 +615,56 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
                         )}
                       </TableCell>
                       <TableCell>
-                        {subscriber.createdAt
-                          ? format(
-                              new Date(subscriber.createdAt),
-                              "MMM d, yyyy"
-                            )
-                          : "-"}
+                        <div className="flex items-center w-[170px]">
+                          <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
+                          <span>
+                            {subscriber.createdAt
+                              ? format(
+                                  new Date(subscriber.createdAt),
+                                  "MMM d, yyyy"
+                                )
+                              : "-"}
+                          </span>
+                          {subscriber.createdAt && (
+                            <span className="text-muted-foreground ml-1 text-xs">
+                              {format(new Date(subscriber.createdAt), "h:mm a")}
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {!subscriber.verifiedAt && (
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  handleResendVerification(subscriber.id)
-                                }
-                                disabled={actionLoading === subscriber.id}
-                              >
-                                {actionLoading === subscriber.id ? (
-                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                ) : (
-                                  <RefreshCw className="h-4 w-4 mr-2" />
-                                )}
-                                Resend Verification
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setSubscriberToDelete(subscriber.id);
-                                setDeleteDialogOpen(true);
-                              }}
-                              className="text-red-600 focus:text-red-600"
+                        <div className="flex justify-end gap-1">
+                          {!subscriber.verifiedAt && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                handleResendVerification(subscriber.id)
+                              }
+                              disabled={actionLoading === subscriber.id}
+                              className="h-8 w-8 p-0"
+                              title="Resend verification"
                             >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Remove
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              {actionLoading === subscriber.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-4 w-4" />
+                              )}
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSubscriberToDelete(subscriber.id);
+                              setDeleteDialogOpen(true);
+                            }}
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                            title="Delete subscriber"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -394,10 +673,10 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
             </div>
 
             {/* Pagination Controls */}
-            {filteredSubscribers.length > 0 && (
+            {sortedSubscribers.length > 0 && (
               <div className="flex items-center justify-between mt-4 px-2">
                 <div className="flex-1 text-sm text-muted-foreground">
-                  Total {filteredSubscribers.length} subscribers
+                  Total {sortedSubscribers.length} subscribers
                 </div>
                 <div className="flex items-center space-x-6 lg:space-x-8">
                   <div className="flex items-center space-x-2">

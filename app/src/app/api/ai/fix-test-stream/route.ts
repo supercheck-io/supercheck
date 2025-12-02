@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AIStreamingService } from "@/lib/ai-streaming-service";
-import { AISecurityService, AuthService } from "@/lib/ai-security";
+import { AIStreamingService } from "@/lib/ai/ai-streaming-service";
+import { AISecurityService, AuthService } from "@/lib/ai/ai-security";
 import {
   PlaywrightMarkdownParser,
   AIFixDecisionEngine,
   FailureCategory,
-} from "@/lib/ai-classifier";
+} from "@/lib/ai/ai-classifier";
 import { K6LogParser, K6FixDecisionEngine } from "@/lib/k6-classifier";
-import { AIPromptBuilder } from "@/lib/ai-prompts";
+import { AIPromptBuilder } from "@/lib/ai/ai-prompts";
 import { HTMLReportParser } from "@/lib/html-report-parser";
 import {
   S3Client,
@@ -16,6 +16,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getActiveOrganization } from "@/lib/session";
 import { usageTracker } from "@/lib/services/usage-tracker";
+import { headers } from "next/headers";
 
 // S3 Client configuration
 const s3Client = new S3Client({
@@ -36,8 +37,21 @@ export async function POST(request: NextRequest) {
     const { failedScript, testType, testId } = validatedInput;
 
     // Step 2: Authentication and authorization
-    await AuthService.validateUserAccess(request, testId);
-    await AuthService.checkRateLimit();
+    const session = await AuthService.validateUserAccess(request, testId);
+
+    // Step 3: Rate limiting check (with user/org context)
+    const headersList = await headers();
+    const clientIp =
+      headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      headersList.get("x-real-ip") ||
+      "unknown";
+
+    await AuthService.checkRateLimit({
+      userId: session.user.id,
+      orgId: session.user.organizationId,
+      ip: clientIp,
+      tier: session.tier,
+    });
 
     let prompt: string;
     let confidence = 0.7;
@@ -84,9 +98,10 @@ export async function POST(request: NextRequest) {
       let contextSource: "markdown" | "html" = "markdown";
 
       if (markdownReportUrl) {
-        errorContext = await AISecurityService.securelyFetchMarkdownReport(
-          markdownReportUrl
-        );
+        errorContext =
+          await AISecurityService.securelyFetchMarkdownReport(
+            markdownReportUrl
+          );
         errorClassifications =
           PlaywrightMarkdownParser.parseMarkdownForErrors(errorContext);
       } else {
@@ -104,9 +119,8 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        const parsedHtmlReport = await HTMLReportParser.parseHTMLReport(
-          htmlContent
-        );
+        const parsedHtmlReport =
+          await HTMLReportParser.parseHTMLReport(htmlContent);
         errorContext =
           HTMLReportParser.convertErrorsToMarkdownFormat(parsedHtmlReport);
         contextSource = "html";

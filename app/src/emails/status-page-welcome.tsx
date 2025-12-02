@@ -1,6 +1,17 @@
-import { Button, Hr, Link, Section, Text } from "@react-email/components";
+import {
+  Body,
+  Button,
+  Container,
+  Head,
+  Heading,
+  Hr,
+  Html,
+  Link,
+  Preview,
+  Section,
+  Text,
+} from "@react-email/components";
 import * as React from "react";
-import { BaseLayout } from "./base-layout";
 
 interface StatusPageWelcomeEmailProps {
   statusPageName: string;
@@ -14,142 +25,227 @@ export const StatusPageWelcomeEmail = ({
   unsubscribeUrl = "https://example.supercheck.io/unsubscribe?token=abc123",
 }: StatusPageWelcomeEmailProps) => {
   return (
-    <BaseLayout
-      preview={`You're now subscribed to ${statusPageName}`}
-      title="Subscription Confirmed"
-      headerColor="#16a34a"
-      footer={
-        <Text style={footerText}>
-          You&apos;re now subscribed to <strong>{statusPageName}</strong> status
-          updates.
-          <br />
-          <Link href={unsubscribeUrl} style={footerLink}>
-            Unsubscribe
-          </Link>
-        </Text>
-      }
-    >
-      <Section style={headerSection}>
-        <Text style={notificationLabel}>Subscription Active</Text>
-      </Section>
+    <Html>
+      <Head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta httpEquiv="Content-Type" content="text/html; charset=UTF-8" />
+      </Head>
+      <Preview>You&apos;re now subscribed to {statusPageName}</Preview>
+      <Body style={main}>
+        <Container style={container}>
+          {/* Header */}
+          <Section style={header}>
+            <Heading style={headerTitle}>Subscription Confirmed</Heading>
+          </Section>
 
-      <Section style={contentSection}>
-        <Text style={heading}>You&apos;re All Set! ✓</Text>
+          {/* Success Icon */}
+          <Section style={iconSection}>
+            <div style={iconCircle}>
+              <span style={iconText}>✓</span>
+            </div>
+          </Section>
 
-        <Text style={paragraph}>
-          Your subscription to{" "}
-          <strong style={{ color: "#111827" }}>{statusPageName}</strong> has
-          been confirmed.
-        </Text>
+          {/* Main Content */}
+          <Section style={contentSection}>
+            <Heading as="h2" style={heading}>
+              You&apos;re All Set!
+            </Heading>
 
-        <Section style={successBox}>
-          <Text style={successTitle}>🎉 What happens next?</Text>
-          <Text style={successText}>
-            You&apos;ll receive email notifications whenever there are updates
-            to the services you care about.
-          </Text>
-        </Section>
+            <Text style={paragraph}>
+              Your subscription to{" "}
+              <strong style={highlight}>{statusPageName}</strong> has been
+              confirmed successfully. You will now receive real-time
+              notifications about any service disruptions, incidents, and
+              scheduled maintenance.
+            </Text>
+          </Section>
 
-        <Section style={infoBox}>
-          <Text style={infoTitle}>You&apos;ll receive notifications for:</Text>
-          <table style={listTable}>
-            <tbody>
-              <tr>
-                <td style={bulletCell}>•</td>
-                <td style={listItemCell}>Service incidents and outages</td>
-              </tr>
-              <tr>
-                <td style={bulletCell}>•</td>
-                <td style={listItemCell}>Scheduled maintenance windows</td>
-              </tr>
-              <tr>
-                <td style={bulletCell}>•</td>
-                <td style={listItemCell}>Incident updates and resolutions</td>
-              </tr>
-            </tbody>
-          </table>
-        </Section>
+          {/* Success Box */}
+          <Section style={contentSection}>
+            <table style={successBox} cellPadding="0" cellSpacing="0">
+              <tbody>
+                <tr>
+                  <td style={{ padding: "20px 24px" }}>
+                    <Text style={successTitle}>🎉 What happens next?</Text>
+                    <Text style={successText}>
+                      You&apos;ll receive email notifications whenever there are
+                      updates to the services you care about.
+                    </Text>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </Section>
 
-        <Text style={paragraph}>
-          You can view the current status at any time:
-        </Text>
+          {/* Notification Types Box */}
+          <Section style={contentSection}>
+            <table style={infoBox} cellPadding="0" cellSpacing="0">
+              <tbody>
+                <tr>
+                  <td style={{ padding: "20px 24px" }}>
+                    <Text style={infoTitle}>
+                      You&apos;ll receive notifications for:
+                    </Text>
+                    <Text style={listItem}>
+                      • Service incidents and outages
+                    </Text>
+                    <Text style={listItem}>
+                      • Scheduled maintenance windows
+                    </Text>
+                    <Text style={listItem}>
+                      • Incident updates and resolutions
+                    </Text>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </Section>
 
-        <Section style={buttonContainer}>
-          <Button style={button} href={statusPageUrl}>
-            View Status Page
-          </Button>
-        </Section>
+          {/* CTA Button */}
+          <Section style={buttonSection}>
+            <Button style={ctaButton} href={statusPageUrl}>
+              View Status Page
+            </Button>
+          </Section>
 
-        <Hr style={hr} />
+          <Hr style={divider} />
 
-        <Text style={tipsText}>
-          <strong>Pro tip:</strong> Add our email address to your contacts to
-          ensure you never miss an important update.
-        </Text>
-      </Section>
-    </BaseLayout>
+          {/* Pro Tip */}
+          <Section style={contentSection}>
+            <table style={tipBox} cellPadding="0" cellSpacing="0">
+              <tbody>
+                <tr>
+                  <td style={{ padding: "16px 20px" }}>
+                    <Text style={tipText}>
+                      <strong>💡 Pro tip:</strong> Add our email address to your
+                      contacts to ensure you never miss an important update.
+                    </Text>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </Section>
+
+          {/* Spacer */}
+          <Section style={{ height: "24px" }} />
+
+          <Hr style={footerDivider} />
+
+          {/* Footer */}
+          <Section style={footer}>
+            <Text style={footerText}>
+              You&apos;re now subscribed to status updates for {statusPageName}.
+            </Text>
+            <Text style={footerLinks}>
+              <Link href={statusPageUrl} style={footerLink}>
+                View Status Page
+              </Link>
+              {" • "}
+              <Link href={unsubscribeUrl} style={footerLink}>
+                Unsubscribe
+              </Link>
+            </Text>
+            <Text style={copyright}>
+              Powered by{" "}
+              <Link href="https://supercheck.io" style={footerLink}>
+                Supercheck
+              </Link>
+            </Text>
+          </Section>
+        </Container>
+      </Body>
+    </Html>
   );
 };
 
 // ============================================================================
-// HEADER STYLES
+// STYLES
 // ============================================================================
 
-const headerSection = {
+const main = {
+  backgroundColor: "#f4f4f5",
+  fontFamily:
+    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  padding: "40px 20px",
+};
+
+const container = {
+  backgroundColor: "#ffffff",
+  margin: "0 auto",
+  maxWidth: "560px",
+  borderRadius: "12px",
+  overflow: "hidden" as const,
+  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+};
+
+const header = {
+  backgroundColor: "#16a34a",
+  padding: "28px 32px",
+  textAlign: "center" as const,
+};
+
+const headerTitle = {
+  color: "#ffffff",
+  fontSize: "20px",
+  fontWeight: "600" as const,
+  margin: "0",
+  letterSpacing: "-0.01em",
+};
+
+const iconSection = {
   textAlign: "center" as const,
   padding: "32px 32px 0",
 };
 
-const notificationLabel = {
-  color: "#16a34a",
-  fontSize: "12px",
-  fontWeight: "600" as const,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.05em",
-  margin: "0 0 8px",
-  backgroundColor: "#f0fdf4",
+const iconCircle = {
   display: "inline-block",
-  padding: "4px 12px",
-  borderRadius: "16px",
+  backgroundColor: "#dcfce7",
+  borderRadius: "50%",
+  width: "64px",
+  height: "64px",
+  lineHeight: "64px",
+  textAlign: "center" as const,
 };
 
-// ============================================================================
-// CONTENT STYLES
-// ============================================================================
+const iconText = {
+  color: "#16a34a",
+  fontSize: "32px",
+  fontWeight: "700" as const,
+};
 
 const contentSection = {
   padding: "0 32px",
 };
 
 const heading = {
-  color: "#111827",
-  fontSize: "24px",
+  color: "#18181b",
+  fontSize: "22px",
   fontWeight: "700" as const,
+  margin: "24px 0 16px",
   lineHeight: "1.3",
-  margin: "0 0 24px",
+  letterSpacing: "-0.02em",
   textAlign: "center" as const,
-  letterSpacing: "-0.025em",
 };
 
 const paragraph = {
-  color: "#4b5563",
+  color: "#52525b",
   fontSize: "15px",
-  lineHeight: "1.6",
+  lineHeight: "1.65",
   margin: "0 0 24px",
   textAlign: "center" as const,
 };
 
-// ============================================================================
-// SUCCESS BOX STYLES
-// ============================================================================
+const highlight = {
+  color: "#18181b",
+  fontWeight: "600" as const,
+};
 
 const successBox = {
+  width: "100%",
   backgroundColor: "#f0fdf4",
   border: "1px solid #bbf7d0",
   borderRadius: "8px",
-  padding: "20px",
-  margin: "0 0 24px",
-  textAlign: "center" as const,
+  marginBottom: "16px",
 };
 
 const successTitle = {
@@ -157,107 +253,112 @@ const successTitle = {
   fontSize: "15px",
   fontWeight: "600" as const,
   margin: "0 0 8px",
+  textAlign: "center" as const,
 };
 
 const successText = {
-  color: "#166534",
+  color: "#15803d",
   fontSize: "14px",
   lineHeight: "1.5",
   margin: "0",
+  textAlign: "center" as const,
 };
 
-// ============================================================================
-// INFO BOX STYLES
-// ============================================================================
-
 const infoBox = {
-  backgroundColor: "#f9fafb",
-  border: "1px solid #e5e7eb",
+  width: "100%",
+  backgroundColor: "#fafafa",
+  border: "1px solid #e4e4e7",
   borderRadius: "8px",
-  padding: "20px",
-  margin: "0 0 24px",
+  marginBottom: "24px",
 };
 
 const infoTitle = {
-  color: "#374151",
+  color: "#3f3f46",
   fontSize: "14px",
   fontWeight: "600" as const,
   margin: "0 0 12px",
 };
 
-const listTable = {
-  width: "100%",
-  borderCollapse: "collapse" as const,
-};
-
-const bulletCell = {
-  color: "#16a34a",
-  fontSize: "14px",
-  fontWeight: "700" as const,
-  verticalAlign: "top" as const,
-  paddingRight: "8px",
-  width: "16px",
-};
-
-const listItemCell = {
-  color: "#4b5563",
+const listItem = {
+  color: "#52525b",
   fontSize: "14px",
   lineHeight: "1.6",
-  paddingBottom: "4px",
+  margin: "0 0 4px",
 };
 
-// ============================================================================
-// BUTTON STYLES
-// ============================================================================
-
-const buttonContainer = {
+const buttonSection = {
   textAlign: "center" as const,
-  margin: "32px 0",
+  padding: "8px 32px 32px",
 };
 
-const button = {
+const ctaButton = {
   backgroundColor: "#16a34a",
-  borderRadius: "6px",
+  borderRadius: "8px",
   color: "#ffffff",
   fontSize: "15px",
   fontWeight: "600" as const,
   textDecoration: "none",
   textAlign: "center" as const,
   display: "inline-block",
-  padding: "14px 36px",
+  padding: "14px 32px",
 };
 
-const hr = {
-  borderColor: "#e5e7eb",
-  margin: "24px 0",
+const divider = {
+  borderColor: "#e4e4e7",
+  margin: "0 32px",
 };
 
-// ============================================================================
-// TIPS STYLES
-// ============================================================================
+const tipBox = {
+  width: "100%",
+  backgroundColor: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  borderRadius: "8px",
+  marginTop: "24px",
+};
 
-const tipsText = {
-  color: "#6b7280",
+const tipText = {
+  color: "#1e40af",
   fontSize: "13px",
   lineHeight: "1.5",
-  margin: "0 0 32px",
+  margin: "0",
   textAlign: "center" as const,
 };
 
-// ============================================================================
-// FOOTER STYLES
-// ============================================================================
+const footerDivider = {
+  borderColor: "#e4e4e7",
+  margin: "0",
+};
+
+const footer = {
+  padding: "24px 32px",
+  backgroundColor: "#fafafa",
+};
 
 const footerText = {
-  color: "#6b7280",
+  color: "#71717a",
   fontSize: "13px",
   lineHeight: "1.5",
-  margin: "0 0 16px",
+  margin: "0 0 12px",
+  textAlign: "center" as const,
+};
+
+const footerLinks = {
+  color: "#71717a",
+  fontSize: "13px",
+  margin: "0 0 12px",
+  textAlign: "center" as const,
 };
 
 const footerLink = {
-  color: "#4b5563",
+  color: "#52525b",
   textDecoration: "underline",
+};
+
+const copyright = {
+  color: "#a1a1aa",
+  fontSize: "12px",
+  margin: "0",
+  textAlign: "center" as const,
 };
 
 export default StatusPageWelcomeEmail;

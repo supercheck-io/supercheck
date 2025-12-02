@@ -339,10 +339,34 @@ export function SubscribeDialog({
                         {slackForm.formState.errors.slackWebhookUrl.message}
                       </p>
                     )}
-                    <p className="text-xs text-muted-foreground">
-                      Get your webhook URL from Slack: Workspace Settings → Apps
-                      → Incoming Webhooks
-                    </p>
+                  </div>
+
+                  <div className="border bg-muted/30 rounded-lg p-3 space-y-2">
+                    <h4 className="text-sm font-medium">
+                      How to get your Slack Webhook URL:
+                    </h4>
+                    <ol className="text-xs space-y-1 list-decimal list-inside text-muted-foreground">
+                      <li>
+                        Go to{" "}
+                        <a
+                          href="https://api.slack.com/apps"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline font-medium"
+                        >
+                          api.slack.com/apps
+                        </a>
+                      </li>
+                      <li>Create a new app or select an existing one</li>
+                      <li>
+                        Navigate to &quot;Incoming Webhooks&quot; in the sidebar
+                      </li>
+                      <li>
+                        Toggle &quot;Activate Incoming Webhooks&quot; to On
+                      </li>
+                      <li>Click &quot;Add New Webhook to Workspace&quot;</li>
+                      <li>Select the channel and copy the webhook URL</li>
+                    </ol>
                   </div>
 
                   <div className="bg-muted/30 border rounded-lg p-3 space-y-2">
@@ -350,7 +374,7 @@ export function SubscribeDialog({
                       What you&apos;ll receive:
                     </h4>
                     <ul className="text-xs text-muted-foreground space-y-1">
-                      <li>✓ Rich formatted messages with Block Kit</li>
+                      <li>✓ Rich formatted messages</li>
                       <li>✓ Color-coded by incident impact</li>
                       <li>✓ Affected services and status updates</li>
                       <li>✓ Direct link to view full status page</li>
