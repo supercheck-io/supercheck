@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { MonitorForm } from "./monitor-form";
 import { AlertSettings } from "@/components/alerts/alert-settings";
 import { LocationConfigSection } from "./location-config-section";
@@ -22,16 +22,29 @@ import { useAppConfig } from "@/hooks/use-app-config";
 
 type WizardStep = "monitor" | "location" | "alerts";
 
+// Storage keys as constants to avoid typos
+const STORAGE_KEYS = {
+  MONITOR_DATA: "monitor-draft-data",
+  API_DATA: "monitor-draft-api",
+  LOCATION: "monitor-draft-location",
+  ALERT: "monitor-draft-alert",
+} as const;
+
 export function MonitorCreationWizard() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const stepFromUrl = searchParams?.get('wizardStep') as WizardStep | null;
+  const stepFromUrl = searchParams?.get("wizardStep") as WizardStep | null;
   const { maxMonitorNotificationChannels } = useAppConfig();
 
-  // Restore draft data from sessionStorage
-  const getInitialMonitorData = () => {
-    if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('monitor-draft-data');
+  // Track if component is mounted to avoid state updates after unmount
+  const isMountedRef = useRef(true);
+  // Track if we're in the process of creating a monitor (to skip cleanup)
+  const isCreatingRef = useRef(false);
+
+  // Restore draft data from sessionStorage - wrapped in useCallback for stability
+  const getInitialMonitorData = useCallback(() => {
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem(STORAGE_KEYS.MONITOR_DATA);
       if (saved) {
         try {
           return JSON.parse(saved);
@@ -41,11 +54,11 @@ export function MonitorCreationWizard() {
       }
     }
     return undefined;
-  };
+  }, []);
 
-  const getInitialApiData = () => {
-    if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('monitor-draft-api');
+  const getInitialApiData = useCallback(() => {
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem(STORAGE_KEYS.API_DATA);
       if (saved) {
         try {
           return JSON.parse(saved);
@@ -55,11 +68,11 @@ export function MonitorCreationWizard() {
       }
     }
     return undefined;
-  };
+  }, []);
 
-  const getInitialLocationConfig = () => {
-    if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('monitor-draft-location');
+  const getInitialLocationConfig = useCallback(() => {
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem(STORAGE_KEYS.LOCATION);
       if (saved) {
         try {
           return JSON.parse(saved);
@@ -69,24 +82,16 @@ export function MonitorCreationWizard() {
       }
     }
     return DEFAULT_LOCATION_CONFIG;
-  };
+  }, []);
 
-  const getInitialAlertConfig = () => {
-    if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('monitor-draft-alert');
+  const getInitialAlertConfig = useCallback((): AlertConfig => {
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem(STORAGE_KEYS.ALERT);
       if (saved) {
         try {
           return JSON.parse(saved);
         } catch {
-          return {
-            enabled: false,
-            notificationProviders: [],
-            alertOnFailure: true,
-            alertOnRecovery: true,
-            alertOnSslExpiration: false,
-            failureThreshold: 1,
-            recoveryThreshold: 1,
-          };
+          // Return default config on parse error
         }
       }
     }
@@ -99,64 +104,106 @@ export function MonitorCreationWizard() {
       failureThreshold: 1,
       recoveryThreshold: 1,
     };
-  };
+  }, []);
 
-  const [currentStep, setCurrentStep] = useState<WizardStep>(stepFromUrl || "monitor");
-  const [monitorData, setMonitorData] = useState<FormValues | undefined>(getInitialMonitorData());
-  const [apiData, setApiData] = useState<Record<string, unknown> | undefined>(getInitialApiData());
-  const [locationConfig, setLocationConfig] = useState<LocationConfig>(getInitialLocationConfig());
-  const [alertConfig, setAlertConfig] = useState<AlertConfig>(getInitialAlertConfig());
+  const [currentStep, setCurrentStep] = useState<WizardStep>(
+    stepFromUrl || "monitor"
+  );
+  const [monitorData, setMonitorData] = useState<FormValues | undefined>(
+    getInitialMonitorData
+  );
+  const [apiData, setApiData] = useState<Record<string, unknown> | undefined>(
+    getInitialApiData
+  );
+  const [locationConfig, setLocationConfig] = useState<LocationConfig>(
+    getInitialLocationConfig
+  );
+  const [alertConfig, setAlertConfig] = useState<AlertConfig>(
+    getInitialAlertConfig
+  );
 
-  // Persist data to sessionStorage
+  // Cleanup on unmount - only if not creating
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Persist data to sessionStorage with debounce
+  useEffect(() => {
+    if (typeof window === "undefined" || !isMountedRef.current) return;
+
+    const timeoutId = setTimeout(() => {
       if (monitorData) {
-        sessionStorage.setItem('monitor-draft-data', JSON.stringify(monitorData));
+        sessionStorage.setItem(
+          STORAGE_KEYS.MONITOR_DATA,
+          JSON.stringify(monitorData)
+        );
       }
-    }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
   }, [monitorData]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window === "undefined" || !isMountedRef.current) return;
+
+    const timeoutId = setTimeout(() => {
       if (apiData) {
-        sessionStorage.setItem('monitor-draft-api', JSON.stringify(apiData));
+        sessionStorage.setItem(STORAGE_KEYS.API_DATA, JSON.stringify(apiData));
       }
-    }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
   }, [apiData]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('monitor-draft-location', JSON.stringify(locationConfig));
-    }
+    if (typeof window === "undefined" || !isMountedRef.current) return;
+
+    const timeoutId = setTimeout(() => {
+      sessionStorage.setItem(
+        STORAGE_KEYS.LOCATION,
+        JSON.stringify(locationConfig)
+      );
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
   }, [locationConfig]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('monitor-draft-alert', JSON.stringify(alertConfig));
-    }
+    if (typeof window === "undefined" || !isMountedRef.current) return;
+
+    const timeoutId = setTimeout(() => {
+      sessionStorage.setItem(STORAGE_KEYS.ALERT, JSON.stringify(alertConfig));
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
   }, [alertConfig]);
 
   // Sync URL with current step
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (currentStep === "monitor") {
-      params.delete('wizardStep');
+      params.delete("wizardStep");
     } else {
-      params.set('wizardStep', currentStep);
+      params.set("wizardStep", currentStep);
     }
-    const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname;
+    const newUrl = params.toString()
+      ? `?${params.toString()}`
+      : window.location.pathname;
     router.replace(newUrl, { scroll: false });
   }, [currentStep, router]);
 
   // Clear draft data
-  const clearDraft = () => {
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('monitor-draft-data');
-      sessionStorage.removeItem('monitor-draft-api');
-      sessionStorage.removeItem('monitor-draft-location');
-      sessionStorage.removeItem('monitor-draft-alert');
+  const clearDraft = useCallback(() => {
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(STORAGE_KEYS.MONITOR_DATA);
+      sessionStorage.removeItem(STORAGE_KEYS.API_DATA);
+      sessionStorage.removeItem(STORAGE_KEYS.LOCATION);
+      sessionStorage.removeItem(STORAGE_KEYS.ALERT);
     }
-  };
+  }, []);
 
   // Get monitor type from URL for dynamic title
   const urlType = searchParams?.get("type") || "http_request";
@@ -208,6 +255,9 @@ export function MonitorCreationWizard() {
   };
 
   const handleCreateMonitor = async () => {
+    // Mark that we're creating to prevent premature cleanup
+    isCreatingRef.current = true;
+
     // Validate alert configuration before proceeding
     if (alertConfig.enabled) {
       // Check if at least one notification provider is selected
@@ -219,14 +269,19 @@ export function MonitorCreationWizard() {
           description:
             "At least one notification channel must be selected when alerts are enabled",
         });
+        isCreatingRef.current = false;
         return;
       }
 
       // Check notification channel limit
-      if (alertConfig.notificationProviders.length > maxMonitorNotificationChannels) {
+      if (
+        alertConfig.notificationProviders.length >
+        maxMonitorNotificationChannels
+      ) {
         toast.error("Validation Error", {
           description: `You can only select up to ${maxMonitorNotificationChannels} notification channels`,
         });
+        isCreatingRef.current = false;
         return;
       }
 
@@ -242,6 +297,7 @@ export function MonitorCreationWizard() {
           description:
             "At least one alert type must be selected when alerts are enabled",
         });
+        isCreatingRef.current = false;
         return;
       }
     }
@@ -269,13 +325,14 @@ export function MonitorCreationWizard() {
       });
 
       if (response.ok) {
+        const result = await response.json();
         toast.success("Monitor created successfully");
 
         // Clear draft data
         clearDraft();
 
-        // Redirect to monitors list using router
-        router.push("/monitors");
+        // Redirect to monitor details page using router
+        router.push(`/monitors/${result.id}`);
       } else {
         const errorData = await response.json();
         console.error("Failed to create monitor:", errorData);
@@ -284,6 +341,7 @@ export function MonitorCreationWizard() {
         toast.error("Failed to create monitor", {
           description: errorData.error || "An unknown error occurred",
         });
+        isCreatingRef.current = false;
       }
     } catch (error) {
       console.error("Failed to create monitor:", error);
@@ -293,6 +351,7 @@ export function MonitorCreationWizard() {
         description:
           error instanceof Error ? error.message : "An unknown error occurred",
       });
+      isCreatingRef.current = false;
     }
   };
 

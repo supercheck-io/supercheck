@@ -72,18 +72,26 @@ graph TB
 
 ### URL Routing
 
-**Internal Management:**
+**Internal Management (Authenticated):**
 
-- `GET /dashboard/status-pages` - List all status pages
-- `GET /dashboard/status-pages/[id]` - Edit status page
-- `POST /api/status-pages` - Create new page
-- `PUT /api/status-pages/[id]` - Update page settings
-- `DELETE /api/status-pages/[id]` - Delete page
+- `GET /status-pages` - List all status pages for organization
+- `GET /status-pages/[id]` - Edit/manage specific status page
+  - Tabs: Overview, Components, Incidents, Subscribers, Settings
+- `GET /status-pages/[id]/public` - Preview public status page view
+- Server Actions for CRUD operations:
+  - `createStatusPage()` - Create new status page
+  - `updateStatusPageSettings()` - Update page configuration
+  - `publishStatusPage()` - Publish draft page
+  - `deleteStatusPage()` - Archive/delete page
 
-**Public Access:**
+**Public Access (No Authentication Required):**
 
-- `GET /status-pages/[uuid]` - Public status page view
-- `POST /api/public/subscribers` - Subscribe to updates
+- `GET /status/[subdomain]` - View status page by subdomain
+- `GET /status/[uuid]` - View status page by ID (fallback)
+- `GET /status/[id]/incidents/[incidentId]` - View incident details
+- `GET /api/status-pages/[id]/rss` - RSS feed for incidents
+- `POST /api/status-pages/check` - Check subdomain availability
+- `POST /api/status-pages/[id]/upload` - Upload branding assets
 
 ---
 
@@ -493,6 +501,40 @@ All mutations are logged via `logAuditEvent()` with:
 
 ---
 
+## Subscriber Management Features
+
+### Subscriber Management Tab
+
+The Subscribers Tab provides comprehensive management of status page subscribers with the following features:
+
+**Subscriber List & Statistics**
+
+- Real-time statistics display: Total subscribers, verified count, pending verification count
+- Status indicators for each subscriber (email mode with verification status)
+- Last attempt timestamp for webhook subscribers with failure tracking
+
+**Search & Filtering**
+
+- Real-time email search/filtering across all subscribers
+- Case-insensitive search with immediate results
+- Pagination support (configurable items per page: 5, 10, 25, 50)
+
+**Subscriber Actions**
+
+- **Delete**: Confirmation dialog before removing subscriber
+- **Resend Verification**: Send verification email to unverified subscribers
+- **Export CSV**: Export all subscriber data in CSV format with headers (Email, Mode, Status, Created Date)
+
+**UI Enhancements**
+
+- Badge-based status indicators (Verified, Pending, Failed)
+- Loading states and error messages
+- Toast notifications for actions (success/error feedback)
+- Responsive table layout with proper spacing
+- Empty state message when no subscribers exist
+
+---
+
 ## Content Management
 
 ### Incident Lifecycle
@@ -632,6 +674,9 @@ INCIDENT_UPDATE_LIMIT=100
 ✅ **Detailed Analytics** - Uptime tracking, response times, check statistics per component
 ✅ **Postmortems** - Post-incident analysis and notifications
 ✅ **Customizable Theming** - Full CSS color customization and branding
+✅ **Subscriber Management Enhancements** - CSV export, search/filtering, pagination, deletion confirmation
+✅ **Email Verification** - Verification tokens and resend functionality with confirmation dialogs
+✅ **Subscriber Statistics** - Live statistics display (total, verified, pending counts)
 
 ## Future Enhancements
 
