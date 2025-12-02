@@ -91,6 +91,7 @@ beforeAll(() => {
       'Error in requireSuperAdmin',
       'Error cleaning up Redis',
       'No test cases found',
+      '[AI Security]',
     ];
     if (suppressedPatterns.some(pattern => message.includes(pattern))) {
       return;
@@ -116,11 +117,15 @@ beforeAll(() => {
   // Suppress expected warn patterns
   console.warn = (...args: unknown[]) => {
     const message = typeof args[0] === 'string' ? args[0] : '';
+    // Also check if second argument is an object with details about the warning
+    const secondArg = typeof args[1] === 'object' && args[1] !== null ? JSON.stringify(args[1]) : '';
     const suppressedPatterns = [
       '[SubscriptionService]',
       'Plan limits not found',
+      '[AI Security]',
+      'AI-generated code failed validation',
     ];
-    if (suppressedPatterns.some(pattern => message.includes(pattern))) {
+    if (suppressedPatterns.some(pattern => message.includes(pattern) || secondArg.includes(pattern))) {
       return;
     }
     originalWarn.call(console, ...args);

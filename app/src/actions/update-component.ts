@@ -28,10 +28,7 @@ const updateComponentSchema = z.object({
     .max(2000, "Description is too long")
     .optional()
     .nullable(),
-  monitorIds: z
-    .array(z.string().uuid())
-    .min(1, "At least one monitor is required")
-    .optional(),
+  monitorIds: z.array(z.string().uuid()).optional(),
   status: z
     .enum([
       "operational",

@@ -1,11 +1,16 @@
 import { openai } from "@ai-sdk/openai";
 import { streamText } from "ai";
+import { aiRateLimiter } from "./ai-rate-limiter";
 
 interface AIStreamRequest {
   prompt: string;
   maxTokens?: number;
   temperature?: number;
   testType?: string;
+  // Optional rate limit context
+  userId?: string;
+  orgId?: string;
+  tier?: string;
 }
 
 interface AIStreamResponse {
@@ -26,7 +31,11 @@ export class AIStreamingService {
   private static validateConfiguration(): void {
     const apiKey = process.env.OPENAI_API_KEY;
 
-    if (!apiKey || apiKey === "your-openai-api-key-here" || apiKey.trim().length === 0) {
+    if (
+      !apiKey ||
+      apiKey === "your-openai-api-key-here" ||
+      apiKey.trim().length === 0
+    ) {
       throw new Error(
         "OpenAI API key is not configured. Please set OPENAI_API_KEY environment variable with a valid API key."
       );
@@ -34,7 +43,9 @@ export class AIStreamingService {
 
     // Validate API key format (should start with sk- for OpenAI)
     if (!apiKey.startsWith("sk-")) {
-      console.warn("[AI Streaming Service] Warning: API key does not follow expected OpenAI format (sk-*)");
+      console.warn(
+        "[AI Streaming Service] Warning: API key does not follow expected OpenAI format (sk-*)"
+      );
     }
   }
 
@@ -44,14 +55,39 @@ export class AIStreamingService {
     try {
       return openai(modelName);
     } catch (error) {
-      console.error("[AI Streaming Service] Error initializing OpenAI model:", error);
+      console.error(
+        "[AI Streaming Service] Error initializing OpenAI model:",
+        error
+      );
       // Fallback to default model
       return openai("gpt-4o-mini");
     }
   }
 
-  private static async checkRateLimit(): Promise<void> {
-    // Rate limiting check - placeholder for Redis implementation
+  private static async checkRateLimit(
+    userId?: string,
+    orgId?: string,
+    tier?: string
+  ): Promise<void> {
+    // Skip rate limiting in self-hosted mode
+    if (process.env.SELF_HOSTED === "true") {
+      return;
+    }
+
+    // Check rate limits if we have user/org context
+    if (userId || orgId) {
+      const result = await aiRateLimiter.checkRateLimit({
+        userId,
+        orgId,
+        tier,
+      });
+
+      if (!result.allowed) {
+        throw new Error(
+          `Rate limit exceeded. Please try again in ${result.retryAfter || 60} seconds.`
+        );
+      }
+    }
   }
 
   private static getServiceConfiguration() {
@@ -62,13 +98,19 @@ export class AIStreamingService {
 
     // Validate configuration values
     if (isNaN(baseTimeout) || baseTimeout < 10000) {
-      console.warn("[AI Streaming Service] Invalid timeout, using default 90000ms");
+      console.warn(
+        "[AI Streaming Service] Invalid timeout, using default 90000ms"
+      );
     }
     if (isNaN(maxRetries) || maxRetries < 1 || maxRetries > 5) {
-      console.warn("[AI Streaming Service] Invalid maxRetries, using default 2");
+      console.warn(
+        "[AI Streaming Service] Invalid maxRetries, using default 2"
+      );
     }
     if (isNaN(temperature) || temperature < 0 || temperature > 2) {
-      console.warn("[AI Streaming Service] Invalid temperature, using default 0.1");
+      console.warn(
+        "[AI Streaming Service] Invalid temperature, using default 0.1"
+      );
     }
 
     return {
@@ -101,6 +143,9 @@ export class AIStreamingService {
     maxTokens = 4000,
     temperature = 0.1,
     testType,
+    userId,
+    orgId,
+    tier,
   }: AIStreamRequest): Promise<AIStreamResponse> {
     const startTime = Date.now();
 
@@ -109,14 +154,20 @@ export class AIStreamingService {
       this.validateConfiguration();
 
       // Step 2: Security: Check rate limits before making request
-      await this.checkRateLimit();
+      await this.checkRateLimit(userId, orgId, tier);
 
       // Step 3: Get universal service configuration
       const config = this.getServiceConfiguration();
 
-      console.log(`[AI Streaming Service] Starting stream generation with model: ${process.env.AI_MODEL || "gpt-4o-mini"}`);
-      console.log(`[AI Streaming Service] Prompt length: ${prompt.length} characters`);
-      console.log(`[AI Streaming Service] Config: maxTokens=${maxTokens}, temperature=${temperature || config.temperature}, timeout=${config.timeout}ms`);
+      console.log(
+        `[AI Streaming Service] Starting stream generation with model: ${process.env.AI_MODEL || "gpt-4o-mini"}`
+      );
+      console.log(
+        `[AI Streaming Service] Prompt length: ${prompt.length} characters`
+      );
+      console.log(
+        `[AI Streaming Service] Config: maxTokens=${maxTokens}, temperature=${temperature || config.temperature}, timeout=${config.timeout}ms`
+      );
 
       // Step 4: Create streaming response
       const result = await streamText({
@@ -136,7 +187,9 @@ export class AIStreamingService {
             let chunkCount = 0;
             let totalContentLength = 0;
 
-            console.log("[AI Streaming Service] Starting to consume text stream...");
+            console.log(
+              "[AI Streaming Service] Starting to consume text stream..."
+            );
 
             // Stream the text chunks
             for await (const chunk of result.textStream) {
@@ -144,46 +197,57 @@ export class AIStreamingService {
               totalContentLength += chunk.length;
 
               const data = JSON.stringify({
-                type: 'content',
-                content: chunk
+                type: "content",
+                content: chunk,
               });
               controller.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
 
               // Log progress every 10 chunks
               if (chunkCount % 10 === 0) {
-                console.log(`[AI Streaming Service] Streamed ${chunkCount} chunks, ${totalContentLength} characters so far`);
+                console.log(
+                  `[AI Streaming Service] Streamed ${chunkCount} chunks, ${totalContentLength} characters so far`
+                );
               }
             }
 
-            console.log(`[AI Streaming Service] Stream complete. Total chunks: ${chunkCount}, Total content: ${totalContentLength} characters`);
+            console.log(
+              `[AI Streaming Service] Stream complete. Total chunks: ${chunkCount}, Total content: ${totalContentLength} characters`
+            );
 
             // Check if we got any content
             if (chunkCount === 0 || totalContentLength === 0) {
-              console.error("[AI Streaming Service] WARNING: No content was generated by the AI model");
-              throw new Error("AI model generated no content. This may indicate an issue with the prompt or API configuration.");
+              console.error(
+                "[AI Streaming Service] WARNING: No content was generated by the AI model"
+              );
+              throw new Error(
+                "AI model generated no content. This may indicate an issue with the prompt or API configuration."
+              );
             }
 
             // Get usage information after streaming completes
             const usage = await result.usage;
             // LanguageModelV2Usage may not expose prompt/completion tokens; fall back to input/output
-            const promptTokens = ("promptTokens" in (usage || {}))
-              ? (usage as Record<string, number>).promptTokens
-              : ("inputTokens" in (usage || {}))
-                ? (usage as Record<string, number>).inputTokens
-                : 0;
-            const completionTokens = ("completionTokens" in (usage || {}))
-              ? (usage as Record<string, number>).completionTokens
-              : ("outputTokens" in (usage || {}))
-                ? (usage as Record<string, number>).outputTokens
-                : 0;
-            totalTokens = ("totalTokens" in (usage || {}))
-              ? (usage as Record<string, number>).totalTokens
-              : promptTokens + completionTokens;
+            const promptTokens =
+              "promptTokens" in (usage || {})
+                ? (usage as Record<string, number>).promptTokens
+                : "inputTokens" in (usage || {})
+                  ? (usage as Record<string, number>).inputTokens
+                  : 0;
+            const completionTokens =
+              "completionTokens" in (usage || {})
+                ? (usage as Record<string, number>).completionTokens
+                : "outputTokens" in (usage || {})
+                  ? (usage as Record<string, number>).outputTokens
+                  : 0;
+            totalTokens =
+              "totalTokens" in (usage || {})
+                ? (usage as Record<string, number>).totalTokens
+                : promptTokens + completionTokens;
 
             // Send completion message with metadata
             const duration = Date.now() - startTime;
             const completionData = JSON.stringify({
-              type: 'done',
+              type: "done",
               usage: {
                 promptTokens,
                 completionTokens,
@@ -192,9 +256,13 @@ export class AIStreamingService {
               model: process.env.AI_MODEL || "gpt-4o-mini",
               duration,
             });
-            controller.enqueue(new TextEncoder().encode(`data: ${completionData}\n\n`));
+            controller.enqueue(
+              new TextEncoder().encode(`data: ${completionData}\n\n`)
+            );
 
-            console.log(`[AI Streaming Service] Generation successful in ${duration}ms. Tokens: ${totalTokens}`);
+            console.log(
+              `[AI Streaming Service] Generation successful in ${duration}ms. Tokens: ${totalTokens}`
+            );
 
             // Log successful usage
             await AIStreamingService.logAIUsage({
@@ -208,7 +276,10 @@ export class AIStreamingService {
             controller.close();
           } catch (error) {
             const duration = Date.now() - startTime;
-            const errorMessage = error instanceof Error ? error.message : "Unknown streaming error";
+            const errorMessage =
+              error instanceof Error
+                ? error.message
+                : "Unknown streaming error";
 
             console.error("[AI Streaming Service] Stream error:", errorMessage);
             console.error("[AI Streaming Service] Full error:", error);
@@ -224,10 +295,12 @@ export class AIStreamingService {
 
             // Send error event to client
             const errorData = JSON.stringify({
-              type: 'error',
+              type: "error",
               error: errorMessage,
             });
-            controller.enqueue(new TextEncoder().encode(`data: ${errorData}\n\n`));
+            controller.enqueue(
+              new TextEncoder().encode(`data: ${errorData}\n\n`)
+            );
             controller.close();
           }
         },
@@ -239,9 +312,13 @@ export class AIStreamingService {
       };
     } catch (error) {
       const duration = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
 
-      console.error("[AI Streaming Service] Failed to initialize streaming:", errorMessage);
+      console.error(
+        "[AI Streaming Service] Failed to initialize streaming:",
+        errorMessage
+      );
       console.error("[AI Streaming Service] Full error:", error);
 
       // Log failure metrics for monitoring
@@ -254,13 +331,19 @@ export class AIStreamingService {
       });
 
       // Provide specific error messages based on error type
-      if (errorMessage.includes("API key") || errorMessage.includes("OPENAI_API_KEY")) {
+      if (
+        errorMessage.includes("API key") ||
+        errorMessage.includes("OPENAI_API_KEY")
+      ) {
         throw new Error(
           "OpenAI API key is not configured. Please configure OPENAI_API_KEY environment variable with a valid API key to use AI features."
         );
       }
 
-      if (errorMessage.includes("401") || errorMessage.includes("Unauthorized")) {
+      if (
+        errorMessage.includes("401") ||
+        errorMessage.includes("Unauthorized")
+      ) {
         throw new Error(
           "OpenAI API authentication failed. Please check that your OPENAI_API_KEY is valid and has not expired."
         );
@@ -272,14 +355,20 @@ export class AIStreamingService {
         );
       }
 
-      if (errorMessage.includes("timeout") || errorMessage.includes("timed out")) {
+      if (
+        errorMessage.includes("timeout") ||
+        errorMessage.includes("timed out")
+      ) {
         throw new Error(
           "AI request timed out. The request may be too complex or the service may be experiencing high load. Please try again."
         );
       }
 
       // Re-throw with sanitized error message for other errors
-      const sanitizedMessage = errorMessage.replace(/api[_\s]*key/gi, "[REDACTED]");
+      const sanitizedMessage = errorMessage.replace(
+        /api[_\s]*key/gi,
+        "[REDACTED]"
+      );
 
       throw new Error(`AI streaming generation failed: ${sanitizedMessage}`);
     }

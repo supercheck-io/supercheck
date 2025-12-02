@@ -340,11 +340,11 @@ export function PublicStatusPage({
 
     return (
       <div className="relative">
-        <div className="flex gap-1 items-center">
+        <div className="flex gap-[2px] sm:gap-1 items-center">
           {data.map((day, index) => (
             <div
               key={index}
-              className="h-10 flex-1 relative cursor-pointer transition-all duration-200 hover:opacity-80"
+              className="h-8 sm:h-10 min-w-[2px] flex-1 relative cursor-pointer transition-all duration-200 hover:opacity-80 rounded-[1px]"
               style={{
                 backgroundColor:
                   day.status === "nodata" ? "#9ca3af" : getBarColor(day),

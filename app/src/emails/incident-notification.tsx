@@ -1,11 +1,17 @@
 import {
+  Body,
   Button,
+  Container,
+  Head,
+  Heading,
+  Hr,
+  Html,
   Link,
+  Preview,
   Section,
   Text,
 } from "@react-email/components";
 import * as React from "react";
-import { BaseLayout } from "./base-layout";
 
 interface IncidentNotificationEmailProps {
   statusPageName: string;
@@ -19,282 +25,457 @@ interface IncidentNotificationEmailProps {
   unsubscribeUrl: string;
 }
 
-const getImpactColors = (
+/**
+ * Get colors based on incident status and impact
+ * When status is "resolved", always show green colors
+ * Otherwise, show colors based on impact level
+ */
+const getIncidentColors = (
+  status: string,
   impact: string
-): { bgColor: string; textColor: string; headerBg: string } => {
+): {
+  textColor: string;
+  headerBg: string;
+  badgeBg: string;
+  badgeText: string;
+  borderColor: string;
+} => {
+  // Resolved incidents always show green, regardless of impact
+  if (status.toLowerCase() === "resolved") {
+    return {
+      textColor: "#166534",
+      headerBg: "#16a34a",
+      badgeBg: "#dcfce7",
+      badgeText: "#166534",
+      borderColor: "#16a34a",
+    };
+  }
+
+  // For non-resolved incidents, use impact-based colors
   switch (impact.toLowerCase()) {
     case "critical":
       return {
-        bgColor: "#fef2f2",
-        textColor: "#b91c1c", // Red-700
-        headerBg: "#ef4444", // Red-500
+        textColor: "#991b1b",
+        headerBg: "#dc2626",
+        badgeBg: "#fee2e2",
+        badgeText: "#991b1b",
+        borderColor: "#dc2626",
       };
     case "major":
       return {
-        bgColor: "#fff7ed",
-        textColor: "#c2410c", // Orange-700
-        headerBg: "#f97316", // Orange-500
+        textColor: "#9a3412",
+        headerBg: "#ea580c",
+        badgeBg: "#ffedd5",
+        badgeText: "#9a3412",
+        borderColor: "#ea580c",
       };
     case "minor":
       return {
-        bgColor: "#fffbeb",
-        textColor: "#b45309", // Amber-700
-        headerBg: "#f59e0b", // Amber-500
+        textColor: "#854d0e",
+        headerBg: "#ca8a04",
+        badgeBg: "#fef9c3",
+        badgeText: "#854d0e",
+        borderColor: "#ca8a04",
       };
     default:
       return {
-        bgColor: "#f3f4f6",
-        textColor: "#374151", // Gray-700
-        headerBg: "#6b7280", // Gray-500
+        textColor: "#374151",
+        headerBg: "#6b7280",
+        badgeBg: "#f3f4f6",
+        badgeText: "#374151",
+        borderColor: "#6b7280",
       };
   }
 };
 
+/**
+ * Get status display label
+ */
+const getStatusLabel = (status: string): string => {
+  const labels: Record<string, string> = {
+    investigating: "Investigating",
+    identified: "Identified",
+    monitoring: "Monitoring",
+    resolved: "Resolved",
+    scheduled: "Scheduled",
+  };
+  return labels[status.toLowerCase()] || status;
+};
+
+/**
+ * Get impact display label
+ */
+const getImpactLabel = (impact: string): string => {
+  const labels: Record<string, string> = {
+    critical: "Critical",
+    major: "Major",
+    minor: "Minor",
+    none: "None",
+  };
+  return labels[impact.toLowerCase()] || impact;
+};
+
 export const IncidentNotificationEmail = ({
-  statusPageName = "Example Status Page",
-  statusPageUrl = "https://example.supercheck.io",
-  incidentName = "API Service Degradation",
+  statusPageName = "Status Page",
+  statusPageUrl = "https://status.example.com",
+  incidentName = "Service Incident",
   incidentStatus = "investigating",
   incidentImpact = "major",
-  incidentDescription = "We are currently investigating issues with API response times.",
-  affectedComponents = ["API Service", "Database"],
+  incidentDescription = "We are currently investigating this incident.",
+  affectedComponents = [],
   updateTimestamp = new Date().toLocaleString(),
-  unsubscribeUrl = "https://example.supercheck.io/unsubscribe?token=abc123",
+  unsubscribeUrl = "https://status.example.com/unsubscribe",
 }: IncidentNotificationEmailProps) => {
-  const colors = getImpactColors(incidentImpact);
-  const formattedStatus = incidentStatus
-    .split("_")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
+  const colors = getIncidentColors(incidentStatus, incidentImpact);
+  const statusLabel = getStatusLabel(incidentStatus);
+  const impactLabel = getImpactLabel(incidentImpact);
+  const isResolved = incidentStatus.toLowerCase() === "resolved";
 
   return (
-    <BaseLayout
-      preview={`[${incidentStatus.toUpperCase()}] ${incidentName} - ${statusPageName}`}
-      title={statusPageName}
-      headerColor={colors.headerBg}
-      footer={
-        <Text style={footerText}>
-          You are receiving this email because you are subscribed to {statusPageName}.
-          <br />
-          <Link href={unsubscribeUrl} style={footerLink}>
-            Unsubscribe
-          </Link>
-        </Text>
-      }
-    >
-      <Section style={headerSection}>
-        <Text style={notificationLabel}>
-          Incident Notification
-        </Text>
-      </Section>
+    <Html>
+      <Head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta httpEquiv="Content-Type" content="text/html; charset=UTF-8" />
+      </Head>
+      <Preview>
+        {isResolved ? "✓ Resolved" : `⚠ ${impactLabel}`}: {incidentName}
+      </Preview>
+      <Body style={main}>
+        <Container style={container}>
+          {/* Header with Status Page Name */}
+          <Section style={{ ...header, backgroundColor: colors.headerBg }}>
+            <Heading style={headerTitle}>{statusPageName}</Heading>
+          </Section>
 
-      <Section style={{ ...impactBadge, backgroundColor: colors.bgColor, color: colors.textColor }}>
-        {incidentImpact.toUpperCase()} IMPACT
-      </Section>
+          {/* Status Badge */}
+          <Section style={badgeContainer}>
+            <span
+              style={{
+                ...statusBadge,
+                backgroundColor: colors.badgeBg,
+                color: colors.badgeText,
+                border: `1px solid ${colors.borderColor}`,
+              }}
+            >
+              {isResolved ? "✓ " : ""}
+              {statusLabel.toUpperCase()}
+            </span>
+          </Section>
 
-      <Text style={incidentTitle}>{incidentName}</Text>
+          {/* Incident Title */}
+          <Section style={contentSection}>
+            <Heading as="h2" style={incidentTitle}>
+              {incidentName}
+            </Heading>
+          </Section>
 
-      <Section
-        style={{
-          ...statusBox,
-          backgroundColor: colors.bgColor,
-          borderLeftColor: colors.textColor,
-        }}
-      >
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <tbody>
-            <tr>
-              <td style={{ paddingRight: "24px", verticalAlign: "top" }}>
-                <Text style={{ ...statusLabel, color: colors.textColor }}>STATUS</Text>
-                <Text style={{ ...statusValue, color: colors.textColor }}>{formattedStatus}</Text>
-              </td>
-              <td style={{ verticalAlign: "top" }}>
-                <Text style={{ ...statusLabel, color: colors.textColor }}>UPDATED</Text>
-                <Text style={{ ...statusValueSmall, color: colors.textColor }}>
-                  {updateTimestamp}
-                </Text>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </Section>
+          {/* Introduction Text */}
+          <Section style={contentSection}>
+            <Text style={introText}>
+              {isResolved
+                ? `We're happy to inform you that the incident affecting ${statusPageName} has been resolved.`
+                : `An incident has been reported affecting ${statusPageName}. We are working to resolve this issue as quickly as possible.`}
+            </Text>
+          </Section>
 
-      <Text style={sectionTitle}>Description</Text>
-      <Text style={description}>{incidentDescription}</Text>
+          {/* Status & Impact Info Box - Border Left Style */}
+          <Section style={contentSection}>
+            <table
+              style={{
+                ...infoBox,
+                borderLeft: `4px solid ${colors.borderColor}`,
+              }}
+              cellPadding="0"
+              cellSpacing="0"
+            >
+              <tbody>
+                <tr>
+                  <td style={{ padding: "16px 20px" }}>
+                    <table
+                      cellPadding="0"
+                      cellSpacing="0"
+                      style={{ width: "100%" }}
+                    >
+                      <tbody>
+                        <tr>
+                          <td style={{ width: "50%", verticalAlign: "top" }}>
+                            <Text style={{ ...infoLabel }}>Status</Text>
+                            <Text
+                              style={{ ...infoValue, color: colors.textColor }}
+                            >
+                              {statusLabel}
+                            </Text>
+                          </td>
+                          <td style={{ width: "50%", verticalAlign: "top" }}>
+                            <Text style={{ ...infoLabel }}>Impact</Text>
+                            <Text
+                              style={{ ...infoValue, color: colors.textColor }}
+                            >
+                              {impactLabel}
+                            </Text>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </Section>
 
-      {affectedComponents.length > 0 && (
-        <Section style={componentsBox}>
-          <Text style={componentsTitle}>Affected Services</Text>
-          <ul style={list}>
-            {affectedComponents.map((component, index) => (
-              <li key={index} style={listItem}>
-                {component}
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
+          {/* Description */}
+          <Section style={contentSection}>
+            <Text style={sectionLabel}>Update</Text>
+            <Text style={descriptionText}>{incidentDescription}</Text>
+            <Text style={timestampText}>Posted: {updateTimestamp}</Text>
+          </Section>
 
-      <Section style={buttonContainer}>
-        <Button style={button} href={statusPageUrl}>
-          View Full Status
-        </Button>
-      </Section>
+          {/* Affected Components */}
+          {affectedComponents.length > 0 && (
+            <Section style={contentSection}>
+              <table style={componentsBox} cellPadding="0" cellSpacing="0">
+                <tbody>
+                  <tr>
+                    <td style={{ padding: "16px 20px" }}>
+                      <Text style={componentsTitle}>Affected Services</Text>
+                      {affectedComponents.map((component, index) => (
+                        <Text key={index} style={componentItem}>
+                          • {component}
+                        </Text>
+                      ))}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </Section>
+          )}
 
-      <Text style={linkText}>
-        <Link href={statusPageUrl} style={link}>
-          View this incident and others on our status page
-        </Link>
-      </Text>
-    </BaseLayout>
+          {/* CTA Button */}
+          <Section style={buttonSection}>
+            <Button style={ctaButton} href={statusPageUrl}>
+              View Status Page
+            </Button>
+          </Section>
+
+          <Hr style={divider} />
+
+          {/* Footer */}
+          <Section style={footer}>
+            <Text style={footerText}>
+              You are receiving this notification because you subscribed to
+              status updates for {statusPageName}.
+            </Text>
+            <Text style={footerLinks}>
+              <Link href={statusPageUrl} style={footerLink}>
+                View Status Page
+              </Link>
+              {" • "}
+              <Link href={unsubscribeUrl} style={footerLink}>
+                Unsubscribe
+              </Link>
+            </Text>
+            <Text style={copyright}>
+              Powered by{" "}
+              <Link href="https://supercheck.io" style={footerLink}>
+                Supercheck
+              </Link>
+            </Text>
+          </Section>
+        </Container>
+      </Body>
+    </Html>
   );
 };
 
-const headerSection = {
+// ============================================================================
+// STYLES
+// ============================================================================
+
+const main = {
+  backgroundColor: "#f4f4f5",
+  fontFamily:
+    '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  padding: "40px 20px",
+};
+
+const container = {
+  backgroundColor: "#ffffff",
+  margin: "0 auto",
+  maxWidth: "560px",
+  borderRadius: "12px",
+  overflow: "hidden" as const,
+  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+};
+
+const header = {
+  padding: "28px 32px",
   textAlign: "center" as const,
-  padding: "32px 32px 0",
 };
 
-const notificationLabel = {
-  color: "#6b7280",
-  fontSize: "13px",
-  fontWeight: "500" as const,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.05em",
-  margin: "0 0 16px",
+const headerTitle = {
+  color: "#ffffff",
+  fontSize: "20px",
+  fontWeight: "600" as const,
+  margin: "0",
+  letterSpacing: "-0.01em",
 };
 
-const impactBadge = {
+const badgeContainer = {
+  textAlign: "center" as const,
+  padding: "24px 32px 0",
+};
+
+const statusBadge = {
   display: "inline-block",
-  padding: "6px 12px",
-  borderRadius: "16px",
-  fontSize: "12px",
-  fontWeight: "700",
+  padding: "6px 14px",
+  borderRadius: "20px",
+  fontSize: "11px",
+  fontWeight: "700" as const,
+  letterSpacing: "0.5px",
   textTransform: "uppercase" as const,
-  letterSpacing: "0.05em",
-  margin: "0 32px 24px",
 };
 
-const incidentTitle = {
-  color: "#111827",
-  fontSize: "24px",
-  fontWeight: "700",
-  margin: "0 32px 24px",
-  lineHeight: "1.3",
-};
-
-const statusBox = {
-  borderLeft: "4px solid",
-  borderRadius: "0 4px 4px 0",
-  padding: "20px",
-  margin: "0 32px 32px",
-};
-
-const statusLabel = {
-  fontSize: "12px",
-  fontWeight: "700",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.05em",
-  margin: "0 0 4px",
-  opacity: 0.8,
-};
-
-const statusValue = {
-  fontSize: "18px",
-  fontWeight: "600",
-  margin: "0",
-};
-
-const statusValueSmall = {
-  fontSize: "14px",
-  margin: "0",
-  fontWeight: "500" as const,
-};
-
-const sectionTitle = {
-  color: "#374151",
-  fontSize: "16px",
-  fontWeight: "600",
-  margin: "0 32px 12px",
-};
-
-const description = {
-  color: "#4b5563",
-  fontSize: "15px",
-  lineHeight: "1.6",
-  whiteSpace: "pre-wrap" as const,
-  margin: "0 32px 32px",
-};
-
-const componentsBox = {
-  backgroundColor: "#f9fafb",
-  padding: "20px",
-  borderRadius: "8px",
-  margin: "0 32px 32px",
-  border: "1px solid #e5e7eb",
-};
-
-const componentsTitle = {
-  color: "#374151",
-  fontWeight: "600",
-  fontSize: "14px",
-  margin: "0 0 12px",
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.05em",
-};
-
-const list = {
-  margin: "0",
-  paddingLeft: "20px",
-  color: "#4b5563",
-  fontSize: "14px",
-  lineHeight: "1.6",
-};
-
-const listItem = {
-  marginBottom: "4px",
-};
-
-const buttonContainer = {
-  textAlign: "center" as const,
-  margin: "0 0 32px",
+const contentSection = {
   padding: "0 32px",
 };
 
-const button = {
-  backgroundColor: "#111827",
-  borderRadius: "6px",
-  color: "#fff",
+const incidentTitle = {
+  color: "#18181b",
+  fontSize: "22px",
+  fontWeight: "700" as const,
+  margin: "20px 0 16px",
+  lineHeight: "1.3",
+  letterSpacing: "-0.02em",
+};
+
+const introText = {
+  color: "#52525b",
+  fontSize: "15px",
+  lineHeight: "1.65",
+  margin: "0 0 24px",
+  textAlign: "left" as const,
+};
+
+const infoBox = {
+  width: "100%",
+  backgroundColor: "#fafafa",
+  borderRadius: "8px",
+  marginBottom: "24px",
+};
+
+const infoLabel = {
+  color: "#71717a",
+  fontSize: "11px",
+  fontWeight: "600" as const,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.5px",
+  margin: "0 0 4px",
+};
+
+const infoValue = {
+  fontSize: "16px",
+  fontWeight: "600" as const,
+  margin: "0",
+};
+
+const sectionLabel = {
+  color: "#71717a",
+  fontSize: "11px",
+  fontWeight: "600" as const,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.5px",
+  margin: "0 0 8px",
+};
+
+const descriptionText = {
+  color: "#3f3f46",
+  fontSize: "15px",
+  lineHeight: "1.65",
+  margin: "0 0 8px",
+};
+
+const timestampText = {
+  color: "#a1a1aa",
+  fontSize: "13px",
+  margin: "0 0 24px",
+};
+
+const componentsBox = {
+  width: "100%",
+  backgroundColor: "#fafafa",
+  border: "1px solid #e4e4e7",
+  borderRadius: "8px",
+  marginBottom: "24px",
+};
+
+const componentsTitle = {
+  color: "#52525b",
+  fontSize: "12px",
+  fontWeight: "600" as const,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.5px",
+  margin: "0 0 12px",
+};
+
+const componentItem = {
+  color: "#3f3f46",
   fontSize: "14px",
-  fontWeight: "600",
+  margin: "0 0 4px",
+  lineHeight: "1.5",
+};
+
+const buttonSection = {
+  textAlign: "center" as const,
+  padding: "8px 32px 32px",
+};
+
+const ctaButton = {
+  backgroundColor: "#18181b",
+  borderRadius: "8px",
+  color: "#ffffff",
+  fontSize: "14px",
+  fontWeight: "600" as const,
   textDecoration: "none",
   textAlign: "center" as const,
   display: "inline-block",
-  padding: "12px 24px",
+  padding: "12px 28px",
 };
 
-const linkText = {
-  color: "#6b7280",
-  fontSize: "13px",
-  textAlign: "center" as const,
-  margin: "0 0 32px",
+const divider = {
+  borderColor: "#e4e4e7",
+  margin: "0",
 };
 
-const link = {
-  color: "#4b5563",
-  textDecoration: "underline",
+const footer = {
+  padding: "24px 32px",
+  backgroundColor: "#fafafa",
 };
 
 const footerText = {
-  color: "#6b7280",
+  color: "#71717a",
   fontSize: "13px",
   lineHeight: "1.5",
-  margin: "0 0 16px",
+  margin: "0 0 12px",
+  textAlign: "center" as const,
+};
+
+const footerLinks = {
+  color: "#71717a",
+  fontSize: "13px",
+  margin: "0 0 12px",
+  textAlign: "center" as const,
 };
 
 const footerLink = {
-  color: "#4b5563",
+  color: "#52525b",
   textDecoration: "underline",
+};
+
+const copyright = {
+  color: "#a1a1aa",
+  fontSize: "12px",
+  margin: "0",
+  textAlign: "center" as const,
 };
 
 export default IncidentNotificationEmail;

@@ -1,31 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { notificationProviders, notificationProvidersInsertSchema, alertHistory, type PlainNotificationProviderConfig } from "@/db/schema";
-import { desc, eq, and, sql } from "drizzle-orm";
-import { hasPermission } from '@/lib/rbac/middleware';
-import { requireProjectContext } from '@/lib/project-context';
-import { logAuditEvent } from '@/lib/audit-logger';
-import { decryptNotificationProviderConfig, encryptNotificationProviderConfig, sanitizeConfigForClient } from "@/lib/notification-providers/crypto";
+import {
+  notificationProviders,
+  notificationProvidersInsertSchema,
+  alertHistory,
+  type PlainNotificationProviderConfig,
+} from "@/db/schema";
+import { desc, eq, and, sql, inArray } from "drizzle-orm";
+import { hasPermission } from "@/lib/rbac/middleware";
+import { requireProjectContext } from "@/lib/project-context";
+import { logAuditEvent } from "@/lib/audit-logger";
+import {
+  decryptNotificationProviderConfig,
+  encryptNotificationProviderConfig,
+  sanitizeConfigForClient,
+} from "@/lib/notification-providers/crypto";
 import { validateProviderConfig } from "@/lib/notification-providers/validation";
 import type { NotificationProviderType } from "@/db/schema";
 
 export async function GET() {
   try {
     const { project, organizationId } = await requireProjectContext();
-    
+
     // Use current project and organization context
     const targetProjectId = project.id;
     const targetOrganizationId = organizationId;
-    
+
     // Check permission to view notification providers
-    const canView = await hasPermission('monitor', 'view', {
+    const canView = await hasPermission("monitor", "view", {
       organizationId: targetOrganizationId,
-      projectId: targetProjectId
+      projectId: targetProjectId,
     });
-    
+
     if (!canView) {
       return NextResponse.json(
-        { error: 'Insufficient permissions' },
+        { error: "Insufficient permissions" },
         { status: 403 }
       );
     }
@@ -35,10 +44,12 @@ export async function GET() {
     const providers = await db
       .select()
       .from(notificationProviders)
-      .where(and(
-        eq(notificationProviders.organizationId, targetOrganizationId),
-        eq(notificationProviders.projectId, targetProjectId)
-      ))
+      .where(
+        and(
+          eq(notificationProviders.organizationId, targetOrganizationId),
+          eq(notificationProviders.projectId, targetProjectId)
+        )
+      )
       .orderBy(desc(notificationProviders.id));
 
     if (providers.length === 0) {
@@ -46,26 +57,26 @@ export async function GET() {
     }
 
     // OPTIMIZED: Batch fetch last used dates for all providers in one query
-    const providerIds = providers.map(p => p.id);
+    const providerIds = providers.map((p) => p.id);
     const lastAlerts = await db
       .select({
         provider: alertHistory.provider,
-        sentAt: sql<Date>`MAX(${alertHistory.sentAt})`.as('sentAt'),
+        sentAt: sql<Date>`MAX(${alertHistory.sentAt})`.as("sentAt"),
       })
       .from(alertHistory)
-      .where(sql`${alertHistory.provider}::uuid = ANY(${providerIds}::uuid[])`)
+      .where(inArray(alertHistory.provider, providerIds))
       .groupBy(alertHistory.provider);
 
     // Build lookup map for O(1) access
     const lastAlertMap = new Map<string, Date>();
-    lastAlerts.forEach(alert => {
+    lastAlerts.forEach((alert) => {
       if (alert.provider) {
         lastAlertMap.set(alert.provider, alert.sentAt);
       }
     });
 
     // Enhance providers with last used information (no N+1 queries)
-    const enhancedProviders = providers.map(provider => {
+    const enhancedProviders = providers.map((provider) => {
       const configContext = provider.projectId ?? undefined;
       const decryptedConfig = decryptNotificationProviderConfig(
         provider.config,
@@ -99,24 +110,24 @@ export async function POST(req: NextRequest) {
     const { userId, project, organizationId } = await requireProjectContext();
 
     const rawData = await req.json();
-    
+
     // Use current project and organization context
     const targetProjectId = project.id;
     const targetOrganizationId = organizationId;
-    
+
     // Check permission to create notification providers
-    const canCreate = await hasPermission('monitor', 'create', {
+    const canCreate = await hasPermission("monitor", "create", {
       organizationId: targetOrganizationId,
-      projectId: targetProjectId
+      projectId: targetProjectId,
     });
-    
+
     if (!canCreate) {
       return NextResponse.json(
-        { error: 'Insufficient permissions to create notification providers' },
+        { error: "Insufficient permissions to create notification providers" },
         { status: 403 }
       );
     }
-    
+
     // Transform the data to match the database schema
     // The frontend sends { type, config } but the database expects { name, type, config, organizationId, projectId, createdByUserId }
     const transformedData = {
@@ -128,7 +139,8 @@ export async function POST(req: NextRequest) {
       createdByUserId: userId,
     };
 
-    const validationResult = notificationProvidersInsertSchema.safeParse(transformedData);
+    const validationResult =
+      notificationProvidersInsertSchema.safeParse(transformedData);
 
     if (!validationResult.success) {
       console.error("Validation error:", validationResult.error.format());
@@ -140,8 +152,10 @@ export async function POST(req: NextRequest) {
 
     const newProviderData = validationResult.data;
 
-    const plainConfig = (newProviderData.config ??
-      {}) as Record<string, unknown>;
+    const plainConfig = (newProviderData.config ?? {}) as Record<
+      string,
+      unknown
+    >;
 
     try {
       validateProviderConfig(
@@ -181,16 +195,16 @@ export async function POST(req: NextRequest) {
     await logAuditEvent({
       userId,
       organizationId,
-      action: 'notification_provider_created',
-      resource: 'notification_provider',
+      action: "notification_provider_created",
+      resource: "notification_provider",
       resourceId: insertedProvider.id,
       metadata: {
         providerName: insertedProvider.name,
         providerType: insertedProvider.type,
         projectId: project.id,
-        projectName: project.name
+        projectName: project.name,
       },
-      success: true
+      success: true,
     });
 
     const decryptedConfig = decryptNotificationProviderConfig(
@@ -217,4 +231,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}

@@ -51,9 +51,16 @@ const SLACK_CONFIG = {
 };
 
 /**
- * Get color for Slack message based on impact level
+ * Get color for Slack message based on incident status and impact level
+ * When status is "resolved", always show green
  */
-function getSlackColor(impact: string): string {
+function getSlackColor(status: string, impact: string): string {
+  // Resolved incidents always show green
+  if (status.toLowerCase() === "resolved") {
+    return "#22c55e"; // Green-500
+  }
+
+  // For non-resolved incidents, use impact-based colors
   switch (impact.toLowerCase()) {
     case "critical":
       return "#dc2626"; // Red
@@ -105,15 +112,15 @@ function getImpactEmoji(impact: string): string {
 }
 
 /**
- * Format incident event as Slack Block Kit message
+ * Format incident event as Slack message
  *
- * Creates a rich, interactive message using Slack's Block Kit API
- * with color-coded attachments and structured information
+ * Uses the same attachment format with fields as monitor notifications
+ * for consistent formatting across all Slack messages.
  */
 export function formatSlackMessage(event: SlackIncidentEvent): unknown {
   const { incident, statusPageName, statusPageUrl, affectedComponents } = event;
 
-  const color = getSlackColor(incident.impact);
+  const color = getSlackColor(incident.status, incident.impact);
   const statusEmoji = getStatusEmoji(incident.status);
   const impactEmoji = getImpactEmoji(incident.impact);
 
@@ -124,98 +131,87 @@ export function formatSlackMessage(event: SlackIncidentEvent): unknown {
     .join(" ");
 
   // Format impact for display
-  const formattedImpact = incident.impact.toUpperCase();
+  const formattedImpact =
+    incident.impact.charAt(0).toUpperCase() + incident.impact.slice(1);
 
-  // Build the blocks for the message body
-  const blocks: unknown[] = [
-    {
-      type: "header",
-      text: {
-        type: "plain_text",
-        text: `${statusEmoji} ${incident.name}`,
-        emoji: true,
-      },
-    },
-    {
-      type: "section",
-      fields: [
-        {
-          type: "mrkdwn",
-          text: `*Status:*\n${formattedStatus}`,
-        },
-        {
-          type: "mrkdwn",
-          text: `*Impact:*\n${impactEmoji} ${formattedImpact}`,
-        },
-      ],
-    },
-  ];
+  // Get event type label
+  const eventTypeLabels: Record<string, string> = {
+    "incident.created": "New Incident",
+    "incident.updated": "Incident Update",
+    "incident.resolved": "Incident Resolved",
+  };
+  const eventLabel = eventTypeLabels[event.type] || "Incident";
 
-  // Add incident description
-  if (incident.body) {
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*Description:*\n${incident.body}`,
-        emoji: true,
-      },
-    });
-  }
+  // Build main message text
+  const mainMessage = incident.body
+    ? `${incident.body}`
+    : `Incident "${incident.name}" status: ${formattedStatus}`;
 
-  // Add affected components if any
+  // Build fields array like monitor notifications
+  const fields: Array<{ title: string; value: string; short?: boolean }> = [];
+
+  // Status Page info
+  fields.push({
+    title: "Status Page",
+    value: statusPageName,
+    short: true,
+  });
+
+  // Incident name
+  fields.push({
+    title: "Incident",
+    value: incident.name,
+    short: true,
+  });
+
+  // Status
+  fields.push({
+    title: "Status",
+    value: formattedStatus,
+    short: true,
+  });
+
+  // Impact
+  fields.push({
+    title: "Impact",
+    value: `${impactEmoji} ${formattedImpact}`,
+    short: true,
+  });
+
+  // Time
+  fields.push({
+    title: "Time",
+    value: new Date(event.timestamp).toUTCString(),
+    short: true,
+  });
+
+  // Affected Components
   if (affectedComponents && affectedComponents.length > 0) {
-    const componentsList = affectedComponents.map(c => `• ${c}`).join("\n");
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `*Affected Services:*\n${componentsList}`,
-        emoji: true,
-      },
+    fields.push({
+      title: "Affected Services",
+      value: affectedComponents.join(", "),
+      short: false,
     });
   }
 
-  // Add divider
-  blocks.push({
-    type: "divider",
+  // Status page link
+  fields.push({
+    title: "🔗 Status Page",
+    value: statusPageUrl,
+    short: false,
   });
 
-  // Add action button to view status page
-  blocks.push({
-    type: "actions",
-    elements: [
-      {
-        type: "button",
-        text: {
-          type: "plain_text",
-          text: "View Status Page",
-          emoji: true,
-        },
-        url: statusPageUrl,
-        style: "primary",
-      },
-    ],
-  });
-
-  // Add footer with timestamp
-  blocks.push({
-    type: "context",
-    elements: [
-      {
-        type: "mrkdwn",
-        text: `${statusPageName} • <!date^${Math.floor(new Date(event.timestamp).getTime() / 1000)}^{date_short_pretty} at {time}|${event.timestamp}>`,
-      },
-    ],
-  });
-
-  // Return Slack message payload
+  // Return Slack message payload using attachment format with fields
+  // This matches the format used by monitor notifications
   return {
-    text: `${statusEmoji} ${incident.name}`, // Fallback text for notifications
+    text: `${statusEmoji} ${eventLabel} - ${incident.name}`,
     attachments: [
       {
         color,
-        blocks,
+        text: mainMessage,
+        fields,
+        footer: statusPageName,
+        ts: Math.floor(new Date(event.timestamp).getTime() / 1000),
       },
     ],
   };
@@ -285,7 +281,11 @@ export async function deliverSlackMessage(
       lastError = `HTTP ${response.status}: ${responseText}`;
 
       // Don't retry on 4xx errors (client errors) unless it's 429 (rate limit)
-      if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+      if (
+        response.status >= 400 &&
+        response.status < 500 &&
+        response.status !== 429
+      ) {
         return {
           success: false,
           statusCode: response.status,

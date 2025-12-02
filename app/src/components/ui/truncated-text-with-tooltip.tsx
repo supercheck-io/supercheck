@@ -47,9 +47,9 @@ export function TruncatedTextWithTooltip({
           {text}
         </div>
       </PopoverTrigger>
-      <PopoverContent className="flex justify-center items-center w-auto max-w-[500px]">
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground whitespace-pre-wrap">
+      <PopoverContent className="flex justify-center items-center w-auto max-w-[500px] min-w-0">
+        <div className="space-y-2 min-w-0">
+          <p className="text-xs text-muted-foreground break-words">
             {text}
           </p>
         </div>
