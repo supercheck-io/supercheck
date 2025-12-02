@@ -73,6 +73,7 @@ graph TB
 ### URL Routing
 
 **Internal Management:**
+
 - `GET /dashboard/status-pages` - List all status pages
 - `GET /dashboard/status-pages/[id]` - Edit status page
 - `POST /api/status-pages` - Create new page
@@ -80,6 +81,7 @@ graph TB
 - `DELETE /api/status-pages/[id]` - Delete page
 
 **Public Access:**
+
 - `GET /status-pages/[uuid]` - Public status page view
 - `POST /api/public/subscribers` - Subscribe to updates
 
@@ -90,6 +92,7 @@ graph TB
 ### Core Tables
 
 **status_pages**
+
 - id (uuid, PK)
 - organizationId (uuid, FK) - Required
 - projectId (uuid, FK, nullable)
@@ -121,6 +124,7 @@ graph TB
 - updatedAt (timestamp)
 
 **status_page_components**
+
 - id (uuid, PK)
 - statusPageId (uuid, FK) - Required
 - name (varchar, 255) - Required
@@ -137,6 +141,7 @@ graph TB
 - updatedAt (timestamp)
 
 **status_page_component_monitors** (Join table)
+
 - componentId (uuid, FK) - Required
 - monitorId (uuid, FK) - Required
 - weight (integer) - For weighted aggregation, default: 1
@@ -144,6 +149,7 @@ graph TB
 - PK: (componentId, monitorId)
 
 **incidents**
+
 - id (uuid, PK)
 - statusPageId (uuid, FK) - Required
 - createdByUserId (uuid, FK, nullable)
@@ -173,6 +179,7 @@ graph TB
 - updatedAt (timestamp)
 
 **incident_updates**
+
 - id (uuid, PK)
 - incidentId (uuid, FK) - Required
 - createdByUserId (uuid, FK, nullable)
@@ -184,6 +191,7 @@ graph TB
 - updatedAt (timestamp)
 
 **incident_components** (Affected components)
+
 - id (uuid, PK)
 - incidentId (uuid, FK) - Required
 - componentId (uuid, FK) - Required
@@ -192,6 +200,7 @@ graph TB
 - createdAt (timestamp)
 
 **incident_templates**
+
 - id (uuid, PK)
 - statusPageId (uuid, FK) - Required
 - createdByUserId (uuid, FK, nullable)
@@ -204,6 +213,7 @@ graph TB
 - updatedAt (timestamp)
 
 **status_page_subscribers**
+
 - id (uuid, PK)
 - statusPageId (uuid, FK) - Required
 - email (varchar, 255, nullable) - Email subscriber
@@ -223,18 +233,21 @@ graph TB
 - updatedAt (timestamp)
 
 **status_page_component_subscriptions** (Component-specific)
+
 - id (uuid, PK)
 - subscriberId (uuid, FK) - Required
 - componentId (uuid, FK) - Required
 - createdAt (timestamp)
 
 **status_page_incident_subscriptions** (Incident-specific)
+
 - id (uuid, PK)
 - incidentId (uuid, FK) - Required
 - subscriberId (uuid, FK) - Required
 - createdAt (timestamp)
 
 **status_page_metrics**
+
 - id (uuid, PK)
 - statusPageId (uuid, FK) - Required
 - componentId (uuid, FK, nullable)
@@ -248,6 +261,7 @@ graph TB
 - updatedAt (timestamp)
 
 **postmortems**
+
 - id (uuid, PK)
 - incidentId (uuid, FK) - Required, unique
 - createdByUserId (uuid, FK, nullable)
@@ -389,6 +403,7 @@ sequenceDiagram
 ### Access Control
 
 **Authenticated Users (Org Members):**
+
 - View own status pages
 - Edit/delete own status pages
 - Create incidents
@@ -396,22 +411,85 @@ sequenceDiagram
 - Access analytics
 
 **Project-Level RBAC:**
+
 - OWNER: Full access to status pages
 - EDITOR: Create/edit incidents, manage components
 - VIEWER: Read-only access
 
 **Public Access:**
+
 - Read-only status page view
 - Subscribe to notifications
 - No access to edit functions
 - No subscriber data exposure
 
+### Security Implementation
+
+**Ownership Validation (Defense in Depth):**
+All authenticated server actions implement multi-level ownership validation:
+
+1. **Authentication Check**: Verify user is authenticated via Better Auth
+2. **Permission Check**: Validate RBAC permissions via `requirePermissions()`
+3. **Ownership Verification**: Verify resource belongs to user's organization AND project
+4. **UUID Validation**: All ID parameters validated with Zod UUID schema before database queries
+
+Example pattern:
+
+```typescript
+// 1. Authentication and project context
+const { userId, organizationId, project } = await requireProjectContext();
+
+// 2. RBAC permission check
+await requirePermissions(
+  { status_page: ["update"] },
+  { organizationId, projectId: project.id }
+);
+
+// 3. Ownership verification
+const statusPage = await db.query.statusPages.findFirst({
+  where: and(
+    eq(statusPages.id, statusPageId),
+    eq(statusPages.organizationId, organizationId),
+    eq(statusPages.projectId, project.id)
+  ),
+});
+
+if (!statusPage) {
+  return { success: false, message: "Status page not found or access denied" };
+}
+```
+
+**Input Validation:**
+
+- All inputs validated with Zod schemas
+- Text fields include `.trim()` and length limits
+- Domain names validated with regex patterns
+- Color codes validated as hex format (#RRGGBB)
+- Numeric fields have min/max bounds
+
+**Error Response Security:**
+
+- Generic error messages returned to clients (no stack traces or implementation details)
+- Internal errors logged with security context for debugging
+- Failed access attempts logged with `[SECURITY]` prefix
+
+**Audit Logging:**
+All mutations are logged via `logAuditEvent()` with:
+
+- userId
+- action performed
+- resource type and ID
+- organizationId and projectId
+- success/failure status
+
 ### Data Protection
 
 - **Email Encryption**: Subscriber emails encrypted at rest
-- **Token Security**: Verification tokens are cryptographically random
+- **Token Security**: Verification tokens are cryptographically random (64-character hex)
+- **Webhook Secrets**: HMAC secrets generated for webhook subscribers
 - **Rate Limiting**: API endpoints rate-limited per organization
 - **CORS**: Public pages accessible cross-origin, API restricted to same origin
+- **Field Selection**: Public endpoints return only necessary fields (no internal IDs or metadata leaked)
 
 ---
 
@@ -491,6 +569,7 @@ Maintenance (Blue)
 ### Metrics Tracked
 
 **Per Status Page:**
+
 - Total page views
 - Unique visitors
 - Average visit duration
@@ -498,6 +577,7 @@ Maintenance (Blue)
 - Unsubscribe rate
 
 **Per Incident:**
+
 - Detection to resolution time
 - Number of updates
 - Subscriber notifications sent
@@ -532,12 +612,12 @@ INCIDENT_UPDATE_LIMIT=100
 
 ### Performance Targets
 
-| Operation | Target | Notes |
-|-----------|--------|-------|
-| Load status page | < 2s | Cached on CDN |
-| Create incident | < 1s | Sync write |
-| Send notifications | < 5s | Async queue |
-| List subscribers | < 500ms | Paginated |
+| Operation               | Target  | Notes              |
+| ----------------------- | ------- | ------------------ |
+| Load status page        | < 2s    | Cached on CDN      |
+| Create incident         | < 1s    | Sync write         |
+| Send notifications      | < 5s    | Async queue        |
+| List subscribers        | < 500ms | Paginated          |
 | Update component status | < 500ms | Cache invalidation |
 
 ---

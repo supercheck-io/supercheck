@@ -446,7 +446,17 @@ export async function getQueues(): Promise<{
 /**
  * Sets up periodic cleanup of orphaned Redis keys to prevent unbounded growth
  */
+// Track if cleanup has been set up to prevent duplicate event listeners
+let cleanupSetupComplete = false;
+
 async function setupQueueCleanup(connection: Redis): Promise<void> {
+  // Only set up cleanup once to prevent multiple process event listeners
+  if (cleanupSetupComplete) {
+    return;
+  }
+
+  cleanupSetupComplete = true;
+
   try {
     // Run initial cleanup on startup to clear any existing orphaned keys
     await performQueueCleanup(connection);
@@ -464,7 +474,8 @@ async function setupQueueCleanup(connection: Redis): Promise<void> {
     }, 12 * 60 * 60 * 1000); // Run cleanup every 12 hours
 
     // Make sure interval is properly cleared on process exit
-    process.on("exit", () => clearInterval(cleanupInterval));
+    // Use process.once to prevent duplicate listeners
+    process.once("exit", () => clearInterval(cleanupInterval));
   } catch (error) {
     queueLogger.error({ err: error }, "[Queue Client] Failed to set up queue cleanup:");
   }

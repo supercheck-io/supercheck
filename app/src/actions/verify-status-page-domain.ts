@@ -2,29 +2,50 @@
 
 import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { revalidatePath } from "next/cache";
 import { resolveCname } from "node:dns/promises";
+import { z } from "zod";
+import { logAuditEvent } from "@/lib/audit-logger";
+
+// UUID validation schema
+const uuidSchema = z.string().uuid("Invalid status page ID");
 
 export async function verifyStatusPageDomain(statusPageId: string) {
   try {
-    const { organizationId, project } = await requireProjectContext();
+    // Validate UUID format first
+    const parseResult = uuidSchema.safeParse(statusPageId);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        message: "Invalid status page ID format",
+      };
+    }
+
+    const { userId, organizationId, project } = await requireProjectContext();
     await requirePermissions(
       { status_page: ["update"] },
       { organizationId, projectId: project.id }
     );
 
-    // Get status page
+    // SECURITY: Get status page with ownership verification
     const statusPage = await db.query.statusPages.findFirst({
-      where: eq(statusPages.id, statusPageId),
+      where: and(
+        eq(statusPages.id, statusPageId),
+        eq(statusPages.organizationId, organizationId),
+        eq(statusPages.projectId, project.id)
+      ),
     });
 
     if (!statusPage) {
+      console.warn(
+        `[SECURITY] User ${userId} attempted to verify domain for status page ${statusPageId} without ownership`
+      );
       return {
         success: false,
-        message: "Status page not found",
+        message: "Status page not found or access denied",
       };
     }
 
@@ -38,24 +59,49 @@ export async function verifyStatusPageDomain(statusPageId: string) {
     // Verify DNS
     try {
       const cnames = await resolveCname(statusPage.customDomain);
-      
+
       // Check if any of the CNAMEs point to supercheck.io (or the configured app domain)
       // In a real scenario, this might be a specific CNAME target like "cname.supercheck.io"
-      const validTargets = ["supercheck.io", "cname.supercheck.io", "ingress.supercheck.io"];
-      const isValid = cnames.some(cname => validTargets.some(target => cname.includes(target)));
+      const validTargets = [
+        "supercheck.io",
+        "cname.supercheck.io",
+        "ingress.supercheck.io",
+      ];
+      const isValid = cnames.some((cname) =>
+        validTargets.some((target) => cname.includes(target))
+      );
 
       if (isValid) {
-        // Update status page
+        // Update status page with ownership check
         await db
           .update(statusPages)
           .set({
             customDomainVerified: true,
             updatedAt: new Date(),
           })
-          .where(eq(statusPages.id, statusPageId));
+          .where(
+            and(
+              eq(statusPages.id, statusPageId),
+              eq(statusPages.organizationId, organizationId)
+            )
+          );
+
+        // Log audit event
+        await logAuditEvent({
+          userId,
+          action: "status_page_domain_verified",
+          resource: "status_page",
+          resourceId: statusPageId,
+          metadata: {
+            organizationId,
+            projectId: project.id,
+            domain: statusPage.customDomain,
+          },
+          success: true,
+        });
 
         revalidatePath(`/status-pages/${statusPageId}`);
-        
+
         return {
           success: true,
           message: "Domain verified successfully!",
@@ -70,7 +116,8 @@ export async function verifyStatusPageDomain(statusPageId: string) {
       console.error("DNS resolution error:", error);
       return {
         success: false,
-        message: "Could not verify CNAME record. Please ensure it is set correctly and propagated.",
+        message:
+          "Could not verify CNAME record. Please ensure it is set correctly and propagated.",
       };
     }
   } catch (error) {

@@ -22,10 +22,22 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Boxes,
 } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { toast } from "sonner";
 import { getComponents } from "@/actions/get-components";
 import { deleteComponent } from "@/actions/delete-component";
@@ -202,7 +214,10 @@ export function ComponentsTab({
   // Pagination calculations
   const totalPages = Math.ceil(components.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedComponents = components.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedComponents = components.slice(
+    startIndex,
+    startIndex + itemsPerPage
+  );
 
   if (loading) {
     return (
@@ -240,28 +255,52 @@ export function ComponentsTab({
   return (
     <>
       <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h3 className="text-lg font-semibold">Service Components</h3>
-              <p className="text-xs text-muted-foreground">
-                Manage the components that make up your service
-              </p>
+        <CardHeader className="flex flex-row items-start justify-between pb-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Boxes className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-lg">Service Components</CardTitle>
             </div>
-            <Button onClick={handleAddComponent} disabled={!canUpdate} size="sm" title={!canUpdate ? "You don't have permission to add components" : ""}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Component
-            </Button>
+            <CardDescription>
+              Manage the components that make up your service. Link monitors to
+              automatically track status.
+            </CardDescription>
           </div>
-
+          <Button
+            onClick={handleAddComponent}
+            disabled={!canUpdate}
+            size="sm"
+            title={
+              !canUpdate ? "You don't have permission to add components" : ""
+            }
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Component
+          </Button>
+        </CardHeader>
+        <CardContent className="pt-0">
           {components.length === 0 ? (
-            <div className="text-center py-8 border-2 border-dashed rounded-lg">
-              <Component className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-              <h4 className="text-base font-semibold mb-1">No components yet</h4>
-              <p className="text-xs text-muted-foreground mb-4 max-w-sm mx-auto">
+            <div className="text-center py-12 border-2 border-dashed rounded-lg bg-muted/20">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-muted mb-4">
+                <Component className="h-7 w-7 text-muted-foreground" />
+              </div>
+              <h4 className="text-base font-semibold mb-1">
+                No components yet
+              </h4>
+              <p className="text-sm text-muted-foreground mb-4 max-w-sm mx-auto">
                 Add components to represent the different parts of your service
+                and track their status
               </p>
-              <Button onClick={handleAddComponent} disabled={!canUpdate} size="sm" title={!canUpdate ? "You don't have permission to add components" : ""}>
+              <Button
+                onClick={handleAddComponent}
+                disabled={!canUpdate}
+                size="sm"
+                title={
+                  !canUpdate
+                    ? "You don't have permission to add components"
+                    : ""
+                }
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Add Your First Component
               </Button>
@@ -319,7 +358,10 @@ export function ComponentsTab({
                             </Badge>
                           ) : null}
                           {component.showcase && (
-                            <Badge variant="secondary" className="text-xs px-1.5 py-0.5">
+                            <Badge
+                              variant="secondary"
+                              className="text-xs px-1.5 py-0.5"
+                            >
                               Visible
                             </Badge>
                           )}
@@ -394,7 +436,9 @@ export function ComponentsTab({
                       <Button
                         variant="outline"
                         className="h-8 w-8 p-0"
-                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        onClick={() =>
+                          setCurrentPage((prev) => Math.max(1, prev - 1))
+                        }
                         disabled={currentPage === 1}
                       >
                         <span className="sr-only">Go to previous page</span>
@@ -403,7 +447,11 @@ export function ComponentsTab({
                       <Button
                         variant="outline"
                         className="h-8 w-8 p-0"
-                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        onClick={() =>
+                          setCurrentPage((prev) =>
+                            Math.min(totalPages, prev + 1)
+                          )
+                        }
                         disabled={currentPage === totalPages}
                       >
                         <span className="sr-only">Go to next page</span>

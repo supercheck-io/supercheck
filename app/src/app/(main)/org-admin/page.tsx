@@ -3,11 +3,27 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { StatsCard } from "@/components/admin/stats-card";
-import { Card, CardContent} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { FolderOpen, Activity, TrendingUp, Calendar, Users } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  FolderOpen,
+  Activity,
+  TrendingUp,
+  Calendar,
+  Users,
+  LayoutDashboard,
+  FileText,
+  CreditCard,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AuditLogsTable } from "@/components/admin/audit-logs-table";
 import { MembersTable } from "@/components/org-admin/members-table";
@@ -15,12 +31,19 @@ import { ProjectsTable } from "@/components/org-admin/projects-table";
 import { SubscriptionTab } from "@/components/org-admin/subscription-tab";
 import { MemberAccessDialog } from "@/components/members/MemberAccessDialog";
 import { FormInput } from "@/components/ui/form-input";
-import { createProjectSchema, type CreateProjectFormData } from "@/lib/validations/project";
+import {
+  createProjectSchema,
+  type CreateProjectFormData,
+} from "@/lib/validations/project";
 // import { useFormValidation } from "@/hooks/use-form-validation";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
 import { OrgAdminDashboardSkeleton } from "@/components/ui/table-skeleton";
 import { Loader2 } from "lucide-react";
-import { canCreateProjects, canInviteMembers, canManageProject } from "@/lib/rbac/client-permissions";
+import {
+  canCreateProjects,
+  canInviteMembers,
+  canManageProject,
+} from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { z } from "zod";
 
@@ -37,7 +60,12 @@ interface OrgMember {
   id: string;
   name: string;
   email: string;
-  role: 'org_owner' | 'org_admin' | 'project_admin' | 'project_editor' | 'project_viewer';
+  role:
+    | "org_owner"
+    | "org_admin"
+    | "project_admin"
+    | "project_editor"
+    | "project_viewer";
   joinedAt: string;
 }
 
@@ -57,7 +85,7 @@ interface Project {
   slug?: string;
   description?: string;
   isDefault: boolean;
-  status: 'active' | 'archived' | 'deleted';
+  status: "active" | "archived" | "deleted";
   createdAt: string;
   membersCount: number;
 }
@@ -83,21 +111,22 @@ interface ProjectMember {
 export default function OrgAdminDashboard() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const searchParams = useSearchParams();
-  const defaultTab = searchParams.get('tab') || 'overview';
+  const defaultTab = searchParams.get("tab") || "overview";
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [stats, setStats] = useState<OrgStats | null>(null);
   const [orgDetails, setOrgDetails] = useState<OrgDetails | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentUserRole, setCurrentUserRole] = useState<string>('project_viewer');
+  const [currentUserRole, setCurrentUserRole] =
+    useState<string>("project_viewer");
   const [isCloudHosted, setIsCloudHosted] = useState(false);
-  
+
   // Members tab state
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [invitations, setInvitations] = useState<PendingInvitation[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [inviting, setInviting] = useState(false);
-  
+
   // Projects tab state
   const [projects, setProjects] = useState<Project[]>([]);
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
@@ -107,11 +136,9 @@ export default function OrgAdminDashboard() {
   const [newProject, setNewProject] = useState({
     name: "",
     description: "",
-    isDefault: false
+    isDefault: false,
   });
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-
-
 
   useEffect(() => {
     fetchOrgData();
@@ -125,8 +152,8 @@ export default function OrgAdminDashboard() {
   // Set breadcrumbs
   useEffect(() => {
     setBreadcrumbs([
-      { label: "Home", href: "/", isCurrentPage: false }, 
-      { label: "Organization Admin", href: "/org-admin", isCurrentPage: true }
+      { label: "Home", href: "/", isCurrentPage: false },
+      { label: "Organization Admin", href: "/org-admin", isCurrentPage: true },
     ]);
 
     // Cleanup breadcrumbs on unmount
@@ -136,7 +163,7 @@ export default function OrgAdminDashboard() {
   }, [setBreadcrumbs]);
 
   const handleTabChange = (value: string) => {
-    if (value === 'projects' && projects.length === 0) {
+    if (value === "projects" && projects.length === 0) {
       fetchProjects();
     }
     // Note: Audit tab handles its own data fetching
@@ -147,25 +174,25 @@ export default function OrgAdminDashboard() {
     try {
       // Fetch organization stats and details
       const [statsResponse, detailsResponse] = await Promise.all([
-        fetch('/api/organizations/stats'),
-        fetch('/api/organizations/current')
+        fetch("/api/organizations/stats"),
+        fetch("/api/organizations/current"),
       ]);
-      
+
       const [statsData, detailsData] = await Promise.all([
         statsResponse.json(),
-        detailsResponse.json()
+        detailsResponse.json(),
       ]);
 
       if (statsData.success) {
         setStats(statsData.data);
       }
-      
+
       if (detailsData.success) {
         setOrgDetails(detailsData.data);
       }
     } catch (error) {
-      console.error('Error fetching organization data:', error);
-      toast.error('Failed to load organization data');
+      console.error("Error fetching organization data:", error);
+      toast.error("Failed to load organization data");
     } finally {
       setLoading(false);
     }
@@ -174,18 +201,18 @@ export default function OrgAdminDashboard() {
   const fetchMembers = async () => {
     setMembersLoading(true);
     try {
-      const response = await fetch('/api/organizations/members');
+      const response = await fetch("/api/organizations/members");
       const data = await response.json();
-      
+
       if (data.success) {
         setMembers(data.data.members);
         setInvitations(data.data.invitations);
-        setCurrentUserRole(data.data.currentUserRole || 'project_viewer');
+        setCurrentUserRole(data.data.currentUserRole || "project_viewer");
       } else {
-        console.error('Failed to fetch members:', data.error);
+        console.error("Failed to fetch members:", data.error);
       }
     } catch (error) {
-      console.error('Error fetching members:', error);
+      console.error("Error fetching members:", error);
     } finally {
       setMembersLoading(false);
     }
@@ -193,35 +220,35 @@ export default function OrgAdminDashboard() {
 
   const fetchInvitations = async () => {
     try {
-      const response = await fetch('/api/organizations/invitations');
+      const response = await fetch("/api/organizations/invitations");
       const data = await response.json();
 
       if (data.success) {
         setInvitations(data.data);
       } else {
-        console.error('Failed to load invitations:', data.error);
+        console.error("Failed to load invitations:", data.error);
       }
     } catch (error) {
-      console.error('Error fetching invitations:', error);
+      console.error("Error fetching invitations:", error);
     }
   };
 
   const checkHostingAndSubscription = async () => {
     try {
       // Check hosting mode
-      const modeResponse = await fetch('/api/config/hosting-mode');
+      const modeResponse = await fetch("/api/config/hosting-mode");
       if (modeResponse.ok) {
         const modeData = await modeResponse.json();
         setIsCloudHosted(modeData.cloudHosted);
       }
     } catch (error) {
-      console.error('Error checking hosting mode:', error);
+      console.error("Error checking hosting mode:", error);
     }
   };
 
   const fetchProjects = async () => {
     try {
-      const response = await fetch('/api/projects');
+      const response = await fetch("/api/projects");
       const data = await response.json();
 
       if (data.success) {
@@ -229,9 +256,11 @@ export default function OrgAdminDashboard() {
         const projectsWithMembers = await Promise.all(
           data.data.map(async (project: Project) => {
             try {
-              const membersResponse = await fetch(`/api/projects/${project.id}/members`);
+              const membersResponse = await fetch(
+                `/api/projects/${project.id}/members`
+              );
               const membersData = await membersResponse.json();
-              
+
               if (membersData.success) {
                 return {
                   ...project,
@@ -241,28 +270,30 @@ export default function OrgAdminDashboard() {
                     name: member.user.name,
                     email: member.user.email,
                     role: member.role,
-                    avatar: member.user.image
-                  }))
+                    avatar: member.user.image,
+                  })),
                 };
               }
               return project;
             } catch (error) {
-              console.error(`Error fetching members for project ${project.id}:`, error);
+              console.error(
+                `Error fetching members for project ${project.id}:`,
+                error
+              );
               return project;
             }
           })
         );
-        
+
         setProjects(projectsWithMembers);
       } else {
-        toast.error('Failed to load projects');
+        toast.error("Failed to load projects");
       }
     } catch (error) {
-      console.error('Error fetching projects:', error);
-      toast.error('Failed to load projects');
+      console.error("Error fetching projects:", error);
+      toast.error("Failed to load projects");
     }
   };
-
 
   const handleCreateProject = async (formData?: CreateProjectFormData) => {
     const projectData = formData || {
@@ -281,16 +312,16 @@ export default function OrgAdminDashboard() {
           return;
         }
       }
-      toast.error('Please fix the form errors');
+      toast.error("Please fix the form errors");
       return;
     }
 
     setCreatingProject(true);
     try {
-      const response = await fetch('/api/projects', {
-        method: 'POST',
+      const response = await fetch("/api/projects", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           name: projectData.name,
@@ -299,22 +330,22 @@ export default function OrgAdminDashboard() {
       });
 
       const data = await response.json();
-      
+
       if (data.success) {
-        toast.success('Project created successfully');
+        toast.success("Project created successfully");
         setShowCreateProjectDialog(false);
         setNewProject({
           name: "",
           description: "",
-          isDefault: false
+          isDefault: false,
         });
         fetchProjects();
       } else {
-        toast.error(data.error || 'Failed to create project');
+        toast.error(data.error || "Failed to create project");
       }
     } catch (error) {
-      console.error('Error creating project:', error);
-      toast.error('Failed to create project');
+      console.error("Error creating project:", error);
+      toast.error("Failed to create project");
     } finally {
       setCreatingProject(false);
     }
@@ -325,7 +356,7 @@ export default function OrgAdminDashboard() {
     setNewProject({
       name: project.name,
       description: project.description || "",
-      isDefault: project.isDefault
+      isDefault: project.isDefault,
     });
     setShowEditProjectDialog(true);
   };
@@ -349,16 +380,16 @@ export default function OrgAdminDashboard() {
           return;
         }
       }
-      toast.error('Please fix the form errors');
+      toast.error("Please fix the form errors");
       return;
     }
 
     setUpdatingProject(true);
     try {
       const response = await fetch(`/api/projects/${editingProject.id}`, {
-        method: 'PUT',
+        method: "PUT",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           name: projectData.name,
@@ -367,28 +398,27 @@ export default function OrgAdminDashboard() {
       });
 
       const data = await response.json();
-      
+
       if (data.success) {
-        toast.success('Project updated successfully');
+        toast.success("Project updated successfully");
         setShowEditProjectDialog(false);
         setEditingProject(null);
         setNewProject({
           name: "",
           description: "",
-          isDefault: false
+          isDefault: false,
         });
         fetchProjects();
       } else {
-        toast.error(data.error || 'Failed to update project');
+        toast.error(data.error || "Failed to update project");
       }
     } catch (error) {
-      console.error('Error updating project:', error);
-      toast.error('Failed to update project');
+      console.error("Error updating project:", error);
+      toast.error("Failed to update project");
     } finally {
       setUpdatingProject(false);
     }
   };
-
 
   if (loading) {
     return <OrgAdminDashboardSkeleton />;
@@ -398,7 +428,9 @@ export default function OrgAdminDashboard() {
     return (
       <div className="flex-1 space-y-4 p-4 pt-6">
         <div className="flex items-center justify-center h-64">
-          <p className="text-muted-foreground">Failed to load organization dashboard</p>
+          <p className="text-muted-foreground">
+            Failed to load organization dashboard
+          </p>
         </div>
       </div>
     );
@@ -406,83 +438,125 @@ export default function OrgAdminDashboard() {
 
   return (
     <div>
-      
       <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
         <CardContent className="p-6">
-          <Tabs value={activeTab} className="space-y-4" onValueChange={(value) => { setActiveTab(value); handleTabChange(value); }}>
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="projects">Projects</TabsTrigger>
-          <TabsTrigger value="members">Members</TabsTrigger>
-          <TabsTrigger value="audit">Audit</TabsTrigger>
-          {isCloudHosted && (
-            <TabsTrigger value="subscription">Subscription</TabsTrigger>
-          )}
-        </TabsList>
+          <Tabs
+            value={activeTab}
+            className="space-y-4"
+            onValueChange={(value) => {
+              setActiveTab(value);
+              handleTabChange(value);
+            }}
+          >
+            <TabsList
+              className="grid w-full grid-cols-4 lg:w-auto lg:inline-flex"
+              style={{
+                gridTemplateColumns: isCloudHosted
+                  ? "repeat(5, 1fr)"
+                  : "repeat(4, 1fr)",
+              }}
+            >
+              <TabsTrigger value="overview" className="flex items-center gap-2">
+                <LayoutDashboard className="h-4 w-4" />
+                <span className="hidden sm:inline">Overview</span>
+              </TabsTrigger>
+              <TabsTrigger value="projects" className="flex items-center gap-2">
+                <FolderOpen className="h-4 w-4" />
+                <span className="hidden sm:inline">Projects</span>
+              </TabsTrigger>
+              <TabsTrigger value="members" className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                <span className="hidden sm:inline">Members</span>
+              </TabsTrigger>
+              <TabsTrigger value="audit" className="flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                <span className="hidden sm:inline">Audit</span>
+              </TabsTrigger>
+              {isCloudHosted && (
+                <TabsTrigger
+                  value="subscription"
+                  className="flex items-center gap-2"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  <span className="hidden sm:inline">Subscription</span>
+                </TabsTrigger>
+              )}
+            </TabsList>
 
-        <TabsContent value="overview" className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold">Organization Admin</h2>
-              <p className="text-muted-foreground text-sm">Manage your organization&apos;s projects, members, and view audit logs.</p>
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <StatsCard
-              title="Projects"
-              value={stats.projects}
-              description="Active projects"
-              icon={FolderOpen}
-            />
-            <StatsCard
-              title="Members"
-              value={stats.members}
-              description="Organization members"
-              icon={Users}
-            />
-            <StatsCard
-              title="Jobs"
-              value={stats.jobs}
-              description="Scheduled jobs"
-              icon={Calendar}
-            />
-            <StatsCard
-              title="Tests"
-              value={stats.tests}
-              description="Test cases"
-              icon={Activity}
-            />
-            <StatsCard
-              title="Monitors"
-              value={stats.monitors}
-              description="Active monitors"
-              icon={TrendingUp}
-            />
-            <StatsCard
-              title="Total Runs"
-              value={stats.runs}
-              description="Test executions"
-              icon={Activity}
-            />
-          </div>
-        </TabsContent>
+            <TabsContent value="overview" className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-semibold">Organization Admin</h2>
+                  <p className="text-muted-foreground text-sm">
+                    Manage your organization&apos;s projects, members, and view
+                    audit logs.
+                  </p>
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <StatsCard
+                  title="Projects"
+                  value={stats.projects}
+                  description="Active projects"
+                  icon={FolderOpen}
+                />
+                <StatsCard
+                  title="Members"
+                  value={stats.members}
+                  description="Organization members"
+                  icon={Users}
+                />
+                <StatsCard
+                  title="Jobs"
+                  value={stats.jobs}
+                  description="Scheduled jobs"
+                  icon={Calendar}
+                />
+                <StatsCard
+                  title="Tests"
+                  value={stats.tests}
+                  description="Test cases"
+                  icon={Activity}
+                />
+                <StatsCard
+                  title="Monitors"
+                  value={stats.monitors}
+                  description="Active monitors"
+                  icon={TrendingUp}
+                />
+                <StatsCard
+                  title="Total Runs"
+                  value={stats.runs}
+                  description="Test executions"
+                  icon={Activity}
+                />
+              </div>
+            </TabsContent>
 
-        <TabsContent value="projects" className="space-y-4">
+            <TabsContent value="projects" className="space-y-4">
               <ProjectsTable
                 projects={projects}
                 onCreateProject={() => setShowCreateProjectDialog(true)}
                 onEditProject={handleEditProject}
-                canCreateProjects={canCreateProjects(normalizeRole(currentUserRole))}
-                canManageProject={canManageProject(normalizeRole(currentUserRole))}
+                canCreateProjects={canCreateProjects(
+                  normalizeRole(currentUserRole)
+                )}
+                canManageProject={canManageProject(
+                  normalizeRole(currentUserRole)
+                )}
               />
-          
-          {/* Create Project Dialog */}
-          <Dialog open={showCreateProjectDialog} onOpenChange={setShowCreateProjectDialog}>
-            <DialogContent>
+
+              {/* Create Project Dialog */}
+              <Dialog
+                open={showCreateProjectDialog}
+                onOpenChange={setShowCreateProjectDialog}
+              >
+                <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Create New Project</DialogTitle>
                     <DialogDescription>
-                      Create a new project in your organization. Both name and description are required.
+                      Create a new project in your organization. Both name and
+                      description are required.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
@@ -490,7 +564,9 @@ export default function OrgAdminDashboard() {
                       id="project-name"
                       label="Name"
                       value={newProject.name}
-                      onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
+                      onChange={(e) =>
+                        setNewProject({ ...newProject, name: e.target.value })
+                      }
                       placeholder="Enter project name"
                       maxLength={20}
                       showCharacterCount={true}
@@ -499,77 +575,120 @@ export default function OrgAdminDashboard() {
                       id="project-description"
                       label="Description"
                       value={newProject.description}
-                      onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+                      onChange={(e) =>
+                        setNewProject({
+                          ...newProject,
+                          description: e.target.value,
+                        })
+                      }
                       placeholder="Enter project description"
                       maxLength={100}
                       showCharacterCount={true}
                     />
                   </div>
                   <DialogFooter>
-                    <Button onClick={() => handleCreateProject()} disabled={creatingProject || !newProject.name.trim() || !newProject.description.trim()}>
+                    <Button
+                      onClick={() => handleCreateProject()}
+                      disabled={
+                        creatingProject ||
+                        !newProject.name.trim() ||
+                        !newProject.description.trim()
+                      }
+                    >
                       {creatingProject ? "Creating..." : "Create Project"}
                     </Button>
-                            </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
 
-      {/* Edit Project Dialog */}
-      <Dialog open={showEditProjectDialog} onOpenChange={setShowEditProjectDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Project</DialogTitle>
-            <DialogDescription>
-              Update your project details. Both name and description are required.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <FormInput
-              id="edit-project-name"
-              label="Name"
-              value={newProject.name}
-              onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-              placeholder="Enter project name"
-              maxLength={20}
-              showCharacterCount={true}
-            />
-            <FormInput
-              id="edit-project-description"
-              label="Description"
-              value={newProject.description}
-              onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
-              placeholder="Enter project description"
-              maxLength={100}
-              showCharacterCount={true}
-            />
-          </div>
-          <DialogFooter>
-            <Button onClick={handleUpdateProject} disabled={updatingProject || !newProject.name.trim() || !newProject.description.trim()}>
-              {updatingProject ? "Updating..." : "Update Project"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-        </TabsContent>
+              {/* Edit Project Dialog */}
+              <Dialog
+                open={showEditProjectDialog}
+                onOpenChange={setShowEditProjectDialog}
+              >
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Edit Project</DialogTitle>
+                    <DialogDescription>
+                      Update your project details. Both name and description are
+                      required.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-4">
+                    <FormInput
+                      id="edit-project-name"
+                      label="Name"
+                      value={newProject.name}
+                      onChange={(e) =>
+                        setNewProject({ ...newProject, name: e.target.value })
+                      }
+                      placeholder="Enter project name"
+                      maxLength={20}
+                      showCharacterCount={true}
+                    />
+                    <FormInput
+                      id="edit-project-description"
+                      label="Description"
+                      value={newProject.description}
+                      onChange={(e) =>
+                        setNewProject({
+                          ...newProject,
+                          description: e.target.value,
+                        })
+                      }
+                      placeholder="Enter project description"
+                      maxLength={100}
+                      showCharacterCount={true}
+                    />
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      onClick={handleUpdateProject}
+                      disabled={
+                        updatingProject ||
+                        !newProject.name.trim() ||
+                        !newProject.description.trim()
+                      }
+                    >
+                      {updatingProject ? "Updating..." : "Update Project"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </TabsContent>
 
-        <TabsContent value="members" className="space-y-4">
-          {membersLoading ? (
-            <div className="flex justify-center items-center h-64">
-              <div className="flex items-center space-x-2">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                <span className="text-muted-foreground">Loading members...</span>
-              </div>
-            </div>
-          ) : (
+            <TabsContent value="members" className="space-y-4">
+              {membersLoading ? (
+                <div className="flex justify-center items-center h-64">
+                  <div className="flex items-center space-x-2">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <span className="text-muted-foreground">
+                      Loading members...
+                    </span>
+                  </div>
+                </div>
+              ) : (
                 <MembersTable
                   members={[
-                    ...(members || []).map(m => ({ 
-                      ...m, 
-                      type: 'member' as const,
-                      role: m.role as 'org_owner' | 'org_admin' | 'project_admin' | 'project_editor' | 'project_viewer'
+                    ...(members || []).map((m) => ({
+                      ...m,
+                      type: "member" as const,
+                      role: m.role as
+                        | "org_owner"
+                        | "org_admin"
+                        | "project_admin"
+                        | "project_editor"
+                        | "project_viewer",
                     })),
                     ...(invitations || [])
-                      .filter(i => i.status === 'pending' || i.status === 'expired')
-                      .map(i => ({ ...i, type: 'invitation' as const, status: i.status as 'pending' | 'expired' }))
+                      .filter(
+                        (i) => i.status === "pending" || i.status === "expired"
+                      )
+                      .map((i) => ({
+                        ...i,
+                        type: "invitation" as const,
+                        status: i.status as "pending" | "expired",
+                      })),
                   ]}
                   onMemberUpdate={() => {
                     fetchMembers();
@@ -582,63 +701,70 @@ export default function OrgAdminDashboard() {
                       fetchProjects();
                     }
                   }}
-                  canInviteMembers={canInviteMembers(normalizeRole(currentUserRole))}
-                  projects={projects.filter(p => p.status === 'active')}
+                  canInviteMembers={canInviteMembers(
+                    normalizeRole(currentUserRole)
+                  )}
+                  projects={projects.filter((p) => p.status === "active")}
                 />
-          )}
+              )}
 
-          {/* Member Access Dialog - Invite Mode */}
-          <MemberAccessDialog
-            open={showInviteDialog}
-            onOpenChange={(open) => {
-              setShowInviteDialog(open);
-              if (open && projects.length === 0) {
-                fetchProjects();
-              }
-            }}
-            mode="invite"
-            projects={projects.filter(p => p.status === 'active')}
-            onSubmit={async (memberData) => {
-              setInviting(true);
-              try {
-                const response = await fetch('/api/organizations/members/invite', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
-                    email: memberData.email,
-                    role: memberData.role,
-                    selectedProjects: memberData.selectedProjects
-                  }),
-                });
+              {/* Member Access Dialog - Invite Mode */}
+              <MemberAccessDialog
+                open={showInviteDialog}
+                onOpenChange={(open) => {
+                  setShowInviteDialog(open);
+                  if (open && projects.length === 0) {
+                    fetchProjects();
+                  }
+                }}
+                mode="invite"
+                projects={projects.filter((p) => p.status === "active")}
+                onSubmit={async (memberData) => {
+                  setInviting(true);
+                  try {
+                    const response = await fetch(
+                      "/api/organizations/members/invite",
+                      {
+                        method: "POST",
+                        headers: {
+                          "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                          email: memberData.email,
+                          role: memberData.role,
+                          selectedProjects: memberData.selectedProjects,
+                        }),
+                      }
+                    );
 
-                const data = await response.json();
-                
-                if (data.success) {
-                  fetchMembers();
-                  fetchInvitations();
-                } else {
-                  throw new Error(data.error || 'Failed to send invitation');
-                }
-              } finally {
-                setInviting(false);
-              }
-            }}
-            isLoading={inviting}
-          />
-        </TabsContent>
+                    const data = await response.json();
 
-        <TabsContent value="audit" className="space-y-4">
-          <AuditLogsTable />
-        </TabsContent>
+                    if (data.success) {
+                      fetchMembers();
+                      fetchInvitations();
+                    } else {
+                      throw new Error(
+                        data.error || "Failed to send invitation"
+                      );
+                    }
+                  } finally {
+                    setInviting(false);
+                  }
+                }}
+                isLoading={inviting}
+              />
+            </TabsContent>
 
-        {isCloudHosted && (
-          <TabsContent value="subscription" className="space-y-4">
-            <SubscriptionTab />
-          </TabsContent>
-        )}
-      </Tabs>
+            <TabsContent value="audit" className="space-y-4">
+              <AuditLogsTable />
+            </TabsContent>
+
+            {isCloudHosted && (
+              <TabsContent value="subscription" className="space-y-4">
+                <SubscriptionTab />
+              </TabsContent>
+            )}
+          </Tabs>
         </CardContent>
       </Card>
     </div>

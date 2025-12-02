@@ -7,11 +7,22 @@ import { revalidatePath } from "next/cache";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { z } from "zod";
+
+// UUID validation schema
+const uuidSchema = z.string().uuid("Invalid status page ID");
 
 export async function deleteStatusPage(id: string) {
-  console.log(`Deleting status page: ${id}`);
-
   try {
+    // Validate UUID format first
+    const parseResult = uuidSchema.safeParse(id);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        message: "Invalid status page ID format",
+      };
+    }
+
     // Get current project context (includes auth verification)
     const { userId, project, organizationId } = await requireProjectContext();
 
@@ -26,10 +37,9 @@ export async function deleteStatusPage(id: string) {
           projectId: project.id,
         }
       );
-    } catch (error) {
+    } catch {
       console.warn(
-        `User ${userId} attempted to delete status page without permission:`,
-        error
+        `[SECURITY] User ${userId} attempted to delete status page without permission`
       );
       return {
         success: false,
@@ -51,11 +61,12 @@ export async function deleteStatusPage(id: string) {
       .limit(1);
 
     if (!statusPage) {
-      console.warn(`Status page ${id} not found or access denied`);
+      console.warn(
+        `[SECURITY] User ${userId} attempted to delete status page ${id} without ownership`
+      );
       return {
         success: false,
-        message:
-          "Status page not found or you don't have permission to delete it",
+        message: "Status page not found or access denied",
       };
     }
 
@@ -69,8 +80,6 @@ export async function deleteStatusPage(id: string) {
           eq(statusPages.projectId, project.id)
         )
       );
-
-    console.log(`Status page ${id} deleted successfully by user ${userId}`);
 
     // Log the audit event
     await logAuditEvent({
@@ -99,10 +108,7 @@ export async function deleteStatusPage(id: string) {
     console.error("Error deleting status page:", error);
     return {
       success: false,
-      message: `Failed to delete status page: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-      error,
+      message: "Failed to delete status page. Please try again.",
     };
   }
 }

@@ -1,8 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -22,12 +28,24 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Plus,
   Tally4,
   ExternalLink,
   Settings,
   Trash2,
   Copy,
+  MoreVertical,
+  Globe,
+  CheckCircle2,
+  Circle,
+  Archive,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -149,16 +167,40 @@ export default function StatusPagesList() {
     }
   };
 
-  const getStatusBadgeColor = (status: string) => {
+  const getStatusConfig = (status: string) => {
     switch (status) {
       case "published":
-        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+        return {
+          variant: "default" as const,
+          className:
+            "bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400",
+          icon: CheckCircle2,
+          label: "Published",
+        };
       case "draft":
-        return "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200";
+        return {
+          variant: "secondary" as const,
+          className:
+            "bg-gray-100 text-gray-600 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-400",
+          icon: Circle,
+          label: "Draft",
+        };
       case "archived":
-        return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200";
+        return {
+          variant: "outline" as const,
+          className:
+            "bg-orange-100 text-orange-700 hover:bg-orange-100 dark:bg-orange-900/30 dark:text-orange-400",
+          icon: Archive,
+          label: "Archived",
+        };
       default:
-        return "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200";
+        return {
+          variant: "secondary" as const,
+          className:
+            "bg-gray-100 text-gray-600 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-400",
+          icon: Circle,
+          label: status,
+        };
     }
   };
 
@@ -260,8 +302,10 @@ export default function StatusPagesList() {
       </CardHeader>
 
       {statusPages.length === 0 ? (
-        <div className="text-center py-12 border-2 border-dashed rounded-lg">
-          <Tally4 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <div className="text-center py-16 border-2 border-dashed rounded-xl bg-muted/20">
+          <div className="flex items-center justify-center h-16 w-16 rounded-2xl bg-primary/10 mx-auto mb-4">
+            <Tally4 className="h-8 w-8 text-primary" />
+          </div>
           <h3 className="text-lg font-semibold mb-2">No status pages yet</h3>
           <p className="text-sm text-muted-foreground mb-6 max-w-sm mx-auto">
             Create your first status page to communicate service status with
@@ -270,91 +314,151 @@ export default function StatusPagesList() {
           <Button
             onClick={() => setIsCreateDialogOpen(true)}
             disabled={!canCreate}
+            size="lg"
           >
             <Plus className="mr-2 h-4 w-4" />
             Create Your First Status Page
           </Button>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mt-6">
-          {statusPages.map((page) => (
-            <div
-              key={page.id}
-              className="border rounded-lg p-4 hover:shadow-lg transition-all duration-200"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="font-semibold text-lg mb-1">{page.name}</h3>
-                  <p className="text-sm text-muted-foreground line-clamp-2">
-                    {page.pageDescription || page.headline || "No description"}
-                  </p>
-                </div>
-                <span
-                  className={`text-xs px-2 py-1 rounded-md whitespace-nowrap ml-2 ${getStatusBadgeColor(
-                    page.status
-                  )}`}
-                >
-                  {page.status}
-                </span>
-              </div>
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3 mt-6">
+          {statusPages.map((page) => {
+            const statusConfig = getStatusConfig(page.status);
+            const StatusIcon = statusConfig.icon;
 
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Tally4 className="h-4 w-4 flex-shrink-0 !text-green-600" />
-                  <code className="text-xs bg-muted px-2 py-1 rounded truncate flex-1">
-                    {page.subdomain}.{getBaseDomain()}
-                  </code>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 hover:bg-muted"
-                    onClick={() => handleCopyUrl(page.subdomain)}
-                    title="Copy URL"
-                  >
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
+            return (
+              <Card
+                key={page.id}
+                className="group hover:shadow-lg transition-all duration-200 hover:border-primary/20"
+              >
+                <div className="p-5">
+                  {/* Header with Title and Status */}
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-primary/10 flex-shrink-0">
+                        <Tally4 className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-semibold text-base truncate group-hover:text-primary transition-colors">
+                          {page.name}
+                        </h3>
+                        <p className="text-sm text-muted-foreground truncate mt-0.5">
+                          {page.headline ||
+                            page.pageDescription ||
+                            "No description"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant={statusConfig.variant}
+                        className={`${statusConfig.className} text-xs px-2 py-0.5`}
+                      >
+                        <StatusIcon className="h-3 w-3 mr-1" />
+                        {statusConfig.label}
+                      </Badge>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem asChild>
+                            <Link
+                              href={`/status-pages/${page.id}`}
+                              className="cursor-pointer"
+                            >
+                              <Settings className="h-4 w-4 mr-2" />
+                              Manage
+                            </Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem asChild>
+                            <a
+                              href={getStatusPageUrl(page.subdomain)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="cursor-pointer"
+                            >
+                              <ExternalLink className="h-4 w-4 mr-2" />
+                              View Page
+                            </a>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleCopyUrl(page.subdomain)}
+                            className="cursor-pointer"
+                          >
+                            <Copy className="h-4 w-4 mr-2" />
+                            Copy URL
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => handleDeleteClick(page)}
+                            disabled={!canDelete}
+                            className="text-red-600 focus:text-red-600 cursor-pointer"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
 
-                <div className="flex gap-2 pt-2 border-t">
-                  <Button
-                    asChild
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                  >
-                    <Link href={`/status-pages/${page.id}`}>
-                      <Settings className="h-4 w-4 mr-1" />
-                      Manage
-                    </Link>
-                  </Button>
-                  <Button
-                    asChild
-                    variant="secondary"
-                    size="sm"
-                    className="flex-1"
-                  >
-                    <a
-                      href={getStatusPageUrl(page.subdomain)}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                  {/* URL Section */}
+                  <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 mb-3">
+                    <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <code className="text-xs text-muted-foreground truncate flex-1 font-mono">
+                      {page.subdomain}.{getBaseDomain()}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 hover:bg-background"
+                      onClick={() => handleCopyUrl(page.subdomain)}
+                      title="Copy URL"
                     >
-                      <ExternalLink className="h-4 w-4 mr-1" />
-                      View
-                    </a>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDeleteClick(page)}
-                    disabled={!canDelete}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-2">
+                    <Button
+                      asChild
+                      variant="default"
+                      size="sm"
+                      className="flex-1 h-9"
+                    >
+                      <Link href={`/status-pages/${page.id}`}>
+                        <Settings className="h-4 w-4 mr-1.5" />
+                        Manage
+                      </Link>
+                    </Button>
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 h-9"
+                    >
+                      <a
+                        href={getStatusPageUrl(page.subdomain)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="h-4 w-4 mr-1.5" />
+                        View
+                      </a>
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </div>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
