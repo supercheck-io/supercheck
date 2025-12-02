@@ -79,7 +79,9 @@ app/coverage
 
 ## Next.js
 app/.next/
+app/.swc/
 app/out/
+app/coverage/
 
 ## Production Build
 app/build
