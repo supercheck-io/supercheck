@@ -21,8 +21,8 @@ import {
   Calendar,
   Users,
   LayoutDashboard,
-  FileText,
-  CreditCard,
+  DollarSign,
+  UserSearch,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AuditLogsTable } from "@/components/admin/audit-logs-table";
@@ -469,7 +469,7 @@ export default function OrgAdminDashboard() {
                 <span className="hidden sm:inline">Members</span>
               </TabsTrigger>
               <TabsTrigger value="audit" className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
+                <UserSearch className="h-4 w-4" />
                 <span className="hidden sm:inline">Audit</span>
               </TabsTrigger>
               {isCloudHosted && (
@@ -477,7 +477,7 @@ export default function OrgAdminDashboard() {
                   value="subscription"
                   className="flex items-center gap-2"
                 >
-                  <CreditCard className="h-4 w-4" />
+                  <DollarSign className="h-4 w-4" />
                   <span className="hidden sm:inline">Subscription</span>
                 </TabsTrigger>
               )}

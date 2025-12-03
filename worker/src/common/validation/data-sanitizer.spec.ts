@@ -222,7 +222,7 @@ describe('DataSanitizer', () => {
         'Content-Type': 'application/json',
         Authorization: 'Bearer secret',
         Cookie: 'session=123',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       };
       const result = sanitizeHeaders(headers);
       expect(result['Content-Type']).toBe('application/json');
@@ -234,8 +234,8 @@ describe('DataSanitizer', () => {
     it('should handle case-insensitive header matching', () => {
       // Header names may have different casing
       const headers = {
-        'AUTHORIZATION': 'Bearer token',
-        'cookie': 'session=123',
+        AUTHORIZATION: 'Bearer token',
+        cookie: 'session=123',
       };
       const result = sanitizeHeaders(headers);
       expect(result['AUTHORIZATION']).toBe('[REDACTED]');
@@ -245,7 +245,7 @@ describe('DataSanitizer', () => {
     it('should handle array values in headers', () => {
       const headers: Record<string, string | string[]> = {
         'Content-Type': 'application/json',
-        'Accept': ['application/json', 'text/plain'],
+        Accept: ['application/json', 'text/plain'],
       };
       const result = sanitizeHeaders(headers);
       expect(result['Accept']).toEqual(['application/json', 'text/plain']);
@@ -380,7 +380,7 @@ describe('DataSanitizer', () => {
 
     it('should prevent infinite recursion with max depth', () => {
       // Create deeply nested object
-      let data: Record<string, unknown> = { level: 0 };
+      const data: Record<string, unknown> = { level: 0 };
       let current = data;
       for (let i = 1; i <= 10; i++) {
         current.nested = { level: i };

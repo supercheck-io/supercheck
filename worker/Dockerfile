@@ -1,6 +1,7 @@
 # Use official Playwright image which includes all browsers and dependencies
 # This avoids the heavy "npx playwright install" step that causes OOM on runners
-FROM mcr.microsoft.com/playwright:v1.56.1-noble AS base
+# Includes Chromium, Firefox, and WebKit (Safari) browsers
+FROM mcr.microsoft.com/playwright:v1.57.0-noble AS base
 
 # Build k6 with xk6-dashboard extension
 FROM golang:1.24-alpine AS k6-builder
@@ -49,8 +50,9 @@ COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 RUN chmod +x /usr/local/bin/docker
 
 # Create app user
-# Note: Playwright image usually has a 'pwuser', but we'll stick to our 'nodejs' convention or use root if needed.
-# The official image runs as root by default. Let's create our user but ensure they have access.
+# Note: Playwright image includes 'pwuser' (UID 1000) for secure non-root execution
+# We also create 'nodejs' user for the worker service itself
+# Container execution uses 'pwuser' for security (untrusted user code)
 RUN groupadd --system --gid 1002 nodejs && \
     useradd --system --uid 1002 --gid nodejs nodejs
 
@@ -65,19 +67,24 @@ COPY --from=builder --chown=nodejs:nodejs /worker/dist ./dist
 COPY --from=builder --chown=nodejs:nodejs /worker/playwright.config.js ./
 
 # Create directories for test execution with proper permissions
-# Create video output directory for recording on test failures
-# Create k6-reports directory for k6 performance test artifacts
+# Note: Container execution runs as 'pwuser' (UID 1000) from Playwright image
+# We need /tmp directories writable by pwuser for inline script execution
+# Using chmod 777 for /tmp paths since they're ephemeral and pwuser needs write access
 RUN mkdir -p playwright-reports report \
     k6-reports \
     /home/nodejs/.npm \
     /home/nodejs/.cache \
+    /home/pwuser/.npm \
+    /home/pwuser/.cache \
     /root/.npm \
     /tmp/.npm \
     /tmp/playwright-tests \
-    /tmp/playwright-videos && \
-    chown -R nodejs:nodejs playwright-reports report k6-reports /worker /home/nodejs /root/.npm /tmp/.npm /tmp/playwright-tests /tmp/playwright-videos && \
+    /tmp/playwright-videos \
+    /tmp/playwright-reports && \
+    chown -R nodejs:nodejs playwright-reports report k6-reports /worker /home/nodejs && \
+    chown -R pwuser:pwuser /home/pwuser /tmp/playwright-tests /tmp/playwright-videos /tmp/playwright-reports && \
     chmod -R 755 playwright-reports report k6-reports && \
-    chmod -R 777 /home/nodejs/.npm /home/nodejs/.cache /root/.npm /tmp/.npm /tmp/playwright-tests /tmp/playwright-videos
+    chmod -R 777 /home/nodejs/.npm /home/nodejs/.cache /home/pwuser/.npm /home/pwuser/.cache /root/.npm /tmp/.npm /tmp/playwright-tests /tmp/playwright-videos /tmp/playwright-reports
 
 # Set node home + npm cache to ensure Playwright/k6 sandboxes can write to npm cache directory
 ENV HOME=/home/nodejs
@@ -90,7 +97,7 @@ ENV NPM_CONFIG_CACHE=/home/nodejs/.npm
 
 # Add health check with dynamic port support
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD node -e "const http = require('http'); const port = process.env.PORT || 3001; const req = http.request({hostname: 'localhost', port: port, path: '/health', timeout: 5000}, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();"
+    CMD node -e "const http = require('http'); const port = process.env.PORT || 8000; const req = http.request({hostname: 'localhost', port: port, path: '/health', timeout: 5000}, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();"
 
 # EXPOSE 8000 # disabled per user request
 

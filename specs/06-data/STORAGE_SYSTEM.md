@@ -148,13 +148,13 @@ graph TB
 
 ### Bucket Details
 
-| Bucket Name | Purpose | Path Pattern | Typical Files |
-|-------------|---------|--------------|---------------|
-| `playwright-test-artifacts` | Single test execution | `{testId}/report/*` | index.html, screenshots, traces |
-| `playwright-job-artifacts` | Multi-test job runs | `{runId}/report/*` | index.html, aggregated reports |
-| `playwright-monitor-artifacts` | Health check results | `{uniqueRunId}/report/*` | index.html, check logs (unique IDs preserve history) |
-| `supercheck-performance-artifacts` | K6 load tests | `{runId}/*` | summary.json, metrics.json, index.html, console.log |
-| `supercheck-status-artifacts` | Status page assets | `{statusPageId}/*` | logos, hero images, custom assets |
+| Bucket Name                        | Purpose               | Path Pattern             | Typical Files                                        |
+| ---------------------------------- | --------------------- | ------------------------ | ---------------------------------------------------- |
+| `playwright-test-artifacts`        | Single test execution | `{testId}/report/*`      | index.html, screenshots, traces                      |
+| `playwright-job-artifacts`         | Multi-test job runs   | `{runId}/report/*`       | index.html, aggregated reports                       |
+| `playwright-monitor-artifacts`     | Health check results  | `{uniqueRunId}/report/*` | index.html, check logs (unique IDs preserve history) |
+| `supercheck-performance-artifacts` | K6 load tests         | `{runId}/*`              | summary.json, metrics.json, index.html, console.log  |
+| `supercheck-status-artifacts`      | Status page assets    | `{statusPageId}/*`       | logos, hero images, custom assets                    |
 
 ### Artifact Types & Locations
 
@@ -229,17 +229,17 @@ graph TB
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AWS_ACCESS_KEY_ID` | `minioadmin` | MinIO access key |
-| `AWS_SECRET_ACCESS_KEY` | `minioadmin` | MinIO secret key |
-| `S3_ENDPOINT` | `http://minio:9000` | MinIO endpoint URL |
-| `S3_REGION` | `us-east-1` | S3 region (MinIO compatibility) |
-| `PLAYWRIGHT_TEST_BUCKET` | `playwright-test-artifacts` | Test artifacts bucket |
-| `PLAYWRIGHT_JOB_BUCKET` | `playwright-job-artifacts` | Job artifacts bucket |
-| `PLAYWRIGHT_MONITOR_BUCKET` | `playwright-monitor-artifacts` | Monitor artifacts bucket |
-| `K6_BUCKET` | `supercheck-performance-artifacts` | K6 performance bucket |
-| `STATUS_BUCKET` | `supercheck-status-artifacts` | Status page assets bucket |
+| Variable                    | Default                            | Description                     |
+| --------------------------- | ---------------------------------- | ------------------------------- |
+| `AWS_ACCESS_KEY_ID`         | `minioadmin`                       | MinIO access key                |
+| `AWS_SECRET_ACCESS_KEY`     | `minioadmin`                       | MinIO secret key                |
+| `S3_ENDPOINT`               | `http://minio:9000`                | MinIO endpoint URL              |
+| `S3_REGION`                 | `us-east-1`                        | S3 region (MinIO compatibility) |
+| `PLAYWRIGHT_TEST_BUCKET`    | `playwright-test-artifacts`        | Test artifacts bucket           |
+| `PLAYWRIGHT_JOB_BUCKET`     | `playwright-job-artifacts`         | Job artifacts bucket            |
+| `PLAYWRIGHT_MONITOR_BUCKET` | `playwright-monitor-artifacts`     | Monitor artifacts bucket        |
+| `K6_BUCKET`                 | `supercheck-performance-artifacts` | K6 performance bucket           |
+| `STATUS_BUCKET`             | `supercheck-status-artifacts`      | Status page assets bucket       |
 
 ### Retry Strategy
 
@@ -833,12 +833,12 @@ graph LR
 
 The storage system provides:
 
-✅ **S3-Compatible Storage** via MinIO for cost-effective artifact management
+✅ **S3-Compatible Storage** via MinIO/Cloudflare R2 for cost-effective artifact management
 ✅ **Multi-Bucket Organization** for logical separation by artifact type
 ✅ **Secure Access Control** with RBAC and proxy layer
 ✅ **Presigned URL Support** for temporary, time-limited access
 ✅ **Automated Bucket Management** with initialization and retry logic
 ✅ **Performance Optimization** with caching and connection pooling
 ✅ **Lifecycle Management** with automated cleanup and retention
-✅ **Network Isolation** - MinIO accessible only within Docker network
+✅ **Network Isolation** - Storage accessible only through authorized paths
 ✅ **Comprehensive Monitoring** with metrics and health checks

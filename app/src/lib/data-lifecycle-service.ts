@@ -274,7 +274,7 @@ export class MonitorResultsCleanupStrategy implements ICleanupStrategy {
  * - Time-based retention for both job runs and playground runs
  * - Associated S3 artifacts cleanup
  * - Report table cleanup
- * 
+ *
  * Note: This strategy handles ALL runs in the database:
  * - Job runs (where jobId is not null)
  * - Playground runs (where jobId is null and metadata.source = 'playground')
@@ -302,41 +302,40 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
     );
 
     // Get stats for all runs (job + playground)
-    const [total, old, jobRuns, playgroundRuns, oldJobRuns, oldPlaygroundRuns] = await Promise.all([
-      // Total runs count
-      db.select({ count: sql<number>`count(*)` }).from(runs),
-      // Old runs count (all types)
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(runs)
-        .where(lt(runs.createdAt, cutoffDate)),
-      // Current job runs (jobId not null)
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(runs)
-        .where(sql`${runs.jobId} IS NOT NULL`),
-      // Current playground runs (jobId is null)
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(runs)
-        .where(sql`${runs.jobId} IS NULL`),
-      // Old job runs
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(runs)
-        .where(and(
-          lt(runs.createdAt, cutoffDate),
-          sql`${runs.jobId} IS NOT NULL`
-        )),
-      // Old playground runs
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(runs)
-        .where(and(
-          lt(runs.createdAt, cutoffDate),
-          sql`${runs.jobId} IS NULL`
-        )),
-    ]);
+    const [total, old, jobRuns, playgroundRuns, oldJobRuns, oldPlaygroundRuns] =
+      await Promise.all([
+        // Total runs count
+        db.select({ count: sql<number>`count(*)` }).from(runs),
+        // Old runs count (all types)
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(runs)
+          .where(lt(runs.createdAt, cutoffDate)),
+        // Current job runs (jobId not null)
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(runs)
+          .where(sql`${runs.jobId} IS NOT NULL`),
+        // Current playground runs (jobId is null)
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(runs)
+          .where(sql`${runs.jobId} IS NULL`),
+        // Old job runs
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(runs)
+          .where(
+            and(lt(runs.createdAt, cutoffDate), sql`${runs.jobId} IS NOT NULL`)
+          ),
+        // Old playground runs
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(runs)
+          .where(
+            and(lt(runs.createdAt, cutoffDate), sql`${runs.jobId} IS NULL`)
+          ),
+      ]);
 
     const totalCount = Number(total[0]?.count || 0);
     const oldCount = Number(old[0]?.count || 0);
@@ -348,8 +347,8 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
     // Log breakdown for visibility
     console.log(
       `[DATA_LIFECYCLE] [${this.entityType}] Stats: ` +
-      `Total=${totalCount} (Jobs=${jobRunsCount}, Playground=${playgroundRunsCount}), ` +
-      `Old=${oldCount} (Jobs=${oldJobRunsCount}, Playground=${oldPlaygroundRunsCount})`
+        `Total=${totalCount} (Jobs=${jobRunsCount}, Playground=${playgroundRunsCount}), ` +
+        `Old=${oldCount} (Jobs=${oldJobRunsCount}, Playground=${oldPlaygroundRunsCount})`
     );
 
     return {
@@ -398,7 +397,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
 
       console.log(
         `[DATA_LIFECYCLE] [${this.entityType}] Processing ${oldRuns.length} old runs: ` +
-        `${jobRuns.length} job runs, ${playgroundRuns.length} playground runs`
+          `${jobRuns.length} job runs, ${playgroundRuns.length} playground runs`
       );
 
       if (!dryRun) {
@@ -465,11 +464,11 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
           `[DATA_LIFECYCLE] ${this.entityType}: ${
             dryRun ? "Would delete" : "Deleted"
           } ${result.recordsDeleted} runs ` +
-          `(${jobRuns.length} jobs, ${playgroundRuns.length} playground)${
-            result.s3ObjectsDeleted
-              ? ` and ${result.s3ObjectsDeleted} S3 objects`
-              : ""
-          }`
+            `(${jobRuns.length} jobs, ${playgroundRuns.length} playground)${
+              result.s3ObjectsDeleted
+                ? ` and ${result.s3ObjectsDeleted} S3 objects`
+                : ""
+            }`
         );
       }
     } catch (error) {
@@ -523,7 +522,9 @@ export class PlaygroundArtifactsCleanupStrategy implements ICleanupStrategy {
     );
 
     try {
-      const { S3Client, HeadBucketCommand } = await import("@aws-sdk/client-s3");
+      const { S3Client, HeadBucketCommand } = await import(
+        "@aws-sdk/client-s3"
+      );
 
       const s3Client = new S3Client({
         region: process.env.AWS_REGION || "us-east-1",
@@ -538,8 +539,15 @@ export class PlaygroundArtifactsCleanupStrategy implements ICleanupStrategy {
       await s3Client.send(new HeadBucketCommand({ Bucket: bucketName }));
       return true;
     } catch (error: unknown) {
-      const err = error as { $metadata?: { httpStatusCode?: number }; Code?: string; message?: string };
-      if (err?.$metadata?.httpStatusCode === 404 || err?.Code === 'NoSuchBucket') {
+      const err = error as {
+        $metadata?: { httpStatusCode?: number };
+        Code?: string;
+        message?: string;
+      };
+      if (
+        err?.$metadata?.httpStatusCode === 404 ||
+        err?.Code === "NoSuchBucket"
+      ) {
         // Bucket doesn't exist - this is expected if S3 isn't set up yet
         return false;
       }
@@ -608,9 +616,15 @@ export class PlaygroundArtifactsCleanupStrategy implements ICleanupStrategy {
 
       return { totalRecords: totalObjects, oldRecords: oldObjects };
     } catch (error: unknown) {
-      const err = error as { $metadata?: { httpStatusCode?: number }; Code?: string };
+      const err = error as {
+        $metadata?: { httpStatusCode?: number };
+        Code?: string;
+      };
       // Handle NoSuchBucket error gracefully - this is expected if S3 isn't set up yet
-      if (err?.$metadata?.httpStatusCode === 404 || err?.Code === 'NoSuchBucket') {
+      if (
+        err?.$metadata?.httpStatusCode === 404 ||
+        err?.Code === "NoSuchBucket"
+      ) {
         console.warn(
           `[DATA_LIFECYCLE] [playground_artifacts] S3 bucket '${bucketName}' does not exist. Skipping stats collection.`
         );
@@ -654,7 +668,7 @@ export class PlaygroundArtifactsCleanupStrategy implements ICleanupStrategy {
       result.details = {
         ...result.details,
         skipped: true,
-        reason: 'S3 bucket not available',
+        reason: "S3 bucket not available",
       };
       return result;
     }
@@ -740,12 +754,18 @@ export class PlaygroundArtifactsCleanupStrategy implements ICleanupStrategy {
         );
       }
     } catch (error: unknown) {
-      const err = error as { $metadata?: { httpStatusCode?: number }; Code?: string };
+      const err = error as {
+        $metadata?: { httpStatusCode?: number };
+        Code?: string;
+      };
       result.success = false;
       result.duration = Date.now() - startTime;
 
       // Handle NoSuchBucket error gracefully - this is expected if S3 isn't set up yet
-      if (err?.$metadata?.httpStatusCode === 404 || err?.Code === 'NoSuchBucket') {
+      if (
+        err?.$metadata?.httpStatusCode === 404 ||
+        err?.Code === "NoSuchBucket"
+      ) {
         console.warn(
           `[DATA_LIFECYCLE] [${this.entityType}] S3 bucket '${bucketName}' does not exist. Skipping cleanup.`
         );
@@ -1069,7 +1089,10 @@ export class DataLifecycleService {
  * @param defaultValue - The default if env var is not set
  * @returns - boolean result
  */
-function parseBooleanEnv(envVar: string | undefined, defaultValue: boolean): boolean {
+function parseBooleanEnv(
+  envVar: string | undefined,
+  defaultValue: boolean
+): boolean {
   if (envVar === undefined) {
     return defaultValue;
   }
@@ -1093,7 +1116,10 @@ function parseBooleanEnv(envVar: string | undefined, defaultValue: boolean): boo
  * Parse and strip quotes from cron schedule string
  * Handles environment variables that may be quoted
  */
-function parseCronSchedule(cronEnv: string | undefined, defaultCron: string): string {
+function parseCronSchedule(
+  cronEnv: string | undefined,
+  defaultCron: string
+): string {
   const value = (cronEnv || defaultCron).trim();
   return value.replace(/^["']|["']$/g, "");
 }
@@ -1126,10 +1152,10 @@ export function createDataLifecycleService(): DataLifecycleService {
     },
 
     // Job Runs Cleanup
-    // Disabled by default - only enable when needed for storage management
+    // Enabled by default for storage management with 90-day retention
     {
       entityType: "job_runs",
-      enabled: parseBooleanEnv(process.env.JOB_RUNS_CLEANUP_ENABLED, false),
+      enabled: parseBooleanEnv(process.env.JOB_RUNS_CLEANUP_ENABLED, true),
       cronSchedule: parseCronSchedule(
         process.env.JOB_RUNS_CLEANUP_CRON,
         "0 3 * * *"
@@ -1146,10 +1172,7 @@ export function createDataLifecycleService(): DataLifecycleService {
     // Disabled by default - playground artifacts are temporary by nature
     {
       entityType: "playground_artifacts",
-      enabled: parseBooleanEnv(
-        process.env.PLAYGROUND_CLEANUP_ENABLED,
-        false
-      ),
+      enabled: parseBooleanEnv(process.env.PLAYGROUND_CLEANUP_ENABLED, false),
       cronSchedule: parseCronSchedule(
         process.env.PLAYGROUND_CLEANUP_CRON,
         "0 */12 * * *"

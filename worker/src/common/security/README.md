@@ -55,14 +55,14 @@ The module implements multiple security layers:
 
 ```typescript
 interface ContainerExecutionOptions {
-  timeoutMs?: number;        // Execution timeout (default: 300000ms)
-  memoryLimitMb?: number;    // Memory limit (default: 512MB)
-  cpuLimit?: number;         // CPU fraction (default: 0.5 = 50%)
+  timeoutMs?: number; // Execution timeout (default: 300000ms)
+  memoryLimitMb?: number; // Memory limit (default: 512MB)
+  cpuLimit?: number; // CPU fraction (default: 0.5 = 50%)
   env?: Record<string, string>; // Environment variables
-  workingDir?: string;       // Working directory (default: /worker)
-  image?: string;            // Docker image override
+  workingDir?: string; // Working directory (default: /worker)
+  image?: string; // Docker image override
   networkMode?: 'none' | 'bridge' | 'host'; // Network mode (default: none)
-  autoRemove?: boolean;      // Auto-remove container (default: true)
+  autoRemove?: boolean; // Auto-remove container (default: true)
 }
 ```
 
@@ -142,28 +142,85 @@ User Script Submission
 
 ## Security Guarantees
 
+### Playwright Docker Best Practices
+
+Following [Playwright Docker recommendations](https://playwright.dev/docs/docker) for all browsers (Chromium, Firefox, WebKit/Safari):
+
+| Flag                               | Purpose                                | Browsers                                   | Implementation                  |
+| ---------------------------------- | -------------------------------------- | ------------------------------------------ | ------------------------------- |
+| `--user pwuser`                    | Non-root execution for untrusted code  | All                                        | ✅ Required - security critical |
+| `--security-opt seccomp=...`       | Enable Chromium sandbox as non-root    | Chromium                                   | ✅ Custom seccomp profile       |
+| `--init`                           | Avoid zombie processes (PID 1 issues)  | All                                        | ✅ Added to container executor  |
+| `--ipc=host`                       | Chromium IPC - prevents memory crashes | Chromium (required), Firefox/WebKit (safe) | ✅ Added to container executor  |
+| `--shm-size=512m`                  | Shared memory for browser processes    | All (especially Chromium)                  | ✅ Already configured           |
+| `--security-opt=no-new-privileges` | Prevent privilege escalation           | All                                        | ✅ Already configured           |
+
+**CRITICAL: Non-Root Execution**
+
+Since Supercheck executes **user-provided code** (untrusted), we MUST run containers as non-root:
+
+```bash
+# How containers are run (simplified)
+docker run \
+  --user pwuser \
+  --security-opt seccomp=seccomp_profile.json \
+  --init \
+  --ipc=host \
+  --security-opt=no-new-privileges \
+  --cap-drop=ALL \
+  mcr.microsoft.com/playwright:v1.57.0-noble
+```
+
+- **`--user pwuser`**: Runs as non-root user (UID 1000) in Playwright image
+- **`seccomp_profile.json`**: Enables Chromium sandbox by allowing user namespace syscalls (clone, setns, unshare)
+- This enables the Chromium sandbox which provides additional isolation from the host system
+
+**Browser Support:**
+
+- **Chromium** (Chrome/Edge): Default browser, requires `--ipc=host` and seccomp profile for sandbox
+- **Firefox**: Uses `@firefox` tag, works with same settings
+- **WebKit** (Safari): Uses `@webkit` or `@safari` tag, works with same settings
+
+### Seccomp Profile
+
+The `seccomp_profile.json` file is based on Docker's default seccomp profile with additional permissions for Chromium's sandbox:
+
+```json
+{
+  "comment": "Allow create user namespaces - required for Chromium sandbox",
+  "names": ["clone", "clone3", "setns", "unshare"],
+  "action": "SCMP_ACT_ALLOW"
+}
+```
+
+This allows Chromium to create user namespaces for sandboxing while maintaining security restrictions.
+
 ### What's Protected
 
+✅ **Non-Root Execution** - Runs as pwuser (UID 1000), not root
+✅ **Chromium Sandbox** - Enabled via seccomp profile for additional isolation
 ✅ **Path Traversal** - All paths validated, no `../` or `~` allowed
 ✅ **Command Injection** - No shell interpolation, argument arrays only
 ✅ **Resource DoS** - CPU, memory, and process limits enforced
-✅ **Privilege Escalation** - Runs as non-root, no new privileges
-✅ **File System Access** - Read-only root, limited write access
+✅ **Privilege Escalation** - Non-root user, no new privileges, capabilities dropped
+✅ **File System Access** - Limited write access, isolated workspace
 ✅ **Network Access** - Configurable network isolation
 ✅ **Code Execution** - Sandboxed environment, auto-cleanup
 
 ### Attack Surface Reduction
 
-| Attack Vector | Mitigation |
-|--------------|------------|
-| Malicious script paths | Path validation + sanitization |
-| Shell command injection | Argument arrays, no shell |
-| Infinite loops | Timeout enforcement |
-| Memory bombs | Memory limits (512MB default) |
-| Fork bombs | Process limits (100 max) |
-| File system attacks | Read-only root, isolated workspace |
-| Network attacks | Network isolation options |
-| Privilege escalation | Non-root user, no privileges |
+| Attack Vector           | Mitigation                                       |
+| ----------------------- | ------------------------------------------------ |
+| Root privilege abuse    | Non-root user (pwuser), all capabilities dropped |
+| Browser sandbox escape  | Chromium sandbox enabled via seccomp profile     |
+| Malicious script paths  | Path validation + sanitization                   |
+| Shell command injection | Argument arrays, no shell interpolation          |
+| Infinite loops          | Timeout enforcement                              |
+| Memory bombs            | Memory limits (512MB default, no swap)           |
+| Fork bombs              | Process limits (256 max)                         |
+| File system attacks     | Isolated workspace, limited write paths          |
+| Network attacks         | Network isolation options (default: none)        |
+| Privilege escalation    | --security-opt=no-new-privileges                 |
 
 ## Monitoring & Debugging
 
@@ -189,6 +246,7 @@ LOG_LEVEL=debug
 ```
 
 Debug logs include:
+
 - Container execution attempts
 - Fallback decisions
 - Path validation results
@@ -225,12 +283,14 @@ docker rm -f $(docker ps -a --filter "name=supercheck-exec-*" -q)
 ### Container execution is not working
 
 **Check Docker availability:**
+
 ```bash
 docker --version
 docker ps
 ```
 
 **Check permissions:**
+
 ```bash
 # User needs to be in docker group
 groups | grep docker
@@ -243,6 +303,7 @@ sudo usermod -aG docker $USER
 ### Container Execution is Mandatory
 
 Container execution is now mandatory for all tests. Execution will fail with a clear error message if:
+
 - Docker is not installed or not running
 - Docker permissions are insufficient
 - Required Docker image is not available

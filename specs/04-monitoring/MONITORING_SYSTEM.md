@@ -1463,9 +1463,9 @@ graph TB
 #### **Fault Tolerance**
 
 - Multiple retry attempts with exponential backoff
-- Circuit breaker pattern for failing services
 - Graceful degradation under high load
 - Automatic recovery mechanisms
+- Queue alerting for proactive issue detection
 
 #### **Data Integrity**
 
@@ -1516,3 +1516,109 @@ When monitors are executed across multiple regions (e.g., US East, EU Central, A
 ### Location Normalization
 
 To ensure consistency across the system, all location codes are normalized to a standard format (kebab-case, e.g., `us-east`, `eu-central`). Legacy uppercase codes (e.g., `US`) are automatically converted during processing to prevent status discrepancies.
+
+---
+
+## Future Enhancements (Planned)
+
+### Distributed Tracing with OpenTelemetry
+
+**Status:** ⏳ Planned
+
+Implement end-to-end distributed tracing using OpenTelemetry for comprehensive request visibility across services.
+
+```mermaid
+graph TB
+    subgraph "Application Instrumentation"
+        APP[Next.js App<br/>Auto-instrumentation]
+        WORKER[Worker Service<br/>Manual spans]
+        DB[Database<br/>Query tracing]
+        REDIS[Redis<br/>Command tracing]
+    end
+
+    APP & WORKER & DB & REDIS --> OTEL[OpenTelemetry Collector]
+
+    OTEL --> JAEGER[Jaeger<br/>Trace Visualization]
+    OTEL --> TEMPO[Grafana Tempo<br/>Long-term Storage]
+
+    classDef app fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef collector fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef backend fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+
+    class APP,WORKER,DB,REDIS app
+    class OTEL collector
+    class JAEGER,TEMPO backend
+```
+
+**Benefits:**
+
+- End-to-end request tracing across services
+- Performance bottleneck identification
+- Dependency mapping and service topology
+- Error root cause analysis with full context
+
+**Implementation Approach:**
+
+1. Add `@opentelemetry/auto-instrumentations-node` for automatic instrumentation
+2. Configure OpenTelemetry Collector for trace aggregation
+3. Integrate with Jaeger or Grafana Tempo for visualization
+4. Add custom spans for critical business operations
+
+### Structured Logging with Log Aggregation
+
+**Status:** ⏳ Planned
+
+Implement structured JSON logging with centralized log aggregation for improved debugging and analysis.
+
+```mermaid
+graph TB
+    APPS[All Services] --> LOG[Structured Logs<br/>JSON Format]
+    LOG --> LOKI[Grafana Loki<br/>Log Aggregation]
+    LOKI --> GRAFANA[Grafana<br/>Log Viewer]
+
+    LOKI --> ALERT[Alert Rules]
+    ALERT --> NOTIFY[Notifications]
+
+    classDef source fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef storage fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
+    classDef alert fill:#ffebee,stroke:#d32f2f,stroke-width:2px
+
+    class APPS,LOG source
+    class LOKI,GRAFANA storage
+    class ALERT,NOTIFY alert
+```
+
+**Recommended Log Structure:**
+
+```json
+{
+  "timestamp": "2025-12-03T15:30:00.000Z",
+  "level": "INFO",
+  "service": "worker",
+  "traceId": "abc123",
+  "spanId": "def456",
+  "userId": "user-uuid",
+  "organizationId": "org-uuid",
+  "message": "Monitor check completed",
+  "metadata": {
+    "monitorId": "monitor-uuid",
+    "duration": 150,
+    "status": "up"
+  }
+}
+```
+
+**Benefits:**
+
+- Centralized log search and filtering
+- Correlation with distributed traces via traceId
+- Automated alerting based on log patterns
+- Improved debugging with structured metadata
+
+---
+
+## Related Documentation
+
+- **[Queue Alerting System](../08-operations/RESILIENCE_PATTERNS.md#3-queue-alerting-system)** - BullMQ queue health monitoring and alerts
+- **[Alert History System](./ALERT_HISTORY_SYSTEM.md)** - Alert history and notification tracking
+- **[Notifications System](./NOTIFICATIONS_SYSTEM.md)** - Multi-channel notification delivery

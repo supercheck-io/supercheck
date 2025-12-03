@@ -6,6 +6,30 @@
 # - WORKER_REGION determines which queues to process
 # - Auto-scaling via KEDA based on queue depth
 # - Node affinity: workload=worker AND region={us-east|eu-central|asia-pacific}
+#
+# Docker Execution Strategy:
+# For K3s clusters, we recommend using Docker as the container runtime on worker nodes.
+# This provides the same Docker socket approach as Docker Compose, avoiding DinD overhead.
+#
+# Setup options (choose ONE):
+#
+# Option A: K3s with Docker Runtime (RECOMMENDED for self-hosted)
+#   - Install K3s with: curl -sfL https://get.k3s.io | sh -s - --docker
+#   - Workers mount /var/run/docker.sock (same as Docker Compose)
+#   - Best performance, shared image cache, no privileged containers
+#
+# Option B: Host Docker Socket Mount (for K3s with containerd + Docker installed)
+#   - Install Docker separately on worker nodes
+#   - Mount host Docker socket to worker pods
+#   - Requires Docker installed on nodes alongside K3s
+#
+# Option C: Docker-in-Docker Sidecar (for managed K8s without Docker access)
+#   - Use DinD sidecar container (see worker-deployment-dind.yaml)
+#   - Works on any K8s cluster but requires privileged containers
+#   - Images re-pulled on pod restart (no persistent cache)
+#
+# This file implements Option A/B (host socket) which works with both K3s --docker
+# and K3s with containerd + Docker installed separately.
 
 ---
 apiVersion: apps/v1
@@ -71,6 +95,7 @@ spec:
       terminationGracePeriodSeconds: 120
 
       containers:
+        # Main worker container
         - name: worker
           image: ghcr.io/supercheck-io/supercheck/worker:latest
           imagePullPolicy: IfNotPresent
@@ -88,6 +113,7 @@ spec:
               value: "production"
             - name: PORT
               value: "8000"
+            # Use host Docker socket (same as Docker Compose)
             - name: DOCKER_HOST
               value: "unix:///var/run/docker.sock"
             # Queues handled: k6-us-east, monitor-us-east, playwright-global, k6-global
@@ -103,7 +129,7 @@ spec:
               memory: "1Gi"
             limits:
               cpu: "2000m"
-              memory: "4Gi"
+              memory: "3Gi"
 
           livenessProbe:
             httpGet:
@@ -138,14 +164,31 @@ spec:
                 - ALL
 
           volumeMounts:
-            - name: docker-sock
+            # Mount host Docker socket for container execution
+            - name: docker-socket
               mountPath: /var/run/docker.sock
+              readOnly: true
+            # Reports directories
+            - name: playwright-reports
+              mountPath: /worker/playwright-reports
+            - name: k6-reports
+              mountPath: /worker/k6-reports
+            - name: reports
+              mountPath: /worker/report
 
       volumes:
-        - name: docker-sock
+        # Host Docker socket - works with K3s --docker or Docker installed separately
+        - name: docker-socket
           hostPath:
             path: /var/run/docker.sock
             type: Socket
+        # Report directories (emptyDir for pod-local storage)
+        - name: playwright-reports
+          emptyDir: {}
+        - name: k6-reports
+          emptyDir: {}
+        - name: reports
+          emptyDir: {}
 
 ---
 apiVersion: apps/v1
@@ -211,6 +254,7 @@ spec:
       terminationGracePeriodSeconds: 120
 
       containers:
+        # Main worker container
         - name: worker
           image: ghcr.io/supercheck-io/supercheck/worker:latest
           imagePullPolicy: IfNotPresent
@@ -228,6 +272,7 @@ spec:
               value: "production"
             - name: PORT
               value: "8000"
+            # Use host Docker socket (same as Docker Compose)
             - name: DOCKER_HOST
               value: "unix:///var/run/docker.sock"
             # Queues handled: k6-eu-central, monitor-eu-central, playwright-global, k6-global
@@ -243,7 +288,7 @@ spec:
               memory: "1Gi"
             limits:
               cpu: "2000m"
-              memory: "4Gi"
+              memory: "3Gi"
 
           livenessProbe:
             httpGet:
@@ -278,14 +323,31 @@ spec:
                 - ALL
 
           volumeMounts:
-            - name: docker-sock
+            # Mount host Docker socket for container execution
+            - name: docker-socket
               mountPath: /var/run/docker.sock
+              readOnly: true
+            # Reports directories
+            - name: playwright-reports
+              mountPath: /worker/playwright-reports
+            - name: k6-reports
+              mountPath: /worker/k6-reports
+            - name: reports
+              mountPath: /worker/report
 
       volumes:
-        - name: docker-sock
+        # Host Docker socket - works with K3s --docker or Docker installed separately
+        - name: docker-socket
           hostPath:
             path: /var/run/docker.sock
             type: Socket
+        # Report directories (emptyDir for pod-local storage)
+        - name: playwright-reports
+          emptyDir: {}
+        - name: k6-reports
+          emptyDir: {}
+        - name: reports
+          emptyDir: {}
 
 ---
 apiVersion: apps/v1
@@ -351,6 +413,7 @@ spec:
       terminationGracePeriodSeconds: 120
 
       containers:
+        # Main worker container
         - name: worker
           image: ghcr.io/supercheck-io/supercheck/worker:latest
           imagePullPolicy: IfNotPresent
@@ -368,6 +431,7 @@ spec:
               value: "production"
             - name: PORT
               value: "8000"
+            # Use host Docker socket (same as Docker Compose)
             - name: DOCKER_HOST
               value: "unix:///var/run/docker.sock"
             # Queues handled: k6-asia-pacific, monitor-asia-pacific, playwright-global, k6-global
@@ -383,7 +447,7 @@ spec:
               memory: "1Gi"
             limits:
               cpu: "2000m"
-              memory: "4Gi"
+              memory: "3Gi"
 
           livenessProbe:
             httpGet:
@@ -418,11 +482,28 @@ spec:
                 - ALL
 
           volumeMounts:
-            - name: docker-sock
+            # Mount host Docker socket for container execution
+            - name: docker-socket
               mountPath: /var/run/docker.sock
+              readOnly: true
+            # Reports directories
+            - name: playwright-reports
+              mountPath: /worker/playwright-reports
+            - name: k6-reports
+              mountPath: /worker/k6-reports
+            - name: reports
+              mountPath: /worker/report
 
       volumes:
-        - name: docker-sock
+        # Host Docker socket - works with K3s --docker or Docker installed separately
+        - name: docker-socket
           hostPath:
             path: /var/run/docker.sock
             type: Socket
+        # Report directories (emptyDir for pod-local storage)
+        - name: playwright-reports
+          emptyDir: {}
+        - name: k6-reports
+          emptyDir: {}
+        - name: reports
+          emptyDir: {}

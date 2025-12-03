@@ -25,9 +25,7 @@ export class QueueStatusService implements OnModuleDestroy {
   private queueEvents?: QueueEvents;
   private queueEventsConnection: RedisLike | null = null;
 
-  constructor(
-    @InjectQueue(PLAYWRIGHT_QUEUE) private readonly queue: Queue,
-  ) {
+  constructor(@InjectQueue(PLAYWRIGHT_QUEUE) private readonly queue: Queue) {
     void this.initializeQueueListeners();
   }
 

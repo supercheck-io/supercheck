@@ -73,7 +73,9 @@ describe('PathValidator', () => {
 
       it('should reject paths exceeding custom max length', () => {
         // Custom max length should be enforced
-        const result = validatePath('/very/long/path/file.txt', { maxLength: 10 });
+        const result = validatePath('/very/long/path/file.txt', {
+          maxLength: 10,
+        });
         expect(result.valid).toBe(false);
         expect(result.error).toContain('exceeds maximum length of 10');
       });
@@ -181,7 +183,10 @@ describe('PathValidator', () => {
       });
 
       it('should reject absolute paths when allowAbsolute is false', () => {
-        const options: PathValidationOptions = { allowAbsolute: false, allowRelative: true };
+        const options: PathValidationOptions = {
+          allowAbsolute: false,
+          allowRelative: true,
+        };
         const result = validatePath('/absolute/path', options);
         expect(result.valid).toBe(false);
         expect(result.error).toBe('Absolute paths are not allowed');
@@ -323,7 +328,11 @@ describe('PathValidator', () => {
     });
 
     it('should return invalid with errors for invalid paths', () => {
-      const paths = ['/valid/path.txt', '/path/../../../etc/passwd', '/another/valid.txt'];
+      const paths = [
+        '/valid/path.txt',
+        '/path/../../../etc/passwd',
+        '/another/valid.txt',
+      ];
       const result = validatePaths(paths);
       expect(result.valid).toBe(false);
       expect(result.errors.length).toBeGreaterThan(0);

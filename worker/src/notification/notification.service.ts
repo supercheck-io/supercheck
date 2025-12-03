@@ -6,6 +6,11 @@ import {
   PlainNotificationProviderConfig,
 } from '../db/schema';
 import { EmailTemplateService } from '../email-template/email-template.service';
+import {
+  fetchWithRetry,
+  createRetryConfig,
+  RetryOptions,
+} from '../common/utils/retry.util';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -304,7 +309,9 @@ export class NotificationService {
 
     // Response Time
     if (payload.metadata?.responseTime !== undefined) {
-      const responseTimeSeconds = (payload.metadata.responseTime / 1000).toFixed(2);
+      const responseTimeSeconds = (
+        payload.metadata.responseTime / 1000
+      ).toFixed(2);
       fields.push({
         title: 'Response Time',
         value: `${responseTimeSeconds}s`,
@@ -659,59 +666,48 @@ export class NotificationService {
         `Sending Slack notification to: ${(webhookUrl as string).substring(0, 50)}...`,
       );
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const retryConfig = createRetryConfig();
 
-      const response = await fetch(webhookUrl as string, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Supercheck-Monitor/1.0',
+      const result = await fetchWithRetry(
+        webhookUrl as string,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Supercheck-Monitor/1.0',
+          },
+          body: JSON.stringify({
+            text: formatted.title,
+            attachments: [
+              {
+                color: formatted.color,
+                text: formatted.message,
+                fields: formatted.fields,
+                footer: formatted.footer,
+                ts: formatted.timestamp,
+              },
+            ],
+          }),
         },
-        body: JSON.stringify({
-          text: formatted.title,
-          attachments: [
-            {
-              color: formatted.color,
-              text: formatted.message,
-              fields: formatted.fields,
-              footer: formatted.footer,
-              ts: formatted.timestamp,
-            },
-          ],
-        }),
-        signal: controller.signal,
-      });
+        retryConfig,
+        this.logger,
+      );
 
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const responseText = await response
-          .text()
-          .catch(() => 'Unable to read response');
-        throw new Error(
-          `Slack API returned ${response.status}: ${response.statusText}. Response: ${responseText}`,
+      if (result.success) {
+        this.logger.debug(
+          `Slack notification sent successfully after ${result.attempts} attempt(s)`,
         );
+        return true;
       }
 
-      this.logger.debug(`Slack notification sent successfully`);
-      return true;
+      this.logger.error(
+        `Failed to send Slack notification after ${result.attempts} attempts: ${result.error}`,
+      );
+      return false;
     } catch (error) {
-      if (error.name === 'AbortError') {
-        this.logger.error(`Slack notification timed out after 10 seconds`);
-      } else if (error.cause?.code === 'ECONNREFUSED') {
-        this.logger.error(
-          `Failed to connect to Slack webhook URL - connection refused`,
-        );
-      } else if (error.cause?.code === 'ENOTFOUND') {
-        this.logger.error(
-          `Failed to resolve Slack webhook URL - DNS lookup failed`,
-        );
-      } else {
-        this.logger.error(
-          `Failed to send Slack notification: ${getErrorMessage(error)}`,
-        );
-      }
+      this.logger.error(
+        `Failed to send Slack notification: ${getErrorMessage(error)}`,
+      );
       return false;
     }
   }
@@ -785,19 +781,37 @@ export class NotificationService {
       const telegramMessage = this.formatTelegramMessage(formatted);
       const telegramUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
 
-      const response = await fetch(telegramUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: telegramMessage,
-          parse_mode: 'Markdown',
-        }),
-      });
+      const retryConfig = createRetryConfig();
 
-      return response.ok;
+      const result = await fetchWithRetry(
+        telegramUrl,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Supercheck-Monitor/1.0',
+          },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: telegramMessage,
+            parse_mode: 'Markdown',
+          }),
+        },
+        retryConfig,
+        this.logger,
+      );
+
+      if (result.success) {
+        this.logger.debug(
+          `Telegram notification sent successfully after ${result.attempts} attempt(s)`,
+        );
+        return true;
+      }
+
+      this.logger.error(
+        `Failed to send Telegram notification after ${result.attempts} attempts: ${result.error}`,
+      );
+      return false;
     } catch (error) {
       this.logger.error(
         `Failed to send Telegram notification: ${getErrorMessage(error)}`,
@@ -818,61 +832,58 @@ export class NotificationService {
         throw new Error('Discord webhook URL is required');
       }
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const retryConfig = createRetryConfig();
 
-      const response = await fetch(webhookUrl as string, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Supercheck-Monitor/1.0',
-        },
-        body: JSON.stringify({
-          content: formatted.title,
-          embeds: [
-            {
-              title: formatted.title,
-              description: formatted.message,
-              color: parseInt(formatted.color.replace('#', ''), 16),
-              fields: formatted.fields.map((field) => ({
-                name: field.title,
-                value: field.value,
-                inline: field.short || false,
-              })),
-              footer: {
-                text: formatted.footer,
+      const result = await fetchWithRetry(
+        webhookUrl as string,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Supercheck-Monitor/1.0',
+          },
+          body: JSON.stringify({
+            content: formatted.title,
+            embeds: [
+              {
+                title: formatted.title,
+                description: formatted.message,
+                color: parseInt(formatted.color.replace('#', ''), 16),
+                fields: formatted.fields.map((field) => ({
+                  name: field.title,
+                  value: field.value,
+                  inline: field.short || false,
+                })),
+                footer: {
+                  text: formatted.footer,
+                },
+                timestamp: new Date(formatted.timestamp * 1000).toISOString(),
               },
-              timestamp: new Date(formatted.timestamp * 1000).toISOString(),
-            },
-          ],
-        }),
-        signal: controller.signal,
-      });
+            ],
+          }),
+        },
+        retryConfig,
+        this.logger,
+      );
 
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const responseText = await response
-          .text()
-          .catch(() => 'Unable to read response');
-        throw new Error(
-          `Discord API returned ${response.status}: ${response.statusText}. Response: ${responseText}`,
+      if (result.success) {
+        this.logger.debug(
+          `Discord notification sent successfully after ${result.attempts} attempt(s)`,
         );
+        return true;
       }
 
-      return true;
+      this.logger.error(
+        `Failed to send Discord notification after ${result.attempts} attempts: ${result.error}`,
+      );
+      return false;
     } catch (error) {
-      if (error.name === 'AbortError') {
-        this.logger.error(`Discord notification timed out after 10 seconds`);
-      } else {
-        this.logger.error(
-          `Failed to send Discord notification: ${getErrorMessage(error)}`,
-        );
-      }
+      this.logger.error(
+        `Failed to send Discord notification: ${getErrorMessage(error)}`,
+      );
       return false;
     }
   }
-
 
   private formatTelegramMessage(formatted: FormattedNotification): string {
     const fieldsText = formatted.fields

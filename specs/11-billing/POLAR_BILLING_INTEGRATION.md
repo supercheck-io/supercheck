@@ -1,6 +1,7 @@
 # Polar Billing Integration - Complete Guide
 
 ## Table of Contents
+
 1. [Overview](#overview)
 2. [Quick Start](#quick-start)
 3. [Setup Guide](#setup-guide)
@@ -20,9 +21,11 @@
 ## Overview
 
 ### Purpose
+
 Integrate Polar.sh payment platform to provide subscription-based billing for cloud-hosted Supercheck installations while maintaining a free, unlimited self-hosted option.
 
 ### Goals
+
 - ✅ Implement usage-based billing for Playwright minutes and K6 VU minutes
 - ✅ Enforce plan limits for monitors, status pages, projects, and team members
 - ✅ Provide seamless upgrade/downgrade flows
@@ -32,6 +35,7 @@ Integrate Polar.sh payment platform to provide subscription-based billing for cl
 - ✅ **Paid-only cloud model**: Cloud users must subscribe to Plus or Pro
 
 ### Non-Goals
+
 - Custom enterprise pricing tiers (handled manually)
 - Multi-currency support (Polar handles this)
 - Annual billing (monthly only for now)
@@ -44,6 +48,7 @@ Integrate Polar.sh payment platform to provide subscription-based billing for cl
 **For immediate setup, jump to the [Setup Guide](#setup-guide) section.**
 
 **Key requirements:**
+
 - Polar account with Plus/Pro products created
 - Environment variables configured
 - Database migration run
@@ -89,6 +94,7 @@ npm run db:migrate
 ```
 
 This will:
+
 - Add subscription fields to `organization` table
 - Create `plan_limits` table with Plus/Pro/Unlimited configurations
 - Seed plan limits with default values
@@ -107,6 +113,7 @@ This will:
 Create two products in Polar Dashboard with overage pricing:
 
 **Plus Product**:
+
 - Name: "Plus"
 - Price: $49/month
 - Description: "Advanced monitoring with 3,000 Playwright minutes, 20,000 K6 VU minutes"
@@ -114,7 +121,8 @@ Create two products in Polar Dashboard with overage pricing:
 - **Included Usage**: 3,000 playwright minutes, 20,000 K6 VU minutes
 
 **Pro Product**:
-- Name: "Pro"  
+
+- Name: "Pro"
 - Price: $199/month
 - Description: "Professional monitoring with 10,000 Playwright minutes, 75,000 K6 VU minutes"
 - **Billing Mode**: "Usage-based" (enable overage billing)
@@ -133,47 +141,48 @@ For usage-based overage billing, create meters in Polar:
 
 **Meter 1: Playwright Execution Minutes**
 
-| Field | Value |
-|-------|-------|
-| **Name** | `Playwright Execution Minutes` |
-| **Filters → Condition group** | |
-| - First dropdown (Name) | `Name` |
-| - Second dropdown | `equals` |
-| - Third dropdown (Select event name) | `playwright_minutes` |
-| **Aggregation** | Select **Sum** |
-| **Over property** | `value` |
+| Field                                | Value                          |
+| ------------------------------------ | ------------------------------ |
+| **Name**                             | `Playwright Execution Minutes` |
+| **Filters → Condition group**        |                                |
+| - First dropdown (Name)              | `Name`                         |
+| - Second dropdown                    | `equals`                       |
+| - Third dropdown (Select event name) | `playwright_minutes`           |
+| **Aggregation**                      | Select **Sum**                 |
+| **Over property**                    | `value`                        |
 
 ---
 
 **Meter 2: K6 Virtual User Minutes**
 
-| Field | Value |
-|-------|-------|
-| **Name** | `K6 Virtual User Minutes` |
-| **Filters → Condition group** | |
-| - First dropdown (Name) | `Name` |
-| - Second dropdown | `equals` |
-| - Third dropdown (Select event name) | `k6_vu_minutes` |
-| **Aggregation** | Select **Sum** |
-| **Over property** | `value` |
+| Field                                | Value                     |
+| ------------------------------------ | ------------------------- |
+| **Name**                             | `K6 Virtual User Minutes` |
+| **Filters → Condition group**        |                           |
+| - First dropdown (Name)              | `Name`                    |
+| - Second dropdown                    | `equals`                  |
+| - Third dropdown (Select event name) | `k6_vu_minutes`           |
+| **Aggregation**                      | Select **Sum**            |
+| **Over property**                    | `value`                   |
 
 ---
 
 **Meter 3: AI Credits**
 
-| Field | Value |
-|-------|-------|
-| **Name** | `AI Credits` |
-| **Filters → Condition group** | |
-| - First dropdown (Name) | `Name` |
-| - Second dropdown | `equals` |
-| - Third dropdown (Select event name) | `ai_credits` |
-| **Aggregation** | Select **Sum** |
-| **Over property** | `value` |
+| Field                                | Value          |
+| ------------------------------------ | -------------- |
+| **Name**                             | `AI Credits`   |
+| **Filters → Condition group**        |                |
+| - First dropdown (Name)              | `Name`         |
+| - Second dropdown                    | `equals`       |
+| - Third dropdown (Select event name) | `ai_credits`   |
+| **Aggregation**                      | Select **Sum** |
+| **Over property**                    | `value`        |
 
 ---
 
-> **How it works**: 
+> **How it works**:
+>
 > - The **Name** field is the display name shown on invoices
 > - The **Filter** matches incoming usage events by their event name (`playwright_minutes`, `k6_vu_minutes`, or `ai_credits`)
 > - **Sum** aggregation adds up all the `value` property from matched events
@@ -245,7 +254,7 @@ import { NextResponse } from "next/server";
 export async function POST() {
   try {
     const result = await polarUsageService.syncPendingEvents(50);
-    
+
     return NextResponse.json({
       success: true,
       processed: result.processed,
@@ -255,7 +264,10 @@ export async function POST() {
     });
   } catch (error) {
     return NextResponse.json(
-      { error: "Sync failed", details: error instanceof Error ? error.message : "Unknown" },
+      {
+        error: "Sync failed",
+        details: error instanceof Error ? error.message : "Unknown",
+      },
       { status: 500 }
     );
   }
@@ -265,11 +277,13 @@ export async function POST() {
 ### Usage Sync with Polar
 
 **Sync Frequency**:
+
 - **Real-time**: Usage events are recorded locally immediately after execution
 - **Batch Sync**: Pending events are synced to Polar every 5 minutes via scheduled job
 - **Retry Logic**: Failed syncs are retried up to 5 times with exponential backoff
 
 **Sync Process**:
+
 1. Event occurs (Playwright/K6 execution)
 2. UsageTracker records event to `usage_events` table locally
 3. Updates organization usage counters immediately
@@ -277,14 +291,16 @@ export async function POST() {
 5. Events marked as `synced_to_polar = true` on success
 
 **Error Handling & Robustness**:
+
 - ✅ **Decoupled Architecture**: Local tracking works even if Polar is down
 - ✅ **Automatic Retries**: Failed syncs are retried with increasing delays
-- ✅ **Circuit Breaker**: Stops retrying after 5 failed attempts
+- ✅ **Retry Limit**: Stops retrying after 5 failed attempts
 - ✅ **Audit Trail**: All events stored locally with sync status
 - ✅ **Graceful Degradation**: Usage continues to be tracked even if sync fails
 - ✅ **Monitoring**: Detailed logging for troubleshooting sync issues
 
 **What Happens if Sync Fails**:
+
 1. Event remains in `usage_events` table with `synced_to_polar = false`
 2. `sync_attempts` counter increments
 3. `sync_error` stores the error message
@@ -293,6 +309,7 @@ export async function POST() {
 6. Manual intervention may be needed (check logs, fix Polar config)
 
 **Best Practices**:
+
 - Monitor `usage_events` table for failed syncs
 - Set up alerts for high sync failure rates
 - Keep Polar access tokens fresh and valid
@@ -314,7 +331,8 @@ npm run dev
 ```
 
 Expected behavior:
-- All plan limits return "unlimited"  
+
+- All plan limits return "unlimited"
 - No Polar customer creation on signup
 - No usage tracking to Polar
 - Full access to all features
@@ -327,11 +345,12 @@ SELF_HOSTED=false
 POLAR_ACCESS_TOKEN=...
 POLAR_SERVER=sandbox  # Use sandbox for testing
 
-# Restart server  
+# Restart server
 npm run dev
 ```
 
 Expected behavior:
+
 - Customer created in Polar on signup
 - Plan limits enforced based on subscription
 - Usage tracked to Polar for billing
@@ -342,7 +361,7 @@ Expected behavior:
 #### Check Plan Limits
 
 ```typescript
-import {checkMonitorLimit} from "@/lib/middleware/plan-enforcement";
+import { checkMonitorLimit } from "@/lib/middleware/plan-enforcement";
 
 const limitCheck = await checkMonitorLimit(organizationId, currentCount);
 if (!limitCheck.allowed) {
@@ -356,19 +375,16 @@ if (!limitCheck.allowed) {
 import { usageTracker } from "@/lib/services/usage-tracker";
 
 // After Playwright execution
-await usageTracker.trackPlaywrightExecution(
-  organizationId,
-  executionTimeMs,
-  { testId, jobId }
-);
+await usageTracker.trackPlaywrightExecution(organizationId, executionTimeMs, {
+  testId,
+  jobId,
+});
 
 // After K6 execution
-await usageTracker.trackK6Execution(
-  organizationId,
-  virtualUsers,
-  durationMs, 
-  { testId, jobId }
-);
+await usageTracker.trackK6Execution(organizationId, virtualUsers, durationMs, {
+  testId,
+  jobId,
+});
 
 // After AI fix or create action
 await usageTracker.trackAIUsage(
@@ -394,7 +410,7 @@ Before deploying to production:
 
 - [ ] Set `POLAR_SERVER=production`
 - [ ] Use production Polar access token
-- [ ] Create production Plus/Pro products  
+- [ ] Create production Plus/Pro products
 - [ ] Configure production webhook
 - [ ] Create usage meters (`playwright_minutes`, `k6_vu_minutes`, `ai_credits`)
 - [ ] Test full checkout flow
@@ -409,6 +425,7 @@ Before deploying to production:
 ### Support
 
 For issues with Polar integration:
+
 - Check [Polar Documentation](https://polar.sh/docs)
 - Review implementation logs
 - Contact Polar support for payment issues
@@ -421,27 +438,27 @@ For issues with Polar integration:
 
 ### Plans Overview
 
-| Feature | Plus | Pro |
-|---------|------|-----|
-| **Monthly Price** | $49/month | $149/month |
-| **Monitors** | 25 monitors | 100 monitors |
-| **Playwright Minutes** | 3,000 minutes/month | 10,000 minutes/month |
-| **K6 VU Minutes** | 20,000 VU-minutes/month | 75,000 VU-minutes/month |
-| **AI Credits** | 100 credits/month | 300 credits/month |
-| **Concurrent Executions** | 5 | 10 |
-| **Queued Jobs** | 50 | 100 |
-| **Team Members** | 5 users | 25 users |
-| **Organizations** | 2 organizations | 10 organizations |
-| **Projects** | 10 projects | 50 projects |
-| **Monitoring Locations** | All 3 locations | All 3 locations |
-| **Check Interval** | 1 minute (Synthetic: 5 min) | 1 minute (Synthetic: 5 min) |
-| **Data Retention** | 30 days | 90 days |
-| **Email Support** | ✓ | ✓ Priority |
-| **Slack/Webhook Alerts** | ✓ | ✓ |
-| **Status Pages** | 3 status pages | 15 status pages |
-| **Custom Domains** | ✗ | ✓ |
-| **API Access** | ✓ | ✓ Enhanced |
-| **SSO/SAML** | ✗ | ✓ |
+| Feature                   | Plus                        | Pro                         |
+| ------------------------- | --------------------------- | --------------------------- |
+| **Monthly Price**         | $49/month                   | $149/month                  |
+| **Monitors**              | 25 monitors                 | 100 monitors                |
+| **Playwright Minutes**    | 3,000 minutes/month         | 10,000 minutes/month        |
+| **K6 VU Minutes**         | 20,000 VU-minutes/month     | 75,000 VU-minutes/month     |
+| **AI Credits**            | 100 credits/month           | 300 credits/month           |
+| **Concurrent Executions** | 5                           | 10                          |
+| **Queued Jobs**           | 50                          | 100                         |
+| **Team Members**          | 5 users                     | 25 users                    |
+| **Organizations**         | 2 organizations             | 10 organizations            |
+| **Projects**              | 10 projects                 | 50 projects                 |
+| **Monitoring Locations**  | All 3 locations             | All 3 locations             |
+| **Check Interval**        | 1 minute (Synthetic: 5 min) | 1 minute (Synthetic: 5 min) |
+| **Data Retention**        | 30 days                     | 90 days                     |
+| **Email Support**         | ✓                           | ✓ Priority                  |
+| **Slack/Webhook Alerts**  | ✓                           | ✓                           |
+| **Status Pages**          | 3 status pages              | 15 status pages             |
+| **Custom Domains**        | ✗                           | ✓                           |
+| **API Access**            | ✓                           | ✓ Enhanced                  |
+| **SSO/SAML**              | ✗                           | ✓                           |
 
 ### Usage-Based Billing
 
@@ -453,10 +470,12 @@ Billed per minute of browser test execution time. All test executions are timed 
 - **Pro Plan**: $0.02 per additional minute after 10,000 minutes
 
 **Example 1**: Running a 5-minute Playwright test:
+
 - Consumes: 5 execution minutes
 - Cost per execution (if over quota): $0.15 (Plus) or $0.10 (Pro)
 
 **Example 2**: Running 30 Playwright tests averaging 1 minute each:
+
 - Consumes: 30 execution minutes
 - Plus plan includes 3,000 minutes, Pro includes 10,000 minutes
 - Both plans: No overage charge ✓
@@ -469,6 +488,7 @@ Billed per Virtual User minute for load testing. Calculated as: Virtual Users ×
 - **Pro Plan**: $0.01 per additional VU-minute after 75,000 minutes
 
 **Example 1**: Running a load test with 100 VUs for 10 minutes:
+
 - Consumes: 100 VUs × 10 minutes = 1,000 VU-minutes
 - Cost per test (if over quota): **$10.00 (Plus)** or **$10.00 (Pro)**
 
@@ -480,16 +500,19 @@ Billed per AI action (AI Fix or AI Create). Each action consumes 1 credit.
 - **Pro Plan**: $0.03 per additional credit after 300 credits
 
 **Example 1**: Using AI Fix 10 times in a month:
+
 - Consumes: 10 AI credits
 - Plus plan includes 100 credits: No overage charge ✓
 - Pro plan includes 300 credits: No overage charge ✓
 
 **Example 2**: Heavy AI usage with 100 AI Fix + 50 AI Create:
+
 - Consumes: 150 AI credits
 - Plus plan: 50 credits overage × $0.05 = **$2.50 overage**
 - Pro plan includes 300 credits: No overage charge ✓
 
 **What counts as an AI Credit:**
+
 - Each AI Fix request (fix failing test) = 1 credit
 - Each AI Create request (generate new test) = 1 credit
 - Failed requests are NOT charged
@@ -499,6 +522,7 @@ Billed per AI action (AI Fix or AI Create). Each action consumes 1 credit.
 Synthetic monitors count against Playwright minutes for each execution. Monitor execution time is typically much shorter than full Playwright tests.
 
 **Example**: 25 monitors checking every 5 minutes for 30 days:
+
 - Executions per month: 25 × (30 days × 24 hours × 60 minutes / 5 minutes) = 216,000 executions
 - Average execution time per check: ~0.2 minutes (12 seconds)
 - Total minutes: ~43,200 minutes per month
@@ -576,6 +600,7 @@ Visit our [GitHub repository](https://github.com/supercheck-io/supercheck) to ge
 #### What happens if I exceed my limits?
 
 Usage-based billing automatically applies:
+
 - Overage charges are billed monthly
 - Real-time usage tracking in dashboard
 - Automatic email alerts at 80% and 100% of quota
@@ -583,6 +608,7 @@ Usage-based billing automatically applies:
 #### Can I change plans?
 
 Yes! Upgrade or downgrade anytime:
+
 - **Upgrades**: Immediate access to new features and limits
 - **Downgrades**: Effective at next billing cycle
 - Pro-rated billing for mid-cycle changes
@@ -594,6 +620,7 @@ No, plan quotas reset monthly on your billing date.
 #### What payment methods do you accept?
 
 We accept all major credit cards through Polar.sh:
+
 - Visa, Mastercard, American Express, Discover
 - Automatic tax/VAT calculation and collection
 - Secure payment processing
@@ -686,6 +713,7 @@ graph TB
 ### Key Components
 
 #### 1. **Better Auth + Polar Plugin**
+
 - Location: `app/src/utils/auth.ts`
 - Purpose: Integrate Polar checkout, customer management, and webhooks
 - Features:
@@ -695,6 +723,7 @@ graph TB
   - Webhook signature verification
 
 #### 2. **Subscription Service**
+
 - Location: `app/src/lib/services/subscription-service.ts`
 - Purpose: Manage subscription state and usage tracking
 - Methods:
@@ -715,6 +744,7 @@ graph TB
   - `requireValidPolarCustomer(orgId)` - Block operations if Polar customer doesn't exist
 
 #### 3. **Plan Enforcement Middleware**
+
 - Location: `app/src/lib/middleware/plan-enforcement.ts`
 - Purpose: Enforce plan limits at API level
 - Features:
@@ -725,6 +755,7 @@ graph TB
   - Organization count limits
 
 #### 4. **Usage Tracker (Worker)**
+
 - Location: `worker/src/execution/services/usage-tracker.service.ts`
 - Purpose: Track usage from test executions
 - Features:
@@ -735,13 +766,13 @@ graph TB
 
 **Execution Points Where Usage is Tracked:**
 
-| Execution Type | Processor/Service | Usage Tracked |
-|----------------|-------------------|---------------|
-| Job Executions (scheduled/triggered) | `PlaywrightExecutionProcessor.processJob()` | ✅ Playwright minutes |
-| Single Test Executions (playground/manual) | `PlaywrightExecutionProcessor.processTest()` | ✅ Playwright minutes |
-| Synthetic Monitor Executions | `MonitorService.executeSyntheticTest()` | ✅ Playwright minutes |
-| K6 Load Tests | `K6ExecutionProcessor` | ✅ K6 VU minutes |
-| HTTP/Ping/Port Monitors | `MonitorService` | ❌ Not tracked (not Playwright) |
+| Execution Type                             | Processor/Service                            | Usage Tracked                   |
+| ------------------------------------------ | -------------------------------------------- | ------------------------------- |
+| Job Executions (scheduled/triggered)       | `PlaywrightExecutionProcessor.processJob()`  | ✅ Playwright minutes           |
+| Single Test Executions (playground/manual) | `PlaywrightExecutionProcessor.processTest()` | ✅ Playwright minutes           |
+| Synthetic Monitor Executions               | `MonitorService.executeSyntheticTest()`      | ✅ Playwright minutes           |
+| K6 Load Tests                              | `K6ExecutionProcessor`                       | ✅ K6 VU minutes                |
+| HTTP/Ping/Port Monitors                    | `MonitorService`                             | ❌ Not tracked (not Playwright) |
 
 **Calculation Logic:**
 
@@ -754,28 +785,35 @@ graph TB
 Overage is calculated ONLY after included quota is exhausted:
 
 ```typescript
-const playwrightOverage = Math.max(0, playwrightMinutesUsed - includedPlaywrightMinutes);
+const playwrightOverage = Math.max(
+  0,
+  playwrightMinutesUsed - includedPlaywrightMinutes
+);
 const k6Overage = Math.max(0, k6VuMinutesUsed - includedK6VuMinutes);
 const aiCreditsOverage = Math.max(0, aiCreditsUsed - includedAiCredits);
-const totalOverageCents = (playwrightOverage * playwrightPriceCents) + (k6Overage * k6PriceCents) + (aiCreditsOverage * aiCreditPriceCents);
+const totalOverageCents =
+  playwrightOverage * playwrightPriceCents +
+  k6Overage * k6PriceCents +
+  aiCreditsOverage * aiCreditPriceCents;
 ```
 
 **Plan Included Quotas** (from `0001_seed_plan_limits.sql`):
 
-| Plan | Playwright Minutes | K6 VU Minutes | AI Credits |
-|------|-------------------|---------------|------------|
-| Plus | 3,000/month | 20,000/month | 100/month |
-| Pro | 10,000/month | 75,000/month | 300/month |
-| Unlimited | Unlimited | Unlimited | Unlimited |
+| Plan      | Playwright Minutes | K6 VU Minutes | AI Credits |
+| --------- | ------------------ | ------------- | ---------- |
+| Plus      | 3,000/month        | 20,000/month  | 100/month  |
+| Pro       | 10,000/month       | 75,000/month  | 300/month  |
+| Unlimited | Unlimited          | Unlimited     | Unlimited  |
 
 **Overage Pricing** (competitive, protocol-only K6):
 
-| Plan | Playwright | K6 VU Minutes | AI Credits |
-|------|-----------|---------------|------------|
-| Plus | $0.03/min | $0.01/VU-min | $0.05/credit |
-| Pro | $0.02/min | $0.01/VU-min | $0.03/credit |
+| Plan | Playwright | K6 VU Minutes | AI Credits   |
+| ---- | ---------- | ------------- | ------------ |
+| Plus | $0.03/min  | $0.01/VU-min  | $0.05/credit |
+| Pro  | $0.02/min  | $0.01/VU-min  | $0.03/credit |
 
 **K6 Pricing Justification (Protocol-Only Tests):**
+
 - Supercheck only supports **HTTP/protocol-based** K6 tests (no browser-based)
 - Protocol tests are cheaper to run than browser tests (~10-20x less resource intensive)
 - Pricing is competitive with Grafana k6 Cloud ($0.0025/VU-min at scale)
@@ -784,6 +822,7 @@ const totalOverageCents = (playwrightOverage * playwrightPriceCents) + (k6Overag
 **Polar Sync:**
 
 Usage events are synced to Polar in real-time:
+
 1. Worker records event locally with `synced_to_polar = false`
 2. Worker immediately syncs to Polar API (`POST /v1/events/ingest`)
 3. On success, event is marked `synced_to_polar = true`
@@ -792,6 +831,7 @@ Usage events are synced to Polar in real-time:
 **Fallback Sync Endpoint:**
 
 For failed syncs, a cron job should call:
+
 ```
 POST /api/admin/sync-usage-events
 Header: x-cron-secret: YOUR_CRON_SECRET
@@ -805,13 +845,14 @@ Tests have `attempts: 3` with exponential backoff configured in `app/src/lib/que
 const defaultJobOptions = {
   attempts: 3, // Retry up to 3 times for transient failures
   backoff: {
-    type: 'exponential',
+    type: "exponential",
     delay: 5000, // Start with 5 second delay, then 10s, 20s
   },
 };
 ```
 
 **Why retries are safe for billing:**
+
 - Usage tracking only happens on **successful completion**
 - Retries help with transient failures (container startup, network issues)
 - Failed attempts don't trigger usage recording
@@ -820,11 +861,13 @@ const defaultJobOptions = {
 **Architecture: Worker vs App Polar Integration**
 
 Usage tracking happens in the **worker** (not the app) because:
+
 - Executions happen in the worker process
 - Worker has direct access to execution timing
 - Real-time sync requires worker-to-Polar communication
 
 The worker makes direct Polar API calls (not via Better Auth) because:
+
 - Better Auth's `usage()` plugin requires authenticated user session
 - Worker runs independently without user context
 - Direct API calls with `POLAR_ACCESS_TOKEN` are the correct approach
@@ -834,6 +877,7 @@ The worker makes direct Polar API calls (not via Better Auth) because:
 If K6 or Playwright meter events don't appear in Polar dashboard:
 
 1. **Check Worker Environment Variables:**
+
    ```bash
    # Required in worker/.env
    POLAR_ACCESS_TOKEN=your_polar_access_token
@@ -841,17 +885,20 @@ If K6 or Playwright meter events don't appear in Polar dashboard:
    ```
 
 2. **Check Organization has `polarCustomerId`:**
+
    - User must subscribe via Polar checkout first
    - Check database: `SELECT polar_customer_id FROM organization WHERE id = 'org-id'`
    - If NULL, events won't sync (user hasn't subscribed)
 
 3. **Check Meter Filter Configuration in Polar:**
+
    - Go to Polar Dashboard → Products → Meters → Edit Meter
    - **CRITICAL**: Set Filter to `Name` equals `k6_vu_minutes` (or `playwright_minutes`)
    - The filter must match the `name` field in the event payload
    - Without this filter, the meter won't aggregate events
 
 4. **Check Worker Logs:**
+
    - Look for: `[Usage] Syncing k6_vu_minutes=X to Polar for customer...`
    - Look for: `[Usage] ✅ Synced event...`
    - Look for: `[Usage] POLAR_ACCESS_TOKEN not configured` (error)
@@ -859,16 +906,19 @@ If K6 or Playwright meter events don't appear in Polar dashboard:
    - Look for: `Polar API error (404)` - This means the API endpoint was wrong (fixed)
 
 5. **Check `usage_events` Table:**
+
    ```sql
-   SELECT id, event_name, units, synced_to_polar, sync_error 
-   FROM usage_events 
+   SELECT id, event_name, units, synced_to_polar, sync_error
+   FROM usage_events
    WHERE organization_id = 'org-id'
    ORDER BY created_at DESC LIMIT 10;
    ```
+
    - `synced_to_polar = false` with `sync_error` shows failed syncs
    - `synced_to_polar = true` means events were sent to Polar
 
 6. **Retry Failed Syncs:**
+
    ```bash
    curl -X POST https://your-app/api/admin/sync-usage-events \
      -H "x-cron-secret: YOUR_CRON_SECRET"
@@ -882,6 +932,7 @@ If K6 or Playwright meter events don't appear in Polar dashboard:
 **Polar API Endpoint:**
 
 The worker uses the correct Polar Events Ingestion API:
+
 ```
 POST https://api.polar.sh/v1/events/ingest
 # or for sandbox:
@@ -902,6 +953,7 @@ Body:
 ```
 
 #### 5. **Webhook Handlers**
+
 - Location: `app/src/lib/webhooks/polar-webhooks.ts`
 - Purpose: Process Polar subscription events
 - **Implementation**: Uses Better Auth's `@polar-sh/better-auth` webhooks plugin
@@ -930,6 +982,7 @@ Body:
   ```
 
 #### 6. **Polar Usage Service**
+
 - Location: `app/src/lib/services/polar-usage.service.ts`
 - Purpose: Sync usage events to Polar for billing
 - Features:
@@ -940,6 +993,7 @@ Body:
   - Spending status tracking for hard stop enforcement
 
 #### 7. **Billing Settings Service**
+
 - Location: `app/src/lib/services/billing-settings.service.ts`
 - Purpose: Manage organization billing settings
 - Features:
@@ -949,6 +1003,7 @@ Body:
   - Prevents duplicate notifications in billing period
 
 #### 8. **Usage Notification Service**
+
 - Location: `app/src/lib/services/usage-notification.service.ts`
 - Purpose: Send usage and spending notifications
 - Features:
@@ -960,6 +1015,7 @@ Body:
 ### Data Flow
 
 #### 1. **Customer Creation Flow**
+
 ```mermaid
 sequenceDiagram
     participant User
@@ -978,6 +1034,7 @@ sequenceDiagram
 ```
 
 #### 2. **Subscription Activation Flow**
+
 ```mermaid
 sequenceDiagram
     participant User
@@ -1002,6 +1059,7 @@ sequenceDiagram
 ```
 
 #### 3. **Usage Tracking Flow**
+
 ```mermaid
 sequenceDiagram
     participant Worker
@@ -1015,7 +1073,7 @@ sequenceDiagram
     UsageTracker->>DB: UPDATE organization SET playwright_minutes_used += minutes
     UsageTracker->>DB: INSERT INTO usage_events (type, units, synced=false)
     Note over UsageTracker: Local tracking complete
-    
+
     loop Every 5 minutes
         PolarSync->>DB: SELECT * FROM usage_events WHERE synced=false
         PolarSync->>PolarAPI: POST /customers/{id}/meters/events
@@ -1025,6 +1083,7 @@ sequenceDiagram
 ```
 
 #### 4. **Plan Enforcement Flow**
+
 ```mermaid
 sequenceDiagram
     participant User
@@ -1050,6 +1109,7 @@ sequenceDiagram
 ```
 
 #### 5. **Webhook Processing Flow**
+
 ```mermaid
 sequenceDiagram
     participant Polar as Polar.sh
@@ -1107,6 +1167,7 @@ sequenceDiagram
 ```
 
 #### 6. **Data Flow Diagram**
+
 ```mermaid
 graph LR
     subgraph "User Actions"
@@ -1161,6 +1222,7 @@ graph LR
 ### Environment Configuration
 
 **Feature Flag System**: Controls Polar integration based on deployment mode
+
 - `isPolarEnabled()` - Returns true only in cloud mode with valid Polar token
 - `getPolarConfig()` - Retrieves Polar configuration from environment variables
 - Required env vars: `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`, `POLAR_SERVER`, product IDs
@@ -1168,6 +1230,7 @@ graph LR
 ### Better Auth Integration
 
 **Polar Plugin Setup**: Conditional plugin loading based on feature flags
+
 - Polar SDK client initialization with server (sandbox/production)
 - Customer creation on signup with metadata linking to user ID
 - Checkout session configuration for Plus/Pro products
@@ -1177,6 +1240,7 @@ graph LR
 ### Subscription Service
 
 **Core Service**: Manages subscription state and usage tracking
+
 - **Plan Validation**: `requiresSubscription()`, `hasActiveSubscription()`, `blockUntilSubscribed()`
 - **Plan Retrieval**: `getOrganizationPlan()` (throws), `getOrganizationPlanSafe()` (non-throwing)
 - **Usage Tracking**: `trackPlaywrightUsage()`, `trackK6Usage()`, `getUsage()`
@@ -1187,6 +1251,7 @@ graph LR
 ### Webhook Handlers
 
 **Event Processing**: Handles Polar webhook events with signature verification
+
 - **Subscription Active**: Extracts customer/product info, updates org subscription, resets usage counters using Polar's subscription dates
 - **Subscription Updated**: Handles plan changes and status updates
 - **Subscription Canceled**: Marks as canceled but maintains access until period end
@@ -1196,6 +1261,7 @@ graph LR
 ### Usage Tracking (Worker)
 
 **Service Integration**: Tracks usage from test executions in worker processes
+
 - **Execution Tracking**: Integrated into Playwright and K6 processors
 - **Unconditional Recording**: Tracks usage for both cloud and self-hosted modes
 - **Local Updates**: Increments organization usage counters immediately
@@ -1205,12 +1271,13 @@ graph LR
 ### Polar Usage Sync
 
 **Event Synchronization**: Syncs usage events to Polar for billing
+
 - **API Integration**: Uses Polar's `/customers/{id}/meters/events` endpoint
 - **Meter Mapping**: Maps `playwright_execution` → `playwright_minutes`, `k6_execution` → `k6_vu_minutes`
 - **Batch Processing**: Processes pending events in configurable batch sizes
 - **Retry Logic**: Automatic retries with exponential backoff, max 5 attempts
 - **Error Tracking**: Records sync errors and attempt counts in database
-- **Circuit Breaker**: Stops retrying permanently failed events
+- **Retry Limit**: Stops retrying permanently failed events (max attempts reached)
 
 ### Related Files
 
@@ -1234,17 +1301,20 @@ Hard stop limits allow organizations to automatically block test executions when
 ### Features
 
 **Spending Limit Configuration**:
+
 - Set monthly spending cap in dollars (e.g., $100/month)
 - Enable/disable hard stop enforcement
 - Automatically syncs to billing system
 
 **Usage Alerts**:
+
 - Configurable notification thresholds: 50%, 80%, 90%, 100%
 - Custom recipient emails (in addition to org admins)
 - Prevents duplicate notifications per billing period
 - Email notifications with current usage breakdown
 
 **Hard Stop Behavior**:
+
 - When limit is reached, test executions are blocked
 - Explicit error message: "Hard stop limit reached - executions blocked"
 - Org admins can temporarily disable limit without waiting
@@ -1253,6 +1323,7 @@ Hard stop limits allow organizations to automatically block test executions when
 ### API Endpoints
 
 #### GET /api/billing/settings
+
 Retrieve organization's billing settings including spending limit configuration.
 
 ```typescript
@@ -1274,6 +1345,7 @@ Response: {
 ```
 
 #### PATCH /api/billing/settings
+
 Update billing settings including spending limits and notification preferences.
 
 ```typescript
@@ -1292,16 +1364,29 @@ Response: BillingSettingsResponse
 ```
 
 #### GET /api/billing/usage
+
 Retrieve current usage metrics and spending status.
 
 ```typescript
 Response: {
   usage: {
-    playwrightMinutes: { used: number; included: number; overage: number };
-    k6VuMinutes: { used: number; included: number; overage: number };
-    aiCredits: { used: number; included: number; overage: number };
+    playwrightMinutes: {
+      used: number;
+      included: number;
+      overage: number;
+    }
+    k6VuMinutes: {
+      used: number;
+      included: number;
+      overage: number;
+    }
+    aiCredits: {
+      used: number;
+      included: number;
+      overage: number;
+    }
     totalOverageCents: number;
-  };
+  }
   spending: {
     currentDollars: number;
     limitDollars: number | null;
@@ -1310,18 +1395,19 @@ Response: {
     percentageUsed: number;
     isAtLimit: boolean;
     remainingDollars: number | null;
-  };
+  }
 }
 ```
 
 #### POST /api/auth/sync-polar-customer
+
 Ensures Polar customer exists and syncs user data (called on signup and profile changes).
 
 ```typescript
 Response: {
   success: boolean;
   customerId: string;
-  action: 'created' | 'updated' | 'linked';
+  action: "created" | "updated" | "linked";
   message: string;
 }
 ```
@@ -1333,19 +1419,19 @@ Response: {
 ```typescript
 // From PolarUsageService.getSpendingStatus()
 interface SpendingStatus {
-  currentSpendingCents: number;    // Total overage charges this period
-  limitCents: number | null;        // Monthly spending limit
+  currentSpendingCents: number; // Total overage charges this period
+  limitCents: number | null; // Monthly spending limit
   limitEnabled: boolean;
   hardStopEnabled: boolean;
-  percentageUsed: number;           // currentSpending / limit * 100
-  isAtLimit: boolean;               // currentSpending >= limit
-  remainingCents: number | null;    // limit - currentSpending
+  percentageUsed: number; // currentSpending / limit * 100
+  isAtLimit: boolean; // currentSpending >= limit
+  remainingCents: number | null; // limit - currentSpending
 }
 
 // Calculation:
-percentageUsed = (currentSpendingCents / limitCents) * 100
-isAtLimit = currentSpendingCents >= limitCents
-remainingCents = Math.max(0, limitCents - currentSpendingCents)
+percentageUsed = (currentSpendingCents / limitCents) * 100;
+isAtLimit = currentSpendingCents >= limitCents;
+remainingCents = Math.max(0, limitCents - currentSpendingCents);
 ```
 
 #### Hard Stop Enforcement
@@ -1356,22 +1442,27 @@ Hard stop is checked before test execution:
 // In test execution routes
 const spending = await polarUsageService.getSpendingStatus(orgId);
 if (spending.hardStopEnabled && spending.isAtLimit) {
-  return NextResponse.json({
-    error: 'Hard stop limit reached - executions blocked',
-    currentSpending: spending.currentSpendingCents / 100,
-    limit: spending.limitCents / 100
-  }, { status: 429 });
+  return NextResponse.json(
+    {
+      error: "Hard stop limit reached - executions blocked",
+      currentSpending: spending.currentSpendingCents / 100,
+      limit: spending.limitCents / 100,
+    },
+    { status: 429 }
+  );
 }
 ```
 
 #### Notification Flow
 
 1. **Usage events trigger notifications**:
+
    - After each test execution, usage is updated
    - If usage crosses a threshold (80%, 90%, 100%), notification is queued
    - `billingSettingsService.markNotificationSent()` prevents duplicates
 
 2. **Notification dispatch**:
+
    - `usageNotificationService` sends emails asynchronously
    - Records in `usage_notifications` table for audit
    - Includes current usage, limit, and remaining budget
@@ -1385,6 +1476,7 @@ if (spending.hardStopEnabled && spending.isAtLimit) {
 #### Notification Recipients
 
 Notifications are sent to:
+
 1. Organization admins (always)
 2. Additional emails configured in `notificationEmails` array
 
@@ -1393,9 +1485,11 @@ Org admins can customize recipients without affecting other billing settings.
 ### UI Components
 
 #### SpendingLimits Component
+
 Location: `app/src/components/billing/spending-limits.tsx`
 
 **Features:**
+
 - Two-column layout: Spending Limit | Usage Alerts
 - Dollar amount input with validation
 - Switch to enable/disable limit
@@ -1404,15 +1498,15 @@ Location: `app/src/components/billing/spending-limits.tsx`
 - Save button with loading state
 
 ```typescript
-<SpendingLimits
-  className="billing-section"
-/>
+<SpendingLimits className="billing-section" />
 ```
 
 #### HardStopAlert Component
+
 Location: `app/src/components/billing/hard-stop-alert.tsx`
 
 **Features:**
+
 - Compact badge indicator
 - Shows current spending vs limit
 - Destructive (red) styling
@@ -1440,6 +1534,7 @@ await billingSettingsService.resetNotificationsForPeriod(orgId);
 ### Monitoring & Alerts
 
 **Key Metrics to Monitor:**
+
 - Organizations with hard stop enabled
 - Percentage of orgs hitting hard stop limit
 - Average spending vs limit ratio
@@ -1447,6 +1542,7 @@ await billingSettingsService.resetNotificationsForPeriod(orgId);
 - Execution blocks due to hard stop
 
 **Alert Thresholds:**
+
 - Alert if >5% of orgs hit hard stop daily (potential revenue impact)
 - Alert if notification delivery failure rate >2%
 - Alert if spending limit feature is disabled (monitoring)
@@ -1458,22 +1554,26 @@ await billingSettingsService.resetNotificationsForPeriod(orgId);
 ### Billing Endpoints
 
 #### Current Billing Status
+
 - **Endpoint**: `GET /api/billing/current`
 - **Purpose**: Retrieve organization subscription status, usage metrics, and plan limits
 - **Response includes**: Organization details (plan, status, dates), usage breakdown (Playwright/K6 minutes), resource limits (monitors, projects, team members), current billing period, overage calculations
 
 #### Available Plans
+
 - **Endpoint**: `GET /api/billing/plans`
 - **Purpose**: List all available subscription plans with features and pricing
 - **Response includes**: Plan IDs, names, pricing, feature limits, overage rates
 
 #### Checkout Session
+
 - **Endpoint**: `POST /api/billing/checkout`
 - **Purpose**: Create Polar checkout session for plan upgrades
 - **Request**: Plan ID, success/cancel URLs
 - **Response**: Polar checkout URL for redirect
 
 #### Usage Metrics and Spending Status
+
 - **Endpoint**: `GET /api/billing/usage`
 - **Purpose**: Retrieve detailed usage metrics and spending status
 - **Response includes**:
@@ -1482,6 +1582,7 @@ await billingSettingsService.resetNotificationsForPeriod(orgId);
   - Remaining budget information
 
 #### Billing Settings
+
 - **Endpoint**: `GET /api/billing/settings`
 - **Purpose**: Retrieve organization's billing settings
 - **Response includes**: Spending limit, notification thresholds, recipient emails
@@ -1492,6 +1593,7 @@ await billingSettingsService.resetNotificationsForPeriod(orgId);
 - **Response**: Updated billing settings
 
 #### Sync Polar Customer
+
 - **Endpoint**: `POST /api/auth/sync-polar-customer`
 - **Purpose**: Ensure Polar customer exists and syncs user data
 - **Called**: On signup, social auth, and profile changes
@@ -1500,6 +1602,7 @@ await billingSettingsService.resetNotificationsForPeriod(orgId);
 ### Plan Enforcement API
 
 #### Resource Limit Checks
+
 - **checkMonitorLimit(orgId, currentCount)** - Returns allowed/error status
 - **checkProjectLimit(orgId, currentCount)** - Project limit validation
 - **checkStatusPageLimit(orgId, currentCount)** - Status page limit validation
@@ -1508,6 +1611,7 @@ await billingSettingsService.resetNotificationsForPeriod(orgId);
 ### Usage Tracking API
 
 #### Usage Recording
+
 - **trackPlaywrightExecution(orgId, durationMs, metadata)** - Record Playwright usage
 - **trackK6Execution(orgId, virtualUsers, durationMs, metadata)** - Record K6 usage
 - **getUsage(organizationId)** - Get current usage with overage calculations
@@ -1515,12 +1619,14 @@ await billingSettingsService.resetNotificationsForPeriod(orgId);
 ### Polar Integration
 
 #### Event Ingestion
+
 - Usage events recorded locally in `usage_events` table
 - Synced to Polar via `/customers/{id}/meters/events` endpoint
 - Meter names: `playwright_minutes`, `k6_vu_minutes`
 - Batch processing with retry logic
 
 #### Better Auth Usage Plugin
+
 - Client-side event ingestion via `authClient.usage.ingestion()`
 - Customer meter listing via `authClient.usage.meters.list()`
 
@@ -1550,6 +1656,7 @@ export default function BillingPage() {
 #### Usage Display Components
 
 **UsageMeter Component**:
+
 ```typescript
 <UsageMeter
   label="Playwright Execution Minutes"
@@ -1564,6 +1671,7 @@ export default function BillingPage() {
 ```
 
 **UsageDashboard Component**:
+
 ```typescript
 <UsageDashboard
   usage={billingData.usage}
@@ -1582,7 +1690,7 @@ export default function BillingPage() {
 export function PlanSelection() {
   const { data: plans } = useQuery({
     queryKey: ["billing-plans"],
-    queryFn: () => fetch("/api/billing/plans").then(r => r.json()),
+    queryFn: () => fetch("/api/billing/plans").then((r) => r.json()),
   });
 
   return (
@@ -1611,7 +1719,7 @@ export function UpgradeButton({ planId }: { planId: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ planId }),
     });
-    
+
     const { checkoutUrl } = await response.json();
     window.location.href = checkoutUrl;
   };
@@ -1631,14 +1739,14 @@ export function UpgradeButton({ planId }: { planId: string }) {
 export function ManageSubscription() {
   const { data: billing } = useQuery({
     queryKey: ["billing-current"],
-    queryFn: () => fetch("/api/billing/current").then(r => r.json()),
+    queryFn: () => fetch("/api/billing/current").then((r) => r.json()),
   });
 
   const openPortal = async () => {
     const response = await fetch("/api/billing/portal", {
       method: "POST",
     });
-    
+
     const { portalUrl } = await response.json();
     window.location.href = portalUrl;
   };
@@ -1646,15 +1754,15 @@ export function ManageSubscription() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Current Plan: {billing?.organization?.subscriptionPlan}</CardTitle>
+        <CardTitle>
+          Current Plan: {billing?.organization?.subscriptionPlan}
+        </CardTitle>
         <CardDescription>
           Status: {billing?.organization?.subscriptionStatus}
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Button onClick={openPortal}>
-          Manage Subscription
-        </Button>
+        <Button onClick={openPortal}>Manage Subscription</Button>
       </CardContent>
     </Card>
   );
@@ -1678,7 +1786,8 @@ export function UsageAlerts({ usage }: { usage: UsageData }) {
         {isOverLimit ? "Usage Limit Exceeded" : "Approaching Usage Limit"}
       </AlertTitle>
       <AlertDescription>
-        You've used {usage.playwrightMinutes.percentage}% of your Playwright minutes.
+        You've used {usage.playwrightMinutes.percentage}% of your Playwright
+        minutes.
         {isOverLimit && " Overage charges will apply."}
       </AlertDescription>
     </Alert>
@@ -1712,12 +1821,10 @@ ALTER TABLE organization ADD COLUMN usage_period_start TIMESTAMP;  -- Start of c
 ALTER TABLE organization ADD COLUMN usage_period_end TIMESTAMP;    -- End of current usage/billing period
 ```
 
-> [!NOTE]
-> **Billing Period Calculation**: The `usage_period_start` and `usage_period_end` fields are set from Polar's `startsAt` and `endsAt` webhook payload fields. This ensures billing periods align with the actual subscription cycle (e.g., subscription starting Nov 15 → billing period Nov 15 - Dec 15) rather than calendar months (which would incorrectly be Nov 15 - Dec 1).
+> [!NOTE] > **Billing Period Calculation**: The `usage_period_start` and `usage_period_end` fields are set from Polar's `startsAt` and `endsAt` webhook payload fields. This ensures billing periods align with the actual subscription cycle (e.g., subscription starting Nov 15 → billing period Nov 15 - Dec 15) rather than calendar months (which would incorrectly be Nov 15 - Dec 1).
 
-> [!IMPORTANT]
-> **Cloud Mode Defaults**: Organizations created in cloud mode start with `subscription_plan = NULL` and `subscription_status = 'none'`. Users must subscribe to Plus or Pro via Polar to create resources.
-> 
+> [!IMPORTANT] > **Cloud Mode Defaults**: Organizations created in cloud mode start with `subscription_plan = NULL` and `subscription_status = 'none'`. Users must subscribe to Plus or Pro via Polar to create resources.
+>
 > **Self-Hosted Mode Defaults**: Organizations created in self-hosted mode get `subscription_plan = 'unlimited'` and `subscription_status = 'active'` immediately.
 
 ### Plan Limits Table (New)
@@ -1810,6 +1917,7 @@ CREATE TABLE billing_settings (
 ```
 
 **Features:**
+
 - **Spending Limits**: Set monthly overage spending cap in dollars
 - **Hard Stop Enforcement**: When enabled, blocks test executions when limit is reached
 - **Usage Alerts**: Configurable notifications at 50%, 80%, 90%, 100% of quota
@@ -1862,6 +1970,7 @@ CREATE INDEX idx_usage_notifications_type ON usage_notifications(notification_ty
 ```
 
 **Purpose**: Audit trail of all notifications sent, enabling:
+
 - Duplicate prevention within billing period
 - Delivery failure tracking and retry
 - Historical record for support and debugging
@@ -1904,16 +2013,16 @@ COMMENT ON COLUMN organization.subscription_ends_at IS 'End of current subscript
 
 -- Migrate existing data
 UPDATE organization
-SET 
+SET
   usage_period_start = COALESCE(usage_period_start, subscription_started_at, created_at),
-  usage_period_end = COALESCE(usage_period_end, subscription_ends_at, 
-    CASE 
+  usage_period_end = COALESCE(usage_period_end, subscription_ends_at,
+    CASE
       WHEN subscription_started_at IS NOT NULL THEN subscription_started_at + INTERVAL '30 days'
       WHEN usage_period_start IS NOT NULL THEN usage_period_start + INTERVAL '30 days'
       ELSE created_at + INTERVAL '30 days'
     END
   )
-WHERE subscription_status = 'active' 
+WHERE subscription_status = 'active'
   AND (usage_period_start IS NULL OR usage_period_end IS NULL);
 ```
 
@@ -1927,7 +2036,7 @@ WHERE subscription_status = 'active'
 
 ```typescript
 // tests/unit/subscription-service.test.ts
-describe('SubscriptionService', () => {
+describe("SubscriptionService", () => {
   let service: SubscriptionService;
   let mockDb: jest.Mocked<Database>;
 
@@ -1936,57 +2045,59 @@ describe('SubscriptionService', () => {
     service = new SubscriptionService(mockDb);
   });
 
-  describe('requiresSubscription', () => {
-    it('should return false in self-hosted mode', () => {
-      process.env.SELF_HOSTED = 'true';
+  describe("requiresSubscription", () => {
+    it("should return false in self-hosted mode", () => {
+      process.env.SELF_HOSTED = "true";
       expect(service.requiresSubscription()).toBe(false);
     });
 
-    it('should return true in cloud mode with Polar configured', () => {
-      process.env.SELF_HOSTED = 'false';
-      process.env.POLAR_ACCESS_TOKEN = 'test_token';
+    it("should return true in cloud mode with Polar configured", () => {
+      process.env.SELF_HOSTED = "false";
+      process.env.POLAR_ACCESS_TOKEN = "test_token";
       expect(service.requiresSubscription()).toBe(true);
     });
   });
 
-  describe('hasActiveSubscription', () => {
-    it('should return true for active Plus subscription', async () => {
+  describe("hasActiveSubscription", () => {
+    it("should return true for active Plus subscription", async () => {
       mockDb.query.organization.findFirst.mockResolvedValue({
-        subscriptionStatus: 'active',
-        subscriptionPlan: 'plus',
+        subscriptionStatus: "active",
+        subscriptionPlan: "plus",
       });
 
-      const result = await service.hasActiveSubscription('org_123');
+      const result = await service.hasActiveSubscription("org_123");
       expect(result).toBe(true);
     });
 
-    it('should return false for canceled subscription', async () => {
+    it("should return false for canceled subscription", async () => {
       mockDb.query.organization.findFirst.mockResolvedValue({
-        subscriptionStatus: 'canceled',
-        subscriptionPlan: 'plus',
+        subscriptionStatus: "canceled",
+        subscriptionPlan: "plus",
       });
 
-      const result = await service.hasActiveSubscription('org_123');
+      const result = await service.hasActiveSubscription("org_123");
       expect(result).toBe(false);
     });
   });
 
-  describe('blockUntilSubscribed', () => {
-    it('should throw error in cloud mode without subscription', async () => {
-      process.env.SELF_HOSTED = 'false';
-      process.env.POLAR_ACCESS_TOKEN = 'test_token';
-      
-      jest.spyOn(service, 'hasActiveSubscription').mockResolvedValue(false);
-      
-      await expect(service.blockUntilSubscribed('org_123'))
-        .rejects.toThrow('requires an active subscription');
+  describe("blockUntilSubscribed", () => {
+    it("should throw error in cloud mode without subscription", async () => {
+      process.env.SELF_HOSTED = "false";
+      process.env.POLAR_ACCESS_TOKEN = "test_token";
+
+      jest.spyOn(service, "hasActiveSubscription").mockResolvedValue(false);
+
+      await expect(service.blockUntilSubscribed("org_123")).rejects.toThrow(
+        "requires an active subscription"
+      );
     });
 
-    it('should pass in self-hosted mode', async () => {
-      process.env.SELF_HOSTED = 'true';
-      
-      await expect(service.blockUntilSubscribed('org_123'))
-        .resolves.not.toThrow();
+    it("should pass in self-hosted mode", async () => {
+      process.env.SELF_HOSTED = "true";
+
+      await expect(
+        service.blockUntilSubscribed("org_123")
+      ).resolves.not.toThrow();
     });
   });
 });
@@ -1996,49 +2107,49 @@ describe('SubscriptionService', () => {
 
 ```typescript
 // tests/unit/polar-webhooks.test.ts
-describe('Polar Webhooks', () => {
-  describe('handleSubscriptionActive', () => {
-    it('should activate Plus subscription', async () => {
+describe("Polar Webhooks", () => {
+  describe("handleSubscriptionActive", () => {
+    it("should activate Plus subscription", async () => {
       const payload = {
-        type: 'subscription.active',
+        type: "subscription.active",
         data: {
-          id: 'sub_123',
-          customerId: 'cus_456',
-          productId: 'prod_plus',
-          status: 'active',
-          startsAt: '2025-01-15T00:00:00Z',
-          endsAt: '2025-02-15T00:00:00Z',
+          id: "sub_123",
+          customerId: "cus_456",
+          productId: "prod_plus",
+          status: "active",
+          startsAt: "2025-01-15T00:00:00Z",
+          endsAt: "2025-02-15T00:00:00Z",
         },
       };
 
       mockDb.query.organization.findFirst.mockResolvedValue({
-        id: 'org_789',
-        polarCustomerId: 'cus_456',
+        id: "org_789",
+        polarCustomerId: "cus_456",
       });
 
       await handleSubscriptionActive(payload);
 
       expect(mockSubscriptionService.updateSubscription).toHaveBeenCalledWith(
-        'org_789',
+        "org_789",
         expect.objectContaining({
-          subscriptionPlan: 'plus',
-          subscriptionStatus: 'active',
-          subscriptionStartedAt: new Date('2025-01-15T00:00:00Z'),
-          subscriptionEndsAt: new Date('2025-02-15T00:00:00Z'),
+          subscriptionPlan: "plus",
+          subscriptionStatus: "active",
+          subscriptionStartedAt: new Date("2025-01-15T00:00:00Z"),
+          subscriptionEndsAt: new Date("2025-02-15T00:00:00Z"),
         })
       );
     });
 
-    it('should handle missing customer ID', async () => {
+    it("should handle missing customer ID", async () => {
       const payload = {
-        type: 'subscription.active',
-        data: { id: 'sub_123' },
+        type: "subscription.active",
+        data: { id: "sub_123" },
       };
 
       await handleSubscriptionActive(payload);
 
       expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining('Missing customerId')
+        expect.stringContaining("Missing customerId")
       );
     });
   });
@@ -2049,7 +2160,7 @@ describe('Polar Webhooks', () => {
 
 ```typescript
 // tests/unit/usage-tracker.test.ts
-describe('UsageTrackerService', () => {
+describe("UsageTrackerService", () => {
   let service: UsageTrackerService;
   let mockDb: jest.Mocked<Database>;
 
@@ -2058,9 +2169,9 @@ describe('UsageTrackerService', () => {
     service = new UsageTrackerService(mockDb);
   });
 
-  describe('trackPlaywrightExecution', () => {
-    it('should track usage and update counters', async () => {
-      const organizationId = 'org_123';
+  describe("trackPlaywrightExecution", () => {
+    it("should track usage and update counters", async () => {
+      const organizationId = "org_123";
       const executionTimeMs = 125000; // ~3 minutes
 
       mockDb.query.organization.findFirst.mockResolvedValue({
@@ -2082,15 +2193,12 @@ describe('UsageTrackerService', () => {
       );
     });
 
-    it('should handle errors gracefully', async () => {
+    it("should handle errors gracefully", async () => {
       mockDb.query.organization.findFirst.mockRejectedValue(
-        new Error('Database error')
+        new Error("Database error")
       );
 
-      const result = await service.trackPlaywrightExecution(
-        'org_123',
-        60000
-      );
+      const result = await service.trackPlaywrightExecution("org_123", 60000);
 
       expect(result.blocked).toBe(false);
       expect(console.error).toHaveBeenCalled();
@@ -2105,7 +2213,7 @@ describe('UsageTrackerService', () => {
 
 ```typescript
 // tests/integration/subscription-flow.test.ts
-describe('Subscription Flow', () => {
+describe("Subscription Flow", () => {
   let testApp: TestApplication;
   let polarClient: MockPolarClient;
 
@@ -2114,14 +2222,14 @@ describe('Subscription Flow', () => {
     polarClient = createMockPolarClient();
   });
 
-  it('should complete full subscription flow', async () => {
+  it("should complete full subscription flow", async () => {
     // 1. User signs up
     const signupResponse = await testApp.request
-      .post('/api/auth/sign-up')
+      .post("/api/auth/sign-up")
       .send({
-        email: 'test@example.com',
-        password: 'password123',
-        name: 'Test User',
+        email: "test@example.com",
+        password: "password123",
+        name: "Test User",
       });
 
     expect(signupResponse.status).toBe(200);
@@ -2130,17 +2238,17 @@ describe('Subscription Flow', () => {
     // 2. Customer created in Polar
     expect(polarClient.customers.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        email: 'test@example.com',
-        name: 'Test User',
+        email: "test@example.com",
+        name: "Test User",
       })
     );
 
     // 3. User creates organization
     const orgResponse = await testApp.request
-      .post('/api/organizations')
-      .set('Authorization', `Bearer ${user.sessionToken}`)
+      .post("/api/organizations")
+      .set("Authorization", `Bearer ${user.sessionToken}`)
       .send({
-        name: 'Test Org',
+        name: "Test Org",
       });
 
     expect(orgResponse.status).toBe(200);
@@ -2148,10 +2256,10 @@ describe('Subscription Flow', () => {
 
     // 4. User subscribes to Plus plan
     const checkoutResponse = await testApp.request
-      .post('/api/billing/checkout')
-      .set('Authorization', `Bearer ${user.sessionToken}`)
+      .post("/api/billing/checkout")
+      .set("Authorization", `Bearer ${user.sessionToken}`)
       .send({
-        planId: 'plus',
+        planId: "plus",
       });
 
     expect(checkoutResponse.status).toBe(200);
@@ -2159,17 +2267,17 @@ describe('Subscription Flow', () => {
 
     // 5. Simulate successful payment webhook
     const webhookResponse = await testApp.request
-      .post('/api/auth/polar/webhooks')
-      .set('X-Polar-Signature', 'valid_signature')
+      .post("/api/auth/polar/webhooks")
+      .set("X-Polar-Signature", "valid_signature")
       .send({
-        type: 'subscription.active',
+        type: "subscription.active",
         data: {
-          id: 'sub_123',
+          id: "sub_123",
           customerId: organization.polarCustomerId,
           productId: process.env.POLAR_PLUS_PRODUCT_ID,
-          status: 'active',
-          startsAt: '2025-01-15T00:00:00Z',
-          endsAt: '2025-02-15T00:00:00Z',
+          status: "active",
+          startsAt: "2025-01-15T00:00:00Z",
+          endsAt: "2025-02-15T00:00:00Z",
         },
       });
 
@@ -2177,12 +2285,12 @@ describe('Subscription Flow', () => {
 
     // 6. Verify subscription activated
     const billingResponse = await testApp.request
-      .get('/api/billing/current')
-      .set('Authorization', `Bearer ${user.sessionToken}`);
+      .get("/api/billing/current")
+      .set("Authorization", `Bearer ${user.sessionToken}`);
 
     expect(billingResponse.status).toBe(200);
-    expect(billingResponse.body.organization.subscriptionPlan).toBe('plus');
-    expect(billingResponse.body.organization.subscriptionStatus).toBe('active');
+    expect(billingResponse.body.organization.subscriptionPlan).toBe("plus");
+    expect(billingResponse.body.organization.subscriptionStatus).toBe("active");
   });
 });
 ```
@@ -2191,15 +2299,15 @@ describe('Subscription Flow', () => {
 
 ```typescript
 // tests/integration/usage-tracking.test.ts
-describe('Usage Tracking Integration', () => {
-  it('should track usage and sync to Polar', async () => {
-    const organizationId = 'org_123';
-    
+describe("Usage Tracking Integration", () => {
+  it("should track usage and sync to Polar", async () => {
+    const organizationId = "org_123";
+
     // 1. Track Playwright usage
     await usageTracker.trackPlaywrightExecution(
       organizationId,
       125000, // ~3 minutes
-      { testId: 'test_456' }
+      { testId: "test_456" }
     );
 
     // 2. Verify local tracking
@@ -2215,8 +2323,8 @@ describe('Usage Tracking Integration', () => {
     });
 
     expect(events).toHaveLength(1);
-    expect(events[0].eventType).toBe('playwright_execution');
-    expect(events[0].units).toBe('3');
+    expect(events[0].eventType).toBe("playwright_execution");
+    expect(events[0].units).toBe("3");
     expect(events[0].syncedToPolar).toBe(false);
 
     // 4. Sync to Polar
@@ -2241,8 +2349,8 @@ describe('Usage Tracking Integration', () => {
 
 ```typescript
 // tests/performance/usage-tracking.test.ts
-describe('Usage Tracking Performance', () => {
-  it('should handle high-volume usage tracking', async () => {
+describe("Usage Tracking Performance", () => {
+  it("should handle high-volume usage tracking", async () => {
     const startTime = Date.now();
     const promises = [];
 
@@ -2338,11 +2446,13 @@ npm run db:studio
 #### Production Webhook Setup
 
 1. **Configure Polar Webhook**:
+
    - URL: `https://app.supercheck.io/api/auth/polar/webhooks`
    - Secret: Copy from `POLAR_WEBHOOK_SECRET`
    - Events: `subscription.active`, `subscription.updated`, `subscription.canceled`, `order.paid`
 
 2. **Verify Webhook Reachability**:
+
    ```bash
    curl -v -X POST https://app.supercheck.io/api/auth/polar/webhooks \
      -H "Content-Type: application/json" \
@@ -2363,18 +2473,20 @@ npm run db:studio
 // Custom metrics for billing system
 const billingMetrics = {
   // Subscription metrics
-  activeSubscriptions: new Counter('billing_active_subscriptions_total'),
-  subscriptionActivations: new Counter('billing_subscription_activations_total'),
-  subscriptionFailures: new Counter('billing_subscription_failures_total'),
+  activeSubscriptions: new Counter("billing_active_subscriptions_total"),
+  subscriptionActivations: new Counter(
+    "billing_subscription_activations_total"
+  ),
+  subscriptionFailures: new Counter("billing_subscription_failures_total"),
 
   // Usage metrics
-  usageEventsTracked: new Counter('billing_usage_events_total'),
-  usageSyncAttempts: new Counter('billing_usage_sync_attempts_total'),
-  usageSyncFailures: new Counter('billing_usage_sync_failures_total'),
+  usageEventsTracked: new Counter("billing_usage_events_total"),
+  usageSyncAttempts: new Counter("billing_usage_sync_attempts_total"),
+  usageSyncFailures: new Counter("billing_usage_sync_failures_total"),
 
   // Enforcement metrics
-  planEnforcementBlocks: new Counter('billing_plan_enforcement_blocks_total'),
-  limitExceededEvents: new Counter('billing_limit_exceeded_total'),
+  planEnforcementBlocks: new Counter("billing_plan_enforcement_blocks_total"),
+  limitExceededEvents: new Counter("billing_limit_exceeded_total"),
 };
 ```
 
@@ -2442,20 +2554,20 @@ spec:
       template:
         spec:
           containers:
-          - name: sync-usage
-            image: supercheck/app:latest
-            command:
-            - curl
-            - -X POST
-            - http://app:3000/api/admin/sync-usage-events
-            - -H
-            - Authorization: Bearer $ADMIN_API_KEY
-            env:
-            - name: ADMIN_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: app-secrets
-                  key: admin-api-key
+            - name: sync-usage
+              image: supercheck/app:latest
+              command:
+                - curl
+                - -X POST
+                - http://app:3000/api/admin/sync-usage-events
+                - -H
+                - Authorization: Bearer $ADMIN_API_KEY
+              env:
+                - name: ADMIN_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: app-secrets
+                      key: admin-api-key
           restartPolicy: OnFailure
 ```
 
@@ -2465,14 +2577,20 @@ spec:
 
 ```typescript
 // Verify webhook signatures in production
-app.post('/api/auth/polar/webhooks', (req, res) => {
-  const signature = req.headers['x-polar-signature'];
+app.post("/api/auth/polar/webhooks", (req, res) => {
+  const signature = req.headers["x-polar-signature"];
   const payload = req.body;
-  
-  if (!verifyWebhookSignature(payload, signature, process.env.POLAR_WEBHOOK_SECRET!)) {
-    return res.status(401).json({ error: 'Invalid signature' });
+
+  if (
+    !verifyWebhookSignature(
+      payload,
+      signature,
+      process.env.POLAR_WEBHOOK_SECRET!
+    )
+  ) {
+    return res.status(401).json({ error: "Invalid signature" });
   }
-  
+
   // Process webhook...
 });
 ```
@@ -2481,15 +2599,15 @@ app.post('/api/auth/polar/webhooks', (req, res) => {
 
 ```typescript
 // Rate limit billing endpoints
-import rateLimit from 'express-rate-limit';
+import rateLimit from "express-rate-limit";
 
 const billingRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Limit each IP to 100 requests per window
-  message: 'Too many billing requests',
+  message: "Too many billing requests",
 });
 
-app.use('/api/billing', billingRateLimit);
+app.use("/api/billing", billingRateLimit);
 ```
 
 #### Database Security
@@ -2506,7 +2624,7 @@ ALTER TABLE organization ENABLE ROW LEVEL SECURITY;
 CREATE POLICY org_isolation ON organization
   FOR ALL TO application_user
   USING (id IN (
-    SELECT organization_id FROM organization_members 
+    SELECT organization_id FROM organization_members
     WHERE user_id = current_user_id()
   ));
 ```
@@ -2519,12 +2637,14 @@ CREATE POLICY org_isolation ON organization
 
 #### 1. Polar Plugin Not Loading
 
-**Symptoms**: 
+**Symptoms**:
+
 - No customer created on signup
 - `/billing` page shows "Polar not configured"
 - Webhook events not being processed
 
 **Debug Steps**:
+
 ```bash
 # Check environment variables
 echo $POLAR_ACCESS_TOKEN
@@ -2539,6 +2659,7 @@ curl http://localhost:3000/api/auth/session | jq .
 ```
 
 **Solution**:
+
 1. Verify all Polar environment variables are set
 2. Check that `SELF_HOSTED=false` for cloud mode
 3. Restart the application after fixing environment variables
@@ -2547,11 +2668,13 @@ curl http://localhost:3000/api/auth/session | jq .
 #### 2. Webhook Not Receiving Events
 
 **Symptoms**:
+
 - Subscription not activating after payment
 - Plan limits not updating
 - No webhook logs in application
 
 **Debug Steps**:
+
 ```bash
 # Test webhook endpoint
 curl -v -X POST https://your-domain.com/api/auth/polar/webhooks \
@@ -2567,6 +2690,7 @@ curl -v -X POST https://your-domain.com/api/auth/polar/webhooks \
 ```
 
 **Solution**:
+
 1. Ensure webhook URL is publicly accessible (not localhost)
 2. Verify webhook secret matches environment variable exactly
 3. Check SSL certificate is valid for production URLs
@@ -2575,20 +2699,22 @@ curl -v -X POST https://your-domain.com/api/auth/polar/webhooks \
 #### 3. Usage Not Tracking
 
 **Symptoms**:
+
 - Usage meters showing 0 despite test executions
 - No overage charges when expected
 - `usage_events` table empty
 
 **Debug Steps**:
+
 ```sql
 -- Check organization has subscription
-SELECT id, subscription_plan, subscription_status, polar_customer_id 
-FROM organization 
+SELECT id, subscription_plan, subscription_status, polar_customer_id
+FROM organization
 WHERE id = 'your-org-id';
 
 -- Check recent usage events
-SELECT * FROM usage_events 
-WHERE organization_id = 'your-org-id' 
+SELECT * FROM usage_events
+WHERE organization_id = 'your-org-id'
   AND created_at > NOW() - INTERVAL '1 hour'
 ORDER BY created_at DESC;
 
@@ -2597,6 +2723,7 @@ tail -f logs/worker.log | grep "Usage"
 ```
 
 **Solution**:
+
 1. Verify organization has active subscription in cloud mode
 2. Check that usage tracking is called after test execution
 3. Ensure worker service is running and connected to database
@@ -2605,14 +2732,16 @@ tail -f logs/worker.log | grep "Usage"
 #### 4. Usage Sync Failing
 
 **Symptoms**:
+
 - Growing number of pending usage events
 - `synced_to_polar = false` in database
 - Overages not billed to customers
 
 **Debug Steps**:
+
 ```sql
 -- Check sync status
-SELECT 
+SELECT
   COUNT(*) as total,
   COUNT(CASE WHEN synced_to_polar = true THEN 1 END) as synced,
   COUNT(CASE WHEN synced_to_polar = false THEN 1 END) as pending
@@ -2620,10 +2749,10 @@ FROM usage_events;
 
 -- Check recent sync errors
 SELECT event_type, sync_error, sync_attempts, last_sync_attempt
-FROM usage_events 
-WHERE synced_to_polar = false 
+FROM usage_events
+WHERE synced_to_polar = false
   AND sync_error IS NOT NULL
-ORDER BY last_sync_attempt DESC 
+ORDER BY last_sync_attempt DESC
 LIMIT 10;
 
 -- Test Polar API connection
@@ -2632,6 +2761,7 @@ curl -H "Authorization: Bearer $POLAR_ACCESS_TOKEN" \
 ```
 
 **Solution**:
+
 1. Verify Polar access token is valid and not expired
 2. Check that meters are created in Polar dashboard
 3. Ensure customer IDs match between database and Polar
@@ -2640,11 +2770,13 @@ curl -H "Authorization: Bearer $POLAR_ACCESS_TOKEN" \
 #### 5. Plan Enforcement Not Working
 
 **Symptoms**:
+
 - Users can exceed monitor limits
 - Resource creation not blocked
 - Enforcement middleware not triggered
 
 **Debug Steps**:
+
 ```typescript
 // Check enforcement middleware is applied
 console.log(app._router.stack); // Look for enforcement middleware
@@ -2661,6 +2793,7 @@ console.log(org.subscriptionPlan); // Should be 'plus' or 'pro'
 ```
 
 **Solution**:
+
 1. Verify enforcement middleware is applied to relevant routes
 2. Check that database migration ran successfully
 3. Ensure organization has correct subscription plan set
@@ -2686,29 +2819,29 @@ curl -v -X POST https://demo.supercheck.io/api/auth/polar/webhooks \
 
 ```sql
 -- Check plan limits are seeded correctly
-SELECT plan, max_monitors, running_capacity, max_team_members 
-FROM plan_limits 
+SELECT plan, max_monitors, running_capacity, max_team_members
+FROM plan_limits
 ORDER BY max_monitors;
 
 -- Check organizations with Polar customers
-SELECT id, name, subscription_plan, subscription_status, polar_customer_id 
-FROM organization 
+SELECT id, name, subscription_plan, subscription_status, polar_customer_id
+FROM organization
 WHERE polar_customer_id IS NOT NULL;
 
 -- Check subscription dates are properly set
-SELECT id, name, subscription_started_at, subscription_ends_at, 
+SELECT id, name, subscription_started_at, subscription_ends_at,
        usage_period_start, usage_period_end
-FROM organization 
+FROM organization
 WHERE subscription_status = 'active';
 
 -- Check usage sync status
-SELECT 
+SELECT
   event_type,
   COUNT(*) as total_events,
   COUNT(CASE WHEN synced_to_polar = true THEN 1 END) as synced,
   COUNT(CASE WHEN synced_to_polar = false THEN 1 END) as pending,
   MAX(last_sync_attempt) as last_sync
-FROM usage_events 
+FROM usage_events
 WHERE created_at > NOW() - INTERVAL '24 hours'
 GROUP BY event_type;
 ```
@@ -2722,7 +2855,7 @@ const result = await polarUsageService.syncPendingEvents(10);
 
 console.log(`Synced ${result.succeeded}/${result.processed} events`);
 if (result.errors.length > 0) {
-  console.error('Sync errors:', result.errors);
+  console.error("Sync errors:", result.errors);
 }
 ```
 
@@ -2746,18 +2879,20 @@ console.log(enforcementResults);
 #### High Database Load
 
 **Symptoms**:
+
 - Slow billing API responses
 - Database connection exhaustion
 - Usage tracking delays
 
 **Solutions**:
+
 ```sql
 -- Add indexes for better performance
-CREATE INDEX CONCURRENTLY idx_organization_polar_customer 
+CREATE INDEX CONCURRENTLY idx_organization_polar_customer
   ON organization(polar_customer_id);
 
-CREATE INDEX CONCURRENTLY idx_usage_events_sync_batch 
-  ON usage_events(synced_to_polar, created_at) 
+CREATE INDEX CONCURRENTLY idx_usage_events_sync_batch
+  ON usage_events(synced_to_polar, created_at)
   WHERE synced_to_polar = false;
 
 -- Partition usage_events table by month
@@ -2768,6 +2903,7 @@ CREATE TABLE usage_events_y2025m01 PARTITION OF usage_events
 #### Sync Job Performance
 
 **Optimizations**:
+
 ```typescript
 // Batch size optimization
 const optimalBatchSize = 100; // Adjust based on testing
@@ -2776,7 +2912,7 @@ const result = await polarUsageService.syncPendingEvents(optimalBatchSize);
 // Parallel sync processing
 const events = await getPendingEvents(500);
 const chunks = chunk(events, 50); // Process in parallel chunks
-await Promise.all(chunks.map(chunk => syncChunk(chunk)));
+await Promise.all(chunks.map((chunk) => syncChunk(chunk)));
 ```
 
 ### Emergency Procedures
@@ -2785,8 +2921,8 @@ await Promise.all(chunks.map(chunk => syncChunk(chunk)));
 
 ```sql
 -- Emergency: Activate subscription manually
-UPDATE organization 
-SET 
+UPDATE organization
+SET
   subscription_status = 'active',
   subscription_plan = 'plus',
   subscription_started_at = NOW(),
@@ -2800,8 +2936,8 @@ WHERE id = 'org-id-here';
 
 ```sql
 -- Emergency: Reset usage for organization
-UPDATE organization 
-SET 
+UPDATE organization
+SET
   playwright_minutes_used = 0,
   k6_vu_minutes_used = 0,
   usage_period_start = NOW(),
@@ -2832,18 +2968,21 @@ const result = await polarUsageService.syncPendingEvents(1000);
 ### Key Metrics
 
 #### Subscription Metrics
+
 - Active subscriptions by plan
 - Subscription activation rate
 - Churn rate (cancellations)
 - Failed webhook deliveries
 
 #### Usage Metrics
+
 - Usage events per minute
 - Sync success rate
 - Pending event count
 - Overages by plan
 
 #### Business Metrics
+
 - Monthly recurring revenue (MRR)
 - Average revenue per user (ARPU)
 - Customer acquisition cost (CAC)
@@ -2862,7 +3001,8 @@ const dashboardPanels = [
   {
     title: "Usage Sync Success Rate",
     type: "gauge",
-    query: "rate(billing_usage_sync_success_total[5m]) / rate(billing_usage_sync_attempts_total[5m])",
+    query:
+      "rate(billing_usage_sync_success_total[5m]) / rate(billing_usage_sync_attempts_total[5m])",
   },
   {
     title: "Pending Usage Events",
@@ -2898,8 +3038,8 @@ export async function GET() {
     },
   };
 
-  const isHealthy = Object.values(health).every(
-    category => Object.values(category).every(status => status !== false)
+  const isHealthy = Object.values(health).every((category) =>
+    Object.values(category).every((status) => status !== false)
   );
 
   return NextResponse.json(health, {

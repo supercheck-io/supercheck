@@ -8,7 +8,12 @@ import { JobNotificationService } from '../services/job-notification.service';
 import { UsageTrackerService } from '../services/usage-tracker.service';
 import { HardStopNotificationService } from '../services/hard-stop-notification.service';
 import { CancellationService } from '../../common/services/cancellation.service';
-import { JobExecutionTask, TestExecutionTask, TestExecutionResult, TestResult } from '../interfaces';
+import {
+  JobExecutionTask,
+  TestExecutionTask,
+  TestExecutionResult,
+  TestResult,
+} from '../interfaces';
 import { eq } from 'drizzle-orm';
 import { jobs } from '../../db/schema';
 import { ErrorHandler } from '../../common/utils/error-handler';
@@ -29,9 +34,11 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
     this.logger.log(`[Constructor] PlaywrightExecutionProcessor instantiated.`);
   }
 
-  async process(job: Job<JobExecutionTask | TestExecutionTask>): Promise<TestExecutionResult | TestResult> {
+  async process(
+    job: Job<JobExecutionTask | TestExecutionTask>,
+  ): Promise<TestExecutionResult | TestResult> {
     const data = job.data;
-    
+
     // Determine if this is a test or a job
     if ('testId' in data && !('jobId' in data)) {
       return this.processTest(job as Job<TestExecutionTask>);
@@ -48,7 +55,9 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
     try {
       // Check for hard stop before execution (billing limit enforcement)
       if (job.data.organizationId) {
-        const blockCheck = await this.usageTrackerService.shouldBlockExecution(job.data.organizationId);
+        const blockCheck = await this.usageTrackerService.shouldBlockExecution(
+          job.data.organizationId,
+        );
         if (blockCheck.blocked) {
           this.logger.warn(
             `[${testId}] Execution blocked by spending limit for org ${job.data.organizationId}`,
@@ -67,7 +76,11 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
 
           // Send notification (non-blocking)
           this.hardStopNotificationService
-            .notify(job.data.organizationId, runId || testId, blockCheck.reason || 'Spending limit reached')
+            .notify(
+              job.data.organizationId,
+              runId || testId,
+              blockCheck.reason || 'Spending limit reached',
+            )
             .catch(() => {});
 
           return {
@@ -87,22 +100,36 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
       const result = await this.executionService.runSingleTest(job.data);
 
       await job.updateProgress(100);
-      
+
       // Check if this was a cancellation
-      const isCancellation = !result.success && result.error?.includes('Cancellation requested by user');
-      const status = isCancellation ? 'error' : (result.success ? 'passed' : 'failed');
+      const isCancellation =
+        !result.success &&
+        result.error?.includes('Cancellation requested by user');
+      const status = isCancellation
+        ? 'error'
+        : result.success
+          ? 'passed'
+          : 'failed';
       this.logger.log(`Test ${job.id} completed: ${status}`);
 
       // Calculate execution duration and track usage
       const endTime = new Date();
-      const durationMs = result.executionTimeMs ?? (endTime.getTime() - startTime.getTime());
+      const durationMs =
+        result.executionTimeMs ?? endTime.getTime() - startTime.getTime();
       const durationSeconds = Math.floor(durationMs / 1000);
 
       // Update the runs table status for playground tests (critical for preventing stale runs)
       if (runId) {
-        const errorDetails = isCancellation ? 'Cancellation requested by user' : (result.error || undefined);
+        const errorDetails = isCancellation
+          ? 'Cancellation requested by user'
+          : result.error || undefined;
         await this.dbService
-          .updateRunStatus(runId, status, durationSeconds.toString(), errorDetails)
+          .updateRunStatus(
+            runId,
+            status,
+            durationSeconds.toString(),
+            errorDetails,
+          )
           .catch((err: Error) =>
             this.logger.error(
               `[${testId}] Failed to update run status to ${status}: ${err.message}`,
@@ -112,28 +139,27 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
 
       // Track Playwright usage for billing (if organizationId is available)
       if (job.data.organizationId) {
-        await this.usageTrackerService.trackPlaywrightExecution(
-          job.data.organizationId,
-          durationMs,
-          {
+        await this.usageTrackerService
+          .trackPlaywrightExecution(job.data.organizationId, durationMs, {
             testId,
             runId,
             type: 'single_test',
-          }
-        ).catch((err: Error) =>
-          this.logger.warn(
-            `[${testId}] Failed to track Playwright usage: ${err.message}`,
-          ),
-        );
+          })
+          .catch((err: Error) =>
+            this.logger.warn(
+              `[${testId}] Failed to track Playwright usage: ${err.message}`,
+            ),
+          );
       }
 
       return result;
     } catch (error) {
       const errorMessage = (error as Error).message;
-      const isCancellation = errorMessage.includes('cancelled') || 
-                             errorMessage.includes('cancellation') ||
-                             errorMessage.includes('code 137');
-      
+      const isCancellation =
+        errorMessage.includes('cancelled') ||
+        errorMessage.includes('cancellation') ||
+        errorMessage.includes('code 137');
+
       this.logger.error(
         `[${testId}] Test execution job ID: ${job.id} failed. Error: ${errorMessage}`,
         (error as Error).stack,
@@ -143,7 +169,9 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
       // Update the runs table status for playground tests on error
       if (runId) {
         const errorStatus = isCancellation ? 'error' : 'failed';
-        const errorDetails = isCancellation ? 'Cancellation requested by user' : errorMessage;
+        const errorDetails = isCancellation
+          ? 'Cancellation requested by user'
+          : errorMessage;
         await this.dbService
           .updateRunStatus(runId, errorStatus, '0', errorDetails)
           .catch((err: Error) =>
@@ -152,7 +180,7 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
             ),
           );
       }
-      
+
       // For cancellations, return a result instead of throwing to prevent BullMQ retry
       if (isCancellation) {
         return {
@@ -164,12 +192,14 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
           stderr: '',
         };
       }
-      
+
       throw error instanceof Error ? error : new Error(String(error));
     }
   }
 
-  private async processJob(job: Job<JobExecutionTask>): Promise<TestExecutionResult> {
+  private async processJob(
+    job: Job<JobExecutionTask>,
+  ): Promise<TestExecutionResult> {
     const runId = job.data.runId;
     const jobData = job.data;
     const { jobId: originalJobId } = jobData;
@@ -182,7 +212,9 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
 
     // Check for cancellation signal before starting execution
     if (await this.cancellationService.isCancelled(runId)) {
-      this.logger.warn(`[${runId}] Job execution cancelled before processing (detected in queue)`);
+      this.logger.warn(
+        `[${runId}] Job execution cancelled before processing (detected in queue)`,
+      );
 
       // Update run status to cancelled
       await this.dbService
@@ -200,7 +232,9 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
     }
 
     // Check for hard stop before execution (billing limit enforcement)
-    const blockCheck = await this.usageTrackerService.shouldBlockExecution(jobData.organizationId);
+    const blockCheck = await this.usageTrackerService.shouldBlockExecution(
+      jobData.organizationId,
+    );
     if (blockCheck.blocked) {
       this.logger.warn(
         `[${runId}] Job execution blocked by spending limit for org ${jobData.organizationId}`,
@@ -222,7 +256,11 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
 
       // Send notification (non-blocking)
       this.hardStopNotificationService
-        .notify(jobData.organizationId, runId, blockCheck.reason || 'Spending limit reached')
+        .notify(
+          jobData.organizationId,
+          runId,
+          blockCheck.reason || 'Spending limit reached',
+        )
         .catch(() => {});
 
       return {
@@ -256,7 +294,10 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
       // Check if execution service already set error status (for cancellations)
       // Don't override 'error' status with 'failed'
       let finalStatus: 'passed' | 'failed' | 'error';
-      if (!result.success && result.error?.includes('Cancellation requested by user')) {
+      if (
+        !result.success &&
+        result.error?.includes('Cancellation requested by user')
+      ) {
         // Execution was cancelled, keep 'error' status
         finalStatus = 'error';
       } else {
@@ -274,24 +315,22 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
         );
 
       // Track Playwright usage for billing
-      await this.usageTrackerService.trackPlaywrightExecution(
-        jobData.organizationId,
-        durationMs,
-        {
+      await this.usageTrackerService
+        .trackPlaywrightExecution(jobData.organizationId, durationMs, {
           runId,
           jobId: originalJobId,
           testCount: result.results?.length || 0,
-        }
-      ).catch((err: Error) =>
-        this.logger.warn(
-          `[${runId}] Failed to track Playwright usage: ${err.message}`,
-        ),
-      );
+        })
+        .catch((err: Error) =>
+          this.logger.warn(
+            `[${runId}] Failed to track Playwright usage: ${err.message}`,
+          ),
+        );
 
       // Update job status based on all current run statuses
       if (originalJobId) {
         await this.updateJobStatus(originalJobId, finalStatus, runId);
-        
+
         // Always update lastRunAt after a run completes
         await this.dbService.db
           .update(jobs)
@@ -322,14 +361,18 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
       );
 
       // Check if this is a cancellation error
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const isCancellation = errorMessage.includes('cancelled') || 
-                             errorMessage.includes('cancellation') ||
-                             errorMessage.includes('code 137');
-      
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const isCancellation =
+        errorMessage.includes('cancelled') ||
+        errorMessage.includes('cancellation') ||
+        errorMessage.includes('code 137');
+
       // Update database with error status
       const errorStatus = isCancellation ? 'error' : 'failed';
-      const errorDetails = isCancellation ? 'Cancellation requested by user' : errorMessage;
+      const errorDetails = isCancellation
+        ? 'Cancellation requested by user'
+        : errorMessage;
 
       // Update run status first
       await this.dbService
@@ -372,7 +415,7 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
       }
 
       await job.updateProgress(100);
-      
+
       // For cancellations, return a result instead of throwing to prevent BullMQ retry
       if (isCancellation) {
         return {
@@ -386,12 +429,16 @@ export class PlaywrightExecutionProcessor extends WorkerHost {
           stderr: '',
         };
       }
-      
+
       throw error instanceof Error ? error : new Error(String(error));
     }
   }
 
-  private async updateJobStatus(originalJobId: string, status: "pending" | "running" | "passed" | "failed" | "error", runId: string) {
+  private async updateJobStatus(
+    originalJobId: string,
+    status: 'pending' | 'running' | 'passed' | 'failed' | 'error',
+    runId: string,
+  ) {
     const finalRunStatuses =
       await this.dbService.getRunStatusesForJob(originalJobId);
     // Robust: If only one run, or all runs are terminal, set job status to match this run

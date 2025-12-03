@@ -1,8 +1,8 @@
 /**
  * Playwright Execution Processor Tests
- * 
+ *
  * Comprehensive test coverage for Playwright test execution
- * 
+ *
  * Test Categories:
  * - Single Test Execution (playground tests)
  * - Job Execution (scheduled/triggered jobs)
@@ -65,19 +65,27 @@ jest.mock('../services/db.service', () => ({
 }));
 
 jest.mock('../services/job-notification.service', () => ({
-  JobNotificationService: jest.fn().mockImplementation(() => mockJobNotificationService),
+  JobNotificationService: jest
+    .fn()
+    .mockImplementation(() => mockJobNotificationService),
 }));
 
 jest.mock('../services/usage-tracker.service', () => ({
-  UsageTrackerService: jest.fn().mockImplementation(() => mockUsageTrackerService),
+  UsageTrackerService: jest
+    .fn()
+    .mockImplementation(() => mockUsageTrackerService),
 }));
 
 jest.mock('../services/hard-stop-notification.service', () => ({
-  HardStopNotificationService: jest.fn().mockImplementation(() => mockHardStopNotificationService),
+  HardStopNotificationService: jest
+    .fn()
+    .mockImplementation(() => mockHardStopNotificationService),
 }));
 
 jest.mock('../../common/services/cancellation.service', () => ({
-  CancellationService: jest.fn().mockImplementation(() => mockCancellationService),
+  CancellationService: jest
+    .fn()
+    .mockImplementation(() => mockCancellationService),
 }));
 
 jest.mock('../../common/utils/error-handler', () => ({
@@ -162,7 +170,7 @@ describe('PlaywrightExecutionProcessor', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     // Create processor instance
     processor = new PlaywrightExecutionProcessor(
       mockExecutionService as any,
@@ -174,15 +182,21 @@ describe('PlaywrightExecutionProcessor', () => {
     );
 
     // Default mock implementations
-    mockUsageTrackerService.shouldBlockExecution.mockResolvedValue({ blocked: false });
+    mockUsageTrackerService.shouldBlockExecution.mockResolvedValue({
+      blocked: false,
+    });
     mockCancellationService.isCancelled.mockResolvedValue(false);
     mockExecutionService.runSingleTest.mockResolvedValue(mockSuccessResult);
     mockExecutionService.runJob.mockResolvedValue(mockJobSuccessResult);
     mockDbService.updateRunStatus.mockResolvedValue(undefined);
     mockDbService.updateJobStatus.mockResolvedValue(undefined);
     mockDbService.getRunStatusesForJob.mockResolvedValue(['passed']);
-    mockJobNotificationService.handleJobNotifications.mockResolvedValue(undefined);
-    mockUsageTrackerService.trackPlaywrightExecution.mockResolvedValue(undefined);
+    mockJobNotificationService.handleJobNotifications.mockResolvedValue(
+      undefined,
+    );
+    mockUsageTrackerService.trackPlaywrightExecution.mockResolvedValue(
+      undefined,
+    );
     mockHardStopNotificationService.notify.mockResolvedValue(undefined);
   });
 
@@ -194,48 +208,52 @@ describe('PlaywrightExecutionProcessor', () => {
     describe('Positive Cases', () => {
       it('should execute single test successfully', async () => {
         const job = createMockJob(mockTestTask);
-        
+
         const result = await processor.process(job);
-        
+
         expect(result.success).toBe(true);
-        expect(mockExecutionService.runSingleTest).toHaveBeenCalledWith(mockTestTask);
+        expect(mockExecutionService.runSingleTest).toHaveBeenCalledWith(
+          mockTestTask,
+        );
       });
 
       it('should update progress during execution', async () => {
         const job = createMockJob(mockTestTask);
-        
+
         await processor.process(job);
-        
+
         expect(job.updateProgress).toHaveBeenCalledWith(10);
         expect(job.updateProgress).toHaveBeenCalledWith(100);
       });
 
       it('should update run status on success', async () => {
         const job = createMockJob(mockTestTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
           runId,
           'passed',
           expect.any(String),
-          undefined
+          undefined,
         );
       });
 
       it('should track Playwright usage', async () => {
         const job = createMockJob(mockTestTask);
-        
+
         await processor.process(job);
-        
-        expect(mockUsageTrackerService.trackPlaywrightExecution).toHaveBeenCalledWith(
+
+        expect(
+          mockUsageTrackerService.trackPlaywrightExecution,
+        ).toHaveBeenCalledWith(
           organizationId,
           expect.any(Number),
           expect.objectContaining({
             testId,
             runId,
             type: 'single_test',
-          })
+          }),
         );
       });
     });
@@ -244,37 +262,43 @@ describe('PlaywrightExecutionProcessor', () => {
       it('should handle test failure', async () => {
         mockExecutionService.runSingleTest.mockResolvedValue(mockFailedResult);
         const job = createMockJob(mockTestTask);
-        
+
         const result = await processor.process(job);
-        
+
         expect(result.success).toBe(false);
         // Implementation may or may not pass error details
         expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
           runId,
           'failed',
           expect.any(String),
-          expect.anything() // Can be undefined or error message
+          expect.anything(), // Can be undefined or error message
         );
       });
 
       it('should handle execution service error', async () => {
-        mockExecutionService.runSingleTest.mockRejectedValue(new Error('Container failed'));
+        mockExecutionService.runSingleTest.mockRejectedValue(
+          new Error('Container failed'),
+        );
         const job = createMockJob(mockTestTask);
-        
-        await expect(processor.process(job)).rejects.toThrow('Container failed');
+
+        await expect(processor.process(job)).rejects.toThrow(
+          'Container failed',
+        );
         expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
           runId,
           'failed',
           '0',
-          'Container failed'
+          'Container failed',
         );
       });
 
       it('should update run status on error without runId', async () => {
         const taskWithoutRunId = { ...mockTestTask, runId: undefined };
-        mockExecutionService.runSingleTest.mockRejectedValue(new Error('Error'));
+        mockExecutionService.runSingleTest.mockRejectedValue(
+          new Error('Error'),
+        );
         const job = createMockJob(taskWithoutRunId);
-        
+
         await expect(processor.process(job)).rejects.toThrow();
         expect(mockDbService.updateRunStatus).not.toHaveBeenCalled();
       });
@@ -287,9 +311,9 @@ describe('PlaywrightExecutionProcessor', () => {
           reason: 'Spending limit reached',
         });
         const job = createMockJob(mockTestTask);
-        
+
         const result = await processor.process(job);
-        
+
         expect(result.success).toBe(false);
         expect(result.error).toContain('BILLING_BLOCKED');
         expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
@@ -301,14 +325,14 @@ describe('PlaywrightExecutionProcessor', () => {
           reason: 'Spending limit reached',
         });
         const job = createMockJob(mockTestTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
           runId,
           'blocked',
           '0',
-          'Spending limit reached'
+          'Spending limit reached',
         );
       });
 
@@ -318,23 +342,25 @@ describe('PlaywrightExecutionProcessor', () => {
           reason: 'Spending limit reached',
         });
         const job = createMockJob(mockTestTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockHardStopNotificationService.notify).toHaveBeenCalledWith(
           organizationId,
           runId,
-          'Spending limit reached'
+          'Spending limit reached',
         );
       });
 
       it('should skip billing check when no organizationId', async () => {
         const taskWithoutOrg = { ...mockTestTask, organizationId: undefined };
         const job = createMockJob(taskWithoutOrg);
-        
+
         await processor.process(job);
-        
-        expect(mockUsageTrackerService.shouldBlockExecution).not.toHaveBeenCalled();
+
+        expect(
+          mockUsageTrackerService.shouldBlockExecution,
+        ).not.toHaveBeenCalled();
         expect(mockExecutionService.runSingleTest).toHaveBeenCalled();
       });
     });
@@ -346,24 +372,24 @@ describe('PlaywrightExecutionProcessor', () => {
           error: 'Cancellation requested by user',
         });
         const job = createMockJob(mockTestTask);
-        
+
         const result = await processor.process(job);
-        
+
         expect(result.success).toBe(false);
         expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
           runId,
           'error',
           expect.any(String),
-          'Cancellation requested by user'
+          'Cancellation requested by user',
         );
       });
 
       it('should handle thrown cancellation error', async () => {
         mockExecutionService.runSingleTest.mockRejectedValue(
-          new Error('Cancellation requested by user')
+          new Error('Cancellation requested by user'),
         );
         const job = createMockJob(mockTestTask);
-        
+
         // Implementation may return result or throw
         try {
           const result = await processor.process(job);
@@ -375,10 +401,10 @@ describe('PlaywrightExecutionProcessor', () => {
 
       it('should detect code 137 as cancellation', async () => {
         mockExecutionService.runSingleTest.mockRejectedValue(
-          new Error('Process exited with code 137')
+          new Error('Process exited with code 137'),
         );
         const job = createMockJob(mockTestTask);
-        
+
         try {
           const result = await processor.process(job);
           // If returns result, should indicate failure
@@ -399,57 +425,61 @@ describe('PlaywrightExecutionProcessor', () => {
     describe('Positive Cases', () => {
       it('should execute job successfully', async () => {
         const job = createMockJob(mockJobTask);
-        
+
         const result = await processor.process(job);
-        
+
         expect(result.success).toBe(true);
         expect(mockExecutionService.runJob).toHaveBeenCalledWith(mockJobTask);
       });
 
       it('should update job status on completion', async () => {
         const job = createMockJob(mockJobTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockDbService.updateJobStatus).toHaveBeenCalled();
       });
 
       it('should update lastRunAt on job', async () => {
         const job = createMockJob(mockJobTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockDbService.db.update).toHaveBeenCalled();
       });
 
       it('should send job notifications', async () => {
         const job = createMockJob(mockJobTask);
-        
+
         await processor.process(job);
-        
-        expect(mockJobNotificationService.handleJobNotifications).toHaveBeenCalledWith(
+
+        expect(
+          mockJobNotificationService.handleJobNotifications,
+        ).toHaveBeenCalledWith(
           expect.objectContaining({
             jobId,
             organizationId,
             projectId,
             runId,
             finalStatus: 'passed',
-          })
+          }),
         );
       });
 
       it('should track usage for job execution', async () => {
         const job = createMockJob(mockJobTask);
-        
+
         await processor.process(job);
-        
-        expect(mockUsageTrackerService.trackPlaywrightExecution).toHaveBeenCalledWith(
+
+        expect(
+          mockUsageTrackerService.trackPlaywrightExecution,
+        ).toHaveBeenCalledWith(
           organizationId,
           expect.any(Number),
           expect.objectContaining({
             runId,
             jobId,
-          })
+          }),
         );
       });
     });
@@ -462,40 +492,46 @@ describe('PlaywrightExecutionProcessor', () => {
           error: 'Tests failed',
         });
         const job = createMockJob(mockJobTask);
-        
+
         const result = await processor.process(job);
-        
+
         expect(result.success).toBe(false);
         expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
           runId,
           'failed',
-          expect.any(String)
+          expect.any(String),
         );
       });
 
       it('should handle execution service error', async () => {
-        mockExecutionService.runJob.mockRejectedValue(new Error('Docker error'));
+        mockExecutionService.runJob.mockRejectedValue(
+          new Error('Docker error'),
+        );
         const job = createMockJob(mockJobTask);
-        
+
         await expect(processor.process(job)).rejects.toThrow('Docker error');
         expect(ErrorHandler.logError).toHaveBeenCalled();
       });
 
       it('should send error notification on failure', async () => {
-        mockExecutionService.runJob.mockRejectedValue(new Error('Execution failed'));
+        mockExecutionService.runJob.mockRejectedValue(
+          new Error('Execution failed'),
+        );
         const job = createMockJob(mockJobTask);
-        
+
         try {
           await processor.process(job);
         } catch {
           // Expected to throw
         }
-        
-        expect(mockJobNotificationService.handleJobNotifications).toHaveBeenCalledWith(
+
+        expect(
+          mockJobNotificationService.handleJobNotifications,
+        ).toHaveBeenCalledWith(
           expect.objectContaining({
             finalStatus: 'error',
             errorMessage: 'Execution failed',
-          })
+          }),
         );
       });
     });
@@ -504,7 +540,7 @@ describe('PlaywrightExecutionProcessor', () => {
       it('should check for cancellation before processing', async () => {
         mockCancellationService.isCancelled.mockResolvedValue(true);
         const job = createMockJob(mockJobTask);
-        
+
         await expect(processor.process(job)).rejects.toThrow('cancelled');
         expect(mockExecutionService.runJob).not.toHaveBeenCalled();
       });
@@ -512,39 +548,41 @@ describe('PlaywrightExecutionProcessor', () => {
       it('should clear cancellation signal after handling', async () => {
         mockCancellationService.isCancelled.mockResolvedValue(true);
         const job = createMockJob(mockJobTask);
-        
+
         try {
           await processor.process(job);
         } catch {
           // Expected to throw
         }
-        
-        expect(mockCancellationService.clearCancellationSignal).toHaveBeenCalledWith(runId);
+
+        expect(
+          mockCancellationService.clearCancellationSignal,
+        ).toHaveBeenCalledWith(runId);
       });
 
       it('should update run status to error on cancellation', async () => {
         mockCancellationService.isCancelled.mockResolvedValue(true);
         const job = createMockJob(mockJobTask);
-        
+
         try {
           await processor.process(job);
         } catch {
           // Expected
         }
-        
+
         expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
           runId,
           'error',
-          '0'
+          '0',
         );
       });
 
       it('should handle cancellation during execution', async () => {
         mockExecutionService.runJob.mockRejectedValue(
-          new Error('Cancellation requested by user')
+          new Error('Cancellation requested by user'),
         );
         const job = createMockJob(mockJobTask);
-        
+
         // Cancellation may return result or throw depending on implementation
         try {
           const result = await processor.process(job);
@@ -563,9 +601,9 @@ describe('PlaywrightExecutionProcessor', () => {
           reason: 'Monthly limit exceeded',
         });
         const job = createMockJob(mockJobTask);
-        
+
         const result = await processor.process(job);
-        
+
         expect(result.success).toBe(false);
         expect(result.error).toContain('BILLING_BLOCKED');
         expect(mockExecutionService.runJob).not.toHaveBeenCalled();
@@ -577,39 +615,47 @@ describe('PlaywrightExecutionProcessor', () => {
           reason: 'Limit exceeded',
         });
         const job = createMockJob(mockJobTask);
-        
+
         await processor.process(job);
-        
-        expect(mockDbService.updateJobStatus).toHaveBeenCalledWith(jobId, ['error']);
+
+        expect(mockDbService.updateJobStatus).toHaveBeenCalledWith(jobId, [
+          'error',
+        ]);
       });
     });
 
     describe('Job Status Update Logic', () => {
       it('should update job status after completion', async () => {
-        mockDbService.getRunStatusesForJob.mockResolvedValue(['passed', 'failed']);
+        mockDbService.getRunStatusesForJob.mockResolvedValue([
+          'passed',
+          'failed',
+        ]);
         const job = createMockJob(mockJobTask);
-        
+
         await processor.process(job);
-        
+
         // Implementation updates job status - exact value depends on logic
         expect(mockDbService.updateJobStatus).toHaveBeenCalled();
       });
 
       it('should query run statuses for job', async () => {
-        mockDbService.getRunStatusesForJob.mockResolvedValue(['passed', 'passed']);
+        mockDbService.getRunStatusesForJob.mockResolvedValue([
+          'passed',
+          'passed',
+        ]);
         const job = createMockJob(mockJobTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockDbService.getRunStatusesForJob).toHaveBeenCalledWith(jobId);
       });
 
       it('should handle single run status', async () => {
         mockDbService.getRunStatusesForJob.mockResolvedValue(['passed']);
         const job = createMockJob(mockJobTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockDbService.updateJobStatus).toHaveBeenCalled();
       });
     });
@@ -622,25 +668,29 @@ describe('PlaywrightExecutionProcessor', () => {
   describe('Worker Events', () => {
     describe('onFailed', () => {
       it('should log failed job', () => {
-        const loggerSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+        const loggerSpy = jest
+          .spyOn(Logger.prototype, 'error')
+          .mockImplementation();
         const mockJob = createMockJob(mockTestTask);
         const error = new Error('Job failed');
-        
+
         processor.onFailed(mockJob, error);
-        
+
         expect(loggerSpy).toHaveBeenCalled();
         loggerSpy.mockRestore();
       });
 
       it('should handle undefined job', () => {
-        const loggerSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+        const loggerSpy = jest
+          .spyOn(Logger.prototype, 'error')
+          .mockImplementation();
         const error = new Error('Job failed');
-        
+
         processor.onFailed(undefined, error);
-        
+
         expect(loggerSpy).toHaveBeenCalledWith(
           expect.stringContaining('unknown'),
-          expect.any(String)
+          expect.any(String),
         );
         loggerSpy.mockRestore();
       });
@@ -648,11 +698,13 @@ describe('PlaywrightExecutionProcessor', () => {
 
     describe('onError', () => {
       it('should log worker error', () => {
-        const loggerSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+        const loggerSpy = jest
+          .spyOn(Logger.prototype, 'error')
+          .mockImplementation();
         const error = new Error('Worker error');
-        
+
         processor.onError(error);
-        
+
         expect(loggerSpy).toHaveBeenCalled();
         loggerSpy.mockRestore();
       });
@@ -660,12 +712,14 @@ describe('PlaywrightExecutionProcessor', () => {
 
     describe('onReady', () => {
       it('should log ready state', () => {
-        const loggerSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
-        
+        const loggerSpy = jest
+          .spyOn(Logger.prototype, 'log')
+          .mockImplementation();
+
         processor.onReady();
-        
+
         expect(loggerSpy).toHaveBeenCalledWith(
-          expect.stringContaining('ready')
+          expect.stringContaining('ready'),
         );
         loggerSpy.mockRestore();
       });
@@ -681,45 +735,45 @@ describe('PlaywrightExecutionProcessor', () => {
       it('should detect single test task', async () => {
         const testTask = { testId: 'test-1', runId: 'run-1', code: 'test()' };
         const job = createMockJob(testTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockExecutionService.runSingleTest).toHaveBeenCalled();
         expect(mockExecutionService.runJob).not.toHaveBeenCalled();
       });
 
       it('should detect job task', async () => {
-        const jobTask = { 
-          jobId: 'job-1', 
-          runId: 'run-1', 
-          organizationId: 'org-1', 
+        const jobTask = {
+          jobId: 'job-1',
+          runId: 'run-1',
+          organizationId: 'org-1',
           projectId: 'proj-1',
           testScripts: [{ id: 'test-1', script: 'test()' }],
           trigger: 'manual' as const,
         };
         const job = createMockJob(jobTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockExecutionService.runJob).toHaveBeenCalled();
         expect(mockExecutionService.runSingleTest).not.toHaveBeenCalled();
       });
 
       it('should treat task with both testId and jobId as job task', async () => {
-        const mixedTask = { 
-          testId: 'test-1', 
-          jobId: 'job-1', 
-          runId: 'run-1', 
-          organizationId: 'org-1', 
+        const mixedTask = {
+          testId: 'test-1',
+          jobId: 'job-1',
+          runId: 'run-1',
+          organizationId: 'org-1',
           projectId: 'proj-1',
           code: 'test()',
           testScripts: [{ id: 'test-1', script: 'test()' }],
           trigger: 'manual' as const,
         };
         const job = createMockJob(mixedTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockExecutionService.runJob).toHaveBeenCalled();
       });
     });
@@ -731,14 +785,14 @@ describe('PlaywrightExecutionProcessor', () => {
           executionTimeMs: 12345,
         });
         const job = createMockJob(mockTestTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
           runId,
           'passed',
           '12', // 12345ms = 12 seconds
-          undefined
+          undefined,
         );
       });
 
@@ -748,9 +802,9 @@ describe('PlaywrightExecutionProcessor', () => {
           executionTimeMs: undefined,
         });
         const job = createMockJob(mockTestTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockDbService.updateRunStatus).toHaveBeenCalled();
       });
     });
@@ -760,24 +814,29 @@ describe('PlaywrightExecutionProcessor', () => {
         ['cancelled', 'Cancellation requested by user'],
         ['cancellation', 'Cancellation requested by user'],
         ['code 137', 'Cancellation requested by user'],
-      ])('should detect %s as cancellation', async (errorSubstring, expectedMessage) => {
-        mockExecutionService.runSingleTest.mockRejectedValue(
-          new Error(`Process ${errorSubstring} unexpectedly`)
-        );
-        const job = createMockJob(mockTestTask);
-        
-        const result = await processor.process(job);
-        
-        expect(result.error).toBe(expectedMessage);
-      });
+      ])(
+        'should detect %s as cancellation',
+        async (errorSubstring, expectedMessage) => {
+          mockExecutionService.runSingleTest.mockRejectedValue(
+            new Error(`Process ${errorSubstring} unexpectedly`),
+          );
+          const job = createMockJob(mockTestTask);
+
+          const result = await processor.process(job);
+
+          expect(result.error).toBe(expectedMessage);
+        },
+      );
 
       it('should not treat regular errors as cancellation', async () => {
         mockExecutionService.runSingleTest.mockRejectedValue(
-          new Error('Timeout exceeded')
+          new Error('Timeout exceeded'),
         );
         const job = createMockJob(mockTestTask);
-        
-        await expect(processor.process(job)).rejects.toThrow('Timeout exceeded');
+
+        await expect(processor.process(job)).rejects.toThrow(
+          'Timeout exceeded',
+        );
       });
     });
 
@@ -788,13 +847,15 @@ describe('PlaywrightExecutionProcessor', () => {
           originalJobId: 'original-job-id',
         };
         const job = createMockJob(taskWithOriginal);
-        
+
         await processor.process(job);
-        
-        expect(mockJobNotificationService.handleJobNotifications).toHaveBeenCalledWith(
+
+        expect(
+          mockJobNotificationService.handleJobNotifications,
+        ).toHaveBeenCalledWith(
           expect.objectContaining({
             jobId: 'original-job-id',
-          })
+          }),
         );
       });
 
@@ -804,13 +865,15 @@ describe('PlaywrightExecutionProcessor', () => {
           originalJobId: undefined,
         };
         const job = createMockJob(taskWithoutOriginal);
-        
+
         await processor.process(job);
-        
-        expect(mockJobNotificationService.handleJobNotifications).toHaveBeenCalledWith(
+
+        expect(
+          mockJobNotificationService.handleJobNotifications,
+        ).toHaveBeenCalledWith(
           expect.objectContaining({
             jobId,
-          })
+          }),
         );
       });
     });
@@ -819,34 +882,38 @@ describe('PlaywrightExecutionProcessor', () => {
       it('should handle updateRunStatus failure gracefully', async () => {
         mockDbService.updateRunStatus.mockRejectedValue(new Error('DB error'));
         const job = createMockJob(mockTestTask);
-        
+
         // Should not throw
         const result = await processor.process(job);
-        
+
         expect(result.success).toBe(true);
       });
 
       it('should handle trackPlaywrightExecution failure gracefully', async () => {
         mockUsageTrackerService.trackPlaywrightExecution.mockRejectedValue(
-          new Error('Tracking error')
+          new Error('Tracking error'),
         );
         const job = createMockJob(mockTestTask);
-        
+
         // Should not throw
         const result = await processor.process(job);
-        
+
         expect(result.success).toBe(true);
       });
 
       it('should handle notification failure gracefully', async () => {
-        mockExecutionService.runJob.mockRejectedValue(new Error('Execution failed'));
+        mockExecutionService.runJob.mockRejectedValue(
+          new Error('Execution failed'),
+        );
         mockJobNotificationService.handleJobNotifications.mockRejectedValue(
-          new Error('Notification failed')
+          new Error('Notification failed'),
         );
         const job = createMockJob(mockJobTask);
-        
+
         // Should still throw the original error
-        await expect(processor.process(job)).rejects.toThrow('Execution failed');
+        await expect(processor.process(job)).rejects.toThrow(
+          'Execution failed',
+        );
       });
 
       it('should handle hardStopNotification failure gracefully', async () => {
@@ -855,13 +922,13 @@ describe('PlaywrightExecutionProcessor', () => {
           reason: 'Limit reached',
         });
         mockHardStopNotificationService.notify.mockRejectedValue(
-          new Error('Notification failed')
+          new Error('Notification failed'),
         );
         const job = createMockJob(mockTestTask);
-        
+
         // Should not throw
         const result = await processor.process(job);
-        
+
         expect(result.success).toBe(false);
       });
     });
@@ -869,12 +936,14 @@ describe('PlaywrightExecutionProcessor', () => {
     describe('Concurrent Execution', () => {
       it('should handle concurrent test executions', async () => {
         const jobs = Array.from({ length: 5 }, (_, i) =>
-          createMockJob({ ...mockTestTask, testId: `test-${i}` })
+          createMockJob({ ...mockTestTask, testId: `test-${i}` }),
         );
-        
-        const results = await Promise.all(jobs.map(job => processor.process(job)));
-        
-        expect(results.every(r => r.success)).toBe(true);
+
+        const results = await Promise.all(
+          jobs.map((job) => processor.process(job)),
+        );
+
+        expect(results.every((r) => r.success)).toBe(true);
         expect(mockExecutionService.runSingleTest).toHaveBeenCalledTimes(5);
       });
     });
@@ -889,7 +958,7 @@ describe('PlaywrightExecutionProcessor', () => {
       it('should handle test task with minimal required fields', async () => {
         const task = { testId: 'test-1', code: 'test()' };
         const job = createMockJob(task);
-        
+
         // Should not crash
         await processor.process(job);
       });
@@ -897,23 +966,25 @@ describe('PlaywrightExecutionProcessor', () => {
       it('should handle empty organizationId', async () => {
         const task = { ...mockTestTask, organizationId: '' };
         const job = createMockJob(task);
-        
+
         await processor.process(job);
-        
+
         // Should skip billing check for empty org
-        expect(mockUsageTrackerService.shouldBlockExecution).not.toHaveBeenCalled();
+        expect(
+          mockUsageTrackerService.shouldBlockExecution,
+        ).not.toHaveBeenCalled();
       });
     });
 
     describe('Billing Enforcement', () => {
       it('should always check billing before execution', async () => {
         const job = createMockJob(mockJobTask);
-        
+
         await processor.process(job);
-        
-        expect(mockUsageTrackerService.shouldBlockExecution).toHaveBeenCalledWith(
-          organizationId
-        );
+
+        expect(
+          mockUsageTrackerService.shouldBlockExecution,
+        ).toHaveBeenCalledWith(organizationId);
       });
 
       it('should not execute when blocked', async () => {
@@ -922,9 +993,9 @@ describe('PlaywrightExecutionProcessor', () => {
           reason: 'Limit reached',
         });
         const job = createMockJob(mockJobTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockExecutionService.runJob).not.toHaveBeenCalled();
       });
     });
@@ -932,9 +1003,9 @@ describe('PlaywrightExecutionProcessor', () => {
     describe('Cancellation Handling', () => {
       it('should check cancellation before job processing', async () => {
         const job = createMockJob(mockJobTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockCancellationService.isCancelled).toHaveBeenCalledWith(runId);
       });
     });
@@ -952,14 +1023,14 @@ describe('PlaywrightExecutionProcessor', () => {
           executionTimeMs: 0,
         });
         const job = createMockJob(mockTestTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
           runId,
           'passed',
           '0',
-          undefined
+          undefined,
         );
       });
 
@@ -969,14 +1040,14 @@ describe('PlaywrightExecutionProcessor', () => {
           executionTimeMs: 3600000, // 1 hour
         });
         const job = createMockJob(mockTestTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockDbService.updateRunStatus).toHaveBeenCalledWith(
           runId,
           'passed',
           '3600',
-          undefined
+          undefined,
         );
       });
     });
@@ -988,15 +1059,17 @@ describe('PlaywrightExecutionProcessor', () => {
           results: [],
         });
         const job = createMockJob(mockJobTask);
-        
+
         await processor.process(job);
-        
-        expect(mockUsageTrackerService.trackPlaywrightExecution).toHaveBeenCalledWith(
+
+        expect(
+          mockUsageTrackerService.trackPlaywrightExecution,
+        ).toHaveBeenCalledWith(
           organizationId,
           expect.any(Number),
           expect.objectContaining({
             testCount: 0,
-          })
+          }),
         );
       });
 
@@ -1010,15 +1083,17 @@ describe('PlaywrightExecutionProcessor', () => {
           results: largeResults,
         });
         const job = createMockJob(mockJobTask);
-        
+
         await processor.process(job);
-        
-        expect(mockUsageTrackerService.trackPlaywrightExecution).toHaveBeenCalledWith(
+
+        expect(
+          mockUsageTrackerService.trackPlaywrightExecution,
+        ).toHaveBeenCalledWith(
           organizationId,
           expect.any(Number),
           expect.objectContaining({
             testCount: 1000,
-          })
+          }),
         );
       });
     });
@@ -1026,21 +1101,25 @@ describe('PlaywrightExecutionProcessor', () => {
     describe('Run Statuses', () => {
       it('should handle multiple run statuses', async () => {
         mockDbService.getRunStatusesForJob.mockResolvedValue([
-          'passed', 'failed', 'error', 'passed', 'failed'
+          'passed',
+          'failed',
+          'error',
+          'passed',
+          'failed',
         ]);
         const job = createMockJob(mockJobTask);
-        
+
         await processor.process(job);
-        
+
         // Implementation uses robust update which may simplify statuses
         expect(mockDbService.updateJobStatus).toHaveBeenCalled();
       });
 
       it('should call getRunStatusesForJob after job completion', async () => {
         const job = createMockJob(mockJobTask);
-        
+
         await processor.process(job);
-        
+
         expect(mockDbService.getRunStatusesForJob).toHaveBeenCalledWith(jobId);
       });
     });

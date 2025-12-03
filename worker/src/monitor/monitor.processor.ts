@@ -1,8 +1,4 @@
-import {
-  Processor,
-  WorkerHost,
-  OnWorkerEvent,
-} from '@nestjs/bullmq';
+import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { MonitorService } from './monitor.service';
@@ -17,9 +13,7 @@ import { MonitorExecutionResult } from './types/monitor-result.type';
 export class MonitorProcessor extends WorkerHost {
   protected readonly logger = new Logger(MonitorProcessor.name);
 
-  constructor(
-    protected readonly monitorService: MonitorService,
-  ) {
+  constructor(protected readonly monitorService: MonitorService) {
     super();
   }
 
