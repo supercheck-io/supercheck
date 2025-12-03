@@ -12,7 +12,10 @@ import Link from "next/link";
 import { PlaywrightLogo } from "../logo/playwright-logo";
 import { TimeoutErrorPage } from "./timeout-error-page";
 import { TimeoutErrorInfo } from "@/lib/timeout-utils";
-import { CancellationErrorPage, CancellationErrorInfo } from "./cancellation-error-page";
+import {
+  CancellationErrorPage,
+  CancellationErrorInfo,
+} from "./cancellation-error-page";
 import { useTheme } from "next-themes";
 
 interface ReportViewerProps {
@@ -60,7 +63,8 @@ export function ReportViewer({
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [preCheckComplete, setPreCheckComplete] = useState(false);
   const [timeoutInfo, setTimeoutInfo] = useState<TimeoutErrorInfo | null>(null);
-  const [cancellationInfo, setCancellationInfo] = useState<CancellationErrorInfo | null>(null);
+  const [cancellationInfo, setCancellationInfo] =
+    useState<CancellationErrorInfo | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fullscreenIframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -90,7 +94,7 @@ export function ReportViewer({
               const contentType = response.headers.get("content-type");
               if (contentType?.includes("application/json")) {
                 const errorData = await response.json();
-                
+
                 // Check if this is a cancellation error
                 if (errorData.cancellationInfo?.isCancelled) {
                   setCancellationInfo(errorData.cancellationInfo);
@@ -98,7 +102,7 @@ export function ReportViewer({
                   setIsReportLoading(false);
                   return;
                 }
-                
+
                 // Check if this is a timeout error
                 if (errorData.timeoutInfo?.isTimeout) {
                   setTimeoutInfo(errorData.timeoutInfo);
@@ -106,7 +110,7 @@ export function ReportViewer({
                   setIsReportLoading(false);
                   return;
                 }
-                
+
                 // Generic error with message
                 if (errorData.error || errorData.message) {
                   setReportError(errorData.message || errorData.error);
@@ -118,7 +122,7 @@ export function ReportViewer({
             } catch {
               // Failed to parse JSON, continue with generic error
             }
-            
+
             if (response.status === 404) {
               setIsReportLoading(false);
               setIframeError(true);
@@ -142,78 +146,12 @@ export function ReportViewer({
     }
   }, [reportUrl]);
 
-  // Shared function to remove external buttons and settings icon from any iframe
-  const removeExternalButtonFromIframe = (iframe: HTMLIFrameElement | null) => {
-    if (iframe?.contentDocument) {
-      try {
-        // Simple CSS injection
-        const existingStyle =
-          iframe.contentDocument.getElementById(
-            "report-viewer-hide-external-controls"
-          ) ?? null;
-
-        if (!existingStyle) {
-          const style = iframe.contentDocument.createElement("style");
-          style.id = "report-viewer-hide-external-controls";
-          style.textContent = `
-          button.toolbar-button.link-external,
-          button[title="Open snapshot in a new tab"],
-          .codicon.codicon-link-external,
-          /* Hide settings icon in trace viewer */
-          button[title*="settings"],
-          button[title*="Settings"],
-          button[title*="gear"],
-          button[title*="Gear"],
-          .codicon.codicon-gear,
-          .codicon.codicon-settings,
-          /* Hide any button with gear/settings icon in the top right */
-          .toolbar-button[title*="settings"],
-          .toolbar-button[title*="Settings"],
-          .toolbar-button[title*="gear"],
-          .toolbar-button[title*="Gear"],
-          /* More specific selectors for the settings icon */
-          button[aria-label*="settings"],
-          button[aria-label*="Settings"],
-          button[aria-label*="gear"],
-          button[aria-label*="Gear"],
-          /* Hide by class names that might contain settings */
-          .settings-button,
-          .gear-button,
-          .config-button,
-          /* Additional Playwright-specific selectors */
-          [data-testid*="settings"],
-          [data-testid*="gear"],
-          [class*="settings"],
-          [class*="gear"],
-          /* Hide any element with settings-related attributes */
-          [title*="Configure"],
-          [title*="configure"],
-          [aria-label*="Configure"],
-          [aria-label*="configure"] {
-            display: none !important;
-          }
-
-        `;
-          iframe.contentDocument.head.appendChild(style);
-        }
-      } catch {
-        // Ignore CORS errors
-      }
-    }
-  };
-
   const applyDecorators = useCallback(
     (
       iframe: HTMLIFrameElement | null,
       decorators: Array<(iframe: HTMLIFrameElement) => void>
     ) => {
-      if (!iframe) {
-        return;
-      }
-
-      removeExternalButtonFromIframe(iframe);
-
-      if (!decorators.length) {
+      if (!iframe || !decorators.length) {
         return;
       }
 
@@ -560,7 +498,7 @@ export function ReportViewer({
                         errorData.cancellationInfo.isCancelled
                       ) {
                         setCancellationInfo(errorData.cancellationInfo);
-                      } 
+                      }
                       // Check if this is a timeout error based on the API response
                       else if (
                         errorData.timeoutInfo &&
@@ -626,7 +564,7 @@ export function ReportViewer({
       {showFullscreen && currentReportUrl && (
         <div
           className={`fixed inset-0 z-50 backdrop-blur-sm ${
-            isK6Report && !isDarkMode ? "" : "bg-card/80" 
+            isK6Report && !isDarkMode ? "" : "bg-card/80"
           }`}
         >
           <div
