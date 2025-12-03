@@ -48,7 +48,8 @@ export class StalledJobHandlerService implements OnModuleInit {
     const host = this.configService.get<string>('REDIS_HOST', 'localhost');
     const port = this.configService.get<number>('REDIS_PORT', 6379);
     const password = this.configService.get<string>('REDIS_PASSWORD');
-    const tlsEnabled = this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
+    const tlsEnabled =
+      this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
 
     this.redisClient = new Redis({
       host,
@@ -68,10 +69,7 @@ export class StalledJobHandlerService implements OnModuleInit {
     });
 
     this.redisClient.on('error', (err) => {
-      this.logger.error(
-        `Redis connection error: ${err.message}`,
-        err.stack,
-      );
+      this.logger.error(`Redis connection error: ${err.message}`, err.stack);
     });
 
     this.logger.log('Redis connection established for stalled job monitoring');
@@ -127,7 +125,11 @@ export class StalledJobHandlerService implements OnModuleInit {
       const now = new Date();
 
       // Collect all runs that need to be marked as stalled
-      const stalledRuns: Array<{ id: string; jobId: string | null; ageMs: number }> = [];
+      const stalledRuns: Array<{
+        id: string;
+        jobId: string | null;
+        ageMs: number;
+      }> = [];
 
       for (const run of activeRuns) {
         // Skip runs with null createdAt (should not happen, but handle gracefully)
@@ -143,11 +145,14 @@ export class StalledJobHandlerService implements OnModuleInit {
         // If a run has been "running" for longer than threshold + buffer, it's likely stuck
         // Threshold matches lockDuration in queue config (70 minutes)
         // Buffer provides additional time for graceful completion (10 minutes)
-        if (ageMs > TIMEOUTS.STALLED_JOB_THRESHOLD_MS + TIMEOUTS.STALLED_JOB_BUFFER_MS) {
+        if (
+          ageMs >
+          TIMEOUTS.STALLED_JOB_THRESHOLD_MS + TIMEOUTS.STALLED_JOB_BUFFER_MS
+        ) {
           stalledRuns.push({ id: run.id, jobId: run.jobId, ageMs });
           this.logger.warn(
             `[${run.id}] Run has been in "running" status for ${Math.floor(ageMs / 1000)}s. ` +
-            `Will mark as error to prevent stuck jobs.`,
+              `Will mark as error to prevent stuck jobs.`,
           );
         }
       }
@@ -161,13 +166,14 @@ export class StalledJobHandlerService implements OnModuleInit {
 
       try {
         // Batch update all stalled runs at once
-        const runIds = stalledRuns.map(r => r.id);
+        const runIds = stalledRuns.map((r) => r.id);
         await this.dbService.db
           .update(schema.runs)
           .set({
             status: 'error',
             completedAt: now,
-            errorDetails: 'Execution timed out - marked as stalled by automatic recovery',
+            errorDetails:
+              'Execution timed out - marked as stalled by automatic recovery',
           })
           .where(inArray(schema.runs.id, runIds));
 
@@ -175,7 +181,11 @@ export class StalledJobHandlerService implements OnModuleInit {
 
         // Get unique job IDs that need status updates
         const uniqueJobIds = [
-          ...new Set(stalledRuns.map(r => r.jobId).filter((id): id is string => id !== null)),
+          ...new Set(
+            stalledRuns
+              .map((r) => r.jobId)
+              .filter((id): id is string => id !== null),
+          ),
         ];
 
         if (uniqueJobIds.length > 0) {
@@ -190,13 +200,25 @@ export class StalledJobHandlerService implements OnModuleInit {
           });
 
           // Group runs by job ID
-          const runsByJob = new Map<string, Array<'pending' | 'running' | 'passed' | 'failed' | 'error'>>();
+          const runsByJob = new Map<
+            string,
+            Array<'pending' | 'running' | 'passed' | 'failed' | 'error'>
+          >();
           for (const jobRun of allJobRuns) {
             if (jobRun.jobId) {
               if (!runsByJob.has(jobRun.jobId)) {
                 runsByJob.set(jobRun.jobId, []);
               }
-              runsByJob.get(jobRun.jobId)!.push(jobRun.status as 'pending' | 'running' | 'passed' | 'failed' | 'error');
+              runsByJob
+                .get(jobRun.jobId)!
+                .push(
+                  jobRun.status as
+                    | 'pending'
+                    | 'running'
+                    | 'passed'
+                    | 'failed'
+                    | 'error',
+                );
             }
           }
 

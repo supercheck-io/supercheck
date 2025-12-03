@@ -21,9 +21,7 @@ import { CancellationModule } from './common/services/cancellation.module';
 import * as schema from './db/schema';
 
 // Import constants from constants file
-import {
-  PLAYWRIGHT_QUEUE,
-} from './execution/constants';
+import { PLAYWRIGHT_QUEUE } from './execution/constants';
 
 // Define common job options with TTL settings and retry configuration
 // Retries help with transient failures (container startup, network issues)
@@ -70,12 +68,10 @@ const drizzleProvider: Provider = {
     NotificationModule,
     SecurityModule,
     CancellationModule,
-    BullModule.registerQueue(
-      {
-        name: PLAYWRIGHT_QUEUE,
-        defaultJobOptions,
-      },
-    ),
+    BullModule.registerQueue({
+      name: PLAYWRIGHT_QUEUE,
+      defaultJobOptions,
+    }),
   ],
   providers: [
     // Add database provider

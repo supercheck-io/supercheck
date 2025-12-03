@@ -1,8 +1,8 @@
 /**
  * K6 Execution Service Tests
- * 
+ *
  * Comprehensive test coverage for K6 load testing execution
- * 
+ *
  * Test Categories:
  * - Test Execution (single test runs)
  * - Result Processing (summary parsing, report generation)
@@ -13,7 +13,11 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { K6ExecutionService, K6ExecutionTask, K6ExecutionResult } from './k6-execution.service';
+import {
+  K6ExecutionService,
+  K6ExecutionTask,
+  K6ExecutionResult,
+} from './k6-execution.service';
 import { S3Service } from '../../execution/services/s3.service';
 import { DbService } from '../../execution/services/db.service';
 import { RedisService } from '../../execution/services/redis.service';
@@ -70,21 +74,25 @@ describe('K6ExecutionService', () => {
   const mockConfigService = {
     get: jest.fn((key: string, defaultValue?: any) => {
       const config: Record<string, any> = {
-        'K6_BIN_PATH': '/usr/local/bin/k6',
-        'K6_MAX_CONCURRENCY': 2,
-        'K6_TEST_EXECUTION_TIMEOUT_MS': 3600000,
-        'K6_JOB_EXECUTION_TIMEOUT_MS': 3600000,
-        'K6_WEB_DASHBOARD_START_PORT': 6000,
-        'K6_WEB_DASHBOARD_PORT_RANGE': 100,
-        'K6_WEB_DASHBOARD_ADDR': '127.0.0.1',
+        K6_BIN_PATH: '/usr/local/bin/k6',
+        K6_MAX_CONCURRENCY: 2,
+        K6_TEST_EXECUTION_TIMEOUT_MS: 3600000,
+        K6_JOB_EXECUTION_TIMEOUT_MS: 3600000,
+        K6_WEB_DASHBOARD_START_PORT: 6000,
+        K6_WEB_DASHBOARD_PORT_RANGE: 100,
+        K6_WEB_DASHBOARD_ADDR: '127.0.0.1',
       };
       return config[key] ?? defaultValue;
     }),
   };
 
   const mockS3Service = {
-    uploadFile: jest.fn().mockResolvedValue('https://s3.example.com/report.html'),
-    uploadFileFromPath: jest.fn().mockResolvedValue('https://s3.example.com/file'),
+    uploadFile: jest
+      .fn()
+      .mockResolvedValue('https://s3.example.com/report.html'),
+    uploadFileFromPath: jest
+      .fn()
+      .mockResolvedValue('https://s3.example.com/file'),
   };
 
   const mockDbService = {
@@ -140,7 +148,10 @@ describe('K6ExecutionService', () => {
         { provide: S3Service, useValue: mockS3Service },
         { provide: DbService, useValue: mockDbService },
         { provide: RedisService, useValue: mockRedisService },
-        { provide: ContainerExecutorService, useValue: mockContainerExecutorService },
+        {
+          provide: ContainerExecutorService,
+          useValue: mockContainerExecutorService,
+        },
       ],
     }).compile();
 
@@ -161,11 +172,17 @@ describe('K6ExecutionService', () => {
     });
 
     it('should read max concurrency from config', () => {
-      expect(mockConfigService.get).toHaveBeenCalledWith('K6_MAX_CONCURRENCY', 1);
+      expect(mockConfigService.get).toHaveBeenCalledWith(
+        'K6_MAX_CONCURRENCY',
+        1,
+      );
     });
 
     it('should read dashboard port config', () => {
-      expect(mockConfigService.get).toHaveBeenCalledWith('K6_WEB_DASHBOARD_START_PORT', 6000);
+      expect(mockConfigService.get).toHaveBeenCalledWith(
+        'K6_WEB_DASHBOARD_START_PORT',
+        6000,
+      );
     });
   });
 
@@ -279,7 +296,9 @@ describe('K6ExecutionService', () => {
     });
 
     it('should use safe temp paths', () => {
-      const { createSafeTempPath } = require('../../common/security/path-validator');
+      const {
+        createSafeTempPath,
+      } = require('../../common/security/path-validator');
       expect(createSafeTempPath).toBeDefined();
     });
   });
@@ -345,7 +364,7 @@ describe('K6ExecutionService', () => {
     it('should handle missing k6 binary', async () => {
       const { execa } = require('execa');
       execa.mockRejectedValueOnce(new Error('Command not found'));
-      
+
       // Service should still initialize
       expect(service).toBeDefined();
     });
@@ -407,7 +426,7 @@ describe('K6ExecutionService', () => {
         error: null,
         consoleOutput: null,
       };
-      
+
       expect(result.success).toBe(true);
     });
 
@@ -426,7 +445,7 @@ describe('K6ExecutionService', () => {
         error: 'Script error',
         consoleOutput: null,
       };
-      
+
       expect(result.success).toBe(false);
       expect(result.error).toBe('Script error');
     });
@@ -446,7 +465,7 @@ describe('K6ExecutionService', () => {
         error: 'Execution timed out',
         consoleOutput: null,
       };
-      
+
       expect(result.timedOut).toBe(true);
     });
 
@@ -465,7 +484,7 @@ describe('K6ExecutionService', () => {
         error: null,
         consoleOutput: null,
       };
-      
+
       expect(result.durationMs).toBe(12345);
       expect(typeof result.durationMs).toBe('number');
     });
@@ -483,11 +502,11 @@ describe('K6ExecutionService', () => {
     it('should track allocated ports', () => {
       service['allocatedDashboardPorts'].add(6000);
       service['allocatedDashboardPorts'].add(6001);
-      
+
       expect(service['allocatedDashboardPorts'].size).toBe(2);
       expect(service['allocatedDashboardPorts'].has(6000)).toBe(true);
       expect(service['allocatedDashboardPorts'].has(6001)).toBe(true);
-      
+
       // Cleanup
       service['allocatedDashboardPorts'].clear();
     });
@@ -495,9 +514,9 @@ describe('K6ExecutionService', () => {
     it('should not allocate same port twice', () => {
       service['allocatedDashboardPorts'].add(6000);
       service['allocatedDashboardPorts'].add(6000);
-      
+
       expect(service['allocatedDashboardPorts'].size).toBe(1);
-      
+
       // Cleanup
       service['allocatedDashboardPorts'].clear();
     });
@@ -505,7 +524,7 @@ describe('K6ExecutionService', () => {
     it('should release ports after execution', () => {
       service['allocatedDashboardPorts'].add(6000);
       service['allocatedDashboardPorts'].delete(6000);
-      
+
       expect(service['allocatedDashboardPorts'].has(6000)).toBe(false);
     });
   });
@@ -526,14 +545,14 @@ describe('K6ExecutionService', () => {
         runId: 'run-123',
         dashboardPort: 6000,
       });
-      
+
       expect(service['activeK6Runs'].has('run-123')).toBe(true);
-      
+
       const run = service['activeK6Runs'].get('run-123');
       expect(run?.pid).toBe(12345);
       expect(run?.runId).toBe('run-123');
       expect(run?.dashboardPort).toBe(6000);
-      
+
       // Cleanup
       service['activeK6Runs'].clear();
     });
@@ -544,9 +563,9 @@ describe('K6ExecutionService', () => {
         startTime: Date.now(),
         runId: 'run-123',
       });
-      
+
       service['activeK6Runs'].delete('run-123');
-      
+
       expect(service['activeK6Runs'].has('run-123')).toBe(false);
     });
   });
@@ -573,9 +592,9 @@ describe('K6ExecutionService', () => {
           runId: `run-${i}`,
         });
       }
-      
+
       expect(service['activeK6Runs'].size).toBe(service['maxConcurrentK6Runs']);
-      
+
       // Cleanup
       service['activeK6Runs'].clear();
     });
@@ -593,7 +612,7 @@ describe('K6ExecutionService', () => {
           http.get('https://test.k6.io');
         }
       `;
-      
+
       expect(script).toContain('import http');
       expect(script).toContain('export default');
     });
@@ -609,7 +628,7 @@ describe('K6ExecutionService', () => {
           http.get('https://test.k6.io');
         }
       `;
-      
+
       expect(script).toContain('export const options');
       expect(script).toContain('vus: 10');
     });
@@ -626,7 +645,7 @@ describe('K6ExecutionService', () => {
           http.get('https://test.k6.io');
         }
       `;
-      
+
       expect(script).toContain('thresholds');
       expect(script).toContain('http_req_duration');
     });
@@ -644,7 +663,7 @@ describe('K6ExecutionService', () => {
           http.get('https://test.k6.io');
         }
       `;
-      
+
       expect(script).toContain('stages');
       expect(script).toContain('target: 20');
     });
@@ -656,7 +675,9 @@ describe('K6ExecutionService', () => {
 
   describe('Temp File Handling', () => {
     it('should use safe temp paths', () => {
-      const { createSafeTempPath } = require('../../common/security/path-validator');
+      const {
+        createSafeTempPath,
+      } = require('../../common/security/path-validator');
       expect(createSafeTempPath).toBeDefined();
     });
 
@@ -696,7 +717,7 @@ describe('K6ExecutionService', () => {
         error: null,
         consoleOutput: null,
       };
-      
+
       expect(result.reportUrl).toContain('report.html');
     });
 
@@ -720,7 +741,7 @@ describe('K6ExecutionService', () => {
         error: null,
         consoleOutput: null,
       };
-      
+
       expect(result.reportUrl).toBeNull();
     });
   });
@@ -736,7 +757,7 @@ describe('K6ExecutionService', () => {
           http_req_duration: { avg: 100, min: 50, max: 200, p95: 180 },
         },
       };
-      
+
       expect(summary.metrics.http_req_duration.avg).toBe(100);
       expect(summary.metrics.http_req_duration.p95).toBe(180);
     });
@@ -747,7 +768,7 @@ describe('K6ExecutionService', () => {
           iterations: { count: 1000, rate: 33.33 },
         },
       };
-      
+
       expect(summary.metrics.iterations.count).toBe(1000);
     });
 
@@ -757,7 +778,7 @@ describe('K6ExecutionService', () => {
           vus: { value: 10, min: 1, max: 10 },
         },
       };
-      
+
       expect(summary.metrics.vus.value).toBe(10);
     });
 
@@ -768,7 +789,7 @@ describe('K6ExecutionService', () => {
           data_sent: { count: 524288 },
         },
       };
-      
+
       expect(summary.metrics.data_received.count).toBe(1048576);
       expect(summary.metrics.data_sent.count).toBe(524288);
     });
@@ -798,7 +819,7 @@ describe('K6ExecutionService', () => {
         error: null,
         consoleOutput: null,
       };
-      
+
       expect(result.thresholdsPassed).toBe(true);
     });
 
@@ -821,7 +842,7 @@ describe('K6ExecutionService', () => {
         error: 'Thresholds not met',
         consoleOutput: null,
       };
-      
+
       expect(result.thresholdsPassed).toBe(false);
     });
   });
@@ -864,7 +885,7 @@ describe('K6ExecutionService', () => {
         error: 'SyntaxError: Unexpected token',
         consoleOutput: null,
       };
-      
+
       expect(result.error).toContain('SyntaxError');
     });
 
@@ -883,7 +904,7 @@ describe('K6ExecutionService', () => {
         error: 'dial tcp: connection refused',
         consoleOutput: null,
       };
-      
+
       expect(result.error).toContain('connection refused');
     });
 
@@ -902,7 +923,7 @@ describe('K6ExecutionService', () => {
         error: 'out of memory',
         consoleOutput: null,
       };
-      
+
       expect(result.error).toContain('memory');
     });
   });
@@ -917,7 +938,7 @@ describe('K6ExecutionService', () => {
         ...mockTask,
         location: 'us-east-1',
       };
-      
+
       expect(taskWithLocation.location).toBe('us-east-1');
     });
 
@@ -936,7 +957,7 @@ describe('K6ExecutionService', () => {
         ...mockTask,
         jobType: 'k6',
       };
-      
+
       expect(taskWithJobType.jobType).toBe('k6');
     });
 
@@ -945,7 +966,7 @@ describe('K6ExecutionService', () => {
         ...mockTask,
         jobId: 'job-123',
       };
-      
+
       expect(taskWithJobId.jobId).toBe('job-123');
     });
   });

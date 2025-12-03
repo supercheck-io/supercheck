@@ -12,11 +12,9 @@ const serviceRoot = path.resolve(__dirname);
 // Use environment variables or default values - no local test directory since tests are dynamically created
 const testDir = process.env.PLAYWRIGHT_TEST_DIR || '/tmp/playwright-tests';
 const defaultOutputDir = path.resolve(serviceRoot, 'playwright-report');
-const artifactOutputDir =
-  process.env.PLAYWRIGHT_OUTPUT_DIR || defaultOutputDir;
+const artifactOutputDir = process.env.PLAYWRIGHT_OUTPUT_DIR || defaultOutputDir;
 const htmlReportDir =
-  process.env.PLAYWRIGHT_HTML_REPORT ||
-  path.join(artifactOutputDir, 'html');
+  process.env.PLAYWRIGHT_HTML_REPORT || path.join(artifactOutputDir, 'html');
 const jsonOutputFile =
   process.env.PLAYWRIGHT_JSON_OUTPUT ||
   path.join(artifactOutputDir, 'results.json');
@@ -89,7 +87,7 @@ module.exports = defineConfig({
         // Use env var for dynamic output path set per execution
         outputFile: jsonOutputFile,
       },
-    ], 
+    ],
   ],
 
   /* Timeouts aligned with execution service limits */
@@ -151,7 +149,7 @@ module.exports = defineConfig({
       },
     },
 
-    // Additional browsers
+    // Firefox browser project
     {
       name: 'firefox',
       grep: /@firefox\b/i,
@@ -159,15 +157,21 @@ module.exports = defineConfig({
         ...devices['Desktop Firefox'],
         viewport: { width: 1280, height: 720 },
         headless: true,
-        // Firefox-specific launch options (minimal args)
+        // Firefox-specific launch options
+        // Firefox works well in Docker with default settings
         launchOptions: {
-          args: [
-            '--no-sandbox', // Required for containerized environments
-          ],
+          // Firefox doesn't need --no-sandbox (that's Chrome-specific)
+          firefoxUserPrefs: {
+            // Disable auto-updates in test environment
+            'app.update.enabled': false,
+            // Reduce memory usage
+            'browser.cache.disk.enable': false,
+          },
         },
       },
     },
 
+    // WebKit (Safari) browser project
     {
       name: 'safari',
       grep: /@(webkit|safari)\b/i,
@@ -175,11 +179,10 @@ module.exports = defineConfig({
         ...devices['Desktop Safari'],
         viewport: { width: 1280, height: 720 },
         headless: true,
-        // WebKit-specific launch options (very minimal - WebKit is picky)
+        // WebKit-specific launch options
+        // WebKit is well-optimized for Docker environments
         launchOptions: {
-          args: [
-            // WebKit doesn't support most Chrome flags, keep minimal
-          ],
+          // WebKit doesn't support Chrome-style args, keep minimal
         },
       },
     },
@@ -198,5 +201,4 @@ module.exports = defineConfig({
 
   /* Performance and cleanup optimizations */
   maxFailures: process.env.CI ? 5 : undefined, // Stop after 5 failures in CI
-
 });

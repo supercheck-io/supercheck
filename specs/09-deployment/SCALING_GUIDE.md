@@ -1,8 +1,22 @@
 # Docker Compose Scaling Guide
 
+> **Version**: 1.1.0  
+> **Last Updated**: 2025-12-03  
+> **Status**: Production Ready
+
+This guide provides comprehensive instructions for scaling Supercheck deployments using **Docker Compose**. For Kubernetes/K3s scaling, see [K3S_SCALING_GUIDE.md](./K3S_SCALING_GUIDE.md).
+
 ## Overview
 
-This guide provides comprehensive instructions for scaling Supercheck deployments using Docker Compose. The system is designed for **horizontal scaling** by adding more worker replicas rather than increasing individual worker capacity.
+This guide covers Docker Compose deployments which are ideal for:
+
+- Single-server deployments
+- Development and staging environments
+- Small to medium workloads (up to 20 concurrent tests)
+
+For **larger deployments (50+ concurrent tests)**, consider migrating to K3s with KEDA autoscaling. See [K3S_SCALING_GUIDE.md](./K3S_SCALING_GUIDE.md).
+
+The system is designed for **horizontal scaling** by adding more worker replicas rather than increasing individual worker capacity.
 
 ## Scaling Strategies
 
@@ -36,12 +50,12 @@ graph TB
 
 ### Scaling Factors
 
-| Host Configuration | Recommended Workers | Total Capacity | CPU per Worker | Memory per Worker |
-|-------------------|-------------------|----------------|----------------|------------------|
-| 4 vCPU / 8 GB | 2 workers | 4 concurrent | 2 vCPU | 2 GB |
-| 8 vCPU / 16 GB | 3-4 workers | 6-8 concurrent | 2 vCPU | 2 GB |
-| 16 vCPU / 32 GB | 6-8 workers | 12-16 concurrent | 2 vCPU | 2 GB |
-| 32 vCPU / 64 GB | 12-16 workers | 24-32 concurrent | 2 vCPU | 2 GB |
+| Host Configuration | Recommended Workers | Total Capacity   | CPU per Worker | Memory per Worker |
+| ------------------ | ------------------- | ---------------- | -------------- | ----------------- |
+| 4 vCPU / 8 GB      | 2 workers           | 4 concurrent     | 2 vCPU         | 2 GB              |
+| 8 vCPU / 16 GB     | 3-4 workers         | 6-8 concurrent   | 2 vCPU         | 2 GB              |
+| 16 vCPU / 32 GB    | 6-8 workers         | 12-16 concurrent | 2 vCPU         | 2 GB              |
+| 32 vCPU / 64 GB    | 12-16 workers       | 24-32 concurrent | 2 vCPU         | 2 GB              |
 
 ### Auto-Scaling Strategies
 
@@ -154,32 +168,36 @@ docker-compose --env-file .env.scaling up -d
 The scaling configuration is built into the main Docker Compose files:
 
 **Production (docker-compose.yml):**
+
 - Default: 3 workers, 6 concurrent capacity
 - Configurable via `WORKER_REPLICAS` environment variable
 - Scaling examples documented in file comments
 
 **Local (docker-compose-local.yml):**
+
 - Default: 1 worker, 2 concurrent capacity
 - Configurable via `WORKER_REPLICAS` environment variable
 - Lower resource limits for development
 
 ### Host-Based Scaling
 
-| Host Configuration | Recommended Workers | Total Capacity | Environment Variables |
-|-------------------|-------------------|----------------|----------------------|
-| 4 vCPU / 8 GB | 2 workers | 4 concurrent | `WORKER_REPLICAS=2 RUNNING_CAPACITY=4` |
-| 8 vCPU / 16 GB | 3-4 workers | 6-8 concurrent | `WORKER_REPLICAS=3 RUNNING_CAPACITY=6` |
-| 16 vCPU / 32 GB | 6-8 workers | 12-16 concurrent | `WORKER_REPLICAS=6 RUNNING_CAPACITY=12` |
-| 32 vCPU / 64 GB | 12-16 workers | 24-32 concurrent | `WORKER_REPLICAS=12 RUNNING_CAPACITY=24` |
+| Host Configuration | Recommended Workers | Total Capacity   | Environment Variables                    |
+| ------------------ | ------------------- | ---------------- | ---------------------------------------- |
+| 4 vCPU / 8 GB      | 2 workers           | 4 concurrent     | `WORKER_REPLICAS=2 RUNNING_CAPACITY=4`   |
+| 8 vCPU / 16 GB     | 3-4 workers         | 6-8 concurrent   | `WORKER_REPLICAS=3 RUNNING_CAPACITY=6`   |
+| 16 vCPU / 32 GB    | 6-8 workers         | 12-16 concurrent | `WORKER_REPLICAS=6 RUNNING_CAPACITY=12`  |
+| 32 vCPU / 64 GB    | 12-16 workers       | 24-32 concurrent | `WORKER_REPLICAS=12 RUNNING_CAPACITY=24` |
 
 ### Workload-Based Scaling
 
 #### High-Throughput Workloads
+
 - **Many small tests**: More workers, standard memory
 - **Configuration**: `WORKER_REPLICAS=8` `MAX_CONCURRENT_EXECUTIONS=1`
 - **Total**: 8 concurrent capacity
 
 #### Memory-Intensive Workloads
+
 - **Large browser tests**: Fewer workers, more memory per worker
 - **Configuration**: `WORKER_REPLICAS=4` `MAX_CONCURRENT_EXECUTIONS=1`
 - **Total**: 4 concurrent capacity with 3GB per worker
@@ -222,11 +240,11 @@ worker:
   deploy:
     resources:
       limits:
-        cpus: "2.0"          # Max 2 vCPU per worker
-        memory: 2G           # Max 2GB RAM per worker
+        cpus: "2.0" # Max 2 vCPU per worker
+        memory: 2G # Max 2GB RAM per worker
       reservations:
-        cpus: "0.5"          # Guaranteed 0.5 vCPU
-        memory: 1G           # Guaranteed 1GB RAM
+        cpus: "0.5" # Guaranteed 0.5 vCPU
+        memory: 1G # Guaranteed 1GB RAM
 ```
 
 ### Container Security Limits
@@ -287,7 +305,7 @@ For multi-host deployments, use Docker Swarm:
 
 ```yaml
 # docker-compose.swarm.yml
-version: '3.8'
+version: "3.8"
 
 services:
   worker:
@@ -366,7 +384,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: /mnt/ssd/supercheck/reports  # Use SSD for better performance
+      device: /mnt/ssd/supercheck/reports # Use SSD for better performance
 ```
 
 ## Monitoring and Alerting
@@ -525,16 +543,16 @@ WORKER_REPLICAS=4 MAX_CONCURRENT_EXECUTIONS=1 RUNNING_CAPACITY=4 docker-compose 
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `WORKER_REPLICAS` | 3 | Number of worker replicas |
-| `WORKER_CPU_LIMIT` | 2.0 | CPU limit per worker |
-| `WORKER_MEMORY_LIMIT` | 2G | Memory limit per worker |
-| `RUNNING_CAPACITY` | 6 | Total concurrent test capacity |
-| `QUEUED_CAPACITY` | 50 | Maximum queue size |
-| `MAX_CONCURRENT_EXECUTIONS` | 1 | Concurrent tests per worker |
-| `CONTAINER_CPU_LIMIT` | 1.5 | CPU limit per test container |
-| `CONTAINER_MEMORY_LIMIT_MB` | 2048 | Memory limit per test container (MB) |
+| Variable                    | Default | Description                          |
+| --------------------------- | ------- | ------------------------------------ |
+| `WORKER_REPLICAS`           | 3       | Number of worker replicas            |
+| `WORKER_CPU_LIMIT`          | 2.0     | CPU limit per worker                 |
+| `WORKER_MEMORY_LIMIT`       | 2G      | Memory limit per worker              |
+| `RUNNING_CAPACITY`          | 6       | Total concurrent test capacity       |
+| `QUEUED_CAPACITY`           | 50      | Maximum queue size                   |
+| `MAX_CONCURRENT_EXECUTIONS` | 1       | Concurrent tests per worker          |
+| `CONTAINER_CPU_LIMIT`       | 1.5     | CPU limit per test container         |
+| `CONTAINER_MEMORY_LIMIT_MB` | 2048    | Memory limit per test container (MB) |
 
 ## Next Steps
 
@@ -550,9 +568,9 @@ For Kubernetes deployments, Supercheck supports **KEDA (Kubernetes Event-driven 
 
 The autoscaling configuration is defined in `deploy/k8s/keda-scaledobject.yaml`. It uses the Redis scaler to monitor the length of the following Redis lists:
 
--   `bull:playwright-global:wait`: Jobs waiting for Playwright execution
--   `bull:k6-{region}:wait`: Jobs waiting for K6 execution (us-east, eu-central, asia-pacific, global)
--   `bull:monitor-{region}:wait`: Jobs waiting for Monitor execution (us-east, eu-central, asia-pacific)
+- `bull:playwright-global:wait`: Jobs waiting for Playwright execution
+- `bull:k6-{region}:wait`: Jobs waiting for K6 execution (us-east, eu-central, asia-pacific, global)
+- `bull:monitor-{region}:wait`: Jobs waiting for Monitor execution (us-east, eu-central, asia-pacific)
 
 ### ScaledObject Details
 
@@ -575,9 +593,9 @@ spec:
         listLength: "10"
 ```
 
--   **minReplicaCount**: Minimum number of worker pods (default: 0 to allow scaling to zero).
--   **maxReplicaCount**: Maximum number of worker pods (default: 10).
--   **listLength**: Target number of waiting jobs per pod. If the queue length exceeds this value, KEDA will scale up the workers.
+- **minReplicaCount**: Minimum number of worker pods (default: 0 to allow scaling to zero).
+- **maxReplicaCount**: Maximum number of worker pods (default: 10).
+- **listLength**: Target number of waiting jobs per pod. If the queue length exceeds this value, KEDA will scale up the workers.
 
 ### Deployment
 
@@ -585,11 +603,12 @@ To enable KEDA autoscaling:
 
 1.  Ensure KEDA is installed in your Kubernetes cluster.
 2.  Apply the KEDA manifests along with the rest of the deployment:
+
     ```bash
     kubectl apply -k deploy/k8s
     ```
 
-4. **Set up monitoring and alerting** for production
-5. **Review performance metrics** regularly
+3.  **Set up monitoring and alerting** for production
+4.  **Review performance metrics** regularly
 
 For more information on test execution and monitoring, refer to the EXECUTION_SYSTEM.md and MONITORING_SYSTEM.md documentation in the specs directory.

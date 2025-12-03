@@ -160,7 +160,9 @@ export function validatePath(
     'LPT3',
   ];
 
-  if (blockedNames.some((blocked) => normalized.toUpperCase().includes(blocked))) {
+  if (
+    blockedNames.some((blocked) => normalized.toUpperCase().includes(blocked))
+  ) {
     return {
       valid: false,
       error: 'Path references a special device file',

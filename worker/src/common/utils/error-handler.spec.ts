@@ -50,7 +50,9 @@ describe('ErrorHandler', () => {
       // Non-Error objects should get default message
       expect(ErrorHandler.extractMessage({})).toBe('Unknown error occurred');
       expect(ErrorHandler.extractMessage(null)).toBe('Unknown error occurred');
-      expect(ErrorHandler.extractMessage(undefined)).toBe('Unknown error occurred');
+      expect(ErrorHandler.extractMessage(undefined)).toBe(
+        'Unknown error occurred',
+      );
     });
 
     it('should handle number errors', () => {
@@ -122,8 +124,12 @@ describe('ErrorHandler', () => {
     });
 
     it('should return false for non-timeout errors', () => {
-      expect(ErrorHandler.isTimeoutError(new Error('Connection refused'))).toBe(false);
-      expect(ErrorHandler.isTimeoutError(new Error('Permission denied'))).toBe(false);
+      expect(ErrorHandler.isTimeoutError(new Error('Connection refused'))).toBe(
+        false,
+      );
+      expect(ErrorHandler.isTimeoutError(new Error('Permission denied'))).toBe(
+        false,
+      );
     });
 
     it('should handle string errors', () => {
@@ -153,13 +159,19 @@ describe('ErrorHandler', () => {
     });
 
     it('should be case-insensitive', () => {
-      expect(ErrorHandler.isPermissionError(new Error('PERMISSION DENIED'))).toBe(true);
+      expect(
+        ErrorHandler.isPermissionError(new Error('PERMISSION DENIED')),
+      ).toBe(true);
       expect(ErrorHandler.isPermissionError(new Error('Eacces'))).toBe(true);
     });
 
     it('should return false for non-permission errors', () => {
-      expect(ErrorHandler.isPermissionError(new Error('File not found'))).toBe(false);
-      expect(ErrorHandler.isPermissionError(new Error('Connection timeout'))).toBe(false);
+      expect(ErrorHandler.isPermissionError(new Error('File not found'))).toBe(
+        false,
+      );
+      expect(
+        ErrorHandler.isPermissionError(new Error('Connection timeout')),
+      ).toBe(false);
     });
   });
 
@@ -236,7 +248,9 @@ describe('ErrorHandler', () => {
     });
 
     it('should log error and return undefined on failure without handler', async () => {
-      const operation = jest.fn().mockRejectedValue(new Error('Operation failed'));
+      const operation = jest
+        .fn()
+        .mockRejectedValue(new Error('Operation failed'));
       const result = await ErrorHandler.safeExecute(
         mockLogger,
         operation,
@@ -247,7 +261,9 @@ describe('ErrorHandler', () => {
     });
 
     it('should call onError handler and return its result on failure', async () => {
-      const operation = jest.fn().mockRejectedValue(new Error('Operation failed'));
+      const operation = jest
+        .fn()
+        .mockRejectedValue(new Error('Operation failed'));
       const onError = jest.fn().mockReturnValue('fallback');
       const result = await ErrorHandler.safeExecute(
         mockLogger,

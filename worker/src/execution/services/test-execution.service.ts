@@ -4,7 +4,10 @@ import * as path from 'path';
 import * as os from 'os';
 import { randomUUID } from 'crypto';
 import { execa } from 'execa';
-import { validatePath, createSafeTempPath } from '../../common/security/path-validator';
+import {
+  validatePath,
+  createSafeTempPath,
+} from '../../common/security/path-validator';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {

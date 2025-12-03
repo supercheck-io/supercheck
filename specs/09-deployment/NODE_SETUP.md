@@ -12,11 +12,11 @@ This guide covers setting up and configuring your K3s cluster nodes for optimal 
 
 The Supercheck deployment uses three types of nodes:
 
-| Node Type | Size | Role | Workload |
-|-----------|------|------|----------|
-| **App** | cx31 (2vCPU, 4GB) | Application servers | Next.js app, API, validation |
-| **Worker** | cx41 (4vCPU, 16GB) | Test execution | Playwright, K6, Docker |
-| **Database** | cx31 (2vCPU, 4GB) | Data persistence | PostgreSQL, Redis, MinIO |
+| Node Type    | Size               | Role                | Workload                     |
+| ------------ | ------------------ | ------------------- | ---------------------------- |
+| **App**      | cx31 (2vCPU, 4GB)  | Application servers | Next.js app, API, validation |
+| **Worker**   | cx41 (4vCPU, 16GB) | Test execution      | Playwright, K6, Docker       |
+| **Database** | cx31 (2vCPU, 4GB)  | Data persistence    | PostgreSQL, Redis, MinIO     |
 
 ## Step 1: Label Your Nodes
 
@@ -27,6 +27,7 @@ kubectl get nodes
 ```
 
 Output example:
+
 ```
 NAME                 STATUS   ROLES    AGE   VERSION
 k3s-app-1            Ready    master   10d   v1.28.0
@@ -112,39 +113,91 @@ for node in $(kubectl get nodes -o name); do
 done
 ```
 
-## Step 4: Enable Docker on Worker Nodes (If Required)
+## Step 4: Configure Docker on Worker Nodes
 
-If your worker nodes are running K3s with containerd, you may need to install Docker for the cluster-autoscaler and worker pods.
+Supercheck workers need Docker to spawn Playwright and K6 containers. There are two approaches:
 
-### Install Docker on Worker Nodes
+### Option A: K3s with Docker Runtime (RECOMMENDED)
+
+Install K3s with Docker as the container runtime on worker nodes. This is the simplest approach and matches Docker Compose behavior.
 
 ```bash
 # SSH into each worker node
 ssh user@worker-node-ip
 
-# Install Docker (Ubuntu/Debian)
+# Install Docker first
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+docker --version
+
+# Install/reinstall K3s with Docker runtime
+curl -sfL https://get.k3s.io | K3S_URL=https://MASTER_IP:6443 K3S_TOKEN=YOUR_TOKEN sh -s - agent --docker
+
+# Verify Docker is being used by K3s
+sudo systemctl status k3s-agent
+docker ps  # Should show K3s containers AND be available for workers
+```
+
+With this approach, the default `worker-deployment.yaml` works out of the box.
+
+### Option B: K3s with Containerd + Docker Installed Separately
+
+If you want to use containerd as K3s runtime but still need Docker for workers:
+
+```bash
+# SSH into each worker node
+ssh user@worker-node-ip
+
+# Install Docker
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 
-# Add user to docker group (optional, if not running as root)
+# Add user to docker group
 sudo usermod -aG docker $USER
 newgrp docker
 
-# Verify Docker is running
+# K3s runs with containerd (default), Docker is available separately
 docker ps
 ```
 
-### Configure Docker Socket Permissions
-
-The worker pods need read-only access to the Docker socket:
+### Verify Docker Socket Access
 
 ```bash
-# Check Docker socket permissions (usually already correct)
+# Ensure Docker socket exists
 ls -la /var/run/docker.sock
 
-# If needed, adjust permissions (do this on the host, not in a pod)
-sudo chmod 666 /var/run/docker.sock
+# Test Docker access
+docker info
+
+# From the master node, verify workers have Docker
+kubectl get nodes -o wide
 ```
+
+### Docker Configuration for Production
+
+Create `/etc/docker/daemon.json` on each worker node:
+
+```json
+{
+  "iptables": true,
+  "ip-forward": true,
+  "userland-proxy": false,
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  },
+  "storage-driver": "overlay2"
+}
+```
+
+```bash
+# Apply and restart Docker
+sudo systemctl restart docker
+docker info | grep "Storage Driver"
+```
+
+> **Note**: The `worker-deployment.yaml` uses host Docker socket (`/var/run/docker.sock`), the same approach as Docker Compose. For managed K8s where host Docker socket isn't available, use `worker-deployment-dind.yaml` which uses Docker-in-Docker sidecar.
 
 ## Step 5: Install KEDA (Kubernetes Event Autoscaling)
 
@@ -193,6 +246,7 @@ affinity:
 ```
 
 This ensures:
+
 - **HA**: App pods run on different nodes
 - **Resilience**: Worker pods spread across nodes
 - **Resource efficiency**: Better resource utilization
@@ -202,6 +256,7 @@ This ensures:
 ### App Node Sizing
 
 Each app node should have:
+
 - **CPU**: 2+ vCPU (Next.js app requires ~0.5 vCPU baseline)
 - **Memory**: 4GB+ (2GB baseline + buffer)
 - **Disk**: 50GB+ (for logs, cache, temp files)
@@ -209,6 +264,7 @@ Each app node should have:
 ### Worker Node Sizing
 
 Each worker node should have:
+
 - **CPU**: 4+ vCPU (Docker containers consume 1-2 vCPU each)
 - **Memory**: 16GB+ (for running multiple containers)
 - **Disk**: 100GB+ (for reports, artifacts, test data)
@@ -217,10 +273,12 @@ Each worker node should have:
 ### Database Node Sizing
 
 For managed databases (recommended):
+
 - Use Hetzner Cloud or AWS managed services
 - See specs/08-operations/ for configuration
 
 For self-hosted:
+
 - PostgreSQL: 2+ vCPU, 4GB+ memory
 - Redis: 1+ vCPU, 4GB+ memory
 - MinIO: 2+ vCPU, 8GB+ memory

@@ -6,19 +6,19 @@
 
 Each folder below has a detailed **README.md** explaining the section and linking all relevant documents:
 
-| Section | Focus | Key Files |
-|---------|-------|-----------|
-| **[01-core](01-core)** | Core architecture | Architecture, Database schema, API routes |
-| **[02-authentication](02-authentication)** | Auth & security | Authentication, RBAC, API keys, Social auth |
-| **[03-execution](03-execution)** | Test execution | Execution system, Job triggers |
-| **[04-monitoring](04-monitoring)** | Monitoring & alerts | Monitoring, Notifications, Alerts |
-| **[05-features](05-features)** | Platform features | Status pages, AI fixes, Real-time updates |
-| **[06-data](06-data)** | Data management | Storage, Lifecycle, Dashboards, Audit logs |
-| **[07-admin](07-admin)** | Administration | Super admin system |
-| **[08-operations](08-operations)** | Operations | Memory management, Performance optimization |
-| **[09-deployment](09-deployment)** | Deployment | Setup, Configuration, Scaling |
-| **[10-testing](10-testing)** | Testing & QA | Test specifications, Coverage |
-| **[11-billing](11-billing)** | Billing | Monetization, Polar integration |
+| Section                                    | Focus               | Key Files                                   |
+| ------------------------------------------ | ------------------- | ------------------------------------------- |
+| **[01-core](01-core)**                     | Core architecture   | Architecture, Database schema, API routes   |
+| **[02-authentication](02-authentication)** | Auth & security     | Authentication, RBAC, API keys, Social auth |
+| **[03-execution](03-execution)**           | Test execution      | Execution system, Job triggers              |
+| **[04-monitoring](04-monitoring)**         | Monitoring & alerts | Monitoring, Notifications, Alerts           |
+| **[05-features](05-features)**             | Platform features   | Status pages, AI fixes, Real-time updates   |
+| **[06-data](06-data)**                     | Data management     | Storage, Lifecycle, Dashboards, Audit logs  |
+| **[07-admin](07-admin)**                   | Administration      | Super admin system                          |
+| **[08-operations](08-operations)**         | Operations          | Memory management, Performance optimization |
+| **[09-deployment](09-deployment)**         | Deployment          | Setup, Configuration, Scaling               |
+| **[10-testing](10-testing)**               | Testing & QA        | Test specifications, Coverage               |
+| **[11-billing](11-billing)**               | Billing             | Monetization, Polar integration             |
 
 ---
 
@@ -70,17 +70,20 @@ Each folder below has a detailed **README.md** explaining the section and linkin
 
 - [ORGANIZATION_AND_PROJECT_IMPLEMENTATION.md](08-operations/ORGANIZATION_AND_PROJECT_IMPLEMENTATION.md) - Org structure
 - [MEMORY_MANAGEMENT.md](08-operations/MEMORY_MANAGEMENT.md) - Memory management & optimization
-- [IMPROVEMENT_SUGGESTIONS.md](08-operations/IMPROVEMENT_SUGGESTIONS.md) - Improvement suggestions
+- [RESILIENCE_PATTERNS.md](08-operations/RESILIENCE_PATTERNS.md) - Queue alerting, rate limiting, retry logic
+- [CI_CD_TESTING.md](08-operations/CI_CD_TESTING.md) - CI/CD pipelines and GitHub Actions
+- [ENVIRONMENT_VARIABLES.md](08-operations/ENVIRONMENT_VARIABLES.md) - Comprehensive environment variables reference
 
 ## 09-deployment/ — Deployment & Setup
 
-- [IMPLEMENTATION_GUIDE.md](09-deployment/IMPLEMENTATION_GUIDE.md) - Implementation guide
+- [DOCKER_COMPOSE_GUIDE.md](09-deployment/DOCKER_COMPOSE_GUIDE.md) - Docker Compose for self-hosted and local dev
+- [KUBERNETES_GUIDE.md](09-deployment/KUBERNETES_GUIDE.md) - Kubernetes deployment for managed cloud
+- [TERRAFORM_GUIDE.md](09-deployment/TERRAFORM_GUIDE.md) - Infrastructure provisioning on Hetzner
+- [SCALING_GUIDE.md](09-deployment/SCALING_GUIDE.md) - Scaling strategies
+- [VPS_SETUP_GUIDE.md](09-deployment/VPS_SETUP_GUIDE.md) - Production-ready VPS setup with security hardening
 - [LOCAL.md](09-deployment/LOCAL.md) - Local development setup
-- [RUNTIME_CONFIGURATION.md](09-deployment/RUNTIME_CONFIGURATION.md) - Runtime configuration
-- [SCALING_GUIDE.md](09-deployment/SCALING_GUIDE.md) - Scaling guide
-- [DEPLOYMENT_GUIDE.md](09-deployment/DEPLOYMENT_GUIDE.md) - Deployment guide
-- [DOCKER_COMPOSE_GUIDE.md](09-deployment/DOCKER_COMPOSE_GUIDE.md) - Docker Compose guide
-- [NODE_SETUP.md](09-deployment/NODE_SETUP.md) - Node.js setup
+- [NODE_SETUP.md](09-deployment/NODE_SETUP.md) - Kubernetes node labeling and configuration
+- [DEPLOYMENT_GUIDE.md](09-deployment/DEPLOYMENT_GUIDE.md) - Legacy deployment guide
 
 ## 10-testing/ — Testing & Quality Assurance
 

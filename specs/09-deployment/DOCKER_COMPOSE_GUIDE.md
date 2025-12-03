@@ -1,6 +1,10 @@
 # Docker Compose Deployment Guide
 
-Complete guide for deploying Supercheck using Docker Compose in different environments.
+> **Version**: 2.0.0  
+> **Last Updated**: 2025-12-03  
+> **Status**: Production Ready
+
+Complete guide for deploying Supercheck using Docker Compose. This is the recommended approach for **self-hosted deployments** and **local development**.
 
 ## 📋 Table of Contents
 
@@ -53,6 +57,7 @@ docker-compose -f docker/docker-compose-external.yml up -d
 **Use when:** Developing locally with all services in containers
 
 **Features:**
+
 - ✅ All services included (PostgreSQL, Redis, MinIO)
 - ✅ Hot reload support for worker code
 - ✅ Development-friendly defaults
@@ -60,6 +65,7 @@ docker-compose -f docker/docker-compose-external.yml up -d
 - ✅ Docker socket mounting for test execution
 
 **Services:**
+
 - PostgreSQL (port 5432)
 - Redis (port 6379)
 - MinIO (port 9000, console 9001)
@@ -67,11 +73,13 @@ docker-compose -f docker/docker-compose-external.yml up -d
 - Worker (processes all queues)
 
 **Command:**
+
 ```bash
 docker-compose -f docker/docker-compose-local.yml up -d
 ```
 
 **Scale workers:**
+
 ```bash
 WORKER_REPLICAS=2 docker-compose -f docker/docker-compose-local.yml up -d
 ```
@@ -83,6 +91,7 @@ WORKER_REPLICAS=2 docker-compose -f docker/docker-compose-local.yml up -d
 **Use when:** Deploying to production with Docker Engine (VPS, bare metal)
 
 **Features:**
+
 - ✅ External database/Redis support (via env vars)
 - ✅ Production security hardening
 - ✅ Read-only Docker socket mount
@@ -91,21 +100,25 @@ WORKER_REPLICAS=2 docker-compose -f docker/docker-compose-local.yml up -d
 - ✅ S3/MinIO support
 
 **Services:**
+
 - Next.js App
 - Workers (scaled via `WORKER_REPLICAS`)
 - External: PostgreSQL, Redis, S3
 
 **Command:**
+
 ```bash
 docker-compose -f docker/docker-compose.yml up -d
 ```
 
 **Scale to 8 workers:**
+
 ```bash
 WORKER_REPLICAS=8 docker-compose -f docker/docker-compose.yml up -d
 ```
 
 **Environment variables required:**
+
 ```bash
 DATABASE_URL              # PostgreSQL connection string
 REDIS_URL               # Redis connection string
@@ -123,6 +136,7 @@ WORKER_LOCATION        # us-east, eu-central, asia-pacific, or global
 **Use when:** Production deployment with HTTPS/TLS and Traefik reverse proxy
 
 **Features:**
+
 - ✅ Traefik reverse proxy with automatic HTTPS
 - ✅ Let's Encrypt certificate management
 - ✅ Status page routing (HostRegexp)
@@ -131,6 +145,7 @@ WORKER_LOCATION        # us-east, eu-central, asia-pacific, or global
 - ✅ 3 worker replicas for monitoring
 
 **Services:**
+
 - Traefik (HTTPS reverse proxy)
 - Next.js App
 - Workers (3 replicas)
@@ -139,22 +154,26 @@ WORKER_LOCATION        # us-east, eu-central, asia-pacific, or global
 - MinIO
 
 **Command:**
+
 ```bash
 docker-compose -f docker/docker-compose-secure.yml up -d
 ```
 
 **Environment variables:**
+
 ```bash
 BETTER_AUTH_SECRET      # 32-char random secret
 # All others have sensible defaults
 ```
 
 **Access:**
+
 - App: https://demo.supercheck.io
 - MinIO Console: https://demo.supercheck.io:9001 (via Traefik, configure separately)
 - Status Pages: https://{subdomain}.supercheck.io
 
 **Configure Traefik HTTPS:**
+
 ```bash
 # For Let's Encrypt:
 export ACME_EMAIL="your-email@example.com"
@@ -171,6 +190,7 @@ docker-compose -f docker/docker-compose-secure.yml up -d
 **Use when:** Production with external managed services and Traefik HTTPS
 
 **Features:**
+
 - ✅ External PostgreSQL (AWS RDS, etc.)
 - ✅ External Redis (ElastiCache, etc.)
 - ✅ External S3 (AWS S3, Cloudflare R2, etc.)
@@ -179,17 +199,20 @@ docker-compose -f docker/docker-compose-secure.yml up -d
 - ✅ 4 worker replicas
 
 **Services:**
+
 - Traefik (HTTPS)
 - Next.js App
 - Workers (4 replicas)
 - External: PostgreSQL, Redis, S3
 
 **Command:**
+
 ```bash
 docker-compose -f docker/docker-compose-external.yml up -d
 ```
 
 **Required environment variables:**
+
 ```bash
 # Database
 DATABASE_URL="postgresql://user:pass@rds-instance.amazonaws.com:5432/supercheck"
@@ -325,23 +348,27 @@ docker-compose -f docker/docker-compose-external.yml up -d
 ### Step-by-Step: Local Development
 
 1. **Start services:**
+
    ```bash
    cd deploy
    docker-compose -f docker/docker-compose-local.yml up -d
    ```
 
 2. **Wait for readiness:**
+
    ```bash
    docker-compose -f docker/docker-compose-local.yml logs -f app
    # Look for "Ready on http://localhost:3000"
    ```
 
 3. **Access the app:**
+
    ```
    http://localhost:3000
    ```
 
 4. **View logs:**
+
    ```bash
    docker-compose -f docker/docker-compose-local.yml logs -f
    docker-compose -f docker/docker-compose-local.yml logs -f worker
@@ -355,6 +382,7 @@ docker-compose -f docker/docker-compose-external.yml up -d
 ### Step-by-Step: Production Deployment
 
 1. **Prepare server:**
+
    ```bash
    # SSH into your server
    ssh user@server.com
@@ -369,6 +397,7 @@ docker-compose -f docker/docker-compose-external.yml up -d
    ```
 
 2. **Clone and setup:**
+
    ```bash
    git clone https://github.com/supercheck-io/supercheck.git
    cd supercheck
@@ -378,12 +407,14 @@ docker-compose -f docker/docker-compose-external.yml up -d
    ```
 
 3. **Deploy with external services:**
+
    ```bash
    cd deploy
    docker-compose -f docker/docker-compose-external.yml up -d
    ```
 
 4. **Monitor deployment:**
+
    ```bash
    # Check service status
    docker-compose -f docker/docker-compose-external.yml ps
@@ -424,7 +455,7 @@ Edit `docker-compose-external.yml` or `docker-compose-secure.yml`:
 ```yaml
 app:
   deploy:
-    replicas: 2  # Default is 1
+    replicas: 2 # Default is 1
 ```
 
 Then:
@@ -624,11 +655,11 @@ WORKER_REPLICAS=4 docker-compose -f docker/docker-compose.yml up -d
 
 ## Comparison: Which Compose File to Use?
 
-| Scenario | File | Pros | Cons |
-|----------|------|------|------|
-| **Local Dev** | `docker-compose-local.yml` | Easy setup, all-in-one, hot reload | Uses local resources |
-| **Simple Prod** | `docker-compose.yml` | Production defaults, security hardened | Still needs external services |
-| **Prod + HTTPS** | `docker-compose-secure.yml` | Full setup, Traefik included | Complex, needs ACME setup |
+| Scenario           | File                          | Pros                                     | Cons                          |
+| ------------------ | ----------------------------- | ---------------------------------------- | ----------------------------- |
+| **Local Dev**      | `docker-compose-local.yml`    | Easy setup, all-in-one, hot reload       | Uses local resources          |
+| **Simple Prod**    | `docker-compose.yml`          | Production defaults, security hardened   | Still needs external services |
+| **Prod + HTTPS**   | `docker-compose-secure.yml`   | Full setup, Traefik included             | Complex, needs ACME setup     |
 | **Prod + Managed** | `docker-compose-external.yml` | Cloud-native, scalable, minimal overhead | Requires AWS/managed services |
 
 ---
@@ -684,6 +715,7 @@ GOOGLE_CLIENT_ID=...                      # For OAuth
 ## Next Steps
 
 1. **Choose your setup:**
+
    - Local: `docker-compose-local.yml`
    - Production: `docker-compose-external.yml` (recommended)
 
@@ -700,8 +732,8 @@ GOOGLE_CLIENT_ID=...                      # For OAuth
 ## Support
 
 For issues:
+
 - Check logs: `docker-compose logs -f`
 - Verify environment variables: `docker-compose config | grep VAR_NAME`
 - Check Docker socket: `ls -la /var/run/docker.sock`
 - View Traefik dashboard: https://supercheck.example.com/dashboard/
-

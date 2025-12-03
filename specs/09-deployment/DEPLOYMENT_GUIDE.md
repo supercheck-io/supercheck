@@ -6,11 +6,49 @@ Complete guide for deploying Supercheck using Kubernetes and Docker Compose, wit
 
 1. [Quick Start](#quick-start)
 2. [Architecture Overview](#architecture-overview)
-3. [Kubernetes Deployment](#kubernetes-deployment)
-4. [Docker Compose Deployment](#docker-compose-deployment)
-5. [Node Configuration](#node-configuration)
-6. [Scaling & Monitoring](#scaling--monitoring)
-7. [Troubleshooting](#troubleshooting)
+3. [External Services (Recommended)](#external-services-recommended)
+4. [Kubernetes Deployment](#kubernetes-deployment)
+5. [Docker Compose Deployment](#docker-compose-deployment)
+6. [Node Configuration](#node-configuration)
+7. [Scaling & Monitoring](#scaling--monitoring)
+8. [Troubleshooting](#troubleshooting)
+
+---
+
+## External Services (Recommended)
+
+For production deployments, we recommend using managed external services for databases and object storage. This eliminates infrastructure management overhead and provides built-in high availability.
+
+### Recommended Stack
+
+| Service            | Provider                                                 | Benefits                                                         |
+| ------------------ | -------------------------------------------------------- | ---------------------------------------------------------------- |
+| **PostgreSQL**     | [PlanetScale](https://planetscale.com/postgres)          | Built-in PgBouncer (port 6432), automated backups, PITR, 3-AZ HA |
+| **Redis**          | [Redis Cloud](https://redis.com/cloud/)                  | Managed HA, automatic failover, no infrastructure to manage      |
+| **Object Storage** | [Cloudflare R2](https://www.cloudflare.com/products/r2/) | S3-compatible, zero egress fees, global edge network             |
+
+### Connection Configuration
+
+```bash
+# PlanetScale PostgreSQL (use port 6432 for connection pooling)
+DATABASE_URL="postgresql://user:pass@your-cluster.us-east-2.psdb.cloud:6432/supercheck?sslmode=require"
+
+# Redis Cloud
+REDIS_URL="redis://:password@redis-xxxxx.c123.us-east-2-1.ec2.cloud.redislabs.com:12345"
+
+# Cloudflare R2
+S3_ENDPOINT="https://your-account-id.r2.cloudflarestorage.com"
+AWS_ACCESS_KEY_ID="your-r2-access-key"
+AWS_SECRET_ACCESS_KEY="your-r2-secret-key"
+```
+
+### Why External Services?
+
+- **No PgBouncer needed**: PlanetScale includes built-in connection pooling on port 6432
+- **No Redis Sentinel/Cluster setup**: Redis Cloud provides managed HA
+- **No S3 lifecycle policies to configure**: R2 handles storage management
+- **No backup scripts to maintain**: PlanetScale provides automated backups with PITR
+- **Focus on application code**, not infrastructure
 
 ---
 
@@ -71,15 +109,15 @@ K3s HA Cluster (Hetzner Cloud)
 
 ### Key Features
 
-| Feature | Implementation | Benefit |
-|---------|-----------------|---------|
-| **Workload Isolation** | Node labels + Taints | Prevent app/worker contention |
-| **High Availability** | Pod anti-affinity | Survive node failures |
-| **Auto-scaling** | KEDA + Job queue depth | Cost efficiency, handle spikes |
-| **Cluster Scaling** | Hetzner autoscaler | Automatic node provisioning |
-| **Health Checks** | Liveness + readiness probes | Self-healing pods |
-| **Resource Limits** | CPU/memory constraints | Prevent resource exhaustion |
-| **Security** | Pod security policies, RBAC | Defense in depth |
+| Feature                | Implementation              | Benefit                        |
+| ---------------------- | --------------------------- | ------------------------------ |
+| **Workload Isolation** | Node labels + Taints        | Prevent app/worker contention  |
+| **High Availability**  | Pod anti-affinity           | Survive node failures          |
+| **Auto-scaling**       | KEDA + Job queue depth      | Cost efficiency, handle spikes |
+| **Cluster Scaling**    | Hetzner autoscaler          | Automatic node provisioning    |
+| **Health Checks**      | Liveness + readiness probes | Self-healing pods              |
+| **Resource Limits**    | CPU/memory constraints      | Prevent resource exhaustion    |
+| **Security**           | Pod security policies, RBAC | Defense in depth               |
 
 ---
 
@@ -96,6 +134,7 @@ For a production-grade setup on Hetzner Cloud, we use Terraform to provision the
 ### Setup
 
 1. **Initialize Terraform**
+
    ```bash
    cd deploy/terraform
    terraform init
@@ -103,6 +142,7 @@ For a production-grade setup on Hetzner Cloud, we use Terraform to provision the
 
 2. **Configure Variables**
    Create `deploy/terraform/terraform.tfvars`:
+
    ```hcl
    hcloud_token       = "your-token"
    ssh_public_key     = "ssh-rsa ..."
@@ -111,6 +151,7 @@ For a production-grade setup on Hetzner Cloud, we use Terraform to provision the
    ```
 
 3. **Deploy**
+
    ```bash
    terraform apply
    ```
@@ -137,6 +178,7 @@ For detailed instructions, see [deploy/terraform/README.md](terraform/README.md)
 #### Deployments
 
 **`app-deployment.yaml`**
+
 - ✅ Added `nodeSelector: workload=app` for node affinity
 - ✅ Added `tolerations` for app taint
 - ✅ Added `podAntiAffinity` for HA (preferred, spread across nodes)
@@ -144,6 +186,7 @@ For detailed instructions, see [deploy/terraform/README.md](terraform/README.md)
 - ✅ Added proper `periodSeconds` and `failureThreshold`
 
 **`worker-deployment.yaml`**
+
 - ✅ 3 Regional deployments (`us`, `eu`, `apac`)
 - ✅ Node affinity: `workload=worker` AND `region={us-east|eu-central|asia-pacific}`
 - ✅ Pod anti-affinity for high availability
@@ -154,6 +197,7 @@ For detailed instructions, see [deploy/terraform/README.md](terraform/README.md)
 To ensure workers run on the correct nodes and process the correct queues, you must label your worker nodes with the appropriate region.
 
 **1. List Nodes:**
+
 ```bash
 kubectl get nodes
 ```
@@ -173,6 +217,7 @@ kubectl label node <node-3> workload=worker region=asia-pacific
 ```
 
 **3. Verify Labels:**
+
 ```bash
 kubectl get nodes --show-labels
 ```
@@ -182,12 +227,14 @@ This ensures that `supercheck-worker-us` only runs on nodes labeled `region=us-e
 #### Scaling & Autoscaling
 
 **`keda-scaledobject.yaml`**
+
 - ✅ Updated Redis addresses to use service DNS name `supercheck-redis:6379`
 - ✅ Fixed authentication reference to use `TriggerAuthentication`
 - ✅ Configured proper scaling thresholds (5 jobs per pod for regional, 10 for global)
 - ✅ Advanced HPA behavior for aggressive scale-up, conservative scale-down
 
 **`cluster-autoscaler.yaml`** (NEW)
+
 - ✅ Hetzner Cloud support for automatic node provisioning
 - ✅ RBAC configuration for autoscaler
 - ✅ Proper resource limits (100m CPU, 600Mi memory)
@@ -196,6 +243,7 @@ This ensures that `supercheck-worker-us` only runs on nodes labeled `region=us-e
 #### Configuration & Setup
 
 **`NODE_SETUP.md`** (NEW)
+
 - Step-by-step guide for labeling nodes
 - Tainting nodes for workload isolation
 - Installing required components (KEDA, Cluster Autoscaler)
@@ -205,6 +253,7 @@ This ensures that `supercheck-worker-us` only runs on nodes labeled `region=us-e
 ### Deployment Steps
 
 1. **Label and Taint Nodes**
+
    ```bash
    kubectl label nodes k3s-app-1 workload=app
    kubectl label nodes k3s-worker-1 workload=worker
@@ -214,6 +263,7 @@ This ensures that `supercheck-worker-us` only runs on nodes labeled `region=us-e
    ```
 
 2. **Install Prerequisites**
+
    ```bash
    # KEDA for auto-scaling
    kubectl apply -f https://github.com/kedacore/keda/releases/download/v2.13.2/keda-2.13.2.yaml
@@ -223,6 +273,7 @@ This ensures that `supercheck-worker-us` only runs on nodes labeled `region=us-e
    ```
 
 3. **Deploy Supercheck**
+
    ```bash
    cd deploy/k8s
    ./deploy.sh
@@ -241,6 +292,7 @@ This ensures that `supercheck-worker-us` only runs on nodes labeled `region=us-e
 ### Files Updated
 
 **`docker-compose-local.yml`**
+
 - ✅ Added `WORKER_LOCATION: local` environment variable
 - ✅ Proper Docker socket mounting for worker (`/var/run/docker.sock:ro`)
 - ✅ Security constraints: `no-new-privileges`, `cap_drop: ALL`
@@ -248,6 +300,7 @@ This ensures that `supercheck-worker-us` only runs on nodes labeled `region=us-e
 - ✅ Proper resource limits for local development
 
 **`docker-compose.yml`**
+
 - ✅ Added `WORKER_LOCATION` environment variable (parametrized)
 - ✅ Read-only Docker socket mount for security
 - ✅ Proper restart policies and health checks
@@ -348,6 +401,7 @@ kubectl describe scaledobject scaler-worker-us -n supercheck
 ```
 
 **Scaling Behavior:**
+
 - Minimum replicas: 0 (scale to zero when idle)
 - Maximum replicas: 10 per region
 - Trigger: 5+ pending jobs per queue
@@ -361,10 +415,10 @@ Adjust resource limits in deployment manifests:
 ```yaml
 resources:
   requests:
-    cpu: "500m"      # Guaranteed minimum
+    cpu: "500m" # Guaranteed minimum
     memory: "1Gi"
   limits:
-    cpu: "2"         # Hard maximum
+    cpu: "2" # Hard maximum
     memory: "4Gi"
 ```
 
@@ -404,6 +458,7 @@ kubectl describe pod <pod-name> -n supercheck
 ```
 
 **Solution:**
+
 ```bash
 # Verify node labels
 kubectl get nodes --show-labels
@@ -424,6 +479,7 @@ ls -la /var/run/docker.sock
 ```
 
 **Solution:**
+
 ```bash
 # Ensure Docker is installed on worker nodes
 curl -fsSL https://get.docker.com -o get-docker.sh
@@ -445,6 +501,7 @@ kubectl exec -it <worker-pod> -n supercheck -- \
 ```
 
 **Solution:**
+
 - Verify Redis credentials in ConfigMap/Secret
 - Check Redis service DNS name in KEDA triggers
 - Ensure Redis is accessible from cluster
@@ -463,6 +520,7 @@ kubectl describe pod <pod-name> -n supercheck
 ```
 
 **Solution:**
+
 - Increase node size
 - Reduce MAX_CONCURRENT_EXECUTIONS
 - Implement resource quotas per namespace
@@ -535,4 +593,3 @@ For issues or questions:
 2. Review deployment logs: `kubectl logs -f deployment/supercheck-app -n supercheck`
 3. Check KEDA status: `kubectl describe scaledobject scaler-worker-us -n supercheck`
 4. Review the Supercheck specs: `specs/` directory
-

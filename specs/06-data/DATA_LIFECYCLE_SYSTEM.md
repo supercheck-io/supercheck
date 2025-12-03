@@ -90,21 +90,24 @@ graph LR
 ### 1. Monitor Results Cleanup
 
 **Configuration:**
+
 - **Entity Type:** monitor_results
 - **Status:** ✅ Enabled by default
-- **Schedule:** 2 AM daily (0 2 * * *)
+- **Schedule:** 2 AM daily (0 2 \* \* \*)
 - **Retention:** 30 days
 - **Batch Size:** 1000 records
 - **Safety Limit:** 1,000,000 records
 
 **Environment Variables:**
+
 - `MONITOR_CLEANUP_ENABLED`: true
-- `MONITOR_CLEANUP_CRON`: "0 2 * * *"
+- `MONITOR_CLEANUP_CRON`: "0 2 \* \* \*"
 - `MONITOR_RETENTION_DAYS`: 30
 - `MONITOR_CLEANUP_BATCH_SIZE`: 1000
 - `MONITOR_CLEANUP_SAFETY_LIMIT`: 1000000
 
 **What Gets Deleted:**
+
 - ✅ Old monitor check results (older than 30 days)
 - ❌ Status change records (preserved for alert history)
 - ❌ Recent results (within 30 days)
@@ -112,21 +115,24 @@ graph LR
 ### 2. Job Runs Cleanup
 
 **Configuration:**
+
 - **Entity Type:** job_runs
 - **Status:** ❌ Disabled by default (opt-in)
-- **Schedule:** 3 AM daily (0 3 * * *)
+- **Schedule:** 3 AM daily (0 3 \* \* \*)
 - **Retention:** 90 days
 - **Batch Size:** 100 records
 - **Safety Limit:** 10,000 records
 
 **Environment Variables:**
+
 - `JOB_RUNS_CLEANUP_ENABLED`: false
-- `JOB_RUNS_CLEANUP_CRON`: "0 3 * * *"
+- `JOB_RUNS_CLEANUP_CRON`: "0 3 \* \* \*"
 - `JOB_RUNS_RETENTION_DAYS`: 90
 - `JOB_RUNS_CLEANUP_BATCH_SIZE`: 100
 - `JOB_RUNS_CLEANUP_SAFETY_LIMIT`: 10000
 
 **What Gets Deleted:**
+
 - ✅ Old run records (older than 90 days)
 - ✅ Associated reports from reports table
 - ✅ S3 artifacts (reports, traces, screenshots)
@@ -135,19 +141,22 @@ graph LR
 ### 3. Playground Artifacts Cleanup
 
 **Configuration:**
+
 - **Entity Type:** playground_artifacts
 - **Status:** ❌ Disabled by default (opt-in)
-- **Schedule:** Every 12 hours (0 */12 * * *)
+- **Schedule:** Every 12 hours (0 _/12 _ \* \*)
 - **Retention:** 24 hours
 - **S3 Bucket:** playwright-test-artifacts
 
 **Environment Variables:**
+
 - `PLAYGROUND_CLEANUP_ENABLED`: false
-- `PLAYGROUND_CLEANUP_CRON`: "0 */12 * * *"
+- `PLAYGROUND_CLEANUP_CRON`: "0 _/12 _ \* \*"
 - `PLAYGROUND_CLEANUP_MAX_AGE_HOURS`: 24
 - `S3_TEST_BUCKET_NAME`: "playwright-test-artifacts"
 
 **What Gets Deleted:**
+
 - ✅ S3 playground artifacts older than 24 hours
 - ✅ Test reports from playground executions
 - ✅ Screenshots and traces from playground tests
@@ -266,13 +275,13 @@ sequenceDiagram
 
 ### Dry-Run Mode Behavior
 
-| Operation | Normal Mode | Dry-Run Mode |
-|-----------|------------|------------|
-| Query old records | ✅ Executed | ✅ Executed |
-| Count records | ✅ Counted | ✅ Counted |
-| Delete from DB | ✅ Deleted | ❌ Skipped |
-| Delete from S3 | ✅ Deleted | ❌ Skipped |
-| Return metrics | ✅ Returned | ✅ Returned |
+| Operation         | Normal Mode | Dry-Run Mode |
+| ----------------- | ----------- | ------------ |
+| Query old records | ✅ Executed | ✅ Executed  |
+| Count records     | ✅ Counted  | ✅ Counted   |
+| Delete from DB    | ✅ Deleted  | ❌ Skipped   |
+| Delete from S3    | ✅ Deleted  | ❌ Skipped   |
+| Return metrics    | ✅ Returned | ✅ Returned  |
 
 ---
 
@@ -300,16 +309,19 @@ graph TB
 ### Performance Metrics
 
 **Cleanup Duration:**
+
 - Monitor Results: ~5-30 seconds
 - Job Runs: ~30-120 seconds (includes S3 deletion)
 - Playground Artifacts: ~10-60 seconds
 
 **Database Impact:**
+
 - Batch size: 1000 records for monitors, 100 for jobs
 - Delay between batches: 100ms
 - Minimal impact on running queries
 
 **S3 Impact:**
+
 - Paginated listing: 1000 objects per request
 - Batch deletion
 - Minimal impact on S3 performance
@@ -341,12 +353,12 @@ stateDiagram-v2
 
 ### Common Errors
 
-| Error | Cause | Resolution |
-|-------|-------|-----------|
-| "No strategy found" | Invalid entity type | Check entity type spelling |
-| "Database connection failed" | DB unavailable | Check DB connection |
-| "S3 cleanup had failures" | S3 permission/network issue | Check S3 credentials |
-| "Cleanup queue not initialized" | Service not initialized | Call initialize() first |
+| Error                           | Cause                       | Resolution                 |
+| ------------------------------- | --------------------------- | -------------------------- |
+| "No strategy found"             | Invalid entity type         | Check entity type spelling |
+| "Database connection failed"    | DB unavailable              | Check DB connection        |
+| "S3 cleanup had failures"       | S3 permission/network issue | Check S3 credentials       |
+| "Cleanup queue not initialized" | Service not initialized     | Call initialize() first    |
 
 ---
 
@@ -355,6 +367,7 @@ stateDiagram-v2
 ### Tuning Guidelines
 
 **For High-Volume Environments:**
+
 ```mermaid
 graph LR
     A[High Volume] --> B[Increase Batch Size<br/>2000-5000 records]
@@ -367,6 +380,7 @@ graph LR
 ```
 
 **For Low-Volume Environments:**
+
 ```mermaid
 graph LR
     A[Low Volume] --> B[Smaller Batches<br/>500-1000 records]
@@ -421,11 +435,11 @@ graph TB
 
 ### Recommended Schedule
 
-| Strategy | Schedule | Rationale |
-|----------|----------|-----------|
-| Monitor Results | 2 AM Daily | Off-peak hours, sufficient frequency |
-| Job Runs | 3 AM Daily | After monitor cleanup, off-peak |
-| Playground | Every 12 Hours | Short retention, frequent cleanup |
+| Strategy        | Schedule       | Rationale                            |
+| --------------- | -------------- | ------------------------------------ |
+| Monitor Results | 2 AM Daily     | Off-peak hours, sufficient frequency |
+| Job Runs        | 3 AM Daily     | After monitor cleanup, off-peak      |
+| Playground      | Every 12 Hours | Short retention, frequent cleanup    |
 
 ---
 
@@ -443,3 +457,11 @@ The data lifecycle system provides:
 ✅ **Batch processing** to minimize database impact
 ✅ **Safety limits** to prevent accidental mass deletion
 ✅ **Flexible scheduling** with cron patterns
+
+---
+
+## Related Documentation
+
+- **[Storage System](./STORAGE_SYSTEM.md)** - S3/MinIO artifact storage
+- **[Monitoring System](../04-monitoring/MONITORING_SYSTEM.md)** - Application monitoring and alerting
+- **[Resilience Patterns](../08-operations/RESILIENCE_PATTERNS.md)** - Queue alerting, rate limiting, and retry logic

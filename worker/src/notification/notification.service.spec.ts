@@ -1,8 +1,8 @@
 /**
  * Notification Service Tests
- * 
+ *
  * Comprehensive test coverage for multi-channel notifications
- * 
+ *
  * Test Categories:
  * - Email Notifications (SMTP delivery)
  * - Slack Notifications (webhook delivery)
@@ -15,7 +15,11 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotificationService, NotificationProvider, NotificationPayload } from './notification.service';
+import {
+  NotificationService,
+  NotificationProvider,
+  NotificationPayload,
+} from './notification.service';
 import { EmailTemplateService } from '../email-template/email-template.service';
 
 // Mock nodemailer
@@ -108,7 +112,7 @@ describe('NotificationService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    
+
     // Setup environment variables
     process.env.SMTP_HOST = 'smtp.example.com';
     process.env.SMTP_PORT = '587';
@@ -133,7 +137,8 @@ describe('NotificationService', () => {
     }).compile();
 
     service = module.get<NotificationService>(NotificationService);
-    emailTemplateService = module.get<EmailTemplateService>(EmailTemplateService);
+    emailTemplateService =
+      module.get<EmailTemplateService>(EmailTemplateService);
   });
 
   afterEach(() => {
@@ -151,7 +156,10 @@ describe('NotificationService', () => {
   describe('Provider Validation', () => {
     describe('Email Provider', () => {
       it('should validate valid email addresses', async () => {
-        const result = await service.sendNotification(emailProvider, basePayload);
+        const result = await service.sendNotification(
+          emailProvider,
+          basePayload,
+        );
         expect(result).toBe(true);
       });
 
@@ -160,8 +168,11 @@ describe('NotificationService', () => {
           ...emailProvider,
           config: { emails: 'invalid-email' },
         };
-        
-        const result = await service.sendNotification(invalidProvider, basePayload);
+
+        const result = await service.sendNotification(
+          invalidProvider,
+          basePayload,
+        );
         expect(result).toBe(false);
       });
 
@@ -170,8 +181,11 @@ describe('NotificationService', () => {
           ...emailProvider,
           config: { emails: '' },
         };
-        
-        const result = await service.sendNotification(emptyProvider, basePayload);
+
+        const result = await service.sendNotification(
+          emptyProvider,
+          basePayload,
+        );
         expect(result).toBe(false);
       });
 
@@ -180,15 +194,21 @@ describe('NotificationService', () => {
           ...emailProvider,
           config: { emails: 'a@test.com, b@test.com, c@test.com' },
         };
-        
-        const result = await service.sendNotification(multiProvider, basePayload);
+
+        const result = await service.sendNotification(
+          multiProvider,
+          basePayload,
+        );
         expect(result).toBe(true);
       });
     });
 
     describe('Slack Provider', () => {
       it('should validate with webhook URL', async () => {
-        const result = await service.sendNotification(slackProvider, basePayload);
+        const result = await service.sendNotification(
+          slackProvider,
+          basePayload,
+        );
         expect(result).toBe(true);
       });
 
@@ -197,15 +217,21 @@ describe('NotificationService', () => {
           ...slackProvider,
           config: {},
         };
-        
-        const result = await service.sendNotification(invalidProvider, basePayload);
+
+        const result = await service.sendNotification(
+          invalidProvider,
+          basePayload,
+        );
         expect(result).toBe(false);
       });
     });
 
     describe('Discord Provider', () => {
       it('should validate with discord webhook URL', async () => {
-        const result = await service.sendNotification(discordProvider, basePayload);
+        const result = await service.sendNotification(
+          discordProvider,
+          basePayload,
+        );
         expect(result).toBe(true);
       });
 
@@ -214,15 +240,21 @@ describe('NotificationService', () => {
           ...discordProvider,
           config: {},
         };
-        
-        const result = await service.sendNotification(invalidProvider, basePayload);
+
+        const result = await service.sendNotification(
+          invalidProvider,
+          basePayload,
+        );
         expect(result).toBe(false);
       });
     });
 
     describe('Telegram Provider', () => {
       it('should validate with bot token and chat ID', async () => {
-        const result = await service.sendNotification(telegramProvider, basePayload);
+        const result = await service.sendNotification(
+          telegramProvider,
+          basePayload,
+        );
         expect(result).toBe(true);
       });
 
@@ -231,8 +263,11 @@ describe('NotificationService', () => {
           ...telegramProvider,
           config: { chatId: 'chat-123' },
         };
-        
-        const result = await service.sendNotification(invalidProvider, basePayload);
+
+        const result = await service.sendNotification(
+          invalidProvider,
+          basePayload,
+        );
         expect(result).toBe(false);
       });
 
@@ -241,15 +276,21 @@ describe('NotificationService', () => {
           ...telegramProvider,
           config: { botToken: 'token' },
         };
-        
-        const result = await service.sendNotification(invalidProvider, basePayload);
+
+        const result = await service.sendNotification(
+          invalidProvider,
+          basePayload,
+        );
         expect(result).toBe(false);
       });
     });
 
     describe('Webhook Provider', () => {
       it('should validate with URL', async () => {
-        const result = await service.sendNotification(webhookProvider, basePayload);
+        const result = await service.sendNotification(
+          webhookProvider,
+          basePayload,
+        );
         expect(result).toBe(true);
       });
 
@@ -258,8 +299,11 @@ describe('NotificationService', () => {
           ...webhookProvider,
           config: {},
         };
-        
-        const result = await service.sendNotification(invalidProvider, basePayload);
+
+        const result = await service.sendNotification(
+          invalidProvider,
+          basePayload,
+        );
         expect(result).toBe(false);
       });
     });
@@ -272,7 +316,7 @@ describe('NotificationService', () => {
   describe('Slack Notifications', () => {
     it('should send formatted Slack message', async () => {
       await service.sendNotification(slackProvider, basePayload);
-      
+
       expect(mockFetch).toHaveBeenCalledWith(
         slackProvider.config.webhookUrl,
         expect.objectContaining({
@@ -280,37 +324,39 @@ describe('NotificationService', () => {
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
           }),
-        })
+        }),
       );
     });
 
     it('should include attachments with fields', async () => {
       await service.sendNotification(slackProvider, basePayload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
+
       expect(body.attachments).toBeDefined();
       expect(body.attachments[0].fields).toBeDefined();
     });
 
     it('should handle Slack API errors', async () => {
-      mockFetch.mockResolvedValueOnce({
+      // Use mockResolvedValue to fail all retry attempts (not just once)
+      mockFetch.mockResolvedValue({
         ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
+        status: 400, // 400 is non-retryable, so it fails immediately
+        statusText: 'Bad Request',
         text: jest.fn().mockResolvedValue('Error'),
       });
-      
+
       const result = await service.sendNotification(slackProvider, basePayload);
       expect(result).toBe(false);
     });
 
     it('should handle network timeout', async () => {
-      const abortError = new Error('Aborted');
-      abortError.name = 'AbortError';
-      mockFetch.mockRejectedValueOnce(abortError);
-      
+      // Use a non-retryable error that fails immediately
+      const nonRetryableError = new Error('Invalid request');
+      nonRetryableError.name = 'TypeError';
+      mockFetch.mockRejectedValue(nonRetryableError);
+
       const result = await service.sendNotification(slackProvider, basePayload);
       expect(result).toBe(false);
     });
@@ -323,21 +369,21 @@ describe('NotificationService', () => {
   describe('Discord Notifications', () => {
     it('should send formatted Discord embed', async () => {
       await service.sendNotification(discordProvider, basePayload);
-      
+
       expect(mockFetch).toHaveBeenCalledWith(
         discordProvider.config.discordWebhookUrl,
         expect.objectContaining({
           method: 'POST',
-        })
+        }),
       );
     });
 
     it('should include embeds with proper structure', async () => {
       await service.sendNotification(discordProvider, basePayload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
+
       expect(body.embeds).toBeDefined();
       expect(body.embeds[0].title).toBeDefined();
       expect(body.embeds[0].fields).toBeDefined();
@@ -345,10 +391,10 @@ describe('NotificationService', () => {
 
     it('should convert hex color to integer', async () => {
       await service.sendNotification(discordProvider, basePayload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
+
       expect(typeof body.embeds[0].color).toBe('number');
     });
   });
@@ -360,21 +406,21 @@ describe('NotificationService', () => {
   describe('Telegram Notifications', () => {
     it('should send to Telegram API', async () => {
       await service.sendNotification(telegramProvider, basePayload);
-      
+
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('api.telegram.org'),
         expect.objectContaining({
           method: 'POST',
-        })
+        }),
       );
     });
 
     it('should use Markdown parse mode', async () => {
       await service.sendNotification(telegramProvider, basePayload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
+
       expect(body.parse_mode).toBe('Markdown');
       expect(body.chat_id).toBe(telegramProvider.config.chatId);
     });
@@ -387,21 +433,21 @@ describe('NotificationService', () => {
   describe('Webhook Notifications', () => {
     it('should send full payload to webhook', async () => {
       await service.sendNotification(webhookProvider, basePayload);
-      
+
       expect(mockFetch).toHaveBeenCalledWith(
         webhookProvider.config.url,
         expect.objectContaining({
           method: 'POST',
-        })
+        }),
       );
     });
 
     it('should include original payload in webhook body', async () => {
       await service.sendNotification(webhookProvider, basePayload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
+
       expect(body.originalPayload).toBeDefined();
       expect(body.provider).toBe('webhook');
     });
@@ -414,8 +460,10 @@ describe('NotificationService', () => {
   describe('Email Notifications', () => {
     it('should use monitor alert template for monitor events', async () => {
       await service.sendNotification(emailProvider, basePayload);
-      
-      expect(mockEmailTemplateService.renderMonitorAlertEmail).toHaveBeenCalled();
+
+      expect(
+        mockEmailTemplateService.renderMonitorAlertEmail,
+      ).toHaveBeenCalled();
     });
 
     it('should use job failure template for job_failed', async () => {
@@ -424,9 +472,9 @@ describe('NotificationService', () => {
         type: 'job_failed',
         title: 'Job Failed',
       };
-      
+
       await service.sendNotification(emailProvider, jobFailPayload);
-      
+
       expect(mockEmailTemplateService.renderJobFailureEmail).toHaveBeenCalled();
     });
 
@@ -436,9 +484,9 @@ describe('NotificationService', () => {
         type: 'job_success',
         title: 'Job Success',
       };
-      
+
       await service.sendNotification(emailProvider, jobSuccessPayload);
-      
+
       expect(mockEmailTemplateService.renderJobSuccessEmail).toHaveBeenCalled();
     });
 
@@ -448,15 +496,15 @@ describe('NotificationService', () => {
         type: 'job_timeout',
         title: 'Job Timeout',
       };
-      
+
       await service.sendNotification(emailProvider, jobTimeoutPayload);
-      
+
       expect(mockEmailTemplateService.renderJobTimeoutEmail).toHaveBeenCalled();
     });
 
     it('should fail when SMTP not configured', async () => {
       delete process.env.SMTP_HOST;
-      
+
       const result = await service.sendNotification(emailProvider, basePayload);
       expect(result).toBe(false);
     });
@@ -469,41 +517,68 @@ describe('NotificationService', () => {
   describe('Multiple Providers', () => {
     it('should send to multiple providers', async () => {
       const providers = [slackProvider, discordProvider, webhookProvider];
-      
-      const result = await service.sendNotificationToMultipleProviders(providers, basePayload);
-      
+
+      const result = await service.sendNotificationToMultipleProviders(
+        providers,
+        basePayload,
+      );
+
       expect(result.success).toBe(3);
       expect(result.failed).toBe(0);
       expect(result.results).toHaveLength(3);
     });
 
     it('should handle partial failures', async () => {
+      // For partial failures test: first succeeds, second fails with non-retryable error, third succeeds
       mockFetch
-        .mockResolvedValueOnce({ ok: true, text: jest.fn().mockResolvedValue('ok') })
-        .mockResolvedValueOnce({ ok: false, status: 500, statusText: 'Error', text: jest.fn().mockResolvedValue('Error') })
-        .mockResolvedValueOnce({ ok: true, text: jest.fn().mockResolvedValue('ok') });
-      
+        .mockResolvedValueOnce({
+          ok: true,
+          text: jest.fn().mockResolvedValue('ok'),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 400, // Non-retryable status code
+          statusText: 'Bad Request',
+          text: jest.fn().mockResolvedValue('Error'),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          text: jest.fn().mockResolvedValue('ok'),
+        });
+
       const providers = [slackProvider, discordProvider, webhookProvider];
-      const result = await service.sendNotificationToMultipleProviders(providers, basePayload);
-      
+      const result = await service.sendNotificationToMultipleProviders(
+        providers,
+        basePayload,
+      );
+
       expect(result.success).toBe(2);
       expect(result.failed).toBe(1);
     });
 
     it('should return empty results for no providers', async () => {
-      const result = await service.sendNotificationToMultipleProviders([], basePayload);
-      
+      const result = await service.sendNotificationToMultipleProviders(
+        [],
+        basePayload,
+      );
+
       expect(result.success).toBe(0);
       expect(result.failed).toBe(0);
       expect(result.results).toEqual([]);
     });
 
     it('should include error details in results', async () => {
-      mockFetch.mockRejectedValueOnce(new Error('Network error'));
-      
+      // Use a non-retryable error to fail immediately and capture the error
+      const nonRetryableError = new Error('Invalid payload');
+      nonRetryableError.name = 'TypeError';
+      mockFetch.mockRejectedValue(nonRetryableError);
+
       const providers = [slackProvider];
-      const result = await service.sendNotificationToMultipleProviders(providers, basePayload);
-      
+      const result = await service.sendNotificationToMultipleProviders(
+        providers,
+        basePayload,
+      );
+
       expect(result.results[0].error).toBeDefined();
     });
   });
@@ -515,11 +590,13 @@ describe('NotificationService', () => {
   describe('Payload Enhancement', () => {
     it('should add dashboard URL for monitors', async () => {
       await service.sendNotification(webhookProvider, basePayload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
-      expect(body.originalPayload.metadata.dashboardUrl).toContain('notification-monitor');
+
+      expect(body.originalPayload.metadata.dashboardUrl).toContain(
+        'notification-monitor',
+      );
     });
 
     it('should add dashboard URL for jobs', async () => {
@@ -528,21 +605,23 @@ describe('NotificationService', () => {
         type: 'job_failed',
         metadata: { runId: 'run-123' },
       };
-      
+
       await service.sendNotification(webhookProvider, jobPayload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
-      expect(body.originalPayload.metadata.dashboardUrl).toContain('notification-run');
+
+      expect(body.originalPayload.metadata.dashboardUrl).toContain(
+        'notification-run',
+      );
     });
 
     it('should include timestamp in metadata', async () => {
       await service.sendNotification(webhookProvider, basePayload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
+
       expect(body.originalPayload.metadata.timestamp).toBeDefined();
     });
   });
@@ -555,40 +634,40 @@ describe('NotificationService', () => {
     it('should use red for error severity', async () => {
       const errorPayload = { ...basePayload, severity: 'error' as const };
       await service.sendNotification(slackProvider, errorPayload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
+
       expect(body.attachments[0].color).toBe('#ef4444');
     });
 
     it('should use amber for warning severity', async () => {
       const warnPayload = { ...basePayload, severity: 'warning' as const };
       await service.sendNotification(slackProvider, warnPayload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
+
       expect(body.attachments[0].color).toBe('#f59e0b');
     });
 
     it('should use green for success severity', async () => {
       const successPayload = { ...basePayload, severity: 'success' as const };
       await service.sendNotification(slackProvider, successPayload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
+
       expect(body.attachments[0].color).toBe('#22c55e');
     });
 
     it('should use blue for info severity', async () => {
       const infoPayload = { ...basePayload, severity: 'info' as const };
       await service.sendNotification(slackProvider, infoPayload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
+
       expect(body.attachments[0].color).toBe('#3b82f6');
     });
   });
@@ -607,7 +686,7 @@ describe('NotificationService', () => {
       'job_timeout',
     ];
 
-    alertTypes.forEach(alertType => {
+    alertTypes.forEach((alertType) => {
       it(`should handle alert type: ${alertType}`, async () => {
         const payload = { ...basePayload, type: alertType as any };
         const result = await service.sendNotification(slackProvider, payload);
@@ -625,9 +704,12 @@ describe('NotificationService', () => {
         telegramProvider,
         webhookProvider,
       ];
-      
+
       for (const provider of providers) {
-        mockFetch.mockResolvedValueOnce({ ok: true, text: jest.fn().mockResolvedValue('ok') });
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          text: jest.fn().mockResolvedValue('ok'),
+        });
         // Reset for email
         if (provider.type === 'email') {
           process.env.SMTP_HOST = 'smtp.test.com';
@@ -635,9 +717,15 @@ describe('NotificationService', () => {
           process.env.SMTP_PASSWORD = 'pass';
         }
       }
-      
+
       // Just verify the provider types are valid
-      expect(providers.map(p => p.type)).toEqual(['email', 'slack', 'discord', 'telegram', 'webhook']);
+      expect(providers.map((p) => p.type)).toEqual([
+        'email',
+        'slack',
+        'discord',
+        'telegram',
+        'webhook',
+      ]);
     });
   });
 
@@ -647,13 +735,13 @@ describe('NotificationService', () => {
         ...basePayload,
         metadata: { ...basePayload.metadata, responseTime: 5000 },
       };
-      
+
       await service.sendNotification(slackProvider, payloadWithResponseTime);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
       const fields = body.attachments[0].fields;
-      
+
       expect(fields.some((f: any) => f.title === 'Response Time')).toBe(true);
     });
 
@@ -662,28 +750,31 @@ describe('NotificationService', () => {
         ...basePayload,
         metadata: { ...basePayload.metadata, status: 'down' },
       };
-      
+
       await service.sendNotification(slackProvider, payloadWithStatus);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
       const fields = body.attachments[0].fields;
-      
+
       expect(fields.some((f: any) => f.title === 'Status')).toBe(true);
     });
 
     it('should include target URL in fields', async () => {
       const payloadWithTarget = {
         ...basePayload,
-        metadata: { ...basePayload.metadata, target: 'https://api.example.com' },
+        metadata: {
+          ...basePayload.metadata,
+          target: 'https://api.example.com',
+        },
       };
-      
+
       await service.sendNotification(slackProvider, payloadWithTarget);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
       const fields = body.attachments[0].fields;
-      
+
       expect(fields.some((f: any) => f.title === 'Target URL')).toBe(true);
     });
 
@@ -692,13 +783,13 @@ describe('NotificationService', () => {
         ...basePayload,
         projectName: 'Test Project',
       };
-      
+
       await service.sendNotification(slackProvider, payloadWithProject);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
       const fields = body.attachments[0].fields;
-      
+
       expect(fields.some((f: any) => f.title === 'Project')).toBe(true);
     });
   });
@@ -709,13 +800,16 @@ describe('NotificationService', () => {
       (error as any).cause = { code: 'ECONNREFUSED' };
       mockFetch.mockReset();
       mockFetch.mockRejectedValue(error);
-      
+
       const result = await service.sendNotification(slackProvider, basePayload);
-      
+
       expect(result).toBe(false);
-      
+
       // Restore default behavior
-      mockFetch.mockResolvedValue({ ok: true, text: jest.fn().mockResolvedValue('ok') });
+      mockFetch.mockResolvedValue({
+        ok: true,
+        text: jest.fn().mockResolvedValue('ok'),
+      });
     });
 
     it('should handle DNS lookup failures', async () => {
@@ -723,13 +817,16 @@ describe('NotificationService', () => {
       (error as any).cause = { code: 'ENOTFOUND' };
       mockFetch.mockReset();
       mockFetch.mockRejectedValue(error);
-      
+
       const result = await service.sendNotification(slackProvider, basePayload);
-      
+
       expect(result).toBe(false);
-      
+
       // Restore default behavior
-      mockFetch.mockResolvedValue({ ok: true, text: jest.fn().mockResolvedValue('ok') });
+      mockFetch.mockResolvedValue({
+        ok: true,
+        text: jest.fn().mockResolvedValue('ok'),
+      });
     });
 
     it('should handle HTTP 4xx errors', async () => {
@@ -739,22 +836,23 @@ describe('NotificationService', () => {
         statusText: 'Bad Request',
         text: jest.fn().mockResolvedValue('Invalid payload'),
       });
-      
+
       const result = await service.sendNotification(slackProvider, basePayload);
-      
+
       expect(result).toBe(false);
     });
 
     it('should handle HTTP 5xx errors', async () => {
-      mockFetch.mockResolvedValueOnce({
+      // 5xx errors are retryable, so mock all attempts to fail
+      mockFetch.mockResolvedValue({
         ok: false,
         status: 503,
         statusText: 'Service Unavailable',
         text: jest.fn().mockResolvedValue('Try again later'),
       });
-      
+
       const result = await service.sendNotification(slackProvider, basePayload);
-      
+
       expect(result).toBe(false);
     });
   });
@@ -763,31 +861,37 @@ describe('NotificationService', () => {
     it('should handle concurrent sends to same provider', async () => {
       // Reset to ensure clean state
       mockFetch.mockReset();
-      mockFetch.mockResolvedValue({ ok: true, text: jest.fn().mockResolvedValue('ok') });
-      
+      mockFetch.mockResolvedValue({
+        ok: true,
+        text: jest.fn().mockResolvedValue('ok'),
+      });
+
       const promises = Array.from({ length: 5 }, () =>
-        service.sendNotification(slackProvider, basePayload)
+        service.sendNotification(slackProvider, basePayload),
       );
-      
+
       const results = await Promise.all(promises);
-      
-      expect(results.filter(r => r === true).length).toBeGreaterThan(0);
+
+      expect(results.filter((r) => r === true).length).toBeGreaterThan(0);
     });
 
     it('should handle concurrent sends to different providers', async () => {
       // Reset to ensure clean state
       mockFetch.mockReset();
-      mockFetch.mockResolvedValue({ ok: true, text: jest.fn().mockResolvedValue('ok') });
-      
+      mockFetch.mockResolvedValue({
+        ok: true,
+        text: jest.fn().mockResolvedValue('ok'),
+      });
+
       const providers = [slackProvider, discordProvider, webhookProvider];
-      
-      const promises = providers.map(provider =>
-        service.sendNotification(provider, basePayload)
+
+      const promises = providers.map((provider) =>
+        service.sendNotification(provider, basePayload),
       );
-      
+
       const results = await Promise.all(promises);
-      
-      expect(results.filter(r => r === true).length).toBeGreaterThan(0);
+
+      expect(results.filter((r) => r === true).length).toBeGreaterThan(0);
     });
   });
 
@@ -795,23 +899,26 @@ describe('NotificationService', () => {
     it('should include error message in enhanced payload', async () => {
       const payloadWithError = {
         ...basePayload,
-        metadata: { ...basePayload.metadata, errorMessage: 'Connection timeout' },
+        metadata: {
+          ...basePayload.metadata,
+          errorMessage: 'Connection timeout',
+        },
       };
-      
+
       await service.sendNotification(webhookProvider, payloadWithError);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
+
       expect(body.message).toContain('Error Details');
     });
 
     it('should format time correctly', async () => {
       await service.sendNotification(slackProvider, basePayload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
+
       expect(body.attachments[0].ts).toBeDefined();
       expect(typeof body.attachments[0].ts).toBe('number');
     });
@@ -823,9 +930,9 @@ describe('NotificationService', () => {
         ...emailProvider,
         config: { emails: 'valid@example.com' },
       };
-      
+
       const result = await service.sendNotification(provider, basePayload);
-      
+
       expect(result).toBe(true);
     });
 
@@ -834,9 +941,9 @@ describe('NotificationService', () => {
         ...emailProvider,
         config: { emails: 'a@test.com, b@test.com, c@test.com' },
       };
-      
+
       const result = await service.sendNotification(provider, basePayload);
-      
+
       expect(result).toBe(true);
     });
 
@@ -845,9 +952,9 @@ describe('NotificationService', () => {
         ...emailProvider,
         config: { emails: 'not-an-email' },
       };
-      
+
       const result = await service.sendNotification(provider, basePayload);
-      
+
       expect(result).toBe(false);
     });
   });
@@ -855,13 +962,15 @@ describe('NotificationService', () => {
   describe('Dashboard URL Generation', () => {
     it('should generate monitor URL for monitor_up', async () => {
       const payload = { ...basePayload, type: 'monitor_up' as any };
-      
+
       await service.sendNotification(webhookProvider, payload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
-      expect(body.originalPayload.metadata.dashboardUrl).toContain('notification-monitor');
+
+      expect(body.originalPayload.metadata.dashboardUrl).toContain(
+        'notification-monitor',
+      );
     });
 
     it('should generate job URL for job_failed with runId', async () => {
@@ -870,24 +979,28 @@ describe('NotificationService', () => {
         type: 'job_failed' as any,
         metadata: { runId: 'run-abc-123' },
       };
-      
+
       await service.sendNotification(webhookProvider, payload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
-      expect(body.originalPayload.metadata.dashboardUrl).toContain('notification-run');
+
+      expect(body.originalPayload.metadata.dashboardUrl).toContain(
+        'notification-run',
+      );
     });
 
     it('should generate ssl URL for ssl_expiring', async () => {
       const payload = { ...basePayload, type: 'ssl_expiring' as any };
-      
+
       await service.sendNotification(webhookProvider, payload);
-      
+
       const callArgs = mockFetch.mock.calls[0];
       const body = JSON.parse(callArgs[1].body);
-      
-      expect(body.originalPayload.metadata.dashboardUrl).toContain('notification-monitor');
+
+      expect(body.originalPayload.metadata.dashboardUrl).toContain(
+        'notification-monitor',
+      );
     });
   });
 });
