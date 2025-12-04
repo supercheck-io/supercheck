@@ -19,6 +19,38 @@ import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { organization } from "./organization";
 
 /**
+ * Webhook idempotency tracking
+ * Database-backed storage for multi-instance deployments
+ * Prevents duplicate webhook processing across server restarts and instances
+ */
+export const webhookIdempotency = pgTable(
+  "webhook_idempotency",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => sql`uuidv7()`),
+    webhookId: text("webhook_id").notNull(),
+    eventType: text("event_type").notNull(),
+    processedAt: timestamp("processed_at").defaultNow().notNull(),
+    // Optional: store result for debugging
+    resultStatus: text("result_status").$type<
+      "success" | "error" | "skipped"
+    >(),
+    resultMessage: text("result_message"),
+    // TTL for cleanup (24 hours default)
+    expiresAt: timestamp("expires_at").notNull(),
+  },
+  (table) => ({
+    // Unique constraint on webhook_id + event_type
+    uniqueWebhookEvent: index("webhook_idempotency_unique_idx")
+      .on(table.webhookId, table.eventType)
+      .concurrently(),
+    // Index for cleanup queries
+    expiresAtIdx: index("webhook_idempotency_expires_idx").on(table.expiresAt),
+  })
+);
+
+/**
  * Organization billing settings
  * Stores spending limits and notification preferences per organization
  */
@@ -35,7 +67,9 @@ export const billingSettings = pgTable(
 
     // Spending limits (in cents to avoid floating point issues)
     monthlySpendingLimitCents: integer("monthly_spending_limit_cents"), // null = no limit
-    enableSpendingLimit: boolean("enable_spending_limit").default(false).notNull(),
+    enableSpendingLimit: boolean("enable_spending_limit")
+      .default(false)
+      .notNull(),
 
     // Hard stop when limit reached (vs soft warning)
     hardStopOnLimit: boolean("hard_stop_on_limit").default(false).notNull(),
@@ -44,7 +78,9 @@ export const billingSettings = pgTable(
     notifyAt50Percent: boolean("notify_at_50_percent").default(false).notNull(),
     notifyAt80Percent: boolean("notify_at_80_percent").default(true).notNull(),
     notifyAt90Percent: boolean("notify_at_90_percent").default(true).notNull(),
-    notifyAt100Percent: boolean("notify_at_100_percent").default(true).notNull(),
+    notifyAt100Percent: boolean("notify_at_100_percent")
+      .default(true)
+      .notNull(),
 
     // Notification recipients (JSON array of emails, null = org admins only)
     notificationEmails: text("notification_emails"), // JSON array
@@ -58,7 +94,9 @@ export const billingSettings = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    organizationIdIdx: index("billing_settings_org_id_idx").on(table.organizationId),
+    organizationIdIdx: index("billing_settings_org_id_idx").on(
+      table.organizationId
+    ),
   })
 );
 
@@ -78,13 +116,18 @@ export const usageEvents = pgTable(
 
     // Event details
     eventType: text("event_type")
-      .$type<"playwright_execution" | "k6_execution" | "monitor_execution">()
+      .$type<
+        | "playwright_execution"
+        | "k6_execution"
+        | "monitor_execution"
+        | "ai_usage"
+      >()
       .notNull(),
-    eventName: text("event_name").notNull(), // e.g., "playwright_minutes", "k6_vu_minutes"
+    eventName: text("event_name").notNull(), // e.g., "playwright_minutes", "k6_vu_minutes", "ai_credits"
 
     // Usage amount
     units: numeric("units", { precision: 10, scale: 4 }).notNull(),
-    unitType: text("unit_type").notNull(), // "minutes", "vu_minutes"
+    unitType: text("unit_type").notNull(), // "minutes", "vu_minutes", "credits"
 
     // Metadata for the event
     metadata: text("metadata"), // JSON - runId, jobId, testId, etc.
@@ -104,7 +147,9 @@ export const usageEvents = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
-    organizationIdIdx: index("usage_events_org_id_idx").on(table.organizationId),
+    organizationIdIdx: index("usage_events_org_id_idx").on(
+      table.organizationId
+    ),
     eventTypeIdx: index("usage_events_event_type_idx").on(table.eventType),
     syncedToPolarIdx: index("usage_events_synced_idx").on(table.syncedToPolar),
     billingPeriodIdx: index("usage_events_billing_period_idx").on(
@@ -175,8 +220,12 @@ export const usageNotifications = pgTable(
     sentAt: timestamp("sent_at"),
   },
   (table) => ({
-    organizationIdIdx: index("usage_notifications_org_id_idx").on(table.organizationId),
-    notificationTypeIdx: index("usage_notifications_type_idx").on(table.notificationType),
+    organizationIdIdx: index("usage_notifications_org_id_idx").on(
+      table.organizationId
+    ),
+    notificationTypeIdx: index("usage_notifications_type_idx").on(
+      table.notificationType
+    ),
     billingPeriodIdx: index("usage_notifications_billing_period_idx").on(
       table.billingPeriodStart,
       table.billingPeriodEnd
@@ -194,14 +243,14 @@ export const overagePricing = pgTable("overage_pricing", {
     .$defaultFn(() => sql`uuidv7()`),
 
   // Plan identifier
-  plan: text("plan")
-    .$type<"plus" | "pro">()
-    .notNull()
-    .unique(),
+  plan: text("plan").$type<"plus" | "pro">().notNull().unique(),
 
   // Overage pricing (in cents per unit)
-  playwrightMinutePriceCents: integer("playwright_minute_price_cents").notNull(), // e.g., 10 = $0.10
-  k6VuMinutePriceCents: integer("k6_vu_minute_price_cents").notNull(), // e.g., 1 = $0.01
+  playwrightMinutePriceCents: integer(
+    "playwright_minute_price_cents"
+  ).notNull(), // e.g., 10 = $0.10
+  k6VuMinutePriceCents: integer("k6_vu_minute_price_cents").notNull(), // e.g., 1 = $0.01 per VU minute
+  aiCreditPriceCents: integer("ai_credit_price_cents").notNull().default(5), // e.g., 5 = $0.05 per AI credit
 
   // Metadata
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -209,19 +258,29 @@ export const overagePricing = pgTable("overage_pricing", {
 });
 
 // Zod schemas for validation
+export const webhookIdempotencyInsertSchema =
+  createInsertSchema(webhookIdempotency);
+export const webhookIdempotencySelectSchema =
+  createSelectSchema(webhookIdempotency);
+
 export const billingSettingsInsertSchema = createInsertSchema(billingSettings);
 export const billingSettingsSelectSchema = createSelectSchema(billingSettings);
 
 export const usageEventsInsertSchema = createInsertSchema(usageEvents);
 export const usageEventsSelectSchema = createSelectSchema(usageEvents);
 
-export const usageNotificationsInsertSchema = createInsertSchema(usageNotifications);
-export const usageNotificationsSelectSchema = createSelectSchema(usageNotifications);
+export const usageNotificationsInsertSchema =
+  createInsertSchema(usageNotifications);
+export const usageNotificationsSelectSchema =
+  createSelectSchema(usageNotifications);
 
 export const overagePricingInsertSchema = createInsertSchema(overagePricing);
 export const overagePricingSelectSchema = createSelectSchema(overagePricing);
 
 // Type exports
+export type WebhookIdempotency = typeof webhookIdempotency.$inferSelect;
+export type WebhookIdempotencyInsert = typeof webhookIdempotency.$inferInsert;
+
 export type BillingSettings = typeof billingSettings.$inferSelect;
 export type BillingSettingsInsert = typeof billingSettings.$inferInsert;
 

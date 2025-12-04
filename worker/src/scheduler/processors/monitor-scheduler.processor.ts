@@ -41,7 +41,9 @@ export class MonitorSchedulerProcessor extends WorkerHost {
     private readonly locationService: LocationService,
   ) {
     super();
-    this.logger.log('MonitorSchedulerProcessor instantiated - ready to process scheduled monitors');
+    this.logger.log(
+      'MonitorSchedulerProcessor instantiated - ready to process scheduled monitors',
+    );
   }
 
   async process(
@@ -107,8 +109,7 @@ export class MonitorSchedulerProcessor extends WorkerHost {
             jobId: `${jobData.monitorId}:${executionGroupId}:${location}`,
             attempts: retryLimit,
             backoff: { type: 'exponential', delay: 5000 },
-            removeOnComplete:
-              MonitorSchedulerProcessor.COMPLETED_JOB_RETENTION,
+            removeOnComplete: MonitorSchedulerProcessor.COMPLETED_JOB_RETENTION,
             removeOnFail: MonitorSchedulerProcessor.FAILED_JOB_RETENTION,
             priority: 10,
           },

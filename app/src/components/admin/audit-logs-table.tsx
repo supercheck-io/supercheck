@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { AdminDataTable } from "./admin-data-table";
 import { AuditTableToolbar } from "./audit-table-toolbar";
 import { auditLogColumns, type AuditLog } from "./audit-columns";
+import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
 import { toast } from "sonner";
 
 interface AuditData {
@@ -33,23 +34,30 @@ export function AuditLogsTable({ className }: AuditLogsTableProps) {
 
   const fetchAuditLogs = React.useCallback(async () => {
     if (!mounted) return;
-    
+
     setLoading(true);
     try {
       // Fetch a large number of records to use client-side pagination
       const params = new URLSearchParams({
-        page: '1',
-        limit: '1000', // Large limit to get most/all records
-        sortBy: 'createdAt',
-        sortOrder: 'desc'
+        page: "1",
+        limit: "1000", // Large limit to get most/all records
+        sortBy: "createdAt",
+        sortOrder: "desc",
       });
 
       const response = await fetch(`/api/audit?${params}`);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Audit API failed:', response.status, response.statusText, errorText);
-        toast.error(`Failed to load audit logs: ${response.status} ${response.statusText}`);
+        console.error(
+          "Audit API failed:",
+          response.status,
+          response.statusText,
+          errorText
+        );
+        toast.error(
+          `Failed to load audit logs: ${response.status} ${response.statusText}`
+        );
         return;
       }
 
@@ -58,15 +66,15 @@ export function AuditLogsTable({ className }: AuditLogsTableProps) {
       if (result.success) {
         setData({
           logs: result.data.logs,
-          filters: result.data.filters
+          filters: result.data.filters,
         });
       } else {
-        console.error('Audit API error:', result.error);
-        toast.error(result.error || 'Failed to load audit logs');
+        console.error("Audit API error:", result.error);
+        toast.error(result.error || "Failed to load audit logs");
       }
     } catch (error) {
-      console.error('Error fetching audit logs:', error);
-      toast.error('Failed to load audit logs');
+      console.error("Error fetching audit logs:", error);
+      toast.error("Failed to load audit logs");
     } finally {
       if (mounted) {
         setLoading(false);
@@ -85,30 +93,30 @@ export function AuditLogsTable({ className }: AuditLogsTableProps) {
   const availableUsers = React.useMemo(() => {
     if (!data?.logs) return [];
     const uniqueUsers = new Map();
-    data.logs.forEach(log => {
-      const userName = log.user.name || 'System';
+    data.logs.forEach((log) => {
+      const userName = log.user.name || "System";
       if (!uniqueUsers.has(userName)) {
         uniqueUsers.set(userName, {
           name: log.user.name,
-          email: log.user.email
+          email: log.user.email,
         });
       }
     });
     return Array.from(uniqueUsers.values());
   }, [data?.logs]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const CustomToolbar = React.useCallback(({ table }: { table: any }) => {
-    return (
-      <AuditTableToolbar 
-        table={table} 
-        availableUsers={availableUsers}
-      />
-    );
-  }, [availableUsers]);
+  const CustomToolbar = React.useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Table type from react-table is complex
+    ({ table }: { table: any }) => {
+      return (
+        <AuditTableToolbar table={table} availableUsers={availableUsers} />
+      );
+    },
+    [availableUsers]
+  );
 
   if (!mounted || loading) {
-    return null;
+    return <TabLoadingSpinner message="Loading audit logs..." />;
   }
 
   return (

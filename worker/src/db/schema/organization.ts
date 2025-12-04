@@ -41,13 +41,26 @@ export const organization = pgTable("organization", {
     .default("none"),
   subscriptionId: text("subscription_id"), // Polar subscription ID
   
+  // Subscription period dates (from Polar webhook)
+  // These track the actual subscription billing cycle dates
+  subscriptionStartedAt: timestamp("subscription_started_at"), // When current subscription period started
+  subscriptionEndsAt: timestamp("subscription_ends_at"), // When current subscription period ends
+  
   // Usage tracking fields
   playwrightMinutesUsed: integer("playwright_minutes_used").default(0),
-  k6VuMinutesUsed: integer("k6_vu_minutes_used").default(0), // VU minutes (whole numbers)
+  k6VuMinutesUsed: integer("k6_vu_minutes_used").default(0), // Changed from hours to minutes for consistency with Playwright
   aiCreditsUsed: integer("ai_credits_used").default(0), // AI credits used for AI fix and AI create features
   usagePeriodStart: timestamp("usage_period_start"),
   usagePeriodEnd: timestamp("usage_period_end"),
-});
+}, () => ({
+  // SECURITY: Prevent unlimited plans in cloud mode
+  // Only allows unlimited plan when there's no Polar customer ID (self-hosted mode)
+  unlimitedPlanConstraint: sql`
+    CHECK (
+      subscription_plan != 'unlimited' OR polar_customer_id IS NULL
+    )
+  `,
+}));
 
 /**
  * Maps users to organizations, defining their roles.

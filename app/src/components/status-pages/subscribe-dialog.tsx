@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -341,34 +341,6 @@ export function SubscribeDialog({
                     )}
                   </div>
 
-                  <div className="border bg-muted/30 rounded-lg p-3 space-y-2">
-                    <h4 className="text-sm font-medium">
-                      How to get your Slack Webhook URL:
-                    </h4>
-                    <ol className="text-xs space-y-1 list-decimal list-inside text-muted-foreground">
-                      <li>
-                        Go to{" "}
-                        <a
-                          href="https://api.slack.com/apps"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="underline font-medium"
-                        >
-                          api.slack.com/apps
-                        </a>
-                      </li>
-                      <li>Create a new app or select an existing one</li>
-                      <li>
-                        Navigate to &quot;Incoming Webhooks&quot; in the sidebar
-                      </li>
-                      <li>
-                        Toggle &quot;Activate Incoming Webhooks&quot; to On
-                      </li>
-                      <li>Click &quot;Add New Webhook to Workspace&quot;</li>
-                      <li>Select the channel and copy the webhook URL</li>
-                    </ol>
-                  </div>
-
                   <div className="bg-muted/30 border rounded-lg p-3 space-y-2">
                     <h4 className="text-sm font-medium">
                       What you&apos;ll receive:
@@ -379,6 +351,33 @@ export function SubscribeDialog({
                       <li>✓ Affected services and status updates</li>
                       <li>✓ Direct link to view full status page</li>
                     </ul>
+                  </div>
+
+                  <div className="bg-muted/30 border rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground">
+                      <strong>How to use:</strong>
+                      <br />
+                      1. Go to{" "}
+                      <a
+                        href="https://api.slack.com/apps"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline font-medium"
+                      >
+                        api.slack.com/apps
+                      </a>
+                      <br />
+                      2. Create a new app or select an existing one
+                      <br />
+                      3. Navigate to &quot;Incoming Webhooks&quot; in the
+                      sidebar
+                      <br />
+                      4. Toggle &quot;Activate Incoming Webhooks&quot; to On
+                      <br />
+                      5. Click &quot;Add New Webhook to Workspace&quot;
+                      <br />
+                      6. Select the channel and copy the webhook URL
+                    </p>
                   </div>
 
                   <Button

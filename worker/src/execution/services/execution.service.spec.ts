@@ -120,24 +120,30 @@ describe('ExecutionService', () => {
       // Validates error handling for invalid inputs - prevents runtime crashes
       // Suppress console.error for this test
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-      expect(() => ensureProperTraceConfiguration(undefined as unknown as string, 'test-123'))
-        .toThrow('Test script is undefined or invalid for test test-123');
+      expect(() =>
+        ensureProperTraceConfiguration(
+          undefined as unknown as string,
+          'test-123',
+        ),
+      ).toThrow('Test script is undefined or invalid for test test-123');
       consoleSpy.mockRestore();
     });
 
     it('should throw error for null script', () => {
       // Null scripts should be rejected with clear error message
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-      expect(() => ensureProperTraceConfiguration(null as unknown as string, 'test-456'))
-        .toThrow('Test script is undefined or invalid for test test-456');
+      expect(() =>
+        ensureProperTraceConfiguration(null as unknown as string, 'test-456'),
+      ).toThrow('Test script is undefined or invalid for test test-456');
       consoleSpy.mockRestore();
     });
 
     it('should throw error for non-string script', () => {
       // Non-string inputs should be rejected
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-      expect(() => ensureProperTraceConfiguration(123 as unknown as string, 'test-789'))
-        .toThrow('Test script is undefined or invalid for test test-789');
+      expect(() =>
+        ensureProperTraceConfiguration(123 as unknown as string, 'test-789'),
+      ).toThrow('Test script is undefined or invalid for test test-789');
       consoleSpy.mockRestore();
     });
 
@@ -153,7 +159,7 @@ describe('ExecutionService', () => {
       const script = `const browser = await chromium.launch();
 const page = await browser.newPage();`;
       const result = ensureProperTraceConfiguration(script, 'test-abc');
-      
+
       expect(result).toContain('context.tracing.start');
       expect(result).toContain('trace-test-abc');
     });
@@ -162,7 +168,7 @@ const page = await browser.newPage();`;
       // If tracing exists but lacks directory, add it for isolation
       const script = `await context.tracing.start({ screenshots: true, snapshots: true })`;
       const result = ensureProperTraceConfiguration(script, 'test-def');
-      
+
       expect(result).toContain('dir:');
       expect(result).toContain('trace-test-def');
     });
@@ -171,7 +177,7 @@ const page = await browser.newPage();`;
       // Scripts with complete tracing config should not be modified
       const script = `await context.tracing.start({ screenshots: true, dir: './custom-trace' })`;
       const result = ensureProperTraceConfiguration(script, 'test-xyz');
-      
+
       expect(result).toBe(script);
     });
 
@@ -179,7 +185,7 @@ const page = await browser.newPage();`;
       // When testId is missing, should still generate unique directory
       const script = `const browser = await chromium.launch();`;
       const result = ensureProperTraceConfiguration(script);
-      
+
       // Should contain a trace directory reference
       expect(result).toContain('trace-');
     });
@@ -188,10 +194,10 @@ const page = await browser.newPage();`;
       // Empty string should throw since it's falsy
       // Suppress console.error for this test
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-      expect(() => ensureProperTraceConfiguration('', 'test-123'))
-        .toThrow('Test script is undefined or invalid');
+      expect(() => ensureProperTraceConfiguration('', 'test-123')).toThrow(
+        'Test script is undefined or invalid',
+      );
       consoleSpy.mockRestore();
     });
   });
-
 });

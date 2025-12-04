@@ -1,6 +1,3 @@
-// HTML report parser for extracting test failure information
-import { JSDOM } from "jsdom";
-
 export interface ExtractedTestError {
   message: string;
   details: string;
@@ -27,6 +24,8 @@ export class HTMLReportParser {
    */
   static async parseHTMLReport(htmlContent: string): Promise<ParsedHTMLReport> {
     try {
+      // Dynamic import to avoid ESM/CommonJS conflicts during Next.js build
+      const { JSDOM } = await import("jsdom");
       const dom = new JSDOM(htmlContent);
       const document = dom.window.document;
 
@@ -387,7 +386,6 @@ export class HTMLReportParser {
           playwrightStructure.hasScript &&
           playwrightStructure.hasPlaywrightTitle
         ) {
-
           // Try to extract from script tags that might contain test data
           const scriptElements = document.querySelectorAll("script");
           let scriptContent = "";

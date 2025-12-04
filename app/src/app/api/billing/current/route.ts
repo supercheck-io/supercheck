@@ -3,8 +3,15 @@ import { requireAuth } from "@/lib/rbac/middleware";
 import { getActiveOrganization } from "@/lib/session";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { db } from "@/utils/db";
-import { organization, monitors, statusPages, projects, member } from "@/db/schema";
+import {
+  organization,
+  monitors,
+  statusPages,
+  projects,
+  member,
+} from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { getPlanPricing } from "@/lib/feature-flags";
 
 /**
  * GET /api/billing/current
@@ -35,50 +42,86 @@ export async function GET() {
     }
 
     // Get plan limits (use safe version that doesn't throw for unsubscribed users)
-    const plan = await subscriptionService.getOrganizationPlanSafe(activeOrg.id);
+    const plan = await subscriptionService.getOrganizationPlanSafe(
+      activeOrg.id
+    );
 
     // Get current usage (use safe version)
     const usage = await subscriptionService.getUsageSafe(activeOrg.id);
 
     // Get current resource counts
-    const [monitorCount, statusPageCount, projectCount, memberCount] = await Promise.all([
-      db.select({ count: monitors.id }).from(monitors).where(eq(monitors.organizationId, activeOrg.id)),
-      db.select({ count: statusPages.id }).from(statusPages).where(eq(statusPages.organizationId, activeOrg.id)),
-      db.select({ count: projects.id }).from(projects).where(eq(projects.organizationId, activeOrg.id)),
-      db.select({ count: member.userId }).from(member).where(eq(member.organizationId, activeOrg.id)),
-    ]);
+    const [monitorCount, statusPageCount, projectCount, memberCount] =
+      await Promise.all([
+        db
+          .select({ count: monitors.id })
+          .from(monitors)
+          .where(eq(monitors.organizationId, activeOrg.id)),
+        db
+          .select({ count: statusPages.id })
+          .from(statusPages)
+          .where(eq(statusPages.organizationId, activeOrg.id)),
+        db
+          .select({ count: projects.id })
+          .from(projects)
+          .where(eq(projects.organizationId, activeOrg.id)),
+        db
+          .select({ count: member.userId })
+          .from(member)
+          .where(eq(member.organizationId, activeOrg.id)),
+      ]);
 
     // Calculate billing period
     const periodStart = org.usagePeriodStart || org.createdAt;
-    const periodEnd = org.usagePeriodEnd || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30 days from now
+    const periodEnd =
+      org.usagePeriodEnd || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30 days from now
+
+    // Get plan pricing - determine appropriate plan based on hosting mode
+    // In cloud mode: use actual subscription plan or 'plus' for display
+    // In self-hosted mode: always 'unlimited'
+    const { isCloudHosted: cloudHosted } = await import("@/lib/feature-flags");
+    const effectivePlan = cloudHosted()
+      ? (org.subscriptionPlan as "plus" | "pro") || "plus" // Cloud: use actual plan or default to plus for unsubscribed
+      : "unlimited"; // Self-hosted: always unlimited
+    const planType = effectivePlan;
+    const pricing = getPlanPricing(planType);
 
     return NextResponse.json({
       subscription: {
-        plan: org.subscriptionPlan || "unlimited",
+        plan: effectivePlan,
         status: org.subscriptionStatus || "none",
         subscriptionId: org.subscriptionId,
         polarCustomerId: org.polarCustomerId,
         currentPeriodStart: periodStart,
         currentPeriodEnd: periodEnd,
+        // Include pricing info for UI
+        basePriceCents: pricing.monthlyPriceCents,
+        planName: pricing.name,
       },
       usage: {
         playwrightMinutes: {
           used: usage.playwrightMinutes.used,
           included: usage.playwrightMinutes.included,
           overage: usage.playwrightMinutes.overage,
-          percentage: Math.round((usage.playwrightMinutes.used / usage.playwrightMinutes.included) * 100),
+          percentage: Math.round(
+            (usage.playwrightMinutes.used / usage.playwrightMinutes.included) *
+              100
+          ),
         },
         k6VuMinutes: {
           used: usage.k6VuMinutes.used,
           included: usage.k6VuMinutes.included,
           overage: usage.k6VuMinutes.overage,
-          percentage: Math.round((usage.k6VuMinutes.used / usage.k6VuMinutes.included) * 100),
+          percentage: Math.round(
+            (usage.k6VuMinutes.used / usage.k6VuMinutes.included) * 100
+          ),
         },
         aiCredits: {
           used: usage.aiCredits.used,
           included: usage.aiCredits.included,
           overage: usage.aiCredits.overage,
-          percentage: Math.round((usage.aiCredits.used / usage.aiCredits.included) * 100),
+          percentage: Math.round(
+            (usage.aiCredits.used / usage.aiCredits.included) * 100
+          ),
         },
       },
       limits: {
@@ -86,25 +129,33 @@ export async function GET() {
           current: monitorCount.length,
           limit: plan.maxMonitors,
           remaining: Math.max(0, plan.maxMonitors - monitorCount.length),
-          percentage: Math.round((monitorCount.length / plan.maxMonitors) * 100),
+          percentage: Math.round(
+            (monitorCount.length / plan.maxMonitors) * 100
+          ),
         },
         statusPages: {
           current: statusPageCount.length,
           limit: plan.maxStatusPages,
           remaining: Math.max(0, plan.maxStatusPages - statusPageCount.length),
-          percentage: Math.round((statusPageCount.length / plan.maxStatusPages) * 100),
+          percentage: Math.round(
+            (statusPageCount.length / plan.maxStatusPages) * 100
+          ),
         },
         projects: {
           current: projectCount.length,
           limit: plan.maxProjects,
           remaining: Math.max(0, plan.maxProjects - projectCount.length),
-          percentage: Math.round((projectCount.length / plan.maxProjects) * 100),
+          percentage: Math.round(
+            (projectCount.length / plan.maxProjects) * 100
+          ),
         },
         teamMembers: {
           current: memberCount.length,
           limit: plan.maxTeamMembers,
           remaining: Math.max(0, plan.maxTeamMembers - memberCount.length),
-          percentage: Math.round((memberCount.length / plan.maxTeamMembers) * 100),
+          percentage: Math.round(
+            (memberCount.length / plan.maxTeamMembers) * 100
+          ),
         },
         capacity: {
           runningCapacity: plan.runningCapacity,
@@ -115,6 +166,7 @@ export async function GET() {
         customDomains: plan.customDomains,
         ssoEnabled: plan.ssoEnabled,
         dataRetentionDays: plan.dataRetentionDays,
+        aggregatedDataRetentionDays: plan.aggregatedDataRetentionDays,
       },
     });
   } catch (error) {

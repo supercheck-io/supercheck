@@ -23,7 +23,8 @@ export class CancellationService {
     const host = this.configService.get<string>('REDIS_HOST', 'localhost');
     const port = this.configService.get<number>('REDIS_PORT', 6379);
     const password = this.configService.get<string>('REDIS_PASSWORD');
-    const tlsEnabled = this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
+    const tlsEnabled =
+      this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
 
     this.redisClient = new Redis({
       host,
@@ -43,10 +44,7 @@ export class CancellationService {
     });
 
     this.redisClient.on('error', (err) => {
-      this.logger.error(
-        `Redis connection error: ${err.message}`,
-        err.stack,
-      );
+      this.logger.error(`Redis connection error: ${err.message}`, err.stack);
     });
 
     this.logger.log('Cancellation service Redis connection established');
@@ -58,7 +56,9 @@ export class CancellationService {
    */
   async setCancellationSignal(runId: string): Promise<void> {
     if (!this.redisClient) {
-      this.logger.warn('Redis client not ready, cannot set cancellation signal');
+      this.logger.warn(
+        'Redis client not ready, cannot set cancellation signal',
+      );
       return;
     }
 
@@ -104,7 +104,9 @@ export class CancellationService {
    */
   async clearCancellationSignal(runId: string): Promise<void> {
     if (!this.redisClient) {
-      this.logger.warn('Redis client not ready, cannot clear cancellation signal');
+      this.logger.warn(
+        'Redis client not ready, cannot clear cancellation signal',
+      );
       return;
     }
 

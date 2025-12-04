@@ -64,7 +64,8 @@ export class K6ExecutionService {
   private readonly logger = new Logger(K6ExecutionService.name);
   private readonly k6BinaryPath: string;
   // Use custom worker image with xk6-dashboard pre-installed for consistency and performance
-  private readonly k6DockerImage = 'ghcr.io/supercheck-io/supercheck/worker:latest';
+  private readonly k6DockerImage =
+    'ghcr.io/supercheck-io/supercheck/worker:latest';
   private readonly maxConcurrentK6Runs: number;
   private readonly testExecutionTimeoutMs: number;
   private readonly jobExecutionTimeoutMs: number;
@@ -378,10 +379,10 @@ export class K6ExecutionService {
       let exportedHtmlPath = path.join(reportDir, htmlExportFileName);
 
       if (!(await pathExists(exportedHtmlPath))) {
-        const fallbackHtml = await findFirstFileByNames(
-          extractedReportsDir,
-          [htmlExportFileName, htmlReportFileName],
-        );
+        const fallbackHtml = await findFirstFileByNames(extractedReportsDir, [
+          htmlExportFileName,
+          htmlReportFileName,
+        ]);
         if (fallbackHtml) {
           this.logger.debug(
             `[${runId}] Located k6 HTML export at fallback path ${fallbackHtml}`,
@@ -420,7 +421,9 @@ export class K6ExecutionService {
         if (timedOut) {
           this.logger.warn(message);
         } else if (exitCode !== 0) {
-          this.logger.warn(`${message} (execution already failed with code ${exitCode})`);
+          this.logger.warn(
+            `${message} (execution already failed with code ${exitCode})`,
+          );
         } else {
           this.logger.error(message);
           throw new Error(
@@ -474,7 +477,11 @@ export class K6ExecutionService {
       const s3KeyPrefix = `${runId}`;
       const bucket = this.s3Service.getBucketForEntityType('k6_performance');
 
-      await this.s3Service.uploadDirectory(extractedReportsDir, s3KeyPrefix, bucket);
+      await this.s3Service.uploadDirectory(
+        extractedReportsDir,
+        s3KeyPrefix,
+        bucket,
+      );
 
       const baseUrl = this.s3Service.getBaseUrlForEntity(
         'k6_performance',
@@ -716,40 +723,41 @@ export class K6ExecutionService {
       }
 
       // Execute in container with inline script
-      const containerResult = await this.containerExecutorService.executeInContainer(
-        null, // No host script path - using inline content
-        ['k6', ...args],
-        {
-          runId, // Pass runId for cancellation tracking
-          inlineScriptContent: scriptContent,
-          inlineScriptFileName: scriptFileName,
-          ensureDirectories: Array.from(directoriesToEnsure),
-          extractFromContainer: '/tmp/.', // Extract contents of /tmp (trailing /. copies contents)
-          extractToHost: extractToHost, // To OS temp directory
-          timeoutMs: timeoutMs || this.testExecutionTimeoutMs,
-          env: {
-            ...overrideEnv,
-            K6_NO_COLOR: '1', // Disable ANSI colors
+      const containerResult =
+        await this.containerExecutorService.executeInContainer(
+          null, // No host script path - using inline content
+          ['k6', ...args],
+          {
+            runId, // Pass runId for cancellation tracking
+            inlineScriptContent: scriptContent,
+            inlineScriptFileName: scriptFileName,
+            ensureDirectories: Array.from(directoriesToEnsure),
+            extractFromContainer: '/tmp/.', // Extract contents of /tmp (trailing /. copies contents)
+            extractToHost: extractToHost, // To OS temp directory
+            timeoutMs: timeoutMs || this.testExecutionTimeoutMs,
+            env: {
+              ...overrideEnv,
+              K6_NO_COLOR: '1', // Disable ANSI colors
+            },
+            workingDir: '/tmp',
+            memoryLimitMb: 1536, // 1.5GB for k6 (reduced for 2 concurrent executions)
+            cpuLimit: 1.0, // 1.0 CPU for load testing on Medium instances
+            networkMode: 'bridge', // k6 needs network access
+            autoRemove: false, // Don't auto-remove - we need to extract files first
+            image: this.k6DockerImage, // Use K6-specific Docker image
+            onStdoutChunk: async (chunk: string) => {
+              try {
+                await this.redisService
+                  .getClient()
+                  .publish(`k6:run:${runId}:console`, chunk);
+              } catch (err) {
+                this.logger.warn(
+                  `[${runId}] Failed to publish streaming chunk: ${getErrorMessage(err)}`,
+                );
+              }
+            },
           },
-          workingDir: '/tmp',
-          memoryLimitMb: 1536, // 1.5GB for k6 (reduced for 2 concurrent executions)
-          cpuLimit: 1.0, // 1.0 CPU for load testing on Medium instances
-          networkMode: 'bridge', // k6 needs network access
-          autoRemove: false, // Don't auto-remove - we need to extract files first
-          image: this.k6DockerImage, // Use K6-specific Docker image
-          onStdoutChunk: async (chunk: string) => {
-            try {
-              await this.redisService
-                .getClient()
-                .publish(`k6:run:${runId}:console`, chunk);
-            } catch (err) {
-              this.logger.warn(
-                `[${runId}] Failed to publish streaming chunk: ${getErrorMessage(err)}`,
-              );
-            }
-          },
-        },
-      );
+        );
 
       // Clean up active runs tracking
       this.activeK6Runs.delete(uniqueRunId);
@@ -762,8 +770,7 @@ export class K6ExecutionService {
       // Persist stdout + stderr to console.log so it can be fetched/archived later
       try {
         const combinedLog =
-          (stdout || '') +
-          (stderr ? `\n\n[stderr]\n${stderr}`.trimEnd() : '');
+          (stdout || '') + (stderr ? `\n\n[stderr]\n${stderr}`.trimEnd() : '');
         await fs.writeFile(
           path.join(extractToHost, 'console.log'),
           combinedLog,

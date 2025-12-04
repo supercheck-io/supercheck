@@ -1,8 +1,14 @@
 import type { MonitoringLocation } from '../common/location/location.service';
 
-export const MONITOR_EXECUTION_QUEUE = process.env.QUEUE_NAME || 'monitor-global';
+export const MONITOR_EXECUTION_QUEUE =
+  process.env.QUEUE_NAME || 'monitor-global';
 
-export const REGIONS = ['us-east', 'eu-central', 'asia-pacific', 'global'] as const;
+export const REGIONS = [
+  'us-east',
+  'eu-central',
+  'asia-pacific',
+  'global',
+] as const;
 
 export const MONITOR_QUEUES = {
   US_EAST: 'monitor-us-east',

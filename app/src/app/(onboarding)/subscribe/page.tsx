@@ -33,7 +33,8 @@ interface PricingPlan {
     organizations: string | number;
     projects: string | number;
     statusPages: string | number;
-    dataRetention: string;
+    monitorDataRetention: string;
+    jobDataRetention: string;
     customDomains?: boolean;
     ssoEnabled?: boolean;
     support?: string;
@@ -82,38 +83,45 @@ interface PricingData {
 const defaultFaqs = [
   {
     question: "How is usage tracked?",
-    answer: "Playwright Minutes count total browser execution time. K6 VU Minutes are calculated as Virtual Users × execution time in minutes. Monitors count against Playwright minutes for each check."
+    answer:
+      "Playwright Minutes count total browser execution time. K6 VU Minutes are calculated as Virtual Users × execution time in minutes. Monitors count against Playwright minutes for each check.",
   },
   {
     question: "What happens if I exceed my limits?",
-    answer: "Usage-based billing automatically applies. Overage charges are billed monthly. You'll receive email alerts at 80% and 100% of quota."
+    answer:
+      "Usage-based billing automatically applies. Overage charges are billed monthly. You'll receive email alerts at 80% and 100% of quota.",
   },
   {
     question: "Can I change plans?",
-    answer: "Yes! Upgrades take effect immediately. Downgrades take effect at the next billing cycle. Pro-rated billing applies for mid-cycle changes."
+    answer:
+      "Yes! Upgrades take effect immediately. Downgrades take effect at the next billing cycle. Pro-rated billing applies for mid-cycle changes.",
   },
   {
     question: "Do unused minutes roll over?",
-    answer: "No, included minutes reset each billing cycle. However, you can always upgrade your plan if you consistently need more resources."
+    answer:
+      "No, included minutes reset each billing cycle. However, you can always upgrade your plan if you consistently need more resources.",
   },
   {
     question: "What payment methods do you accept?",
-    answer: "We accept all major credit cards (Visa, Mastercard, American Express) through our secure payment processor Polar."
+    answer:
+      "We accept all major credit cards (Visa, Mastercard, American Express) through our secure payment processor Polar.",
   },
   {
     question: "Is there a free trial?",
-    answer: "We don't offer a free trial, but you can start with our Plus plan and upgrade or downgrade at any time based on your needs."
+    answer:
+      "We don't offer a free trial, but you can start with our Plus plan and upgrade or downgrade at any time based on your needs.",
   },
   {
     question: "Can I cancel my subscription?",
-    answer: "Yes, you can cancel anytime. Your subscription will remain active until the end of the current billing period."
+    answer:
+      "Yes, you can cancel anytime. Your subscription will remain active until the end of the current billing period.",
   },
   {
     question: "Do you offer enterprise plans?",
-    answer: "Yes! Contact us for custom enterprise plans with dedicated support, custom SLAs, and volume discounts."
-  }
+    answer:
+      "Yes! Contact us for custom enterprise plans with dedicated support, custom SLAs, and volume discounts.",
+  },
 ];
-
 
 export default function SubscribePage() {
   const [pricingData, setPricingData] = useState<PricingData | null>(null);
@@ -190,14 +198,17 @@ export default function SubscribePage() {
               tagline={plan.description}
               badge={plan.id === "pro" ? "Most Popular" : undefined}
               keyFeatures={[
-                `${plan.features.monitors.toLocaleString()} uptime monitors`,
-                `${plan.features.playwrightMinutes.toLocaleString()} Playwright mins/mo`,
-                `${plan.features.k6VuMinutes.toLocaleString()} K6 VU-mins/mo`,
-                `${plan.features.aiCredits.toLocaleString()} AI credits/mo`,
+                `${Number(plan.features.monitors).toLocaleString()} uptime monitors`,
+                `${Number(plan.features.playwrightMinutes).toLocaleString()} Playwright mins/mo`,
+                `${Number(plan.features.k6VuMinutes).toLocaleString()} K6 VU-mins/mo`,
+                `${Number(plan.features.aiCredits).toLocaleString()} AI credits/mo`,
                 `${plan.features.teamMembers} team members`,
                 `${plan.features.projects} projects`,
-                `${plan.features.dataRetention} data retention`,
-                plan.features.customDomains ? "Custom domains" : "Standard domains",
+                `${plan.features.monitorDataRetention} monitor retention`,
+                `${plan.features.jobDataRetention} job retention`,
+                plan.features.customDomains
+                  ? "Custom domains"
+                  : "Standard domains",
               ]}
               overageText={`Overage: $${plan.overagePricing.playwrightMinutes}/min · $${plan.overagePricing.k6VuMinutes}/VU-min · $${plan.overagePricing.aiCredits}/credit`}
               ctaText={`Get Started with ${plan.name}`}
@@ -208,13 +219,13 @@ export default function SubscribePage() {
             />
           ))}
         </div>
-        
+
         {/* Self-hosted mention */}
         <p className="text-center text-sm text-muted-foreground mt-6">
           Want unlimited usage?{" "}
-          <a 
-            href="https://github.com/supercheck-io/supercheck" 
-            target="_blank" 
+          <a
+            href="https://github.com/supercheck-io/supercheck"
+            target="_blank"
             rel="noopener noreferrer"
             className="text-primary hover:underline font-medium"
           >
@@ -228,16 +239,14 @@ export default function SubscribePage() {
       {/* Feature Comparison Table */}
       <section className="max-w-7xl mx-auto">
         <div className="text-center space-y-1.5 mb-6">
-          <h2 className="text-2xl font-bold">
-            Full feature comparison
-          </h2>
+          <h2 className="text-2xl font-bold">Full feature comparison</h2>
           <p className="text-sm text-muted-foreground">
             All the details you need to make the right choice
           </p>
         </div>
         {pricingData && (
-          <PricingComparisonTable 
-            categories={pricingData.featureComparison} 
+          <PricingComparisonTable
+            categories={pricingData.featureComparison}
             overagePricing={pricingData.overagePricing}
           />
         )}
@@ -248,9 +257,7 @@ export default function SubscribePage() {
       {/* FAQ Section */}
       <section className="max-w-3xl mx-auto">
         <div className="text-center space-y-1.5 mb-6">
-          <h2 className="text-2xl font-bold">
-            Frequently asked questions
-          </h2>
+          <h2 className="text-2xl font-bold">Frequently asked questions</h2>
           <p className="text-sm text-muted-foreground">
             Everything you need to know about pricing
           </p>
@@ -284,7 +291,6 @@ export default function SubscribePage() {
     </div>
   );
 }
-
 
 function SubscribeSkeleton() {
   return (

@@ -1,166 +1,166 @@
-# Local Development Docker Compose - Simplified
-# Use this for local development
-#
-# Access:
-# - Main app: http://localhost:3000
-# - Status pages: http://localhost:3000/status/{subdomain}
-# - Example: http://localhost:3000/status/abc123
-#
-# Status pages also accessible via middleware rewriting if needed
-
 # YAML anchors for shared configuration
 x-common-env: &common-env # Database Configuration
-  DATABASE_URL: postgresql://postgres:postgres@postgres:5432/supercheck
-  DB_HOST: postgres
-  DB_PORT: 5432
-  DB_USER: postgres
-  DB_PASSWORD: postgres
-  DB_NAME: supercheck
+  DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/supercheck}
+  DB_HOST: ${DB_HOST:-postgres}
+  DB_PORT: ${DB_PORT:-5432}
+  DB_USER: ${DB_USER:-postgres}
+  DB_PASSWORD: ${DB_PASSWORD:-postgres}
+  DB_NAME: ${DB_NAME:-supercheck}
 
   # Redis Configuration
-  REDIS_HOST: redis
-  REDIS_PORT: 6379
-  REDIS_PASSWORD: supersecure-redis-password-change-this
-  REDIS_URL: redis://:supersecure-redis-password-change-this@redis:6379
+  REDIS_HOST: ${REDIS_HOST:-redis}
+  REDIS_PORT: ${REDIS_PORT:-6379}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:-supersecure-redis-password-change-this}
+  REDIS_URL: ${REDIS_URL:-redis://:supersecure-redis-password-change-this@redis:6379}
 
   # App Configuration
-  # IMPORTANT: Use localhost:3000 for local development
-  NEXT_PUBLIC_APP_URL: http://localhost:3000
-  # Runtime env vars for middleware (middleware can't access NEXT_PUBLIC_ vars at runtime)
-  APP_URL: http://localhost:3000
-  STATUS_PAGE_DOMAIN: supercheck.io
+  NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+
+  # Status Page Domain Configuration
   STATUS_PAGE_BASE_DOMAIN: ${STATUS_PAGE_BASE_DOMAIN:-localhost}
-  BETTER_AUTH_URL: http://localhost:3000
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
-  NODE_ENV: development
+  NODE_ENV: ${NODE_ENV:-production}
   # Scaling Configuration
   # Environment variables for scaling:
-  # - WORKER_REPLICAS: Number of worker replicas (default: 1 for local)
-  # - RUNNING_CAPACITY: Total concurrent test capacity (default: 2)
-  # - QUEUED_CAPACITY: Maximum queue size (default: 10)
+  # - WORKER_REPLICAS: Number of worker replicas (default: 3)
+  # - RUNNING_CAPACITY: Total concurrent test capacity (default: 6)
+  # - QUEUED_CAPACITY: Maximum queue size (default: 50)
   #
-  # Local Scaling Examples:
-  #   Development: WORKER_REPLICAS=1 RUNNING_CAPACITY=1
-  #   Heavy Testing: WORKER_REPLICAS=2 RUNNING_CAPACITY=2
+  # Scaling Examples:
+  #   Medium (4GB/2CPU): WORKER_REPLICAS=4 RUNNING_CAPACITY=4
+  #   Large (8GB/4CPU): WORKER_REPLICAS=8 RUNNING_CAPACITY=8
+  #   X-Large (16GB/8CPU): WORKER_REPLICAS=16 RUNNING_CAPACITY=16
   #
-  # Usage: WORKER_REPLICAS=2 docker-compose -f docker-compose-local.yml up -d
+  # Usage: WORKER_REPLICAS=4 docker-compose up -d
 
-  RUNNING_CAPACITY: 1 # Single worker replica × 1 concurrent run for local dev
-  QUEUED_CAPACITY: 10
-  MAX_CONCURRENT_EXECUTIONS: 1 # One Playwright run per worker; bump replicas instead of this value
-  CONTAINER_CPU_LIMIT: 1.5 # Increased for 2 CPU nodes
-  CONTAINER_MEMORY_LIMIT_MB: 2048 # Increased for 4GB nodes
-  TEST_EXECUTION_TIMEOUT_MS: 120000
-  JOB_EXECUTION_TIMEOUT_MS: 900000
-  K6_TEST_EXECUTION_TIMEOUT_MS: 3600000
-  K6_JOB_EXECUTION_TIMEOUT_MS: 3600000
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-4} # 4 worker replicas × 1 concurrent run (keep env + replicas in sync)
+  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-50}
+  MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-1} # One Playwright run per worker for Medium instances; scale replicas for concurrency
+  CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5} # Increased for 2 CPU nodes
+  CONTAINER_MEMORY_LIMIT_MB: ${CONTAINER_MEMORY_LIMIT_MB:-2048} # Increased for 4GB nodes
+  TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-120000}
+  JOB_EXECUTION_TIMEOUT_MS: ${JOB_EXECUTION_TIMEOUT_MS:-900000}
+  K6_TEST_EXECUTION_TIMEOUT_MS: ${K6_TEST_EXECUTION_TIMEOUT_MS:-3600000}
+  K6_JOB_EXECUTION_TIMEOUT_MS: ${K6_JOB_EXECUTION_TIMEOUT_MS:-3600000}
 
-  # Worker Location
-  WORKER_LOCATION: local # For local dev - processes all queues
+  # For local dev - processes all queues
+  WORKER_LOCATION: ${WORKER_LOCATION:-local}
 
   # AWS S3 / MinIO Configuration
-  AWS_REGION: us-east-1
-  AWS_ACCESS_KEY_ID: minioadmin
-  AWS_SECRET_ACCESS_KEY: minioadmin
-  S3_ENDPOINT: http://minio:9000
-  S3_JOB_BUCKET_NAME: playwright-job-artifacts
-  S3_TEST_BUCKET_NAME: playwright-test-artifacts
-  S3_MONITOR_BUCKET_NAME: playwright-monitor-artifacts
-  S3_STATUS_BUCKET_NAME: playwright-status-artifacts
-  S3_PERFORMANCE_BUCKET_NAME: supercheck-performance-artifacts
-  S3_FORCE_PATH_STYLE: true
-  S3_OPERATION_TIMEOUT: 10000
-  S3_MAX_RETRIES: 3
+  AWS_REGION: ${AWS_REGION:-us-east-1}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
+  S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+  S3_JOB_BUCKET_NAME: ${S3_JOB_BUCKET_NAME:-playwright-job-artifacts}
+  S3_TEST_BUCKET_NAME: ${S3_TEST_BUCKET_NAME:-playwright-test-artifacts}
+  S3_MONITOR_BUCKET_NAME: ${S3_MONITOR_BUCKET_NAME:-playwright-monitor-artifacts}
+  S3_STATUS_BUCKET_NAME: ${S3_STATUS_BUCKET_NAME:-playwright-status-artifacts}
+  S3_PERFORMANCE_BUCKET_NAME: ${S3_PERFORMANCE_BUCKET_NAME:-k6-performance-artifacts}
+  S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+  S3_OPERATION_TIMEOUT: ${S3_OPERATION_TIMEOUT:-10000}
+  S3_MAX_RETRIES: ${S3_MAX_RETRIES:-3}
 
   # Notification Channel Limits
   # Notification channel limits (runtime configurable)
-  MAX_JOB_NOTIFICATION_CHANNELS: 10
-  MAX_MONITOR_NOTIFICATION_CHANNELS: 10
+  MAX_JOB_NOTIFICATION_CHANNELS: ${MAX_JOB_NOTIFICATION_CHANNELS:-10}
+  MAX_MONITOR_NOTIFICATION_CHANNELS: ${MAX_MONITOR_NOTIFICATION_CHANNELS:-10}
 
-  # Playwright Configuration
-  # PLAYWRIGHT_HEADLESS: true
-  PLAYWRIGHT_RETRIES: 1
-  PLAYWRIGHT_TRACE: retain-on-failure
-  PLAYWRIGHT_SCREENSHOT: only-on-failure
-  PLAYWRIGHT_VIDEO: retain-on-failure
+  # Playwright Configuration - Optimized for Supercheck execution service
+  # PLAYWRIGHT_HEADLESS: ${PLAYWRIGHT_HEADLESS:-true}
+  PLAYWRIGHT_RETRIES: ${PLAYWRIGHT_RETRIES:-1}
+  PLAYWRIGHT_TRACE: ${PLAYWRIGHT_TRACE:-retain-on-failure}
+  PLAYWRIGHT_SCREENSHOT: ${PLAYWRIGHT_SCREENSHOT:-on}
+  # Video recording enabled on test failures for debugging (with increased resource limits)
+  PLAYWRIGHT_VIDEO: ${PLAYWRIGHT_VIDEO:-retain-on-failure}
 
-  # Monitor Results Cleanup
-  MONITOR_CLEANUP_ENABLED: true
-  MONITOR_CLEANUP_CRON: "0 2 * * *"
-  MONITOR_RETENTION_DAYS: 30
-  MONITOR_CLEANUP_BATCH_SIZE: 1000
-  MONITOR_PRESERVE_STATUS_CHANGES: true
-  MONITOR_CLEANUP_SAFETY_LIMIT: 1000000
+  # Monitor Results Cleanup (retention per plan from database)
+  MONITOR_CLEANUP_ENABLED: ${MONITOR_CLEANUP_ENABLED:-true}
+  MONITOR_CLEANUP_CRON: ${MONITOR_CLEANUP_CRON:-"0 2 * * *"} # 2 AM daily
+  MONITOR_CLEANUP_BATCH_SIZE: ${MONITOR_CLEANUP_BATCH_SIZE:-1000}
+  MONITOR_PRESERVE_STATUS_CHANGES: ${MONITOR_PRESERVE_STATUS_CHANGES:-true}
+  MONITOR_CLEANUP_SAFETY_LIMIT: ${MONITOR_CLEANUP_SAFETY_LIMIT:-1000000}
 
-  # Job Runs Cleanup
-  JOB_RUNS_CLEANUP_ENABLED: false
-  JOB_RUNS_CLEANUP_CRON: "0 3 * * *"
-  JOB_RUNS_RETENTION_DAYS: 90
-  JOB_RUNS_CLEANUP_BATCH_SIZE: 100
-  JOB_RUNS_CLEANUP_SAFETY_LIMIT: 10000
+  # Monitor Aggregates Cleanup (retention per plan from database)
+  MONITOR_AGGREGATES_CLEANUP_ENABLED: ${MONITOR_AGGREGATES_CLEANUP_ENABLED:-true}
+  MONITOR_AGGREGATES_CLEANUP_CRON: ${MONITOR_AGGREGATES_CLEANUP_CRON:-"30 2 * * *"} # 2:30 AM daily
+  MONITOR_AGGREGATES_CLEANUP_BATCH_SIZE: ${MONITOR_AGGREGATES_CLEANUP_BATCH_SIZE:-1000}
+  MONITOR_AGGREGATES_CLEANUP_SAFETY_LIMIT: ${MONITOR_AGGREGATES_CLEANUP_SAFETY_LIMIT:-500000}
+
+  # Job Runs Cleanup (retention per plan from database)
+  JOB_RUNS_CLEANUP_ENABLED: ${JOB_RUNS_CLEANUP_ENABLED:-true}
+  JOB_RUNS_CLEANUP_CRON: ${JOB_RUNS_CLEANUP_CRON:-"0 3 * * *"} # 3 AM daily
+  JOB_RUNS_CLEANUP_BATCH_SIZE: ${JOB_RUNS_CLEANUP_BATCH_SIZE:-100}
+  JOB_RUNS_CLEANUP_SAFETY_LIMIT: ${JOB_RUNS_CLEANUP_SAFETY_LIMIT:-10000}
 
   # Playground Artifacts Cleanup
-  PLAYGROUND_CLEANUP_ENABLED: true
-  PLAYGROUND_CLEANUP_CRON: "0 */12 * * *"
-  PLAYGROUND_CLEANUP_MAX_AGE_HOURS: 24
+  PLAYGROUND_CLEANUP_ENABLED: ${PLAYGROUND_CLEANUP_ENABLED:-true}
+  PLAYGROUND_CLEANUP_CRON: ${PLAYGROUND_CLEANUP_CRON:-"0 5 * * *"} # 5 AM daily
+  PLAYGROUND_CLEANUP_MAX_AGE_HOURS: ${PLAYGROUND_CLEANUP_MAX_AGE_HOURS:-24}
+
+  # Webhook Idempotency Cleanup (TTL-based deduplication records)
+  WEBHOOK_CLEANUP_ENABLED: ${WEBHOOK_CLEANUP_ENABLED:-true}
+  WEBHOOK_CLEANUP_CRON: ${WEBHOOK_CLEANUP_CRON:-"0 4 * * *"} # 4 AM daily
+  WEBHOOK_CLEANUP_BATCH_SIZE: ${WEBHOOK_CLEANUP_BATCH_SIZE:-1000}
+  WEBHOOK_CLEANUP_SAFETY_LIMIT: ${WEBHOOK_CLEANUP_SAFETY_LIMIT:-100000}
 
   # Security Configuration
   SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
 
   # Better Auth Admin Configuration
-  MAX_PROJECTS_PER_ORG: 10
-  DEFAULT_PROJECT_NAME: Default Project
+  MAX_PROJECTS_PER_ORG: ${MAX_PROJECTS_PER_ORG:-10}
+  DEFAULT_PROJECT_NAME: ${DEFAULT_PROJECT_NAME:-Default Project}
 
-  # SMTP Email Configuration
-  SMTP_HOST: smtp.resend.com
-  SMTP_PORT: 587
-  SMTP_USER: resend
-  SMTP_PASSWORD: your-smtp-password-change-this-in-production
-  SMTP_SECURE: false
-  SMTP_FROM_EMAIL: notification@example.com
+  # SMTP Email Configuration for Notifications
+  # Supports any SMTP provider including Resend SMTP, Gmail, SendGrid, etc.
+  SMTP_HOST: ${SMTP_HOST:-smtp.resend.com}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-resend}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-your-smtp-password-change-this-in-production}
+  SMTP_SECURE: ${SMTP_SECURE:-false}
+  SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-notification@example.com}
 
   # AI Fix Feature Configuration
-  AI_PROVIDER: openai
-  AI_MODEL: gpt-4o-mini
-  OPENAI_API_KEY: your-openai-api-key-here
-  AI_TIMEOUT_MS: 90000
-  AI_MAX_RETRIES: 2
-  AI_TEMPERATURE: 0.1
+  AI_PROVIDER: ${AI_PROVIDER:-openai}
+  AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-your-openai-api-key-here}
+  AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-90000}
+  AI_MAX_RETRIES: ${AI_MAX_RETRIES:-2}
+  AI_TEMPERATURE: ${AI_TEMPERATURE:-0.1}
 
   # Self-Hosted Mode (set to 'true' for unlimited features without Polar billing)
   # Client-side code fetches this from /api/config/hosting-mode at runtime
-  SELF_HOSTED: "true"
+  SELF_HOSTED: ${SELF_HOSTED:-true}
 
   # Polar Billing Configuration (only for cloud deployments)
   # Set SELF_HOSTED=false to enable Polar billing
-  POLAR_ACCESS_TOKEN: ""
-  POLAR_SERVER: production
-  POLAR_WEBHOOK_SECRET: ""
-  POLAR_PLUS_PRODUCT_ID: ""
-  POLAR_PRO_PRODUCT_ID: ""
+  POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN:-}
+  POLAR_SERVER: ${POLAR_SERVER:-production}
+  POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET:-}
+  POLAR_PLUS_PRODUCT_ID: ${POLAR_PLUS_PRODUCT_ID:-}
+  POLAR_PRO_PRODUCT_ID: ${POLAR_PRO_PRODUCT_ID:-}
 
   # OAuth Configuration (optional - enable social login)
   # Social auth buttons are automatically shown when client ID and secret are configured
-  GITHUB_CLIENT_ID: ""
-  GITHUB_CLIENT_SECRET: ""
-  GOOGLE_CLIENT_ID: ""
-  GOOGLE_CLIENT_SECRET: ""
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+  GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
 
 services:
   # App (Next.js Frontend)
   app:
     build:
-      context: ./app
+      context: ../../app
       dockerfile: Dockerfile
+    image: supercheck-app:latest
     ports:
       - "3000:3000"
-    env_file:
-      - .env.local
     environment:
       <<: *common-env
     volumes:
       # Mount TypeScript definitions for Monaco Editor in playground
-      - ./app/public/supercheck.d.ts:/app/public/supercheck.d.ts:ro
+      - ../../app/public/supercheck.d.ts:/app/public/supercheck.d.ts:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -194,13 +194,14 @@ services:
 
   # Worker (NestJS Runner) - Container-based test execution
   # Tests run in isolated Docker containers (Playwright/K6), not inside worker
+  # Playwright Docker best practices: https://playwright.dev/docs/docker
   worker:
     build:
-      context: ./worker
+      context: ../../worker
       dockerfile: Dockerfile
     image: supercheck-worker:latest
-    env_file:
-      - .env.local
+    # init: Use tini as PID 1 to avoid zombie processes (Playwright recommendation)
+    init: true
     environment:
       <<: *common-env
       WORKER_IMAGE: supercheck-worker:latest
@@ -213,7 +214,7 @@ services:
       - worker-k6-reports:/worker/k6-reports
       - worker-reports:/worker/report
       # Development: Mount source for hot reload (remove in production)
-      - ./worker/src:/worker/src:ro
+      - ../../worker/src:/worker/src:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -230,7 +231,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "const http = require('http'); const req = http.request({hostname: 'localhost', port: 3001, path: '/health', timeout: 5000}, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();",
+          "const http = require('http'); const req = http.request({hostname: 'localhost', port: 8000, path: '/health', timeout: 5000}, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();",
         ]
       interval: 30s
       timeout: 10s

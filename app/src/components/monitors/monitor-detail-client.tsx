@@ -296,7 +296,9 @@ export function MonitorDetailClient({
       });
     }
 
-    const orderedLocations = Array.from(locationSet).sort((a, b) => a.localeCompare(b));
+    const orderedLocations = Array.from(locationSet).sort((a, b) =>
+      a.localeCompare(b)
+    );
 
     setAvailableLocations((prev) => {
       if (
@@ -590,8 +592,14 @@ export function MonitorDetailClient({
     // When viewing all locations, aggregate based on strategy
     const monitorConfig = (monitor.config ?? null) as MonitorConfig | null;
     const locationConfig = monitorConfig?.locationConfig ?? null;
+
+    // For single-location or non-multi-location monitors, use the most recent result
+    if (!locationConfig || !locationConfig.enabled) {
+      // Simply use the most recent result's status
+      return monitor.recentResults[0].isUp ? "up" : "down";
+    }
+
     const effectiveLocationsFromConfig =
-      locationConfig &&
       locationConfig.enabled &&
       Array.isArray(locationConfig.locations) &&
       locationConfig.locations.length > 0
@@ -603,9 +611,7 @@ export function MonitorDetailClient({
         (monitor.recentResults ?? [])
           .map((result) => result.location)
           .filter(
-            (
-              location
-            ): location is MonitoringLocation =>
+            (location): location is MonitoringLocation =>
               typeof location === "string" && isMonitoringLocation(location)
           )
       )
@@ -773,731 +779,785 @@ export function MonitorDetailClient({
   return (
     <>
       <div className="h-full">
-      {/* Logo, breadcrumbs, and user nav for notification view */}
-      {isNotificationView && (
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <CheckIcon className="h-8 w-8" />
-            <div className="flex items-center gap-2 text-sm">
-              <Link
-                href="/"
-                className="text-xl font-semibold text-foreground hover:opacity-80 transition-opacity"
-              >
-                Supercheck
-              </Link>
-
-              <span className="mx-2 text-muted-foreground/30">|</span>
-              <Link
-                href="/"
-                className="flex items-center gap-1 hover:text-foreground transition-colors text-muted-foreground"
-              >
-                <Home className="h-4 w-4" />
-              </Link>
-              <span className="mx-1 text-muted-foreground">/</span>
-              <span className="text-foreground">Monitor Report</span>
-            </div>
-          </div>
-          <NavUser />
-        </div>
-      )}
-
-      {/* Status and Type Header */}
-      <div className="border rounded-lg p-2 mb-4 shadow-sm bg-card">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {!isNotificationView && (
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => router.push("/monitors")}
-              >
-                <ChevronLeft className="h-4 w-4" />
-                <span className="sr-only">Back to monitors</span>
-              </Button>
-            )}
-            <div>
-              <h1 className="text-2xl font-semibold flex items-center gap-2 mt-1">
-                {monitorTypeInfo?.icon && (
-                  <monitorTypeInfo.icon
-                    className={`h-6 w-6 ${monitorTypeInfo.color}`}
-                  />
-                )}
-                {monitor.name.length > 40
-                  ? monitor.name.slice(0, 40) + "..."
-                  : monitor.name}
-              </h1>
-              <div className="flex items-center gap-2">
-                <div
-                  className="text-sm text-muted-foreground truncate max-w-md"
-                  title={monitor.url}
+        {/* Logo, breadcrumbs, and user nav for notification view */}
+        {isNotificationView && (
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <CheckIcon className="h-8 w-8" />
+              <div className="flex items-center gap-2 text-sm">
+                <Link
+                  href="/"
+                  className="text-xl font-semibold text-foreground hover:opacity-80 transition-opacity"
                 >
-                  {monitor.type === "synthetic_test" &&
-                  monitor.config?.testId ? (
-                    <>
-                      <span className="font-medium">Test ID:</span>{" "}
-                      {monitor.config.testId}
-                    </>
-                  ) : monitor.type === "port_check" && monitor.config?.port ? (
-                    `${monitor.target || monitor.url}:${monitor.config.port}`
-                  ) : monitor.type === "http_request" &&
-                    monitor.config?.method ? (
-                    `${monitor.config.method.toUpperCase()} ${
+                  Supercheck
+                </Link>
+
+                <span className="mx-2 text-muted-foreground/30">|</span>
+                <Link
+                  href="/"
+                  className="flex items-center gap-1 hover:text-foreground transition-colors text-muted-foreground"
+                >
+                  <Home className="h-4 w-4" />
+                </Link>
+                <span className="mx-1 text-muted-foreground">/</span>
+                <span className="text-foreground">Monitor Report</span>
+              </div>
+            </div>
+            <NavUser />
+          </div>
+        )}
+
+        {/* Status and Type Header */}
+        <div className="border rounded-lg p-2 mb-4 shadow-sm bg-card">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {!isNotificationView && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => router.push("/monitors")}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="sr-only">Back to monitors</span>
+                </Button>
+              )}
+              <div>
+                <h1 className="text-2xl font-semibold flex items-center gap-2 mt-1">
+                  {monitorTypeInfo?.icon && (
+                    <monitorTypeInfo.icon
+                      className={`h-6 w-6 ${monitorTypeInfo.color}`}
+                    />
+                  )}
+                  {monitor.name.length > 40
+                    ? monitor.name.slice(0, 40) + "..."
+                    : monitor.name}
+                </h1>
+                <div className="flex items-center gap-2">
+                  <div
+                    className="text-sm text-muted-foreground truncate max-w-md"
+                    title={monitor.url}
+                  >
+                    {monitor.type === "synthetic_test" &&
+                    monitor.config?.testId ? (
+                      <>
+                        <span className="font-medium">Test ID:</span>{" "}
+                        {monitor.config.testId}
+                      </>
+                    ) : monitor.type === "port_check" &&
+                      monitor.config?.port ? (
+                      `${monitor.target || monitor.url}:${monitor.config.port}`
+                    ) : monitor.type === "http_request" &&
+                      monitor.config?.method ? (
+                      `${monitor.config.method.toUpperCase()} ${
+                        monitor.url || monitor.target
+                      }`
+                    ) : (
                       monitor.url || monitor.target
-                    }`
-                  ) : (
-                    monitor.url || monitor.target
+                    )}
+                  </div>
+                  {(monitor.url ||
+                    monitor.target ||
+                    (monitor.type === "synthetic_test" &&
+                      monitor.config?.testId)) && (
+                    <button
+                      onClick={() =>
+                        handleCopy(
+                          monitor.type === "synthetic_test" &&
+                            monitor.config?.testId
+                            ? monitor.config.testId
+                            : monitor.url || monitor.target || "",
+                          monitor.type === "synthetic_test" ? "Test ID" : "URL"
+                        )
+                      }
+                      className="p-1 hover:bg-muted rounded transition-colors"
+                      title={`Copy ${
+                        monitor.type === "synthetic_test" ? "Test ID" : "URL"
+                      }`}
+                    >
+                      <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                    </button>
                   )}
                 </div>
-                {(monitor.url ||
-                  monitor.target ||
-                  (monitor.type === "synthetic_test" &&
-                    monitor.config?.testId)) && (
-                  <button
-                    onClick={() =>
-                      handleCopy(
-                        monitor.type === "synthetic_test" &&
-                          monitor.config?.testId
-                          ? monitor.config.testId
-                          : monitor.url || monitor.target || "",
-                        monitor.type === "synthetic_test" ? "Test ID" : "URL"
-                      )
-                    }
-                    className="p-1 hover:bg-muted rounded transition-colors"
-                    title={`Copy ${
-                      monitor.type === "synthetic_test" ? "Test ID" : "URL"
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {monitor.status === "paused" && (
+                <div className="flex items-center px-2 py-1 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
+                  <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mr-1" />
+                  <span className="text-xs text-yellow-700 dark:text-yellow-300">
+                    Monitoring paused
+                  </span>
+                </div>
+              )}
+
+              {/* Alert Status Indicators */}
+              <div className="flex items-center gap-1 ml-1 mr-1">
+                {/* Main Alert Status */}
+                <div className="relative group mr-1">
+                  <div
+                    className={`flex items-center justify-center h-10 w-10 rounded-full ${
+                      monitor.alertConfig?.enabled
+                        ? "bg-green-100 dark:bg-green-900/30"
+                        : "bg-gray-100 dark:bg-gray-700/30"
                     }`}
                   >
-                    <Copy className="h-3.5 w-3.5 text-muted-foreground" />
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {monitor.status === "paused" && (
-              <div className="flex items-center px-2 py-1 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md">
-                <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mr-1" />
-                <span className="text-xs text-yellow-700 dark:text-yellow-300">
-                  Monitoring paused
-                </span>
-              </div>
-            )}
-
-            {/* Alert Status Indicators */}
-            <div className="flex items-center gap-1 ml-1 mr-1">
-              {/* Main Alert Status */}
-              <div className="relative group mr-1">
-                <div
-                  className={`flex items-center justify-center h-10 w-10 rounded-full ${
-                    monitor.alertConfig?.enabled
-                      ? "bg-green-100 dark:bg-green-900/30"
-                      : "bg-gray-100 dark:bg-gray-700/30"
-                  }`}
-                >
-                  {monitor.alertConfig?.enabled ? (
-                    <Bell className="h-5 w-5 text-green-600 dark:text-green-400" />
-                  ) : (
-                    <BellOff className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-                  )}
+                    {monitor.alertConfig?.enabled ? (
+                      <Bell className="h-5 w-5 text-green-600 dark:text-green-400" />
+                    ) : (
+                      <BellOff className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                    )}
+                  </div>
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
+                    {monitor.alertConfig?.enabled
+                      ? "Alerts enabled"
+                      : "Alerts disabled"}
+                  </div>
                 </div>
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
-                  {monitor.alertConfig?.enabled
-                    ? "Alerts enabled"
-                    : "Alerts disabled"}
-                </div>
-              </div>
 
-              {monitor.alertConfig?.enabled && (
-                <div className="flex items-center space-x-2 text-xs text-muted-foreground">
-                  {monitor.alertConfig.alertOnFailure && (
-                    <div className="relative group">
-                      <XCircle className="h-4 w-4 text-red-600 dark:text-red-500" />
-                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
-                        Monitor failure alert
-                      </div>
-                    </div>
-                  )}
-                  {monitor.alertConfig.alertOnRecovery && (
-                    <div className="relative group">
-                      <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-500" />
-                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
-                        Monitor recovery alert
-                      </div>
-                    </div>
-                  )}
-                  {monitor.alertConfig.alertOnSslExpiration &&
-                    monitor.type === "website" &&
-                    monitor.config?.enableSslCheck && (
+                {monitor.alertConfig?.enabled && (
+                  <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+                    {monitor.alertConfig.alertOnFailure && (
                       <div className="relative group">
-                        <Shield className="h-4 w-4 text-blue-600 dark:text-blue-500" />
+                        <XCircle className="h-4 w-4 text-red-600 dark:text-red-500" />
                         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
-                          SSL expiration alert
+                          Monitor failure alert
                         </div>
                       </div>
                     )}
-                </div>
-              )}
-            </div>
-
-            {/* SSL Certificate Expiry for Website Monitors */}
-            {monitor.type === "website" &&
-              sslCertificateInfo &&
-              sslCertificateInfo.daysRemaining !== undefined && (
-                <div
-                  className={`flex items-center px-2 py-2 rounded-md border ${
-                    sslCertificateInfo.daysRemaining <= 7
-                      ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-                      : sslCertificateInfo.daysRemaining <= 30
-                      ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800"
-                      : "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
-                  }`}
-                  title="SSL enabled"
-                >
-                  <Shield
-                    className={`h-4 w-4 mr-1 ${
-                      sslCertificateInfo.daysRemaining <= 7
-                        ? "text-red-600 dark:text-red-400"
-                        : sslCertificateInfo.daysRemaining <= 30
-                        ? "text-yellow-600 dark:text-yellow-400"
-                        : "text-green-600 dark:text-green-400"
-                    }`}
-                  />
-                  <span
-                    className={`text-xs ${
-                      sslCertificateInfo.daysRemaining <= 7
-                        ? "text-red-700 dark:text-red-300"
-                        : sslCertificateInfo.daysRemaining <= 30
-                        ? "text-yellow-700 dark:text-yellow-300"
-                        : "text-green-700 dark:text-green-300"
-                    }`}
-                  >
-                    SSL: {sslCertificateInfo.daysRemaining}d remaining
-                  </span>
-                </div>
-              )}
-
-            {/* Debug info for SSL when enabled but no certificate data */}
-            {monitor.type === "website" &&
-              monitor.config?.enableSslCheck &&
-              !sslCertificateInfo && (
-                <div
-                  className="flex items-center px-2 py-2 rounded-md border bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
-                  title="SSL enabled but no certificate data available"
-                >
-                  <Shield className="h-4 w-4 mr-1 text-blue-600 dark:text-blue-400" />
-                  <span className="text-xs text-blue-700 dark:text-blue-300">
-                    SSL: No certificate data yet
-                  </span>
-                </div>
-              )}
-
-            {/* Action buttons - only show if user has manage permissions and not notification view */}
-            {!isNotificationView &&
-              !permissionsLoading &&
-              userRole &&
-              canEditMonitors(userRole) && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleToggleStatus}
-                  >
-                    {monitor.status === "paused" ? (
-                      <Play className="mr-2 h-4 w-4" />
-                    ) : (
-                      <Pause className="mr-2 h-4 w-4" />
+                    {monitor.alertConfig.alertOnRecovery && (
+                      <div className="relative group">
+                        <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-500" />
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
+                          Monitor recovery alert
+                        </div>
+                      </div>
                     )}
-                    {monitor.status === "paused" ? "Resume" : "Pause"}
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => router.push(`/monitors/${monitor.id}/edit`)}
-                    className="flex items-center"
-                  >
-                    <Edit3 className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Edit</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowDeleteDialog(true)}
-                    className="flex items-center text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/50"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Delete</span>
-                  </Button>
-                </>
-              )}
-
-            {/* Show loading state while fetching permissions - only in non-notification view */}
-            {!isNotificationView && permissionsLoading && <LoadingBadge />}
-
-            {/* Show disabled action buttons when user doesn't have management permissions - only in non-notification view */}
-            {!isNotificationView &&
-              !permissionsLoading &&
-              userRole &&
-              !canEditMonitors(userRole) && (
-                <>
-                  <Button variant="outline" size="sm" disabled>
-                    {monitor.status === "paused" ? (
-                      <Play className="mr-2 h-4 w-4" />
-                    ) : (
-                      <Pause className="mr-2 h-4 w-4" />
-                    )}
-                    {monitor.status === "paused" ? "Resume" : "Pause"}
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled
-                    className="flex items-center"
-                  >
-                    <Edit3 className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Edit</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled
-                    className="flex items-center text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/50"
-                  >
-                    <Trash2 className="h-4 w-4 mr-1" />
-                    <span className="hidden sm:inline">Delete</span>
-                  </Button>
-                </>
-              )}
-
-            {/* In notification view, just show project name without action buttons */}
-            {isNotificationView && monitor.projectName && (
-              <div className="flex items-center px-2 py-2 rounded-md border bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-                <FolderOpen className="h-4 w-4 mr-1 text-blue-600 dark:text-blue-400" />
-                <span className="text-xs text-blue-700 dark:text-blue-300">
-                  {monitor.projectName}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Location Filter */}
-        <div className="grid gap-4 mt-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-9 m-2">
-          <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
-            <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-              <StatusHeaderIcon status={currentActualStatus} />
-              <CardTitle className="text-xs font-semibold text-muted-foreground">
-                Status
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-4 px-4">
-              <div className="text-lg font-semibold">
-                {statusInfo?.label ??
-                  (currentActualStatus
-                    ? currentActualStatus.charAt(0).toUpperCase() +
-                      currentActualStatus.slice(1)
-                    : "Unknown")}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
-            <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-              <Clock className="h-5 w-5 text-purple-500" />
-              <CardTitle className="text-xs font-semibold text-muted-foreground">
-                Interval
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-4 px-4">
-              <div className="text-lg font-semibold">
-                {monitor.frequencyMinutes
-                  ? `${monitor.frequencyMinutes}m`
-                  : "N/A"}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
-            <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-              <Activity className="h-5 w-5 text-blue-500" />
-              <CardTitle className="text-xs font-semibold text-muted-foreground">
-                Resp Time
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-4 px-4">
-              <div className="text-lg font-semibold">{currentResponseTime}</div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
-            <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-              <TrendingUp className="h-5 w-5 text-green-400" />
-              <CardTitle className="text-xs font-semibold text-muted-foreground">
-                Uptime
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-4 px-4">
-              <div className="text-lg font-semibold flex items-center gap-2">
-                {calculatedMetrics.uptime24h}
-                <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
-                  24h
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
-            <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-              <Zap className="h-5 w-5 text-sky-500" />
-              <CardTitle className="text-xs font-semibold text-muted-foreground">
-                Avg Resp
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-4 px-4">
-              <div className="text-lg font-semibold flex items-center gap-2">
-                {calculatedMetrics.avgResponse24h}
-                <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
-                  24h
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
-            <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-              <ChartNoAxesCombined className="h-5 w-5 text-orange-500" />
-              <CardTitle className="text-xs font-semibold text-muted-foreground">
-                P95 Resp
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-4 px-4">
-              <div className="text-lg font-semibold flex items-center gap-2">
-                {calculatedMetrics.p95Response24h}
-                <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
-                  24h
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
-            <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-              <TrendingUp className="h-5 w-5 text-green-400" />
-              <CardTitle className="text-xs font-semibold text-muted-foreground">
-                Uptime
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-4 px-4">
-              <div className="text-lg font-semibold flex items-center gap-2">
-                {calculatedMetrics.uptime30d}
-                <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
-                  30d
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
-            <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-              <Zap className="h-5 w-5 text-sky-500" />
-              <CardTitle className="text-xs font-semibold text-muted-foreground">
-                Avg Resp
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-4 px-4">
-              <div className="text-lg font-semibold flex items-center gap-2">
-                {calculatedMetrics.avgResponse30d}
-                <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
-                  30d
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 h-22">
-            <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-              <ChartNoAxesCombined className="h-5 w-5 text-orange-500" />
-              <CardTitle className="text-xs font-semibold text-muted-foreground">
-                P95 Resp
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-4 px-4">
-              <div className="text-lg font-semibold flex items-center gap-2">
-                {calculatedMetrics.p95Response30d}
-                <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
-                  30d
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* For all monitors, show charts and results in two columns */}
-        <div className="flex flex-col gap-4">
-          <div>
-            <AvailabilityBarChart
-              data={availabilityTimelineData}
-              headerActions={
-                availableLocations.length > 1 ? (
-                  <LocationFilterDropdown
-                    selectedLocation={selectedLocation}
-                    availableLocations={availableLocations}
-                    onLocationChange={setSelectedLocation}
-                    className="w-[200px]"
-                  />
-                ) : undefined
-              }
-            />
-          </div>
-
-          {/* Response Time Chart */}
-          <div>
-            <ResponseTimeBarChart data={responseTimeData} />
-          </div>
-        </div>
-
-        <Card className="shadow-sm flex flex-col">
-          <CardHeader className="flex-shrink-0">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg font-semibold flex items-center">
-                Recent Check Results
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                {selectedDate && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={clearDateFilter}
-                    className="h-8"
-                  >
-                    <X className="h-3 w-3 mr-1" />
-                    Clear
-                  </Button>
+                    {monitor.alertConfig.alertOnSslExpiration &&
+                      monitor.type === "website" &&
+                      monitor.config?.enableSslCheck && (
+                        <div className="relative group">
+                          <Shield className="h-4 w-4 text-blue-600 dark:text-blue-500" />
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
+                            SSL expiration alert
+                          </div>
+                        </div>
+                      )}
+                  </div>
                 )}
-                <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-8">
-                      <CalendarIcon className="h-3 w-3 mr-1" />
-                      {selectedDate
-                        ? format(selectedDate, "MMM dd")
-                        : "Filter by date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="end">
-                    <CalendarComponent
-                      mode="single"
-                      selected={selectedDate}
-                      onSelect={(date: Date | undefined) => {
-                        setSelectedDate(date);
-                        setIsCalendarOpen(false);
-                      }}
-                      disabled={(date: Date) =>
-                        date > new Date() || date < new Date("2020-01-01")
-                      }
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
               </div>
+
+              {/* SSL Certificate Expiry for Website Monitors */}
+              {monitor.type === "website" &&
+                sslCertificateInfo &&
+                sslCertificateInfo.daysRemaining !== undefined && (
+                  <div
+                    className={`flex items-center px-2 py-2 rounded-md border ${
+                      sslCertificateInfo.daysRemaining <= 7
+                        ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                        : sslCertificateInfo.daysRemaining <= 30
+                          ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800"
+                          : "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+                    }`}
+                    title="SSL enabled"
+                  >
+                    <Shield
+                      className={`h-4 w-4 mr-1 ${
+                        sslCertificateInfo.daysRemaining <= 7
+                          ? "text-red-600 dark:text-red-400"
+                          : sslCertificateInfo.daysRemaining <= 30
+                            ? "text-yellow-600 dark:text-yellow-400"
+                            : "text-green-600 dark:text-green-400"
+                      }`}
+                    />
+                    <span
+                      className={`text-xs ${
+                        sslCertificateInfo.daysRemaining <= 7
+                          ? "text-red-700 dark:text-red-300"
+                          : sslCertificateInfo.daysRemaining <= 30
+                            ? "text-yellow-700 dark:text-yellow-300"
+                            : "text-green-700 dark:text-green-300"
+                      }`}
+                    >
+                      SSL: {sslCertificateInfo.daysRemaining}d remaining
+                    </span>
+                  </div>
+                )}
+
+              {/* Debug info for SSL when enabled but no certificate data */}
+              {monitor.type === "website" &&
+                monitor.config?.enableSslCheck &&
+                !sslCertificateInfo && (
+                  <div
+                    className="flex items-center px-2 py-2 rounded-md border bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
+                    title="SSL enabled but no certificate data available"
+                  >
+                    <Shield className="h-4 w-4 mr-1 text-blue-600 dark:text-blue-400" />
+                    <span className="text-xs text-blue-700 dark:text-blue-300">
+                      SSL: No certificate data yet
+                    </span>
+                  </div>
+                )}
+
+              {/* Action buttons - only show if user has manage permissions and not notification view */}
+              {!isNotificationView &&
+                !permissionsLoading &&
+                userRole &&
+                canEditMonitors(userRole) && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleToggleStatus}
+                    >
+                      {monitor.status === "paused" ? (
+                        <Play className="mr-2 h-4 w-4" />
+                      ) : (
+                        <Pause className="mr-2 h-4 w-4" />
+                      )}
+                      {monitor.status === "paused" ? "Resume" : "Pause"}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        router.push(`/monitors/${monitor.id}/edit`)
+                      }
+                      className="flex items-center"
+                    >
+                      <Edit3 className="h-4 w-4 mr-1" />
+                      <span className="hidden sm:inline">Edit</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowDeleteDialog(true)}
+                      className="flex items-center text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/50"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      <span className="hidden sm:inline">Delete</span>
+                    </Button>
+                  </>
+                )}
+
+              {/* Show loading state while fetching permissions - only in non-notification view */}
+              {!isNotificationView && permissionsLoading && <LoadingBadge />}
+
+              {/* Show disabled action buttons when user doesn't have management permissions - only in non-notification view */}
+              {!isNotificationView &&
+                !permissionsLoading &&
+                userRole &&
+                !canEditMonitors(userRole) && (
+                  <>
+                    <Button variant="outline" size="sm" disabled>
+                      {monitor.status === "paused" ? (
+                        <Play className="mr-2 h-4 w-4" />
+                      ) : (
+                        <Pause className="mr-2 h-4 w-4" />
+                      )}
+                      {monitor.status === "paused" ? "Resume" : "Pause"}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled
+                      className="flex items-center"
+                    >
+                      <Edit3 className="h-4 w-4 mr-1" />
+                      <span className="hidden sm:inline">Edit</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled
+                      className="flex items-center text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/50"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      <span className="hidden sm:inline">Delete</span>
+                    </Button>
+                  </>
+                )}
+
+              {/* In notification view, just show project name without action buttons */}
+              {isNotificationView && monitor.projectName && (
+                <div className="flex items-center px-2 py-2 rounded-md border bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                  <FolderOpen className="h-4 w-4 mr-1 text-blue-600 dark:text-blue-400" />
+                  <span className="text-xs text-blue-700 dark:text-blue-300">
+                    {monitor.projectName}
+                  </span>
+                </div>
+              )}
             </div>
-            <CardDescription>
-              {selectedDate
-                ? `Showing ${currentResultsCount} of ${totalResultsCount} checks for ${format(
-                    selectedDate,
-                    "MMMM dd, yyyy"
-                  )}`
-                : `Showing ${currentResultsCount} of ${totalResultsCount}${
-                    recentMonitorResultsLimit &&
-                    totalResultsCount >= recentMonitorResultsLimit
-                      ? "+"
-                      : ""
-                  } recent checks.`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-0 flex-1 flex flex-col">
-            <div className="w-full overflow-hidden">
-              <div className="w-full">
-                <table className="w-full divide-y divide-border">
-                  <thead className="bg-background sticky top-0 z-10 border-b">
-                    <tr>
-                      <th
-                        scope="col"
-                        className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-20"
-                      >
-                        Result
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-44"
-                      >
-                        Checked At
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-40"
-                      >
-                        Location
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-60"
-                      >
-                        Response Time
-                      </th>
-                      <th
-                        scope="col"
-                        className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-32"
-                      >
-                        Error
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-card divide-y divide-border">
-                    {isLoadingResults ? (
-                      // Professional loading state with background
+          </div>
+
+          {/* Metric Cards */}
+          <div className="grid gap-4 mt-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-9 m-2">
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
+              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
+                <StatusHeaderIcon status={currentActualStatus} />
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-4 px-4">
+                <div className="text-lg font-semibold">
+                  {statusInfo?.label ??
+                    (currentActualStatus
+                      ? currentActualStatus.charAt(0).toUpperCase() +
+                        currentActualStatus.slice(1)
+                      : "Pending")}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
+              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
+                <Clock className="h-5 w-5 text-purple-500" />
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  Interval
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-4 px-4">
+                <div className="text-lg font-semibold">
+                  {monitor.frequencyMinutes ? (
+                    `${monitor.frequencyMinutes}m`
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
+              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
+                <Activity className="h-5 w-5 text-blue-500" />
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  Resp Time
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-4 px-4">
+                <div className="text-lg font-semibold">
+                  {currentResponseTime === "N/A" ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    currentResponseTime
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
+              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
+                <TrendingUp className="h-5 w-5 text-green-400" />
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  Uptime
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-4 px-4">
+                <div className="text-lg font-semibold flex items-center gap-2">
+                  {calculatedMetrics.uptime24h === "N/A" ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    calculatedMetrics.uptime24h
+                  )}
+                  <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
+                    24h
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
+              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
+                <Zap className="h-5 w-5 text-sky-500" />
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  Avg Resp
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-4 px-4">
+                <div className="text-lg font-semibold flex items-center gap-2">
+                  {calculatedMetrics.avgResponse24h === "N/A" ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    calculatedMetrics.avgResponse24h
+                  )}
+                  <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
+                    24h
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
+              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
+                <ChartNoAxesCombined className="h-5 w-5 text-orange-500" />
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  P95 Resp
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-4 px-4">
+                <div className="text-lg font-semibold flex items-center gap-2">
+                  {calculatedMetrics.p95Response24h === "N/A" ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    calculatedMetrics.p95Response24h
+                  )}
+                  <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
+                    24h
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
+              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
+                <TrendingUp className="h-5 w-5 text-green-400" />
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  Uptime
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-4 px-4">
+                <div className="text-lg font-semibold flex items-center gap-2">
+                  {calculatedMetrics.uptime30d === "N/A" ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    calculatedMetrics.uptime30d
+                  )}
+                  <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
+                    30d
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
+              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
+                <Zap className="h-5 w-5 text-sky-500" />
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  Avg Resp
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-4 px-4">
+                <div className="text-lg font-semibold flex items-center gap-2">
+                  {calculatedMetrics.avgResponse30d === "N/A" ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    calculatedMetrics.avgResponse30d
+                  )}
+                  <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
+                    30d
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
+              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
+                <ChartNoAxesCombined className="h-5 w-5 text-orange-500" />
+                <CardTitle className="text-xs font-semibold text-muted-foreground">
+                  P95 Resp
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pb-4 px-4">
+                <div className="text-lg font-semibold flex items-center gap-2">
+                  {calculatedMetrics.p95Response30d === "N/A" ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    calculatedMetrics.p95Response30d
+                  )}
+                  <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
+                    30d
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* For all monitors, show charts and results in two columns */}
+          <div className="flex flex-col gap-4">
+            <div>
+              <AvailabilityBarChart
+                data={availabilityTimelineData}
+                headerActions={
+                  availableLocations.length > 1 ? (
+                    <LocationFilterDropdown
+                      selectedLocation={selectedLocation}
+                      availableLocations={availableLocations}
+                      onLocationChange={setSelectedLocation}
+                      className="w-[200px]"
+                    />
+                  ) : undefined
+                }
+              />
+            </div>
+
+            {/* Response Time Chart */}
+            <div>
+              <ResponseTimeBarChart data={responseTimeData} />
+            </div>
+          </div>
+
+          <Card className="shadow-sm flex flex-col">
+            <CardHeader className="flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg font-semibold flex items-center">
+                  Recent Check Results
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  {selectedDate && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={clearDateFilter}
+                      className="h-8"
+                    >
+                      <X className="h-3 w-3 mr-1" />
+                      Clear
+                    </Button>
+                  )}
+                  <Popover
+                    open={isCalendarOpen}
+                    onOpenChange={setIsCalendarOpen}
+                  >
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8">
+                        <CalendarIcon className="h-3 w-3 mr-1" />
+                        {selectedDate
+                          ? format(selectedDate, "MMM dd")
+                          : "Filter by date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="end">
+                      <CalendarComponent
+                        mode="single"
+                        selected={selectedDate}
+                        onSelect={(date: Date | undefined) => {
+                          setSelectedDate(date);
+                          setIsCalendarOpen(false);
+                        }}
+                        disabled={(date: Date) =>
+                          date > new Date() || date < new Date("2020-01-01")
+                        }
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+              <CardDescription>
+                {selectedDate
+                  ? `Showing ${currentResultsCount} of ${totalResultsCount} checks for ${format(
+                      selectedDate,
+                      "MMMM dd, yyyy"
+                    )}`
+                  : `Showing ${currentResultsCount} of ${totalResultsCount}${
+                      recentMonitorResultsLimit &&
+                      totalResultsCount >= recentMonitorResultsLimit
+                        ? "+"
+                        : ""
+                    } recent checks.`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0 flex-1 flex flex-col">
+              <div className="w-full overflow-hidden relative">
+                {/* Loading overlay - shows on top of existing data for smooth transitions */}
+                {isLoadingResults && paginatedTableResults.length > 0 && (
+                  <div className="absolute inset-0 z-20 bg-card/80 backdrop-blur-[1px] flex items-center justify-center transition-opacity duration-200">
+                    <div className="bg-card border border-border rounded-lg shadow-sm px-6 py-4 flex flex-col items-center space-y-3">
+                      <Spinner size="lg" className="text-primary" />
+                      <div className="text-sm font-medium text-foreground">
+                        Loading check results
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className="w-full">
+                  <table className="w-full divide-y divide-border">
+                    <thead className="bg-background sticky top-0 z-10 border-b">
                       <tr>
-                        <td
-                          colSpan={monitor.type === "synthetic_test" ? 6 : 5}
-                          className="text-center relative"
-                          style={{ height: "320px" }}
+                        <th
+                          scope="col"
+                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-20"
                         >
-                          <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="bg-card/98 border border-border rounded-lg shadow-sm px-6 py-4 flex flex-col items-center space-y-3">
-                              <Spinner size="lg" className="text-primary" />
-                              <div className="text-sm font-medium text-foreground">
-                                Loading check results
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                Please wait...
+                          Result
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-44"
+                        >
+                          Checked At
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-40"
+                        >
+                          Location
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-60"
+                        >
+                          Response Time
+                        </th>
+                        <th
+                          scope="col"
+                          className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-32"
+                        >
+                          Error
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-card divide-y divide-border">
+                      {isLoadingResults &&
+                      paginatedTableResults.length === 0 ? (
+                        // Initial loading state (no data yet)
+                        <tr>
+                          <td
+                            colSpan={monitor.type === "synthetic_test" ? 6 : 5}
+                            className="text-center relative"
+                            style={{ height: "320px" }}
+                          >
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div className="bg-card/98 border border-border rounded-lg shadow-sm px-6 py-4 flex flex-col items-center space-y-3">
+                                <Spinner size="lg" className="text-primary" />
+                                <div className="text-sm font-medium text-foreground">
+                                  Loading check results
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  Please wait...
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : paginatedTableResults &&
-                      paginatedTableResults.length > 0 ? (
-                      paginatedTableResults.map((result) => {
-                        const locationMetadata = result.location
-                          ? getLocationMetadata(
-                              result.location as MonitoringLocation
-                            )
-                          : null;
-                        // For synthetic tests: show report only if test failed, otherwise show N/A
-                        const syntheticTestHasFailed =
-                          monitor.type === "synthetic_test" && !result.isUp;
-                        const syntheticReportAvailable =
-                          syntheticTestHasFailed &&
-                          Boolean(
-                            result.details?.reportUrl || result.testReportS3Url
-                          );
+                          </td>
+                        </tr>
+                      ) : paginatedTableResults &&
+                        paginatedTableResults.length > 0 ? (
+                        paginatedTableResults.map((result) => {
+                          const locationMetadata = result.location
+                            ? getLocationMetadata(
+                                result.location as MonitoringLocation
+                              )
+                            : null;
+                          // For synthetic tests: show report only if test failed, otherwise show N/A
+                          const syntheticTestHasFailed =
+                            monitor.type === "synthetic_test" && !result.isUp;
+                          const syntheticReportAvailable =
+                            syntheticTestHasFailed &&
+                            Boolean(
+                              result.details?.reportUrl ||
+                                result.testReportS3Url
+                            );
 
-                        // Extract error message from synthetic test failure
-                        const syntheticReportError =
-                          monitor.type === "synthetic_test" && syntheticTestHasFailed
-                            ? (() => {
-                                const detail = result.details;
-                                if (!detail) return undefined;
-                                const primaryMessage =
-                                  typeof detail.errorMessage === "string" &&
-                                  detail.errorMessage.trim().length > 0
-                                    ? detail.errorMessage.trim()
-                                    : undefined;
-                                if (primaryMessage) return primaryMessage;
-                                const executionErrors =
-                                  typeof detail.executionErrors === "string" &&
-                                  detail.executionErrors.trim().length > 0
-                                    ? detail.executionErrors.trim()
-                                    : undefined;
-                                if (executionErrors) return executionErrors;
-                                const executionSummary =
-                                  typeof detail.executionSummary === "string" &&
-                                  detail.executionSummary.trim().length > 0
-                                    ? detail.executionSummary.trim()
-                                    : undefined;
-                                return executionSummary;
-                              })()
-                            : undefined;
+                          // Extract error message from synthetic test failure
+                          const syntheticReportError =
+                            monitor.type === "synthetic_test" &&
+                            syntheticTestHasFailed
+                              ? (() => {
+                                  const detail = result.details;
+                                  if (!detail) return undefined;
+                                  const primaryMessage =
+                                    typeof detail.errorMessage === "string" &&
+                                    detail.errorMessage.trim().length > 0
+                                      ? detail.errorMessage.trim()
+                                      : undefined;
+                                  if (primaryMessage) return primaryMessage;
+                                  const executionErrors =
+                                    typeof detail.executionErrors ===
+                                      "string" &&
+                                    detail.executionErrors.trim().length > 0
+                                      ? detail.executionErrors.trim()
+                                      : undefined;
+                                  if (executionErrors) return executionErrors;
+                                  const executionSummary =
+                                    typeof detail.executionSummary ===
+                                      "string" &&
+                                    detail.executionSummary.trim().length > 0
+                                      ? detail.executionSummary.trim()
+                                      : undefined;
+                                  return executionSummary;
+                                })()
+                              : undefined;
 
-                        return (
-                          <tr key={result.id} className="hover:bg-muted/25">
-                            <td className="px-4 py-[11.5px] whitespace-nowrap text-sm">
-                              <SimpleStatusIcon isUp={result.isUp} />
-                            </td>
-                            <td className="px-4 py-[11.5px] whitespace-nowrap text-sm text-muted-foreground">
-                              {formatDateTime(result.checkedAt)}
-                            </td>
-                            <td className="px-4 py-[11.5px] whitespace-nowrap text-xs text-muted-foreground">
-                              {locationMetadata ? (
-                                <span className="flex items-center gap-1">
-                                  {locationMetadata.flag && (
-                                    <span className="text-[16px]">
-                                      {locationMetadata.flag}
+                          return (
+                            <tr key={result.id} className="hover:bg-muted/25">
+                              <td className="px-4 py-[11.5px] whitespace-nowrap text-sm">
+                                <SimpleStatusIcon isUp={result.isUp} />
+                              </td>
+                              <td className="px-4 py-[11.5px] whitespace-nowrap text-sm text-muted-foreground">
+                                {formatDateTime(result.checkedAt)}
+                              </td>
+                              <td className="px-4 py-[11.5px] whitespace-nowrap text-xs text-muted-foreground">
+                                {locationMetadata ? (
+                                  <span className="flex items-center gap-1">
+                                    {locationMetadata.flag && (
+                                      <span className="text-[16px]">
+                                        {locationMetadata.flag}
+                                      </span>
+                                    )}
+                                    <span className="font-medium">
+                                      {locationMetadata.name}
                                     </span>
-                                  )}
-                                  <span className="font-medium">
-                                    {locationMetadata.name}
                                   </span>
-                                </span>
-                              ) : result.location ? (
-                                result.location
-                              ) : (
-                                "N/A"
-                              )}
-                            </td>
-                            <td className="px-4 py-[11.5px] whitespace-nowrap text-sm text-muted-foreground">
-                              {result.responseTimeMs !== null &&
-                              result.responseTimeMs !== undefined
-                                ? `${(result.responseTimeMs / 1000).toFixed(2)} s`
-                                : "N/A"}
-                            </td>
-                            <td className="px-4 py-[11.5px] text-sm text-muted-foreground">
-                              {monitor.type === "synthetic_test" ? (
-                                // Synthetic test: show report on failure, N/A on success
-                                syntheticReportAvailable ? (
-                                  <div
-                                    className="cursor-pointer inline-flex items-center justify-center"
-                                    onClick={() => {
-                                      // Use testExecutionId directly from database
-                                      const runTestId = result.testExecutionId;
-
-                                      if (runTestId) {
-                                        // Use API proxy route like playground does
-                                        const apiUrl = `/api/test-results/${runTestId}/report/index.html?t=${Date.now()}&forceIframe=true`;
-                                        setSelectedReportUrl(apiUrl);
-                                        setReportModalOpen(true);
-                                      } else {
-                                        console.error(
-                                          "[Monitor Report] No testExecutionId in monitor result:",
-                                          result.id
-                                        );
-                                        toast.error("No report available", {
-                                          description:
-                                            "This monitor run doesn't have a report",
-                                        });
-                                      }
-                                    }}
-                                  >
-                                    <PlaywrightLogo className="h-4 w-4 hover:opacity-80 transition-opacity" />
-                                  </div>
-                                ) : syntheticReportError ? (
-                                  <TruncatedTextWithTooltip
-                                    text={syntheticReportError}
-                                    className="text-muted-foreground text-xs"
-                                    maxWidth="150px"
-                                    maxLength={30}
-                                  />
+                                ) : result.location ? (
+                                  result.location
                                 ) : (
-                                  <span className="text-muted-foreground text-xs">
-                                    N/A
-                                  </span>
-                                )
-                              ) : (
-                                // Other monitor types: show error on failure, N/A on success
+                                  "N/A"
+                                )}
+                              </td>
+                              <td className="px-4 py-[11.5px] whitespace-nowrap text-sm text-muted-foreground">
+                                {result.responseTimeMs !== null &&
+                                result.responseTimeMs !== undefined
+                                  ? `${(result.responseTimeMs / 1000).toFixed(2)} s`
+                                  : "N/A"}
+                              </td>
+                              <td className="px-4 py-[11.5px] text-sm text-muted-foreground">
+                                {monitor.type === "synthetic_test" ? (
+                                  // Synthetic test: show report on failure, N/A on success
+                                  syntheticReportAvailable ? (
+                                    <div
+                                      className="cursor-pointer inline-flex items-center justify-center"
+                                      onClick={() => {
+                                        // Use testExecutionId directly from database
+                                        const runTestId =
+                                          result.testExecutionId;
+
+                                        if (runTestId) {
+                                          // Use API proxy route like playground does
+                                          const apiUrl = `/api/test-results/${runTestId}/report/index.html?t=${Date.now()}&forceIframe=true`;
+                                          setSelectedReportUrl(apiUrl);
+                                          setReportModalOpen(true);
+                                        } else {
+                                          console.error(
+                                            "[Monitor Report] No testExecutionId in monitor result:",
+                                            result.id
+                                          );
+                                          toast.error("No report available", {
+                                            description:
+                                              "This monitor run doesn't have a report",
+                                          });
+                                        }
+                                      }}
+                                    >
+                                      <PlaywrightLogo className="h-4 w-4 hover:opacity-80 transition-opacity" />
+                                    </div>
+                                  ) : syntheticReportError ? (
+                                    <TruncatedTextWithTooltip
+                                      text={syntheticReportError}
+                                      className="text-muted-foreground text-xs"
+                                      maxWidth="150px"
+                                      maxLength={30}
+                                    />
+                                  ) : (
+                                    <span className="text-muted-foreground text-xs">
+                                      N/A
+                                    </span>
+                                  )
+                                ) : // Other monitor types: show error on failure, N/A on success
                                 result.isUp ? (
                                   <span className="text-muted-foreground text-xs">
                                     N/A
@@ -1512,152 +1572,158 @@ export function MonitorDetailClient({
                                     maxWidth="150px"
                                     maxLength={30}
                                   />
-                                )
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    ) : (
-                      // Empty state
-                      <tr>
-                        <td
-                          colSpan={monitor.type === "synthetic_test" ? 6 : 5}
-                          className="px-4 py-16 text-center"
-                        >
-                          <div className="text-center space-y-3">
-                            <div className="w-16 h-16 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
-                              <svg
-                                className="w-8 h-8 text-muted-foreground"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-                                />
-                              </svg>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        // Empty state
+                        <tr>
+                          <td
+                            colSpan={monitor.type === "synthetic_test" ? 6 : 5}
+                            className="px-4 py-16 text-center"
+                          >
+                            <div className="text-center space-y-3">
+                              <div className="w-16 h-16 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
+                                <svg
+                                  className="w-8 h-8 text-muted-foreground"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                                  />
+                                </svg>
+                              </div>
+                              <div>
+                                <p className="text-muted-foreground font-medium">
+                                  No check results available
+                                </p>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  Check results will appear here once monitoring
+                                  begins.
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-muted-foreground font-medium">
-                                No check results available
-                              </p>
-                              <p className="text-sm text-muted-foreground mt-1">
-                                Check results will appear here once monitoring
-                                begins.
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            {!isLoadingResults &&
-              paginatedTableResults &&
-              paginatedTableResults.length > 0 &&
-              paginationMeta &&
-              totalPages > 1 && (
-                <div className="flex items-center justify-between px-4 py-3 border-t flex-shrink-0 bg-card rounded-b-lg">
-                  <div className="text-sm text-muted-foreground">
-                    Page {currentPage} of {totalPages}
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        setCurrentPage((prev) => Math.max(1, prev - 1))
-                      }
-                      disabled={currentPage === 1}
-                    >
-                      Previous
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        setCurrentPage((prev) => Math.min(totalPages, prev + 1))
-                      }
-                      disabled={currentPage === totalPages}
-                    >
-                      Next
-                    </Button>
-                  </div>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
-              )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the
-              monitor &quot;{monitor.name}&quot; and all its associated data.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              {isDeleting ? (
-                <div className="flex items-center gap-2">
-                  <Spinner size="sm" />
-                  Deleting...
-                </div>
-              ) : (
-                "Delete"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Playwright Report Modal - Full Screen Overlay */}
-      {reportModalOpen && selectedReportUrl && (
-        <div className="fixed inset-0 z-50 bg-card/80 backdrop-blur-sm">
-          <div className="fixed inset-8 bg-card rounded-lg shadow-lg flex flex-col overflow-hidden border">
-            <div className="p-4 border-b flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <PlaywrightLogo width={36} height={36} />
-                <h2 className="text-xl font-semibold">Monitor Report</h2>
               </div>
-              <Button
-                className="cursor-pointer bg-secondary hover:bg-secondary/90"
-                size="sm"
-                onClick={() => {
-                  setReportModalOpen(false);
-                  setSelectedReportUrl(null);
-                }}
+              {paginatedTableResults &&
+                paginatedTableResults.length > 0 &&
+                paginationMeta &&
+                totalPages > 1 && (
+                  <div className="flex items-center justify-between px-4 py-3 border-t flex-shrink-0 bg-card rounded-b-lg">
+                    <div className="text-sm text-muted-foreground">
+                      Page {currentPage} of {totalPages}
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setCurrentPage((prev) => Math.max(1, prev - 1))
+                        }
+                        disabled={currentPage === 1 || isLoadingResults}
+                        className="min-w-[80px]"
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setCurrentPage((prev) =>
+                            Math.min(totalPages, prev + 1)
+                          )
+                        }
+                        disabled={
+                          currentPage === totalPages || isLoadingResults
+                        }
+                        className="min-w-[60px]"
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the
+                monitor &quot;{monitor.name}&quot; and all its associated data.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeleting}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="bg-red-600 hover:bg-red-700"
               >
-                <X className="h-4 w-4 text-secondary-foreground" />
-              </Button>
-            </div>
-            <div className="flex-grow overflow-hidden">
-              <ReportViewer
-                reportUrl={selectedReportUrl}
-                containerClassName="w-full h-full"
-                iframeClassName="w-full h-full"
-                loadingMessage="Loading monitor report..."
-                hideEmptyMessage={true}
-                hideFullscreenButton={true}
-                hideReloadButton={true}
-              />
+                {isDeleting ? (
+                  <div className="flex items-center gap-2">
+                    <Spinner size="sm" />
+                    Deleting...
+                  </div>
+                ) : (
+                  "Delete"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Playwright Report Modal - Full Screen Overlay */}
+        {reportModalOpen && selectedReportUrl && (
+          <div className="fixed inset-0 z-50 bg-card/80 backdrop-blur-sm">
+            <div className="fixed inset-8 bg-card rounded-lg shadow-lg flex flex-col overflow-hidden border">
+              <div className="p-4 border-b flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <PlaywrightLogo width={36} height={36} />
+                  <h2 className="text-xl font-semibold">Monitor Report</h2>
+                </div>
+                <Button
+                  className="cursor-pointer bg-secondary hover:bg-secondary/90"
+                  size="sm"
+                  onClick={() => {
+                    setReportModalOpen(false);
+                    setSelectedReportUrl(null);
+                  }}
+                >
+                  <X className="h-4 w-4 text-secondary-foreground" />
+                </Button>
+              </div>
+              <div className="flex-grow overflow-hidden">
+                <ReportViewer
+                  reportUrl={selectedReportUrl}
+                  containerClassName="w-full h-full"
+                  iframeClassName="w-full h-full"
+                  loadingMessage="Loading monitor report..."
+                  hideEmptyMessage={true}
+                  hideFullscreenButton={true}
+                  hideReloadButton={true}
+                />
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
       </div>
     </>
   );

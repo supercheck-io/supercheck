@@ -14,7 +14,6 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import {
-  Monitor,
   ClipboardList,
   Code,
   CalendarClock,
@@ -23,6 +22,7 @@ import {
   Home as HomeIcon,
   Clock,
   Info,
+  Globe,
 } from "lucide-react";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -825,9 +825,9 @@ export default function Home() {
                 </Card>
               ))}
             </div>
-            </CardContent>
-          </Card>
-        </div>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -888,244 +888,253 @@ export default function Home() {
                 Overview of project&apos;s health, and performance.
               </p>
             </div>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="p-0 h-auto hover:bg-transparent"
-                  >
-                    <div className="flex items-center gap-2 cursor-pointer">
-                      <div
-                        className={cn(
-                          "h-3 w-3 rounded-full",
-                          dashboardData.system.healthy
-                            ? "bg-green-500"
-                            : "bg-red-500"
-                        )}
-                      />
-                      <span
-                        className={cn(
-                          "text-sm font-medium",
-                          dashboardData.system.healthy
-                            ? "text-green-600"
-                            : "text-red-600"
-                        )}
-                      >
-                        {dashboardData.system.healthy
-                          ? "Operational"
-                          : "Issues Detected"}
-                      </span>
-                    </div>
-                  </Button>
-                </PopoverTrigger>
-                {!dashboardData.system.healthy &&
-                  dashboardData.system.issues.length > 0 && (
-                    <PopoverContent className="w-80 p-0" align="end">
-                      <div className="p-4 space-y-3">
-                        <h4 className="font-medium leading-none">
-                          System Issues
-                        </h4>
-                        <div className="space-y-2">
-                          {dashboardData.system.issues.map((issue, i) => (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="p-0 h-auto hover:bg-transparent"
+                >
+                  <div className="flex items-center gap-2 cursor-pointer">
+                    <div
+                      className={cn(
+                        "h-3 w-3 rounded-full",
+                        dashboardData.system.healthy
+                          ? "bg-green-500"
+                          : "bg-red-500"
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        "text-sm font-medium",
+                        dashboardData.system.healthy
+                          ? "text-green-600"
+                          : "text-red-600"
+                      )}
+                    >
+                      {dashboardData.system.healthy
+                        ? "Operational"
+                        : "Issues Detected"}
+                    </span>
+                  </div>
+                </Button>
+              </PopoverTrigger>
+              {!dashboardData.system.healthy &&
+                dashboardData.system.issues.length > 0 && (
+                  <PopoverContent className="w-80 p-0" align="end">
+                    <div className="p-4 space-y-3">
+                      <h4 className="font-medium leading-none">
+                        System Issues
+                      </h4>
+                      <div className="space-y-2">
+                        {dashboardData.system.issues.map((issue, i) => (
+                          <div
+                            key={i}
+                            className="flex items-start gap-2 text-sm"
+                          >
                             <div
-                              key={i}
-                              className="flex items-start gap-2 text-sm"
-                            >
-                              <div
-                                className={cn(
-                                  "mt-1 h-2 w-2 rounded-full flex-shrink-0",
-                                  issue.severity === "critical" ||
-                                    issue.severity === "high"
-                                    ? "bg-red-500"
-                                    : "bg-yellow-500"
-                                )}
-                              />
-                              <span className="text-muted-foreground">
-                                {issue.message}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
+                              className={cn(
+                                "mt-1 h-2 w-2 rounded-full flex-shrink-0",
+                                issue.severity === "critical" ||
+                                  issue.severity === "high"
+                                  ? "bg-red-500"
+                                  : "bg-yellow-500"
+                              )}
+                            />
+                            <span className="text-muted-foreground">
+                              {issue.message}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                    </PopoverContent>
-                  )}
-              </Popover>
+                    </div>
+                  </PopoverContent>
+                )}
+            </Popover>
           </div>
 
           {/* Overview Content */}
           <div className="space-y-4">
-              {/* Key Metrics Grid - 5 cards per row */}
-              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 mb-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Total Tests
-                </CardTitle>
-                <Code className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                {dashboardData.stats.tests > 0 ? (
-                  <>
-                    <div className="text-2xl font-bold">
-                      {dashboardData.stats.tests}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Available test cases
-                    </p>
-                  </>
-                ) : (
-                  <div className="text-center py-4">
-                    <p className="text-sm text-muted-foreground">
-                      No tests available
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Active Jobs
-                </CardTitle>
-                <CalendarClock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                {dashboardData.stats.jobs > 0 ? (
-                  <>
-                    <div className="text-2xl font-bold">
-                      {dashboardData.stats.jobs}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Scheduled jobs
-                    </p>
-                  </>
-                ) : (
-                  <div className="text-center py-4">
-                    <p className="text-sm text-muted-foreground">
-                      No jobs configured
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Active Monitors
-                </CardTitle>
-                <Monitor className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                {dashboardData.monitors.total > 0 ? (
-                  <>
-                    <div className="text-2xl font-bold">
-                      {dashboardData.monitors.active}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      of {dashboardData.monitors.total} total
-                    </p>
-                  </>
-                ) : (
-                  <div className="text-center py-4">
-                    <p className="text-sm text-muted-foreground">
-                      No monitors setup
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="flex items-center gap-1 text-sm font-medium">
-                  Job Runs
-                  <MetricInfoButton
-                    title="What counts as a run?"
-                    description="This number shows completed job executions within the selected project over the last 30 days."
-                    bullets={[
-                      "Covers the last 30 days of activity",
-                      "Includes scheduled and manual job runs only",
-                      "Synthetic monitor checks are excluded",
-                      "Playground executions are excluded",
-                    ]}
-                    ariaLabel="Learn what Total Job Runs includes"
-                  />
-                </CardTitle>
-                <ClipboardList className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                {dashboardData.stats.runs > 0 ? (
-                  <>
-                    <div className="text-2xl font-bold">
-                      {dashboardData.stats.runs}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Last 30 days
-                    </p>
-                  </>
-                ) : (
-                  <div className="text-center py-4">
-                    <p className="text-sm text-muted-foreground">
-                      No runs available
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="flex items-center gap-1 text-sm font-medium">
-                  Execution Time
-                  <MetricInfoButton
-                    title="How we total execution time"
-                    description="Execution time aggregates every Playwright-powered run in the past 30 days."
-                    bullets={[
-                      "Covers the last 30 days of execution",
-                      "Includes job runs, synthetic monitor checks, and playground tests",
-                      "Each monitor location is counted separately",
-                      "Running executions are added once they finish",
-                    ]}
-                    ariaLabel="Learn what Execution Time includes"
-                    align="end"
-                  />
-                </CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                {dashboardData.jobs.executionTime.totalMinutes > 0 ? (
-                  <>
-                    <div className="text-2xl font-bold">
-                      {formatExecutionTime(
-                        dashboardData.jobs.executionTime.totalMinutes,
-                        dashboardData.jobs.executionTime.totalSeconds
+            {/* Key Metrics Grid - 5 cards per row */}
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 mb-4">
+              <Card className="relative overflow-hidden">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-muted-foreground">
+                        Total Tests
+                      </p>
+                      {dashboardData.stats.tests > 0 ? (
+                        <>
+                          <div className="text-3xl font-bold tracking-tight">
+                            {dashboardData.stats.tests}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Available test cases
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-2">
+                          No tests available
+                        </p>
                       )}
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {dashboardData.jobs.executionTime.processedRuns} runs •
-                      Last 30 days
-                    </p>
-                    {dashboardData.jobs.executionTime.errors > 0 && (
-                      <p className="text-sm text-yellow-600">
-                        {dashboardData.jobs.executionTime.errors} parsing errors
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <div className="text-center py-4">
-                    <p className="text-sm text-muted-foreground">
-                      No execution time
-                    </p>
+                    <div className="rounded-lg bg-blue-500/10 p-2">
+                      <Code className="h-4 w-4 text-blue-500" />
+                    </div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-          </div>
+                </CardContent>
+              </Card>
 
-    
+              <Card className="relative overflow-hidden">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-muted-foreground">
+                        Active Jobs
+                      </p>
+                      {dashboardData.stats.jobs > 0 ? (
+                        <>
+                          <div className="text-3xl font-bold tracking-tight">
+                            {dashboardData.stats.jobs}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Scheduled jobs
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-2">
+                          No jobs configured
+                        </p>
+                      )}
+                    </div>
+                    <div className="rounded-lg bg-amber-500/10 p-2">
+                      <CalendarClock className="h-4 w-4 text-amber-500" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="relative overflow-hidden">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-muted-foreground">
+                        Active Monitors
+                      </p>
+                      {dashboardData.monitors.total > 0 ? (
+                        <>
+                          <div className="text-3xl font-bold tracking-tight">
+                            {dashboardData.monitors.active}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            of {dashboardData.monitors.total} total
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-2">
+                          No monitors setup
+                        </p>
+                      )}
+                    </div>
+                    <div className="rounded-lg bg-green-500/10 p-2">
+                      <Globe className="h-4 w-4 text-green-500" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="relative overflow-hidden">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                        Job Runs
+                        <MetricInfoButton
+                          title="What counts as a run?"
+                          description="This number shows completed job executions within the selected project over the last 30 days."
+                          bullets={[
+                            "Covers the last 30 days of activity",
+                            "Includes scheduled and manual job runs only",
+                            "Synthetic monitor checks are excluded",
+                            "Playground executions are excluded",
+                          ]}
+                          ariaLabel="Learn what Total Job Runs includes"
+                        />
+                      </p>
+                      {dashboardData.stats.runs > 0 ? (
+                        <>
+                          <div className="text-3xl font-bold tracking-tight">
+                            {dashboardData.stats.runs}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Last 30 days
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-2">
+                          No runs available
+                        </p>
+                      )}
+                    </div>
+                    <div className="rounded-lg bg-purple-500/10 p-2">
+                      <ClipboardList className="h-4 w-4 text-purple-500" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="relative overflow-hidden">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                        Execution Time
+                        <MetricInfoButton
+                          title="How we total execution time"
+                          description="Execution time aggregates every Playwright-powered run in the past 30 days."
+                          bullets={[
+                            "Covers the last 30 days of execution",
+                            "Includes job runs, synthetic monitor checks, and playground tests",
+                            "Each monitor location is counted separately",
+                            "Running executions are added once they finish",
+                          ]}
+                          ariaLabel="Learn what Execution Time includes"
+                          align="end"
+                        />
+                      </p>
+                      {dashboardData.jobs.executionTime.totalMinutes > 0 ? (
+                        <>
+                          <div className="text-3xl font-bold tracking-tight">
+                            {formatExecutionTime(
+                              dashboardData.jobs.executionTime.totalMinutes,
+                              dashboardData.jobs.executionTime.totalSeconds
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {dashboardData.jobs.executionTime.processedRuns}{" "}
+                            runs • Last 30 days
+                          </p>
+                          {dashboardData.jobs.executionTime.errors > 0 && (
+                            <p className="text-xs text-yellow-600">
+                              {dashboardData.jobs.executionTime.errors} parsing
+                              errors
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-2">
+                          No execution time
+                        </p>
+                      )}
+                    </div>
+                    <div className="rounded-lg bg-cyan-500/10 p-2">
+                      <Clock className="h-4 w-4 text-cyan-500" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
 
           {/* Top Row Charts - 3 charts per row (formerly bottom row) */}
           <div className="grid gap-4 lg:grid-cols-3 mb-4">
@@ -1175,7 +1184,7 @@ export default function Home() {
             <Card className="h-full p-4">
               <CardHeader className="pb-1 px-3 pt-1">
                 <CardTitle className="flex items-center gap-1 text-sm">
-                  <Monitor className="h-4 w-4" />
+                  <Globe className="h-4 w-4" />
                   Monitor Status
                 </CardTitle>
                 <CardDescription className="text-sm">
@@ -1201,7 +1210,7 @@ export default function Home() {
                 ) : (
                   <div className="h-40 flex items-center justify-center">
                     <div className="text-center">
-                      <Monitor className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                      <Globe className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">
                         No monitors configured
                       </p>

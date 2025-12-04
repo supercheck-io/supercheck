@@ -36,7 +36,10 @@ export async function findFirstMatchingFile(
   const maxDepth = options?.maxDepth ?? 5;
   const visited = new Set<string>();
 
-  async function traverse(current: string, depth: number): Promise<string | null> {
+  async function traverse(
+    current: string,
+    depth: number,
+  ): Promise<string | null> {
     if (depth > maxDepth) {
       return null;
     }

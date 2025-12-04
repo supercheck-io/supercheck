@@ -1,8 +1,8 @@
 /**
  * Monitor Service Tests
- * 
+ *
  * Comprehensive test coverage for monitor execution
- * 
+ *
  * Test Categories:
  * - HTTP Request Monitoring (GET, POST, status validation)
  * - Website Monitoring (SSL checks, content validation)
@@ -123,7 +123,9 @@ describe('MonitorService', () => {
   };
 
   const mockLocationService = {
-    getCurrentLocation: jest.fn().mockReturnValue(MONITORING_LOCATIONS.EU_CENTRAL),
+    getCurrentLocation: jest
+      .fn()
+      .mockReturnValue(MONITORING_LOCATIONS.EU_CENTRAL),
     getLocationName: jest.fn().mockReturnValue('EU Central'),
     getLocationDisplayName: jest.fn().mockReturnValue('EU Central'),
   };
@@ -180,8 +182,14 @@ describe('MonitorService', () => {
         { provide: ExecutionService, useValue: mockExecutionService },
         { provide: UsageTrackerService, useValue: mockUsageTrackerService },
         { provide: ValidationService, useValue: mockValidationService },
-        { provide: EnhancedValidationService, useValue: mockEnhancedValidationService },
-        { provide: CredentialSecurityService, useValue: mockCredentialSecurityService },
+        {
+          provide: EnhancedValidationService,
+          useValue: mockEnhancedValidationService,
+        },
+        {
+          provide: CredentialSecurityService,
+          useValue: mockCredentialSecurityService,
+        },
         { provide: StandardizedErrorHandler, useValue: mockErrorHandler },
         { provide: ResourceManagerService, useValue: mockResourceManager },
         { provide: LocationService, useValue: mockLocationService },
@@ -298,7 +306,7 @@ describe('MonitorService', () => {
         expectedStatusCodes: '200-299',
         enableSslCheck: true,
       };
-      
+
       expect(websiteConfig.method).toBe('GET');
       expect(websiteConfig.enableSslCheck).toBe(true);
     });
@@ -353,10 +361,10 @@ describe('MonitorService', () => {
       mockDbService.db.query.monitors.findFirst.mockRejectedValue(
         new Error('DB error'),
       );
-      
+
       // Should still return a result, not throw
       const result = await service.executeMonitor(mockJobData);
-      
+
       expect(result).toBeDefined();
     });
   });
@@ -393,7 +401,7 @@ describe('MonitorService', () => {
       });
 
       const result = await service.executeMonitor(mockJobData);
-      
+
       expect(result).toBeNull();
     });
 
@@ -401,50 +409,52 @@ describe('MonitorService', () => {
       mockDbService.db.query.monitors.findFirst.mockResolvedValue(null);
 
       const result = await service.executeMonitor(mockJobData);
-      
+
       expect(result).toBeDefined();
       expect(result?.status).toBe('error');
       expect(result?.error).toContain('not found');
     });
 
     it('should continue execution if status check fails', async () => {
-      mockDbService.db.query.monitors.findFirst.mockRejectedValue(new Error('DB error'));
-      
+      mockDbService.db.query.monitors.findFirst.mockRejectedValue(
+        new Error('DB error'),
+      );
+
       const result = await service.executeMonitor(mockJobData);
-      
+
       // Should return a result, not throw
       expect(result).toBeDefined();
     });
 
     it('should execute http_request type monitors', async () => {
       const httpJobData = { ...mockJobData, type: 'http_request' as const };
-      
+
       const result = await service.executeMonitor(httpJobData);
-      
+
       expect(result).toBeDefined();
     });
 
     it('should execute website type monitors', async () => {
-      const websiteJobData = { 
-        ...mockJobData, 
+      const websiteJobData = {
+        ...mockJobData,
         type: 'website' as const,
         config: { ...mockJobData.config, enableSslCheck: false },
       };
-      
+
       const result = await service.executeMonitor(websiteJobData);
-      
+
       expect(result).toBeDefined();
     });
 
     it('should include location in result', async () => {
       const result = await service.executeMonitor(mockJobData);
-      
+
       expect(result?.location).toBeDefined();
     });
 
     it('should include checkedAt timestamp', async () => {
       const result = await service.executeMonitor(mockJobData);
-      
+
       expect(result?.checkedAt).toBeInstanceOf(Date);
     });
   });
@@ -467,7 +477,7 @@ describe('MonitorService', () => {
         ...mockJobData,
         config: { ...mockJobData.config, method: 'POST' as const },
       };
-      
+
       expect(postJobData.config.method).toBe('POST');
     });
 
@@ -503,9 +513,16 @@ describe('MonitorService', () => {
   // ==========================================================================
 
   describe('Monitor Types', () => {
-    const monitorTypes = ['http_request', 'website', 'ping_host', 'port_check', 'heartbeat', 'synthetic_test'];
+    const monitorTypes = [
+      'http_request',
+      'website',
+      'ping_host',
+      'port_check',
+      'heartbeat',
+      'synthetic_test',
+    ];
 
-    monitorTypes.forEach(type => {
+    monitorTypes.forEach((type) => {
       it(`should recognize monitor type: ${type}`, () => {
         const monitor = { ...mockMonitor, type };
         expect(monitor.type).toBe(type);
@@ -518,9 +535,9 @@ describe('MonitorService', () => {
         type: 'ping_host' as const,
         target: 'google.com',
       };
-      
+
       const result = await service.executeMonitor(pingJobData);
-      
+
       expect(result).toBeDefined();
     });
 
@@ -531,9 +548,9 @@ describe('MonitorService', () => {
         target: 'db.example.com',
         config: { ...mockJobData.config, port: 5432 },
       };
-      
+
       const result = await service.executeMonitor(portJobData);
-      
+
       expect(result).toBeDefined();
     });
   });
@@ -549,9 +566,9 @@ describe('MonitorService', () => {
         type: 'website' as const,
         config: { ...mockJobData.config, enableSslCheck: false },
       };
-      
+
       const result = await service.executeMonitor(websiteJobData);
-      
+
       expect(result).toBeDefined();
     });
 
@@ -560,15 +577,15 @@ describe('MonitorService', () => {
         ...mockJobData,
         type: 'website' as const,
         target: 'https://example.com',
-        config: { 
-          ...mockJobData.config, 
+        config: {
+          ...mockJobData.config,
           enableSslCheck: true,
           sslDaysUntilExpirationWarning: 30,
         },
       };
-      
+
       const result = await service.executeMonitor(websiteJobData);
-      
+
       expect(result).toBeDefined();
     });
 
@@ -579,9 +596,9 @@ describe('MonitorService', () => {
         target: 'http://example.com',
         config: { ...mockJobData.config, enableSslCheck: true },
       };
-      
+
       const result = await service.executeMonitor(websiteJobData);
-      
+
       expect(result).toBeDefined();
     });
   });
@@ -597,14 +614,14 @@ describe('MonitorService', () => {
 
     it('should call alert service checkAndSendAlerts', async () => {
       await service.executeMonitor(mockJobData);
-      
+
       // Alert service should be available
       expect(mockAlertService.checkAndSendAlerts).toBeDefined();
     });
 
     it('should call alert service processMonitorResult', async () => {
       await service.executeMonitor(mockJobData);
-      
+
       expect(mockAlertService.processMonitorResult).toBeDefined();
     });
   });
@@ -617,14 +634,14 @@ describe('MonitorService', () => {
     const successCodes = [200, 201, 202, 204, 299];
     const failureCodes = [400, 401, 403, 404, 500, 502, 503, 504];
 
-    successCodes.forEach(code => {
+    successCodes.forEach((code) => {
       it(`should recognize ${code} as 2xx success range`, () => {
         const isSuccess = code >= 200 && code <= 299;
         expect(isSuccess).toBe(true);
       });
     });
 
-    failureCodes.forEach(code => {
+    failureCodes.forEach((code) => {
       it(`should recognize ${code} as outside 2xx success range`, () => {
         const isSuccess = code >= 200 && code <= 299;
         expect(isSuccess).toBe(false);
@@ -643,7 +660,7 @@ describe('MonitorService', () => {
         const [min, max] = range.split('-').map(Number);
         return code >= min && code <= max;
       };
-      
+
       expect(validateInRange(200, '200-299')).toBe(true);
       expect(validateInRange(404, '200-299')).toBe(false);
     });
@@ -681,7 +698,7 @@ describe('MonitorService', () => {
         ...mockJobData,
         config: { method: 'GET' as const, expectedStatusCodes: '200-299' },
       };
-      
+
       expect(jobWithoutTimeout.config.method).toBeDefined();
     });
   });
@@ -693,26 +710,30 @@ describe('MonitorService', () => {
   describe('Concurrent Monitoring', () => {
     it('should handle concurrent monitor executions', async () => {
       const promises = Array.from({ length: 5 }, () =>
-        service.executeMonitor(mockJobData)
+        service.executeMonitor(mockJobData),
       );
-      
+
       const results = await Promise.all(promises);
-      
-      results.forEach(result => {
+
+      results.forEach((result) => {
         expect(result).toBeDefined();
       });
     });
 
     it('should handle concurrent executions with different types', async () => {
       const httpJob = { ...mockJobData, type: 'http_request' as const };
-      const websiteJob = { ...mockJobData, type: 'website' as const, config: { ...mockJobData.config, enableSslCheck: false } };
-      
+      const websiteJob = {
+        ...mockJobData,
+        type: 'website' as const,
+        config: { ...mockJobData.config, enableSslCheck: false },
+      };
+
       const results = await Promise.all([
         service.executeMonitor(httpJob),
         service.executeMonitor(websiteJob),
       ]);
-      
-      results.forEach(result => {
+
+      results.forEach((result) => {
         expect(result).toBeDefined();
       });
     });
@@ -760,7 +781,7 @@ describe('MonitorService', () => {
         type: 'heartbeat' as const,
         target: '',
       };
-      
+
       expect(heartbeatJob.type).toBe('heartbeat');
     });
   });

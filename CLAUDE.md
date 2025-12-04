@@ -32,7 +32,7 @@ SuperCheck is a comprehensive testing and monitoring platform that runs Playwrig
     /monitoring/     # Monitoring services
     /common/         # Shared worker utilities
 
-/specs/               # 📚 COMPREHENSIVE DOCUMENTATION
+/docs/specs/               # 📚 COMPREHENSIVE DOCUMENTATION
   /01-core/          # Architecture, API routes, ERD
   /02-authentication/ # Auth system, RBAC, API keys
   /03-execution/      # Test execution, job triggers
@@ -50,12 +50,14 @@ SuperCheck is a comprehensive testing and monitoring platform that runs Playwrig
 ## 🎯 Development Guidelines
 
 ### Before Making Changes
-1. **Read the specs**: Always check `/specs/` for existing documentation
+
+1. **Read the specs**: Always check `/docs/specs/` for existing documentation
 2. **Understand the architecture**: Review `01-core/` first
 3. **Check authentication patterns**: See `02-authentication/`
 4. **Verify execution patterns**: Review `03-execution/`
 
 ### Code Style
+
 - Use TypeScript strictly (avoid `any`)
 - Validate inputs with Zod schemas
 - Use server actions for form submissions
@@ -67,6 +69,7 @@ SuperCheck is a comprehensive testing and monitoring platform that runs Playwrig
 **CRITICAL**: All code must meet production-grade standards. This is not a learning project—SuperCheck is a robust monitoring platform serving real users.
 
 #### Best Coding Practices
+
 - **Clean Code**: Write self-documenting code with clear intent
   - Use meaningful variable and function names
   - Keep functions small and focused (single responsibility)
@@ -87,6 +90,7 @@ SuperCheck is a comprehensive testing and monitoring platform that runs Playwrig
   - Log errors with sufficient context for troubleshooting
 
 #### Security Concerns (Must Address)
+
 - **Input Validation**: All user inputs must be validated
   - Use Zod schemas for API input validation
   - Sanitize user-provided data before storage
@@ -116,6 +120,7 @@ SuperCheck is a comprehensive testing and monitoring platform that runs Playwrig
   - Review security advisories for critical packages
 
 #### No Temporary Fixes
+
 - **Never use temporary solutions** like:
   - Hardcoded values that should be configurable
   - Console.log() for debugging in production code
@@ -128,6 +133,7 @@ SuperCheck is a comprehensive testing and monitoring platform that runs Playwrig
 - **Every change must be production-ready** on the first pass
 
 #### Production-Grade Code Requirements
+
 - **Scalability**: Design for growth
   - Use efficient algorithms (consider Big O)
   - Implement database indexing for frequently queried fields
@@ -137,7 +143,7 @@ SuperCheck is a comprehensive testing and monitoring platform that runs Playwrig
   - Avoid N+1 query problems
 - **Robustness**: Handle edge cases and failures
   - Implement proper retry logic with exponential backoff
-  - Use circuit breakers for external API calls
+  - Use queue alerting for proactive failure detection
   - Implement timeouts on all network operations
   - Handle partial failures gracefully
   - Implement idempotency for critical operations
@@ -155,6 +161,7 @@ SuperCheck is a comprehensive testing and monitoring platform that runs Playwrig
   - Include sufficient context in logs
 
 #### Testing & Documentation
+
 - **Unit Tests**: Write tests for critical logic
   - Test both happy path and edge cases
   - Use descriptive test names
@@ -171,48 +178,54 @@ SuperCheck is a comprehensive testing and monitoring platform that runs Playwrig
   - Document assumptions and constraints
   - Keep documentation up to date with code changes
 - **Specs Updates**: Always check if specifications need updating
-  - If you modify API contracts, update `/specs/01-core/API_ROUTES_ANALYSIS.md`
-  - If you change database schema, update `/specs/01-core/ERD_DIAGRAM.md`
-  - If you modify authentication logic, update `/specs/02-authentication/`
-  - If you modify execution logic, update `/specs/03-execution/`
+  - If you modify API contracts, update `/docs/specs/01-core/API_ROUTES_ANALYSIS.md`
+  - If you change database schema, update `/docs/specs/01-core/ERD_DIAGRAM.md`
+  - If you modify authentication logic, update `/docs/specs/02-authentication/`
+  - If you modify execution logic, update `/docs/specs/03-execution/`
   - Create migration guides if breaking changes are introduced
 
 ### Database
+
 - Use Drizzle ORM for all database operations
-- Check `/specs/01-core/ERD_DIAGRAM.md` for schema
+- Check `/docs/specs/01-core/ERD_DIAGRAM.md` for schema
 - All queries in `/app/src/server/db/queries/`
 - Migrations in `/app/src/server/db/migrations/`
 
 ### Authentication & Authorization
+
 - Better Auth 1.2.8 for authentication
 - RBAC implementation with roles
 - API keys with scoped permissions
-- See `/specs/02-authentication/` for details
+- See `/docs/specs/02-authentication/` for details
 
 ## 🚀 Common Tasks
 
 ### Adding New Features
-1. Check `/specs/05-features/` for similar patterns
+
+1. Check `/docs/specs/05-features/` for similar patterns
 2. Create database schema if needed
 3. Add API routes in `/app/src/app/api/`
 4. Create UI components in `/app/src/components/`
 5. Add server actions in `/app/src/server/actions/`
 
 ### Working with Tests
+
 - Test definitions stored in database
 - Execution happens in Docker containers via worker
 - Results stored in MinIO/S3
-- See `/specs/03-execution/` for details
+- See `/docs/specs/03-execution/` for details
 
 ### Adding Monitoring
+
 - Monitor types: HTTP, Ping, Port, Custom
 - Configuration in database
 - Execution via worker service
-- See `/specs/04-monitoring/` for patterns
+- See `/docs/specs/04-monitoring/` for patterns
 
 ## 🔧 Environment Setup
 
 ### Required Environment Variables
+
 ```bash
 # Database
 DATABASE_URL=postgresql://...
@@ -246,6 +259,7 @@ SELF_HOSTED=true
 ```
 
 ### Development Commands
+
 ```bash
 # Frontend
 npm run dev              # Start development server
@@ -265,22 +279,25 @@ npm run revoke:admin     # Remove admin privileges
 ## 📖 Essential Reading
 
 ### Must-Read Specs (in order)
-1. `/specs/01-core/SUPERCHECK_ARCHITECTURE.md` - Overall architecture
-2. `/specs/01-core/ERD_DIAGRAM.md` - Database schema
-3. `/specs/01-core/API_ROUTES_ANALYSIS.md` - API endpoints
-4. `/specs/02-authentication/AUTHENTICATION_SYSTEM.md` - Auth patterns
-5. `/specs/03-execution/EXECUTION_SYSTEM.md` - Test execution
-6. `/specs/04-monitoring/MONITORING_SYSTEM.md` - Monitoring
+
+1. `/docs/specs/01-core/SUPERCHECK_ARCHITECTURE.md` - Overall architecture
+2. `/docs/specs/01-core/ERD_DIAGRAM.md` - Database schema
+3. `/docs/specs/01-core/API_ROUTES_ANALYSIS.md` - API endpoints
+4. `/docs/specs/02-authentication/AUTHENTICATION_SYSTEM.md` - Auth patterns
+5. `/docs/specs/03-execution/EXECUTION_SYSTEM.md` - Test execution
+6. `/docs/specs/04-monitoring/MONITORING_SYSTEM.md` - Monitoring
 
 ### Feature-Specific Specs
-- Status Pages: `/specs/05-features/STATUS_PAGES_SYSTEM.md`
-- AI Fixes: `/specs/05-features/AI_FIX_SYSTEM.md`
-- Polar Billing: `/specs/08-operations/POLAR_BILLING_INTEGRATION.md`
-- Memory Management: `/specs/08-operations/MEMORY_MANAGEMENT.md`
+
+- Status Pages: `/docs/specs/05-features/STATUS_PAGES_SYSTEM.md`
+- AI Fixes: `/docs/specs/05-features/AI_FIX_SYSTEM.md`
+- Polar Billing: `/docs/specs/08-operations/POLAR_BILLING_INTEGRATION.md`
+- Memory Management: `/docs/specs/08-operations/MEMORY_MANAGEMENT.md`
 
 ## 🐛 Debugging Tips
 
 ### Common Issues
+
 - **Database**: Check `DATABASE_URL` and run migrations
 - **Redis**: Verify `REDIS_URL` and connection
 - **Storage**: Check S3/MinIO credentials and bucket access
@@ -288,6 +305,7 @@ npm run revoke:admin     # Remove admin privileges
 - **Worker**: Check Docker container access
 
 ### Logs & Monitoring
+
 - Frontend logs in terminal during `npm run dev`
 - Worker logs in worker container
 - Database state via `npm run db:studio`
@@ -296,6 +314,7 @@ npm run revoke:admin     # Remove admin privileges
 ## 🎯 Quick Reference
 
 ### File Patterns
+
 - API Routes: `/app/src/app/api/**/*.ts`
 - Server Actions: `/app/src/server/actions/*.ts`
 - Database Queries: `/app/src/server/db/queries/*.ts`
@@ -303,13 +322,16 @@ npm run revoke:admin     # Remove admin privileges
 - Worker Services: `/worker/src/**/*.ts`
 
 ### Key Services
+
 - Test Execution: `/worker/src/execution/services/`
 - K6 Execution: `/worker/src/k6/services/`
 - Monitoring: `/worker/src/monitoring/services/`
 - Report Upload: `/worker/src/common/services/report-upload.service.ts`
 
 ### Database Tables
+
 Key tables (see ERD for complete schema):
+
 - `organizations`, `projects`, `members` - Multi-tenancy
 - `tests`, `test_runs`, `test_results` - Testing
 - `monitors`, `monitor_runs`, `monitor_results` - Monitoring
@@ -321,14 +343,15 @@ Key tables (see ERD for complete schema):
 
 - **Issues**: https://github.com/supercheck-io/supercheck/issues
 - **Discussions**: https://github.com/supercheck-io/supercheck/discussions
-- **Documentation**: `/specs/` directory
+- **Documentation**: `/docs/specs/` directory
 - **Contributing**: `CONTRIBUTING.md` in root
 
 ---
 
 **Last Updated**: 2025-12-01
-**Version**: v1.1.9-beta.16
+**Version**: v1.1.9-beta.31
 **Node Version**: 20.0.0+
 
 ## 📝 Notable Updates
+
 - **2025-12-01**: Added comprehensive "Code Quality & Production Standards" section with requirements for best practices, security concerns, scalability, robustness, and specs documentation updates

@@ -57,7 +57,9 @@ export function DataTable<TData, TValue>({
   onRowClick,
   meta,
 }: DataTableProps<TData, TValue>) {
-  const [rowSelection, setRowSelection] = React.useState<Record<string, boolean>>({});
+  const [rowSelection, setRowSelection] = React.useState<
+    Record<string, boolean>
+  >({});
   const [columnVisibility, setColumnVisibility] =
     React.useState<VisibilityState>({
       createdAt: false,
@@ -75,7 +77,7 @@ export function DataTable<TData, TValue>({
     const timer = setTimeout(() => {
       setMounted(true);
     }, 0);
-    
+
     return () => {
       clearTimeout(timer);
       setMounted(false);
@@ -83,35 +85,58 @@ export function DataTable<TData, TValue>({
   }, []);
 
   // Safe state setters that only run when component is mounted
-  const safeSetRowSelection = React.useCallback((value: Record<string, boolean> | ((old: Record<string, boolean>) => Record<string, boolean>)) => {
-    if (mounted) {
-      setRowSelection(value);
-    }
-  }, [mounted]);
-  
-  const safeSetSorting = React.useCallback((value: SortingState | ((old: SortingState) => SortingState)) => {
-    if (mounted) {
-      setSorting(value);
-    }
-  }, [mounted]);
-  
-  const safeSetColumnFilters = React.useCallback((value: ColumnFiltersState | ((old: ColumnFiltersState) => ColumnFiltersState)) => {
-    if (mounted) {
-      setColumnFilters(value);
-    }
-  }, [mounted]);
-  
-  const safeSetColumnVisibility = React.useCallback((value: VisibilityState | ((old: VisibilityState) => VisibilityState)) => {
-    if (mounted) {
-      setColumnVisibility(value);
-    }
-  }, [mounted]);
-  
-  const safeSetGlobalFilter = React.useCallback((value: string | ((old: string) => string)) => {
-    if (mounted) {
-      setGlobalFilter(value);
-    }
-  }, [mounted]);
+  const safeSetRowSelection = React.useCallback(
+    (
+      value:
+        | Record<string, boolean>
+        | ((old: Record<string, boolean>) => Record<string, boolean>)
+    ) => {
+      if (mounted) {
+        setRowSelection(value);
+      }
+    },
+    [mounted]
+  );
+
+  const safeSetSorting = React.useCallback(
+    (value: SortingState | ((old: SortingState) => SortingState)) => {
+      if (mounted) {
+        setSorting(value);
+      }
+    },
+    [mounted]
+  );
+
+  const safeSetColumnFilters = React.useCallback(
+    (
+      value:
+        | ColumnFiltersState
+        | ((old: ColumnFiltersState) => ColumnFiltersState)
+    ) => {
+      if (mounted) {
+        setColumnFilters(value);
+      }
+    },
+    [mounted]
+  );
+
+  const safeSetColumnVisibility = React.useCallback(
+    (value: VisibilityState | ((old: VisibilityState) => VisibilityState)) => {
+      if (mounted) {
+        setColumnVisibility(value);
+      }
+    },
+    [mounted]
+  );
+
+  const safeSetGlobalFilter = React.useCallback(
+    (value: string | ((old: string) => string)) => {
+      if (mounted) {
+        setGlobalFilter(value);
+      }
+    },
+    [mounted]
+  );
 
   const table = useReactTable({
     data,
@@ -121,19 +146,21 @@ export function DataTable<TData, TValue>({
         pageSize: 12,
       },
     },
-    state: mounted ? {
-      sorting,
-      columnVisibility,
-      rowSelection,
-      columnFilters,
-      globalFilter,
-    } : {
-      sorting: [],
-      columnVisibility: {},
-      rowSelection: {},
-      columnFilters: [],
-      globalFilter: "",
-    },
+    state: mounted
+      ? {
+          sorting,
+          columnVisibility,
+          rowSelection,
+          columnFilters,
+          globalFilter,
+        }
+      : {
+          sorting: [],
+          columnVisibility: {},
+          rowSelection: {},
+          columnFilters: [],
+          globalFilter: "",
+        },
     enableRowSelection: true,
     onRowSelectionChange: safeSetRowSelection,
     onSortingChange: safeSetSorting,
@@ -165,8 +192,6 @@ export function DataTable<TData, TValue>({
       }, 0);
     }
   }, [data, table, mounted]);
-
-
 
   // Don't render the table until the component is mounted
   if (!mounted) {
@@ -220,7 +245,14 @@ export function DataTable<TData, TValue>({
                   className={cn(onRowClick && "cursor-pointer")}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="py-2.5">
+                    <TableCell
+                      key={cell.id}
+                      className={cn(
+                        "py-2.5",
+                        // Allow overflow for the "run" column to show the cancel button
+                        cell.column.id === "run" && "overflow-visible"
+                      )}
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()

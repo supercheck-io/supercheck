@@ -32,49 +32,50 @@ resource "hcloud_firewall" "k3s" {
   labels = var.common_tags
 
   # Inbound: Allow SSH
-  ingress {
-    direction = "in"
+  rule {
+    direction  = "in"
     source_ips = ["0.0.0.0/0", "::/0"]
-    protocol = "tcp"
-    port     = "22"
+    protocol   = "tcp"
+    port       = "22"
   }
 
   # Inbound: Allow Kubernetes API (via LB or direct)
-  ingress {
-    direction = "in"
+  rule {
+    direction  = "in"
     source_ips = ["0.0.0.0/0", "::/0"]
-    protocol = "tcp"
-    port     = "6443"
+    protocol   = "tcp"
+    port       = "6443"
   }
 
   # Inbound: Allow HTTP/HTTPS
-  ingress {
-    direction = "in"
+  rule {
+    direction  = "in"
     source_ips = ["0.0.0.0/0", "::/0"]
-    protocol = "tcp"
-    port     = "80"
+    protocol   = "tcp"
+    port       = "80"
   }
 
-  ingress {
-    direction = "in"
+  rule {
+    direction  = "in"
     source_ips = ["0.0.0.0/0", "::/0"]
-    protocol = "tcp"
-    port     = "443"
+    protocol   = "tcp"
+    port       = "443"
   }
 
-  # Outbound: Allow all
-  egress {
-    direction = "out"
+  # Outbound: Allow all TCP
+  rule {
+    direction       = "out"
     destination_ips = ["0.0.0.0/0", "::/0"]
-    protocol = "tcp"
-    port     = "1-65535"
+    protocol        = "tcp"
+    port            = "1-65535"
   }
 
-  egress {
-    direction = "out"
+  # Outbound: Allow all UDP
+  rule {
+    direction       = "out"
     destination_ips = ["0.0.0.0/0", "::/0"]
-    protocol = "udp"
-    port     = "1-65535"
+    protocol        = "udp"
+    port            = "1-65535"
   }
 }
 
@@ -130,7 +131,7 @@ resource "hcloud_server" "k3s_master" {
   ssh_keys     = [hcloud_ssh_key.k3s.id]
   firewall_ids = [hcloud_firewall.k3s.id]
 
-  networks {
+  network {
     network_id = hcloud_network.k3s.id
   }
 
@@ -170,7 +171,7 @@ resource "hcloud_server" "k3s_worker" {
   ssh_keys     = [hcloud_ssh_key.k3s.id]
   firewall_ids = [hcloud_firewall.k3s.id]
 
-  networks {
+  network {
     network_id = hcloud_network.k3s.id
   }
 
