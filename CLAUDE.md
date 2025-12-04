@@ -32,7 +32,7 @@ SuperCheck is a comprehensive testing and monitoring platform that runs Playwrig
     /monitoring/     # Monitoring services
     /common/         # Shared worker utilities
 
-/specs/               # 📚 COMPREHENSIVE DOCUMENTATION
+/docs/specs/               # 📚 COMPREHENSIVE DOCUMENTATION
   /01-core/          # Architecture, API routes, ERD
   /02-authentication/ # Auth system, RBAC, API keys
   /03-execution/      # Test execution, job triggers
@@ -51,7 +51,7 @@ SuperCheck is a comprehensive testing and monitoring platform that runs Playwrig
 
 ### Before Making Changes
 
-1. **Read the specs**: Always check `/specs/` for existing documentation
+1. **Read the specs**: Always check `/docs/specs/` for existing documentation
 2. **Understand the architecture**: Review `01-core/` first
 3. **Check authentication patterns**: See `02-authentication/`
 4. **Verify execution patterns**: Review `03-execution/`
@@ -178,16 +178,16 @@ SuperCheck is a comprehensive testing and monitoring platform that runs Playwrig
   - Document assumptions and constraints
   - Keep documentation up to date with code changes
 - **Specs Updates**: Always check if specifications need updating
-  - If you modify API contracts, update `/specs/01-core/API_ROUTES_ANALYSIS.md`
-  - If you change database schema, update `/specs/01-core/ERD_DIAGRAM.md`
-  - If you modify authentication logic, update `/specs/02-authentication/`
-  - If you modify execution logic, update `/specs/03-execution/`
+  - If you modify API contracts, update `/docs/specs/01-core/API_ROUTES_ANALYSIS.md`
+  - If you change database schema, update `/docs/specs/01-core/ERD_DIAGRAM.md`
+  - If you modify authentication logic, update `/docs/specs/02-authentication/`
+  - If you modify execution logic, update `/docs/specs/03-execution/`
   - Create migration guides if breaking changes are introduced
 
 ### Database
 
 - Use Drizzle ORM for all database operations
-- Check `/specs/01-core/ERD_DIAGRAM.md` for schema
+- Check `/docs/specs/01-core/ERD_DIAGRAM.md` for schema
 - All queries in `/app/src/server/db/queries/`
 - Migrations in `/app/src/server/db/migrations/`
 
@@ -196,13 +196,13 @@ SuperCheck is a comprehensive testing and monitoring platform that runs Playwrig
 - Better Auth 1.2.8 for authentication
 - RBAC implementation with roles
 - API keys with scoped permissions
-- See `/specs/02-authentication/` for details
+- See `/docs/specs/02-authentication/` for details
 
 ## 🚀 Common Tasks
 
 ### Adding New Features
 
-1. Check `/specs/05-features/` for similar patterns
+1. Check `/docs/specs/05-features/` for similar patterns
 2. Create database schema if needed
 3. Add API routes in `/app/src/app/api/`
 4. Create UI components in `/app/src/components/`
@@ -213,14 +213,14 @@ SuperCheck is a comprehensive testing and monitoring platform that runs Playwrig
 - Test definitions stored in database
 - Execution happens in Docker containers via worker
 - Results stored in MinIO/S3
-- See `/specs/03-execution/` for details
+- See `/docs/specs/03-execution/` for details
 
 ### Adding Monitoring
 
 - Monitor types: HTTP, Ping, Port, Custom
 - Configuration in database
 - Execution via worker service
-- See `/specs/04-monitoring/` for patterns
+- See `/docs/specs/04-monitoring/` for patterns
 
 ## 🔧 Environment Setup
 
@@ -280,19 +280,19 @@ npm run revoke:admin     # Remove admin privileges
 
 ### Must-Read Specs (in order)
 
-1. `/specs/01-core/SUPERCHECK_ARCHITECTURE.md` - Overall architecture
-2. `/specs/01-core/ERD_DIAGRAM.md` - Database schema
-3. `/specs/01-core/API_ROUTES_ANALYSIS.md` - API endpoints
-4. `/specs/02-authentication/AUTHENTICATION_SYSTEM.md` - Auth patterns
-5. `/specs/03-execution/EXECUTION_SYSTEM.md` - Test execution
-6. `/specs/04-monitoring/MONITORING_SYSTEM.md` - Monitoring
+1. `/docs/specs/01-core/SUPERCHECK_ARCHITECTURE.md` - Overall architecture
+2. `/docs/specs/01-core/ERD_DIAGRAM.md` - Database schema
+3. `/docs/specs/01-core/API_ROUTES_ANALYSIS.md` - API endpoints
+4. `/docs/specs/02-authentication/AUTHENTICATION_SYSTEM.md` - Auth patterns
+5. `/docs/specs/03-execution/EXECUTION_SYSTEM.md` - Test execution
+6. `/docs/specs/04-monitoring/MONITORING_SYSTEM.md` - Monitoring
 
 ### Feature-Specific Specs
 
-- Status Pages: `/specs/05-features/STATUS_PAGES_SYSTEM.md`
-- AI Fixes: `/specs/05-features/AI_FIX_SYSTEM.md`
-- Polar Billing: `/specs/08-operations/POLAR_BILLING_INTEGRATION.md`
-- Memory Management: `/specs/08-operations/MEMORY_MANAGEMENT.md`
+- Status Pages: `/docs/specs/05-features/STATUS_PAGES_SYSTEM.md`
+- AI Fixes: `/docs/specs/05-features/AI_FIX_SYSTEM.md`
+- Polar Billing: `/docs/specs/08-operations/POLAR_BILLING_INTEGRATION.md`
+- Memory Management: `/docs/specs/08-operations/MEMORY_MANAGEMENT.md`
 
 ## 🐛 Debugging Tips
 
@@ -343,13 +343,13 @@ Key tables (see ERD for complete schema):
 
 - **Issues**: https://github.com/supercheck-io/supercheck/issues
 - **Discussions**: https://github.com/supercheck-io/supercheck/discussions
-- **Documentation**: `/specs/` directory
+- **Documentation**: `/docs/specs/` directory
 - **Contributing**: `CONTRIBUTING.md` in root
 
 ---
 
 **Last Updated**: 2025-12-01
-**Version**: v1.1.9-beta.30
+**Version**: v1.1.9-beta.31
 **Node Version**: 20.0.0+
 
 ## 📝 Notable Updates

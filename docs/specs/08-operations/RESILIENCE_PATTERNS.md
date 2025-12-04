@@ -447,7 +447,127 @@ Example (initialDelay=1000, multiplier=2, jitter=0.1):
 
 ---
 
-## 6. Related Documentation
+## 6. Server Instrumentation & Startup
+
+### 6.1 Overview
+
+The Next.js instrumentation system (`/app/src/instrumentation.ts`) initializes background services on server startup.
+
+**File:** `/app/src/instrumentation.ts`
+
+### 6.2 Initialization Flow
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   Server Start  │────▶│  Instrumentation│────▶│   Services      │
+│                 │     │  register()     │     │   Ready         │
+└─────────────────┘     └────────┬────────┘     └─────────────────┘
+                                 │
+                    ┌────────────┼────────────┐
+                    ▼            ▼            ▼
+              ┌──────────┐ ┌──────────┐ ┌──────────┐
+              │  Polar   │ │  Data    │ │  Email   │
+              │  Config  │ │ Lifecycle│ │ Processor│
+              └──────────┘ └──────────┘ └──────────┘
+```
+
+### 6.3 Features
+
+| Feature                | Description                              | Purpose                     |
+| ---------------------- | ---------------------------------------- | --------------------------- |
+| **Error Isolation**    | One service failure doesn't break others | Improved reliability        |
+| **Structured Logging** | Timestamped log messages                 | Debugging and observability |
+| **Duration Tracking**  | Reports total startup time               | Performance monitoring      |
+
+### 6.4 Runtime Check
+
+The instrumentation only runs in Node.js runtime:
+
+```typescript
+export async function register() {
+  // Only run on server-side (Node.js runtime)
+  if (process.env.NEXT_RUNTIME !== "nodejs") {
+    return;
+  }
+  // ... initialization code
+}
+```
+
+This ensures Edge Runtime compatibility by returning early when not in Node.js context.
+
+---
+
+## 7. Middleware & Security Headers
+
+### 7.1 Overview
+
+The Next.js middleware (`/app/src/middleware.ts`) handles subdomain and custom domain routing for status pages.
+
+### 7.2 Performance Optimizations
+
+| Optimization            | Description                           | Benefit                  |
+| ----------------------- | ------------------------------------- | ------------------------ |
+| **Pre-compiled Regex**  | Patterns compiled once at module load | Faster matching          |
+| **Hostname Cache**      | LRU-style cache (max 100 entries)     | Reduced parsing overhead |
+| **Fast Path**           | Skip middleware for static/API routes | Lower latency            |
+| **Cached App Hostname** | Process-lifetime cache                | Single URL parse         |
+
+### 7.3 Security Headers
+
+Status page responses include additional security headers:
+
+| Header                   | Value                             | Purpose                   |
+| ------------------------ | --------------------------------- | ------------------------- |
+| `X-Content-Type-Options` | `nosniff`                         | Prevent MIME sniffing     |
+| `X-Frame-Options`        | `DENY`                            | Prevent clickjacking      |
+| `X-XSS-Protection`       | `1; mode=block`                   | Legacy XSS protection     |
+| `Referrer-Policy`        | `strict-origin-when-cross-origin` | Control referrer info     |
+| `Cache-Control`          | `no-store, no-cache...`           | Prevent caching live data |
+
+---
+
+## 8. Next.js Configuration
+
+### 8.1 Security Features
+
+The Next.js config (`/app/next.config.ts`) implements OWASP security best practices:
+
+**Content Security Policy (CSP):**
+
+- `default-src 'self'` - Only same-origin by default
+- `frame-ancestors` - Controls who can embed the site
+- `upgrade-insecure-requests` - Forces HTTPS
+
+**Security Headers (Production Only):**
+| Header | Value | Purpose |
+|--------|-------|---------|
+| `Strict-Transport-Security` | 2 years + preload | HSTS enforcement |
+| `X-Frame-Options` | `SAMEORIGIN` | Clickjacking prevention |
+| `Permissions-Policy` | Restricted | Disable unused browser features |
+| `Cross-Origin-Opener-Policy` | `same-origin` | Process isolation |
+
+### 8.2 Performance Features
+
+| Feature                  | Configuration                    | Purpose                    |
+| ------------------------ | -------------------------------- | -------------------------- |
+| **Turbopack**            | Development mode                 | Faster dev builds          |
+| **Standalone Output**    | Docker deployment                | Minimal container size     |
+| **Optimized Imports**    | lucide-react, radix-ui, date-fns | Smaller bundles            |
+| **Static Asset Caching** | 1 year immutable                 | CDN optimization           |
+| **ETag Generation**      | Enabled                          | Efficient cache validation |
+
+### 8.3 External Packages
+
+Server-external packages that should not be bundled:
+
+- `child_process`, `fs`, `path` - Node.js built-ins
+- `postgres` - Database driver
+- `bullmq` - Job queue
+- `@bull-board/*` - Queue dashboard
+
+---
+
+## 9. Related Documentation
 
 - [Data Lifecycle System](../06-data/DATA_LIFECYCLE_SYSTEM.md) - Data retention and cleanup
 - [Monitoring System](../04-monitoring/MONITORING_SYSTEM.md) - Application monitoring

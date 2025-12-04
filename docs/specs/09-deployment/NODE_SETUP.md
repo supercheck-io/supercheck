@@ -275,7 +275,7 @@ Each worker node should have:
 For managed databases (recommended):
 
 - Use Hetzner Cloud or AWS managed services
-- See specs/08-operations/ for configuration
+- See docs/specs/08-operations/ for configuration
 
 For self-hosted:
 

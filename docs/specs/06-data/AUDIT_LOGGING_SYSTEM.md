@@ -47,14 +47,14 @@ graph TB
 
 ### Event Categories
 
-| Category | Examples | Retention |
-|----------|----------|-----------|
-| **Authentication** | login, logout, password_reset | 90 days |
-| **Authorization** | role_change, permission_grant | 90 days |
-| **Resource Management** | test_created, monitor_updated, job_deleted | 30 days |
-| **Execution** | test_executed, job_triggered, playground_test_executed | 30 days |
-| **Configuration** | settings_changed, integration_added | 90 days |
-| **Security** | failed_login, unauthorized_access | 365 days |
+| Category                | Examples                                               | Retention |
+| ----------------------- | ------------------------------------------------------ | --------- |
+| **Authentication**      | login, logout, password_reset                          | 90 days   |
+| **Authorization**       | role_change, permission_grant                          | 90 days   |
+| **Resource Management** | test_created, monitor_updated, job_deleted             | 30 days   |
+| **Execution**           | test_executed, job_triggered, playground_test_executed | 30 days   |
+| **Configuration**       | settings_changed, integration_added                    | 90 days   |
+| **Security**            | failed_login, unauthorized_access                      | 365 days  |
 
 ---
 
@@ -82,6 +82,7 @@ graph LR
 ### GET /api/audit
 
 **Features:**
+
 - Pagination (limit, page)
 - Search/filter by action
 - Free-text search
@@ -111,6 +112,35 @@ sequenceDiagram
 
 ---
 
+## UI Components
+
+### AuditLogsTable Component
+
+Located at `/app/src/components/admin/audit-logs-table.tsx`, this component provides:
+
+**Features:**
+
+- Paginated display of audit log entries
+- Search functionality for filtering by action or details
+- Action type filter dropdown
+- Sort by timestamp (ascending/descending)
+- User information display with avatars
+- Expandable detail view for JSON metadata
+
+**Loading State:**
+
+- Uses `TabLoadingSpinner` component during data fetch
+- Shows "Loading audit logs..." message
+- Prevents blank screen during initial load or data refresh
+
+**Data Fetching:**
+
+- Client-side pagination with configurable page size
+- Automatic refetch on filter/search changes
+- Mounted state tracking to prevent memory leaks
+
+---
+
 ## Summary
 
 ✅ **Comprehensive Tracking** - All user and system actions
@@ -118,3 +148,4 @@ sequenceDiagram
 ✅ **RBAC Integration** - Admin-only access
 ✅ **Forensic Analysis** - Before/after state tracking
 ✅ **Compliance Ready** - Configurable retention policies
+✅ **Smooth UX** - TabLoadingSpinner for loading states

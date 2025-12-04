@@ -1,14 +1,31 @@
 /**
  * Feature flags and configuration for conditional features
  * Handles self-hosted vs cloud-hosted modes
+ *
+ * DEFAULT BEHAVIOR:
+ * - When SELF_HOSTED is not set or is any value other than "true"/"1" -> Cloud mode (billing enabled)
+ * - When SELF_HOSTED="true" or SELF_HOSTED="1" -> Self-hosted mode (unlimited, no billing)
+ *
+ * This ensures cloud deployments work by default without extra configuration.
  */
 
 /**
  * Check if the application is running in cloud-hosted mode
- * Self-hosted installations have unlimited features without billing
+ *
+ * Cloud mode is the DEFAULT when:
+ * - SELF_HOSTED env var is not set
+ * - SELF_HOSTED is set to "false", "0", or any other value
+ *
+ * Self-hosted mode ONLY when:
+ * - SELF_HOSTED="true" (case insensitive)
+ * - SELF_HOSTED="1"
+ *
+ * Self-hosted installations have unlimited features without billing.
+ * Cloud installations require a subscription (Plus or Pro plan).
  */
 export const isCloudHosted = (): boolean => {
   const selfHosted = process.env.SELF_HOSTED?.toLowerCase();
+  // Cloud mode is default - only self-hosted when explicitly set to "true" or "1"
   return selfHosted !== "true" && selfHosted !== "1";
 };
 

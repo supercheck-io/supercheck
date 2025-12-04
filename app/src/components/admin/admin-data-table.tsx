@@ -47,26 +47,37 @@ interface AdminDataTableProps<TData, TValue> {
 // Define the extended meta type locally
 interface ExtendedTableMeta<TData> extends TableMeta<TData> {
   globalFilterColumns?: string[];
-  globalFilterFn?: (row: Row<unknown>, columnId: string, filterValue: string, table?: unknown) => boolean;
+  globalFilterFn?: (
+    row: Row<unknown>,
+    columnId: string,
+    filterValue: string,
+    table?: unknown
+  ) => boolean;
   [key: string]: unknown;
 }
 
 // Custom global filter function for admin tables
-function adminGlobalFilterFn(row: Row<unknown>, _columnId: string, filterValue: string, table: unknown) {
+function adminGlobalFilterFn(
+  row: Row<unknown>,
+  _columnId: string,
+  filterValue: string,
+  table: unknown
+) {
   if (!filterValue) return true;
   const search = String(filterValue).toLowerCase();
-  
+
   // Get the column IDs from the table meta or fall back to actual available columns
-  const meta = (table as { options?: { meta?: ExtendedTableMeta<unknown> } })?.options?.meta;
-  const availableColumns = row.getVisibleCells().map(cell => cell.column.id);
+  const meta = (table as { options?: { meta?: ExtendedTableMeta<unknown> } })
+    ?.options?.meta;
+  const availableColumns = row.getVisibleCells().map((cell) => cell.column.id);
   const columnsToSearch = meta?.globalFilterColumns || availableColumns;
-  
+
   return columnsToSearch.some((id: string) => {
     // Only try to access columns that actually exist
     if (!availableColumns.includes(id)) {
       return false;
     }
-    
+
     try {
       const value = row.getValue(id);
       if (typeof value === "string" || typeof value === "number") {
@@ -112,7 +123,7 @@ export function AdminDataTable<TData, TValue>({
     const timer = setTimeout(() => {
       setMounted(true);
     }, 0);
-    
+
     return () => {
       clearTimeout(timer);
       setMounted(false);
@@ -120,55 +131,82 @@ export function AdminDataTable<TData, TValue>({
   }, []);
 
   // Safe state setters that only run when component is mounted
-  const safeSetRowSelection = React.useCallback((updaterOrValue: RowSelectionState | ((old: RowSelectionState) => RowSelectionState)) => {
-    if (mounted) {
-      if (typeof updaterOrValue === 'function') {
-        setRowSelection(updaterOrValue);
-      } else {
-        setRowSelection(updaterOrValue);
+  const safeSetRowSelection = React.useCallback(
+    (
+      updaterOrValue:
+        | RowSelectionState
+        | ((old: RowSelectionState) => RowSelectionState)
+    ) => {
+      if (mounted) {
+        if (typeof updaterOrValue === "function") {
+          setRowSelection(updaterOrValue);
+        } else {
+          setRowSelection(updaterOrValue);
+        }
       }
-    }
-  }, [mounted]);
-  
-  const safeSetSorting = React.useCallback((updaterOrValue: SortingState | ((old: SortingState) => SortingState)) => {
-    if (mounted) {
-      if (typeof updaterOrValue === 'function') {
-        setSorting(updaterOrValue);
-      } else {
-        setSorting(updaterOrValue);
+    },
+    [mounted]
+  );
+
+  const safeSetSorting = React.useCallback(
+    (updaterOrValue: SortingState | ((old: SortingState) => SortingState)) => {
+      if (mounted) {
+        if (typeof updaterOrValue === "function") {
+          setSorting(updaterOrValue);
+        } else {
+          setSorting(updaterOrValue);
+        }
       }
-    }
-  }, [mounted]);
-  
-  const safeSetColumnFilters = React.useCallback((updaterOrValue: ColumnFiltersState | ((old: ColumnFiltersState) => ColumnFiltersState)) => {
-    if (mounted) {
-      if (typeof updaterOrValue === 'function') {
-        setColumnFilters(updaterOrValue);
-      } else {
-        setColumnFilters(updaterOrValue);
+    },
+    [mounted]
+  );
+
+  const safeSetColumnFilters = React.useCallback(
+    (
+      updaterOrValue:
+        | ColumnFiltersState
+        | ((old: ColumnFiltersState) => ColumnFiltersState)
+    ) => {
+      if (mounted) {
+        if (typeof updaterOrValue === "function") {
+          setColumnFilters(updaterOrValue);
+        } else {
+          setColumnFilters(updaterOrValue);
+        }
       }
-    }
-  }, [mounted]);
-  
-  const safeSetColumnVisibility = React.useCallback((updaterOrValue: VisibilityState | ((old: VisibilityState) => VisibilityState)) => {
-    if (mounted) {
-      if (typeof updaterOrValue === 'function') {
-        setColumnVisibility(updaterOrValue);
-      } else {
-        setColumnVisibility(updaterOrValue);
+    },
+    [mounted]
+  );
+
+  const safeSetColumnVisibility = React.useCallback(
+    (
+      updaterOrValue:
+        | VisibilityState
+        | ((old: VisibilityState) => VisibilityState)
+    ) => {
+      if (mounted) {
+        if (typeof updaterOrValue === "function") {
+          setColumnVisibility(updaterOrValue);
+        } else {
+          setColumnVisibility(updaterOrValue);
+        }
       }
-    }
-  }, [mounted]);
-  
-  const safeSetGlobalFilter = React.useCallback((updaterOrValue: string | ((old: string) => string)) => {
-    if (mounted) {
-      if (typeof updaterOrValue === 'function') {
-        setGlobalFilter(updaterOrValue);
-      } else {
-        setGlobalFilter(updaterOrValue);
+    },
+    [mounted]
+  );
+
+  const safeSetGlobalFilter = React.useCallback(
+    (updaterOrValue: string | ((old: string) => string)) => {
+      if (mounted) {
+        if (typeof updaterOrValue === "function") {
+          setGlobalFilter(updaterOrValue);
+        } else {
+          setGlobalFilter(updaterOrValue);
+        }
       }
-    }
-  }, [mounted]);
+    },
+    [mounted]
+  );
 
   const table = useReactTable({
     data,
@@ -176,23 +214,25 @@ export function AdminDataTable<TData, TValue>({
     initialState: {
       pagination: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        pageSize: (meta as any)?.initialPageSize || 7,
+        pageSize: (meta as any)?.initialPageSize || 8,
         pageIndex: 0,
       },
     },
-    state: mounted ? {
-      sorting,
-      columnVisibility,
-      rowSelection,
-      columnFilters,
-      globalFilter,
-    } : {
-      sorting: [],
-      columnVisibility: {},
-      rowSelection: {},
-      columnFilters: [],
-      globalFilter: "",
-    },
+    state: mounted
+      ? {
+          sorting,
+          columnVisibility,
+          rowSelection,
+          columnFilters,
+          globalFilter,
+        }
+      : {
+          sorting: [],
+          columnVisibility: {},
+          rowSelection: {},
+          columnFilters: [],
+          globalFilter: "",
+        },
     enableRowSelection: true,
     onRowSelectionChange: safeSetRowSelection,
     onSortingChange: safeSetSorting,
@@ -205,7 +245,8 @@ export function AdminDataTable<TData, TValue>({
     getSortedRowModel: getSortedRowModel(),
     getFacetedRowModel: getFacetedRowModel(),
     getFacetedUniqueValues: getFacetedUniqueValues(),
-    globalFilterFn: (meta as ExtendedTableMeta<TData>)?.globalFilterFn || adminGlobalFilterFn,
+    globalFilterFn:
+      (meta as ExtendedTableMeta<TData>)?.globalFilterFn || adminGlobalFilterFn,
     meta: {
       globalFilterColumns: ["name", "email", "role", "status"],
       ...meta,
@@ -217,7 +258,7 @@ export function AdminDataTable<TData, TValue>({
     if (mounted && table) {
       // Set page size based on meta or default to 7
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pageSize = (meta as any)?.initialPageSize || 7;
+      const pageSize = (meta as any)?.initialPageSize || 8;
       table.setPageSize(pageSize);
       table.setPageIndex(0);
     }
@@ -245,18 +286,19 @@ export function AdminDataTable<TData, TValue>({
         <Table className="w-full">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id} className="hover:bg-transparent border-b">
+              <TableRow
+                key={headerGroup.id}
+                className="hover:bg-transparent border-b"
+              >
                 {headerGroup.headers.map((header, headerIndex) => {
                   const isFirst = headerIndex === 0;
                   const isLast = headerIndex === headerGroup.headers.length - 1;
                   return (
-                    <TableHead 
-                      key={header.id} 
+                    <TableHead
+                      key={header.id}
                       className={`h-12 px-4 text-left align-middle font-semibold text-muted-foreground ${
-                        isFirst ? 'rounded-tl-lg' : ''
-                      } ${
-                        isLast ? 'rounded-tr-lg' : ''
-                      }`}
+                        isFirst ? "rounded-tl-lg" : ""
+                      } ${isLast ? "rounded-tr-lg" : ""}`}
                     >
                       {header.isPlaceholder
                         ? null
@@ -280,7 +322,7 @@ export function AdminDataTable<TData, TValue>({
                   onClick={() => onRowClick?.(row)}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="px-4 py-2.5 align-top">
+                    <TableCell key={cell.id} className="px-4 py-3 align-middle">
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()

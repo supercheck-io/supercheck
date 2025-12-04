@@ -148,28 +148,74 @@ export function ReportViewer({
 
   // Hide external link button in Playwright trace viewer
   // This prevents users from opening snapshots in a new tab outside of SuperCheck
+  // Note: Due to CORS restrictions, we can't directly modify cross-origin iframe content
+  // Instead, we use a CSS approach that targets elements via attribute selectors
+  // and also try direct DOM manipulation for same-origin iframes
   const hideExternalLinkButton = useCallback(
     (iframe: HTMLIFrameElement | null) => {
-      if (!iframe?.contentDocument) return;
+      if (!iframe) return;
 
       try {
-        const styleId = "supercheck-hide-external-link";
-        if (iframe.contentDocument.getElementById(styleId)) return;
-
-        const style = iframe.contentDocument.createElement("style");
-        style.id = styleId;
-        // Only hide the external link button - nothing else
-        style.textContent = `
-          /* Hide external link button in trace viewer toolbar */
-          button.toolbar-button.link-external,
-          button[title="Open snapshot in a new tab"],
-          .codicon.codicon-link-external {
-            display: none !important;
+        // First, try to access contentDocument (works for same-origin only)
+        const doc = iframe.contentDocument;
+        if (doc) {
+          const styleId = "supercheck-hide-external-link";
+          if (!doc.getElementById(styleId)) {
+            const style = doc.createElement("style");
+            style.id = styleId;
+            // Comprehensive selectors to hide external link buttons
+            style.textContent = `
+              /* Hide external link button in trace viewer toolbar */
+              button.toolbar-button.link-external,
+              button[title="Open snapshot in a new tab"],
+              button[title*="external"],
+              button[title*="new tab"],
+              .codicon.codicon-link-external,
+              .codicon-link-external,
+              [class*="link-external"],
+              /* Target by aria-label as well */
+              button[aria-label*="external"],
+              button[aria-label*="new tab"],
+              /* Target toolbar buttons with external link icon */
+              .toolbar-button svg[class*="external"],
+              .toolbar-button .codicon-link-external,
+              /* Hide the entire button if it contains external link icon */
+              button:has(.codicon-link-external),
+              button:has(svg[class*="external"]) {
+                display: none !important;
+                visibility: hidden !important;
+                pointer-events: none !important;
+                width: 0 !important;
+                height: 0 !important;
+                overflow: hidden !important;
+              }
+            `;
+            doc.head?.appendChild(style);
           }
-        `;
-        iframe.contentDocument.head.appendChild(style);
+
+          // Also try to directly remove the elements
+          const selectors = [
+            "button.toolbar-button.link-external",
+            'button[title="Open snapshot in a new tab"]',
+            ".codicon.codicon-link-external",
+            'button[title*="external"]',
+          ];
+
+          selectors.forEach((selector) => {
+            try {
+              const elements = doc.querySelectorAll(selector);
+              elements.forEach((el) => {
+                (el as HTMLElement).style.display = "none";
+                (el as HTMLElement).style.visibility = "hidden";
+              });
+            } catch {
+              // Ignore errors for individual selectors
+            }
+          });
+        }
       } catch {
         // Silently ignore CORS errors when accessing cross-origin iframes
+        // For cross-origin iframes, we rely on sandbox restrictions
       }
     },
     []
@@ -450,7 +496,7 @@ export function ReportViewer({
             className={`${iframeClassName} ${
               isReportLoading ? "opacity-0 pointer-events-none" : "opacity-100"
             } ${isValidationError ? "h-4/5 flex-grow" : "h-full"} ${!isK6Report ? "bg-card" : ""}`}
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"
+            sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
             style={{
               visibility: isReportLoading ? "hidden" : "visible",
               transition: "opacity 0.3s ease-in-out",
@@ -626,7 +672,7 @@ export function ReportViewer({
                 ref={fullscreenIframeRef}
                 src={preCheckComplete ? currentReportUrl : undefined}
                 className="w-full h-full border-0"
-                sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"
+                sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
                 title="Fullscreen Report"
                 style={{
                   filter:

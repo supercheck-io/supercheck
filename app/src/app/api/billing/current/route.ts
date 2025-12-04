@@ -75,14 +75,19 @@ export async function GET() {
     const periodEnd =
       org.usagePeriodEnd || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30 days from now
 
-    // Get plan pricing
-    const planType =
-      (org.subscriptionPlan as "plus" | "pro" | "unlimited") || "plus";
+    // Get plan pricing - determine appropriate plan based on hosting mode
+    // In cloud mode: use actual subscription plan or 'plus' for display
+    // In self-hosted mode: always 'unlimited'
+    const { isCloudHosted: cloudHosted } = await import("@/lib/feature-flags");
+    const effectivePlan = cloudHosted()
+      ? (org.subscriptionPlan as "plus" | "pro") || "plus" // Cloud: use actual plan or default to plus for unsubscribed
+      : "unlimited"; // Self-hosted: always unlimited
+    const planType = effectivePlan;
     const pricing = getPlanPricing(planType);
 
     return NextResponse.json({
       subscription: {
-        plan: org.subscriptionPlan || "unlimited",
+        plan: effectivePlan,
         status: org.subscriptionStatus || "none",
         subscriptionId: org.subscriptionId,
         polarCustomerId: org.polarCustomerId,
