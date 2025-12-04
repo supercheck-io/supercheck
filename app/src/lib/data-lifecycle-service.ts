@@ -2211,13 +2211,13 @@ export function createDataLifecycleService(): DataLifecycleService {
     },
 
     // Playground Artifacts Cleanup
-    // Disabled by default - playground artifacts are temporary by nature
+    // Enabled by default - cleans up temporary playground artifacts (24h max age)
     {
       entityType: "playground_artifacts",
-      enabled: parseBooleanEnv(process.env.PLAYGROUND_CLEANUP_ENABLED, false),
+      enabled: parseBooleanEnv(process.env.PLAYGROUND_CLEANUP_ENABLED, true),
       cronSchedule: parseCronSchedule(
         process.env.PLAYGROUND_CLEANUP_CRON,
-        "0 */12 * * *"
+        "0 5 * * *" // 5 AM daily (24h cleanup cycle, after other cleanups)
       ),
       customConfig: {
         maxAgeHours: parseInt(

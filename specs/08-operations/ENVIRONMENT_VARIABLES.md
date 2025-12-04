@@ -288,11 +288,11 @@ Automated data cleanup and retention settings.
 
 ### Playground Cleanup
 
-| Variable                           | Description               | Default                    |
-| ---------------------------------- | ------------------------- | -------------------------- |
-| `PLAYGROUND_CLEANUP_ENABLED`       | Enable playground cleanup | `true`                     |
-| `PLAYGROUND_CLEANUP_CRON`          | Cleanup schedule          | `0 */12 * * *` (every 12h) |
-| `PLAYGROUND_CLEANUP_MAX_AGE_HOURS` | Hours to retain artifacts | `24`                       |
+| Variable                           | Description               | Default                  |
+| ---------------------------------- | ------------------------- | ------------------------ |
+| `PLAYGROUND_CLEANUP_ENABLED`       | Enable playground cleanup | `true`                   |
+| `PLAYGROUND_CLEANUP_CRON`          | Cleanup schedule          | `0 5 * * *` (5 AM daily) |
+| `PLAYGROUND_CLEANUP_MAX_AGE_HOURS` | Hours to retain artifacts | `24`                     |
 
 ### Webhook Idempotency Cleanup
 
