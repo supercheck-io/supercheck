@@ -349,7 +349,7 @@ Key tables (see ERD for complete schema):
 ---
 
 **Last Updated**: 2025-12-01
-**Version**: v1.1.9-beta.16
+**Version**: v1.1.9-beta.30
 **Node Version**: 20.0.0+
 
 ## 📝 Notable Updates
