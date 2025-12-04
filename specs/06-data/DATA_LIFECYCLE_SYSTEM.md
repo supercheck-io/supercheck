@@ -188,7 +188,7 @@ graph TB
     subgraph "🗓️ Schedulers"
         S1[Monitor Results Cleanup<br/>Cron: 2 AM Daily]
         S2[Job Runs Cleanup<br/>Cron: 3 AM Daily]
-        S3[Playground Cleanup<br/>Cron: Every 12 Hours]
+        S3[Playground Cleanup<br/>Cron: 5 AM Daily]
     end
 
     subgraph "⚙️ Data Lifecycle Service"
@@ -241,7 +241,7 @@ graph LR
         M[Monitor Results<br/>✅ Enabled by default<br/>Plan-based retention]
         MA[Monitor Aggregates<br/>✅ Enabled by default<br/>Hourly: 7d / Daily: Plan-based]
         J[Job Runs<br/>✅ Enabled by default<br/>Plan-based: 30-365 days]
-        P[Playground<br/>❌ Disabled by default<br/>24 hours retention]
+        P[Playground<br/>✅ Enabled by default<br/>24 hours retention]
         W[Webhook Idempotency<br/>✅ Enabled by default<br/>TTL-based]
     end
 
@@ -354,15 +354,15 @@ graph LR
 **Configuration:**
 
 - **Entity Type:** playground_artifacts
-- **Status:** ❌ Disabled by default (opt-in)
-- **Schedule:** Every 12 hours (0 _/12 _ \* \*)
+- **Status:** ✅ Enabled by default
+- **Schedule:** 5 AM daily (0 5 \* \* \*)
 - **Retention:** 24 hours
 - **S3 Bucket:** playwright-test-artifacts
 
 **Environment Variables:**
 
-- `PLAYGROUND_CLEANUP_ENABLED`: false
-- `PLAYGROUND_CLEANUP_CRON`: "0 _/12 _ \* \*"
+- `PLAYGROUND_CLEANUP_ENABLED`: true
+- `PLAYGROUND_CLEANUP_CRON`: "0 5 \* \* \*"
 - `PLAYGROUND_CLEANUP_MAX_AGE_HOURS`: 24
 - `S3_TEST_BUCKET_NAME`: "playwright-test-artifacts"
 
@@ -672,12 +672,12 @@ graph TB
 
 ### Recommended Schedule
 
-| Strategy            | Schedule       | Rationale                            |
-| ------------------- | -------------- | ------------------------------------ |
-| Monitor Results     | 2 AM Daily     | Off-peak hours, sufficient frequency |
-| Job Runs            | 3 AM Daily     | After monitor cleanup, off-peak      |
-| Playground          | Every 12 Hours | Short retention, frequent cleanup    |
-| Webhook Idempotency | 4 AM Daily     | Clean expired webhook dedup records  |
+| Strategy            | Schedule   | Rationale                            |
+| ------------------- | ---------- | ------------------------------------ |
+| Monitor Results     | 2 AM Daily | Off-peak hours, sufficient frequency |
+| Job Runs            | 3 AM Daily | After monitor cleanup, off-peak      |
+| Playground          | 5 AM Daily | After other cleanups, daily cycle    |
+| Webhook Idempotency | 4 AM Daily | Clean expired webhook dedup records  |
 
 ---
 
@@ -786,27 +786,27 @@ if (!lock) {
 Retention periods are configured per plan in the database (`plan_limits` table).
 Environment variables control operational settings only (schedules, batch sizes, safety limits).
 
-| Variable                                  | Default        | Description                        |
-| ----------------------------------------- | -------------- | ---------------------------------- |
-| `MONITOR_CLEANUP_ENABLED`                 | `true`         | Enable monitor results cleanup     |
-| `MONITOR_CLEANUP_CRON`                    | `0 2 * * *`    | Cron schedule for monitor cleanup  |
-| `MONITOR_CLEANUP_BATCH_SIZE`              | `1000`         | Records per batch                  |
-| `MONITOR_CLEANUP_SAFETY_LIMIT`            | `1000000`      | Max records per run                |
-| `MONITOR_AGGREGATES_CLEANUP_ENABLED`      | `true`         | Enable monitor aggregates cleanup  |
-| `MONITOR_AGGREGATES_CLEANUP_CRON`         | `30 2 * * *`   | Cron schedule (2:30 AM daily)      |
-| `MONITOR_AGGREGATES_CLEANUP_BATCH_SIZE`   | `1000`         | Records per batch                  |
-| `MONITOR_AGGREGATES_CLEANUP_SAFETY_LIMIT` | `500000`       | Max records per run                |
-| `JOB_RUNS_CLEANUP_ENABLED`                | `true`         | Enable job runs cleanup            |
-| `JOB_RUNS_CLEANUP_CRON`                   | `0 3 * * *`    | Cron schedule for job cleanup      |
-| `JOB_RUNS_CLEANUP_BATCH_SIZE`             | `100`          | Records per batch                  |
-| `JOB_RUNS_CLEANUP_SAFETY_LIMIT`           | `10000`        | Max records per run                |
-| `PLAYGROUND_CLEANUP_ENABLED`              | `false`        | Enable playground cleanup          |
-| `PLAYGROUND_CLEANUP_CRON`                 | `0 */12 * * *` | Cron schedule                      |
-| `PLAYGROUND_CLEANUP_MAX_AGE_HOURS`        | `24`           | Max age in hours                   |
-| `WEBHOOK_CLEANUP_ENABLED`                 | `true`         | Enable webhook idempotency cleanup |
-| `WEBHOOK_CLEANUP_CRON`                    | `0 4 * * *`    | Cron schedule                      |
-| `WEBHOOK_CLEANUP_BATCH_SIZE`              | `1000`         | Records per batch                  |
-| `WEBHOOK_CLEANUP_SAFETY_LIMIT`            | `100000`       | Max records per run                |
+| Variable                                  | Default      | Description                        |
+| ----------------------------------------- | ------------ | ---------------------------------- |
+| `MONITOR_CLEANUP_ENABLED`                 | `true`       | Enable monitor results cleanup     |
+| `MONITOR_CLEANUP_CRON`                    | `0 2 * * *`  | Cron schedule for monitor cleanup  |
+| `MONITOR_CLEANUP_BATCH_SIZE`              | `1000`       | Records per batch                  |
+| `MONITOR_CLEANUP_SAFETY_LIMIT`            | `1000000`    | Max records per run                |
+| `MONITOR_AGGREGATES_CLEANUP_ENABLED`      | `true`       | Enable monitor aggregates cleanup  |
+| `MONITOR_AGGREGATES_CLEANUP_CRON`         | `30 2 * * *` | Cron schedule (2:30 AM daily)      |
+| `MONITOR_AGGREGATES_CLEANUP_BATCH_SIZE`   | `1000`       | Records per batch                  |
+| `MONITOR_AGGREGATES_CLEANUP_SAFETY_LIMIT` | `500000`     | Max records per run                |
+| `JOB_RUNS_CLEANUP_ENABLED`                | `true`       | Enable job runs cleanup            |
+| `JOB_RUNS_CLEANUP_CRON`                   | `0 3 * * *`  | Cron schedule for job cleanup      |
+| `JOB_RUNS_CLEANUP_BATCH_SIZE`             | `100`        | Records per batch                  |
+| `JOB_RUNS_CLEANUP_SAFETY_LIMIT`           | `10000`      | Max records per run                |
+| `PLAYGROUND_CLEANUP_ENABLED`              | `true`       | Enable playground cleanup          |
+| `PLAYGROUND_CLEANUP_CRON`                 | `0 5 * * *`  | Cron schedule (daily at 5 AM)      |
+| `PLAYGROUND_CLEANUP_MAX_AGE_HOURS`        | `24`         | Max age in hours                   |
+| `WEBHOOK_CLEANUP_ENABLED`                 | `true`       | Enable webhook idempotency cleanup |
+| `WEBHOOK_CLEANUP_CRON`                    | `0 4 * * *`  | Cron schedule                      |
+| `WEBHOOK_CLEANUP_BATCH_SIZE`              | `1000`       | Records per batch                  |
+| `WEBHOOK_CLEANUP_SAFETY_LIMIT`            | `100000`     | Max records per run                |
 
 ---
 

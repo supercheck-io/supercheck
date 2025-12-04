@@ -67,6 +67,7 @@ The memory management system addresses three critical areas:
 ### ✅ **Major Architectural Change: Container-Based Execution**
 
 **All test execution now runs exclusively in Docker containers:**
+
 - ✅ **No Local File Cleanup**: Container filesystem is isolated and destroyed after execution
 - ✅ **No Local Folder Accumulation**: No `playwright-reports/` or `k6-reports/` folders accumulate
 - ✅ **Automatic Cleanup**: Container cleanup is automatic and guaranteed
@@ -116,6 +117,7 @@ Real-time monitoring with configurable thresholds and automated responses:
 - **Per-Organization Isolation**: Separate capacity tracking per organization prevents cross-contamination
 
 **Memory Impact:**
+
 - Minimal Redis memory footprint for capacity counters
 - Automatic cleanup prevents unbounded growth
 - Organization-specific keys scale linearly with customer base
@@ -288,6 +290,7 @@ Enhanced file processing with memory-conscious operations:
 - **Directory Processing**: Systematic file-by-file upload with GC
 
 **S3 Upload Process:**
+
 - Upload file to S3 bucket
 - Add key to uploaded keys list
 - Force garbage collection after each upload
@@ -298,12 +301,14 @@ Enhanced file processing with memory-conscious operations:
 **All test execution occurs exclusively within Docker containers with zero host filesystem dependencies for test files.**
 
 #### Test Script Handling
+
 - **NO host files created**: Test scripts passed inline to containers (base64-encoded)
 - **Container location**: Scripts written to `/tmp/{testId}.spec.mjs` inside container
 - **Lifecycle**: Automatically destroyed when container is removed
 - **No cleanup required**: Container destruction handles all test file cleanup
 
 #### Report Artifacts
+
 - **Container generation**: Reports written to `/tmp/playwright-reports/` inside container (tmpfs)
 - **Extraction**: `docker cp` extracts reports to OS temp directory before container destruction
 - **OS temp location**: `$TMPDIR/supercheck-reports-{uniqueRunId}/`
@@ -312,6 +317,7 @@ Enhanced file processing with memory-conscious operations:
 - **Retention**: Permanent in S3, ephemeral on host
 
 #### Container Lifecycle
+
 ```
 1. Spawn container with:
    - node_modules mounted read-only
@@ -337,6 +343,7 @@ Enhanced file processing with memory-conscious operations:
 ```
 
 #### Benefits
+
 - ✅ **Zero host filesystem pollution**: No test files written to host
 - ✅ **Automatic cleanup**: Container destruction cleans everything inside
 - ✅ **True isolation**: Test scripts never touch host persistent storage
@@ -344,6 +351,7 @@ Enhanced file processing with memory-conscious operations:
 - ✅ **No disk exhaustion**: OS temp is ephemeral and managed by OS
 
 **Key Points:**
+
 - Test scripts never written to host persistent storage
 - Container destruction automatically cleans up all internal files
 - Only extracted reports briefly exist in OS temp
@@ -357,12 +365,14 @@ Enhanced file processing with memory-conscious operations:
 Optimized Docker configuration for memory management:
 
 **Worker Service:**
+
 - Memory limit: 4GB
 - Memory reservation: 2GB
 - Garbage collection enabled
 - Max old space size: 2048MB
 
 **Container Execution:**
+
 - Memory limit: 2048MB (Configurable via `CONTAINER_MEMORY_LIMIT_MB`)
 - CPU limit: 1.5 cores (Configurable via `CONTAINER_CPU_LIMIT`)
 
@@ -371,6 +381,7 @@ Optimized Docker configuration for memory management:
 Memory-limited Redis with proper resource constraints:
 
 **Redis Settings:**
+
 - Max memory: 512MB
 - Memory policy: noeviction
 - Memory limit: 512MB
@@ -391,6 +402,7 @@ Memory-limited Redis with proper resource constraints:
 Real-time insights into system performance:
 
 **Monitoring Process:**
+
 - Get current process memory usage
 - Calculate heap used in MB
 - Compare against memory threshold
@@ -398,6 +410,7 @@ Real-time insights into system performance:
 - Log memory status
 
 **Monitoring Features:**
+
 - Real-time memory usage tracking
 - Active execution monitoring
 - Stale execution detection
@@ -411,11 +424,13 @@ Real-time insights into system performance:
 Proper initialization and cleanup across service lifecycle:
 
 **Initialization:**
+
 - Setup memory monitoring
 - Configure garbage collection intervals (30 seconds)
 - Initialize execution tracking
 
 **Destruction:**
+
 - Clear monitoring intervals
 - Clear garbage collection intervals
 - Cleanup active executions
@@ -427,6 +442,7 @@ Proper initialization and cleanup across service lifecycle:
 Comprehensive cleanup procedures:
 
 **Cleanup Process:**
+
 - Monitor current memory usage
 - Calculate heap used in MB
 - Check if memory exceeds 90% of threshold
@@ -441,19 +457,22 @@ Comprehensive cleanup procedures:
 Configure memory management via environment variables:
 
 **Redis Configuration:**
+
 - REDIS_HOST: redis
 - REDIS_PORT: 6379
 - REDIS_PASSWORD: secure-password
 
 **TTL Configuration (optional overrides):**
+
 - REDIS_JOB_TTL: 604800 (7 days)
 - REDIS_EVENT_TTL: 86400 (24 hours)
 - REDIS_METRICS_TTL: 172800 (48 hours)
 - REDIS_CLEANUP_BATCH_SIZE: 100
 
 **Playground Cleanup:**
+
 - PLAYGROUND_CLEANUP_ENABLED: true
-- PLAYGROUND_CLEANUP_CRON: 0 */12 * * *
+- PLAYGROUND_CLEANUP_CRON: 0 5 \* \* \*
 - PLAYGROUND_CLEANUP_MAX_AGE_HOURS: 24
 
 ### Development Environment

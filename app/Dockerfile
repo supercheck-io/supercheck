@@ -1,5 +1,6 @@
-# Use platform-agnostic base image with LTS version for better availability
-FROM node:20-slim AS base
+# Use platform-agnostic base image with pinned LTS version for reproducible builds
+# Node 20.18 is the latest LTS as of Dec 2024
+FROM node:20.18-slim AS base
 
 # Install system dependencies in base stage for better layer caching
 RUN apt-get update && apt-get install -y \

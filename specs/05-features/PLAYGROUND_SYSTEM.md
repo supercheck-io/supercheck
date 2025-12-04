@@ -53,12 +53,14 @@ graph TB
 ## Key Features
 
 ### 1. Monaco Code Editor
+
 - TypeScript/JavaScript syntax highlighting
 - Auto-completion for Playwright APIs
 - Real-time error detection
 - Code formatting support
 
 ### 2. Template Library
+
 - Login flows
 - Form submissions
 - API testing patterns
@@ -66,12 +68,14 @@ graph TB
 - Performance testing
 
 ### 3. AI-Powered Fixes
+
 - Automatic error analysis
 - Intelligent code suggestions
 - One-click fix application
 - Diff viewer for changes
 
 ### 4. Multi-Location Execution
+
 - US East, US West, EU, APAC
 - Geographic performance testing
 - Latency comparison
@@ -108,8 +112,9 @@ sequenceDiagram
 ## Data Lifecycle
 
 ### Cleanup Strategy
+
 - **Retention:** 24 hours
-- **Schedule:** Every 12 hours
+- **Schedule:** 5 AM daily
 - **Target:** S3 playground artifacts
 - **Tracking:** Via audit logs
 
@@ -144,6 +149,7 @@ Playground tests support **real-time cancellation** during execution.
 ### UI Consistency with Jobs
 
 The Playground Run button matches the Jobs Run button UI:
+
 - **Run Button**: Blue button with Zap icon, disabled while running
 - **Cancel Button**: Red circular overlay on top-right when running
 - **Confirmation Dialog**: Same dialog as Jobs page before cancelling
