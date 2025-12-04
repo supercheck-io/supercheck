@@ -143,6 +143,15 @@ function getPolarPlugin() {
             );
             await handleSubscriptionCanceled(payload);
           },
+          // Handle subscription uncancellation - user reverses cancellation during grace period
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onSubscriptionUncanceled: async (payload: any) => {
+            console.log("[Polar] Webhook: subscription.uncanceled");
+            const { handleSubscriptionUncanceled } = await import(
+              "@/lib/webhooks/polar-webhooks"
+            );
+            await handleSubscriptionUncanceled(payload);
+          },
           // CRITICAL: Handle subscription revocation - immediate access termination
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           onSubscriptionRevoked: async (payload: any) => {
