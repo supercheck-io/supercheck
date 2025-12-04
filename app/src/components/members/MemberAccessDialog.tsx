@@ -36,6 +36,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import {
+  isDisposableEmail,
+  getDisposableEmailErrorMessage,
+} from "@/lib/validations/disposable-email-domains";
 
 interface Project {
   id: string;
@@ -59,6 +63,7 @@ interface MemberAccessDialogProps {
   projects: Project[];
   onSubmit: (memberData: MemberData) => Promise<void>;
   isLoading?: boolean;
+  isCloudMode?: boolean;
 }
 
 const accessLevels = [
@@ -157,6 +162,7 @@ export function MemberAccessDialog({
   projects,
   onSubmit,
   isLoading = false,
+  isCloudMode = true,
 }: MemberAccessDialogProps) {
   const [formData, setFormData] = useState<MemberData>({
     email: "",
@@ -223,6 +229,16 @@ export function MemberAccessDialog({
       role: formData.role,
       selectedProjects: formData.selectedProjects,
     };
+
+    // Check for disposable email in cloud mode (invite only)
+    if (
+      mode === "invite" &&
+      isCloudMode &&
+      isDisposableEmail(dataToValidate.email)
+    ) {
+      toast.error(getDisposableEmailErrorMessage());
+      return;
+    }
 
     // Validate form data using appropriate schema
     try {

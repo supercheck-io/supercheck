@@ -42,6 +42,7 @@ export const {
   signOut,
   forgetPassword,
   resetPassword,
+  sendVerificationEmail,
   // Organization methods
   organization: {
     create: createOrganization,

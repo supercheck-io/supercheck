@@ -9,12 +9,16 @@ import {
   checkPasswordResetRateLimit,
   getClientIP,
 } from "@/lib/session-security";
-import { renderPasswordResetEmail } from "@/lib/email-renderer";
+import {
+  renderPasswordResetEmail,
+  renderEmailVerificationEmail,
+} from "@/lib/email-renderer";
 import { nextCookies } from "better-auth/next-js";
 import {
   isPolarEnabled,
   getPolarConfig,
   getPolarProducts,
+  isCloudHosted,
 } from "@/lib/feature-flags";
 
 /**
@@ -235,9 +239,44 @@ export const auth = betterAuth({
       prompt: "select_account consent",
     },
   },
+  // Email verification - only required in cloud mode
+  emailVerification: isCloudHosted()
+    ? {
+        sendVerificationEmail: async ({ user, url }) => {
+          const emailService = EmailService.getInstance();
+
+          try {
+            // Render email using react-email template
+            const emailContent = await renderEmailVerificationEmail({
+              verificationUrl: url,
+              userEmail: user.email,
+              userName: user.name || undefined,
+            });
+
+            const result = await emailService.sendEmail({
+              to: user.email,
+              subject: emailContent.subject,
+              text: emailContent.text,
+              html: emailContent.html,
+            });
+
+            if (!result.success) {
+              console.error("Failed to send verification email:", result.error);
+              throw new Error("Failed to send verification email");
+            }
+
+            console.log("Verification email sent successfully to:", user.email);
+          } catch (error) {
+            console.error("Error sending verification email:", error);
+            throw error;
+          }
+        },
+      }
+    : undefined,
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: false,
+    // Only require email verification in cloud mode
+    requireEmailVerification: isCloudHosted(),
     sendResetPassword: async ({ user, url }, request) => {
       const emailService = EmailService.getInstance();
 
