@@ -269,11 +269,13 @@ export function MemberAccessDialog({
         `Error ${mode === "invite" ? "inviting" : "updating"} member:`,
         error
       );
-      toast.error(
-        mode === "invite"
-          ? "Failed to send invitation"
-          : "Failed to update member access"
-      );
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : mode === "invite"
+            ? "Failed to send invitation"
+            : "Failed to update member access";
+      toast.error(errorMessage);
     }
   };
 

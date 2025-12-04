@@ -92,10 +92,10 @@ export default function StatusPagesList() {
 
   useEffect(() => {
     const create = searchParams.get("create");
-    if (create === "true") {
+    if (create === "true" && canCreate) {
       setIsCreateDialogOpen(true);
     }
-  }, [searchParams]);
+  }, [searchParams, canCreate]);
 
   const loadStatusPages = async () => {
     try {

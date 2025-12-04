@@ -67,7 +67,7 @@ export function hasPermission(
       } else if (resource === "tag") {
         result = ["view", "create", "update"].includes(action); // Cannot delete tags
       } else if (resource === "run") {
-        result = ["view"].includes(action); // Cannot delete runs
+        result = ["view", "cancel"].includes(action); // Can cancel runs but not delete
       } else if (resource === "apiKey") {
         result = ["view", "create", "update"].includes(action); // Cannot delete API keys
       } else if (resource === "notification") {
@@ -152,7 +152,10 @@ export function canCreateTests(role: Role): boolean {
  * Check if user can edit monitors (includes update and manage actions like pause/resume)
  */
 export function canEditMonitors(role: Role): boolean {
-  return hasPermission(role, "monitor", "update") || hasPermission(role, "monitor", "manage");
+  return (
+    hasPermission(role, "monitor", "update") ||
+    hasPermission(role, "monitor", "manage")
+  );
 }
 
 /**
@@ -168,7 +171,6 @@ export function canDeleteMonitors(role: Role): boolean {
 export function canCreateMonitors(role: Role): boolean {
   return hasPermission(role, "monitor", "create");
 }
-
 
 /**
  * Check if user can manage organization
@@ -245,6 +247,14 @@ export function canManageAPIKeys(role: Role): boolean {
  */
 export function canDeleteRuns(role: Role): boolean {
   return hasPermission(role, "run", "delete");
+}
+
+/**
+ * Check if user can cancel running executions
+ * Editors and above can cancel runs (anyone who can trigger jobs/tests)
+ */
+export function canCancelRuns(role: Role): boolean {
+  return hasPermission(role, "run", "cancel");
 }
 
 /**
@@ -416,4 +426,3 @@ export function canManageStatusPages(role: Role): boolean {
     hasPermission(role, "status_page", "delete")
   );
 }
-

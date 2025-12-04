@@ -164,7 +164,10 @@ const Playground: React.FC<PlaygroundProps> = ({
 
     window.addEventListener("unhandledrejection", handleUnhandledRejection);
     return () =>
-      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+      window.removeEventListener(
+        "unhandledrejection",
+        handleUnhandledRejection
+      );
   }, []);
 
   // Fetch current user ID for permissions
@@ -194,9 +197,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [performanceRunId, setPerformanceRunId] = useState<string | null>(null);
   const [performanceLocation, setPerformanceLocation] =
-    useState<PerformanceLocation>(
-      initialPerformanceLocation ?? "global"
-    );
+    useState<PerformanceLocation>(initialPerformanceLocation ?? "global");
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   // Only set testId from initialTestId if we're on a specific test page
@@ -281,7 +282,8 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [aiCreateExplanation, setAICreateExplanation] = useState<string>("");
   const [isAICreating, setIsAICreating] = useState(false);
   const [isStreamingAICreate, setIsStreamingAICreate] = useState(false);
-  const [streamingCreateContent, setStreamingCreateContent] = useState<string>("");
+  const [streamingCreateContent, setStreamingCreateContent] =
+    useState<string>("");
 
   // Derived state: is current script validated and passed?
   const isCurrentScriptValidated =
@@ -429,9 +431,7 @@ const Playground: React.FC<PlaygroundProps> = ({
           createdAt: result.createdAt || null,
           location:
             (result.location as PerformanceLocation | null) ??
-            (resolvedType === "performance"
-              ? "global"
-              : null),
+            (resolvedType === "performance" ? "global" : null),
         });
 
         // Update the editor content
@@ -448,9 +448,7 @@ const Playground: React.FC<PlaygroundProps> = ({
           createdAt: result.createdAt || null,
           location:
             (result.location as PerformanceLocation | null) ??
-            (resolvedType === "performance"
-              ? "global"
-              : null),
+            (resolvedType === "performance" ? "global" : null),
         });
 
         if (resolvedType === "performance") {
@@ -536,9 +534,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   useEffect(() => {
     if (initialTestData) {
       const resolvedType = normalizeTestTypeValue(initialTestData.type);
-      const resolvedPriority = normalizePriorityValue(
-        initialTestData.priority
-      );
+      const resolvedPriority = normalizePriorityValue(initialTestData.priority);
       // If we have initial test data from the server, use it
       // Update the initial form values to match the loaded test
       setInitialFormValues({
@@ -608,7 +604,9 @@ const Playground: React.FC<PlaygroundProps> = ({
         description: testCase.description || "", // Convert null to empty string for validation
       };
       const normalizedType = normalizeTestTypeValue(validationData.type);
-      const normalizedPriority = normalizePriorityValue(validationData.priority);
+      const normalizedPriority = normalizePriorityValue(
+        validationData.priority
+      );
 
       if (
         normalizedType !== testCase.type ||
@@ -790,11 +788,11 @@ const Playground: React.FC<PlaygroundProps> = ({
                   ? data.reportStatus.toLowerCase()
                   : null;
 
-              const isCancelled = 
+              const isCancelled =
                 normalizedStatus === "cancelled" ||
                 derivedStatus === "cancelled" ||
                 reportStatus === "cancelled";
-                
+
               const isTerminalStatus =
                 isCancelled ||
                 normalizedStatus === "completed" ||
@@ -951,7 +949,10 @@ const Playground: React.FC<PlaygroundProps> = ({
       setTestExecutionStatus("failed");
 
       toast.error("Error running script", {
-        description: error instanceof Error ? error.message : "Unknown error occurred during test execution",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unknown error occurred during test execution",
         duration: 5000,
       });
     }
@@ -1056,7 +1057,7 @@ const Playground: React.FC<PlaygroundProps> = ({
         setIsRunning(false);
         setIsReportLoading(false);
         setTestExecutionStatus("failed");
-        
+
         // Update report URL to trigger refresh with cancellation info
         // The ReportViewer will detect the cancellation from the API response
         if (currentRunId) {
@@ -1064,7 +1065,7 @@ const Playground: React.FC<PlaygroundProps> = ({
           setReportUrl(apiUrl);
           setActiveTab("report");
         }
-        
+
         setCurrentRunId(null);
       } else {
         toast.error("Failed to cancel run", {
@@ -1095,7 +1096,9 @@ const Playground: React.FC<PlaygroundProps> = ({
   };
 
   const handleAIFixStreamingEnd = () => {
-    console.log("[Playground] handleAIFixStreamingEnd called - setting isStreamingAIFix to false");
+    console.log(
+      "[Playground] handleAIFixStreamingEnd called - setting isStreamingAIFix to false"
+    );
     setIsStreamingAIFix(false);
   };
 
@@ -1203,8 +1206,7 @@ const Playground: React.FC<PlaygroundProps> = ({
     setTestExecutionStatus("none");
 
     toast.success("AI-generated code applied", {
-      description:
-        "New script applied to editor. Please validate and test.",
+      description: "New script applied to editor. Please validate and test.",
     });
   };
 
@@ -1299,7 +1301,11 @@ const Playground: React.FC<PlaygroundProps> = ({
                       <Button
                         onClick={isRunning ? undefined : runTest}
                         disabled={
-                          isRunning || isValidating || isAIAnalyzing || isAICreating || !userCanRunTests
+                          isRunning ||
+                          isValidating ||
+                          isAIAnalyzing ||
+                          isAICreating ||
+                          !userCanRunTests
                         }
                         className="flex items-center gap-2 bg-[hsl(221.2,83.2%,53.3%)] text-white hover:bg-[hsl(221.2,83.2%,48%)]"
                         size="sm"
@@ -1307,8 +1313,8 @@ const Playground: React.FC<PlaygroundProps> = ({
                           isRunning
                             ? "Test is currently running"
                             : !userCanRunTests
-                            ? "Insufficient permissions to run tests"
-                            : "Run test"
+                              ? "Insufficient permissions to run tests"
+                              : "Run test"
                         }
                       >
                         {isValidating ? (
@@ -1330,7 +1336,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                       </Button>
 
                       {/* Cancel Button - overlaid on top right when running */}
-                      {isRunning && !isCancelling && (
+                      {isRunning && !isCancelling && userCanRunTests && (
                         <TooltipProvider>
                           <Tooltip delayDuration={200}>
                             <TooltipTrigger asChild>
@@ -1352,16 +1358,23 @@ const Playground: React.FC<PlaygroundProps> = ({
                     </div>
 
                     {/* Cancel Confirmation Dialog */}
-                    <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+                    <AlertDialog
+                      open={showCancelConfirm}
+                      onOpenChange={setShowCancelConfirm}
+                    >
                       <AlertDialogContent>
                         <AlertDialogHeader>
                           <AlertDialogTitle>Cancel Execution?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            Are you sure you want to cancel this test execution? This action cannot be undone and the run will be marked as cancelled.
+                            Are you sure you want to cancel this test execution?
+                            This action cannot be undone and the run will be
+                            marked as cancelled.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>Continue Running</AlertDialogCancel>
+                          <AlertDialogCancel>
+                            Continue Running
+                          </AlertDialogCancel>
                           <AlertDialogAction
                             onClick={handleCancelRun}
                             className="bg-red-500 hover:bg-red-600"
@@ -1435,7 +1448,10 @@ const Playground: React.FC<PlaygroundProps> = ({
                               if (status === "passed") {
                                 setTestExecutionStatus("passed");
                                 setLastExecutedScript(editorContent);
-                              } else if (status === "failed" || status === "error") {
+                              } else if (
+                                status === "failed" ||
+                                status === "error"
+                              ) {
                                 setTestExecutionStatus("failed");
                               }
                             }
@@ -1491,9 +1507,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                         currentScript={editorContent}
                         testType={testCase.type || "browser"}
                         isVisible={
-                          !isAIAnalyzing &&
-                          !isAICreating &&
-                          userCanRunTests
+                          !isAIAnalyzing && !isAICreating && userCanRunTests
                         }
                         disabled={isRunning || isValidating}
                         onAICreateSuccess={handleAICreateSuccess}

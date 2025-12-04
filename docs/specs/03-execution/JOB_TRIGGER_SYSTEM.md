@@ -78,6 +78,7 @@ graph TB
 **Purpose:** Interactive job execution initiated by authenticated users through the web interface.
 
 **Characteristics:**
+
 - Real-time user feedback
 - Immediate capacity validation
 - Session-based authentication
@@ -85,6 +86,7 @@ graph TB
 - User-specific RBAC enforcement
 
 **Use Cases:**
+
 - Development and debugging
 - Ad-hoc test runs
 - Manual regression testing
@@ -124,6 +126,7 @@ sequenceDiagram
 **Purpose:** Programmatic job execution via API keys for CI/CD integration and external automation.
 
 **Characteristics:**
+
 - API key authentication
 - Rate limiting per key
 - No user session required
@@ -131,6 +134,7 @@ sequenceDiagram
 - Support for job parameters
 
 **Use Cases:**
+
 - CI/CD pipeline integration
 - Pre-deployment validation
 - Scheduled external triggers
@@ -173,6 +177,7 @@ sequenceDiagram
 **Purpose:** Automated time-based job execution using cron expressions.
 
 **Characteristics:**
+
 - Cron-based scheduling
 - No external authentication
 - System-initiated execution
@@ -180,6 +185,7 @@ sequenceDiagram
 - Prevents concurrent executions
 
 **Use Cases:**
+
 - Continuous monitoring
 - Nightly regression suites
 - Periodic smoke tests
@@ -275,6 +281,7 @@ graph LR
 ### Atomic Capacity Enforcement
 
 **✅ Race Condition Prevention**
+
 - All job triggers (Manual, Remote, Schedule) use atomic capacity management
 - Redis Lua scripts prevent concurrent requests from exceeding limits
 - Organization-specific capacity limits enforced at the trigger point
@@ -322,18 +329,19 @@ graph TB
 
 ### Capacity Limits by Plan
 
-| Plan | Running Capacity | Queued Capacity | Scope |
-|------|------------------|-----------------|-------|
-| **Plus** | 5 concurrent | 50 queued | Organization |
-| **Pro** | 10 concurrent | 100 queued | Organization |
-| **Unlimited** | 999 concurrent | 9999 queued | Organization |
+| Plan          | Running Capacity | Queued Capacity | Scope        |
+| ------------- | ---------------- | --------------- | ------------ |
+| **Plus**      | 5 concurrent     | 50 queued       | Organization |
+| **Pro**       | 10 concurrent    | 100 queued      | Organization |
+| **Unlimited** | 999 concurrent   | 9999 queued     | Organization |
 
 **Environment Overrides (Self-hosted):**
+
 - `RUNNING_CAPACITY`: Override plan-specific running limit
 - `QUEUED_CAPACITY`: Override plan-specific queued limit |
-| **Queued Capacity** | 50 | `QUEUED_CAPACITY` | Global |
-| **Execution Timeout** | 15 min | `JOB_EXECUTION_TIMEOUT_MS` | Per Job |
-| **Max Concurrent Tests** | 1 | `MAX_CONCURRENT_EXECUTIONS` | Per Worker |
+  | **Queued Capacity** | 50 | `QUEUED_CAPACITY` | Global |
+  | **Execution Timeout** | 15 min | `JOB_EXECUTION_TIMEOUT_MS` | Per Job |
+  | **Max Concurrent Tests** | 1 | `MAX_CONCURRENT_EXECUTIONS` | Per Worker |
 
 ## Security & Authorization
 
@@ -386,25 +394,27 @@ graph TB
 
 ### Security Considerations by Trigger Type
 
-| Security Aspect | Manual | Remote | Schedule |
-|----------------|--------|--------|----------|
-| **Authentication** | Session cookie | Bearer token | Internal JWT |
-| **Authorization** | RBAC + Project membership | API key → Job mapping | System-level |
-| **Rate Limiting** | Per user (10/min) | Per API key (configurable) | N/A |
-| **Audit Logging** | User ID + timestamp | API key ID + IP | System + cron ID |
-| **CSRF Protection** | Required | N/A | N/A |
-| **Polar Validation** | Yes | Yes | No (internal) |
+| Security Aspect      | Manual                    | Remote                     | Schedule         |
+| -------------------- | ------------------------- | -------------------------- | ---------------- |
+| **Authentication**   | Session cookie            | Bearer token               | Internal JWT     |
+| **Authorization**    | RBAC + Project membership | API key → Job mapping      | System-level     |
+| **Rate Limiting**    | Per user (10/min)         | Per API key (configurable) | N/A              |
+| **Audit Logging**    | User ID + timestamp       | API key ID + IP            | System + cron ID |
+| **CSRF Protection**  | Required                  | N/A                        | N/A              |
+| **Polar Validation** | Yes                       | Yes                        | No (internal)    |
 
 ### Security Enhancements
 
 #### **Remote Trigger Security**
 
 1. **Polar Customer Validation**
+
    - All remote triggers validate that the organization has a valid Polar customer
    - Blocks execution for deleted/invalid Polar customers with clear error message
    - Returns HTTP 402 for subscription/customer issues
 
 2. **Atomic API Key Counter**
+
    - API key usage statistics updated atomically using SQL `COALESCE + INCREMENT`
    - Prevents race conditions from concurrent requests overwriting counts
    - Non-blocking: failures don't prevent job execution
@@ -460,11 +470,13 @@ erDiagram
 **Type:** `varchar(50)`
 **Default:** `'manual'`
 **Values:**
+
 - `manual` - User-initiated via web UI
 - `remote` - API-triggered via API key
 - `schedule` - Cron-based automation
 
 **Indexes:**
+
 - `idx_runs_trigger` - Fast filtering by trigger type
 - `idx_runs_job_trigger` - Composite index for job + trigger queries
 - `idx_runs_created_trigger` - Timeline queries by trigger type
@@ -478,6 +490,7 @@ erDiagram
 **Authentication:** Session cookie
 
 **Request Body:**
+
 ```json
 {
   "jobId": "uuid",
@@ -486,6 +499,7 @@ erDiagram
 ```
 
 **Response:**
+
 ```json
 {
   "runId": "uuid",
@@ -502,11 +516,13 @@ erDiagram
 **Authentication:** Bearer token (API key)
 
 **Headers:**
+
 ```
 Authorization: Bearer job_abc123...
 ```
 
 **Response:**
+
 ```json
 {
   "runId": "uuid",
@@ -522,6 +538,7 @@ Authorization: Bearer job_abc123...
 **Endpoint:** `PATCH /api/jobs/:id/schedule`
 
 **Request Body:**
+
 ```json
 {
   "scheduled": true,
@@ -595,6 +612,7 @@ graph TB
 ## Best Practices
 
 ### For Manual Triggers
+
 - Provide clear feedback on queue position
 - Show estimated wait time
 - **Allow cancellation of queued and running jobs**
@@ -605,6 +623,26 @@ graph TB
 ### Overview
 
 Users can cancel running or queued jobs via the **Cancel API**. Cancellation uses Redis-based signaling to communicate between the app and distributed workers.
+
+### RBAC Permission Requirements
+
+**Permission:** `run:cancel`
+
+Cancellation is restricted based on user roles:
+
+| Role               | Can Cancel | Scope                     |
+| ------------------ | ---------- | ------------------------- |
+| **SUPER_ADMIN**    | ✅         | All runs                  |
+| **ORG_OWNER**      | ✅         | All runs in organization  |
+| **ORG_ADMIN**      | ✅         | All runs in organization  |
+| **PROJECT_ADMIN**  | ✅         | Runs in assigned projects |
+| **PROJECT_EDITOR** | ✅         | Runs in assigned projects |
+| **PROJECT_VIEWER** | ❌         | Cannot cancel             |
+
+**Permission Functions:**
+
+- `canCancelRuns(role)` - Client-side permission check
+- `canCancelRunInProject(userId, projectId, organizationId)` - Server-side API validation
 
 ### Cancellation Flow
 
@@ -621,7 +659,7 @@ sequenceDiagram
     UI->>API: POST /api/runs/{runId}/cancel
     API->>API: Validate RBAC permissions
     API->>Redis: SET supercheck:cancel:{runId} = 1
-    
+
     alt Job Waiting in Queue
         API->>API: Remove from BullMQ queue
         API->>API: Update DB status → error
@@ -632,7 +670,7 @@ sequenceDiagram
         Worker->>Container: docker kill
         Worker->>Redis: Clear cancellation signal
     end
-    
+
     API-->>UI: { success: true }
     UI-->>User: Show "Cancelled" status
 ```
@@ -643,7 +681,16 @@ sequenceDiagram
 
 **Authentication:** Session cookie (same as Manual Trigger)
 
-**Response:**
+**Authorization:** Requires `run:cancel` permission - PROJECT_EDITOR role or higher
+
+**Error Responses:**
+
+- `403`: "Access denied - You don't have permission to cancel runs. Only editors and admins can cancel executions."
+- `400`: "Run cannot be cancelled. Only running or pending runs can be cancelled."
+- `404`: "Run not found"
+
+**Success Response:**
+
 ```json
 {
   "success": true,
@@ -656,17 +703,18 @@ sequenceDiagram
 
 ### Cancellation States
 
-| Original State | After Cancel | Notes |
-|----------------|--------------|-------|
-| `pending` | `error` | Removed from queue |
-| `running` | `error` | Container killed (exit code 137) |
-| `passed` | N/A | Cannot cancel completed |
-| `failed` | N/A | Cannot cancel completed |
-| `error` | N/A | Cannot cancel completed |
+| Original State | After Cancel | Notes                            |
+| -------------- | ------------ | -------------------------------- |
+| `pending`      | `error`      | Removed from queue               |
+| `running`      | `error`      | Container killed (exit code 137) |
+| `passed`       | N/A          | Cannot cancel completed          |
+| `failed`       | N/A          | Cannot cancel completed          |
+| `error`        | N/A          | Cannot cancel completed          |
 
 ### UI Confirmation Dialog
 
 Before cancelling, users see a confirmation dialog:
+
 - **Title**: "Cancel Execution?"
 - **Description**: "Are you sure you want to cancel this job execution? This action cannot be undone and the run will be marked as cancelled."
 - **Actions**: "Continue Running" (cancel) or "Cancel Execution" (confirm)
@@ -674,6 +722,7 @@ Before cancelling, users see a confirmation dialog:
 ### UI Status Display
 
 Cancelled runs display as "Cancelled" (not "Error") in the UI:
+
 - Database stores `status: 'error'` with `errorDetails: 'Cancellation requested by user'`
 - UI detects cancellation keywords in `errorDetails` and displays "Cancelled" with Ban icon
 - Faceted filters correctly count cancelled runs separately from other errors
@@ -699,14 +748,14 @@ sequenceDiagram
     participant API as Status API
     participant DB as PostgreSQL
     participant Queue as BullMQ/Redis
-    
+
     UI->>API: GET /api/jobs/status/running
     API->>DB: Query runs with status='running'
-    
+
     loop For Each Running Job
         API->>Queue: getJob(runId)
         Queue-->>API: Job state or null
-        
+
         alt Job Running in Queue
             API->>API: Mark as valid
         else Job Not in Queue
@@ -714,13 +763,13 @@ sequenceDiagram
             API->>API: Mark as stale
         end
     end
-    
+
     API-->>UI: Return only valid running jobs
 ```
 
 ### When It Runs
 
-- **On Page Load**: `/api/jobs/status/running` is called by `JobContext` 
+- **On Page Load**: `/api/jobs/status/running` is called by `JobContext`
 - **On Refresh**: Ensures UI always shows accurate state
 - **Automatic**: No manual intervention required
 
@@ -753,6 +802,7 @@ sequenceDiagram
 ### Error Messages
 
 Stale jobs are marked with:
+
 ```typescript
 {
   status: "error",
@@ -768,14 +818,15 @@ Stale jobs are marked with:
 - ✅ **Real-time**: Updates happen on every page load
 - ✅ **User Transparency**: Users immediately see accurate status
 
-
 ### For Remote Triggers
+
 - Implement exponential backoff on 429 responses
 - Use webhook callbacks instead of polling
 - Set appropriate API key rate limits
 - Monitor API key usage patterns
 
 ### For Schedule Triggers
+
 - Use timezone-aware cron expressions
 - Prevent overlapping executions
 - Implement schedule drift detection
@@ -786,4 +837,3 @@ Stale jobs are marked with:
 - **API Keys:** See `API_KEY_SYSTEM.md` for detailed API key documentation
 - **Queue System:** See `EXECUTION_SYSTEM.md` for queue details
 - **Authentication:** See `AUTHENTICATION.md` for auth mechanisms
-

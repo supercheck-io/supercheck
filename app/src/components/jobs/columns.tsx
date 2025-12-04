@@ -326,7 +326,7 @@ function RunButton({ job }: { job: Job }) {
       </Button>
 
       {/* Cancel Button - overlaid on top right when running */}
-      {isRunning && (
+      {isRunning && hasPermission && (
         <TooltipProvider>
           <Tooltip delayDuration={200}>
             <TooltipTrigger asChild>

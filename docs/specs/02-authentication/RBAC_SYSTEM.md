@@ -359,35 +359,37 @@ PROJECT_EDITOR (Project-specific Role)
     ├── Edit access to assigned projects only
     ├── Can create/edit jobs, tests, monitors in assigned projects (but cannot delete)
     ├── Can create/edit variables and secrets (but cannot delete or view secret values)
+    ├── Can cancel running test executions in assigned projects
     └── Cannot manage organization or members
 
 PROJECT_VIEWER (Project-specific Role - Read Only)
     ├── View organization info
     ├── Read-only access to assigned projects
     ├── Can only VIEW jobs, tests, monitors, runs
+    ├── Cannot cancel running executions
     └── Cannot create, edit, or delete any resources
 ```
 
 ### Current Permission Matrix
 
-| Resource              | Super Admin | Org Owner | Org Admin | Project Admin          | Project Editor         | Project Viewer         |
-| --------------------- | ----------- | --------- | --------- | ---------------------- | ---------------------- | ---------------------- |
-| Users (ban/unban)     | ✅          | ❌        | ❌        | ❌                     | ❌                     | ❌                     |
-| Organizations         | ✅          | ✅ (own)  | ✅ (own)  | 👁️ (view)              | 👁️ (view)              | 👁️ (view)              |
-| Organization Members  | ✅          | ✅        | ✅        | 👁️ (view)              | 👁️ (view)              | 👁️ (view)              |
-| Projects              | ✅          | ✅        | ✅        | ✅ (assigned)          | 👁️ (assigned)          | 👁️ (assigned)          |
-| Project Members       | ✅          | ✅        | ✅        | ✅ (assigned projects) | 👁️ (assigned projects) | 👁️ (assigned projects) |
-| Jobs                  | ✅          | ✅        | ✅        | ✅ (assigned projects) | ✏️ (assigned projects) | 👁️ (assigned projects) |
-| Tests                 | ✅          | ✅        | ✅        | ✅ (assigned projects) | ✏️ (assigned projects) | 👁️ (assigned projects) |
-| Monitors              | ✅          | ✅        | ✅        | ✅ (assigned projects) | ✏️🎮 (assigned projects) | 👁️ (assigned projects) |
-| Runs                  | ✅          | ✅        | ✅        | ✅ (assigned projects) | 👁️ (assigned projects) | 👁️ (assigned projects) |
-| API Keys              | ✅          | ✅        | ✅        | ✅ (assigned projects) | ✏️ (assigned projects) | ❌                     |
-| Notifications         | ✅          | ✅        | ✅        | ✅ (assigned projects) | ✏️ (assigned projects) | 👁️ (assigned projects) |
-| Tags                  | ✅          | ✅        | ✅        | ✅ (assigned projects) | ✏️ (assigned projects) | 👁️ (assigned projects) |
+| Resource              | Super Admin | Org Owner | Org Admin | Project Admin          | Project Editor                     | Project Viewer         |
+| --------------------- | ----------- | --------- | --------- | ---------------------- | ---------------------------------- | ---------------------- |
+| Users (ban/unban)     | ✅          | ❌        | ❌        | ❌                     | ❌                                 | ❌                     |
+| Organizations         | ✅          | ✅ (own)  | ✅ (own)  | 👁️ (view)              | 👁️ (view)                          | 👁️ (view)              |
+| Organization Members  | ✅          | ✅        | ✅        | 👁️ (view)              | 👁️ (view)                          | 👁️ (view)              |
+| Projects              | ✅          | ✅        | ✅        | ✅ (assigned)          | 👁️ (assigned)                      | 👁️ (assigned)          |
+| Project Members       | ✅          | ✅        | ✅        | ✅ (assigned projects) | 👁️ (assigned projects)             | 👁️ (assigned projects) |
+| Jobs                  | ✅          | ✅        | ✅        | ✅ (assigned projects) | ✏️ (assigned projects)             | 👁️ (assigned projects) |
+| Tests                 | ✅          | ✅        | ✅        | ✅ (assigned projects) | ✏️ (assigned projects)             | 👁️ (assigned projects) |
+| Monitors              | ✅          | ✅        | ✅        | ✅ (assigned projects) | ✏️🎮 (assigned projects)           | 👁️ (assigned projects) |
+| Runs                  | ✅          | ✅        | ✅        | ✅ (assigned projects) | ✅ view+cancel (assigned projects) | 👁️ (assigned projects) |
+| API Keys              | ✅          | ✅        | ✅        | ✅ (assigned projects) | ✏️ (assigned projects)             | ❌                     |
+| Notifications         | ✅          | ✅        | ✅        | ✅ (assigned projects) | ✏️ (assigned projects)             | 👁️ (assigned projects) |
+| Tags                  | ✅          | ✅        | ✅        | ✅ (assigned projects) | ✏️ (assigned projects)             | 👁️ (assigned projects) |
 | **Variables/Secrets** |
-| Variable Create/Edit  | ✅          | ✅        | ✅        | ✅ (assigned projects) | ✅ (assigned projects) | ❌                     |
-| Variable Delete       | ✅          | ✅        | ✅        | ✅ (assigned projects) | ❌                     | ❌                     |
-| Secret Values View    | ✅          | ✅        | ✅        | ✅ (assigned projects) | ❌                     | ❌                     |
+| Variable Create/Edit  | ✅          | ✅        | ✅        | ✅ (assigned projects) | ✅ (assigned projects)             | ❌                     |
+| Variable Delete       | ✅          | ✅        | ✅        | ✅ (assigned projects) | ❌                                 | ❌                     |
+| Secret Values View    | ✅          | ✅        | ✅        | ✅ (assigned projects) | ❌                                 | ❌                     |
 
 Legend: ✅ = Full Access, ✏️ = Create/Edit Only (no delete), ✏️🎮 = Create/Edit/Manage (no delete), 👁️ = View Only, ❌ = No Access
 
@@ -471,6 +473,51 @@ The variable management system now implements granular permission control, allow
 - **Edit Actions**: Available to users with create/edit permissions
 - **Delete Actions**: Restricted to users with delete permissions
 - **Secret Visibility Toggle**: Only available to users with secret viewing permissions
+
+### Run Cancellation Permissions
+
+**Enhanced Permission Model (Latest Update):**
+
+The run cancellation system implements proper RBAC control, allowing `project_editor` and above roles to cancel running or pending test executions while restricting `project_viewer` to view-only access.
+
+**Permission Functions:**
+
+- `canCancelRuns()` (client-side): Checks if the user's role can cancel executions
+- `canCancelRunInProject()` (server-side): Validates cancellation permission with organization context
+
+**Permission Rules:**
+
+- **ORG_OWNER/ORG_ADMIN**: Can cancel runs in any project of their organization
+- **PROJECT_ADMIN/PROJECT_EDITOR**: Can cancel runs in their assigned projects only
+- **PROJECT_VIEWER**: Cannot cancel runs (view-only access)
+
+**Security Model:**
+
+- **Server-side Validation**: API route `/api/runs/[runId]/cancel` checks permissions before processing
+- **Client-side UI Control**: Cancel buttons are disabled/hidden for PROJECT_VIEWER
+- **Audit Logging**: All cancellation operations are logged with user context
+
+**Frontend Integration:**
+
+- **ExecutionsDialog**: Cancel button disabled for PROJECT_VIEWER role
+- **Jobs Columns**: Cancel button only renders when user has permission
+- **Playground**: Cancel button only renders when user can run tests
+
+**Components with Cancel Permission:**
+
+| Component        | Location                                           | Permission Check                 |
+| ---------------- | -------------------------------------------------- | -------------------------------- |
+| ExecutionsDialog | `/src/components/executions/executions-dialog.tsx` | `canCancelRuns(normalizedRole)`  |
+| Jobs Table       | `/src/components/jobs/columns.tsx`                 | `hasPermission` prop from parent |
+| Playground       | `/src/components/playground/index.tsx`             | `userCanRunTests` prop           |
+
+**API Endpoint:**
+
+```typescript
+// POST /api/runs/[runId]/cancel
+// Requires: authentication + canCancelRunInProject permission
+// Returns: 403 if insufficient permissions
+```
 
 ### Permission Checking Architecture
 
@@ -709,6 +756,7 @@ API routes use Better Auth middleware for authentication and permission validati
 | run:view                         | ✅          | ✅        | ✅        | ✅              | ✅               | ✅             |
 | run:delete                       | ✅          | ✅        | ✅        | ✅              | ❌               | ❌             |
 | run:export                       | ✅          | ✅        | ✅        | ✅              | ❌               | ❌             |
+| run:cancel                       | ✅          | ✅        | ✅        | ✅              | ✅               | ❌             |
 | **API Key Management**           |
 | apiKey:create                    | ✅          | ✅        | ✅        | ✅              | ✅               | ❌             |
 | apiKey:update                    | ✅          | ✅        | ✅        | ✅              | ✅               | ❌             |
@@ -760,8 +808,17 @@ _\* PROJECT_ADMIN and PROJECT_EDITOR permissions apply only to their assigned pr
 - `/app/src/components/jobs/edit-job.tsx` - Job edit page with permission-controlled delete button
 - `/app/src/components/jobs/cicd-settings.tsx` - CI/CD settings with permission-controlled API key delete buttons
 - `/app/src/components/jobs/data-table-row-actions.tsx` - Job table row actions with permission checking
+- `/app/src/components/jobs/columns.tsx` - Job table columns with permission-controlled cancel button
 - `/app/src/components/alerts/notification-channels-component.tsx` - Notification channel management with permission controls
 - `/app/src/components/alerts/notification-channels-columns.tsx` - Notification channel table columns with conditional delete buttons
+
+### Run Cancellation
+
+- `/app/src/lib/rbac/client-permissions.ts` - Client-side `canCancelRuns()` function
+- `/app/src/lib/rbac/middleware.ts` - Server-side `canCancelRunInProject()` function
+- `/app/src/app/api/runs/[runId]/cancel/route.ts` - Cancel API with RBAC enforcement
+- `/app/src/components/executions/executions-dialog.tsx` - Executions dialog with permission-controlled cancel
+- `/app/src/components/playground/index.tsx` - Playground with permission-controlled cancel
 
 ### Better Auth Configuration Files
 
@@ -949,13 +1006,26 @@ Following RBAC best practices, all variable permissions have been centralized in
 
 ```typescript
 // middleware.ts - Lines 208-325
-export async function canCreateVariableInProject(userId: string, projectId: string): Promise<boolean>
-export async function canUpdateVariableInProject(userId: string, projectId: string): Promise<boolean>
-export async function canDeleteVariableInProject(userId: string, projectId: string): Promise<boolean>
-export async function canViewSecretVariableInProject(userId: string, projectId: string): Promise<boolean>
+export async function canCreateVariableInProject(
+  userId: string,
+  projectId: string
+): Promise<boolean>;
+export async function canUpdateVariableInProject(
+  userId: string,
+  projectId: string
+): Promise<boolean>;
+export async function canDeleteVariableInProject(
+  userId: string,
+  projectId: string
+): Promise<boolean>;
+export async function canViewSecretVariableInProject(
+  userId: string,
+  projectId: string
+): Promise<boolean>;
 ```
 
 **Design Benefits:**
+
 1. **Single Source of Truth**: All variable permissions in one place
 2. **DRY Principle**: No code duplication across endpoints
 3. **Organization Context**: Each function validates organization before permission check
@@ -964,6 +1034,7 @@ export async function canViewSecretVariableInProject(userId: string, projectId: 
 
 **How It Works:**
 Each function:
+
 - Takes `userId` and `projectId` as parameters
 - Queries database for organization context from project
 - Calls `getUserOrgRole(userId, organizationId)` with proper organization context
@@ -971,35 +1042,36 @@ Each function:
 - Prevents context loss between endpoints
 
 **API Endpoint Usage:**
+
 ```typescript
 // All endpoints use centralized functions - no inline permission checks
 
 // GET /api/projects/[id]/variables
-const canCreate = await canCreateVariableInProject(userId, projectId)
-const canDelete = await canDeleteVariableInProject(userId, projectId)
+const canCreate = await canCreateVariableInProject(userId, projectId);
+const canDelete = await canDeleteVariableInProject(userId, projectId);
 
 // POST /api/projects/[id]/variables
-const canCreate = await canCreateVariableInProject(userId, projectId)
+const canCreate = await canCreateVariableInProject(userId, projectId);
 
 // PUT /api/projects/[id]/variables/[variableId]
-const canUpdate = await canUpdateVariableInProject(userId, projectId)
+const canUpdate = await canUpdateVariableInProject(userId, projectId);
 
 // DELETE /api/projects/[id]/variables/[variableId]
-const canDelete = await canDeleteVariableInProject(userId, projectId)
+const canDelete = await canDeleteVariableInProject(userId, projectId);
 
 // POST /api/projects/[id]/variables/[variableId]/decrypt
-const canViewSecrets = await canViewSecretVariableInProject(userId, projectId)
+const canViewSecrets = await canViewSecretVariableInProject(userId, projectId);
 ```
 
 **Updated Role Permissions for Secrets:**
 
-| Role | Create | Update | Delete | View Secrets |
-|------|--------|--------|--------|--------------|
-| **ORG_OWNER** | ✅ | ✅ | ✅ | ✅ |
-| **ORG_ADMIN** | ✅ | ✅ | ✅ | ✅ |
-| **PROJECT_ADMIN** | ✅ | ✅ | ✅ | ✅ |
-| **PROJECT_EDITOR** | ✅ | ✅ | ❌ | ✅ |
-| **PROJECT_VIEWER** | ❌ | ❌ | ❌ | ❌ |
+| Role               | Create | Update | Delete | View Secrets |
+| ------------------ | ------ | ------ | ------ | ------------ |
+| **ORG_OWNER**      | ✅     | ✅     | ✅     | ✅           |
+| **ORG_ADMIN**      | ✅     | ✅     | ✅     | ✅           |
+| **PROJECT_ADMIN**  | ✅     | ✅     | ✅     | ✅           |
+| **PROJECT_EDITOR** | ✅     | ✅     | ❌     | ✅           |
+| **PROJECT_VIEWER** | ❌     | ❌     | ❌     | ❌           |
 
 PROJECT_EDITOR permissions upgraded to view secrets (can use in tests), but still cannot delete.
 
@@ -1029,3 +1101,44 @@ The system is now **production-ready** for enterprise deployments with strict se
 **Compliance Support**: SOC 2, ISO 27001, GDPR, HIPAA
 
 The system successfully bridges Better Auth's built-in features with custom business logic, providing a comprehensive RBAC solution that meets the complex requirements of a modern SaaS application while maintaining security best practices and developer productivity.
+
+---
+
+## Security Audit - Latest Updates (2025)
+
+### API Route Security Fixes
+
+**Fixed Issues:**
+
+1. **Monitor Notifications API** (`/api/monitors/[id]/notifications/route.ts`)
+   - **Issue**: GET, POST, DELETE endpoints had no authentication or authorization checks
+   - **Fix**: Added `requireAuth()`, organization membership check, and `hasPermission()` validation
+   - **Impact**: Prevented unauthorized access to monitor notification settings
+
+### Cancel Permission Implementation
+
+**New Permission Added:** `run:cancel`
+
+| Component        | Permission Check          | Status         |
+| ---------------- | ------------------------- | -------------- |
+| ExecutionsDialog | `canCancelRuns(role)`     | ✅ Implemented |
+| Jobs Table       | `hasPermission` prop      | ✅ Implemented |
+| Playground       | `userCanRunTests` prop    | ✅ Implemented |
+| Cancel API Route | `canCancelRunInProject()` | ✅ Implemented |
+
+**Files Updated:**
+
+- `/src/lib/rbac/permissions.ts` - Added `cancel` to run actions
+- `/src/lib/rbac/client-permissions.ts` - Added `canCancelRuns()` function
+- `/src/lib/rbac/middleware.ts` - Added `canCancelRunInProject()` function
+- `/src/app/api/runs/[runId]/cancel/route.ts` - Server-side permission check
+
+### Security Best Practices Verified
+
+| Check                                    | Status | Notes                               |
+| ---------------------------------------- | ------ | ----------------------------------- |
+| All DELETE routes have auth              | ✅     | Verified across all API routes      |
+| All POST routes with mutations have auth | ✅     | Including monitor notifications fix |
+| Cancel operations require proper role    | ✅     | PROJECT_EDITOR or higher            |
+| Server-side validation matches client    | ✅     | Consistent permission checks        |
+| Audit logging on sensitive operations    | ✅     | Cancellations are logged            |

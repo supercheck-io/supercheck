@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { monitorNotificationSettings, notificationProviders } from "@/db/schema";
+import {
+  monitorNotificationSettings,
+  notificationProviders,
+  monitors,
+} from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import {
+  requireAuth,
+  hasPermission,
+  getUserOrgRole,
+} from "@/lib/rbac/middleware";
+import { isSuperAdmin } from "@/lib/admin";
 
 export async function GET(
   request: NextRequest,
@@ -10,10 +20,52 @@ export async function GET(
   const params = await context.params;
   const { id } = params;
   if (!id) {
-    return NextResponse.json({ error: "Monitor ID is required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Monitor ID is required" },
+      { status: 400 }
+    );
   }
 
   try {
+    // Require authentication
+    const { userId } = await requireAuth();
+
+    // Get monitor to check permissions
+    const monitor = await db.query.monitors.findFirst({
+      where: eq(monitors.id, id),
+      columns: { organizationId: true, projectId: true },
+    });
+
+    if (!monitor) {
+      return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
+
+    // Check if user has access to this monitor
+    const userIsSuperAdmin = await isSuperAdmin();
+
+    if (!userIsSuperAdmin && monitor.organizationId) {
+      const orgRole = await getUserOrgRole(userId, monitor.organizationId);
+
+      if (!orgRole) {
+        return NextResponse.json(
+          { error: "Access denied: Not a member of this organization" },
+          { status: 403 }
+        );
+      }
+
+      const canView = await hasPermission("monitor", "view", {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId || undefined,
+      });
+
+      if (!canView) {
+        return NextResponse.json(
+          { error: "Insufficient permissions to view monitor notifications" },
+          { status: 403 }
+        );
+      }
+    }
+
     // Get all notification providers linked to this monitor
     const linkedProviders = await db
       .select({
@@ -25,13 +77,19 @@ export async function GET(
       .from(monitorNotificationSettings)
       .innerJoin(
         notificationProviders,
-        eq(monitorNotificationSettings.notificationProviderId, notificationProviders.id)
+        eq(
+          monitorNotificationSettings.notificationProviderId,
+          notificationProviders.id
+        )
       )
       .where(eq(monitorNotificationSettings.monitorId, id));
 
     return NextResponse.json(linkedProviders);
   } catch (error) {
-    console.error(`Error fetching notification settings for monitor ${id}:`, error);
+    console.error(
+      `Error fetching notification settings for monitor ${id}:`,
+      error
+    );
     return NextResponse.json(
       { error: "Failed to fetch notification settings" },
       { status: 500 }
@@ -46,12 +104,54 @@ export async function POST(
   const params = await context.params;
   const { id } = params;
   if (!id) {
-    return NextResponse.json({ error: "Monitor ID is required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Monitor ID is required" },
+      { status: 400 }
+    );
   }
 
   try {
+    // Require authentication
+    const { userId } = await requireAuth();
+
+    // Get monitor to check permissions
+    const monitor = await db.query.monitors.findFirst({
+      where: eq(monitors.id, id),
+      columns: { organizationId: true, projectId: true },
+    });
+
+    if (!monitor) {
+      return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
+
+    // Check if user has permission to update monitor notifications
+    const userIsSuperAdmin = await isSuperAdmin();
+
+    if (!userIsSuperAdmin && monitor.organizationId) {
+      const orgRole = await getUserOrgRole(userId, monitor.organizationId);
+
+      if (!orgRole) {
+        return NextResponse.json(
+          { error: "Access denied: Not a member of this organization" },
+          { status: 403 }
+        );
+      }
+
+      const canUpdate = await hasPermission("monitor", "update", {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId || undefined,
+      });
+
+      if (!canUpdate) {
+        return NextResponse.json(
+          { error: "Insufficient permissions to update monitor notifications" },
+          { status: 403 }
+        );
+      }
+    }
+
     const { notificationProviderId } = await request.json();
-    
+
     if (!notificationProviderId) {
       return NextResponse.json(
         { error: "Notification provider ID is required" },
@@ -63,7 +163,10 @@ export async function POST(
     const existingLink = await db.query.monitorNotificationSettings.findFirst({
       where: and(
         eq(monitorNotificationSettings.monitorId, id),
-        eq(monitorNotificationSettings.notificationProviderId, notificationProviderId)
+        eq(
+          monitorNotificationSettings.notificationProviderId,
+          notificationProviderId
+        )
       ),
     });
 
@@ -85,7 +188,10 @@ export async function POST(
 
     return NextResponse.json(newLink, { status: 201 });
   } catch (error) {
-    console.error(`Error linking notification provider to monitor ${id}:`, error);
+    console.error(
+      `Error linking notification provider to monitor ${id}:`,
+      error
+    );
     return NextResponse.json(
       { error: "Failed to link notification provider" },
       { status: 500 }
@@ -100,12 +206,54 @@ export async function DELETE(
   const params = await context.params;
   const { id } = params;
   if (!id) {
-    return NextResponse.json({ error: "Monitor ID is required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Monitor ID is required" },
+      { status: 400 }
+    );
   }
 
   try {
+    // Require authentication
+    const { userId } = await requireAuth();
+
+    // Get monitor to check permissions
+    const monitor = await db.query.monitors.findFirst({
+      where: eq(monitors.id, id),
+      columns: { organizationId: true, projectId: true },
+    });
+
+    if (!monitor) {
+      return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
+    }
+
+    // Check if user has permission to update monitor notifications
+    const userIsSuperAdmin = await isSuperAdmin();
+
+    if (!userIsSuperAdmin && monitor.organizationId) {
+      const orgRole = await getUserOrgRole(userId, monitor.organizationId);
+
+      if (!orgRole) {
+        return NextResponse.json(
+          { error: "Access denied: Not a member of this organization" },
+          { status: 403 }
+        );
+      }
+
+      const canUpdate = await hasPermission("monitor", "update", {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId || undefined,
+      });
+
+      if (!canUpdate) {
+        return NextResponse.json(
+          { error: "Insufficient permissions to update monitor notifications" },
+          { status: 403 }
+        );
+      }
+    }
+
     const { notificationProviderId } = await request.json();
-    
+
     if (!notificationProviderId) {
       return NextResponse.json(
         { error: "Notification provider ID is required" },
@@ -119,24 +267,27 @@ export async function DELETE(
       .where(
         and(
           eq(monitorNotificationSettings.monitorId, id),
-          eq(monitorNotificationSettings.notificationProviderId, notificationProviderId)
+          eq(
+            monitorNotificationSettings.notificationProviderId,
+            notificationProviderId
+          )
         )
       )
       .returning();
 
     if (!deletedLink) {
-      return NextResponse.json(
-        { error: "Link not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Link not found" }, { status: 404 });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error(`Error unlinking notification provider from monitor ${id}:`, error);
+    console.error(
+      `Error unlinking notification provider from monitor ${id}:`,
+      error
+    );
     return NextResponse.json(
       { error: "Failed to unlink notification provider" },
       { status: 500 }
     );
   }
-} 
+}
