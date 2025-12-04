@@ -446,6 +446,7 @@ export function StatusPageDetail({
           <IncidentsTab
             statusPageId={statusPage.id}
             components={components.map((c) => ({ id: c.id, name: c.name }))}
+            canUpdate={canUpdate}
           />
         </TabsContent>
 
