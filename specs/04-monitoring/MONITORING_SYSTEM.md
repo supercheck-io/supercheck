@@ -966,44 +966,134 @@ interface MonitorCleanupConfig {
 
 - `MONITOR_CLEANUP_ENABLED`: Enable/disable cleanup (default: true)
 - `MONITOR_CLEANUP_CRON`: Cron schedule (default: "0 2 \* \* \*")
-- `MONITOR_RETENTION_DAYS`: Days to retain data (default: 30)
 - `MONITOR_CLEANUP_BATCH_SIZE`: Batch size for deletions (default: 1000)
 - `MONITOR_PRESERVE_STATUS_CHANGES`: Keep status changes (default: true)
 - `MONITOR_CLEANUP_SAFETY_LIMIT`: Max records per run (default: 1000000)
 
+> Note: Retention periods are configured per plan in the database (`plan_limits` table), not via environment variables.
+
 #### **Data Reduction Impact**
 
-Current implementation with 30-day retention:
+Current implementation with plan-based retention:
 
-| Scale        | Records/Year (No Cleanup) | Records/Year (With Cleanup) | Reduction |
-| ------------ | ------------------------- | --------------------------- | --------- |
-| 1 monitor    | 525,600                   | 43,200 (30 days)            | 91.8%     |
-| 100 monitors | 52.6M                     | 4.3M                        | 91.8%     |
-| 500 monitors | 263M                      | 21.6M                       | 91.8%     |
+| Scale        | Records/Year (No Cleanup) | Records/Year (Plus/30d) | Records/Year (Pro/90d) | Reduction |
+| ------------ | ------------------------- | ----------------------- | ---------------------- | --------- |
+| 1 monitor    | 525,600                   | 43,200                  | 129,600                | 75-92%    |
+| 100 monitors | 52.6M                     | 4.3M                    | 13M                    | 75-92%    |
+| 500 monitors | 263M                      | 21.6M                   | 65M                    | 75-92%    |
 
 _Assumes 1-minute check intervals_
 
-#### **Future Enhancement: Tiered Aggregation**
+#### **Industry Best Practices Comparison**
 
-For even greater data reduction (99%+) while preserving long-term trends, a tiered aggregation strategy is recommended:
+Analysis of leading monitoring platforms (Checkly, Better Stack) reveals industry-standard data retention patterns:
 
-**Proposed Strategy:**
+| Platform         | Plan       | Raw Data | Aggregated Metrics | Strategy                   |
+| ---------------- | ---------- | -------- | ------------------ | -------------------------- |
+| **Checkly**      | Hobby      | 7 days   | 30 days            | Separate raw vs aggregated |
+| **Checkly**      | Team       | 30 days  | 1 year             | Extended aggregates        |
+| **Checkly**      | Enterprise | 180 days | 25 months          | Full compliance            |
+| **Better Stack** | Free       | 30 days  | 30 days            | 2B metrics included        |
+| **Better Stack** | Pro        | 30 days  | 13 months          | Extended metrics bundles   |
+| **Supercheck**   | Plus       | 7 days   | 30 days            | ✅ Checkly-aligned         |
+| **Supercheck**   | Pro        | 30 days  | 365 days (1 year)  | ✅ Checkly-aligned         |
+| **Supercheck**   | Unlimited  | 365 days | 730 days (2 years) | ✅ Enterprise compliance   |
 
-- **Last 24 hours**: Keep ALL records (full granularity)
-- **Last 7 days**: Keep 1 record every 10 minutes (6/hour)
-- **Last 30 days**: Keep 1 record every hour (24/day)
-- **Last 90 days**: Keep 1 record every 6 hours (4/day)
-- **Older than 90 days**: Keep 1 record per day (1/day)
+**Key Insight**: Industry leaders store **raw check results** (individual data points) for short periods (7-30 days) but maintain **pre-computed aggregates** (hourly/daily P95, avg, uptime) for 1-2 years.
 
-**Enhanced Data Reduction:**
+#### **Implemented: Tiered Aggregation System**
 
-| Scale        | Current (30-day delete) | Tiered Aggregation | Additional Savings |
-| ------------ | ----------------------- | ------------------ | ------------------ |
-| 1 monitor    | 43,200/year             | 4,383/year         | 89.9% further      |
-| 100 monitors | 4.3M/year               | 438K/year          | 89.9% further      |
-| 500 monitors | 21.6M/year              | 2.2M/year          | 89.9% further      |
+Supercheck now implements industry-aligned data management with separate raw and aggregated data retention:
 
-This would require implementing aggregate tables and a more sophisticated cleanup service.
+**Architecture:**
+
+```mermaid
+graph LR
+    subgraph "Short-Term (Raw Data)"
+        A[monitor_results<br/>Plus: 7 days<br/>Pro: 30 days<br/>Unlimited: 365 days]
+    end
+
+    subgraph "Medium-Term (Hourly)"
+        B[monitor_aggregates<br/>period_type: hourly<br/>All Plans: 7 days]
+    end
+
+    subgraph "Long-Term (Daily)"
+        C[monitor_aggregates<br/>period_type: daily<br/>Plus: 30 days<br/>Pro: 365 days<br/>Unlimited: 730 days]
+    end
+
+    A --> |Hourly aggregation job| B
+    A --> |Daily aggregation job| C
+    B --> |Cleanup after 7 days| X[Deleted]
+    C --> |Cleanup per plan| Y[Deleted]
+
+    style A fill:#ffebee,stroke:#d32f2f
+    style B fill:#fff3e0,stroke:#f57c00
+    style C fill:#e8f5e8,stroke:#388e3c
+```
+
+**Schema (monitor_aggregates):**
+
+```sql
+CREATE TABLE monitor_aggregates (
+  id UUID PRIMARY KEY DEFAULT uuidv7(),
+  monitor_id UUID NOT NULL REFERENCES monitors(id) ON DELETE CASCADE,
+  period_type TEXT NOT NULL CHECK (period_type IN ('hourly', 'daily')),
+  period_start TIMESTAMP NOT NULL,
+  location TEXT,
+  total_checks INTEGER DEFAULT 0 NOT NULL,
+  successful_checks INTEGER DEFAULT 0 NOT NULL,
+  failed_checks INTEGER DEFAULT 0 NOT NULL,
+  uptime_percentage NUMERIC(5,2) NOT NULL,
+  avg_response_ms INTEGER,
+  min_response_ms INTEGER,
+  max_response_ms INTEGER,
+  p50_response_ms INTEGER,
+  p95_response_ms INTEGER,
+  p99_response_ms INTEGER,
+  total_response_ms INTEGER DEFAULT 0,
+  status_change_count INTEGER DEFAULT 0 NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+-- Unique constraint for idempotent upserts
+CREATE UNIQUE INDEX monitor_aggregates_unique_idx
+ON monitor_aggregates (monitor_id, period_type, period_start, location);
+
+-- Time-based queries
+CREATE INDEX monitor_aggregates_monitor_time_idx
+ON monitor_aggregates (monitor_id, period_start);
+
+-- Cleanup queries
+CREATE INDEX monitor_aggregates_cleanup_idx
+ON monitor_aggregates (period_type, period_start);
+```
+
+**Aggregation Service Features:**
+
+- **Hourly Aggregation**: Computes P50, P95, P99, avg, min, max response times
+- **Daily Aggregation**: Rolls up hourly data into daily summaries
+- **Multi-Location Support**: Aggregates per-location and combined metrics
+- **Idempotent Operations**: Safe to re-run without data corruption via UPSERT
+- **Batch Processing**: Efficient handling of high-volume data
+- **Transaction Support**: Atomic updates with rollback on failure
+
+**Benefits:**
+
+- **99%+ storage reduction** for long-term data
+- **Pre-computed metrics** eliminate client-side calculations for 30d+ views
+- **Industry-aligned** retention matching Checkly/Better Stack
+- **Compliance-ready** with configurable retention per plan
+
+**Data Reduction Impact with Aggregation:**
+
+| Scale        | Without Aggregation | With Aggregation (Raw + Agg) | Storage Savings |
+| ------------ | ------------------- | ---------------------------- | --------------- |
+| 1 monitor    | 525,600/year        | ~10,585/year                 | 98%             |
+| 100 monitors | 52.6M/year          | ~1.06M/year                  | 98%             |
+| 500 monitors | 263M/year           | ~5.3M/year                   | 98%             |
+
+_Plus plan: 7 days raw (10,080) + 7 days hourly (168) + 30 days daily (30) = 10,278 records vs 525,600 raw_
 
 ### Paginated Check Results System
 

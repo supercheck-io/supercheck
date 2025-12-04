@@ -17,6 +17,7 @@ import {
 import { getActiveOrganization } from "@/lib/session";
 import { usageTracker } from "@/lib/services/usage-tracker";
 import { headers } from "next/headers";
+import { logAuditEvent } from "@/lib/audit-logger";
 
 // S3 Client configuration
 const s3Client = new S3Client({
@@ -185,6 +186,23 @@ export async function POST(request: NextRequest) {
         await usageTracker.trackAIUsage(activeOrg.id, "ai_fix", {
           testId,
           testType,
+        });
+
+        // Log audit event for AI fix action
+        await logAuditEvent({
+          userId: session.user.id,
+          organizationId: activeOrg.id,
+          action: "ai_fix",
+          resource: "test",
+          resourceId: testId,
+          success: true,
+          ipAddress: clientIp,
+          metadata: {
+            testId,
+            testType,
+            confidence,
+            model: aiResponse.model,
+          },
         });
       }
     } catch (trackingError) {

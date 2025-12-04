@@ -146,14 +146,46 @@ export function ReportViewer({
     }
   }, [reportUrl]);
 
+  // Hide external link button in Playwright trace viewer
+  // This prevents users from opening snapshots in a new tab outside of SuperCheck
+  const hideExternalLinkButton = useCallback(
+    (iframe: HTMLIFrameElement | null) => {
+      if (!iframe?.contentDocument) return;
+
+      try {
+        const styleId = "supercheck-hide-external-link";
+        if (iframe.contentDocument.getElementById(styleId)) return;
+
+        const style = iframe.contentDocument.createElement("style");
+        style.id = styleId;
+        // Only hide the external link button - nothing else
+        style.textContent = `
+          /* Hide external link button in trace viewer toolbar */
+          button.toolbar-button.link-external,
+          button[title="Open snapshot in a new tab"],
+          .codicon.codicon-link-external {
+            display: none !important;
+          }
+        `;
+        iframe.contentDocument.head.appendChild(style);
+      } catch {
+        // Silently ignore CORS errors when accessing cross-origin iframes
+      }
+    },
+    []
+  );
+
   const applyDecorators = useCallback(
     (
       iframe: HTMLIFrameElement | null,
       decorators: Array<(iframe: HTMLIFrameElement) => void>
     ) => {
-      if (!iframe || !decorators.length) {
-        return;
-      }
+      if (!iframe) return;
+
+      // Always hide external link button
+      hideExternalLinkButton(iframe);
+
+      if (!decorators.length) return;
 
       for (const decorate of decorators) {
         try {
@@ -163,7 +195,7 @@ export function ReportViewer({
         }
       }
     },
-    []
+    [hideExternalLinkButton]
   );
 
   const resolvedIframeDecorators = useMemo(

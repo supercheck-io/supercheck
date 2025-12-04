@@ -43,7 +43,7 @@
     "test:cov": "jest --coverage",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed": "node scripts/seed.js",
+    "db:seed": "node scripts/db-seed.js",
     "db:studio": "drizzle-kit studio",
     "db:migrate:prod": "./scripts/migrate.sh",
     "setup:admin": "node scripts/bootstrap-admin.js",

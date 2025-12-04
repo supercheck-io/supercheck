@@ -13,22 +13,23 @@ export async function GET() {
     const plans = await db
       .select()
       .from(planLimits)
-      .where(
-        or(
-          eq(planLimits.plan, "plus"),
-          eq(planLimits.plan, "pro")
-        )
+      .where(or(eq(planLimits.plan, "plus"), eq(planLimits.plan, "pro")));
+
+    // Validate that we have the required plans
+    if (plans.length === 0) {
+      console.error("[PRICING] No plans found in database. Run db:seed first.");
+      return NextResponse.json(
+        { error: "Pricing plans not configured. Please contact support." },
+        { status: 503 }
       );
+    }
 
     // Fetch overage pricing for Plus and Pro
     const overagePricingData = await db
       .select()
       .from(overagePricing)
       .where(
-        or(
-          eq(overagePricing.plan, "plus"),
-          eq(overagePricing.plan, "pro")
-        )
+        or(eq(overagePricing.plan, "plus"), eq(overagePricing.plan, "pro"))
       );
 
     // Create a map for easy lookup
@@ -61,43 +62,42 @@ export async function GET() {
           },
         }[planType];
 
-      return {
-        ...planInfo,
-        features: {
-          monitors: plan.maxMonitors,
-          playwrightMinutes: plan.playwrightMinutesIncluded,
-          k6VuMinutes: plan.k6VuMinutesIncluded,
-          aiCredits: plan.aiCreditsIncluded,
-          concurrentExecutions: plan.runningCapacity,
-          queuedJobs: plan.queuedCapacity,
-          teamMembers: plan.maxTeamMembers,
-          organizations: plan.maxOrganizations,
-          projects: plan.maxProjects,
-          statusPages: plan.maxStatusPages,
-          dataRetention: `${plan.dataRetentionDays} days`,
-          customDomains: plan.customDomains,
-          ssoEnabled: plan.ssoEnabled,
-          support:
-            planType === "pro"
-              ? "Priority email support"
-              : "Email support",
-          checkInterval: "1 minute (Synthetic: 5 min)",
-          monitoringLocations: "All 3 (US, EU, APAC)",
-        },
-        overagePricing: overage
-          ? {
-              playwrightMinutes: overage.playwrightMinutePriceCents / 100,
-              k6VuMinutes: overage.k6VuMinutePriceCents / 100,
-              aiCredits: overage.aiCreditPriceCents / 100,
-            }
-          : {
-              // Fallback values if not in database
-              playwrightMinutes: planType === "pro" ? 0.015 : 0.03,
-              k6VuMinutes: planType === "pro" ? 0.003 : 0.005,
-              aiCredits: planType === "pro" ? 0.03 : 0.05,
-            },
-      };
-    });
+        return {
+          ...planInfo,
+          features: {
+            monitors: plan.maxMonitors,
+            playwrightMinutes: plan.playwrightMinutesIncluded,
+            k6VuMinutes: plan.k6VuMinutesIncluded,
+            aiCredits: plan.aiCreditsIncluded,
+            concurrentExecutions: plan.runningCapacity,
+            queuedJobs: plan.queuedCapacity,
+            teamMembers: plan.maxTeamMembers,
+            organizations: plan.maxOrganizations,
+            projects: plan.maxProjects,
+            statusPages: plan.maxStatusPages,
+            monitorDataRetention: `${plan.dataRetentionDays}d raw / ${plan.aggregatedDataRetentionDays}d metrics`,
+            jobDataRetention: `${plan.jobDataRetentionDays}d`,
+            customDomains: plan.customDomains,
+            ssoEnabled: plan.ssoEnabled,
+            support:
+              planType === "pro" ? "Priority email support" : "Email support",
+            checkInterval: "1 minute (Synthetic: 5 min)",
+            monitoringLocations: "All 3 (US, EU, APAC)",
+          },
+          overagePricing: overage
+            ? {
+                playwrightMinutes: overage.playwrightMinutePriceCents / 100,
+                k6VuMinutes: overage.k6VuMinutePriceCents / 100,
+                aiCredits: overage.aiCreditPriceCents / 100,
+              }
+            : {
+                // Fallback values if not in database
+                playwrightMinutes: planType === "pro" ? 0.015 : 0.03,
+                k6VuMinutes: planType === "pro" ? 0.003 : 0.005,
+                aiCredits: planType === "pro" ? 0.03 : 0.05,
+              },
+        };
+      });
 
     // Build feature comparison table from plan limits
     const featureComparison = [
@@ -176,8 +176,8 @@ export async function GET() {
           },
           {
             name: "Custom Domains",
-            plus: plans.find((p) => p.plan === "plus")?.customDomains || false,
-            pro: plans.find((p) => p.plan === "pro")?.customDomains || true,
+            plus: plans.find((p) => p.plan === "plus")?.customDomains ?? true,
+            pro: plans.find((p) => p.plan === "pro")?.customDomains ?? true,
           },
         ],
       },
@@ -185,9 +185,14 @@ export async function GET() {
         category: "Data & Support",
         features: [
           {
-            name: "Data Retention",
-            plus: `${plans.find((p) => p.plan === "plus")?.dataRetentionDays || 30} days`,
-            pro: `${plans.find((p) => p.plan === "pro")?.dataRetentionDays || 90} days`,
+            name: "Monitor Data Retention",
+            plus: `${plans.find((p) => p.plan === "plus")?.dataRetentionDays || 7}d raw / ${plans.find((p) => p.plan === "plus")?.aggregatedDataRetentionDays || 30}d metrics`,
+            pro: `${plans.find((p) => p.plan === "pro")?.dataRetentionDays || 30}d raw / ${plans.find((p) => p.plan === "pro")?.aggregatedDataRetentionDays || 365}d metrics`,
+          },
+          {
+            name: "Job Runs Retention",
+            plus: `${plans.find((p) => p.plan === "plus")?.jobDataRetentionDays || 30} days`,
+            pro: `${plans.find((p) => p.plan === "pro")?.jobDataRetentionDays || 90} days`,
           },
           {
             name: "Email Support",
@@ -196,8 +201,8 @@ export async function GET() {
           },
           {
             name: "SSO/SAML",
-            plus: plans.find((p) => p.plan === "plus")?.ssoEnabled || false,
-            pro: plans.find((p) => p.plan === "pro")?.ssoEnabled || true,
+            plus: plans.find((p) => p.plan === "plus")?.ssoEnabled ?? true,
+            pro: plans.find((p) => p.plan === "pro")?.ssoEnabled ?? true,
           },
           {
             name: "API Access",
@@ -211,15 +216,18 @@ export async function GET() {
     const faqs = [
       {
         question: "How is usage tracked?",
-        answer: "Playwright Minutes count total browser execution time. K6 VU Minutes are calculated as Virtual Users × execution time in minutes. Monitors count against Playwright minutes for each check.",
+        answer:
+          "Playwright Minutes count total browser execution time. K6 VU Minutes are calculated as Virtual Users × execution time in minutes. Monitors count against Playwright minutes for each check.",
       },
       {
         question: "What happens if I exceed my limits?",
-        answer: "Usage-based billing automatically applies. Overage charges are billed monthly. You'll receive email alerts at 80% and 100% of quota.",
+        answer:
+          "Usage-based billing automatically applies. Overage charges are billed monthly. You'll receive email alerts at 80% and 100% of quota.",
       },
       {
         question: "Can I change plans?",
-        answer: "Yes! Upgrades take effect immediately. Downgrades take effect at the next billing cycle. Pro-rated billing applies for mid-cycle changes.",
+        answer:
+          "Yes! Upgrades take effect immediately. Downgrades take effect at the next billing cycle. Pro-rated billing applies for mid-cycle changes.",
       },
       {
         question: "Do unused minutes roll over?",
@@ -227,22 +235,29 @@ export async function GET() {
       },
       {
         question: "Is there a free trial?",
-        answer: "We don't offer a free tier for cloud-hosted, but you can start with the Plus plan ($49/month) with no long-term commitment.",
+        answer:
+          "We don't offer a free tier for cloud-hosted, but you can start with the Plus plan ($49/month) with no long-term commitment.",
       },
     ];
 
     // Build overage pricing data from database
     const plusOverage = overagePricingMap.get("plus");
     const proOverage = overagePricingMap.get("pro");
-    
+
     const overagePricingResponse = {
       plus: {
-        playwrightMinutes: plusOverage ? plusOverage.playwrightMinutePriceCents / 100 : 0.03,
-        k6VuMinutes: plusOverage ? plusOverage.k6VuMinutePriceCents / 100 : 0.01,
+        playwrightMinutes: plusOverage
+          ? plusOverage.playwrightMinutePriceCents / 100
+          : 0.03,
+        k6VuMinutes: plusOverage
+          ? plusOverage.k6VuMinutePriceCents / 100
+          : 0.01,
         aiCredits: plusOverage ? plusOverage.aiCreditPriceCents / 100 : 0.05,
       },
       pro: {
-        playwrightMinutes: proOverage ? proOverage.playwrightMinutePriceCents / 100 : 0.02,
+        playwrightMinutes: proOverage
+          ? proOverage.playwrightMinutePriceCents / 100
+          : 0.02,
         k6VuMinutes: proOverage ? proOverage.k6VuMinutePriceCents / 100 : 0.01,
         aiCredits: proOverage ? proOverage.aiCreditPriceCents / 100 : 0.03,
       },

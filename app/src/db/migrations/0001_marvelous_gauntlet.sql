@@ -1,2 +1,0 @@
-ALTER TABLE "monitor_results" ADD COLUMN "consecutive_success_count" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
-ALTER TABLE "monitor_results" ADD COLUMN "alerts_sent_for_recovery" integer DEFAULT 0 NOT NULL;

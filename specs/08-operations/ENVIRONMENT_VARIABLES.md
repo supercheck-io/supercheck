@@ -254,16 +254,28 @@ Playwright test execution settings.
 
 Automated data cleanup and retention settings.
 
+> **Note:** Retention periods are configured per plan in the database (`plan_limits` table).
+> Cleanup jobs automatically use plan-based retention settings. The environment variables below
+> control operational settings (schedules, batch sizes, safety limits) but not retention periods.
+
 ### Monitor Results Cleanup
 
 | Variable                          | Description                    | Default                  |
 | --------------------------------- | ------------------------------ | ------------------------ |
 | `MONITOR_CLEANUP_ENABLED`         | Enable monitor cleanup         | `true`                   |
 | `MONITOR_CLEANUP_CRON`            | Cleanup schedule               | `0 2 * * *` (2 AM daily) |
-| `MONITOR_RETENTION_DAYS`          | Days to retain results         | `30`                     |
 | `MONITOR_CLEANUP_BATCH_SIZE`      | Records per batch              | `1000`                   |
 | `MONITOR_PRESERVE_STATUS_CHANGES` | Preserve status change records | `true`                   |
 | `MONITOR_CLEANUP_SAFETY_LIMIT`    | Max records per cleanup        | `1000000`                |
+
+### Monitor Aggregates Cleanup
+
+| Variable                                  | Description               | Default                      |
+| ----------------------------------------- | ------------------------- | ---------------------------- |
+| `MONITOR_AGGREGATES_CLEANUP_ENABLED`      | Enable aggregates cleanup | `true`                       |
+| `MONITOR_AGGREGATES_CLEANUP_CRON`         | Cleanup schedule          | `30 2 * * *` (2:30 AM daily) |
+| `MONITOR_AGGREGATES_CLEANUP_BATCH_SIZE`   | Records per batch         | `1000`                       |
+| `MONITOR_AGGREGATES_CLEANUP_SAFETY_LIMIT` | Max records per cleanup   | `500000`                     |
 
 ### Job Runs Cleanup
 
@@ -271,7 +283,6 @@ Automated data cleanup and retention settings.
 | ------------------------------- | ----------------------- | ------------------------ |
 | `JOB_RUNS_CLEANUP_ENABLED`      | Enable job cleanup      | `true`                   |
 | `JOB_RUNS_CLEANUP_CRON`         | Cleanup schedule        | `0 3 * * *` (3 AM daily) |
-| `JOB_RUNS_RETENTION_DAYS`       | Days to retain results  | `90`                     |
 | `JOB_RUNS_CLEANUP_BATCH_SIZE`   | Records per batch       | `100`                    |
 | `JOB_RUNS_CLEANUP_SAFETY_LIMIT` | Max records per cleanup | `10000`                  |
 
@@ -282,6 +293,15 @@ Automated data cleanup and retention settings.
 | `PLAYGROUND_CLEANUP_ENABLED`       | Enable playground cleanup | `true`                     |
 | `PLAYGROUND_CLEANUP_CRON`          | Cleanup schedule          | `0 */12 * * *` (every 12h) |
 | `PLAYGROUND_CLEANUP_MAX_AGE_HOURS` | Hours to retain artifacts | `24`                       |
+
+### Webhook Idempotency Cleanup
+
+| Variable                       | Description             | Default                  |
+| ------------------------------ | ----------------------- | ------------------------ |
+| `WEBHOOK_CLEANUP_ENABLED`      | Enable webhook cleanup  | `true`                   |
+| `WEBHOOK_CLEANUP_CRON`         | Cleanup schedule        | `0 4 * * *` (4 AM daily) |
+| `WEBHOOK_CLEANUP_BATCH_SIZE`   | Records per batch       | `1000`                   |
+| `WEBHOOK_CLEANUP_SAFETY_LIMIT` | Max records per cleanup | `100000`                 |
 
 ---
 

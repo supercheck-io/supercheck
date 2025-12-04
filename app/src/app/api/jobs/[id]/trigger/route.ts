@@ -234,6 +234,18 @@ export async function POST(
       );
     }
 
+    // SECURITY: Validate active subscription before allowing test execution
+    try {
+      await subscriptionService.blockUntilSubscribed(job.organizationId);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Active subscription required";
+      console.warn(
+        `[Job Trigger] Subscription validation failed for org ${job.organizationId.substring(0, 8)}...`
+      );
+      return NextResponse.json({ error: errorMessage }, { status: 402 });
+    }
+
     // Validate Polar customer exists (blocks deleted customers)
     try {
       await subscriptionService.requireValidPolarCustomer(job.organizationId);

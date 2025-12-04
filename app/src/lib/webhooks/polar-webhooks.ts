@@ -1,9 +1,9 @@
 /**
  * Polar Webhook Handlers
  * Process incoming webhook events from Polar for subscription management
- * 
+ *
  * Security & Reliability:
- * - Idempotency: Prevents duplicate processing via webhook ID tracking
+ * - Idempotency: Database-backed to handle multi-instance deployments
  * - Logging: Uses truncated IDs to avoid leaking sensitive data
  * - Error handling: Graceful degradation on non-critical failures
  */
@@ -11,45 +11,83 @@
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { billingSettingsService } from "@/lib/services/billing-settings.service";
 import { db } from "@/utils/db";
-import { organization } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { organization, webhookIdempotency } from "@/db/schema";
+import { eq, and, lt } from "drizzle-orm";
 import type { SubscriptionPlan } from "@/db/schema";
 
-// Idempotency cache to prevent duplicate webhook processing
-// TTL of 24 hours to handle delayed retries while preventing memory leaks
-const WEBHOOK_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const processedWebhooks = new Map<string, number>();
+// Idempotency TTL: 24 hours
+const WEBHOOK_IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Check if a webhook has already been processed (idempotency)
+ * Uses database for multi-instance deployments
  * Returns true if already processed, false if new
  */
-function isWebhookProcessed(webhookId: string, eventType: string): boolean {
-  const cacheKey = `${eventType}:${webhookId}`;
-  const processedAt = processedWebhooks.get(cacheKey);
-  
-  if (processedAt && Date.now() - processedAt < WEBHOOK_CACHE_TTL_MS) {
-    return true;
+async function isWebhookProcessed(
+  webhookId: string,
+  eventType: string
+): Promise<boolean> {
+  try {
+    const existing = await db.query.webhookIdempotency.findFirst({
+      where: and(
+        eq(webhookIdempotency.webhookId, webhookId),
+        eq(webhookIdempotency.eventType, eventType)
+      ),
+    });
+
+    return !!existing;
+  } catch (error) {
+    // If table doesn't exist yet (pre-migration), fall back to allowing processing
+    // This prevents blocking webhooks during migration period
+    console.warn(
+      `[Polar] Idempotency check failed (table may not exist yet): ${error}`
+    );
+    return false;
   }
-  
-  return false;
 }
 
 /**
  * Mark a webhook as processed
+ * Stores in database with TTL for cleanup
  */
-function markWebhookProcessed(webhookId: string, eventType: string): void {
-  const cacheKey = `${eventType}:${webhookId}`;
-  processedWebhooks.set(cacheKey, Date.now());
-  
-  // Clean up old entries periodically to prevent memory leaks
-  if (processedWebhooks.size > 1000) {
-    const now = Date.now();
-    for (const [key, timestamp] of processedWebhooks.entries()) {
-      if (now - timestamp > WEBHOOK_CACHE_TTL_MS) {
-        processedWebhooks.delete(key);
-      }
-    }
+async function markWebhookProcessed(
+  webhookId: string,
+  eventType: string,
+  status: "success" | "error" | "skipped" = "success",
+  message?: string
+): Promise<void> {
+  try {
+    const expiresAt = new Date(Date.now() + WEBHOOK_IDEMPOTENCY_TTL_MS);
+
+    await db.insert(webhookIdempotency).values({
+      webhookId,
+      eventType,
+      resultStatus: status,
+      resultMessage: message,
+      expiresAt,
+    });
+  } catch (error) {
+    // Log but don't fail - idempotency is a safety measure, not critical path
+    console.warn(`[Polar] Failed to mark webhook as processed: ${error}`);
+  }
+}
+
+/**
+ * Clean up expired webhook idempotency records
+ * Should be called periodically (e.g., via cron job)
+ */
+export async function cleanupExpiredWebhooks(): Promise<number> {
+  try {
+    const now = new Date();
+    const result = await db
+      .delete(webhookIdempotency)
+      .where(lt(webhookIdempotency.expiresAt, now))
+      .returning();
+
+    return result.length;
+  } catch (error) {
+    console.error(`[Polar] Failed to cleanup expired webhooks: ${error}`);
+    return 0;
   }
 }
 
@@ -57,7 +95,7 @@ function markWebhookProcessed(webhookId: string, eventType: string): void {
  * Truncate ID for safe logging (doesn't expose full IDs)
  */
 function truncateId(id: string | undefined | null): string {
-  if (!id) return 'unknown';
+  if (!id) return "unknown";
   return id.length > 8 ? `${id.substring(0, 8)}...` : id;
 }
 
@@ -73,9 +111,9 @@ interface PolarWebhookPayload {
     status?: string;
     // Subscription billing period dates from Polar
     startsAt?: string; // ISO date when subscription period starts
-    endsAt?: string;   // ISO date when subscription period ends
+    endsAt?: string; // ISO date when subscription period ends
     currentPeriodStart?: string; // Alternative field name
-    currentPeriodEnd?: string;   // Alternative field name
+    currentPeriodEnd?: string; // Alternative field name
     amount?: number;
     currency?: string;
     metadata?: {
@@ -102,11 +140,14 @@ interface PolarWebhookPayload {
  * Helper to get subscription period dates from payload
  * Returns the billing cycle start and end dates from Polar
  */
-function getSubscriptionDatesFromPayload(payload: PolarWebhookPayload): { startsAt: Date | null; endsAt: Date | null } {
+function getSubscriptionDatesFromPayload(payload: PolarWebhookPayload): {
+  startsAt: Date | null;
+  endsAt: Date | null;
+} {
   // Try direct fields first (subscription events)
   let startsAt: Date | null = null;
   let endsAt: Date | null = null;
-  
+
   // Try startsAt/endsAt (most common in subscription events)
   if (payload.data.startsAt) {
     startsAt = new Date(payload.data.startsAt);
@@ -114,7 +155,7 @@ function getSubscriptionDatesFromPayload(payload: PolarWebhookPayload): { starts
   if (payload.data.endsAt) {
     endsAt = new Date(payload.data.endsAt);
   }
-  
+
   // Try currentPeriodStart/currentPeriodEnd (alternative naming)
   if (!startsAt && payload.data.currentPeriodStart) {
     startsAt = new Date(payload.data.currentPeriodStart);
@@ -122,11 +163,11 @@ function getSubscriptionDatesFromPayload(payload: PolarWebhookPayload): { starts
   if (!endsAt && payload.data.currentPeriodEnd) {
     endsAt = new Date(payload.data.currentPeriodEnd);
   }
-  
+
   // Validate dates are valid
   if (startsAt && isNaN(startsAt.getTime())) startsAt = null;
   if (endsAt && isNaN(endsAt.getTime())) endsAt = null;
-  
+
   return { startsAt, endsAt };
 }
 
@@ -142,13 +183,15 @@ function getProductIdFromPayload(payload: PolarWebhookPayload): string {
   if (payload.data.product?.id) {
     return payload.data.product.id;
   }
-  return '';
+  return "";
 }
 
 /**
  * Helper to get customer ID from payload (handles different formats)
  */
-function getCustomerIdFromPayload(payload: PolarWebhookPayload): string | undefined {
+function getCustomerIdFromPayload(
+  payload: PolarWebhookPayload
+): string | undefined {
   // Direct customerId
   if (payload.data.customerId) {
     return payload.data.customerId;
@@ -169,12 +212,14 @@ function getCustomerIdFromPayload(payload: PolarWebhookPayload): string | undefi
 function getPlanFromProductId(productId: string): SubscriptionPlan {
   const plusProductId = process.env.POLAR_PLUS_PRODUCT_ID;
   const proProductId = process.env.POLAR_PRO_PRODUCT_ID;
-  
+
   if (productId === plusProductId) return "plus";
   if (productId === proProductId) return "pro";
-  
+
   // SECURITY: Default to plus for unknown products - never unlimited
-  console.warn(`[Polar] Unknown product ID: ${productId}, defaulting to plus plan`);
+  console.warn(
+    `[Polar] Unknown product ID: ${productId}, defaulting to plus plan`
+  );
   return "plus";
 }
 
@@ -182,7 +227,9 @@ function getPlanFromProductId(productId: string): SubscriptionPlan {
  * Extract organization ID from webhook payload
  * Checks referenceId in metadata (passed during checkout)
  */
-function getOrganizationIdFromPayload(payload: PolarWebhookPayload): string | null {
+function getOrganizationIdFromPayload(
+  payload: PolarWebhookPayload
+): string | null {
   // Check direct metadata (subscription events)
   if (payload.data.metadata?.referenceId) {
     return payload.data.metadata.referenceId;
@@ -228,7 +275,7 @@ async function findOrganizationByCustomerId(customerId: string) {
 async function findOrganizationByUserId(userId: string) {
   // Import member table to find org by user membership
   const { member } = await import("@/db/schema");
-  
+
   // Find the user's membership and get their organization
   const membership = await db.query.member.findFirst({
     where: eq(member.userId, userId),
@@ -245,7 +292,9 @@ async function findOrganizationByUserId(userId: string) {
   });
 
   if (org) {
-    console.log(`[Polar] Found organization ${truncateId(org.id)} via user ${truncateId(userId)}`);
+    console.log(
+      `[Polar] Found organization ${truncateId(org.id)} via user ${truncateId(userId)}`
+    );
     return org;
   }
 
@@ -258,17 +307,19 @@ async function findOrganizationByUserId(userId: string) {
  */
 function getUserIdFromPayload(payload: PolarWebhookPayload): string | null {
   // Check customer metadata
-  const customer = payload.data.customer as { metadata?: { userId?: string } } | undefined;
+  const customer = payload.data.customer as
+    | { metadata?: { userId?: string } }
+    | undefined;
   if (customer?.metadata?.userId) {
     return customer.metadata.userId;
   }
-  
+
   // Check direct metadata
   const metadata = payload.data.metadata as { userId?: string } | undefined;
   if (metadata?.userId) {
     return metadata.userId;
   }
-  
+
   return null;
 }
 
@@ -293,10 +344,12 @@ async function findOrganizationById(orgId: string) {
  */
 export async function handleSubscriptionActive(payload: PolarWebhookPayload) {
   const webhookId = payload.data.id;
-  
+
   // Idempotency check: Skip if already processed this webhook
-  if (isWebhookProcessed(webhookId, 'subscription.active')) {
-    console.log(`[Polar] Webhook ${truncateId(webhookId)} already processed, skipping`);
+  if (await isWebhookProcessed(webhookId, "subscription.active")) {
+    console.log(
+      `[Polar] Webhook ${truncateId(webhookId)} already processed, skipping`
+    );
     return;
   }
 
@@ -304,20 +357,22 @@ export async function handleSubscriptionActive(payload: PolarWebhookPayload) {
   const productId = getProductIdFromPayload(payload);
   const orgId = getOrganizationIdFromPayload(payload);
   const userId = getUserIdFromPayload(payload);
-  
+
   // Try multiple methods to find the organization
   let org = orgId ? await findOrganizationById(orgId) : null;
-  
+
   if (!org && customerId) {
     org = await findOrganizationByCustomerId(customerId);
   }
-  
+
   // Fallback: find by user ID from customer metadata
   if (!org && userId) {
     org = await findOrganizationByUserId(userId);
     // If found via userId, also link the polarCustomerId for future lookups
     if (org && customerId && !org.polarCustomerId) {
-      console.log(`[Polar] Linking customer ${truncateId(customerId)} to org ${truncateId(org.id)}`);
+      console.log(
+        `[Polar] Linking customer ${truncateId(customerId)} to org ${truncateId(org.id)}`
+      );
       await db
         .update(organization)
         .set({ polarCustomerId: customerId })
@@ -326,22 +381,33 @@ export async function handleSubscriptionActive(payload: PolarWebhookPayload) {
   }
 
   if (!org) {
-    console.error(`[Polar] Org not found for subscription (orgRef: ${truncateId(orgId)}, customer: ${truncateId(customerId)}, user: ${truncateId(userId)})`);
+    console.error(
+      `[Polar] Org not found for subscription (orgRef: ${truncateId(orgId)}, customer: ${truncateId(customerId)}, user: ${truncateId(userId)})`
+    );
     return;
   }
 
   // Additional idempotency: Skip if already active with same subscription
-  if (org.subscriptionStatus === "active" && 
-      org.subscriptionId === webhookId && 
-      org.polarCustomerId === customerId) {
-    console.log(`[Polar] Subscription already active for ${truncateId(org.id)}, skipping`);
-    markWebhookProcessed(webhookId, 'subscription.active');
+  if (
+    org.subscriptionStatus === "active" &&
+    org.subscriptionId === webhookId &&
+    org.polarCustomerId === customerId
+  ) {
+    console.log(
+      `[Polar] Subscription already active for ${truncateId(org.id)}, skipping`
+    );
+    await markWebhookProcessed(
+      webhookId,
+      "subscription.active",
+      "skipped",
+      "Already active"
+    );
     return;
   }
 
   const plan = getPlanFromProductId(productId);
   const subscriptionDates = getSubscriptionDatesFromPayload(payload);
-  
+
   await subscriptionService.updateSubscription(org.id, {
     subscriptionPlan: plan,
     subscriptionStatus: "active",
@@ -366,62 +432,91 @@ export async function handleSubscriptionActive(payload: PolarWebhookPayload) {
   }
 
   // Mark webhook as processed after successful handling
-  markWebhookProcessed(webhookId, 'subscription.active');
+  await markWebhookProcessed(webhookId, "subscription.active");
   console.log(`[Polar] ✅ Activated ${plan} for org ${truncateId(org.id)}`);
 }
 
 /**
  * Handle subscription updates
  * Called when subscription plan changes or status updates
+ *
+ * Plan change scenarios:
+ * - Upgrade (Plus → Pro): Usually takes effect immediately with prorated billing
+ * - Downgrade (Pro → Plus): Usually takes effect at end of current billing period
+ *
+ * The new limits are applied immediately based on the new plan
  */
 export async function handleSubscriptionUpdated(payload: PolarWebhookPayload) {
   const webhookId = payload.data.id;
-  
+
   // Idempotency check
-  if (isWebhookProcessed(webhookId, 'subscription.updated')) {
-    console.log(`[Polar] Webhook ${truncateId(webhookId)} already processed, skipping`);
+  if (await isWebhookProcessed(webhookId, "subscription.updated")) {
+    console.log(
+      `[Polar] Webhook ${truncateId(webhookId)} already processed, skipping`
+    );
     return;
   }
 
   const productId = getProductIdFromPayload(payload);
+  const customerId = getCustomerIdFromPayload(payload);
+  const subscriptionDates = getSubscriptionDatesFromPayload(payload);
 
-  const org = await db.query.organization.findFirst({
+  // Try to find organization by subscription ID first
+  let org = await db.query.organization.findFirst({
     where: eq(organization.subscriptionId, webhookId),
   });
 
+  // If not found by subscription ID, try by customer ID (handles plan change scenarios)
+  if (!org && customerId) {
+    org = await findOrganizationByCustomerId(customerId);
+  }
+
+  // If still not found, try by referenceId in metadata
   if (!org) {
-    // Try to find by referenceId in metadata
     const orgId = getOrganizationIdFromPayload(payload);
     if (orgId) {
-      const orgByRef = await findOrganizationById(orgId);
-      if (orgByRef) {
-        const status = payload.data.status as "active" | "canceled" | "past_due" | "none" | undefined;
-        const plan = getPlanFromProductId(productId);
-
-        await subscriptionService.updateSubscription(orgByRef.id, {
-          subscriptionPlan: plan,
-          subscriptionStatus: status,
-          subscriptionId: webhookId,
-        });
-
-        markWebhookProcessed(webhookId, 'subscription.updated');
-        console.log(`[Polar] ✅ Updated ${plan}/${status} for org ${truncateId(orgByRef.id)}`);
-        return;
-      }
+      org = await findOrganizationById(orgId);
     }
+  }
+
+  if (!org) {
+    console.warn(
+      `[Polar] subscription.updated: No org found for subscription ${truncateId(webhookId)}`
+    );
     return;
   }
 
-  const status = payload.data.status as "active" | "canceled" | "past_due" | "none" | undefined;
-  const plan = getPlanFromProductId(productId);
+  const status = payload.data.status as
+    | "active"
+    | "canceled"
+    | "past_due"
+    | "none"
+    | undefined;
+  const newPlan = getPlanFromProductId(productId);
+  const oldPlan = org.subscriptionPlan;
 
+  // Log plan change for monitoring
+  if (oldPlan && oldPlan !== newPlan) {
+    console.log(
+      `[Polar] Plan change detected: ${oldPlan} → ${newPlan} for org ${truncateId(org.id)}`
+    );
+  }
+
+  // Update subscription with new plan and dates
   await subscriptionService.updateSubscription(org.id, {
-    subscriptionPlan: plan,
+    subscriptionPlan: newPlan,
     subscriptionStatus: status,
+    subscriptionId: webhookId,
+    polarCustomerId: customerId,
+    // Update billing period dates if provided (important for plan changes)
+    subscriptionStartedAt: subscriptionDates.startsAt,
+    subscriptionEndsAt: subscriptionDates.endsAt,
   });
 
-  markWebhookProcessed(webhookId, 'subscription.updated');
-  console.log(`[Polar] ✅ Updated ${plan}/${status} for org ${truncateId(org.id)}`);
+  await markWebhookProcessed(webhookId, "subscription.updated");
+  console.log(
+    `[Polar] ✅ Updated ${newPlan}/${status} for org ${truncateId(org.id)}`
+  );
 }
 
 /**
@@ -430,10 +525,12 @@ export async function handleSubscriptionUpdated(payload: PolarWebhookPayload) {
  */
 export async function handleSubscriptionCanceled(payload: PolarWebhookPayload) {
   const webhookId = payload.data.id;
-  
+
   // Idempotency check
-  if (isWebhookProcessed(webhookId, 'subscription.canceled')) {
-    console.log(`[Polar] Webhook ${truncateId(webhookId)} already processed, skipping`);
+  if (await isWebhookProcessed(webhookId, "subscription.canceled")) {
+    console.log(
+      `[Polar] Webhook ${truncateId(webhookId)} already processed, skipping`
+    );
     return;
   }
 
@@ -447,8 +544,47 @@ export async function handleSubscriptionCanceled(payload: PolarWebhookPayload) {
     subscriptionStatus: "canceled",
   });
 
-  markWebhookProcessed(webhookId, 'subscription.canceled');
+  await markWebhookProcessed(webhookId, "subscription.canceled");
   console.log(`[Polar] ✅ Canceled subscription for org ${truncateId(org.id)}`);
+}
+
+/**
+ * Handle subscription revocation
+ * CRITICAL: Unlike cancellation, revocation means IMMEDIATE access termination
+ * This happens when payment fails permanently, fraud is detected, or admin action
+ */
+export async function handleSubscriptionRevoked(payload: PolarWebhookPayload) {
+  const webhookId = payload.data.id;
+
+  // Idempotency check
+  if (await isWebhookProcessed(webhookId, "subscription.revoked")) {
+    console.log(
+      `[Polar] Webhook ${truncateId(webhookId)} already processed, skipping`
+    );
+    return;
+  }
+
+  const org = await db.query.organization.findFirst({
+    where: eq(organization.subscriptionId, webhookId),
+  });
+
+  if (!org) {
+    console.log(
+      `[Polar] subscription.revoked: No org found for subscription ${truncateId(webhookId)}`
+    );
+    return;
+  }
+
+  // CRITICAL: Immediately revoke access by setting status to 'none'
+  await subscriptionService.updateSubscription(org.id, {
+    subscriptionStatus: "none",
+    subscriptionPlan: null as unknown as SubscriptionPlan, // Clear plan on revocation
+  });
+
+  await markWebhookProcessed(webhookId, "subscription.revoked");
+  console.log(
+    `[Polar] ⚠️ REVOKED subscription for org ${truncateId(org.id)} - access terminated immediately`
+  );
 }
 
 /**
@@ -457,10 +593,12 @@ export async function handleSubscriptionCanceled(payload: PolarWebhookPayload) {
  */
 export async function handleOrderPaid(payload: PolarWebhookPayload) {
   const webhookId = payload.data.id;
-  
+
   // Idempotency check
-  if (isWebhookProcessed(webhookId, 'order.paid')) {
-    console.log(`[Polar] Webhook ${truncateId(webhookId)} already processed, skipping`);
+  if (await isWebhookProcessed(webhookId, "order.paid")) {
+    console.log(
+      `[Polar] Webhook ${truncateId(webhookId)} already processed, skipping`
+    );
     return;
   }
 
@@ -468,20 +606,22 @@ export async function handleOrderPaid(payload: PolarWebhookPayload) {
   const productId = getProductIdFromPayload(payload);
   const orgId = getOrganizationIdFromPayload(payload);
   const userId = getUserIdFromPayload(payload);
-  
+
   let org = orgId ? await findOrganizationById(orgId) : null;
 
   // Fallback to customerId lookup
   if (!org && customerId) {
     org = await findOrganizationByCustomerId(customerId);
   }
-  
+
   // Fallback: find by user ID from customer metadata
   if (!org && userId) {
     org = await findOrganizationByUserId(userId);
     // If found via userId, also link the polarCustomerId for future lookups
     if (org && customerId && !org.polarCustomerId) {
-      console.log(`[Polar] Linking customer ${truncateId(customerId)} to org ${truncateId(org.id)}`);
+      console.log(
+        `[Polar] Linking customer ${truncateId(customerId)} to org ${truncateId(org.id)}`
+      );
       await db
         .update(organization)
         .set({ polarCustomerId: customerId })
@@ -490,7 +630,9 @@ export async function handleOrderPaid(payload: PolarWebhookPayload) {
   }
 
   if (!org) {
-    console.error(`[Polar] Org not found for order (orgRef: ${truncateId(orgId)}, customer: ${truncateId(customerId)}, user: ${truncateId(userId)})`);
+    console.error(
+      `[Polar] Org not found for order (orgRef: ${truncateId(orgId)}, customer: ${truncateId(customerId)}, user: ${truncateId(userId)})`
+    );
     return;
   }
 
@@ -502,8 +644,10 @@ export async function handleOrderPaid(payload: PolarWebhookPayload) {
       subscriptionStatus: "active",
       polarCustomerId: customerId,
     });
-    markWebhookProcessed(webhookId, 'order.paid');
-    console.log(`[Polar] ✅ Order activated ${plan} for org ${truncateId(org.id)}`);
+    await markWebhookProcessed(webhookId, "order.paid");
+    console.log(
+      `[Polar] ✅ Order activated ${plan} for org ${truncateId(org.id)}`
+    );
   }
 }
 
@@ -514,9 +658,9 @@ export async function handleOrderPaid(payload: PolarWebhookPayload) {
  */
 export async function handleCustomerCreated(payload: PolarWebhookPayload) {
   const customerId = payload.data.id;
-  
+
   if (!customerId) {
-    console.error('[Polar] customer.created webhook missing customer ID');
+    console.error("[Polar] customer.created webhook missing customer ID");
     return;
   }
 
@@ -527,17 +671,23 @@ export async function handleCustomerCreated(payload: PolarWebhookPayload) {
   const userId = externalId || metadataUserId;
 
   if (!userId) {
-    console.log(`[Polar] customer.created: No userId found in payload for customer ${truncateId(customerId)}`);
+    console.log(
+      `[Polar] customer.created: No userId found in payload for customer ${truncateId(customerId)}`
+    );
     return;
   }
 
-  console.log(`[Polar] customer.created: Linking customer ${truncateId(customerId)} to user ${truncateId(userId)}`);
+  console.log(
+    `[Polar] customer.created: Linking customer ${truncateId(customerId)} to user ${truncateId(userId)}`
+  );
 
   // Find the user's organization
   const org = await findOrganizationByUserId(userId);
-  
+
   if (!org) {
-    console.log(`[Polar] customer.created: No organization found for user ${truncateId(userId)}`);
+    console.log(
+      `[Polar] customer.created: No organization found for user ${truncateId(userId)}`
+    );
     return;
   }
 
@@ -547,11 +697,17 @@ export async function handleCustomerCreated(payload: PolarWebhookPayload) {
       .update(organization)
       .set({ polarCustomerId: customerId })
       .where(eq(organization.id, org.id));
-    console.log(`[Polar] ✅ customer.created: Linked customer ${truncateId(customerId)} to org ${truncateId(org.id)}`);
+    console.log(
+      `[Polar] ✅ customer.created: Linked customer ${truncateId(customerId)} to org ${truncateId(org.id)}`
+    );
   } else if (org.polarCustomerId !== customerId) {
-    console.log(`[Polar] customer.created: Org ${truncateId(org.id)} already has different customer ${truncateId(org.polarCustomerId)}`);
+    console.log(
+      `[Polar] customer.created: Org ${truncateId(org.id)} already has different customer ${truncateId(org.polarCustomerId)}`
+    );
   } else {
-    console.log(`[Polar] customer.created: Org ${truncateId(org.id)} already linked to customer ${truncateId(customerId)}`);
+    console.log(
+      `[Polar] customer.created: Org ${truncateId(org.id)} already linked to customer ${truncateId(customerId)}`
+    );
   }
 }
 
@@ -561,4 +717,49 @@ export async function handleCustomerCreated(payload: PolarWebhookPayload) {
  */
 export async function handleCustomerStateChanged() {
   // Customer state changes are handled by subscription events
+}
+
+/**
+ * Handle customer deletion
+ * CRITICAL: Revokes subscription when customer is deleted from Polar
+ * This prevents users from accessing resources after being deleted from Polar
+ */
+export async function handleCustomerDeleted(payload: PolarWebhookPayload) {
+  const customerId = payload.data.id;
+
+  if (!customerId) {
+    console.error("[Polar] customer.deleted webhook missing customer ID");
+    return;
+  }
+
+  console.log(
+    `[Polar] customer.deleted: Processing deletion for customer ${truncateId(customerId)}`
+  );
+
+  // Find organization by Polar customer ID
+  const org = await db.query.organization.findFirst({
+    where: eq(organization.polarCustomerId, customerId),
+  });
+
+  if (!org) {
+    console.log(
+      `[Polar] customer.deleted: No organization found for customer ${truncateId(customerId)}`
+    );
+    return;
+  }
+
+  // CRITICAL: Revoke subscription immediately
+  // Set subscription to 'none' status and clear customer ID
+  await db
+    .update(organization)
+    .set({
+      subscriptionStatus: "none",
+      // Keep polarCustomerId for audit trail, but mark as deleted
+      // The validatePolarCustomer check will fail since customer doesn't exist in Polar
+    })
+    .where(eq(organization.id, org.id));
+
+  console.log(
+    `[Polar] ✅ customer.deleted: Revoked subscription for org ${truncateId(org.id)} (customer: ${truncateId(customerId)})`
+  );
 }

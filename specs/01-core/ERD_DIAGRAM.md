@@ -583,19 +583,33 @@ erDiagram
         integer minCheckIntervalMinutes
         integer playwrightMinutesIncluded
         integer k6VuMinutesIncluded
+        integer aiCreditsIncluded
         integer runningCapacity
         integer queuedCapacity
+        integer maxTeamMembers
         integer maxProjects
         integer maxOrganizations
         integer maxStatusPages
         boolean customDomains
         boolean ssoEnabled
         integer dataRetentionDays
+        integer aggregatedDataRetentionDays
+        integer jobDataRetentionDays
         timestamp createdAt
         timestamp updatedAt
     }
 
     %% Billing & Usage Tables
+    webhook_idempotency {
+        uuid id PK
+        text webhookId
+        text eventType
+        timestamp processedAt
+        text resultStatus
+        text resultMessage
+        timestamp expiresAt
+    }
+
     billing_settings {
         uuid id PK
         uuid organizationId FK
@@ -654,7 +668,8 @@ erDiagram
         uuid id PK
         text plan
         integer playwrightMinutePriceCents
-        integer k6VuHourPriceCents
+        integer k6VuMinutePriceCents
+        integer aiCreditPriceCents
         timestamp createdAt
         timestamp updatedAt
     }

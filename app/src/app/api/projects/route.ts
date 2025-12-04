@@ -1,13 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, hasPermission, getUserRole } from '@/lib/rbac/middleware';
-import { getActiveOrganization, getUserProjects } from '@/lib/session';
-import { getCurrentProjectContext } from '@/lib/project-context';
-import { db } from '@/utils/db';
-import { projects, projectMembers } from '@/db/schema';
-import { logAuditEvent } from '@/lib/audit-logger';
-import { checkProjectLimit } from '@/lib/middleware/plan-enforcement';
-import { eq } from 'drizzle-orm';
-import { subscriptionService } from '@/lib/services/subscription-service';
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth, hasPermission, getUserRole } from "@/lib/rbac/middleware";
+import { getActiveOrganization, getUserProjects } from "@/lib/session";
+import { getCurrentProjectContext } from "@/lib/project-context";
+import { db } from "@/utils/db";
+import { projects, projectMembers } from "@/db/schema";
+import { logAuditEvent } from "@/lib/audit-logger";
+import { checkProjectLimit } from "@/lib/middleware/plan-enforcement";
+import { eq } from "drizzle-orm";
+import { subscriptionService } from "@/lib/services/subscription-service";
 
 /**
  * GET /api/projects
@@ -16,11 +16,11 @@ import { subscriptionService } from '@/lib/services/subscription-service';
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await requireAuth();
-    
+
     // Get organization ID from query params or use active organization
     const { searchParams } = new URL(request.url);
-    const organizationId = searchParams.get('organizationId');
-    
+    const organizationId = searchParams.get("organizationId");
+
     let targetOrgId = organizationId;
     if (!targetOrgId) {
       const activeOrg = await getActiveOrganization();
@@ -31,54 +31,55 @@ export async function GET(request: NextRequest) {
           success: true,
           data: [],
           currentProject: null,
-          message: 'No organization found - user needs setup'
+          message: "No organization found - user needs setup",
         });
       }
       targetOrgId = activeOrg.id;
     }
 
-    const canView = await hasPermission('project', 'view', { organizationId: targetOrgId });
+    const canView = await hasPermission("project", "view", {
+      organizationId: targetOrgId,
+    });
 
     if (!canView) {
       return NextResponse.json(
-        { error: 'Insufficient permissions' },
+        { error: "Insufficient permissions" },
         { status: 403 }
       );
     }
-    
+
     // Get user's projects in the organization
     const userProjects = await getUserProjects(userId, targetOrgId);
-    
+
     // Get current project context
     const currentProject = await getCurrentProjectContext();
-    
+
     return NextResponse.json({
       success: true,
       data: userProjects,
-      currentProject: currentProject
+      currentProject: currentProject,
     });
-    
   } catch (error) {
-    console.error('Failed to get projects:', error);
-    
+    console.error("Failed to get projects:", error);
+
     if (error instanceof Error) {
-      if (error.message === 'Authentication required') {
+      if (error.message === "Authentication required") {
         return NextResponse.json(
-          { error: 'Authentication required' },
+          { error: "Authentication required" },
           { status: 401 }
         );
       }
-      
-      if (error.message.includes('not found')) {
+
+      if (error.message.includes("not found")) {
         return NextResponse.json(
-          { error: 'Organization not found or access denied' },
+          { error: "Organization not found or access denied" },
           { status: 404 }
         );
       }
     }
-    
+
     return NextResponse.json(
-      { error: 'Failed to fetch projects' },
+      { error: "Failed to fetch projects" },
       { status: 500 }
     );
   }
@@ -91,59 +92,64 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await requireAuth();
-    
+
     const body = await request.json();
     const { name, slug, description, organizationId } = body;
-    
+
     if (!name) {
       return NextResponse.json(
-        { error: 'Project name is required' },
+        { error: "Project name is required" },
         { status: 400 }
       );
     }
-    
+
     let targetOrgId = organizationId;
     if (!targetOrgId) {
       const activeOrg = await getActiveOrganization();
       if (!activeOrg) {
         return NextResponse.json(
-          { error: 'No active organization found' },
+          { error: "No active organization found" },
           { status: 400 }
         );
       }
       targetOrgId = activeOrg.id;
     }
-    
+
     // Get user role for security
     const userRole = await getUserRole(userId, targetOrgId);
-    
+
     // Check permission to create projects
-    const canCreate = await hasPermission('project', 'create', { organizationId: targetOrgId });
+    const canCreate = await hasPermission("project", "create", {
+      organizationId: targetOrgId,
+    });
     if (!canCreate) {
       return NextResponse.json(
-        { error: 'Insufficient permissions to create projects' },
+        { error: "Insufficient permissions to create projects" },
         { status: 403 }
       );
     }
-    
-    // Validate Polar customer exists before allowing project creation
+
+    // SECURITY: Validate subscription before allowing project creation
+    await subscriptionService.blockUntilSubscribed(targetOrgId);
     await subscriptionService.requireValidPolarCustomer(targetOrgId);
-    
+
     // Check project limit based on subscription plan
     const allProjectsInOrg = await db
       .select({ count: projects.id })
       .from(projects)
       .where(eq(projects.organizationId, targetOrgId));
 
-    const limitCheck = await checkProjectLimit(targetOrgId, allProjectsInOrg.length);
+    const limitCheck = await checkProjectLimit(
+      targetOrgId,
+      allProjectsInOrg.length
+    );
     if (!limitCheck.allowed) {
-      console.warn(`Project limit reached for organization ${targetOrgId}: ${limitCheck.error}`);
-      return NextResponse.json(
-        { error: limitCheck.error },
-        { status: 403 }
+      console.warn(
+        `Project limit reached for organization ${targetOrgId}: ${limitCheck.error}`
       );
+      return NextResponse.json({ error: limitCheck.error }, { status: 403 });
     }
-    
+
     // Create project
     const [newProject] = await db
       .insert(projects)
@@ -153,75 +159,75 @@ export async function POST(request: NextRequest) {
         slug: slug || null,
         description: description || null,
         isDefault: false,
-        status: 'active',
+        status: "active",
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
       })
       .returning();
-    
+
     // Add user as project editor (project ownership is handled by org membership in unified RBAC)
-    await db
-      .insert(projectMembers)
-      .values({
-        userId,
-        projectId: newProject.id,
-        role: 'project_editor',
-        createdAt: new Date()
-      });
-    
+    await db.insert(projectMembers).values({
+      userId,
+      projectId: newProject.id,
+      role: "project_editor",
+      createdAt: new Date(),
+    });
+
     // Log the audit event for project creation
     await logAuditEvent({
       userId,
       organizationId: targetOrgId,
-      action: 'project_created',
-      resource: 'project',
+      action: "project_created",
+      resource: "project",
       resourceId: newProject.id,
       metadata: {
         projectName: newProject.name,
         projectSlug: newProject.slug,
         description: newProject.description,
         organizationId: targetOrgId,
-        userRole: userRole
+        userRole: userRole,
       },
-      success: true
-    });
-    
-    return NextResponse.json({
       success: true,
-      data: {
-        id: newProject.id,
-        name: newProject.name,
-        slug: newProject.slug,
-        description: newProject.description,
-        organizationId: newProject.organizationId,
-        isDefault: newProject.isDefault,
-        status: newProject.status,
-        createdAt: newProject.createdAt,
-        role: userRole
-      }
-    }, { status: 201 });
-    
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          id: newProject.id,
+          name: newProject.name,
+          slug: newProject.slug,
+          description: newProject.description,
+          organizationId: newProject.organizationId,
+          isDefault: newProject.isDefault,
+          status: newProject.status,
+          createdAt: newProject.createdAt,
+          role: userRole,
+        },
+      },
+      { status: 201 }
+    );
   } catch (error) {
-    console.error('Failed to create project:', error);
-    
+    console.error("Failed to create project:", error);
+
     if (error instanceof Error) {
-      if (error.message === 'Authentication required') {
+      if (error.message === "Authentication required") {
         return NextResponse.json(
-          { error: 'Authentication required' },
+          { error: "Authentication required" },
           { status: 401 }
         );
       }
-      
-      if (error.message.includes('not found')) {
+
+      if (error.message.includes("not found")) {
         return NextResponse.json(
-          { error: 'Organization not found or access denied' },
+          { error: "Organization not found or access denied" },
           { status: 404 }
         );
       }
     }
-    
+
     return NextResponse.json(
-      { error: 'Failed to create project' },
+      { error: "Failed to create project" },
       { status: 500 }
     );
   }

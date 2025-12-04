@@ -33,6 +33,9 @@ interface SubscriptionData {
     polarCustomerId?: string;
     currentPeriodStart: string;
     currentPeriodEnd: string;
+    // Pricing info from API
+    basePriceCents?: number;
+    planName?: string;
   };
   usage: {
     playwrightMinutes: {
@@ -88,6 +91,7 @@ interface SubscriptionData {
     customDomains: boolean;
     ssoEnabled: boolean;
     dataRetentionDays: number;
+    aggregatedDataRetentionDays: number;
   };
 }
 
@@ -221,8 +225,9 @@ export function SubscriptionTab() {
   // Check if hard stop is active
   const isHardStopActive = spending?.hardStopEnabled && spending?.isAtLimit;
 
-  // Calculate current period estimate
-  const basePrice = data.subscription.plan === "pro" ? 99 : 49; // Plus: $49, Pro: $99
+  // Calculate current period estimate using API-provided pricing
+  // basePriceCents comes from API: Plus = 4900 ($49), Pro = 14900 ($149)
+  const basePrice = (data.subscription.basePriceCents || 4900) / 100;
   const currentOverage = spending?.currentDollars || 0;
   const estimatedTotal = basePrice + currentOverage;
 
@@ -252,9 +257,23 @@ export function SubscriptionTab() {
                 {daysRemaining} days remaining
               </span>
               <span>•</span>
-              <span className="flex items-center gap-2">
+              <span
+                className="flex items-center gap-2"
+                title="Raw check results retention"
+              >
                 <Database className="h-4 w-4" />
-                {data.planFeatures.dataRetentionDays} days retention
+                {data.planFeatures.dataRetentionDays}d raw
+              </span>
+              <span>•</span>
+              <span
+                className="flex items-center gap-2"
+                title="Aggregated metrics retention (P95, avg, uptime)"
+              >
+                <TrendingUp className="h-4 w-4" />
+                {data.planFeatures.aggregatedDataRetentionDays >= 365
+                  ? `${Math.round(data.planFeatures.aggregatedDataRetentionDays / 365)}yr`
+                  : `${data.planFeatures.aggregatedDataRetentionDays}d`}{" "}
+                metrics
               </span>
             </div>
           </div>

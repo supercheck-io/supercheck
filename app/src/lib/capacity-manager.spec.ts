@@ -69,7 +69,7 @@ describe('CapacityManager', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    capacityManager = new CapacityManager(mockRedis as object);
+    capacityManager = new CapacityManager(mockRedis as any);
     
     // Default mock implementations
     mockCheckCapacityLimits.mockResolvedValue(defaultCapacityLimits);
