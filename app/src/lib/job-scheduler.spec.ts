@@ -1,8 +1,8 @@
 /**
  * Job Scheduler Tests
- * 
+ *
  * Comprehensive test coverage for BullMQ-based job scheduling
- * 
+ *
  * Test Categories:
  * - Schedule Job (create/update scheduled jobs)
  * - Delete Scheduled Job (remove from queue)
@@ -12,6 +12,8 @@
  * - Error Handling (database errors, queue errors)
  * - Edge Cases (missing jobs, concurrent operations)
  */
+
+import type { Job } from "bullmq";
 
 // Mock setup
 const mockQueueAdd = jest.fn();
@@ -41,12 +43,13 @@ const mockDbModule = {
   update: jest.fn(),
 };
 
-jest.mock('./queue', () => ({
+jest.mock("./queue", () => ({
   getQueues: () => mockQueuesModule.getQueues(),
-  addJobToQueue: (...args: unknown[]) => mockQueuesModule.addJobToQueue(...args),
+  addJobToQueue: (...args: unknown[]) =>
+    mockQueuesModule.addJobToQueue(...args),
 }));
 
-jest.mock('@/utils/db', () => ({
+jest.mock("@/utils/db", () => ({
   db: {
     select: () => mockDbModule.select(),
     insert: () => mockDbModule.insert(),
@@ -54,37 +57,37 @@ jest.mock('@/utils/db', () => ({
   },
 }));
 
-jest.mock('drizzle-orm', () => ({
+jest.mock("drizzle-orm", () => ({
   eq: jest.fn(),
   and: jest.fn(),
   isNotNull: jest.fn(),
 }));
 
-jest.mock('@/db/schema', () => ({
+jest.mock("@/db/schema", () => ({
   jobs: {},
   runs: {},
-  JobTrigger: { schedule: 'schedule' },
+  JobTrigger: { schedule: "schedule" },
 }));
 
-jest.mock('@/lib/cron-utils', () => ({
-  getNextRunDate: jest.fn().mockReturnValue(new Date('2025-12-01T00:00:00Z')),
+jest.mock("@/lib/cron-utils", () => ({
+  getNextRunDate: jest.fn().mockReturnValue(new Date("2025-12-01T00:00:00Z")),
 }));
 
-jest.mock('./job-execution-utils', () => ({
+jest.mock("./job-execution-utils", () => ({
   prepareJobTestScripts: jest.fn().mockResolvedValue({
     testScripts: [
-      { id: 'test-1', name: 'Test 1', script: 'test code', type: 'playwright' },
+      { id: "test-1", name: "Test 1", script: "test code", type: "playwright" },
     ],
     variableResolution: { variables: {}, secrets: {} },
   }),
 }));
 
-jest.mock('./data-lifecycle-service', () => ({
+jest.mock("./data-lifecycle-service", () => ({
   createDataLifecycleService: jest.fn().mockReturnValue({
     initialize: jest.fn(),
     getStatus: jest.fn().mockResolvedValue({
       enabledStrategies: [],
-      queueStatus: 'active',
+      queueStatus: "active",
     }),
     shutdown: jest.fn(),
   }),
@@ -92,8 +95,8 @@ jest.mock('./data-lifecycle-service', () => ({
   getDataLifecycleService: jest.fn(),
 }));
 
-jest.mock('crypto', () => ({
-  randomUUID: jest.fn().mockReturnValue('mock-uuid-123'),
+jest.mock("crypto", () => ({
+  randomUUID: jest.fn().mockReturnValue("mock-uuid-123"),
 }));
 
 // Import after mocks
@@ -103,35 +106,35 @@ import {
   initializeJobSchedulers,
   handleScheduledJobTrigger,
   cleanupJobScheduler,
-} from './job-scheduler';
-import { getNextRunDate } from '@/lib/cron-utils';
+} from "./job-scheduler";
+import { getNextRunDate } from "@/lib/cron-utils";
 
 const mockGetNextRunDate = getNextRunDate as jest.Mock;
 
-describe('Job Scheduler', () => {
-  const testJobId = 'job-123';
-  const testProjectId = 'project-456';
-  const testOrgId = 'org-789';
+describe("Job Scheduler", () => {
+  const testJobId = "job-123";
+  const testProjectId = "project-456";
+  const testOrgId = "org-789";
 
   const mockJob = {
     id: testJobId,
-    name: 'Test Job',
+    name: "Test Job",
     projectId: testProjectId,
     organizationId: testOrgId,
-    cronSchedule: '0 * * * *',
-    jobType: 'playwright',
+    cronSchedule: "0 * * * *",
+    jobType: "playwright",
     scheduledJobId: null,
-    status: 'idle',
+    status: "idle",
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
+
     // Default mock implementations
     mockQueueGetRepeatableJobs.mockResolvedValue([]);
-    mockQueueAdd.mockResolvedValue({ id: 'queue-job-id' });
+    mockQueueAdd.mockResolvedValue({ id: "queue-job-id" });
     mockQueueRemoveRepeatableByKey.mockResolvedValue(true);
-    
+
     // Default db mock chain
     const selectChain = {
       from: jest.fn().mockReturnThis(),
@@ -139,12 +142,12 @@ describe('Job Scheduler', () => {
       limit: jest.fn().mockResolvedValue([mockJob]),
     };
     mockDbModule.select.mockReturnValue(selectChain);
-    
+
     const insertChain = {
       values: jest.fn().mockResolvedValue(undefined),
     };
     mockDbModule.insert.mockReturnValue(insertChain);
-    
+
     const updateChain = {
       set: jest.fn().mockReturnThis(),
       where: jest.fn().mockResolvedValue(undefined),
@@ -156,93 +159,97 @@ describe('Job Scheduler', () => {
   // SCHEDULE JOB TESTS
   // ==========================================================================
 
-  describe('scheduleJob', () => {
-    describe('Positive Cases', () => {
-      it('should schedule a new job successfully', async () => {
+  describe("scheduleJob", () => {
+    describe("Positive Cases", () => {
+      it("should schedule a new job successfully", async () => {
         const options = {
-          name: 'Test Job',
-          cron: '0 * * * *',
+          name: "Test Job",
+          cron: "0 * * * *",
           jobId: testJobId,
-          timezone: 'UTC',
+          timezone: "UTC",
         };
-        
+
         const result = await scheduleJob(options);
-        
+
         expect(result).toBe(testJobId);
         expect(mockQueueAdd).toHaveBeenCalled();
       });
 
-      it('should remove existing scheduled job before creating new one', async () => {
+      it("should remove existing scheduled job before creating new one", async () => {
         mockQueueGetRepeatableJobs.mockResolvedValue([
-          { id: testJobId, key: `scheduled-job-${testJobId}`, name: `scheduled-job-${testJobId}` },
+          {
+            id: testJobId,
+            key: `scheduled-job-${testJobId}`,
+            name: `scheduled-job-${testJobId}`,
+          },
         ]);
-        
+
         const options = {
-          name: 'Test Job',
-          cron: '0 * * * *',
+          name: "Test Job",
+          cron: "0 * * * *",
           jobId: testJobId,
         };
-        
+
         await scheduleJob(options);
-        
+
         expect(mockQueueRemoveRepeatableByKey).toHaveBeenCalled();
         expect(mockQueueAdd).toHaveBeenCalled();
       });
 
-      it('should use correct timezone', async () => {
+      it("should use correct timezone", async () => {
         const options = {
-          name: 'Test Job',
-          cron: '0 * * * *',
+          name: "Test Job",
+          cron: "0 * * * *",
           jobId: testJobId,
-          timezone: 'America/New_York',
+          timezone: "America/New_York",
         };
-        
+
         await scheduleJob(options);
-        
+
         expect(mockQueueAdd).toHaveBeenCalledWith(
           expect.any(String),
           expect.any(Object),
           expect.objectContaining({
             repeat: expect.objectContaining({
-              tz: 'America/New_York',
+              tz: "America/New_York",
             }),
           })
         );
       });
 
-      it('should default to UTC timezone', async () => {
+      it("should default to UTC timezone", async () => {
         const options = {
-          name: 'Test Job',
-          cron: '0 * * * *',
+          name: "Test Job",
+          cron: "0 * * * *",
           jobId: testJobId,
         };
-        
+
         await scheduleJob(options);
-        
+
         expect(mockQueueAdd).toHaveBeenCalledWith(
           expect.any(String),
           expect.any(Object),
           expect.objectContaining({
             repeat: expect.objectContaining({
-              tz: 'UTC',
+              tz: "UTC",
             }),
           })
         );
       });
 
-      it('should update nextRunAt in database', async () => {
+      it("should update nextRunAt in database", async () => {
         const updateChain = {
           set: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue(undefined),
         };
         mockDbModule.update.mockReturnValue(updateChain);
-        
+
         await scheduleJob({
-          name: 'Test Job',
-          cron: '0 * * * *',
+          name: "Test Job",
+          cron: "0 * * * *",
           jobId: testJobId,
         });
-        
+
         expect(updateChain.set).toHaveBeenCalledWith(
           expect.objectContaining({
             nextRunAt: expect.any(Date),
@@ -251,63 +258,69 @@ describe('Job Scheduler', () => {
       });
     });
 
-    describe('Negative Cases', () => {
-      it('should throw error when job not found', async () => {
+    describe("Negative Cases", () => {
+      it("should throw error when job not found", async () => {
         const selectChain = {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([]),
         };
         mockDbModule.select.mockReturnValue(selectChain);
-        
-        await expect(scheduleJob({
-          name: 'Test Job',
-          cron: '0 * * * *',
-          jobId: 'non-existent',
-        })).rejects.toThrow('Job non-existent not found');
+
+        await expect(
+          scheduleJob({
+            name: "Test Job",
+            cron: "0 * * * *",
+            jobId: "non-existent",
+          })
+        ).rejects.toThrow("Job non-existent not found");
       });
 
-      it('should throw error when queue add fails', async () => {
-        mockQueueAdd.mockRejectedValue(new Error('Queue error'));
-        
-        await expect(scheduleJob({
-          name: 'Test Job',
-          cron: '0 * * * *',
-          jobId: testJobId,
-        })).rejects.toThrow();
+      it("should throw error when queue add fails", async () => {
+        mockQueueAdd.mockRejectedValue(new Error("Queue error"));
+
+        await expect(
+          scheduleJob({
+            name: "Test Job",
+            cron: "0 * * * *",
+            jobId: testJobId,
+          })
+        ).rejects.toThrow();
       });
     });
 
-    describe('Edge Cases', () => {
-      it('should handle k6 job type', async () => {
-        const k6Job = { ...mockJob, jobType: 'k6' };
+    describe("Edge Cases", () => {
+      it("should handle k6 job type", async () => {
+        const k6Job = { ...mockJob, jobType: "k6" };
         const selectChain = {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([k6Job]),
         };
         mockDbModule.select.mockReturnValue(selectChain);
-        
+
         await scheduleJob({
-          name: 'K6 Job',
-          cron: '0 * * * *',
+          name: "K6 Job",
+          cron: "0 * * * *",
           jobId: testJobId,
         });
-        
+
         expect(mockQueueAdd).toHaveBeenCalled();
       });
 
-      it('should handle nextRunAt calculation failure gracefully', async () => {
+      it("should handle nextRunAt calculation failure gracefully", async () => {
         mockGetNextRunDate.mockImplementation(() => {
-          throw new Error('Invalid cron');
+          throw new Error("Invalid cron");
         });
-        
+
         // Should not throw, just log error
-        await expect(scheduleJob({
-          name: 'Test Job',
-          cron: 'invalid-cron',
-          jobId: testJobId,
-        })).resolves.toBe(testJobId);
+        await expect(
+          scheduleJob({
+            name: "Test Job",
+            cron: "invalid-cron",
+            jobId: testJobId,
+          })
+        ).resolves.toBe(testJobId);
       });
     });
   });
@@ -316,44 +329,52 @@ describe('Job Scheduler', () => {
   // DELETE SCHEDULED JOB TESTS
   // ==========================================================================
 
-  describe('deleteScheduledJob', () => {
-    describe('Positive Cases', () => {
-      it('should delete existing scheduled job', async () => {
+  describe("deleteScheduledJob", () => {
+    describe("Positive Cases", () => {
+      it("should delete existing scheduled job", async () => {
         mockQueueGetRepeatableJobs.mockResolvedValue([
-          { id: testJobId, key: `key-${testJobId}`, name: `scheduled-job-${testJobId}` },
+          {
+            id: testJobId,
+            key: `key-${testJobId}`,
+            name: `scheduled-job-${testJobId}`,
+          },
         ]);
-        
+
         const result = await deleteScheduledJob(testJobId);
-        
+
         expect(result).toBe(true);
         expect(mockQueueRemoveRepeatableByKey).toHaveBeenCalled();
       });
 
-      it('should find job by key containing job ID', async () => {
+      it("should find job by key containing job ID", async () => {
         mockQueueGetRepeatableJobs.mockResolvedValue([
-          { id: 'other', key: `prefix-${testJobId}-suffix`, name: 'other-name' },
+          {
+            id: "other",
+            key: `prefix-${testJobId}-suffix`,
+            name: "other-name",
+          },
         ]);
-        
+
         const result = await deleteScheduledJob(testJobId);
-        
+
         expect(result).toBe(true);
       });
     });
 
-    describe('Negative Cases', () => {
-      it('should return false when job not found', async () => {
+    describe("Negative Cases", () => {
+      it("should return false when job not found", async () => {
         mockQueueGetRepeatableJobs.mockResolvedValue([]);
-        
-        const result = await deleteScheduledJob('non-existent');
-        
+
+        const result = await deleteScheduledJob("non-existent");
+
         expect(result).toBe(false);
       });
 
-      it('should return false on queue error', async () => {
-        mockQueueGetRepeatableJobs.mockRejectedValue(new Error('Queue error'));
-        
+      it("should return false on queue error", async () => {
+        mockQueueGetRepeatableJobs.mockRejectedValue(new Error("Queue error"));
+
         const result = await deleteScheduledJob(testJobId);
-        
+
         expect(result).toBe(false);
       });
     });
@@ -363,82 +384,87 @@ describe('Job Scheduler', () => {
   // INITIALIZE JOB SCHEDULERS TESTS
   // ==========================================================================
 
-  describe('initializeJobSchedulers', () => {
-    describe('Positive Cases', () => {
-      it('should initialize all jobs with cron schedules', async () => {
+  describe("initializeJobSchedulers", () => {
+    describe("Positive Cases", () => {
+      it("should initialize all jobs with cron schedules", async () => {
         const selectChain = {
           from: jest.fn().mockReturnThis(),
-          where: jest.fn().mockResolvedValue([mockJob, { ...mockJob, id: 'job-2' }]),
+          where: jest
+            .fn()
+            .mockResolvedValue([mockJob, { ...mockJob, id: "job-2" }]),
           limit: jest.fn().mockResolvedValue([mockJob]),
         };
         mockDbModule.select.mockReturnValue(selectChain);
-        
+
         const result = await initializeJobSchedulers();
-        
+
         expect(result.success).toBe(true);
         expect(result.initialized).toBeGreaterThanOrEqual(0);
       });
 
-      it('should update scheduledJobId in database', async () => {
+      it("should update scheduledJobId in database", async () => {
         const selectChain = {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue([mockJob]),
           limit: jest.fn().mockResolvedValue([mockJob]),
         };
         mockDbModule.select.mockReturnValue(selectChain);
-        
+
         const updateChain = {
           set: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue(undefined),
         };
         mockDbModule.update.mockReturnValue(updateChain);
-        
+
         const result = await initializeJobSchedulers();
-        
+
         // Just verify the function ran
         expect(result.success).toBe(true);
       });
     });
 
-    describe('Negative Cases', () => {
-      it('should handle database error', async () => {
+    describe("Negative Cases", () => {
+      it("should handle database error", async () => {
         const selectChain = {
           from: jest.fn().mockReturnThis(),
-          where: jest.fn().mockRejectedValue(new Error('DB error')),
+          where: jest.fn().mockRejectedValue(new Error("DB error")),
         };
         mockDbModule.select.mockReturnValue(selectChain);
-        
+
         const result = await initializeJobSchedulers();
-        
+
         expect(result.success).toBe(false);
         expect(result.error).toBeDefined();
       });
 
-      it('should continue on individual job failure', async () => {
-        const jobs = [mockJob, { ...mockJob, id: 'job-fail', cronSchedule: null }];
+      it("should continue on individual job failure", async () => {
+        const jobs = [
+          mockJob,
+          { ...mockJob, id: "job-fail", cronSchedule: null },
+        ];
         const selectChain = {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue(jobs),
           limit: jest.fn().mockResolvedValue([]),
         };
         mockDbModule.select.mockReturnValue(selectChain);
-        
+
         const result = await initializeJobSchedulers();
-        
+
         expect(result.success).toBe(true);
       });
     });
 
-    describe('Edge Cases', () => {
-      it('should handle empty job list', async () => {
+    describe("Edge Cases", () => {
+      it("should handle empty job list", async () => {
         const selectChain = {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue([]),
         };
         mockDbModule.select.mockReturnValue(selectChain);
-        
+
         const result = await initializeJobSchedulers();
-        
+
         expect(result.success).toBe(true);
         expect(result.initialized).toBe(0);
       });
@@ -449,12 +475,12 @@ describe('Job Scheduler', () => {
   // HANDLE SCHEDULED JOB TRIGGER TESTS
   // ==========================================================================
 
-  describe('handleScheduledJobTrigger', () => {
+  describe("handleScheduledJobTrigger", () => {
     const mockBullJob = {
       data: {
         jobId: testJobId,
-        name: 'Test Job',
-        testCases: [{ id: 'test-1', title: 'Test 1', script: 'code' }],
+        name: "Test Job",
+        testCases: [{ id: "test-1", title: "Test 1", script: "code" }],
         variables: {},
         secrets: {},
         projectId: testProjectId,
@@ -462,27 +488,27 @@ describe('Job Scheduler', () => {
       },
     };
 
-    describe('Positive Cases', () => {
-      it('should create run record and add execution task', async () => {
+    describe("Positive Cases", () => {
+      it("should create run record and add execution task", async () => {
         const selectChain = {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           limit: jest.fn().mockResolvedValue([mockJob]),
         };
         mockDbModule.select.mockReturnValue(selectChain);
-        
+
         // Mock no running runs
         mockDbModule.select.mockReturnValueOnce({
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue([]),
         });
 
-        await handleScheduledJobTrigger(mockBullJob as object);
-        
+        await handleScheduledJobTrigger(mockBullJob as unknown as Job);
+
         expect(mockQueuesModule.addJobToQueue).toHaveBeenCalled();
       });
 
-      it('should update job lastRunAt and nextRunAt', async () => {
+      it("should update job lastRunAt and nextRunAt", async () => {
         const selectChain = {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
@@ -494,15 +520,15 @@ describe('Job Scheduler', () => {
             where: jest.fn().mockResolvedValue([]),
           })
           .mockReturnValue(selectChain);
-        
+
         const updateChain = {
           set: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue(undefined),
         };
         mockDbModule.update.mockReturnValue(updateChain);
 
-        await handleScheduledJobTrigger(mockBullJob as object);
-        
+        await handleScheduledJobTrigger(mockBullJob as unknown as Job);
+
         expect(updateChain.set).toHaveBeenCalledWith(
           expect.objectContaining({
             lastRunAt: expect.any(Date),
@@ -511,31 +537,31 @@ describe('Job Scheduler', () => {
       });
     });
 
-    describe('Negative Cases', () => {
-      it('should skip when job already running', async () => {
+    describe("Negative Cases", () => {
+      it("should skip when job already running", async () => {
         mockDbModule.select.mockReturnValueOnce({
           from: jest.fn().mockReturnThis(),
-          where: jest.fn().mockResolvedValue([{ status: 'running' }]),
+          where: jest.fn().mockResolvedValue([{ status: "running" }]),
         });
 
-        await handleScheduledJobTrigger(mockBullJob as object);
-        
+        await handleScheduledJobTrigger(mockBullJob as unknown as Job);
+
         expect(mockQueuesModule.addJobToQueue).not.toHaveBeenCalled();
       });
 
-      it('should throw error when no test cases', async () => {
+      it("should throw error when no test cases", async () => {
         const jobNoTests = {
           data: { ...mockBullJob.data, testCases: [] },
         };
-        
+
         mockDbModule.select.mockReturnValueOnce({
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue([]),
         });
-        
+
         // Should handle error gracefully
-        await handleScheduledJobTrigger(jobNoTests as object);
-        
+        await handleScheduledJobTrigger(jobNoTests as unknown as Job);
+
         // Job status should be updated to error
         expect(mockDbModule.update).toHaveBeenCalled();
       });
@@ -546,46 +572,52 @@ describe('Job Scheduler', () => {
   // CLEANUP JOB SCHEDULER TESTS
   // ==========================================================================
 
-  describe('cleanupJobScheduler', () => {
-    describe('Positive Cases', () => {
-      it('should clean up orphaned repeatable jobs', async () => {
+  describe("cleanupJobScheduler", () => {
+    describe("Positive Cases", () => {
+      it("should clean up orphaned repeatable jobs", async () => {
         mockQueueGetRepeatableJobs.mockResolvedValue([
-          { name: 'scheduled-job-orphan-123', key: 'key-orphan', id: null },
+          { name: "scheduled-job-orphan-123", key: "key-orphan", id: null },
         ]);
-        
+
         const selectChain = {
           from: jest.fn().mockReturnThis(),
           where: jest.fn().mockResolvedValue([]),
         };
         mockDbModule.select.mockReturnValue(selectChain);
-        
+
         const result = await cleanupJobScheduler();
-        
+
         expect(result).toBe(true);
       });
 
-      it('should not remove valid scheduled jobs', async () => {
+      it("should not remove valid scheduled jobs", async () => {
         mockQueueGetRepeatableJobs.mockResolvedValue([
-          { name: `scheduled-job-${testJobId}`, key: 'key-valid', id: testJobId },
+          {
+            name: `scheduled-job-${testJobId}`,
+            key: "key-valid",
+            id: testJobId,
+          },
         ]);
-        
+
         const selectChain = {
           from: jest.fn().mockReturnThis(),
-          where: jest.fn().mockResolvedValue([{ id: testJobId, scheduledJobId: testJobId }]),
+          where: jest
+            .fn()
+            .mockResolvedValue([{ id: testJobId, scheduledJobId: testJobId }]),
         };
         mockDbModule.select.mockReturnValue(selectChain);
-        
+
         const result = await cleanupJobScheduler();
-        
+
         expect(result).toBe(true);
       });
     });
 
-    describe('Negative Cases', () => {
-      it('should handle errors gracefully', async () => {
+    describe("Negative Cases", () => {
+      it("should handle errors gracefully", async () => {
         // cleanupJobScheduler catches errors internally
         const result = await cleanupJobScheduler();
-        
+
         // Should return true even with empty queue (no orphans)
         expect(result).toBe(true);
       });
@@ -596,30 +628,32 @@ describe('Job Scheduler', () => {
   // SECURITY TESTS
   // ==========================================================================
 
-  describe('Security', () => {
-    it('should include organization and project IDs in task', async () => {
+  describe("Security", () => {
+    it("should include organization and project IDs in task", async () => {
       const mockBullJob = {
         data: {
           jobId: testJobId,
-          testCases: [{ id: 't1', title: 'Test', script: 'code' }],
+          testCases: [{ id: "t1", title: "Test", script: "code" }],
           variables: {},
           secrets: {},
           projectId: testProjectId,
           organizationId: testOrgId,
         },
       };
-      
-      mockDbModule.select.mockReturnValueOnce({
-        from: jest.fn().mockReturnThis(),
-        where: jest.fn().mockResolvedValue([]),
-      }).mockReturnValue({
-        from: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockResolvedValue([mockJob]),
-      });
 
-      await handleScheduledJobTrigger(mockBullJob as object);
-      
+      mockDbModule.select
+        .mockReturnValueOnce({
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockResolvedValue([]),
+        })
+        .mockReturnValue({
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockResolvedValue([mockJob]),
+        });
+
+      await handleScheduledJobTrigger(mockBullJob as unknown as Job);
+
       expect(mockQueuesModule.addJobToQueue).toHaveBeenCalledWith(
         expect.objectContaining({
           organizationId: testOrgId,

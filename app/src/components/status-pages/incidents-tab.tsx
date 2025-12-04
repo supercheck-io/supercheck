@@ -93,9 +93,14 @@ type Component = {
 type IncidentsTabProps = {
   statusPageId: string;
   components: Component[];
+  canUpdate?: boolean;
 };
 
-export function IncidentsTab({ statusPageId, components }: IncidentsTabProps) {
+export function IncidentsTab({
+  statusPageId,
+  components,
+  canUpdate = true,
+}: IncidentsTabProps) {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -338,10 +343,14 @@ export function IncidentsTab({ statusPageId, components }: IncidentsTabProps) {
         </div>
         <Button
           onClick={() => setIsCreateDialogOpen(true)}
-          disabled={components.length === 0}
+          disabled={components.length === 0 || !canUpdate}
           size="sm"
           title={
-            components.length === 0 ? "Create components first" : undefined
+            !canUpdate
+              ? "You don't have permission to create incidents"
+              : components.length === 0
+                ? "Create components first"
+                : undefined
           }
         >
           <Plus className="h-4 w-4 mr-2" />
@@ -372,7 +381,16 @@ export function IncidentsTab({ statusPageId, components }: IncidentsTabProps) {
                 : "Create incidents to communicate service disruptions to your users"}
             </p>
             {components.length > 0 && (
-              <Button onClick={() => setIsCreateDialogOpen(true)} size="sm">
+              <Button
+                onClick={() => setIsCreateDialogOpen(true)}
+                size="sm"
+                disabled={!canUpdate}
+                title={
+                  !canUpdate
+                    ? "You don't have permission to create incidents"
+                    : undefined
+                }
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Create First Incident
               </Button>
@@ -569,7 +587,12 @@ export function IncidentsTab({ statusPageId, components }: IncidentsTabProps) {
                             size="sm"
                             onClick={() => handleUpdateClick(incident)}
                             className="h-8 w-8 p-0"
-                            title="Edit incident"
+                            title={
+                              !canUpdate
+                                ? "You don't have permission to edit incidents"
+                                : "Edit incident"
+                            }
+                            disabled={!canUpdate}
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -578,7 +601,12 @@ export function IncidentsTab({ statusPageId, components }: IncidentsTabProps) {
                             size="sm"
                             onClick={() => handleDeleteClick(incident)}
                             className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                            title="Delete incident"
+                            title={
+                              !canUpdate
+                                ? "You don't have permission to delete incidents"
+                                : "Delete incident"
+                            }
+                            disabled={!canUpdate}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

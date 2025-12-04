@@ -11,6 +11,7 @@ import { SchedulerModule } from './scheduler/scheduler.module';
 import { HealthModule } from './health/health.module';
 import { EmailTemplateModule } from './email-template/email-template.module';
 import { LoggerModule } from './logger/logger.module';
+import { QueueAlertingModule } from './queue-alerting/queue-alerting.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { LoggerModule } from './logger/logger.module';
     SchedulerModule,
     HealthModule,
     EmailTemplateModule,
+    QueueAlertingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

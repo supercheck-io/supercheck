@@ -188,7 +188,8 @@ export class UsageTrackerService {
   ): Promise<void> {
     const now = new Date();
     const defaultPeriodStart = periodStart || now;
-    const defaultPeriodEnd = periodEnd || new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const defaultPeriodEnd =
+      periodEnd || new Date(now.getFullYear(), now.getMonth() + 1, 1);
     let eventId: string | null = null;
 
     try {
@@ -216,7 +217,9 @@ export class UsageTrackerService {
       const resultArray = result as unknown as Array<{ id: string }>;
       eventId = resultArray[0]?.id;
 
-      this.logger.debug(`[Usage] Recorded usage event: ${eventType} for org ${organizationId}`);
+      this.logger.debug(
+        `[Usage] Recorded usage event: ${eventType} for org ${organizationId}`,
+      );
     } catch (error) {
       // Don't fail if usage_events table doesn't exist yet
       this.logger.warn(
@@ -227,8 +230,15 @@ export class UsageTrackerService {
 
     // Sync to Polar immediately (non-blocking)
     if (eventId) {
-      this.syncEventToPolar(organizationId, eventId, eventName, units, now)
-        .catch((err) => this.logger.warn(`[Usage] Failed to sync to Polar: ${err.message}`));
+      this.syncEventToPolar(
+        organizationId,
+        eventId,
+        eventName,
+        units,
+        now,
+      ).catch((err) =>
+        this.logger.warn(`[Usage] Failed to sync to Polar: ${err.message}`),
+      );
     }
   }
 
@@ -244,7 +254,9 @@ export class UsageTrackerService {
   ): Promise<void> {
     const accessToken = process.env.POLAR_ACCESS_TOKEN;
     if (!accessToken) {
-      this.logger.debug(`[Usage] POLAR_ACCESS_TOKEN not configured, skipping Polar sync`);
+      this.logger.debug(
+        `[Usage] POLAR_ACCESS_TOKEN not configured, skipping Polar sync`,
+      );
       return;
     }
 
@@ -256,12 +268,15 @@ export class UsageTrackerService {
       });
 
       if (!org?.polarCustomerId) {
-        this.logger.warn(`[Usage] No Polar customer ID for org ${organizationId}, skipping sync. User must subscribe via Polar first.`);
+        this.logger.warn(
+          `[Usage] No Polar customer ID for org ${organizationId}, skipping sync. User must subscribe via Polar first.`,
+        );
         return;
       }
-      
-      this.logger.debug(`[Usage] Syncing ${meterName}=${units} to Polar for customer ${org.polarCustomerId}`);
-    
+
+      this.logger.debug(
+        `[Usage] Syncing ${meterName}=${units} to Polar for customer ${org.polarCustomerId}`,
+      );
 
       // Determine Polar API URL
       const isSandbox = process.env.POLAR_SERVER === 'sandbox';
@@ -270,27 +285,26 @@ export class UsageTrackerService {
         : 'https://api.polar.sh';
 
       // Sync to Polar using the correct /v1/events/ingest endpoint
-      const response = await fetch(
-        `${polarUrl}/v1/events/ingest`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            events: [{
+      const response = await fetch(`${polarUrl}/v1/events/ingest`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          events: [
+            {
               customer_id: org.polarCustomerId,
               name: meterName,
               timestamp: timestamp.toISOString(),
-              metadata: { 
+              metadata: {
                 event_id: eventId,
                 value: units,
               },
-            }],
-          }),
-        }
-      );
+            },
+          ],
+        }),
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -304,16 +318,24 @@ export class UsageTrackerService {
         WHERE id = ${eventId}::uuid
       `);
 
-      this.logger.debug(`[Usage] ✅ Synced event ${eventId.substring(0, 8)}... to Polar`);
+      this.logger.debug(
+        `[Usage] ✅ Synced event ${eventId.substring(0, 8)}... to Polar`,
+      );
     } catch (error) {
       // Update sync error but don't fail
-      await this.db.execute(sql`
+      await this.db
+        .execute(
+          sql`
         UPDATE usage_events 
         SET sync_attempts = sync_attempts + 1, 
             last_sync_attempt = NOW(),
             sync_error = ${error instanceof Error ? error.message : 'Unknown error'}
         WHERE id = ${eventId}::uuid
-      `).catch(() => { /* ignore */ });
+      `,
+        )
+        .catch(() => {
+          /* ignore */
+        });
 
       throw error;
     }
@@ -352,7 +374,11 @@ export class UsageTrackerService {
 
       const row = settingsArray[0];
 
-      if (!row.enable_spending_limit || !row.hard_stop_on_limit || !row.monthly_spending_limit_cents) {
+      if (
+        !row.enable_spending_limit ||
+        !row.hard_stop_on_limit ||
+        !row.monthly_spending_limit_cents
+      ) {
         return { blocked: false };
       }
 
@@ -412,18 +438,25 @@ export class UsageTrackerService {
       const prices = pricingArray[0];
 
       // Calculate current overage cost
-      const playwrightOverage = Math.max(0, (org.playwrightMinutesUsed || 0) - limits.playwright_minutes_included);
-      const k6Overage = Math.max(0, (org.k6VuMinutesUsed || 0) - limits.k6_vu_minutes_included);
+      const playwrightOverage = Math.max(
+        0,
+        (org.playwrightMinutesUsed || 0) - limits.playwright_minutes_included,
+      );
+      const k6Overage = Math.max(
+        0,
+        (org.k6VuMinutesUsed || 0) - limits.k6_vu_minutes_included,
+      );
 
       const totalOverageCents =
-        (playwrightOverage * prices.playwright_minute_price_cents) +
-        (k6Overage * prices.k6_vu_minute_price_cents);
+        playwrightOverage * prices.playwright_minute_price_cents +
+        k6Overage * prices.k6_vu_minute_price_cents;
 
       if (totalOverageCents >= row.monthly_spending_limit_cents) {
         return {
           blocked: true,
-          reason: `Monthly spending limit of $${(row.monthly_spending_limit_cents / 100).toFixed(2)} reached. ` +
-                  `Current spending: $${(totalOverageCents / 100).toFixed(2)}.`,
+          reason:
+            `Monthly spending limit of $${(row.monthly_spending_limit_cents / 100).toFixed(2)} reached. ` +
+            `Current spending: $${(totalOverageCents / 100).toFixed(2)}.`,
         };
       }
 
@@ -441,7 +474,9 @@ export class UsageTrackerService {
    * Check if execution should be blocked before starting
    * Call this before starting a new execution
    */
-  async shouldBlockExecution(organizationId: string): Promise<{ blocked: boolean; reason?: string }> {
+  async shouldBlockExecution(
+    organizationId: string,
+  ): Promise<{ blocked: boolean; reason?: string }> {
     if (!isPolarEnabled()) {
       return { blocked: false };
     }

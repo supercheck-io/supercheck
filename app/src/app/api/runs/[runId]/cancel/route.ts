@@ -4,8 +4,12 @@ import { runs, jobs, member, projects } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getQueues } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
-import { calculateJobStatus, canCancelRun, type RunStatus } from "@/lib/job-status-utils";
-import { requireAuth } from "@/lib/rbac/middleware";
+import {
+  calculateJobStatus,
+  canCancelRun,
+  type RunStatus,
+} from "@/lib/job-status-utils";
+import { requireAuth, canCancelRunInProject } from "@/lib/rbac/middleware";
 import { setCancellationSignal } from "@/lib/cancellation-service";
 import { logAuditEvent } from "@/lib/audit-logger";
 
@@ -74,10 +78,16 @@ export async function POST(
     if (!run) {
       // Run not found in database - could be a playground test
       // Try to set cancellation signal in Redis anyway
-      logger.warn({ runId }, "Run not found in database - attempting direct cancellation");
+      logger.warn(
+        { runId },
+        "Run not found in database - attempting direct cancellation"
+      );
       try {
         await setCancellationSignal(runId);
-        logger.info({ runId }, "Cancellation signal set for non-database run (likely playground)");
+        logger.info(
+          { runId },
+          "Cancellation signal set for non-database run (likely playground)"
+        );
         return NextResponse.json({
           success: true,
           message: "Run cancelled successfully",
@@ -102,7 +112,7 @@ export async function POST(
 
     // For playground runs, we need to get the organization from the project
     let organizationIdForRbac: string | null = null;
-    
+
     if (isPlaygroundRun) {
       // Get organization from project for playground runs
       const projectResult = await db.query.projects.findFirst({
@@ -137,7 +147,36 @@ export async function POST(
         "Access denied - not a member of organization"
       );
       return NextResponse.json(
-        { error: "Access denied - You don't have permission to cancel this run" },
+        {
+          error: "Access denied - You don't have permission to cancel this run",
+        },
+        { status: 403 }
+      );
+    }
+
+    // RBAC: Check if user has permission to cancel runs in this project
+    const projectIdForRbac = run.runProjectId || run.jobProjectId;
+    const canCancel = await canCancelRunInProject(
+      userId,
+      projectIdForRbac ?? null,
+      organizationIdForRbac
+    );
+
+    if (!canCancel) {
+      logger.warn(
+        {
+          runId,
+          userId,
+          orgId: organizationIdForRbac,
+          projectId: projectIdForRbac,
+        },
+        "Access denied - insufficient permissions to cancel runs"
+      );
+      return NextResponse.json(
+        {
+          error:
+            "Access denied - You don't have permission to cancel runs. Only editors and admins can cancel executions.",
+        },
         { status: 403 }
       );
     }
@@ -150,7 +189,8 @@ export async function POST(
       );
       return NextResponse.json(
         {
-          error: "Run cannot be cancelled. Only running or pending runs can be cancelled.",
+          error:
+            "Run cannot be cancelled. Only running or pending runs can be cancelled.",
         },
         { status: 400 }
       );
@@ -204,7 +244,10 @@ export async function POST(
           } catch (removeError) {
             // Job is locked by worker - it's already running, can't remove from queue
             // This is expected - we'll just update the database status
-            const errorMessage = removeError instanceof Error ? removeError.message : String(removeError);
+            const errorMessage =
+              removeError instanceof Error
+                ? removeError.message
+                : String(removeError);
             if (errorMessage.includes("locked")) {
               logger.warn(
                 { runId, jobId: job.id },
@@ -242,7 +285,10 @@ export async function POST(
               } catch (removeError) {
                 // Job is locked by worker - it's already running, can't remove from queue
                 // This is expected - we'll just update the database status
-                const errorMessage = removeError instanceof Error ? removeError.message : String(removeError);
+                const errorMessage =
+                  removeError instanceof Error
+                    ? removeError.message
+                    : String(removeError);
                 if (errorMessage.includes("locked")) {
                   logger.warn(
                     { runId, jobId: job.id },
@@ -326,11 +372,11 @@ export async function POST(
     await logAuditEvent({
       userId,
       organizationId: organizationIdForRbac,
-      action: 'run_cancelled',
-      resource: 'run', // Standardized resource name
+      action: "run_cancelled",
+      resource: "run", // Standardized resource name
       resourceId: runId,
       metadata: {
-        subtype: isPlaygroundRun ? 'playground' : 'job',
+        subtype: isPlaygroundRun ? "playground" : "job",
         jobId: run.runJobId || null,
         jobName: run.jobName || null,
         projectId: run.runProjectId || run.jobProjectId,

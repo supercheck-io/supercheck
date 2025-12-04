@@ -16,13 +16,14 @@ import {
 } from "@/components/ui/dialog";
 import {
   FolderOpen,
-  Activity,
-  TrendingUp,
-  Calendar,
   Users,
   LayoutDashboard,
-  FileText,
-  CreditCard,
+  DollarSign,
+  UserSearch,
+  CalendarClock,
+  Code,
+  Globe,
+  ClipboardList,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AuditLogsTable } from "@/components/admin/audit-logs-table";
@@ -37,7 +38,10 @@ import {
 } from "@/lib/validations/project";
 // import { useFormValidation } from "@/hooks/use-form-validation";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
-import { OrgAdminDashboardSkeleton } from "@/components/ui/table-skeleton";
+import {
+  OrgAdminDashboardSkeleton,
+  TabLoadingSpinner,
+} from "@/components/ui/table-skeleton";
 import { Loader2 } from "lucide-react";
 import {
   canCreateProjects,
@@ -129,6 +133,7 @@ export default function OrgAdminDashboard() {
 
   // Projects tab state
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
   const [showEditProjectDialog, setShowEditProjectDialog] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
@@ -247,6 +252,7 @@ export default function OrgAdminDashboard() {
   };
 
   const fetchProjects = async () => {
+    setProjectsLoading(true);
     try {
       const response = await fetch("/api/projects");
       const data = await response.json();
@@ -292,6 +298,8 @@ export default function OrgAdminDashboard() {
     } catch (error) {
       console.error("Error fetching projects:", error);
       toast.error("Failed to load projects");
+    } finally {
+      setProjectsLoading(false);
     }
   };
 
@@ -469,7 +477,7 @@ export default function OrgAdminDashboard() {
                 <span className="hidden sm:inline">Members</span>
               </TabsTrigger>
               <TabsTrigger value="audit" className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
+                <UserSearch className="h-4 w-4" />
                 <span className="hidden sm:inline">Audit</span>
               </TabsTrigger>
               {isCloudHosted && (
@@ -477,89 +485,109 @@ export default function OrgAdminDashboard() {
                   value="subscription"
                   className="flex items-center gap-2"
                 >
-                  <CreditCard className="h-4 w-4" />
+                  <DollarSign className="h-4 w-4" />
                   <span className="hidden sm:inline">Subscription</span>
                 </TabsTrigger>
               )}
             </TabsList>
 
-            <TabsContent value="overview" className="space-y-4">
+            <TabsContent value="overview" className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-semibold">Organization Admin</h2>
-                  <p className="text-muted-foreground text-sm">
+                  <h2 className="text-2xl font-bold tracking-tight">
+                    Organization Admin
+                  </h2>
+                  <p className="text-muted-foreground">
                     Manage your organization&apos;s projects, members, and view
                     audit logs.
                   </p>
                 </div>
               </div>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+
+              {/* Primary Metrics - 3 columns on large, 2 on medium */}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <StatsCard
                   title="Projects"
                   value={stats.projects}
                   description="Active projects"
                   icon={FolderOpen}
+                  variant="primary"
                 />
                 <StatsCard
                   title="Members"
                   value={stats.members}
                   description="Organization members"
                   icon={Users}
+                  variant="purple"
                 />
                 <StatsCard
-                  title="Jobs"
+                  title="Scheduled Jobs"
                   value={stats.jobs}
-                  description="Scheduled jobs"
-                  icon={Calendar}
+                  description="Active jobs"
+                  icon={CalendarClock}
+                  variant="warning"
                 />
+              </div>
+
+              {/* Secondary Metrics */}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <StatsCard
-                  title="Tests"
+                  title="Test Cases"
                   value={stats.tests}
-                  description="Test cases"
-                  icon={Activity}
+                  description="Available tests"
+                  icon={Code}
+                  variant="cyan"
                 />
                 <StatsCard
                   title="Monitors"
                   value={stats.monitors}
                   description="Active monitors"
-                  icon={TrendingUp}
+                  icon={Globe}
+                  variant="success"
                 />
                 <StatsCard
                   title="Total Runs"
                   value={stats.runs}
                   description="Test executions"
-                  icon={Activity}
+                  icon={ClipboardList}
                 />
               </div>
             </TabsContent>
 
             <TabsContent value="projects" className="space-y-4">
-              <ProjectsTable
-                projects={projects}
-                onCreateProject={() => setShowCreateProjectDialog(true)}
-                onEditProject={handleEditProject}
-                canCreateProjects={canCreateProjects(
-                  normalizeRole(currentUserRole)
-                )}
-                canManageProject={canManageProject(
-                  normalizeRole(currentUserRole)
-                )}
-              />
+              {projectsLoading && projects.length === 0 ? (
+                <TabLoadingSpinner message="Loading projects..." />
+              ) : (
+                <ProjectsTable
+                  projects={projects}
+                  onCreateProject={() => setShowCreateProjectDialog(true)}
+                  onEditProject={handleEditProject}
+                  canCreateProjects={canCreateProjects(
+                    normalizeRole(currentUserRole)
+                  )}
+                  canManageProject={canManageProject(
+                    normalizeRole(currentUserRole)
+                  )}
+                />
+              )}
 
               {/* Create Project Dialog */}
               <Dialog
                 open={showCreateProjectDialog}
                 onOpenChange={setShowCreateProjectDialog}
               >
-                <DialogContent>
+                <DialogContent className="sm:max-w-md">
                   <DialogHeader>
-                    <DialogTitle>Create New Project</DialogTitle>
+                    <DialogTitle className="flex items-center gap-2">
+                      <FolderOpen className="h-5 w-5" />
+                      Create New Project
+                    </DialogTitle>
                     <DialogDescription>
                       Create a new project in your organization. Both name and
                       description are required.
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="grid gap-4 py-4">
+                  <div className="space-y-4 py-4">
                     <FormInput
                       id="project-name"
                       label="Name"
@@ -586,7 +614,13 @@ export default function OrgAdminDashboard() {
                       showCharacterCount={true}
                     />
                   </div>
-                  <DialogFooter>
+                  <DialogFooter className="gap-2 sm:gap-0">
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowCreateProjectDialog(false)}
+                    >
+                      Cancel
+                    </Button>
                     <Button
                       onClick={() => handleCreateProject()}
                       disabled={
@@ -595,7 +629,14 @@ export default function OrgAdminDashboard() {
                         !newProject.description.trim()
                       }
                     >
-                      {creatingProject ? "Creating..." : "Create Project"}
+                      {creatingProject ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        "Create Project"
+                      )}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -606,15 +647,18 @@ export default function OrgAdminDashboard() {
                 open={showEditProjectDialog}
                 onOpenChange={setShowEditProjectDialog}
               >
-                <DialogContent>
+                <DialogContent className="sm:max-w-md">
                   <DialogHeader>
-                    <DialogTitle>Edit Project</DialogTitle>
+                    <DialogTitle className="flex items-center gap-2">
+                      <FolderOpen className="h-5 w-5" />
+                      Edit Project
+                    </DialogTitle>
                     <DialogDescription>
                       Update your project details. Both name and description are
                       required.
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="grid gap-4 py-4">
+                  <div className="space-y-4 py-4">
                     <FormInput
                       id="edit-project-name"
                       label="Name"
@@ -641,7 +685,13 @@ export default function OrgAdminDashboard() {
                       showCharacterCount={true}
                     />
                   </div>
-                  <DialogFooter>
+                  <DialogFooter className="gap-2 sm:gap-0">
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowEditProjectDialog(false)}
+                    >
+                      Cancel
+                    </Button>
                     <Button
                       onClick={handleUpdateProject}
                       disabled={
@@ -650,7 +700,14 @@ export default function OrgAdminDashboard() {
                         !newProject.description.trim()
                       }
                     >
-                      {updatingProject ? "Updating..." : "Update Project"}
+                      {updatingProject ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Updating...
+                        </>
+                      ) : (
+                        "Update Project"
+                      )}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -659,14 +716,7 @@ export default function OrgAdminDashboard() {
 
             <TabsContent value="members" className="space-y-4">
               {membersLoading ? (
-                <div className="flex justify-center items-center h-64">
-                  <div className="flex items-center space-x-2">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                    <span className="text-muted-foreground">
-                      Loading members...
-                    </span>
-                  </div>
-                </div>
+                <TabLoadingSpinner message="Loading members..." />
               ) : (
                 <MembersTable
                   members={[

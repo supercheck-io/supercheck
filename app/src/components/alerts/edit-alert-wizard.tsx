@@ -4,12 +4,21 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { NotificationProviderForm } from "./notification-provider-form";
 import { AlertSettings } from "./alert-settings";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
-import { type NotificationProviderType, type NotificationProviderConfig } from "@/db/schema";
+import {
+  type NotificationProviderType,
+  type NotificationProviderConfig,
+} from "@/db/schema";
 
 interface NotificationProviderData {
   id: string;
@@ -36,7 +45,10 @@ interface EditAlertWizardProps {
   initialData: NotificationProviderData;
 }
 
-export function EditAlertWizard({ providerId, initialData }: EditAlertWizardProps) {
+export function EditAlertWizard({
+  providerId,
+  initialData,
+}: EditAlertWizardProps) {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
   const [providerData, setProviderData] = useState(initialData);
@@ -61,7 +73,7 @@ export function EditAlertWizard({ providerId, initialData }: EditAlertWizardProp
           onSuccess={handleProviderSave}
           onCancel={() => router.push("/alerts")}
         />
-      )
+      ),
     },
     {
       title: "Alert Configuration",
@@ -70,16 +82,18 @@ export function EditAlertWizard({ providerId, initialData }: EditAlertWizardProp
         <div className="space-y-6">
           <AlertSettings
             value={alertConfig}
-            onChange={(config) => setAlertConfig({
-              enabled: config.enabled,
-              notificationProviders: config.notificationProviders,
-              alertOnFailure: config.alertOnFailure,
-              alertOnRecovery: config.alertOnRecovery || false,
-              alertOnSslExpiration: config.alertOnSslExpiration || false,
-              failureThreshold: config.failureThreshold,
-              recoveryThreshold: config.recoveryThreshold,
-              customMessage: config.customMessage || "",
-            })}
+            onChange={(config) =>
+              setAlertConfig({
+                enabled: config.enabled,
+                notificationProviders: config.notificationProviders,
+                alertOnFailure: config.alertOnFailure,
+                alertOnRecovery: config.alertOnRecovery || false,
+                alertOnSslExpiration: config.alertOnSslExpiration || false,
+                failureThreshold: config.failureThreshold,
+                recoveryThreshold: config.recoveryThreshold,
+                customMessage: config.customMessage || "",
+              })
+            }
             context="monitor"
           />
           <div className="flex justify-end space-x-4">
@@ -97,39 +111,37 @@ export function EditAlertWizard({ providerId, initialData }: EditAlertWizardProp
             </Button>
           </div>
         </div>
-      )
-    }
+      ),
+    },
   ];
 
-  async function handleProviderSave(data: { type: NotificationProviderType; config: NotificationProviderConfig }) {
-    try {
-      const response = await fetch(`/api/notification-providers/${providerId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id: providerId,
-          name: (data.config as Record<string, unknown>).name,
-          type: data.type,
-          config: data.config,
-          enabled: providerData.enabled,
-        }),
-      });
+  async function handleProviderSave(data: {
+    type: NotificationProviderType;
+    config: NotificationProviderConfig;
+  }) {
+    const response = await fetch(`/api/notification-providers/${providerId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: providerId,
+        name: (data.config as Record<string, unknown>).name,
+        type: data.type,
+        config: data.config,
+        enabled: providerData.enabled,
+      }),
+    });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update provider');
-      }
+    const responseData = await response.json();
 
-      const updatedProvider = await response.json();
-      setProviderData(updatedProvider);
-      setCurrentStep(1); // Move to next step
-      toast.success("Provider settings updated successfully");
-    } catch (error) {
-      console.error('Error updating provider:', error);
-      toast.error("Failed to update provider settings");
+    if (!response.ok) {
+      throw new Error(responseData.error || "Failed to update provider");
     }
+
+    setProviderData(responseData);
+    setCurrentStep(1); // Move to next step
+    toast.success("Provider settings updated successfully");
   }
 
   async function handleFinalSave() {
@@ -139,7 +151,7 @@ export function EditAlertWizard({ providerId, initialData }: EditAlertWizardProp
       toast.success("Alert settings saved successfully");
       router.push("/alerts");
     } catch (error) {
-      console.error('Error saving alert settings:', error);
+      console.error("Error saving alert settings:", error);
       toast.error("Failed to save alert settings");
     }
   }
@@ -164,10 +176,8 @@ export function EditAlertWizard({ providerId, initialData }: EditAlertWizardProp
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          {currentStepData.component}
-        </CardContent>
+        <CardContent>{currentStepData.component}</CardContent>
       </Card>
     </div>
   );
-} 
+}

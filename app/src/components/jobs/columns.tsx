@@ -74,7 +74,8 @@ function DescriptionWithPopover({
 
 // Create a proper React component for the run button
 function RunButton({ job }: { job: Job }) {
-  const { isJobRunning, setJobRunning, startJobRun, activeRuns } = useJobContext();
+  const { isJobRunning, setJobRunning, startJobRun, activeRuns } =
+    useJobContext();
   const { currentProject } = useProjectContext();
   const eventSourceRef = useRef<EventSource | null>(null);
   const [localRunId, setLocalRunId] = useState<string | null>(null);
@@ -284,7 +285,7 @@ function RunButton({ job }: { job: Job }) {
   };
 
   return (
-    <div className="relative ml-1">
+    <div className="relative ml-1 inline-flex">
       {/* Run Button - always visible */}
       <Button
         onClick={isRunning ? undefined : handleRunJob}
@@ -296,8 +297,7 @@ function RunButton({ job }: { job: Job }) {
           "flex items-center justify-center",
           "h-7 px-2 rounded-md",
           "gap-1.5",
-
-          isRunning && "cursor-default"
+          isRunning && "cursor-default pr-3"
         )}
         disabled={
           isRunning || !job.tests || job.tests.length === 0 || !hasPermission
@@ -326,7 +326,7 @@ function RunButton({ job }: { job: Job }) {
       </Button>
 
       {/* Cancel Button - overlaid on top right when running */}
-      {isRunning && (
+      {isRunning && hasPermission && (
         <TooltipProvider>
           <Tooltip delayDuration={200}>
             <TooltipTrigger asChild>
@@ -336,11 +336,12 @@ function RunButton({ job }: { job: Job }) {
                 variant="ghost"
                 disabled={isCancelling}
                 className={cn(
-                  "absolute -top-1.5 -right-1.5",
-                  "h-5 w-5 p-0 rounded-full",
+                  "absolute -top-2 -right-2 z-10",
+                  "h-5 w-5 min-w-5 p-0 rounded-full",
                   "bg-red-500 hover:bg-red-600",
-                  "shadow-md",
+                  "shadow-md border-2 border-background",
                   "transition-colors",
+                  "flex items-center justify-center",
                   isCancelling && "cursor-not-allowed"
                 )}
                 title={isCancelling ? "Cancelling..." : "Cancel run"}
@@ -365,7 +366,8 @@ function RunButton({ job }: { job: Job }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel Execution?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to cancel this job execution? This action cannot be undone and the run will be marked as cancelled.
+              Are you sure you want to cancel this job execution? This action
+              cannot be undone and the run will be marked as cancelled.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -472,12 +474,14 @@ export const columns: ColumnDef<Job>[] = [
       return (
         <div className="flex items-center max-w-[120px]">
           <TimerIcon
-            className={`${cronSchedule ? "text-sky-500" : "text-muted-foreground"
-              } mr-2 h-4 w-4 flex-shrink-0`}
+            className={`${
+              cronSchedule ? "text-sky-500" : "text-muted-foreground"
+            } mr-2 h-4 w-4 flex-shrink-0`}
           />
           <span
-            className={`${cronSchedule ? "text-foreground" : "text-muted-foreground"
-              } truncate`}
+            className={`${
+              cronSchedule ? "text-foreground" : "text-muted-foreground"
+            } truncate`}
           >
             {cronSchedule || "None"}
           </span>
@@ -493,9 +497,17 @@ export const columns: ColumnDef<Job>[] = [
     cell: ({ row }) => {
       const jobId = row.getValue("id") as string;
       const dbStatus = row.getValue("status") as string;
-      const lastRun = row.original.lastRun as { errorDetails?: string | null } | null;
+      const lastRun = row.original.lastRun as {
+        errorDetails?: string | null;
+      } | null;
 
-      return <JobStatusDisplay jobId={jobId} dbStatus={dbStatus} lastRunErrorDetails={lastRun?.errorDetails} />;
+      return (
+        <JobStatusDisplay
+          jobId={jobId}
+          dbStatus={dbStatus}
+          lastRunErrorDetails={lastRun?.errorDetails}
+        />
+      );
     },
     filterFn: (row, id, value) => {
       return value.includes(row.getValue(id));
@@ -511,12 +523,8 @@ export const columns: ColumnDef<Job>[] = [
       if (!lastRunAt) {
         return (
           <div className="flex items-center max-w-[120px]">
-            <Clock
-              className="text-muted-foreground mr-2 h-4 w-4 flex-shrink-0"
-            />
-            <span className="text-muted-foreground truncate">
-              Never
-            </span>
+            <Clock className="text-muted-foreground mr-2 h-4 w-4 flex-shrink-0" />
+            <span className="text-muted-foreground truncate">Never</span>
           </div>
         );
       }
@@ -556,12 +564,8 @@ export const columns: ColumnDef<Job>[] = [
       if (!cronSchedule || !nextRunAt) {
         return (
           <div className="flex items-center max-w-[120px]">
-            <Clock
-              className="text-muted-foreground mr-2 h-4 w-4 flex-shrink-0"
-            />
-            <span className="text-muted-foreground truncate">
-              Never
-            </span>
+            <Clock className="text-muted-foreground mr-2 h-4 w-4 flex-shrink-0" />
+            <span className="text-muted-foreground truncate">Never</span>
           </div>
         );
       }

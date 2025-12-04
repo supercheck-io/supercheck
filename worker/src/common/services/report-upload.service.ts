@@ -9,10 +9,7 @@ import { existsSync } from 'fs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { S3Service } from '../../execution/services/s3.service';
-import {
-  findFirstMatchingFile,
-  pathExists,
-} from '../utils/file-search';
+import { findFirstMatchingFile, pathExists } from '../utils/file-search';
 
 export interface ReportUploadResult {
   success: boolean;

@@ -267,7 +267,6 @@ export class EmailTemplateService {
     );
   }
 
-
   /**
    * Cache management
    */

@@ -14,51 +14,54 @@ import {
   JobType,
 } from "@/db/schema";
 import { desc, eq, inArray, and } from "drizzle-orm";
-import { hasPermission } from '@/lib/rbac/middleware';
-import { requireProjectContext } from '@/lib/project-context';
-import { subscriptionService } from '@/lib/services/subscription-service';
+import { hasPermission } from "@/lib/rbac/middleware";
+import { requireProjectContext } from "@/lib/project-context";
+import { subscriptionService } from "@/lib/services/subscription-service";
 
 import { randomUUID } from "crypto";
 
-
-
 // Create a simple implementation here
-async function executeJob(jobId: string, tests: { id: string; script: string }[]) {
+async function executeJob(
+  jobId: string,
+  tests: { id: string; script: string }[]
+) {
   // This function is now simplified to just create a run record
   // The actual execution is handled by the backend service
-  
-  console.log(`Received job execution request: { jobId: ${jobId}, testCount: ${tests.length} }`);
-  
+
+  console.log(
+    `Received job execution request: { jobId: ${jobId}, testCount: ${tests.length} }`
+  );
+
   const runId = randomUUID();
-  
+
   // Get job details to add project scoping to run
   const jobDetails = await db
     .select({ projectId: jobs.projectId })
     .from(jobs)
     .where(eq(jobs.id, jobId))
     .limit(1);
-  
+
   // Create a run record
   await db.insert(runs).values({
     id: runId,
     jobId: jobId,
     projectId: jobDetails.length > 0 ? jobDetails[0].projectId : null,
-    status: 'running' as TestRunStatus,
+    status: "running" as TestRunStatus,
     startedAt: new Date(),
-    trigger: 'manual' as JobTrigger,
+    trigger: "manual" as JobTrigger,
   });
-  
+
   console.log(`[${jobId}] Created running test run record: ${runId}`);
-  
+
   return {
     runId,
     jobId,
-    status: 'running',
-    message: 'Job execution request queued',
+    status: "running",
+    message: "Job execution request queued",
     // Properties needed for other parts of the code
     success: true,
     results: [],
-    reportUrl: null
+    reportUrl: null,
   };
 }
 
@@ -108,16 +111,19 @@ interface TestResult {
 export async function GET() {
   try {
     const { project, organizationId } = await requireProjectContext();
-    
+
     // Use current project context
     const targetProjectId = project.id;
-    
+
     // Check permission to view jobs
-    const canView = await hasPermission('job', 'view', { organizationId, projectId: targetProjectId });
-    
+    const canView = await hasPermission("job", "view", {
+      organizationId,
+      projectId: targetProjectId,
+    });
+
     if (!canView) {
       return NextResponse.json(
-        { error: 'Insufficient permissions' },
+        { error: "Insufficient permissions" },
         { status: 403 }
       );
     }
@@ -141,17 +147,19 @@ export async function GET() {
         jobType: jobs.jobType,
       })
       .from(jobs)
-      .where(and(
-        eq(jobs.projectId, targetProjectId),
-        eq(jobs.organizationId, organizationId)
-      ))
+      .where(
+        and(
+          eq(jobs.projectId, targetProjectId),
+          eq(jobs.organizationId, organizationId)
+        )
+      )
       .orderBy(desc(jobs.id)); // UUIDv7 is time-ordered
 
     if (jobsResult.length === 0) {
       return NextResponse.json({ success: true, jobs: [] });
     }
 
-    const jobIds = jobsResult.map(job => job.id);
+    const jobIds = jobsResult.map((job) => job.id);
 
     // Query 2: Batch fetch all tests for all jobs in one query
     const allJobTests = await db
@@ -171,17 +179,20 @@ export async function GET() {
       .where(inArray(jobTests.jobId, jobIds));
 
     // Query 3: Batch fetch all tags for all tests in one query
-    const allTestIds = [...new Set(allJobTests.map(t => t.testId))];
-    const allTestTags = allTestIds.length > 0 ? await db
-      .select({
-        testId: testTags.testId,
-        tagId: tags.id,
-        tagName: tags.name,
-        tagColor: tags.color,
-      })
-      .from(testTags)
-      .innerJoin(tags, eq(testTags.tagId, tags.id))
-      .where(inArray(testTags.testId, allTestIds)) : [];
+    const allTestIds = [...new Set(allJobTests.map((t) => t.testId))];
+    const allTestTags =
+      allTestIds.length > 0
+        ? await db
+            .select({
+              testId: testTags.testId,
+              tagId: tags.id,
+              tagName: tags.name,
+              tagColor: tags.color,
+            })
+            .from(testTags)
+            .innerJoin(tags, eq(testTags.tagId, tags.id))
+            .where(inArray(testTags.testId, allTestIds))
+        : [];
 
     // Query 4: Batch fetch last run for all jobs using a subquery with DISTINCT ON
     // This gets the most recent run for each job in a single query
@@ -202,7 +213,7 @@ export async function GET() {
     // Build lookup maps for O(1) access
     // Map: jobId -> tests[]
     const jobTestsMap = new Map<string, typeof allJobTests>();
-    allJobTests.forEach(test => {
+    allJobTests.forEach((test) => {
       if (!jobTestsMap.has(test.jobId)) {
         jobTestsMap.set(test.jobId, []);
       }
@@ -210,7 +221,10 @@ export async function GET() {
     });
 
     // Map: testId -> tags[]
-    const testTagsMap = new Map<string, Array<{ id: string; name: string; color: string | null }>>();
+    const testTagsMap = new Map<
+      string,
+      Array<{ id: string; name: string; color: string | null }>
+    >();
     allTestTags.forEach(({ testId, tagId, tagName, tagColor }) => {
       if (!testTagsMap.has(testId)) {
         testTagsMap.set(testId, []);
@@ -223,15 +237,15 @@ export async function GET() {
     });
 
     // Map: jobId -> lastRun (only keep the first/most recent run per job)
-    const lastRunMap = new Map<string, typeof allLastRuns[0]>();
-    allLastRuns.forEach(run => {
+    const lastRunMap = new Map<string, (typeof allLastRuns)[0]>();
+    allLastRuns.forEach((run) => {
       if (run.jobId && !lastRunMap.has(run.jobId)) {
         lastRunMap.set(run.jobId, run);
       }
     });
 
     // Assemble the final result using the lookup maps
-    const jobsWithTests = jobsResult.map(job => {
+    const jobsWithTests = jobsResult.map((job) => {
       const testsForJob = jobTestsMap.get(job.id) || [];
       const lastRun = lastRunMap.get(job.id) || null;
 
@@ -239,7 +253,7 @@ export async function GET() {
         ...job,
         lastRunAt: job.lastRunAt ? job.lastRunAt.toISOString() : null,
         nextRunAt: job.nextRunAt ? job.nextRunAt.toISOString() : null,
-        tests: testsForJob.map(test => ({
+        tests: testsForJob.map((test) => ({
           id: test.testId,
           title: test.title,
           description: test.description,
@@ -251,14 +265,20 @@ export async function GET() {
           createdAt: test.createdAt ? test.createdAt.toISOString() : null,
           updatedAt: test.updatedAt ? test.updatedAt.toISOString() : null,
         })),
-        lastRun: lastRun ? {
-          id: lastRun.id,
-          status: lastRun.status,
-          errorDetails: lastRun.errorDetails,
-          duration: lastRun.duration,
-          startedAt: lastRun.startedAt ? lastRun.startedAt.toISOString() : null,
-          completedAt: lastRun.completedAt ? lastRun.completedAt.toISOString() : null,
-        } : null,
+        lastRun: lastRun
+          ? {
+              id: lastRun.id,
+              status: lastRun.status,
+              errorDetails: lastRun.errorDetails,
+              duration: lastRun.duration,
+              startedAt: lastRun.startedAt
+                ? lastRun.startedAt.toISOString()
+                : null,
+              completedAt: lastRun.completedAt
+                ? lastRun.completedAt.toISOString()
+                : null,
+            }
+          : null,
         createdAt: job.createdAt ? job.createdAt.toISOString() : null,
         updatedAt: job.updatedAt ? job.updatedAt.toISOString() : null,
       };
@@ -269,9 +289,9 @@ export async function GET() {
       jobs: jobsWithTests,
     });
   } catch (error) {
-    console.error('Failed to fetch jobs:', error);
+    console.error("Failed to fetch jobs:", error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch jobs' },
+      { success: false, error: "Failed to fetch jobs" },
       { status: 500 }
     );
   }
@@ -302,17 +322,24 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    
+
     // Use current project context
     const targetProjectId = project.id;
-    
+
+    // SECURITY: Validate subscription before allowing job creation
+    await subscriptionService.blockUntilSubscribed(organizationId);
+    await subscriptionService.requireValidPolarCustomer(organizationId);
+
     // Build permission context and check access
     // Check permission to create jobs
-    const canCreate = await hasPermission('job', 'create', { organizationId, projectId: targetProjectId });
-    
+    const canCreate = await hasPermission("job", "create", {
+      organizationId,
+      projectId: targetProjectId,
+    });
+
     if (!canCreate) {
       return NextResponse.json(
-        { error: 'Insufficient permissions to create jobs' },
+        { error: "Insufficient permissions to create jobs" },
         { status: 403 }
       );
     }
@@ -321,43 +348,75 @@ export async function POST(request: NextRequest) {
     const jobId = randomUUID();
 
     // Insert the job into the database with default values for nullable fields
-    const [insertedJob] = await db.insert(jobs).values({
-      id: jobId,
-      name: jobData.name,
-      description: jobData.description || null,
-      cronSchedule: jobData.cronSchedule || null,
-      status: jobData.status || 'pending',
-      alertConfig: jobData.alertConfig ? {
-        enabled: Boolean(jobData.alertConfig.enabled),
-        notificationProviders: Array.isArray(jobData.alertConfig.notificationProviders) ? jobData.alertConfig.notificationProviders : [],
-        alertOnFailure: jobData.alertConfig.alertOnFailure !== undefined ? Boolean(jobData.alertConfig.alertOnFailure) : true,
-        alertOnSuccess: Boolean(jobData.alertConfig.alertOnSuccess),
-        alertOnTimeout: Boolean(jobData.alertConfig.alertOnTimeout),
-        failureThreshold: typeof jobData.alertConfig.failureThreshold === 'number' ? jobData.alertConfig.failureThreshold : 1,
-        recoveryThreshold: typeof jobData.alertConfig.recoveryThreshold === 'number' ? jobData.alertConfig.recoveryThreshold : 1,
-        customMessage: typeof jobData.alertConfig.customMessage === 'string' ? jobData.alertConfig.customMessage : "",
-      } : null,
-      organizationId: organizationId,
-      projectId: targetProjectId,
-      createdByUserId: userId, // Use authenticated user ID
-      jobType: jobData.jobType === "k6" ? "k6" : "playwright",
-    }).returning();
+    const [insertedJob] = await db
+      .insert(jobs)
+      .values({
+        id: jobId,
+        name: jobData.name,
+        description: jobData.description || null,
+        cronSchedule: jobData.cronSchedule || null,
+        status: jobData.status || "pending",
+        alertConfig: jobData.alertConfig
+          ? {
+              enabled: Boolean(jobData.alertConfig.enabled),
+              notificationProviders: Array.isArray(
+                jobData.alertConfig.notificationProviders
+              )
+                ? jobData.alertConfig.notificationProviders
+                : [],
+              alertOnFailure:
+                jobData.alertConfig.alertOnFailure !== undefined
+                  ? Boolean(jobData.alertConfig.alertOnFailure)
+                  : true,
+              alertOnSuccess: Boolean(jobData.alertConfig.alertOnSuccess),
+              alertOnTimeout: Boolean(jobData.alertConfig.alertOnTimeout),
+              failureThreshold:
+                typeof jobData.alertConfig.failureThreshold === "number"
+                  ? jobData.alertConfig.failureThreshold
+                  : 1,
+              recoveryThreshold:
+                typeof jobData.alertConfig.recoveryThreshold === "number"
+                  ? jobData.alertConfig.recoveryThreshold
+                  : 1,
+              customMessage:
+                typeof jobData.alertConfig.customMessage === "string"
+                  ? jobData.alertConfig.customMessage
+                  : "",
+            }
+          : null,
+        organizationId: organizationId,
+        projectId: targetProjectId,
+        createdByUserId: userId, // Use authenticated user ID
+        jobType: jobData.jobType === "k6" ? "k6" : "playwright",
+      })
+      .returning();
 
     // Validate alert configuration if enabled
     if (jobData.alertConfig?.enabled) {
       // Check if at least one notification provider is selected
-      if (!jobData.alertConfig.notificationProviders || jobData.alertConfig.notificationProviders.length === 0) {
+      if (
+        !jobData.alertConfig.notificationProviders ||
+        jobData.alertConfig.notificationProviders.length === 0
+      ) {
         return NextResponse.json(
-          { error: "At least one notification channel must be selected when alerts are enabled" },
+          {
+            error:
+              "At least one notification channel must be selected when alerts are enabled",
+          },
           { status: 400 }
         );
       }
 
       // Check notification channel limit
-      const maxJobChannels = parseInt(process.env.MAX_JOB_NOTIFICATION_CHANNELS || '10', 10);
+      const maxJobChannels = parseInt(
+        process.env.MAX_JOB_NOTIFICATION_CHANNELS || "10",
+        10
+      );
       if (jobData.alertConfig.notificationProviders.length > maxJobChannels) {
         return NextResponse.json(
-          { error: `You can only select up to ${maxJobChannels} notification channels` },
+          {
+            error: `You can only select up to ${maxJobChannels} notification channels`,
+          },
           { status: 400 }
         );
       }
@@ -366,21 +425,28 @@ export async function POST(request: NextRequest) {
       const alertTypesSelected = [
         jobData.alertConfig.alertOnFailure,
         jobData.alertConfig.alertOnSuccess,
-        jobData.alertConfig.alertOnTimeout
+        jobData.alertConfig.alertOnTimeout,
       ].some(Boolean);
 
       if (!alertTypesSelected) {
         return NextResponse.json(
-          { error: "At least one alert type must be selected when alerts are enabled" },
+          {
+            error:
+              "At least one alert type must be selected when alerts are enabled",
+          },
           { status: 400 }
         );
       }
     }
 
     // Link notification providers if alert config is enabled
-    if (insertedJob && jobData.alertConfig?.enabled && Array.isArray(jobData.alertConfig.notificationProviders)) {
+    if (
+      insertedJob &&
+      jobData.alertConfig?.enabled &&
+      Array.isArray(jobData.alertConfig.notificationProviders)
+    ) {
       await Promise.all(
-        jobData.alertConfig.notificationProviders.map(providerId =>
+        jobData.alertConfig.notificationProviders.map((providerId) =>
           db.insert(jobNotificationSettings).values({
             jobId: insertedJob.id,
             notificationProviderId: providerId,
@@ -447,10 +513,10 @@ export async function PUT(request: Request) {
 
     // Check if job exists and belongs to current project
     const existingJob = await db
-      .select({ 
-        id: jobs.id, 
+      .select({
+        id: jobs.id,
         projectId: jobs.projectId,
-        organizationId: jobs.organizationId 
+        organizationId: jobs.organizationId,
       })
       .from(jobs)
       .where(eq(jobs.id, jobData.id))
@@ -464,7 +530,10 @@ export async function PUT(request: Request) {
     }
 
     // Verify job belongs to current project and organization
-    if (existingJob[0].projectId !== project.id || existingJob[0].organizationId !== organizationId) {
+    if (
+      existingJob[0].projectId !== project.id ||
+      existingJob[0].organizationId !== organizationId
+    ) {
       return NextResponse.json(
         { success: false, error: "Job not found or access denied" },
         { status: 404 }
@@ -473,11 +542,14 @@ export async function PUT(request: Request) {
 
     // Build permission context and check access
     // Check permission to update jobs
-    const canEdit = await hasPermission('job', 'update', { organizationId, projectId: project.id });
-    
+    const canEdit = await hasPermission("job", "update", {
+      organizationId,
+      projectId: project.id,
+    });
+
     if (!canEdit) {
       return NextResponse.json(
-        { error: 'Insufficient permissions to edit jobs' },
+        { error: "Insufficient permissions to edit jobs" },
         { status: 403 }
       );
     }
@@ -519,24 +591,24 @@ export async function PUT(request: Request) {
     });
   } catch (error) {
     console.error("Error updating job:", error);
-    
+
     // Handle authentication/authorization errors
     if (error instanceof Error) {
-      if (error.message === 'Authentication required') {
+      if (error.message === "Authentication required") {
         return NextResponse.json(
-          { success: false, error: 'Authentication required' },
+          { success: false, error: "Authentication required" },
           { status: 401 }
         );
       }
-      
-      if (error.message.includes('not found')) {
+
+      if (error.message.includes("not found")) {
         return NextResponse.json(
-          { success: false, error: 'Resource not found or access denied' },
+          { success: false, error: "Resource not found or access denied" },
           { status: 404 }
         );
       }
     }
-    
+
     return NextResponse.json(
       { success: false, error: "Failed to update job" },
       { status: 500 }
@@ -566,20 +638,22 @@ async function runJob(request: Request) {
       .limit(1);
 
     if (jobDetails.length === 0) {
-      return NextResponse.json(
-        { error: "Job not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
 
-    // Validate Polar customer exists before allowing test execution
+    // SECURITY: Validate subscription and Polar customer before allowing test execution
     if (!jobDetails[0].organizationId) {
       return NextResponse.json(
         { error: "Job has no associated organization" },
         { status: 400 }
       );
     }
-    await subscriptionService.requireValidPolarCustomer(jobDetails[0].organizationId);
+    await subscriptionService.blockUntilSubscribed(
+      jobDetails[0].organizationId
+    );
+    await subscriptionService.requireValidPolarCustomer(
+      jobDetails[0].organizationId
+    );
 
     // Create a new test run record in the database
     const runId = crypto.randomUUID();
@@ -605,7 +679,9 @@ async function runJob(request: Request) {
 
       if (!testScript) {
         // Fetch the test from the database to get the script
-        const testResult = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/tests/${test.id}`);
+        const testResult = await fetch(
+          `${process.env.NEXT_PUBLIC_APP_URL}/api/tests/${test.id}`
+        );
         const testData = await testResult.json();
         if (testResult.ok && testData?.script) {
           testScript = testData.script;
@@ -640,14 +716,15 @@ async function runJob(request: Request) {
     const result = await executeJob(jobId, testScripts);
 
     // Map individual test results for the response
-    const testResults = result.results && Array.isArray(result.results) 
-      ? result.results.map((testResult: TestResult) => ({
-          testId: testResult.testId,
-          success: testResult.success,
-          error: testResult.error,
-          reportUrl: result.reportUrl, // All tests share the same report URL
-        }))
-      : [];
+    const testResults =
+      result.results && Array.isArray(result.results)
+        ? result.results.map((testResult: TestResult) => ({
+            testId: testResult.testId,
+            success: testResult.success,
+            error: testResult.error,
+            reportUrl: result.reportUrl, // All tests share the same report URL
+          }))
+        : [];
 
     // Calculate test duration
     const startTimeMs = startTime.getTime();
@@ -667,19 +744,21 @@ async function runJob(request: Request) {
       .where(eq(jobs.id, jobId));
 
     // Create a separate variable for logs data that includes stdout and stderr
-    const logsData = result.results && Array.isArray(result.results)
-      ? result.results.map((r: TestResult) => {
-          // Create a basic log entry with the test ID
-          const logEntry: { testId: string; stdout: string; stderr: string } = {
-            testId: r.testId,
-            stdout: r.stdout?.toString() || "",
-            stderr: r.stderr?.toString() || "",
-          };
+    const logsData =
+      result.results && Array.isArray(result.results)
+        ? result.results.map((r: TestResult) => {
+            // Create a basic log entry with the test ID
+            const logEntry: { testId: string; stdout: string; stderr: string } =
+              {
+                testId: r.testId,
+                stdout: r.stdout?.toString() || "",
+                stderr: r.stderr?.toString() || "",
+              };
 
-          // Return the log entry
-          return logEntry;
-        })
-      : [];
+            // Return the log entry
+            return logEntry;
+          })
+        : [];
 
     // Stringify the logs data for storage
     const logs = JSON.stringify(logsData);
@@ -688,16 +767,19 @@ async function runJob(request: Request) {
     const errorDetails = result.success
       ? null
       : JSON.stringify(
-          result.results && Array.isArray(result.results) 
-            ? result.results.filter((r: TestResult) => !r.success).map((r: TestResult) => r.error)
+          result.results && Array.isArray(result.results)
+            ? result.results
+                .filter((r: TestResult) => !r.success)
+                .map((r: TestResult) => r.error)
             : []
         );
 
     // Check if any individual tests failed - this is an additional check to ensure
     // we correctly flag runs with failed tests
-    const hasFailedTests = result.results && Array.isArray(result.results) 
-      ? result.results.some((r: TestResult) => !r.success)
-      : false;
+    const hasFailedTests =
+      result.results && Array.isArray(result.results)
+        ? result.results.some((r: TestResult) => !r.success)
+        : false;
 
     // Update the test run record with results
     await db

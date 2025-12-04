@@ -20,11 +20,6 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import { randomUUID } from 'crypto';
-import {
-  validatePath,
-  validateCommandArgument,
-  createSafeTempPath,
-} from './path-validator';
 import { CancellationService } from '../services/cancellation.service';
 
 export interface ContainerExecutionOptions {
@@ -132,7 +127,13 @@ export interface ContainerExecutionResult {
 export class ContainerExecutorService {
   private readonly logger = new Logger(ContainerExecutorService.name);
   // Use custom worker image with Playwright browsers and k6 pre-installed
-  private readonly defaultImage = process.env.WORKER_IMAGE || 'ghcr.io/supercheck-io/supercheck/worker:latest';
+  private readonly defaultImage =
+    process.env.WORKER_IMAGE ||
+    'ghcr.io/supercheck-io/supercheck/worker:latest';
+
+  // Seccomp profile path for Chromium sandbox security
+  // This enables running Chromium with sandbox as non-root user
+  private readonly seccompProfilePath: string;
 
   // Track running containers for cancellation
   private runningContainers: Map<string, string> = new Map(); // runId -> containerName
@@ -141,9 +142,17 @@ export class ContainerExecutorService {
     private configService: ConfigService,
     private cancellationService: CancellationService,
   ) {
+    // Resolve seccomp profile path relative to this file
+    // In production, this will be in dist/src/common/security/
+    // The seccomp_profile.json needs to be copied to dist during build
+    this.seccompProfilePath =
+      process.env.SECCOMP_PROFILE_PATH ||
+      path.resolve(__dirname, 'seccomp_profile.json');
+
     this.logger.log(
       `Container executor initialized with default image: ${this.defaultImage}`,
     );
+    this.logger.log(`Seccomp profile path: ${this.seccompProfilePath}`);
   }
 
   /**
@@ -163,7 +172,8 @@ export class ContainerExecutorService {
         success: false,
         exitCode: 1,
         stdout: '',
-        stderr: 'Legacy mode with scriptPath is no longer supported. Use inlineScriptContent instead.',
+        stderr:
+          'Legacy mode with scriptPath is no longer supported. Use inlineScriptContent instead.',
         duration: 0,
         timedOut: false,
         error: 'Legacy execution mode not supported',
@@ -188,7 +198,8 @@ export class ContainerExecutorService {
         success: false,
         exitCode: 1,
         stdout: '',
-        stderr: 'inlineScriptFileName is required when using inlineScriptContent',
+        stderr:
+          'inlineScriptFileName is required when using inlineScriptContent',
         duration: 0,
         timedOut: false,
         error: 'Missing script filename',
@@ -213,7 +224,8 @@ export class ContainerExecutorService {
         success: false,
         exitCode: 1,
         stdout: '',
-        stderr: 'Docker is not available or the required image could not be pulled. Please ensure Docker is installed and running, and you have access to pull the required image.',
+        stderr:
+          'Docker is not available or the required image could not be pulled. Please ensure Docker is installed and running, and you have access to pull the required image.',
         duration: Date.now() - startTime,
         timedOut: false,
         error: 'Docker is not available or image pull failed',
@@ -243,7 +255,8 @@ export class ContainerExecutorService {
         success: false,
         exitCode: 1,
         stdout: '',
-        stderr: 'extractToHost is required when extractFromContainer is specified',
+        stderr:
+          'extractToHost is required when extractFromContainer is specified',
         duration: 0,
         timedOut: false,
         error: 'Invalid extraction configuration',
@@ -254,15 +267,39 @@ export class ContainerExecutorService {
 
     try {
       // Build Docker command with security constraints
+      // Following Playwright Docker best practices: https://playwright.dev/docs/docker
+      // Supports all browsers: Chromium, Firefox, and WebKit (Safari)
+      //
+      // SECURITY: Running as non-root user (pwuser) with seccomp profile
+      // This is REQUIRED because we execute untrusted user-provided code.
+      // - pwuser: Non-root user in Playwright image (UID 1000)
+      // - seccomp profile: Enables Chromium sandbox with user namespace cloning
       const dockerArgs = [
         'run',
         '--name',
         containerName,
+        // SECURITY: Run as non-root user (pwuser) - CRITICAL for untrusted code
+        // The Playwright Docker image includes 'pwuser' user (UID 1000)
+        // This enables the Chromium sandbox which is disabled when running as root
+        '--user',
+        'pwuser',
+        // SECURITY: Seccomp profile for Chromium sandbox
+        // Allows user namespace syscalls (clone, setns, unshare) needed for sandbox
+        // Based on Docker default profile with additional permissions for Chromium
+        `--security-opt`,
+        `seccomp=${this.seccompProfilePath}`,
+        // Playwright recommended flags:
+        // 1. --init: Use tini as PID 1 to avoid zombie processes (common cause of container issues)
+        //    Works with all browsers (Chromium, Firefox, WebKit)
+        '--init',
+        // 2. --ipc=host: Required for Chromium to prevent memory crashes
+        //    Safe for Firefox and WebKit (no negative impact)
+        '--ipc=host',
         // Security options
         // NOTE: --read-only flag removed because container needs to write:
         // 1. Test scripts to /tmp/ (inline script injection)
         // 2. Test reports to /tmp/playwright-reports/ or /tmp/ (for docker cp extraction)
-        // Container is still secure via: --security-opt=no-new-privileges, --cap-drop=ALL,
+        // Container is still secure via: non-root user, seccomp profile, --cap-drop=ALL,
         // resource limits, and automatic removal after execution.
         '--security-opt=no-new-privileges', // Prevent privilege escalation
         '--cap-drop=ALL', // Drop all Linux capabilities
@@ -272,7 +309,7 @@ export class ContainerExecutorService {
         `--memory=${memoryLimitMb}m`,
         `--memory-swap=${memoryLimitMb}m`, // Equal to --memory disables swap usage
         `--cpus=${cpuLimit}`,
-        '--pids-limit=256', // Increased for parallel browser instances
+        '--pids-limit=256', // Increased for parallel browser instances (Chromium, Firefox, WebKit)
         // Out-of-memory behavior
         '--oom-kill-disable=false', // Kill container if it exceeds memory limit instead of kernel panic
         // Network
@@ -301,7 +338,11 @@ export class ContainerExecutorService {
       // preventing docker cp extraction. Use regular container filesystem instead - it's
       // still isolated and cleaned up when container is removed.
 
-      // Allocate shared memory for Playwright/Chromium browsers (512MB for Medium instances)
+      // Allocate shared memory for browser processes (all browsers benefit from this)
+      // - Chromium: Heavy shm usage for rendering and IPC
+      // - Firefox: Moderate shm usage for content processes
+      // - WebKit: Lower shm usage but still benefits from larger allocation
+      // 512MB is sufficient for 2 parallel browser instances in Medium instances
       dockerArgs.push('--shm-size=512m');
 
       // Add environment variables
@@ -326,10 +367,10 @@ export class ContainerExecutorService {
       // 2. Executes the original command
       // Using base64 encoding to safely pass script content
 
-      const scriptContent = Buffer.from(options.inlineScriptContent!).toString(
+      const scriptContent = Buffer.from(options.inlineScriptContent).toString(
         'base64',
       );
-      const scriptPath = `/tmp/${options.inlineScriptFileName!}`;
+      const scriptPath = `/tmp/${options.inlineScriptFileName}`;
 
       // Build shell wrapper commands as an array, then join
       const shellCommands: string[] = [];
@@ -366,7 +407,9 @@ export class ContainerExecutorService {
           const targetPath = filePath.startsWith('/')
             ? filePath
             : `/tmp/${filePath}`;
-          shellCommands.push(`printf '%s' "${encodedContent}" | base64 -d > ${targetPath}`);
+          shellCommands.push(
+            `printf '%s' "${encodedContent}" | base64 -d > ${targetPath}`,
+          );
         }
       }
 
@@ -377,14 +420,16 @@ export class ContainerExecutorService {
       );
 
       // Build the exec command with proper quoting for args that might have special chars
-      const quotedCommand = adjustedCommand.map((arg) => {
-        // If arg contains spaces or special characters, quote it
-        if (/[\s|&;<>()$`"'\\]/.test(arg)) {
-          // Escape single quotes in the arg, then wrap in single quotes
-          return `'${arg.replace(/'/g, "'\\''")}'`;
-        }
-        return arg;
-      }).join(' ');
+      const quotedCommand = adjustedCommand
+        .map((arg) => {
+          // If arg contains spaces or special characters, quote it
+          if (/[\s|&;<>()$`"'\\]/.test(arg)) {
+            // Escape single quotes in the arg, then wrap in single quotes
+            return `'${arg.replace(/'/g, "'\\''")}'`;
+          }
+          return arg;
+        })
+        .join(' ');
 
       shellCommands.push(quotedCommand);
 
@@ -397,14 +442,20 @@ export class ContainerExecutorService {
       this.logger.debug(
         `[Container-Only] Generated shell wrapper for inline script execution`,
       );
-      this.logger.debug(`[Container-Only] Shell script: ${shellScript.substring(0, 1000)}`);
+      this.logger.debug(
+        `[Container-Only] Shell script: ${shellScript.substring(0, 1000)}`,
+      );
 
       // Execute via shell
       dockerArgs.push('-c', shellScript);
 
       // Ensure timeout is a number (handle string values from config)
-      const timeout = typeof timeoutMs === 'string' ? parseInt(timeoutMs, 10) : timeoutMs;
-      const validTimeout = typeof timeout === 'number' && !isNaN(timeout) && timeout > 0 ? timeout : undefined;
+      const timeout =
+        typeof timeoutMs === 'string' ? parseInt(timeoutMs, 10) : timeoutMs;
+      const validTimeout =
+        typeof timeout === 'number' && !isNaN(timeout) && timeout > 0
+          ? timeout
+          : undefined;
 
       this.logger.log(
         `Executing in container: ${containerName} with timeout ${validTimeout || 'none'}ms, memory limit ${memoryLimitMb}MB (no swap), CPU limit ${cpuLimit}`,
@@ -420,7 +471,9 @@ export class ContainerExecutorService {
       // Register container for cancellation tracking
       if (options.runId) {
         this.runningContainers.set(options.runId, containerName);
-        this.logger.debug(`Registered container ${containerName} for runId ${options.runId}`);
+        this.logger.debug(
+          `Registered container ${containerName} for runId ${options.runId}`,
+        );
       }
 
       // Start background cancellation checker
@@ -430,22 +483,30 @@ export class ContainerExecutorService {
       if (options.runId) {
         cancellationCheckInterval = setInterval(async () => {
           try {
-            const isCancelled = await this.cancellationService.isCancelled(options.runId!);
+            const isCancelled = await this.cancellationService.isCancelled(
+              options.runId!,
+            );
             if (isCancelled && !containerKilled) {
-              this.logger.warn(`[${options.runId}] Cancellation detected - killing container ${containerName}`);
+              this.logger.warn(
+                `[${options.runId}] Cancellation detected - killing container ${containerName}`,
+              );
               containerKilled = true;
 
               // Kill the container immediately
               await this.killContainer(containerName);
 
               // Clear the cancellation signal
-              await this.cancellationService.clearCancellationSignal(options.runId!);
+              await this.cancellationService.clearCancellationSignal(
+                options.runId!,
+              );
 
               // Kill the child process
               child.kill('SIGKILL');
             }
           } catch (error) {
-            this.logger.error(`Error checking cancellation: ${error instanceof Error ? error.message : String(error)}`);
+            this.logger.error(
+              `Error checking cancellation: ${error instanceof Error ? error.message : String(error)}`,
+            );
           }
         }, 1000); // Check every second
       }
@@ -500,18 +561,26 @@ export class ContainerExecutorService {
       }
 
       // Log execution result (stdout is saved to console.log, no need to log full content)
-      this.logger.debug(`Container ${containerName} exited with code ${result.exitCode}`);
+      this.logger.debug(
+        `Container ${containerName} exited with code ${result.exitCode}`,
+      );
       if (result.stdout && result.stdout.trim().length > 0) {
-        this.logger.debug(`Container stdout: ${result.stdout.length} chars (saved to console.log)`);
+        this.logger.debug(
+          `Container stdout: ${result.stdout.length} chars (saved to console.log)`,
+        );
       }
       if (result.stderr && result.stderr.trim().length > 0) {
         // Only log stderr content since it indicates errors
-        this.logger.debug(`Container stderr (first 500 chars): ${result.stderr.substring(0, 500)}`);
+        this.logger.debug(
+          `Container stderr (first 500 chars): ${result.stderr.substring(0, 500)}`,
+        );
       }
 
       // Log errors for non-zero exits
       if (result.exitCode !== 0 && !timedOut) {
-        this.logger.error(`Container ${containerName} failed with exit code ${result.exitCode}`);
+        this.logger.error(
+          `Container ${containerName} failed with exit code ${result.exitCode}`,
+        );
       }
 
       // Extract files from container if requested (before container is destroyed)
@@ -595,10 +664,14 @@ export class ContainerExecutorService {
       }
 
       // Check if required image exists locally
-      const imageCheck = await execa('docker', ['images', '-q', this.defaultImage], {
-        timeout: 5000,
-        reject: false,
-      });
+      const imageCheck = await execa(
+        'docker',
+        ['images', '-q', this.defaultImage],
+        {
+          timeout: 5000,
+          reject: false,
+        },
+      );
 
       // If image doesn't exist, try to pull it automatically
       if (!imageCheck.stdout || imageCheck.stdout.trim() === '') {
@@ -607,13 +680,19 @@ export class ContainerExecutorService {
         );
 
         try {
-          const pullResult = await execa('docker', ['pull', this.defaultImage], {
-            timeout: 120000, // 2 minutes for pull
-            reject: false,
-          });
+          const pullResult = await execa(
+            'docker',
+            ['pull', this.defaultImage],
+            {
+              timeout: 120000, // 2 minutes for pull
+              reject: false,
+            },
+          );
 
           if (pullResult.exitCode === 0) {
-            this.logger.log(`Successfully pulled Docker image: ${this.defaultImage}`);
+            this.logger.log(
+              `Successfully pulled Docker image: ${this.defaultImage}`,
+            );
             return true;
           } else {
             this.logger.warn(

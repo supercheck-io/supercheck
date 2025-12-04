@@ -12,7 +12,10 @@ import Link from "next/link";
 import { PlaywrightLogo } from "../logo/playwright-logo";
 import { TimeoutErrorPage } from "./timeout-error-page";
 import { TimeoutErrorInfo } from "@/lib/timeout-utils";
-import { CancellationErrorPage, CancellationErrorInfo } from "./cancellation-error-page";
+import {
+  CancellationErrorPage,
+  CancellationErrorInfo,
+} from "./cancellation-error-page";
 import { useTheme } from "next-themes";
 
 interface ReportViewerProps {
@@ -60,7 +63,8 @@ export function ReportViewer({
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [preCheckComplete, setPreCheckComplete] = useState(false);
   const [timeoutInfo, setTimeoutInfo] = useState<TimeoutErrorInfo | null>(null);
-  const [cancellationInfo, setCancellationInfo] = useState<CancellationErrorInfo | null>(null);
+  const [cancellationInfo, setCancellationInfo] =
+    useState<CancellationErrorInfo | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fullscreenIframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -90,7 +94,7 @@ export function ReportViewer({
               const contentType = response.headers.get("content-type");
               if (contentType?.includes("application/json")) {
                 const errorData = await response.json();
-                
+
                 // Check if this is a cancellation error
                 if (errorData.cancellationInfo?.isCancelled) {
                   setCancellationInfo(errorData.cancellationInfo);
@@ -98,7 +102,7 @@ export function ReportViewer({
                   setIsReportLoading(false);
                   return;
                 }
-                
+
                 // Check if this is a timeout error
                 if (errorData.timeoutInfo?.isTimeout) {
                   setTimeoutInfo(errorData.timeoutInfo);
@@ -106,7 +110,7 @@ export function ReportViewer({
                   setIsReportLoading(false);
                   return;
                 }
-                
+
                 // Generic error with message
                 if (errorData.error || errorData.message) {
                   setReportError(errorData.message || errorData.error);
@@ -118,7 +122,7 @@ export function ReportViewer({
             } catch {
               // Failed to parse JSON, continue with generic error
             }
-            
+
             if (response.status === 404) {
               setIsReportLoading(false);
               setIframeError(true);
@@ -142,80 +146,92 @@ export function ReportViewer({
     }
   }, [reportUrl]);
 
-  // Shared function to remove external buttons and settings icon from any iframe
-  const removeExternalButtonFromIframe = (iframe: HTMLIFrameElement | null) => {
-    if (iframe?.contentDocument) {
-      try {
-        // Simple CSS injection
-        const existingStyle =
-          iframe.contentDocument.getElementById(
-            "report-viewer-hide-external-controls"
-          ) ?? null;
+  // Hide external link button in Playwright trace viewer
+  // This prevents users from opening snapshots in a new tab outside of SuperCheck
+  // Note: Due to CORS restrictions, we can't directly modify cross-origin iframe content
+  // Instead, we use a CSS approach that targets elements via attribute selectors
+  // and also try direct DOM manipulation for same-origin iframes
+  const hideExternalLinkButton = useCallback(
+    (iframe: HTMLIFrameElement | null) => {
+      if (!iframe) return;
 
-        if (!existingStyle) {
-          const style = iframe.contentDocument.createElement("style");
-          style.id = "report-viewer-hide-external-controls";
-          style.textContent = `
-          button.toolbar-button.link-external,
-          button[title="Open snapshot in a new tab"],
-          .codicon.codicon-link-external,
-          /* Hide settings icon in trace viewer */
-          button[title*="settings"],
-          button[title*="Settings"],
-          button[title*="gear"],
-          button[title*="Gear"],
-          .codicon.codicon-gear,
-          .codicon.codicon-settings,
-          /* Hide any button with gear/settings icon in the top right */
-          .toolbar-button[title*="settings"],
-          .toolbar-button[title*="Settings"],
-          .toolbar-button[title*="gear"],
-          .toolbar-button[title*="Gear"],
-          /* More specific selectors for the settings icon */
-          button[aria-label*="settings"],
-          button[aria-label*="Settings"],
-          button[aria-label*="gear"],
-          button[aria-label*="Gear"],
-          /* Hide by class names that might contain settings */
-          .settings-button,
-          .gear-button,
-          .config-button,
-          /* Additional Playwright-specific selectors */
-          [data-testid*="settings"],
-          [data-testid*="gear"],
-          [class*="settings"],
-          [class*="gear"],
-          /* Hide any element with settings-related attributes */
-          [title*="Configure"],
-          [title*="configure"],
-          [aria-label*="Configure"],
-          [aria-label*="configure"] {
-            display: none !important;
+      try {
+        // First, try to access contentDocument (works for same-origin only)
+        const doc = iframe.contentDocument;
+        if (doc) {
+          const styleId = "supercheck-hide-external-link";
+          if (!doc.getElementById(styleId)) {
+            const style = doc.createElement("style");
+            style.id = styleId;
+            // Comprehensive selectors to hide external link buttons
+            style.textContent = `
+              /* Hide external link button in trace viewer toolbar */
+              button.toolbar-button.link-external,
+              button[title="Open snapshot in a new tab"],
+              button[title*="external"],
+              button[title*="new tab"],
+              .codicon.codicon-link-external,
+              .codicon-link-external,
+              [class*="link-external"],
+              /* Target by aria-label as well */
+              button[aria-label*="external"],
+              button[aria-label*="new tab"],
+              /* Target toolbar buttons with external link icon */
+              .toolbar-button svg[class*="external"],
+              .toolbar-button .codicon-link-external,
+              /* Hide the entire button if it contains external link icon */
+              button:has(.codicon-link-external),
+              button:has(svg[class*="external"]) {
+                display: none !important;
+                visibility: hidden !important;
+                pointer-events: none !important;
+                width: 0 !important;
+                height: 0 !important;
+                overflow: hidden !important;
+              }
+            `;
+            doc.head?.appendChild(style);
           }
 
-        `;
-          iframe.contentDocument.head.appendChild(style);
+          // Also try to directly remove the elements
+          const selectors = [
+            "button.toolbar-button.link-external",
+            'button[title="Open snapshot in a new tab"]',
+            ".codicon.codicon-link-external",
+            'button[title*="external"]',
+          ];
+
+          selectors.forEach((selector) => {
+            try {
+              const elements = doc.querySelectorAll(selector);
+              elements.forEach((el) => {
+                (el as HTMLElement).style.display = "none";
+                (el as HTMLElement).style.visibility = "hidden";
+              });
+            } catch {
+              // Ignore errors for individual selectors
+            }
+          });
         }
       } catch {
-        // Ignore CORS errors
+        // Silently ignore CORS errors when accessing cross-origin iframes
+        // For cross-origin iframes, we rely on sandbox restrictions
       }
-    }
-  };
+    },
+    []
+  );
 
   const applyDecorators = useCallback(
     (
       iframe: HTMLIFrameElement | null,
       decorators: Array<(iframe: HTMLIFrameElement) => void>
     ) => {
-      if (!iframe) {
-        return;
-      }
+      if (!iframe) return;
 
-      removeExternalButtonFromIframe(iframe);
+      // Always hide external link button
+      hideExternalLinkButton(iframe);
 
-      if (!decorators.length) {
-        return;
-      }
+      if (!decorators.length) return;
 
       for (const decorate of decorators) {
         try {
@@ -225,7 +241,7 @@ export function ReportViewer({
         }
       }
     },
-    []
+    [hideExternalLinkButton]
   );
 
   const resolvedIframeDecorators = useMemo(
@@ -480,7 +496,7 @@ export function ReportViewer({
             className={`${iframeClassName} ${
               isReportLoading ? "opacity-0 pointer-events-none" : "opacity-100"
             } ${isValidationError ? "h-4/5 flex-grow" : "h-full"} ${!isK6Report ? "bg-card" : ""}`}
-            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"
+            sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
             style={{
               visibility: isReportLoading ? "hidden" : "visible",
               transition: "opacity 0.3s ease-in-out",
@@ -560,7 +576,7 @@ export function ReportViewer({
                         errorData.cancellationInfo.isCancelled
                       ) {
                         setCancellationInfo(errorData.cancellationInfo);
-                      } 
+                      }
                       // Check if this is a timeout error based on the API response
                       else if (
                         errorData.timeoutInfo &&
@@ -626,7 +642,7 @@ export function ReportViewer({
       {showFullscreen && currentReportUrl && (
         <div
           className={`fixed inset-0 z-50 backdrop-blur-sm ${
-            isK6Report && !isDarkMode ? "" : "bg-card/80" 
+            isK6Report && !isDarkMode ? "" : "bg-card/80"
           }`}
         >
           <div
@@ -656,7 +672,7 @@ export function ReportViewer({
                 ref={fullscreenIframeRef}
                 src={preCheckComplete ? currentReportUrl : undefined}
                 className="w-full h-full border-0"
-                sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-downloads"
+                sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
                 title="Fullscreen Report"
                 style={{
                   filter:

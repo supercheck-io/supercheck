@@ -71,11 +71,7 @@ export class HardStopNotificationService {
 
       if (sent) {
         // Set rate limit using Redis client
-        await redis.setex(
-          rateLimitKey,
-          this.RATE_LIMIT_TTL_SECONDS,
-          '1',
-        );
+        await redis.setex(rateLimitKey, this.RATE_LIMIT_TTL_SECONDS, '1');
         this.logger.log(
           `[HardStop] Notification sent to ${recipients.length} recipient(s) for org ${organizationId}`,
         );
@@ -113,7 +109,10 @@ export class HardStopNotificationService {
           }
         } catch {
           // If it's not valid JSON, treat it as a single email
-          if (typeof settings.notificationEmails === 'string' && settings.notificationEmails.includes('@')) {
+          if (
+            typeof settings.notificationEmails === 'string' &&
+            settings.notificationEmails.includes('@')
+          ) {
             recipients.add(settings.notificationEmails);
           }
         }

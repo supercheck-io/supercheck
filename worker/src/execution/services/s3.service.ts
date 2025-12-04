@@ -57,7 +57,7 @@ export class S3Service implements OnModuleInit {
       'supercheck-status-artifacts',
     );
     this.k6PerformanceBucketName = this.configService.get<string>(
-      'S3_K6_PERFORMANCE_BUCKET_NAME',
+      'S3_PERFORMANCE_BUCKET_NAME',
       'supercheck-performance-artifacts',
     );
     this.s3Endpoint = this.configService.get<string>(

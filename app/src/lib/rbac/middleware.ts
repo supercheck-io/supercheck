@@ -51,7 +51,10 @@ export async function hasPermission(
     // Note: Better Auth provides session management and organization context,
     // but permission checks are handled by our custom RBAC implementation
     // which provides fine-grained control over resources and actions
-    const userRole = await getUserRole(session.user.id, context?.organizationId);
+    const userRole = await getUserRole(
+      session.user.id,
+      context?.organizationId
+    );
     const assignedProjects =
       context?.assignedProjectIds ||
       (await getUserAssignedProjects(session.user.id));
@@ -239,8 +242,7 @@ export async function canCreateVariableInProject(
 
     const projectRole = projectMember[0].role;
     return (
-      projectRole === Role.PROJECT_ADMIN ||
-      projectRole === Role.PROJECT_EDITOR
+      projectRole === Role.PROJECT_ADMIN || projectRole === Role.PROJECT_EDITOR
     );
   } catch {
     return false;
@@ -295,8 +297,7 @@ export async function canUpdateVariableInProject(
 
     const projectRole = projectMember[0].role;
     return (
-      projectRole === Role.PROJECT_ADMIN ||
-      projectRole === Role.PROJECT_EDITOR
+      projectRole === Role.PROJECT_ADMIN || projectRole === Role.PROJECT_EDITOR
     );
   } catch {
     return false;
@@ -404,8 +405,7 @@ export async function canViewSecretVariableInProject(
 
     const projectRole = projectMember[0].role;
     return (
-      projectRole === Role.PROJECT_ADMIN ||
-      projectRole === Role.PROJECT_EDITOR
+      projectRole === Role.PROJECT_ADMIN || projectRole === Role.PROJECT_EDITOR
     );
   } catch {
     return false;
@@ -440,6 +440,64 @@ export async function canDeleteProjectVariables(
   projectId: string
 ): Promise<boolean> {
   return canDeleteVariables(userId, projectId);
+}
+
+// ============================================================================
+// RUN CANCELLATION PERMISSIONS
+// ============================================================================
+
+/**
+ * Check if user can cancel runs in a project (with organization context)
+ * Used in API routes to ensure proper role checking with organization context
+ *
+ * Permission rules:
+ * - ORG_OWNER/ORG_ADMIN can cancel runs in any project of their organization
+ * - PROJECT_ADMIN/PROJECT_EDITOR can cancel runs in their assigned projects
+ * - PROJECT_VIEWER cannot cancel runs
+ */
+export async function canCancelRunInProject(
+  userId: string,
+  projectId: string | null,
+  organizationId: string
+): Promise<boolean> {
+  try {
+    // Check organization role first
+    const userRole = await getUserOrgRole(userId, organizationId);
+    if (userRole === Role.ORG_OWNER || userRole === Role.ORG_ADMIN) {
+      return true; // Org-level admins can cancel runs in any project
+    }
+
+    // If no project context, check if user has any elevated role in the org
+    if (!projectId) {
+      // For org-scoped operations without a specific project,
+      // only org admins can cancel
+      return false;
+    }
+
+    // For other roles, check project-level membership
+    const projectMember = await db
+      .select({ role: projectMembers.role })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, userId)
+        )
+      )
+      .limit(1);
+
+    if (!projectMember.length) {
+      return false; // User is not a member of this project
+    }
+
+    const projectRole = normalizeRole(projectMember[0].role);
+    // PROJECT_ADMIN and PROJECT_EDITOR can cancel runs
+    return (
+      projectRole === Role.PROJECT_ADMIN || projectRole === Role.PROJECT_EDITOR
+    );
+  } catch {
+    return false;
+  }
 }
 
 // ============================================================================

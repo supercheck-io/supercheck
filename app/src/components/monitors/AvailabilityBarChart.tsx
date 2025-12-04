@@ -133,16 +133,16 @@ export function AvailabilityBarChart({
         <CardContent
           className="p-4 pt-2"
           style={{
-            height: "120px",
+            height: "200px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
           }}
         >
           <div className="text-center space-y-3">
-            <div className="w-12 h-12 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
+            <div className="w-16 h-16 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
               <svg
-                className="w-6 h-6 text-muted-foreground"
+                className="w-8 h-8 text-muted-foreground"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -155,11 +155,11 @@ export function AvailabilityBarChart({
                 />
               </svg>
             </div>
-            <div>
-              <p className="text-muted-foreground text-sm font-medium">
+            <div className="mb-10">
+              <p className="text-muted-foreground  font-medium">
                 No Availability Data
               </p>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground mt-1">
                 Availability status will appear here after the first check.
               </p>
             </div>

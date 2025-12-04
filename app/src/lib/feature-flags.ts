@@ -1,14 +1,31 @@
 /**
  * Feature flags and configuration for conditional features
  * Handles self-hosted vs cloud-hosted modes
+ *
+ * DEFAULT BEHAVIOR:
+ * - When SELF_HOSTED is not set or is any value other than "true"/"1" -> Cloud mode (billing enabled)
+ * - When SELF_HOSTED="true" or SELF_HOSTED="1" -> Self-hosted mode (unlimited, no billing)
+ *
+ * This ensures cloud deployments work by default without extra configuration.
  */
 
 /**
  * Check if the application is running in cloud-hosted mode
- * Self-hosted installations have unlimited features without billing
+ *
+ * Cloud mode is the DEFAULT when:
+ * - SELF_HOSTED env var is not set
+ * - SELF_HOSTED is set to "false", "0", or any other value
+ *
+ * Self-hosted mode ONLY when:
+ * - SELF_HOSTED="true" (case insensitive)
+ * - SELF_HOSTED="1"
+ *
+ * Self-hosted installations have unlimited features without billing.
+ * Cloud installations require a subscription (Plus or Pro plan).
  */
 export const isCloudHosted = (): boolean => {
   const selfHosted = process.env.SELF_HOSTED?.toLowerCase();
+  // Cloud mode is default - only self-hosted when explicitly set to "true" or "1"
   return selfHosted !== "true" && selfHosted !== "1";
 };
 
@@ -30,19 +47,19 @@ export const validatePolarConfig = (): void => {
   }
 
   const requiredVars = [
-    'POLAR_ACCESS_TOKEN',
-    'POLAR_WEBHOOK_SECRET',
-    'POLAR_PLUS_PRODUCT_ID',
-    'POLAR_PRO_PRODUCT_ID'
+    "POLAR_ACCESS_TOKEN",
+    "POLAR_WEBHOOK_SECRET",
+    "POLAR_PLUS_PRODUCT_ID",
+    "POLAR_PRO_PRODUCT_ID",
   ];
 
-  const missing = requiredVars.filter(varName => !process.env[varName]);
-  
+  const missing = requiredVars.filter((varName) => !process.env[varName]);
+
   if (missing.length > 0) {
     throw new Error(
-      `Missing required Polar environment variables: ${missing.join(', ')}. ` +
-      `These are required for cloud-hosted mode. ` +
-      `Please check your environment configuration.`
+      `Missing required Polar environment variables: ${missing.join(", ")}. ` +
+        `These are required for cloud-hosted mode. ` +
+        `Please check your environment configuration.`
     );
   }
 
@@ -59,13 +76,11 @@ export const validatePolarConfig = (): void => {
  * Get Polar configuration if enabled
  * Returns null if Polar is not enabled
  */
-export const getPolarConfig = ():
-  | {
-      accessToken: string;
-      server: "production" | "sandbox";
-      webhookSecret: string;
-    }
-  | null => {
+export const getPolarConfig = (): {
+  accessToken: string;
+  server: "production" | "sandbox";
+  webhookSecret: string;
+} | null => {
   if (!isPolarEnabled()) {
     return null;
   }
@@ -90,12 +105,10 @@ export const getPolarConfig = ():
  * Get Polar product IDs for checkout
  * Returns null if not configured
  */
-export const getPolarProducts = ():
-  | {
-      plusProductId: string;
-      proProductId: string;
-    }
-  | null => {
+export const getPolarProducts = (): {
+  plusProductId: string;
+  proProductId: string;
+} | null => {
   if (!isPolarEnabled()) {
     return null;
   }
@@ -104,9 +117,7 @@ export const getPolarProducts = ():
   const proProductId = process.env.POLAR_PRO_PRODUCT_ID;
 
   if (!plusProductId || !proProductId) {
-    console.warn(
-      "[Polar] Product IDs not configured. Checkout will not work."
-    );
+    console.warn("[Polar] Product IDs not configured. Checkout will not work.");
     return null;
   }
 
@@ -114,4 +125,31 @@ export const getPolarProducts = ():
     plusProductId,
     proProductId,
   };
+};
+
+/**
+ * Plan base pricing in cents
+ * These are the monthly subscription fees (before overage)
+ * Must match what's configured in Polar dashboard
+ */
+export const PLAN_PRICING = {
+  plus: {
+    monthlyPriceCents: 4900, // $49/month
+    name: "Plus",
+  },
+  pro: {
+    monthlyPriceCents: 14900, // $149/month
+    name: "Pro",
+  },
+  unlimited: {
+    monthlyPriceCents: 0, // Free (self-hosted)
+    name: "Unlimited",
+  },
+} as const;
+
+/**
+ * Get plan pricing for a specific plan
+ */
+export const getPlanPricing = (plan: "plus" | "pro" | "unlimited") => {
+  return PLAN_PRICING[plan] || PLAN_PRICING.plus;
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { StatsCard } from "@/components/admin/stats-card";
 import { UserTable } from "@/components/admin/user-table";
 import { OrgTable } from "@/components/admin/org-table";
@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -24,21 +23,35 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import {
   Users,
   Building2,
   FolderOpen,
-  Activity,
-  TrendingUp,
-  Calendar,
   LayoutDashboard,
   ListOrdered,
+  UserPlus,
+  UserCheck,
+  CalendarClock,
+  Code,
+  ClipboardList,
+  Activity,
+  Globe,
+  RefreshCw,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
-import { AdminDashboardSkeleton } from "@/components/ui/table-skeleton";
+import {
+  AdminDashboardSkeleton,
+  TabLoadingSpinner,
+} from "@/components/ui/table-skeleton";
 import { Loader2 } from "lucide-react";
+import { FormInput } from "@/components/ui/form-input";
+import {
+  createUserSchema,
+  type CreateUserFormData,
+} from "@/lib/validations/user";
+import { z } from "zod";
 
 interface SystemStats {
   users: {
@@ -92,6 +105,18 @@ export default function AdminDashboard() {
 
   // Bull Dashboard iframe state
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [iframeError, setIframeError] = useState(false);
+  const iframeTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const iframeRef = React.useRef<HTMLIFrameElement>(null);
+
+  // Cleanup iframe timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (iframeTimeoutRef.current) {
+        clearTimeout(iframeTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     fetchStats();
@@ -116,9 +141,44 @@ export default function AdminDashboard() {
     } else if (value === "organizations" && organizations.length === 0) {
       fetchOrganizations();
     } else if (value === "queues") {
-      // Reset iframe loading state when switching to queues tab
+      // Reset iframe states when switching to queues tab
       setIframeLoaded(false);
+      setIframeError(false);
+      // Set a timeout to detect if iframe fails to load
+      if (iframeTimeoutRef.current) {
+        clearTimeout(iframeTimeoutRef.current);
+      }
+      iframeTimeoutRef.current = setTimeout(() => {
+        if (!iframeLoaded) {
+          setIframeError(true);
+        }
+      }, 15000); // 15 second timeout
     }
+  };
+
+  const handleIframeLoad = () => {
+    if (iframeTimeoutRef.current) {
+      clearTimeout(iframeTimeoutRef.current);
+    }
+    setIframeLoaded(true);
+    setIframeError(false);
+  };
+
+  const handleIframeRefresh = () => {
+    setIframeLoaded(false);
+    setIframeError(false);
+    if (iframeRef.current) {
+      iframeRef.current.src = "/api/admin/queues/";
+    }
+    // Reset timeout
+    if (iframeTimeoutRef.current) {
+      clearTimeout(iframeTimeoutRef.current);
+    }
+    iframeTimeoutRef.current = setTimeout(() => {
+      if (!iframeLoaded) {
+        setIframeError(true);
+      }
+    }, 15000);
   };
 
   const fetchStats = async () => {
@@ -204,12 +264,23 @@ export default function AdminDashboard() {
   };
 
   const handleCreateUser = async () => {
-    if (
-      !newUser.name.trim() ||
-      !newUser.email.trim() ||
-      !newUser.password.trim()
-    ) {
-      toast.error("All fields are required");
+    // Validate form data with Zod
+    const userData: CreateUserFormData = {
+      name: newUser.name.trim(),
+      email: newUser.email.trim(),
+      password: newUser.password,
+    };
+
+    try {
+      createUserSchema.parse(userData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        if (error.errors && error.errors.length > 0) {
+          toast.error(error.errors[0].message);
+          return;
+        }
+      }
+      toast.error("Please fix the form errors");
       return;
     }
 
@@ -220,7 +291,12 @@ export default function AdminDashboard() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(newUser),
+        body: JSON.stringify({
+          name: userData.name,
+          email: userData.email,
+          password: userData.password,
+          role: newUser.role,
+        }),
       });
 
       const data = await response.json();
@@ -294,22 +370,27 @@ export default function AdminDashboard() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="overview" className="space-y-4">
+            <TabsContent value="overview" className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-2xl font-semibold">Super Admin</h2>
-                  <p className="text-muted-foreground text-sm">
+                  <h2 className="text-2xl font-bold tracking-tight">
+                    Super Admin
+                  </h2>
+                  <p className="text-muted-foreground">
                     Manage system users, organizations, and view platform
                     statistics.
                   </p>
                 </div>
               </div>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+
+              {/* Primary Metrics - Full Width Row */}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <StatsCard
                   title="Total Users"
                   value={stats.users.totalUsers}
-                  description="All registered users"
+                  description="Registered accounts"
                   icon={Users}
+                  variant="primary"
                   trend={{
                     value: stats.users.newUsersThisMonth,
                     label: "new this month",
@@ -320,132 +401,163 @@ export default function AdminDashboard() {
                   title="Active Users"
                   value={stats.users.activeUsers}
                   description="Non-banned users"
-                  icon={Activity}
+                  icon={UserCheck}
+                  variant="success"
                 />
                 <StatsCard
                   title="Organizations"
                   value={stats.organizations.totalOrganizations}
                   description="Total organizations"
                   icon={Building2}
+                  variant="purple"
                 />
                 <StatsCard
                   title="Projects"
                   value={stats.organizations.totalProjects}
-                  description="All projects"
+                  description="Across all orgs"
                   icon={FolderOpen}
+                  variant="cyan"
                 />
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {/* Secondary Metrics */}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <StatsCard
-                  title="Jobs"
+                  title="Scheduled Jobs"
                   value={stats.organizations.totalJobs}
-                  description="Scheduled jobs"
-                  icon={Calendar}
+                  description="Active jobs"
+                  icon={CalendarClock}
+                  variant="warning"
                 />
                 <StatsCard
-                  title="Tests"
+                  title="Test Cases"
                   value={stats.organizations.totalTests}
-                  description="Test cases"
-                  icon={Activity}
+                  description="Total tests"
+                  icon={Code}
+                  variant="primary"
                 />
                 <StatsCard
                   title="Monitors"
                   value={stats.organizations.totalMonitors}
                   description="Active monitors"
-                  icon={TrendingUp}
+                  icon={Globe}
+                  variant="success"
                 />
                 <StatsCard
                   title="Total Runs"
                   value={stats.organizations.totalRuns}
                   description="Test executions"
-                  icon={Activity}
+                  icon={ClipboardList}
+                  variant="purple"
                 />
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              {/* Detailed Stats Cards */}
+              <div className="grid gap-4 lg:grid-cols-2">
                 <Card>
-                  <CardHeader>
-                    <CardTitle>User Statistics</CardTitle>
-                    <CardDescription>
-                      Overview of user accounts and status
-                    </CardDescription>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-lg bg-blue-500/10 p-2">
+                        <Users className="h-4 w-4 text-blue-500" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base">
+                          User Statistics
+                        </CardTitle>
+                        <CardDescription>
+                          Account overview and status
+                        </CardDescription>
+                      </div>
+                    </div>
                   </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        Total Users
-                      </span>
-                      <span className="font-medium">
-                        {stats.users.totalUsers}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        Active Users
-                      </span>
-                      <span className="font-medium text-green-600">
-                        {stats.users.activeUsers}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        Banned Users
-                      </span>
-                      <span className="font-medium text-red-600">
-                        {stats.users.bannedUsers}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        New This Month
-                      </span>
-                      <span className="font-medium text-blue-600">
-                        {stats.users.newUsersThisMonth}
-                      </span>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-sm text-muted-foreground">
+                          Total Users
+                        </span>
+                        <span className="font-semibold">
+                          {stats.users.totalUsers}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-sm text-muted-foreground">
+                          Active Users
+                        </span>
+                        <span className="font-semibold text-green-600">
+                          {stats.users.activeUsers}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-sm text-muted-foreground">
+                          Banned Users
+                        </span>
+                        <span className="font-semibold text-red-600">
+                          {stats.users.bannedUsers}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between py-2">
+                        <span className="text-sm text-muted-foreground">
+                          New This Month
+                        </span>
+                        <span className="font-semibold text-blue-600">
+                          +{stats.users.newUsersThisMonth}
+                        </span>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
 
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Platform Activity</CardTitle>
-                    <CardDescription>
-                      Total counts across the platform
-                    </CardDescription>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-lg bg-purple-500/10 p-2">
+                        <Activity className="h-4 w-4 text-purple-500" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base">
+                          Platform Activity
+                        </CardTitle>
+                        <CardDescription>
+                          Resource counts across platform
+                        </CardDescription>
+                      </div>
+                    </div>
                   </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        Organizations
-                      </span>
-                      <span className="font-medium">
-                        {stats.organizations.totalOrganizations}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        Projects
-                      </span>
-                      <span className="font-medium">
-                        {stats.organizations.totalProjects}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        Jobs Created
-                      </span>
-                      <span className="font-medium">
-                        {stats.organizations.totalJobs}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">
-                        Test Executions
-                      </span>
-                      <span className="font-medium">
-                        {stats.organizations.totalRuns}
-                      </span>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-sm text-muted-foreground">
+                          Organizations
+                        </span>
+                        <span className="font-semibold">
+                          {stats.organizations.totalOrganizations}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-sm text-muted-foreground">
+                          Projects
+                        </span>
+                        <span className="font-semibold">
+                          {stats.organizations.totalProjects}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between py-2 border-b">
+                        <span className="text-sm text-muted-foreground">
+                          Jobs Created
+                        </span>
+                        <span className="font-semibold">
+                          {stats.organizations.totalJobs}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between py-2">
+                        <span className="text-sm text-muted-foreground">
+                          Test Executions
+                        </span>
+                        <span className="font-semibold">
+                          {stats.organizations.totalRuns}
+                        </span>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -453,80 +565,90 @@ export default function AdminDashboard() {
             </TabsContent>
 
             <TabsContent value="users" className="space-y-4">
+              {/* Create User Dialog */}
               <Dialog
                 open={showCreateUserDialog}
                 onOpenChange={setShowCreateUserDialog}
               >
-                <DialogContent>
+                <DialogContent className="sm:max-w-md">
                   <DialogHeader>
-                    <DialogTitle>Create New User</DialogTitle>
+                    <DialogTitle className="flex items-center gap-2">
+                      <UserPlus className="h-5 w-5" />
+                      Create New User
+                    </DialogTitle>
                     <DialogDescription>
-                      Add a new user to the system.
+                      Add a new user to the system. They will receive an email
+                      with login instructions.
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="name" className="text-right">
-                        Name
-                      </Label>
-                      <Input
-                        id="name"
-                        value={newUser.name}
-                        onChange={(e) =>
-                          setNewUser({ ...newUser, name: e.target.value })
-                        }
-                        className="col-span-3"
-                        placeholder="John Doe"
-                      />
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="email" className="text-right">
-                        Email
-                      </Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={newUser.email}
-                        onChange={(e) =>
-                          setNewUser({ ...newUser, email: e.target.value })
-                        }
-                        className="col-span-3"
-                        placeholder="john@example.com"
-                      />
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="password" className="text-right">
-                        Password
-                      </Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        value={newUser.password}
-                        onChange={(e) =>
-                          setNewUser({ ...newUser, password: e.target.value })
-                        }
-                        className="col-span-3"
-                        placeholder="Password"
-                      />
-                    </div>
+                  <div className="space-y-4 py-4">
+                    <FormInput
+                      id="name"
+                      label="Name"
+                      value={newUser.name}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, name: e.target.value })
+                      }
+                      placeholder="Enter full name"
+                      maxLength={100}
+                      showCharacterCount={false}
+                    />
+                    <FormInput
+                      id="email"
+                      label="Email"
+                      type="email"
+                      value={newUser.email}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, email: e.target.value })
+                      }
+                      placeholder="user@example.com"
+                      maxLength={255}
+                      showCharacterCount={false}
+                    />
+                    <FormInput
+                      id="password"
+                      label="Password"
+                      type="password"
+                      value={newUser.password}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, password: e.target.value })
+                      }
+                      placeholder="Min 8 chars, uppercase, lowercase, number"
+                      maxLength={128}
+                      showCharacterCount={false}
+                    />
                   </div>
-                  <DialogFooter>
-                    <Button onClick={handleCreateUser} disabled={creatingUser}>
-                      {creatingUser ? "Creating..." : "Create User"}
+                  <DialogFooter className="gap-2 sm:gap-0">
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowCreateUserDialog(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleCreateUser}
+                      disabled={
+                        creatingUser ||
+                        !newUser.name.trim() ||
+                        !newUser.email.trim() ||
+                        !newUser.password.trim()
+                      }
+                    >
+                      {creatingUser ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        "Create User"
+                      )}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
 
               {usersLoading && users.length === 0 ? (
-                <div className="flex justify-center items-center h-64">
-                  <div className="flex items-center space-x-2">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                    <span className="text-muted-foreground">
-                      Loading users...
-                    </span>
-                  </div>
-                </div>
+                <TabLoadingSpinner message="Loading users..." />
               ) : (
                 <>
                   <UserTable
@@ -560,14 +682,7 @@ export default function AdminDashboard() {
 
             <TabsContent value="organizations" className="space-y-4">
               {orgsLoading && organizations.length === 0 ? (
-                <div className="flex justify-center items-center h-64">
-                  <div className="flex items-center space-x-2">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                    <span className="text-muted-foreground">
-                      Loading organizations...
-                    </span>
-                  </div>
-                </div>
+                <TabLoadingSpinner message="Loading organizations..." />
               ) : (
                 <>
                   <OrgTable organizations={organizations} />
@@ -603,7 +718,32 @@ export default function AdminDashboard() {
                 </div>
               </div> */}
               <div className="rounded-lg border bg-background overflow-hidden">
-                {!iframeLoaded && (
+                {iframeError ? (
+                  <div
+                    className="flex justify-center items-center"
+                    style={{
+                      height: "calc(100vh - 250px)",
+                      minHeight: "600px",
+                    }}
+                  >
+                    <div className="flex flex-col items-center space-y-4 text-center px-4">
+                      <AlertCircle className="h-10 w-10 text-destructive" />
+                      <div>
+                        <h3 className="text-lg font-semibold">
+                          Failed to load Queue Dashboard
+                        </h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          The dashboard may be unavailable or taking too long to
+                          respond.
+                        </p>
+                      </div>
+                      <Button variant="outline" onClick={handleIframeRefresh}>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Try Again
+                      </Button>
+                    </div>
+                  </div>
+                ) : !iframeLoaded ? (
                   <div
                     className="flex justify-center items-center"
                     style={{
@@ -618,17 +758,19 @@ export default function AdminDashboard() {
                       </span>
                     </div>
                   </div>
-                )}
+                ) : null}
                 <iframe
+                  ref={iframeRef}
                   src="/api/admin/queues/"
                   className="w-full"
                   style={{
                     height: "calc(100vh - 250px)",
                     minHeight: "600px",
-                    display: iframeLoaded ? "block" : "none",
+                    display: iframeLoaded && !iframeError ? "block" : "none",
                   }}
                   title="Queue Dashboard"
-                  onLoad={() => setIframeLoaded(true)}
+                  onLoad={handleIframeLoad}
+                  sandbox="allow-scripts allow-same-origin allow-forms"
                 />
               </div>
             </TabsContent>

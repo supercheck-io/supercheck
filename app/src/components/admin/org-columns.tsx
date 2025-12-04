@@ -3,7 +3,9 @@
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Building, User } from "lucide-react";
+import { toast } from "sonner";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
+import { UUIDField } from "@/components/ui/uuid-field";
 
 export interface AdminOrganization {
   id: string;
@@ -15,15 +17,34 @@ export interface AdminOrganization {
   createdAt: string;
 }
 
-
 export const createOrgColumns = (): ColumnDef<AdminOrganization>[] => [
+  {
+    accessorKey: "id",
+    header: ({ column }) => (
+      <DataTableColumnHeader className="pl-1" column={column} title="Org ID" />
+    ),
+    cell: ({ row }) => {
+      const id = row.getValue("id") as string;
+      return (
+        <div className="flex items-center h-10">
+          <UUIDField
+            value={id}
+            maxLength={8}
+            onCopy={() => toast.success("Organization ID copied to clipboard")}
+          />
+        </div>
+      );
+    },
+    enableSorting: false,
+    enableHiding: false,
+  },
   {
     accessorKey: "name",
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Name" />
     ),
     cell: ({ row }) => (
-      <div className="py-2 font-medium flex items-center h-12">
+      <div className="flex items-center h-10 font-medium">
         <Building className="mr-2 h-4 w-4 text-muted-foreground" />
         {row.getValue("name")}
       </div>
@@ -37,17 +58,12 @@ export const createOrgColumns = (): ColumnDef<AdminOrganization>[] => [
     cell: ({ row }) => {
       const ownerEmail = row.getValue("ownerEmail") as string;
       return (
-        <div className="py-1 flex items-center h-12">
+        <div className="flex items-center h-10">
+          <User className="mr-2 h-4 w-4 text-muted-foreground" />
           {ownerEmail ? (
-            <div className="flex items-center">
-              <User className="mr-2 h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">{ownerEmail}</span>
-            </div>
+            <span className="text-sm">{ownerEmail}</span>
           ) : (
-            <div className="flex items-center">
-              <User className="mr-2 h-4 w-4 text-muted-foreground" />
-              <span className="text-muted-foreground text-sm">No owner</span>
-            </div>
+            <span className="text-muted-foreground text-sm">No owner</span>
           )}
         </div>
       );
@@ -61,9 +77,14 @@ export const createOrgColumns = (): ColumnDef<AdminOrganization>[] => [
     cell: ({ row }) => {
       const count = row.getValue("memberCount") as number;
       return (
-        <div className="py-1 flex items-center h-12">
+        <div className="flex items-center h-10">
           {count !== undefined && count !== null ? (
-            <Badge variant="outline" className="bg-blue-100 text-blue-700 text-xs px-3 py-1.5 font-medium">{count}</Badge>
+            <Badge
+              variant="outline"
+              className="bg-blue-100 text-blue-700 text-xs px-3 py-1.5 font-medium"
+            >
+              {count}
+            </Badge>
           ) : (
             <span className="text-muted-foreground text-sm">—</span>
           )}
@@ -79,9 +100,14 @@ export const createOrgColumns = (): ColumnDef<AdminOrganization>[] => [
     cell: ({ row }) => {
       const count = row.getValue("projectCount") as number;
       return (
-        <div className="py-1 flex items-center h-12">
+        <div className="flex items-center h-10">
           {count !== undefined && count !== null ? (
-            <Badge variant="outline" className="bg-green-100 text-green-700 text-xs px-3 py-1.5 font-medium">{count}</Badge>
+            <Badge
+              variant="outline"
+              className="bg-green-100 text-green-700 text-xs px-3 py-1.5 font-medium"
+            >
+              {count}
+            </Badge>
           ) : (
             <span className="text-muted-foreground text-sm">—</span>
           )}
@@ -110,9 +136,11 @@ export const createOrgColumns = (): ColumnDef<AdminOrganization>[] => [
       });
 
       return (
-        <div className="py-1 flex items-center text-sm">
+        <div className="flex items-center h-10 text-sm">
           <span>{formattedDate}</span>
-          <span className="text-muted-foreground ml-1 text-xs">{formattedTime}</span>
+          <span className="text-muted-foreground ml-1 text-xs">
+            {formattedTime}
+          </span>
         </div>
       );
     },

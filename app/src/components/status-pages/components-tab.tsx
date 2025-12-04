@@ -584,7 +584,12 @@ export function ComponentsTab({
                               size="sm"
                               onClick={() => handleEditComponent(component)}
                               className="h-8 w-8 p-0"
-                              title="Edit component"
+                              title={
+                                !canUpdate
+                                  ? "You don't have permission to edit components"
+                                  : "Edit component"
+                              }
+                              disabled={!canUpdate}
                             >
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -593,7 +598,12 @@ export function ComponentsTab({
                               size="sm"
                               onClick={() => handleDeleteClick(component)}
                               className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                              title="Delete component"
+                              title={
+                                !canUpdate
+                                  ? "You don't have permission to delete components"
+                                  : "Delete component"
+                              }
+                              disabled={!canUpdate}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>

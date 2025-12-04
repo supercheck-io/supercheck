@@ -1,0 +1,514 @@
+# Supercheck Worker Deployments - Docker-in-Docker (DinD) Variant
+# Use this file for managed Kubernetes clusters (EKS, GKE, AKS) where
+# host Docker socket is not available.
+#
+# IMPORTANT: This approach requires privileged containers.
+# For K3s self-hosted clusters, use worker-deployment.yaml instead which uses
+# the host Docker socket (same as Docker Compose) for better performance.
+#
+# DinD Trade-offs:
+# ✅ Works on any Kubernetes cluster
+# ✅ Better pod isolation (no shared Docker daemon)
+# ❌ Images re-pulled on pod restart (no persistent cache)
+# ❌ Requires privileged containers
+# ❌ Higher resource overhead
+#
+# Recommendation:
+# - Self-hosted K3s: Use worker-deployment.yaml (host Docker socket)
+# - Managed K8s (EKS, GKE, AKS): Use this file (DinD sidecar)
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: supercheck-worker-us
+  namespace: supercheck
+  labels:
+    app.kubernetes.io/name: supercheck
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/region: us
+spec:
+  revisionHistoryLimit: 3
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: supercheck
+      app.kubernetes.io/component: worker
+      app.kubernetes.io/region: us
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: supercheck
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/region: us
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      nodeSelector:
+        workload: worker
+        region: us-east
+
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: worker
+          effect: NoSchedule
+
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                        - supercheck
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                        - worker
+                topologyKey: kubernetes.io/hostname
+
+      serviceAccountName: supercheck
+      terminationGracePeriodSeconds: 120
+
+      containers:
+        # Main worker container
+        - name: worker
+          image: ghcr.io/supercheck-io/supercheck/worker:latest
+          imagePullPolicy: IfNotPresent
+
+          envFrom:
+            - configMapRef:
+                name: supercheck-config
+            - secretRef:
+                name: supercheck-secret
+
+          env:
+            - name: WORKER_REGION
+              value: "us-east"
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "8000"
+            # Connect to DinD sidecar via TCP
+            - name: DOCKER_HOST
+              value: "tcp://localhost:2375"
+
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "3Gi"
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 15"]
+
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+
+        # Docker-in-Docker sidecar for container execution
+        - name: dind
+          image: docker:24-dind
+          securityContext:
+            privileged: true
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: "" # Disable TLS for localhost communication
+          args:
+            - --storage-driver=overlay2
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          volumeMounts:
+            - name: dind-storage
+              mountPath: /var/lib/docker
+          # Wait for Docker daemon to be ready
+          startupProbe:
+            exec:
+              command: ["docker", "info"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command: ["docker", "info"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+      volumes:
+        - name: dind-storage
+          emptyDir:
+            sizeLimit: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: supercheck-worker-eu
+  namespace: supercheck
+  labels:
+    app.kubernetes.io/name: supercheck
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/region: eu
+spec:
+  revisionHistoryLimit: 3
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: supercheck
+      app.kubernetes.io/component: worker
+      app.kubernetes.io/region: eu
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: supercheck
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/region: eu
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      nodeSelector:
+        workload: worker
+        region: eu-central
+
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: worker
+          effect: NoSchedule
+
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                        - supercheck
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                        - worker
+                topologyKey: kubernetes.io/hostname
+
+      serviceAccountName: supercheck
+      terminationGracePeriodSeconds: 120
+
+      containers:
+        - name: worker
+          image: ghcr.io/supercheck-io/supercheck/worker:latest
+          imagePullPolicy: IfNotPresent
+
+          envFrom:
+            - configMapRef:
+                name: supercheck-config
+            - secretRef:
+                name: supercheck-secret
+
+          env:
+            - name: WORKER_REGION
+              value: "eu-central"
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "8000"
+            - name: DOCKER_HOST
+              value: "tcp://localhost:2375"
+
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "3Gi"
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 15"]
+
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+
+        - name: dind
+          image: docker:24-dind
+          securityContext:
+            privileged: true
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: ""
+          args:
+            - --storage-driver=overlay2
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          volumeMounts:
+            - name: dind-storage
+              mountPath: /var/lib/docker
+          startupProbe:
+            exec:
+              command: ["docker", "info"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command: ["docker", "info"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+      volumes:
+        - name: dind-storage
+          emptyDir:
+            sizeLimit: 10Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: supercheck-worker-apac
+  namespace: supercheck
+  labels:
+    app.kubernetes.io/name: supercheck
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/region: apac
+spec:
+  revisionHistoryLimit: 3
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: supercheck
+      app.kubernetes.io/component: worker
+      app.kubernetes.io/region: apac
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: supercheck
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/region: apac
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      nodeSelector:
+        workload: worker
+        region: asia-pacific
+
+      tolerations:
+        - key: workload
+          operator: Equal
+          value: worker
+          effect: NoSchedule
+
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                        - supercheck
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                        - worker
+                topologyKey: kubernetes.io/hostname
+
+      serviceAccountName: supercheck
+      terminationGracePeriodSeconds: 120
+
+      containers:
+        - name: worker
+          image: ghcr.io/supercheck-io/supercheck/worker:latest
+          imagePullPolicy: IfNotPresent
+
+          envFrom:
+            - configMapRef:
+                name: supercheck-config
+            - secretRef:
+                name: supercheck-secret
+
+          env:
+            - name: WORKER_REGION
+              value: "asia-pacific"
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "8000"
+            - name: DOCKER_HOST
+              value: "tcp://localhost:2375"
+
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "3Gi"
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 15"]
+
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+
+        - name: dind
+          image: docker:24-dind
+          securityContext:
+            privileged: true
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: ""
+          args:
+            - --storage-driver=overlay2
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          volumeMounts:
+            - name: dind-storage
+              mountPath: /var/lib/docker
+          startupProbe:
+            exec:
+              command: ["docker", "info"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command: ["docker", "info"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
+      volumes:
+        - name: dind-storage
+          emptyDir:
+            sizeLimit: 10Gi

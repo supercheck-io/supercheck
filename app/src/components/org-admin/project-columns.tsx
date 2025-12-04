@@ -5,7 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 import { Edit3, FolderOpen, Users, Calendar } from "lucide-react";
+import { toast } from "sonner";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
+import { UUIDField } from "@/components/ui/uuid-field";
 
 export interface ProjectMember {
   id: string;
@@ -19,7 +21,7 @@ export interface Project {
   id: string;
   name: string;
   description?: string;
-  status: 'active' | 'archived' | 'deleted';
+  status: "active" | "archived" | "deleted";
   membersCount: number;
   members?: ProjectMember[];
   createdAt: string;
@@ -28,14 +30,14 @@ export interface Project {
 
 const getStatusBadgeColor = (status: string) => {
   switch (status) {
-    case 'active':
-      return 'bg-green-100 text-green-700 border-green-200';
-    case 'archived':
-      return 'bg-yellow-100 text-yellow-700 border-yellow-200';
-    case 'deleted':
-      return 'bg-red-100 text-red-700 border-red-200';
+    case "active":
+      return "bg-green-100 text-green-700 border-green-200";
+    case "archived":
+      return "bg-yellow-100 text-yellow-700 border-yellow-200";
+    case "deleted":
+      return "bg-red-100 text-red-700 border-red-200";
     default:
-      return 'bg-gray-100 text-gray-700 border-gray-200';
+      return "bg-gray-100 text-gray-700 border-gray-200";
   }
 };
 
@@ -59,15 +61,39 @@ export function createProjectColumns(
 ): ColumnDef<Project>[] {
   return [
     {
+      accessorKey: "id",
+      header: ({ column }) => (
+        <DataTableColumnHeader
+          className="pl-1"
+          column={column}
+          title="Project ID"
+        />
+      ),
+      cell: ({ row }) => {
+        const id = row.getValue("id") as string;
+        return (
+          <div className="flex items-center h-10">
+            <UUIDField
+              value={id}
+              maxLength={8}
+              onCopy={() => toast.success("Project ID copied to clipboard")}
+            />
+          </div>
+        );
+      },
+      enableSorting: false,
+      enableHiding: false,
+    },
+    {
       accessorKey: "name",
       header: ({ column }) => (
         <DataTableColumnHeader column={column} title="Project" />
       ),
       cell: ({ row }) => {
         const project = row.original;
-        
+
         return (
-          <div className="py-1 min-w-[200px] flex items-center">
+          <div className="flex items-center h-10 min-w-[200px]">
             <div className="flex items-center gap-2.5">
               <div className="flex-shrink-0">
                 <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -95,7 +121,7 @@ export function createProjectColumns(
       },
       filterFn: (row, id, value) => {
         const project = row.getValue(id) as string;
-        const description = row.original.description || '';
+        const description = row.original.description || "";
         const searchText = `${project} ${description}`;
         return searchText.toLowerCase().includes(value.toLowerCase());
       },
@@ -107,11 +133,11 @@ export function createProjectColumns(
       ),
       cell: ({ row }) => {
         const status = row.getValue("status") as string;
-        
+
         return (
-          <div className="py-1 flex items-center">
-            <Badge 
-              variant="outline" 
+          <div className="flex items-center h-10">
+            <Badge
+              variant="outline"
               className={`${getStatusBadgeColor(status)} text-xs px-3 py-1.5 font-medium capitalize`}
             >
               {status}
@@ -132,13 +158,13 @@ export function createProjectColumns(
         const project = row.original;
         const count = project.membersCount;
         const members = project.members || [];
-        
+
         // Show up to 3 member avatars, then +X more
         const displayMembers = members.slice(0, 3);
         const remainingCount = Math.max(0, count - displayMembers.length);
-        
+
         return (
-          <div className="py-1 flex items-center gap-2">
+          <div className="flex items-center h-10 gap-2">
             <div className="flex items-center">
               {displayMembers.length > 0 ? (
                 <>
@@ -156,21 +182,21 @@ export function createProjectColumns(
                     {remainingCount > 0 && (
                       <div
                         className="w-6 h-6 rounded-full bg-gray-100 border-2 border-background flex items-center justify-center text-xs font-medium text-gray-600"
-                        title={`+${remainingCount} more member${remainingCount > 1 ? 's' : ''}`}
+                        title={`+${remainingCount} more member${remainingCount > 1 ? "s" : ""}`}
                       >
                         +{remainingCount}
                       </div>
                     )}
                   </div>
                   <span className="ml-2 text-sm text-muted-foreground">
-                    {count} member{count !== 1 ? 's' : ''}
+                    {count} member{count !== 1 ? "s" : ""}
                   </span>
                 </>
               ) : (
                 <>
                   <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
-                    {count} member{count !== 1 ? 's' : ''}
+                  <span className="ml-1 text-sm text-muted-foreground">
+                    {count} member{count !== 1 ? "s" : ""}
                   </span>
                 </>
               )}
@@ -185,13 +211,17 @@ export function createProjectColumns(
         <DataTableColumnHeader column={column} title="Created" />
       ),
       cell: ({ row }) => {
-        const { formattedDate, formattedTime } = formatDate(row.getValue("createdAt"));
-        
+        const { formattedDate, formattedTime } = formatDate(
+          row.getValue("createdAt")
+        );
+
         return (
-          <div className="py-1 flex items-center text-sm">
+          <div className="flex items-center h-10 text-sm">
             <Calendar className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
             <span>{formattedDate}</span>
-            <span className="text-muted-foreground ml-1 text-xs">{formattedTime}</span>
+            <span className="text-muted-foreground ml-1 text-xs">
+              {formattedTime}
+            </span>
           </div>
         );
       },
@@ -201,17 +231,17 @@ export function createProjectColumns(
       header: "Actions",
       cell: ({ row }) => {
         const project = row.original;
-        
+
         if (!canManageProject) {
           return (
-            <div className="py-1">
+            <div className="flex items-center h-10">
               <span className="text-xs text-muted-foreground">View only</span>
             </div>
           );
         }
-        
+
         return (
-          <div className="py-1">
+          <div className="flex items-center h-10">
             <Button
               variant="outline"
               size="sm"

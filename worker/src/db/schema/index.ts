@@ -5,43 +5,46 @@
 =================================== */
 
 // Shared types and constants
-export * from "./types";
+export * from './types';
 
 // Auth tables
-export * from "./auth";
+export * from './auth';
 
 // Organization and project tables
-export * from "./organization";
+export * from './organization';
 
 // Test tables
-export * from "./test";
+export * from './test';
 
 // Job and run tables
-export * from "./job";
+export * from './job';
 
 // K6 performance runs
-export * from "./k6Runs";
+export * from './k6Runs';
 
 // Monitor tables
-export * from "./monitor";
+export * from './monitor';
+
+// Monitor aggregates for long-term metrics
+export * from './monitor-aggregates';
 
 // Notification and alert tables
-export * from "./notification";
+export * from './notification';
 
 // Tag tables
-export * from "./tag";
+export * from './tag';
 
 // Report tables
-export * from "./report";
+export * from './report';
 
 // Status page tables
-export * from "./statusPage";
+export * from './statusPage';
 
 // Audit log tables
-export * from "./audit";
+export * from './audit';
 
 // Plan limits for subscription billing
-export * from "./plan-limits";
+export * from './plan-limits';
 
 // Billing and usage tracking
-export * from "./billing";
+export * from './billing';

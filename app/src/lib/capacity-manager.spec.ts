@@ -40,7 +40,7 @@ const mockRedisKeys = jest.fn();
 const mockRedisExpire = jest.fn();
 const mockRedisPipeline = jest.fn();
 
-const mockRedis = {
+const mockRedis: Partial<typeof import('ioredis').default.prototype> = {
   eval: mockRedisEval,
   get: mockRedisGet,
   incr: mockRedisIncr,
@@ -69,7 +69,7 @@ describe('CapacityManager', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    capacityManager = new CapacityManager(mockRedis as object);
+    capacityManager = new CapacityManager(mockRedis as jest.Mocked<import('ioredis').default>);
     
     // Default mock implementations
     mockCheckCapacityLimits.mockResolvedValue(defaultCapacityLimits);

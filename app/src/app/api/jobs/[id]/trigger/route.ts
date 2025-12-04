@@ -13,13 +13,23 @@ import {
 import { prepareJobTestScripts } from "@/lib/job-execution-utils";
 import { validateK6Script } from "@/lib/k6-validator";
 import { subscriptionService } from "@/lib/services/subscription-service";
+import {
+  apiKeyRateLimiter,
+  parseRateLimitConfig,
+  createRateLimitHeaders,
+} from "@/lib/api-key-rate-limiter";
 
 const DEFAULT_K6_LOCATION: K6Location = "global";
 
 const normalizeK6Location = (value?: string): K6Location => {
   const lower = value?.toLowerCase();
   // Accept kebab-case format matching K6Location type: "us-east" | "eu-central" | "asia-pacific" | "global"
-  if (lower === "us-east" || lower === "eu-central" || lower === "asia-pacific" || lower === "global") {
+  if (
+    lower === "us-east" ||
+    lower === "eu-central" ||
+    lower === "asia-pacific" ||
+    lower === "global"
+  ) {
     return lower;
   }
   return DEFAULT_K6_LOCATION;
@@ -31,17 +41,22 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   let apiKeyUsed: string | null = null;
-  
+
   try {
     const { id } = await params;
     const jobId = id;
 
     // Validate UUID format for job ID
-    if (!jobId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) {
+    if (
+      !jobId ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        jobId
+      )
+    ) {
       return NextResponse.json(
-        { 
-          error: "Invalid job ID format", 
-          message: "Job ID must be a valid UUID" 
+        {
+          error: "Invalid job ID format",
+          message: "Job ID must be a valid UUID",
         },
         { status: 400 }
       );
@@ -53,9 +68,9 @@ export async function POST(
 
     if (!apiKeyFromHeader) {
       return NextResponse.json(
-        { 
-          error: "API key required", 
-          message: "Include API key as Bearer token in Authorization header" 
+        {
+          error: "API key required",
+          message: "Include API key as Bearer token in Authorization header",
         },
         { status: 401 }
       );
@@ -65,9 +80,9 @@ export async function POST(
     const trimmedApiKey = apiKeyFromHeader.trim();
     if (!trimmedApiKey || trimmedApiKey.length < 10) {
       return NextResponse.json(
-        { 
-          error: "Invalid API key format", 
-          message: "API key must be at least 10 characters long" 
+        {
+          error: "Invalid API key format",
+          message: "API key must be at least 10 characters long",
         },
         { status: 401 }
       );
@@ -75,7 +90,7 @@ export async function POST(
 
     apiKeyUsed = trimmedApiKey.substring(0, 8); // For logging purposes
 
-    // Verify the API key exists and get associated information
+    // Verify the API key exists and get associated information (including rate limit fields)
     const apiKeyResult = await db
       .select({
         id: apikey.id,
@@ -86,17 +101,22 @@ export async function POST(
         userId: apikey.userId,
         lastRequest: apikey.lastRequest,
         requestCount: apikey.requestCount,
+        rateLimitEnabled: apikey.rateLimitEnabled,
+        rateLimitTimeWindow: apikey.rateLimitTimeWindow,
+        rateLimitMax: apikey.rateLimitMax,
       })
       .from(apikey)
       .where(eq(apikey.key, trimmedApiKey))
       .limit(1);
 
     if (apiKeyResult.length === 0) {
-      console.warn(`Invalid API key attempted: ${apiKeyUsed}... for job ${jobId}`);
+      console.warn(
+        `Invalid API key attempted: ${apiKeyUsed}... for job ${jobId}`
+      );
       return NextResponse.json(
-        { 
-          error: "Invalid API key", 
-          message: "The provided API key is invalid or has been revoked" 
+        {
+          error: "Invalid API key",
+          message: "The provided API key is invalid or has been revoked",
         },
         { status: 401 }
       );
@@ -106,11 +126,13 @@ export async function POST(
 
     // Check if API key is enabled
     if (!key.enabled) {
-      console.warn(`Disabled API key attempted: ${key.name} (${key.id}) for job ${jobId}`);
+      console.warn(
+        `Disabled API key attempted: ${key.name} (${key.id}) for job ${jobId}`
+      );
       return NextResponse.json(
-        { 
-          error: "API key disabled", 
-          message: "This API key has been disabled" 
+        {
+          error: "API key disabled",
+          message: "This API key has been disabled",
         },
         { status: 401 }
       );
@@ -118,23 +140,63 @@ export async function POST(
 
     // Check if API key has expired
     if (key.expiresAt && new Date() > key.expiresAt) {
-      console.warn(`Expired API key attempted: ${key.name} (${key.id}) for job ${jobId}`);
+      console.warn(
+        `Expired API key attempted: ${key.name} (${key.id}) for job ${jobId}`
+      );
       return NextResponse.json(
-        { 
-          error: "API key expired", 
-          message: `This API key expired on ${key.expiresAt.toISOString()}` 
+        {
+          error: "API key expired",
+          message: `This API key expired on ${key.expiresAt.toISOString()}`,
         },
         { status: 401 }
       );
     }
 
+    // ========================================
+    // RATE LIMIT CHECK - Enforce API key rate limits
+    // ========================================
+    const rateLimitConfig = parseRateLimitConfig({
+      rateLimitEnabled: key.rateLimitEnabled,
+      rateLimitTimeWindow: key.rateLimitTimeWindow,
+      rateLimitMax: key.rateLimitMax,
+    });
+
+    const rateLimitResult = await apiKeyRateLimiter.checkAndIncrement(
+      key.id,
+      rateLimitConfig
+    );
+
+    if (!rateLimitResult.allowed) {
+      console.warn(
+        `Rate limit exceeded for API key: ${key.name} (${key.id}) - ` +
+          `${rateLimitResult.remaining}/${rateLimitResult.limit} remaining, ` +
+          `retry after ${rateLimitResult.retryAfter}s`
+      );
+
+      return NextResponse.json(
+        {
+          error: "Rate limit exceeded",
+          message: `API key rate limit exceeded. Retry after ${rateLimitResult.retryAfter} seconds.`,
+          limit: rateLimitResult.limit,
+          remaining: rateLimitResult.remaining,
+          resetAt: rateLimitResult.resetAt.toISOString(),
+        },
+        {
+          status: 429,
+          headers: createRateLimitHeaders(rateLimitResult),
+        }
+      );
+    }
+
     // Validate that the API key is authorized for this specific job
     if (key.jobId !== jobId) {
-      console.warn(`API key unauthorized for job: ${key.name} attempted job ${jobId}, authorized for ${key.jobId}`);
+      console.warn(
+        `API key unauthorized for job: ${key.name} attempted job ${jobId}, authorized for ${key.jobId}`
+      );
       return NextResponse.json(
-        { 
-          error: "API key not authorized for this job", 
-          message: "This API key does not have permission to trigger this job" 
+        {
+          error: "API key not authorized for this job",
+          message: "This API key does not have permission to trigger this job",
         },
         { status: 403 }
       );
@@ -167,21 +229,35 @@ export async function POST(
     // Validate organization ID exists
     if (!job.organizationId) {
       return NextResponse.json(
-        { error: 'Organization ID is required for subscription validation' },
+        { error: "Organization ID is required for subscription validation" },
         { status: 400 }
       );
+    }
+
+    // SECURITY: Validate active subscription before allowing test execution
+    try {
+      await subscriptionService.blockUntilSubscribed(job.organizationId);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Active subscription required";
+      console.warn(
+        `[Job Trigger] Subscription validation failed for org ${job.organizationId.substring(0, 8)}...`
+      );
+      return NextResponse.json({ error: errorMessage }, { status: 402 });
     }
 
     // Validate Polar customer exists (blocks deleted customers)
     try {
       await subscriptionService.requireValidPolarCustomer(job.organizationId);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Polar customer validation failed';
-      console.warn(`[Job Trigger] Polar customer validation failed for org ${job.organizationId.substring(0, 8)}...`);
-      return NextResponse.json(
-        { error: errorMessage },
-        { status: 402 }
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Polar customer validation failed";
+      console.warn(
+        `[Job Trigger] Polar customer validation failed for org ${job.organizationId.substring(0, 8)}...`
       );
+      return NextResponse.json({ error: errorMessage }, { status: 402 });
     }
 
     // Check subscription plan limits
@@ -189,17 +265,20 @@ export async function POST(
       await subscriptionService.getOrganizationPlan(job.organizationId);
     } catch (error) {
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : 'Subscription required' },
+        {
+          error:
+            error instanceof Error ? error.message : "Subscription required",
+        },
         { status: 402 }
       );
     }
 
     // Additional validation: ensure job is not in an error state that prevents triggering
-    if (job.status === 'error') {
+    if (job.status === "error") {
       return NextResponse.json(
-        { 
-          error: "Job not available", 
-          message: `Job is currently in error state and cannot be triggered` 
+        {
+          error: "Job not available",
+          message: `Job is currently in error state and cannot be triggered`,
         },
         { status: 400 }
       );
@@ -208,7 +287,7 @@ export async function POST(
     const jobType = (job.jobType || "playwright") as JobType;
     const isPerformanceJob = jobType === "k6";
     const locationParam = isPerformanceJob
-      ? request.nextUrl.searchParams.get("location") ?? undefined
+      ? (request.nextUrl.searchParams.get("location") ?? undefined)
       : undefined;
     const resolvedLocation = isPerformanceJob
       ? normalizeK6Location(locationParam)
@@ -222,14 +301,17 @@ export async function POST(
       }
     } catch {
       // Ignore JSON parsing errors for optional body
-      console.warn(`Invalid JSON in trigger request body for job ${jobId}, proceeding with defaults`);
+      console.warn(
+        `Invalid JSON in trigger request body for job ${jobId}, proceeding with defaults`
+      );
     }
 
     // Update API key usage statistics atomically to prevent race conditions
     const now = new Date();
     try {
-      await db.update(apikey)
-        .set({ 
+      await db
+        .update(apikey)
+        .set({
           lastRequest: now,
           // Atomic increment to prevent race conditions with concurrent requests
           requestCount: sql`COALESCE(${apikey.requestCount}::integer, 0) + 1`,
@@ -237,13 +319,16 @@ export async function POST(
         .where(eq(apikey.id, key.id));
     } catch (error) {
       // Log but don't fail the request - usage tracking is non-critical
-      console.error(`[Job Trigger] Failed to update API key usage (non-critical):`, error);
+      console.error(
+        `[Job Trigger] Failed to update API key usage (non-critical):`,
+        error
+      );
     }
 
     // Create run record
     const runId = crypto.randomUUID();
     const startTime = new Date();
-    
+
     await db.insert(runs).values({
       id: runId,
       jobId,
@@ -261,16 +346,18 @@ export async function POST(
       },
     });
 
-    console.log(`[${jobId}/${runId}] Created running test run record: ${runId}`);
-
+    console.log(
+      `[${jobId}/${runId}] Created running test run record: ${runId}`
+    );
 
     // Use unified test script preparation with proper variable resolution
-    const { testScripts: processedTestScripts, variableResolution } = await prepareJobTestScripts(
-      jobId,
-      job.projectId || '',
-      runId,
-      `[${jobId}/${runId}]`
-    );
+    const { testScripts: processedTestScripts, variableResolution } =
+      await prepareJobTestScripts(
+        jobId,
+        job.projectId || "",
+        runId,
+        `[${jobId}/${runId}]`
+      );
 
     try {
       if (isPerformanceJob) {
@@ -384,33 +471,42 @@ export async function POST(
       }
     } catch (error) {
       // Check if this is a queue capacity error
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      if (errorMessage.includes('capacity limit') || errorMessage.includes('Unable to verify queue capacity')) {
-        console.log(`[Job Trigger API] Capacity limit reached: ${errorMessage}`);
-        
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      if (
+        errorMessage.includes("capacity limit") ||
+        errorMessage.includes("Unable to verify queue capacity")
+      ) {
+        console.log(
+          `[Job Trigger API] Capacity limit reached: ${errorMessage}`
+        );
+
         // Update the run status to failed with capacity limit error
-        await db.update(runs)
+        await db
+          .update(runs)
           .set({
             status: "failed",
             completedAt: new Date(),
-            errorDetails: errorMessage
+            errorDetails: errorMessage,
           })
           .where(eq(runs.id, runId));
-          
+
         return NextResponse.json(
           { error: "Queue capacity limit reached", message: errorMessage },
           { status: 429 }
         );
       }
-      
+
       // For other errors, log and re-throw
       console.error(`[${jobId}/${runId}] Error adding job to queue:`, error);
       throw error;
     }
 
     // Log successful API key usage
-    console.log(`Job ${jobId} triggered successfully via API key ${key.name} (${key.id})`);
+    console.log(
+      `Job ${jobId} triggered successfully via API key ${key.name} (${key.id})`
+    );
 
     return NextResponse.json({
       success: true,
@@ -424,16 +520,16 @@ export async function POST(
         triggeredAt: now.toISOString(),
       },
     });
-
   } catch (error) {
     console.error(`Error triggering job via API key ${apiKeyUsed}...:`, error);
-    const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
-    
+    const errorMessage =
+      error instanceof Error ? error.message : "An unexpected error occurred";
+
     return NextResponse.json(
-      { 
-        error: "Failed to trigger job", 
+      {
+        error: "Failed to trigger job",
         message: errorMessage,
-        details: null
+        details: null,
       },
       { status: 500 }
     );
@@ -449,7 +545,12 @@ export async function GET(
     const { id: jobId } = await params;
 
     // Validate UUID format
-    if (!jobId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) {
+    if (
+      !jobId ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        jobId
+      )
+    ) {
       return NextResponse.json(
         { error: "Invalid job ID format" },
         { status: 400 }
@@ -468,10 +569,7 @@ export async function GET(
       .limit(1);
 
     if (jobResult.length === 0) {
-      return NextResponse.json(
-        { error: "Job not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
 
     const job = jobResult[0];
@@ -489,12 +587,11 @@ export async function GET(
         method: "POST",
         headers: {
           "x-api-key": "your-api-key-here",
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
-        description: "Trigger this job remotely using your API key"
-      }
+        description: "Trigger this job remotely using your API key",
+      },
     });
-
   } catch (error) {
     console.error("Error getting trigger information:", error);
     return NextResponse.json(

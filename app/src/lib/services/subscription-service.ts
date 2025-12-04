@@ -11,8 +11,8 @@ import { isPolarEnabled, getPolarConfig } from "@/lib/feature-flags";
 // Constants for configuration
 const POLAR_API_TIMEOUT_MS = 5000; // 5 second timeout for Polar API calls
 const CUSTOMER_VALIDATION_CACHE_TTL_MS = 60000; // 60 second cache TTL
-const POLAR_SANDBOX_URL = 'https://sandbox-api.polar.sh';
-const POLAR_PRODUCTION_URL = 'https://api.polar.sh';
+const POLAR_SANDBOX_URL = "https://sandbox-api.polar.sh";
+const POLAR_PRODUCTION_URL = "https://api.polar.sh";
 
 // Fallback unlimited plan limits - extracted for maintainability
 const FALLBACK_UNLIMITED_LIMITS = {
@@ -32,6 +32,8 @@ const FALLBACK_UNLIMITED_LIMITS = {
   customDomains: true,
   ssoEnabled: true,
   dataRetentionDays: 365,
+  aggregatedDataRetentionDays: 365,
+  jobDataRetentionDays: 365,
 } as const;
 
 // Blocked plan limits for deleted Polar customers
@@ -52,6 +54,8 @@ const BLOCKED_PLAN_LIMITS = {
   customDomains: false,
   ssoEnabled: false,
   dataRetentionDays: 0,
+  aggregatedDataRetentionDays: 0,
+  jobDataRetentionDays: 0,
 } as const;
 
 export class SubscriptionService {
@@ -59,7 +63,10 @@ export class SubscriptionService {
    * Cache for Polar customer validation results
    * Prevents excessive API calls to Polar while maintaining security
    */
-  private validationCache = new Map<string, { valid: boolean; timestamp: number }>();
+  private validationCache = new Map<
+    string,
+    { valid: boolean; timestamp: number }
+  >();
 
   /**
    * Clear expired cache entries (called periodically)
@@ -77,7 +84,7 @@ export class SubscriptionService {
    * Get Polar API URL based on environment
    */
   private getPolarApiUrl(server: string): string {
-    return server === 'sandbox' ? POLAR_SANDBOX_URL : POLAR_PRODUCTION_URL;
+    return server === "sandbox" ? POLAR_SANDBOX_URL : POLAR_PRODUCTION_URL;
   }
 
   /**
@@ -85,7 +92,10 @@ export class SubscriptionService {
    * Returns false if customer doesn't exist (does NOT auto-clear)
    * Implements caching to prevent excessive API calls
    */
-  private async validatePolarCustomer(organizationId: string, polarCustomerId: string): Promise<boolean> {
+  private async validatePolarCustomer(
+    organizationId: string,
+    polarCustomerId: string
+  ): Promise<boolean> {
     if (!isPolarEnabled() || !polarCustomerId) {
       return true; // No validation needed if Polar disabled or no customer ID
     }
@@ -93,7 +103,10 @@ export class SubscriptionService {
     // Check cache first
     const cacheKey = `${organizationId}:${polarCustomerId}`;
     const cached = this.validationCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CUSTOMER_VALIDATION_CACHE_TTL_MS) {
+    if (
+      cached &&
+      Date.now() - cached.timestamp < CUSTOMER_VALIDATION_CACHE_TTL_MS
+    ) {
       return cached.valid;
     }
 
@@ -105,24 +118,30 @@ export class SubscriptionService {
     try {
       const config = getPolarConfig();
       if (!config) {
-        console.warn('[SubscriptionService] Polar config not found');
+        console.warn("[SubscriptionService] Polar config not found");
         return false;
       }
 
       const polarUrl = this.getPolarApiUrl(config.server);
-      
+
       // Create AbortController for timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), POLAR_API_TIMEOUT_MS);
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        POLAR_API_TIMEOUT_MS
+      );
 
       try {
-        const response = await fetch(`${polarUrl}/v1/customers/${polarCustomerId}`, {
-          headers: {
-            'Authorization': `Bearer ${config.accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          signal: controller.signal,
-        });
+        const response = await fetch(
+          `${polarUrl}/v1/customers/${polarCustomerId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${config.accessToken}`,
+              "Content-Type": "application/json",
+            },
+            signal: controller.signal,
+          }
+        );
 
         clearTimeout(timeoutId);
 
@@ -130,15 +149,22 @@ export class SubscriptionService {
         if (response.ok) {
           isValid = true; // Customer exists in Polar
         } else if (response.status === 404) {
-          console.warn(`[SubscriptionService] Polar customer not found (org: ${organizationId.substring(0, 8)}...)`);
+          console.warn(
+            `[SubscriptionService] Polar customer not found (org: ${organizationId.substring(0, 8)}...)`
+          );
           isValid = false;
         } else {
-          console.error(`[SubscriptionService] Polar API error: ${response.status} (org: ${organizationId.substring(0, 8)}...)`);
+          console.error(
+            `[SubscriptionService] Polar API error: ${response.status} (org: ${organizationId.substring(0, 8)}...)`
+          );
           isValid = false;
         }
 
         // Cache the result
-        this.validationCache.set(cacheKey, { valid: isValid, timestamp: Date.now() });
+        this.validationCache.set(cacheKey, {
+          valid: isValid,
+          timestamp: Date.now(),
+        });
         return isValid;
       } catch (fetchError) {
         clearTimeout(timeoutId);
@@ -146,10 +172,15 @@ export class SubscriptionService {
       }
     } catch (error) {
       // Handle timeout specifically
-      if (error instanceof Error && error.name === 'AbortError') {
-        console.error('[SubscriptionService] Polar API timeout - treating as invalid for safety');
+      if (error instanceof Error && error.name === "AbortError") {
+        console.error(
+          "[SubscriptionService] Polar API timeout - treating as invalid for safety"
+        );
       } else {
-        console.error('[SubscriptionService] Error validating Polar customer:', error);
+        console.error(
+          "[SubscriptionService] Error validating Polar customer:",
+          error
+        );
       }
       // Don't cache errors - allow retry on next request
       return false;
@@ -181,7 +212,10 @@ export class SubscriptionService {
     }
 
     // Validate customer exists in Polar
-    const customerExists = await this.validatePolarCustomer(organizationId, org.polarCustomerId);
+    const customerExists = await this.validatePolarCustomer(
+      organizationId,
+      org.polarCustomerId
+    );
     if (!customerExists) {
       throw new Error(
         "Polar customer not found. Please contact support or subscribe to a new plan."
@@ -216,7 +250,10 @@ export class SubscriptionService {
 
     // If we have a Polar customer ID, validate it exists
     if (org.polarCustomerId) {
-      const customerExists = await this.validatePolarCustomer(organizationId, org.polarCustomerId);
+      const customerExists = await this.validatePolarCustomer(
+        organizationId,
+        org.polarCustomerId
+      );
       if (!customerExists) {
         // Customer doesn't exist in Polar
         return false;
@@ -224,10 +261,7 @@ export class SubscriptionService {
     }
 
     // Check if subscription is active
-    return (
-      org.subscriptionPlan !== null &&
-      org.subscriptionStatus === "active"
-    );
+    return org.subscriptionPlan !== null && org.subscriptionStatus === "active";
   }
 
   /**
@@ -258,13 +292,21 @@ export class SubscriptionService {
 
     // SECURITY: Validate plan is legitimate for cloud mode
     if (org.subscriptionPlan === "unlimited") {
-      console.error(`[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has unlimited plan in cloud mode - possible database tampering`);
-      throw new Error("Invalid subscription plan detected. Please contact support.");
+      console.error(
+        `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has unlimited plan in cloud mode - possible database tampering`
+      );
+      throw new Error(
+        "Invalid subscription plan detected. Please contact support."
+      );
     }
 
     if (!["plus", "pro"].includes(org.subscriptionPlan)) {
-      console.error(`[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has invalid plan ${org.subscriptionPlan} in cloud mode`);
-      throw new Error(`Invalid subscription plan: ${org.subscriptionPlan}. Only plus and pro plans are available.`);
+      console.error(
+        `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has invalid plan ${org.subscriptionPlan} in cloud mode`
+      );
+      throw new Error(
+        `Invalid subscription plan: ${org.subscriptionPlan}. Only plus and pro plans are available.`
+      );
     }
 
     return this.getPlanLimits(org.subscriptionPlan);
@@ -292,7 +334,10 @@ export class SubscriptionService {
 
     // If we have a Polar customer ID, validate it exists
     if (org.polarCustomerId) {
-      const customerExists = await this.validatePolarCustomer(organizationId, org.polarCustomerId);
+      const customerExists = await this.validatePolarCustomer(
+        organizationId,
+        org.polarCustomerId
+      );
       if (!customerExists) {
         // Customer doesn't exist in Polar, return blocked state for UI
         return this.getPlanLimits("blocked");
@@ -303,13 +348,17 @@ export class SubscriptionService {
     if (org.subscriptionPlan && org.subscriptionStatus === "active") {
       // SECURITY: Validate plan is legitimate for cloud mode (same as getOrganizationPlan)
       if (org.subscriptionPlan === "unlimited") {
-        console.error(`[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has unlimited plan in cloud mode (getOrganizationPlanSafe) - possible database tampering`);
+        console.error(
+          `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has unlimited plan in cloud mode (getOrganizationPlanSafe) - possible database tampering`
+        );
         // Return blocked state instead of unlimited for security
         return this.getPlanLimits("blocked");
       }
 
       if (!["plus", "pro"].includes(org.subscriptionPlan)) {
-        console.error(`[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has invalid plan ${org.subscriptionPlan} in cloud mode (getOrganizationPlanSafe)`);
+        console.error(
+          `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has invalid plan ${org.subscriptionPlan} in cloud mode (getOrganizationPlanSafe)`
+        );
         // Return blocked state for invalid plans
         return this.getPlanLimits("blocked");
       }
@@ -326,8 +375,9 @@ export class SubscriptionService {
    * Falls back to unlimited if plan not found
    * Special handling for "blocked" plan when Polar customer doesn't exist
    */
-  async getPlanLimits(plan: SubscriptionPlan | "blocked"): Promise<
-  typeof planLimits.$inferSelect> {
+  async getPlanLimits(
+    plan: SubscriptionPlan | "blocked"
+  ): Promise<typeof planLimits.$inferSelect> {
     // Handle special "blocked" plan for deleted Polar customers
     if (plan === "blocked") {
       return {
@@ -386,14 +436,24 @@ export class SubscriptionService {
   ) {
     // SECURITY: Block unlimited plans in cloud mode
     if (isPolarEnabled() && data.subscriptionPlan === "unlimited") {
-      console.error(`[SubscriptionService] SECURITY: Attempted to set unlimited plan in cloud mode for org ${organizationId.substring(0, 8)}...`);
+      console.error(
+        `[SubscriptionService] SECURITY: Attempted to set unlimited plan in cloud mode for org ${organizationId.substring(0, 8)}...`
+      );
       throw new Error("Unlimited plan is only available in self-hosted mode");
     }
 
     // SECURITY: Only allow plus/pro plans in cloud mode
-    if (isPolarEnabled() && data.subscriptionPlan && !["plus", "pro"].includes(data.subscriptionPlan)) {
-      console.error(`[SubscriptionService] SECURITY: Invalid plan ${data.subscriptionPlan} attempted in cloud mode for org ${organizationId.substring(0, 8)}...`);
-      throw new Error(`Invalid plan ${data.subscriptionPlan}. Only plus and pro plans are available in cloud mode.`);
+    if (
+      isPolarEnabled() &&
+      data.subscriptionPlan &&
+      !["plus", "pro"].includes(data.subscriptionPlan)
+    ) {
+      console.error(
+        `[SubscriptionService] SECURITY: Invalid plan ${data.subscriptionPlan} attempted in cloud mode for org ${organizationId.substring(0, 8)}...`
+      );
+      throw new Error(
+        `Invalid plan ${data.subscriptionPlan}. Only plus and pro plans are available in cloud mode.`
+      );
     }
 
     await db
@@ -493,10 +553,7 @@ export class SubscriptionService {
       aiCredits: {
         used: org.aiCreditsUsed || 0,
         included: plan.aiCreditsIncluded,
-        overage: Math.max(
-          0,
-          (org.aiCreditsUsed || 0) - plan.aiCreditsIncluded
-        ),
+        overage: Math.max(0, (org.aiCreditsUsed || 0) - plan.aiCreditsIncluded),
       },
       periodStart: org.usagePeriodStart,
       periodEnd: org.usagePeriodEnd,
@@ -538,10 +595,7 @@ export class SubscriptionService {
       aiCredits: {
         used: org.aiCreditsUsed || 0,
         included: plan.aiCreditsIncluded,
-        overage: Math.max(
-          0,
-          (org.aiCreditsUsed || 0) - plan.aiCreditsIncluded
-        ),
+        overage: Math.max(0, (org.aiCreditsUsed || 0) - plan.aiCreditsIncluded),
       },
       periodStart: org.usagePeriodStart,
       periodEnd: org.usagePeriodEnd,
@@ -598,10 +652,10 @@ export class SubscriptionService {
     endsAt: Date | null
   ) {
     const now = new Date();
-    
+
     // Use Polar dates if available, otherwise calculate defaults
     const periodStart = startsAt || now;
-    
+
     // If no end date from Polar, calculate 30 days from start (monthly billing)
     let periodEnd: Date;
     if (endsAt) {
@@ -634,7 +688,10 @@ export class SubscriptionService {
     try {
       return await this.getOrganizationPlan(organizationId);
     } catch (error) {
-      if (error instanceof Error && error.message.includes("No active subscription")) {
+      if (
+        error instanceof Error &&
+        error.message.includes("No active subscription")
+      ) {
         throw new Error(
           "Subscription required. Please upgrade to Plus or Pro to create resources."
         );
