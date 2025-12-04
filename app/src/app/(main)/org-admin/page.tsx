@@ -802,6 +802,7 @@ export default function OrgAdminDashboard() {
                   }
                 }}
                 isLoading={inviting}
+                isCloudMode={isCloudHosted}
               />
             </TabsContent>
 

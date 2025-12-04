@@ -20,15 +20,15 @@ export default function SignInPage() {
   const [isFromNotification, setIsFromNotification] = useState(false);
 
   useEffect(() => {
-    const invite = searchParams.get('invite');
-    const from = searchParams.get('from');
-    
+    const invite = searchParams.get("invite");
+    const from = searchParams.get("from");
+
     if (invite) {
       setInviteToken(invite);
       fetchInviteData(invite);
     }
-    
-    if (from === 'notification') {
+
+    if (from === "notification") {
       setIsFromNotification(true);
     }
   }, [searchParams]);
@@ -41,7 +41,7 @@ export default function SignInPage() {
         setInviteData(data.data);
       }
     } catch (error) {
-      console.error('Error fetching invite data:', error);
+      console.error("Error fetching invite data:", error);
     }
   };
 
@@ -70,7 +70,7 @@ export default function SignInPage() {
 
   return (
     <LoginForm
-      className="w-full max-w-4xl"
+      className="w-full max-w-sm px-4"
       onSubmit={handleSubmit}
       isLoading={isLoading}
       error={error}
@@ -79,4 +79,4 @@ export default function SignInPage() {
       isFromNotification={isFromNotification}
     />
   );
-} 
+}

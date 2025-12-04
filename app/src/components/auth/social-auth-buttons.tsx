@@ -14,14 +14,19 @@ interface SocialAuthButtonsProps {
 }
 
 export function SocialAuthButtons({
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   mode,
   callbackUrl = "/",
-  disabled = false
+  disabled = false,
 }: SocialAuthButtonsProps) {
   const [isGithubLoading, setIsGithubLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { isGithubEnabled, isGoogleEnabled, isLoading: isProvidersLoading } = useAuthProviders();
+  const {
+    isGithubEnabled,
+    isGoogleEnabled,
+    isLoading: isProvidersLoading,
+  } = useAuthProviders();
 
   const handleGitHubSignIn = async () => {
     try {
@@ -69,57 +74,61 @@ export function SocialAuthButtons({
     return null;
   }
 
-  const actionText = mode === "signin" ? "Sign in" : "Sign up";
+  // Determine if we should use grid layout (both providers enabled)
+  const useGridLayout = isGoogleEnabled && isGithubEnabled;
 
   return (
     <div className="flex flex-col gap-3">
       {error && (
-        <p className="text-red-500 text-sm text-center">{error}</p>
+        <p className="text-sm font-medium text-destructive text-center">
+          {error}
+        </p>
       )}
 
-      {isGoogleEnabled && (
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          onClick={handleGoogleSignIn}
-          disabled={isDisabled}
-        >
-          {isGoogleLoading ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <GoogleIcon className="mr-2 h-4 w-4" />
-          )}
-          {actionText} with Google
-        </Button>
-      )}
+      <div
+        className={
+          useGridLayout ? "grid gap-3 sm:grid-cols-2" : "flex flex-col gap-3"
+        }
+      >
+        {isGoogleEnabled && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleGoogleSignIn}
+            disabled={isDisabled}
+          >
+            {isGoogleLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <GoogleIcon className="h-4 w-4" />
+            )}
+            <span className={useGridLayout ? "hidden sm:inline" : ""}>
+              Continue with{" "}
+            </span>
+            Google
+          </Button>
+        )}
 
-      {isGithubEnabled && (
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full"
-          onClick={handleGitHubSignIn}
-          disabled={isDisabled}
-        >
-          {isGithubLoading ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <GitHubIcon className="mr-2 h-4 w-4" />
-          )}
-          {actionText} with GitHub
-        </Button>
-      )}
-
-      <div className="relative">
-        <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t" />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-background px-2 text-muted-foreground">
-            Or continue with email
-          </span>
-        </div>
+        {isGithubEnabled && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleGitHubSignIn}
+            disabled={isDisabled}
+          >
+            {isGithubLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <GitHubIcon className="h-4 w-4" />
+            )}
+            <span className={useGridLayout ? "hidden sm:inline" : ""}>
+              Continue with{" "}
+            </span>
+            GitHub
+          </Button>
+        )}
       </div>
     </div>
   );

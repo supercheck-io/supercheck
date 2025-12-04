@@ -3,6 +3,10 @@ import { signUp } from "@/utils/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { SignupForm } from "@/components/auth/signup-form";
+import {
+  isDisposableEmail,
+  getDisposableEmailErrorMessage,
+} from "@/lib/validations/disposable-email-domains";
 
 interface InviteData {
   organizationName: string;
@@ -17,6 +21,7 @@ export default function SignUpPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [inviteData, setInviteData] = useState<InviteData | null>(null);
+  const [isCloudMode, setIsCloudMode] = useState<boolean | null>(null);
 
   useEffect(() => {
     const invite = searchParams.get("invite");
@@ -24,6 +29,12 @@ export default function SignUpPage() {
       setInviteToken(invite);
       fetchInviteData(invite);
     }
+
+    // Check hosting mode
+    fetch("/api/config/hosting-mode")
+      .then((res) => res.json())
+      .then((data) => setIsCloudMode(data.cloudHosted))
+      .catch(() => setIsCloudMode(true)); // Default to cloud mode if check fails
   }, [searchParams]);
 
   const fetchInviteData = async (token: string) => {
@@ -33,8 +44,8 @@ export default function SignUpPage() {
       if (data.success) {
         setInviteData(data.data);
       }
-    } catch (error) {
-      console.error("Error fetching invite data:", error);
+    } catch (fetchError) {
+      console.error("Error fetching invite data:", fetchError);
     }
   };
 
@@ -54,14 +65,43 @@ export default function SignUpPage() {
       return;
     }
 
-    const { error } = await signUp.email({ name, email, password });
-
-    if (error) {
-      setError(error.message || "An error occurred");
+    // Only check disposable emails in cloud mode
+    if (isCloudMode && isDisposableEmail(email)) {
+      setError(getDisposableEmailErrorMessage());
       setIsLoading(false);
       return;
     }
 
+    const { error: signUpError } = await signUp.email({
+      name,
+      email,
+      password,
+    });
+
+    if (signUpError) {
+      // Handle email verification required error gracefully
+      if (
+        signUpError.message?.includes("verify") ||
+        signUpError.message?.includes("email") ||
+        signUpError.status === 403
+      ) {
+        // User created but needs to verify email - redirect to verification page
+        router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+        return;
+      }
+      setError(signUpError.message || "An error occurred");
+      setIsLoading(false);
+      return;
+    }
+
+    // In cloud mode with email verification enabled, redirect to verify-email page
+    // The user needs to verify their email before they can proceed
+    if (isCloudMode) {
+      router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+      return;
+    }
+
+    // Self-hosted mode: no email verification required, proceed with setup
     // Wait a moment for the session to be established
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
@@ -103,8 +143,13 @@ export default function SignUpPage() {
             if (billingResponse.ok) {
               const billingData = await billingResponse.json();
               // Check if subscription is actually active
-              if (billingData.subscription?.status !== "active" || !billingData.subscription?.plan) {
-                console.log("Cloud mode: No active subscription, redirecting to subscribe");
+              if (
+                billingData.subscription?.status !== "active" ||
+                !billingData.subscription?.plan
+              ) {
+                console.log(
+                  "Cloud mode: No active subscription, redirecting to subscribe"
+                );
                 router.push("/subscribe?setup=true");
                 setIsLoading(false);
                 return;
@@ -116,7 +161,9 @@ export default function SignUpPage() {
               return;
             }
           } catch {
-            console.log("Cloud mode: Failed to check subscription, redirecting to subscribe");
+            console.log(
+              "Cloud mode: Failed to check subscription, redirecting to subscribe"
+            );
             router.push("/subscribe?setup=true");
             setIsLoading(false);
             return;
@@ -135,7 +182,7 @@ export default function SignUpPage() {
 
   return (
     <SignupForm
-      className="w-full max-w-4xl"
+      className="w-full max-w-sm px-4"
       onSubmit={handleSubmit}
       isLoading={isLoading}
       error={error}

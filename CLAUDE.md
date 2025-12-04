@@ -6,6 +6,59 @@ This document provides essential information for Claude AI assistants working on
 
 SuperCheck is a comprehensive testing and monitoring platform that runs Playwright tests and provides monitoring capabilities with alerting, status pages, and AI-powered debugging.
 
+## 🌐 Hosting Modes: Cloud vs Self-Hosted
+
+SuperCheck supports two hosting modes with different behaviors:
+
+### Cloud Mode (Default)
+
+When `SELF_HOSTED` is NOT set or set to any value other than `"true"`/`"1"`:
+
+- **Billing Required**: Users must subscribe to a plan (Plus or Pro) via Polar
+- **Email Verification**: Required before users can sign in
+- **Disposable Emails**: Blocked during signup (e.g., tempmail.com)
+- **Plan Limits**: Enforced based on subscription (monitors, minutes, capacity)
+- **Polar Integration**: Customer creation, subscription management, webhooks
+
+**Signup Flow (Cloud):**
+
+1. User fills signup form
+2. Account created with email verification required
+3. Verification email sent automatically
+4. User redirected to `/verify-email` page
+5. User clicks verification link in email
+6. After verification, user signs in
+7. Redirected to `/subscribe` to choose a plan
+8. After subscription, access to dashboard
+
+### Self-Hosted Mode
+
+When `SELF_HOSTED=true` or `SELF_HOSTED=1`:
+
+- **No Billing**: All features available without subscription
+- **No Email Verification**: Users can sign in immediately after signup
+- **All Emails Allowed**: No disposable email blocking
+- **Unlimited Plan**: All plan limits set to maximum values
+- **No Polar**: Billing integration completely disabled
+
+**Signup Flow (Self-Hosted):**
+
+1. User fills signup form
+2. Account created immediately
+3. Default organization and project created
+4. User redirected to dashboard
+
+### Environment Variable
+
+```bash
+# Cloud mode (default if not set)
+# SELF_HOSTED is not defined, or:
+SELF_HOSTED=false
+
+# Self-hosted mode
+SELF_HOSTED=true
+```
+
 ## 🏗️ Architecture
 
 - **Monorepo Structure**: App (Next.js frontend) + Worker (job execution)
