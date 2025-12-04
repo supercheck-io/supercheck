@@ -25,6 +25,9 @@ export * from './k6Runs';
 // Monitor tables
 export * from './monitor';
 
+// Monitor aggregates for long-term metrics
+export * from './monitor-aggregates';
+
 // Notification and alert tables
 export * from './notification';
 

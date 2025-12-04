@@ -5,6 +5,8 @@ import { AIPromptBuilder } from "@/lib/ai/ai-prompts";
 import { getActiveOrganization } from "@/lib/session";
 import { usageTracker } from "@/lib/services/usage-tracker";
 import { headers } from "next/headers";
+import { logAuditEvent } from "@/lib/audit-logger";
+import { subscriptionService } from "@/lib/services/subscription-service";
 
 export async function POST(request: NextRequest) {
   try {
@@ -90,6 +92,29 @@ export async function POST(request: NextRequest) {
       orgId = activeOrg?.id;
       tier = (activeOrg as unknown as Record<string, unknown> | undefined)
         ?.tier as string | undefined;
+
+      // CRITICAL: Check subscription in cloud mode (billing enforcement)
+      // This must happen BEFORE any AI calls to prevent unpaid usage
+      if (activeOrg) {
+        try {
+          await subscriptionService.blockUntilSubscribed(activeOrg.id);
+          await subscriptionService.requireValidPolarCustomer(activeOrg.id);
+        } catch (error) {
+          return NextResponse.json(
+            {
+              success: false,
+              reason: "subscription_required",
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Subscription required to use AI features",
+              guidance:
+                "Please subscribe to a plan at /billing to use AI Create",
+            },
+            { status: 402 }
+          );
+        }
+      }
     } catch {
       // Auth is optional for create - will use IP-based rate limiting
     }
@@ -122,6 +147,22 @@ export async function POST(request: NextRequest) {
       if (activeOrg) {
         await usageTracker.trackAIUsage(activeOrg.id, "ai_create", {
           testType,
+        });
+
+        // Log audit event for AI create action
+        await logAuditEvent({
+          userId,
+          organizationId: activeOrg.id,
+          action: "ai_create",
+          resource: "test",
+          success: true,
+          ipAddress: clientIp,
+          metadata: {
+            testType,
+            userRequestLength: sanitizedUserRequest.length,
+            hasCurrentScript: !!sanitizedCurrentScript,
+            model: aiResponse.model,
+          },
         });
       }
     } catch (trackingError) {

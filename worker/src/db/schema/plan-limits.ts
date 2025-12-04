@@ -2,6 +2,11 @@
    PLAN LIMITS SCHEMA
    -------------------------------
    Configuration table for subscription plan limits
+   
+   Data Retention Model (industry standard - Checkly-inspired):
+   - dataRetentionDays: Raw data retention (Plus: 7d, Pro: 30d, Unlimited: 365d)
+   - aggregatedDataRetentionDays: Aggregated metrics retention (Plus: 30d, Pro: 365d, Unlimited: 730d)
+   - jobDataRetentionDays: Job runs retention (Plus: 30d, Pro: 90d, Unlimited: 365d)
 =================================== */
 
 import {
@@ -33,7 +38,7 @@ export const planLimits = pgTable('plan_limits', {
 
   // Execution limits - included quotas
   playwrightMinutesIncluded: integer('playwright_minutes_included').notNull(),
-  k6VuMinutesIncluded: integer('k6_vu_minutes_included').notNull(),
+  k6VuMinutesIncluded: integer('k6_vu_minutes_included').notNull(), // Changed from hours to minutes for consistency
   aiCreditsIncluded: integer('ai_credits_included').notNull(), // AI credits for AI fix and AI create features
 
   // Capacity limits - concurrent and queued
@@ -50,8 +55,22 @@ export const planLimits = pgTable('plan_limits', {
   customDomains: boolean('custom_domains').default(false).notNull(),
   ssoEnabled: boolean('sso_enabled').default(false).notNull(),
 
-  // Data retention
+  // Data retention (raw data - short-term)
+  // Plus: 7 days, Pro: 30 days, Unlimited: 365 days
   dataRetentionDays: integer('data_retention_days').notNull(),
+
+  // Aggregated data retention (metrics - long-term)
+  // Plus: 30 days, Pro: 365 days (1yr), Unlimited: 730 days (2yr)
+  aggregatedDataRetentionDays: integer(
+    'aggregated_data_retention_days',
+  ).notNull(),
+
+  // Job data retention (execution logs, artifacts, results)
+  // Plus: 30 days, Pro: 90 days, Unlimited: 365 days
+  // Industry standards: GitHub Actions 90d, CircleCI 30d, GitLab 90d
+  jobDataRetentionDays: integer('job_data_retention_days')
+    .notNull()
+    .default(30),
 
   // Metadata
   createdAt: timestamp('created_at').defaultNow().notNull(),

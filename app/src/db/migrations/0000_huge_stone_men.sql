@@ -154,6 +154,16 @@ CREATE TABLE "usage_notifications" (
 	"sent_at" timestamp
 );
 --> statement-breakpoint
+CREATE TABLE "webhook_idempotency" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"webhook_id" text NOT NULL,
+	"event_type" text NOT NULL,
+	"processed_at" timestamp DEFAULT now() NOT NULL,
+	"result_status" text,
+	"result_message" text,
+	"expires_at" timestamp NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "invitation" (
 	"id" uuid PRIMARY KEY NOT NULL,
 	"organization_id" uuid NOT NULL,
@@ -333,7 +343,9 @@ CREATE TABLE "monitor_results" (
 	"is_up" boolean NOT NULL,
 	"is_status_change" boolean DEFAULT false NOT NULL,
 	"consecutive_failure_count" integer DEFAULT 0 NOT NULL,
+	"consecutive_success_count" integer DEFAULT 0 NOT NULL,
 	"alerts_sent_for_failure" integer DEFAULT 0 NOT NULL,
+	"alerts_sent_for_recovery" integer DEFAULT 0 NOT NULL,
 	"test_execution_id" text,
 	"test_report_s3_url" text
 );
@@ -358,6 +370,28 @@ CREATE TABLE "monitors" (
 	"scheduled_job_id" varchar(255),
 	"created_at" timestamp DEFAULT now(),
 	"updated_at" timestamp
+);
+--> statement-breakpoint
+CREATE TABLE "monitor_aggregates" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"monitor_id" uuid NOT NULL,
+	"period_type" text NOT NULL,
+	"period_start" timestamp NOT NULL,
+	"location" text,
+	"total_checks" integer DEFAULT 0 NOT NULL,
+	"successful_checks" integer DEFAULT 0 NOT NULL,
+	"failed_checks" integer DEFAULT 0 NOT NULL,
+	"uptime_percentage" numeric(5, 2) NOT NULL,
+	"avg_response_ms" integer,
+	"min_response_ms" integer,
+	"max_response_ms" integer,
+	"p50_response_ms" integer,
+	"p95_response_ms" integer,
+	"p99_response_ms" integer,
+	"total_response_ms" integer DEFAULT 0,
+	"status_change_count" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "alert_history" (
@@ -685,6 +719,8 @@ CREATE TABLE "plan_limits" (
 	"custom_domains" boolean DEFAULT false NOT NULL,
 	"sso_enabled" boolean DEFAULT false NOT NULL,
 	"data_retention_days" integer NOT NULL,
+	"aggregated_data_retention_days" integer DEFAULT 30 NOT NULL,
+	"job_data_retention_days" integer DEFAULT 30 NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "plan_limits_plan_unique" UNIQUE("plan")
@@ -729,6 +765,7 @@ ALTER TABLE "monitor_results" ADD CONSTRAINT "monitor_results_monitor_id_monitor
 ALTER TABLE "monitors" ADD CONSTRAINT "monitors_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "monitors" ADD CONSTRAINT "monitors_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "monitors" ADD CONSTRAINT "monitors_created_by_user_id_user_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "monitor_aggregates" ADD CONSTRAINT "monitor_aggregates_monitor_id_monitors_id_fk" FOREIGN KEY ("monitor_id") REFERENCES "public"."monitors"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "alert_history" ADD CONSTRAINT "alert_history_monitor_id_monitors_id_fk" FOREIGN KEY ("monitor_id") REFERENCES "public"."monitors"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "alert_history" ADD CONSTRAINT "alert_history_job_id_jobs_id_fk" FOREIGN KEY ("job_id") REFERENCES "public"."jobs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "alerts" ADD CONSTRAINT "alerts_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -797,6 +834,8 @@ CREATE INDEX "usage_events_created_at_idx" ON "usage_events" USING btree ("creat
 CREATE INDEX "usage_notifications_org_id_idx" ON "usage_notifications" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "usage_notifications_type_idx" ON "usage_notifications" USING btree ("notification_type");--> statement-breakpoint
 CREATE INDEX "usage_notifications_billing_period_idx" ON "usage_notifications" USING btree ("billing_period_start","billing_period_end");--> statement-breakpoint
+CREATE INDEX CONCURRENTLY "webhook_idempotency_unique_idx" ON "webhook_idempotency" USING btree ("webhook_id","event_type");--> statement-breakpoint
+CREATE INDEX "webhook_idempotency_expires_idx" ON "webhook_idempotency" USING btree ("expires_at");--> statement-breakpoint
 CREATE INDEX "invitation_organization_id_idx" ON "invitation" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "invitation_email_idx" ON "invitation" USING btree ("email");--> statement-breakpoint
 CREATE INDEX "invitation_email_status_idx" ON "invitation" USING btree ("email","status");--> statement-breakpoint
@@ -823,6 +862,9 @@ CREATE INDEX "runs_created_at_idx" ON "runs" USING btree ("created_at");--> stat
 CREATE INDEX "runs_completed_at_idx" ON "runs" USING btree ("completed_at");--> statement-breakpoint
 CREATE INDEX "runs_project_created_at_idx" ON "runs" USING btree ("project_id","created_at");--> statement-breakpoint
 CREATE INDEX "monitor_results_monitor_location_checked_idx" ON "monitor_results" USING btree ("monitor_id","location","checked_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "monitor_aggregates_unique_idx" ON "monitor_aggregates" USING btree ("monitor_id","period_type","period_start","location");--> statement-breakpoint
+CREATE INDEX "monitor_aggregates_monitor_time_idx" ON "monitor_aggregates" USING btree ("monitor_id","period_start");--> statement-breakpoint
+CREATE INDEX "monitor_aggregates_cleanup_idx" ON "monitor_aggregates" USING btree ("period_type","period_start");--> statement-breakpoint
 CREATE UNIQUE INDEX "tags_project_name_idx" ON "tags" USING btree ("project_id","name");--> statement-breakpoint
 CREATE UNIQUE INDEX "reports_entity_type_id_idx" ON "reports" USING btree ("entity_type","entity_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "postmortems_incident_idx" ON "postmortems" USING btree ("incident_id");--> statement-breakpoint

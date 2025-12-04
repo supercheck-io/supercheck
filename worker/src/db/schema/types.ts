@@ -5,21 +5,16 @@
 =================================== */
 
 // Test types
-export type TestPriority = 'low' | 'medium' | 'high';
-export type TestType =
-  | 'browser'
-  | 'api'
-  | 'database'
-  | 'custom'
-  | 'performance';
+export type TestPriority = "low" | "medium" | "high";
+export type TestType = "browser" | "api" | "database" | "custom" | "performance";
 
 // K6 Performance Testing types (includes global option for any location)
-export type K6Location = 'us-east' | 'eu-central' | 'asia-pacific' | 'global';
+export type K6Location = "us-east" | "eu-central" | "asia-pacific" | "global";
 
 // Job types
-export type JobType = 'playwright' | 'k6';
-export type JobStatus = 'pending' | 'running' | 'passed' | 'failed' | 'error';
-export type JobTrigger = 'manual' | 'remote' | 'schedule';
+export type JobType = "playwright" | "k6";
+export type JobStatus = "pending" | "running" | "passed" | "failed" | "error";
+export type JobTrigger = "manual" | "remote" | "schedule";
 export type JobConfig = {
   environment?: string;
   variables?: Record<string, string>;
@@ -30,12 +25,7 @@ export type JobConfig = {
 };
 
 // Test run types
-export type TestRunStatus =
-  | 'running'
-  | 'passed'
-  | 'failed'
-  | 'error'
-  | 'blocked';
+export type TestRunStatus = "running" | "passed" | "failed" | "error" | "blocked";
 export type ArtifactPaths = {
   logs?: string;
   video?: string;
@@ -43,25 +33,25 @@ export type ArtifactPaths = {
 };
 
 // Report types
-export type ReportType = 'test' | 'job' | 'monitor' | 'k6_performance';
+export type ReportType = "test" | "job" | "monitor" | "k6_performance";
 
 // Monitor types
 export type MonitorType =
-  | 'http_request'
-  | 'website'
-  | 'ping_host'
-  | 'port_check'
-  | 'synthetic_test';
+  | "http_request"
+  | "website"
+  | "ping_host"
+  | "port_check"
+  | "synthetic_test";
 
 export type MonitorStatus =
-  | 'up'
-  | 'down'
-  | 'paused'
-  | 'pending'
-  | 'maintenance'
-  | 'error';
+  | "up"
+  | "down"
+  | "paused"
+  | "pending"
+  | "maintenance"
+  | "error";
 
-export type MonitorResultStatus = 'up' | 'down' | 'error' | 'timeout';
+export type MonitorResultStatus = "up" | "down" | "error" | "timeout";
 
 export type MonitorResultDetails = {
   statusCode?: number;
@@ -84,9 +74,9 @@ export type MonitorResultDetails = {
 
 // Monitoring locations
 export const MONITORING_LOCATIONS = {
-  US_EAST: 'us-east',
-  EU_CENTRAL: 'eu-central',
-  ASIA_PACIFIC: 'asia-pacific',
+  US_EAST: "us-east",
+  EU_CENTRAL: "eu-central",
+  ASIA_PACIFIC: "asia-pacific",
 } as const;
 
 export type MonitoringLocation =
@@ -104,11 +94,11 @@ export type LocationConfig = {
   enabled: boolean;
   locations: MonitoringLocation[];
   threshold: number;
-  strategy?: 'all' | 'majority' | 'any';
+  strategy?: "all" | "majority" | "any";
 };
 
 export type MonitorConfig = {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
+  method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH" | "HEAD" | "OPTIONS";
   headers?: Record<string, string>;
   body?: string;
   expectedStatusCodes?: string;
@@ -116,13 +106,13 @@ export type MonitorConfig = {
   keywordInBodyShouldBePresent?: boolean;
   responseBodyJsonPath?: { path: string; expectedValue: unknown };
   auth?: {
-    type: 'none' | 'basic' | 'bearer';
+    type: "none" | "basic" | "bearer";
     username?: string;
     password?: string;
     token?: string;
   };
   port?: number;
-  protocol?: 'tcp' | 'udp';
+  protocol?: "tcp" | "udp";
   enableSslCheck?: boolean;
   sslDaysUntilExpirationWarning?: number;
   sslCheckFrequencyHours?: number;
@@ -164,22 +154,22 @@ export type AlertConfig = {
 };
 
 export type AlertType =
-  | 'monitor_failure'
-  | 'monitor_recovery'
-  | 'job_failed'
-  | 'job_success'
-  | 'job_timeout'
-  | 'ssl_expiring';
+  | "monitor_failure"
+  | "monitor_recovery"
+  | "job_failed"
+  | "job_success"
+  | "job_timeout"
+  | "ssl_expiring";
 
-export type AlertStatus = 'sent' | 'failed' | 'pending';
+export type AlertStatus = "sent" | "failed" | "pending";
 
 // Notification types
 export type NotificationProviderType =
-  | 'email'
-  | 'slack'
-  | 'webhook'
-  | 'telegram'
-  | 'discord';
+  | "email"
+  | "slack"
+  | "webhook"
+  | "telegram"
+  | "discord";
 
 type SecretEnvelope = {
   encrypted: true;
@@ -195,7 +185,7 @@ export type PlainNotificationProviderConfig = {
   webhookUrl?: string;
   channel?: string;
   url?: string;
-  method?: 'GET' | 'POST' | 'PUT';
+  method?: "GET" | "POST" | "PUT";
   headers?: Record<string, string>;
   bodyTemplate?: string;
   botToken?: string;
@@ -210,8 +200,8 @@ export type NotificationProviderConfig =
   | (PlainNotificationProviderConfig & { encrypted?: false })
   | EncryptedNotificationProviderConfig;
 
-export type NotificationType = 'email' | 'slack' | 'webhook' | 'in-app';
-export type NotificationStatus = 'pending' | 'sent' | 'failed' | 'cancelled';
+export type NotificationType = "email" | "slack" | "webhook" | "in-app";
+export type NotificationStatus = "pending" | "sent" | "failed" | "cancelled";
 export type NotificationContent = {
   subject?: string;
   body: string;
@@ -227,22 +217,22 @@ export type AuditDetails = {
 };
 
 // Status page types
-export type StatusPageStatus = 'draft' | 'published' | 'archived';
+export type StatusPageStatus = "draft" | "published" | "archived";
 export type ComponentStatus =
-  | 'operational'
-  | 'degraded_performance'
-  | 'partial_outage'
-  | 'major_outage'
-  | 'under_maintenance';
+  | "operational"
+  | "degraded_performance"
+  | "partial_outage"
+  | "major_outage"
+  | "under_maintenance";
 export type IncidentStatus =
-  | 'investigating'
-  | 'identified'
-  | 'monitoring'
-  | 'resolved'
-  | 'scheduled';
-export type IncidentImpact = 'none' | 'minor' | 'major' | 'critical';
-export type SubscriberMode = 'email' | 'webhook' | 'slack';
+  | "investigating"
+  | "identified"
+  | "monitoring"
+  | "resolved"
+  | "scheduled";
+export type IncidentImpact = "none" | "minor" | "major" | "critical";
+export type SubscriberMode = "email" | "webhook" | "slack";
 
 // Billing/Subscription types
-export type SubscriptionPlan = 'plus' | 'pro' | 'unlimited';
-export type SubscriptionStatus = 'active' | 'canceled' | 'past_due' | 'none';
+export type SubscriptionPlan = "plus" | "pro" | "unlimited";
+export type SubscriptionStatus = "active" | "canceled" | "past_due" | "none";

@@ -3,7 +3,9 @@
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Building, User } from "lucide-react";
+import { toast } from "sonner";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
+import { UUIDField } from "@/components/ui/uuid-field";
 
 export interface AdminOrganization {
   id: string;
@@ -15,8 +17,27 @@ export interface AdminOrganization {
   createdAt: string;
 }
 
-
 export const createOrgColumns = (): ColumnDef<AdminOrganization>[] => [
+  {
+    accessorKey: "id",
+    header: ({ column }) => (
+      <DataTableColumnHeader className="ml-2" column={column} title="Org ID" />
+    ),
+    cell: ({ row }) => {
+      const id = row.getValue("id") as string;
+      return (
+        <div className="w-[90px]">
+          <UUIDField
+            value={id}
+            maxLength={8}
+            onCopy={() => toast.success("Organization ID copied to clipboard")}
+          />
+        </div>
+      );
+    },
+    enableSorting: false,
+    enableHiding: false,
+  },
   {
     accessorKey: "name",
     header: ({ column }) => (
@@ -63,7 +84,12 @@ export const createOrgColumns = (): ColumnDef<AdminOrganization>[] => [
       return (
         <div className="py-1 flex items-center h-12">
           {count !== undefined && count !== null ? (
-            <Badge variant="outline" className="bg-blue-100 text-blue-700 text-xs px-3 py-1.5 font-medium">{count}</Badge>
+            <Badge
+              variant="outline"
+              className="bg-blue-100 text-blue-700 text-xs px-3 py-1.5 font-medium"
+            >
+              {count}
+            </Badge>
           ) : (
             <span className="text-muted-foreground text-sm">—</span>
           )}
@@ -81,7 +107,12 @@ export const createOrgColumns = (): ColumnDef<AdminOrganization>[] => [
       return (
         <div className="py-1 flex items-center h-12">
           {count !== undefined && count !== null ? (
-            <Badge variant="outline" className="bg-green-100 text-green-700 text-xs px-3 py-1.5 font-medium">{count}</Badge>
+            <Badge
+              variant="outline"
+              className="bg-green-100 text-green-700 text-xs px-3 py-1.5 font-medium"
+            >
+              {count}
+            </Badge>
           ) : (
             <span className="text-muted-foreground text-sm">—</span>
           )}
@@ -112,7 +143,9 @@ export const createOrgColumns = (): ColumnDef<AdminOrganization>[] => [
       return (
         <div className="py-1 flex items-center text-sm">
           <span>{formattedDate}</span>
-          <span className="text-muted-foreground ml-1 text-xs">{formattedTime}</span>
+          <span className="text-muted-foreground ml-1 text-xs">
+            {formattedTime}
+          </span>
         </div>
       );
     },

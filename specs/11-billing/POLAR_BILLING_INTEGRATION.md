@@ -452,13 +452,15 @@ For issues with Polar integration:
 | **Projects**              | 10 projects                 | 50 projects                 |
 | **Monitoring Locations**  | All 3 locations             | All 3 locations             |
 | **Check Interval**        | 1 minute (Synthetic: 5 min) | 1 minute (Synthetic: 5 min) |
-| **Data Retention**        | 30 days                     | 90 days                     |
+| **Data Retention (Raw)**  | 7 days                      | 30 days                     |
+| **Data Retention (Agg)**  | 30 days (metrics)           | 365 days (metrics)          |
+| **Job Runs Retention**    | 30 days                     | 90 days                     |
 | **Email Support**         | ✓                           | ✓ Priority                  |
 | **Slack/Webhook Alerts**  | ✓                           | ✓                           |
 | **Status Pages**          | 3 status pages              | 15 status pages             |
-| **Custom Domains**        | ✗                           | ✓                           |
+| **Custom Domains**        | ✓                           | ✓                           |
 | **API Access**            | ✓                           | ✓ Enhanced                  |
-| **SSO/SAML**              | ✗                           | ✓                           |
+| **SSO/SAML**              | ✓                           | ✓                           |
 
 ### Usage-Based Billing
 
@@ -544,12 +546,14 @@ Synthetic monitors count against Playwright minutes for each execution. Monitor 
 - 100 AI credits/month for AI Fix and AI Create
 - Up to 5 team members
 - 2 organizations, 10 projects
-- 3 public status pages
+- 3 public status pages with custom domains
 - Email support
 - Slack and Webhook notifications
-- 30-day data retention
+- 7-day raw data retention, 30-day aggregated metrics
+- 30-day job runs retention
 - All monitoring locations (US, EU, APAC)
 - Standard API access
+- SSO/SAML authentication
 
 #### Pro Plan - $149/month
 
@@ -565,7 +569,8 @@ Synthetic monitors count against Playwright minutes for each execution. Monitor 
 - 15 public status pages with custom domains
 - Priority email support
 - Slack and Webhook notifications
-- 90-day data retention
+- 30-day raw data retention, 365-day (1 year) aggregated metrics
+- 90-day job runs retention
 - SSO/SAML authentication
 - All monitoring locations (US, EU, APAC)
 - Enhanced API access with higher rate limits
@@ -2573,6 +2578,94 @@ spec:
 
 ### Security Considerations
 
+#### Defense-in-Depth Billing Enforcement (Updated December 2024)
+
+The billing system uses a defense-in-depth approach with multiple layers of protection:
+
+**Layer 1: `blockUntilSubscribed()`**
+
+- Checks if organization has an active subscription (plan !== null AND status === 'active')
+- Throws error immediately if no subscription, preventing any resource creation
+- Self-hosted mode: Always passes (unlimited access)
+
+**Layer 2: `requireValidPolarCustomer()`**
+
+- Validates that the Polar customer ID still exists in Polar's system
+- Uses caching (60s TTL) to prevent excessive API calls
+- If customer was deleted from Polar, blocks access immediately
+- Handles timeouts gracefully (fails closed for safety)
+
+**Layer 3: `getOrganizationPlan()`**
+
+- Retrieves plan limits from database
+- SECURITY: Validates plan is legitimate ("plus" or "pro" only in cloud mode)
+- Throws error if "unlimited" plan detected in cloud mode (possible DB tampering)
+
+**Layer 4: Resource-specific limit checks**
+
+- `checkMonitorLimit()`, `checkProjectLimit()`, `checkTeamMemberLimit()`, etc.
+- Validates against plan-specific quotas
+- Returns detailed error messages for UI
+
+#### Protected API Routes
+
+All resource-creation routes MUST include billing guards in cloud mode:
+
+| Route                                    | Guards Applied                                       |
+| ---------------------------------------- | ---------------------------------------------------- |
+| `POST /api/tests`                        | `blockUntilSubscribed` + `requireValidPolarCustomer` |
+| `POST /api/jobs`                         | `blockUntilSubscribed` + `requireValidPolarCustomer` |
+| `POST /api/monitors`                     | `blockUntilSubscribed` + `requireValidPolarCustomer` |
+| `POST /api/projects`                     | `blockUntilSubscribed` + `requireValidPolarCustomer` |
+| `POST /api/jobs/[id]/trigger`            | `blockUntilSubscribed` + `requireValidPolarCustomer` |
+| `POST /api/tests/[id]/execute`           | `blockUntilSubscribed` + `requireValidPolarCustomer` |
+| `POST /api/ai/fix-test`                  | `blockUntilSubscribed` + `requireValidPolarCustomer` |
+| `POST /api/ai/create-test`               | `blockUntilSubscribed` + `requireValidPolarCustomer` |
+| `POST /api/organizations/members/invite` | `checkTeamMemberLimit` (includes subscription check) |
+
+#### Webhook Handlers for Access Revocation
+
+Critical webhook handlers that IMMEDIATELY revoke access:
+
+1. **`subscription.revoked`** - Called when:
+
+   - Payment fails permanently
+   - Fraud detected
+   - Admin manually revokes subscription
+   - Sets `subscriptionStatus = 'none'` and `subscriptionPlan = null`
+
+2. **`customer.deleted`** - Called when:
+
+   - Customer deleted from Polar dashboard
+   - Account cleanup/deletion
+   - Sets `subscriptionStatus = 'none'`
+   - Keeps `polarCustomerId` for audit trail (customer will fail validation in Polar API)
+
+3. **`subscription.canceled`** - Called when:
+   - User cancels subscription
+   - Sets `subscriptionStatus = 'canceled'`
+   - User retains access until billing period ends (graceful cancellation)
+
+#### Plan Validation Security
+
+```typescript
+// SECURITY: In updateSubscription()
+if (isPolarEnabled() && data.subscriptionPlan === "unlimited") {
+  console.error(`[SECURITY] Attempted to set unlimited plan in cloud mode`);
+  throw new Error("Unlimited plan is only available in self-hosted mode");
+}
+
+// SECURITY: In getOrganizationPlan()
+if (org.subscriptionPlan === "unlimited") {
+  console.error(
+    `[SECURITY] Organization has unlimited plan in cloud mode - possible DB tampering`
+  );
+  throw new Error(
+    "Invalid subscription plan detected. Please contact support."
+  );
+}
+```
+
 #### Webhook Security
 
 ```typescript
@@ -3047,5 +3140,324 @@ export async function GET() {
   });
 }
 ```
+
+---
+
+## Security Audit (December 2024)
+
+### Audit Overview
+
+This section documents a comprehensive security audit of the Polar billing integration, identifying potential loopholes and the fixes implemented.
+
+### Findings Summary
+
+| ID      | Severity     | Status   | Issue                                      | Resolution                                                                                                 |
+| ------- | ------------ | -------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| SEC-001 | **CRITICAL** | ✅ Fixed | AI routes missing subscription checks      | Added `blockUntilSubscribed` + `requireValidPolarCustomer` to `/api/ai/fix-test` and `/api/ai/create-test` |
+| SEC-002 | **HIGH**     | ✅ Fixed | Test execute missing billing guards        | Enhanced `/api/tests/[id]/execute` with full defense-in-depth checks                                       |
+| SEC-003 | **MEDIUM**   | ✅ Fixed | Missing customer deletion handler          | Added `handleCustomerDeleted` webhook handler                                                              |
+| SEC-004 | **MEDIUM**   | ✅ Fixed | Missing subscription revocation handler    | Added `handleSubscriptionRevoked` webhook handler                                                          |
+| SEC-005 | **LOW**      | ⚠️ Noted | Webhook idempotency cache is in-memory     | Consider database-backed idempotency for production                                                        |
+| SEC-006 | **LOW**      | ⚠️ Noted | `subscription.past_due` allows full access | Consider degraded access for past_due subscriptions                                                        |
+
+### SEC-001: AI Routes Missing Subscription Checks (CRITICAL)
+
+**Problem**: The AI fix and create endpoints (`/api/ai/fix-test`, `/api/ai/create-test`) did not check for active subscriptions. Users could consume AI credits without paying in cloud mode.
+
+**Impact**: Potential revenue loss and resource abuse in cloud mode.
+
+**Fix Applied**:
+
+```typescript
+// Added to both AI routes before any AI processing
+const activeOrg = await getActiveOrganization();
+if (activeOrg) {
+  try {
+    await subscriptionService.blockUntilSubscribed(activeOrg.id);
+    await subscriptionService.requireValidPolarCustomer(activeOrg.id);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        reason: "subscription_required",
+        message:
+          error instanceof Error ? error.message : "Subscription required",
+        guidance: "Please subscribe to a plan at /billing to use AI features",
+      },
+      { status: 402 }
+    );
+  }
+}
+```
+
+### SEC-002: Test Execute Missing Billing Guards (HIGH)
+
+**Problem**: The `/api/tests/[id]/execute` route only called `getOrganizationPlan()` which can throw but doesn't validate customer existence in Polar.
+
+**Impact**: Users could trigger test executions without full billing validation.
+
+**Fix Applied**:
+
+```typescript
+// Enhanced validation chain
+await subscriptionService.blockUntilSubscribed(organizationId);
+await subscriptionService.requireValidPolarCustomer(organizationId);
+await subscriptionService.getOrganizationPlan(organizationId);
+```
+
+### SEC-003: Missing Customer Deletion Handler (MEDIUM)
+
+**Problem**: When a customer was deleted from Polar dashboard, the webhook event wasn't handled, potentially allowing continued access.
+
+**Impact**: Deleted Polar customers could retain access to resources.
+
+**Fix Applied**: Added `handleCustomerDeleted` webhook handler:
+
+```typescript
+export async function handleCustomerDeleted(payload: PolarWebhookPayload) {
+  const customerId = payload.data.id;
+  const org = await db.query.organization.findFirst({
+    where: eq(organization.polarCustomerId, customerId),
+  });
+  if (org) {
+    await db
+      .update(organization)
+      .set({ subscriptionStatus: "none" })
+      .where(eq(organization.id, org.id));
+  }
+}
+```
+
+### SEC-004: Missing Subscription Revocation Handler (MEDIUM)
+
+**Problem**: No handler for `subscription.revoked` event, which means immediate termination scenarios weren't handled.
+
+**Impact**: Users with revoked subscriptions (fraud, failed payment) could continue accessing resources.
+
+**Fix Applied**: Added `handleSubscriptionRevoked` webhook handler:
+
+```typescript
+export async function handleSubscriptionRevoked(payload: PolarWebhookPayload) {
+  const webhookId = payload.data.id;
+  const org = await db.query.organization.findFirst({
+    where: eq(organization.subscriptionId, webhookId),
+  });
+  if (org) {
+    await subscriptionService.updateSubscription(org.id, {
+      subscriptionStatus: "none",
+      subscriptionPlan: null,
+    });
+  }
+}
+```
+
+### SEC-005: In-Memory Webhook Idempotency Cache (LOW)
+
+**Current Behavior**: Webhook idempotency is tracked in an in-memory Map with 24-hour TTL.
+
+**Risk**: Server restarts could cause webhook events to be re-processed.
+
+**Recommendation**: For high-availability production deployments, consider:
+
+1. Database-backed idempotency table
+2. Redis-based cache with TTL
+3. Distributed cache for multi-instance deployments
+
+**Current Mitigation**: The handlers are designed to be idempotent - re-processing typically results in no-op updates.
+
+**Update (Jan 2025)**: Webhook idempotency is now database-backed using the `webhook_idempotency` table to handle multi-instance deployments. The in-memory Map has been replaced with persistent storage that survives restarts and works across multiple server instances.
+
+### SEC-006: Full Access for `past_due` Subscriptions (LOW) ✅ RESOLVED
+
+**Current Behavior**: Subscriptions with `status = 'past_due'` are **BLOCKED** from creating new resources.
+
+**How It Works**: The `hasActiveSubscription()` function in `subscription-service.ts` explicitly checks:
+
+```typescript
+return (
+  org.subscriptionPlan !== null && org.subscriptionStatus === "active" // Only "active" status passes
+);
+```
+
+This means `past_due`, `canceled`, and `none` statuses are all blocked.
+
+**User Experience**:
+
+- Users with `past_due` status see subscription required errors when trying to create resources
+- They can still view existing data and access the billing page to resolve payment issues
+- Once payment is resolved, Polar sends `subscription.active` webhook to restore access
+
+### Best Practices Implemented
+
+1. **Defense-in-Depth**: Multiple validation layers (`blockUntilSubscribed` → `requireValidPolarCustomer` → `getOrganizationPlan`)
+2. **Fail Closed**: Timeout errors and API failures result in blocked access, not allowed access
+3. **Plan Validation**: Explicit checks that "unlimited" plan can never exist in cloud mode
+4. **Audit Logging**: Webhook handlers log all subscription changes with truncated IDs
+5. **Graceful Degradation**: Cancellation allows access until period end, revocation terminates immediately
+6. **Database-Backed Idempotency**: Webhook deduplication survives restarts and works across instances
+
+### Testing Coverage
+
+All billing enforcement is covered by tests in:
+
+- `app/src/app/api/handlers.spec.ts` - API route billing checks
+- `app/src/lib/middleware/plan-enforcement.spec.ts` - Plan limit enforcement
+
+Run tests with:
+
+```bash
+cd app && npm test -- --testPathPatterns="handlers" --testPathPatterns="plan-enforcement"
+```
+
+---
+
+## Member Access Scenarios
+
+### Overview
+
+Subscription checks are **organization-level**, not user-level. This means all members of an organization are equally affected by the organization's subscription status.
+
+### Subscription Status Impact on Members
+
+| Subscription Status | Owner Access                | Member Access               | Notes                                            |
+| ------------------- | --------------------------- | --------------------------- | ------------------------------------------------ |
+| `active`            | ✅ Full access              | ✅ Full access              | Normal operation                                 |
+| `past_due`          | ❌ Blocked                  | ❌ Blocked                  | Payment failed, can view billing page to resolve |
+| `canceled`          | ⚠️ Limited until period end | ⚠️ Limited until period end | Can still access until subscriptionEndsAt        |
+| `none`              | ❌ Blocked                  | ❌ Blocked                  | No subscription, must subscribe                  |
+| Customer deleted    | ❌ Blocked                  | ❌ Blocked                  | Polar customer no longer exists                  |
+
+### Detailed Scenarios
+
+#### Scenario 1: Payment Failure (past_due)
+
+**Trigger**: Polar sends `subscription.updated` with `status: 'past_due'`
+
+**Impact**:
+
+- ALL organization members are blocked from creating new resources
+- Existing data remains accessible (read-only)
+- Scheduled jobs/monitors continue running (they were already created)
+- Billing page shows warning and link to resolve payment
+
+**Resolution**:
+
+- Organization owner updates payment method in Polar
+- Polar sends `subscription.active` webhook
+- Full access restored for all members
+
+#### Scenario 2: Subscription Cancellation
+
+**Trigger**: User cancels subscription via billing portal
+
+**Impact**:
+
+- Members retain access until `subscriptionEndsAt` date
+- At period end, `subscription.revoked` webhook fires
+- All members lose access to create new resources
+
+**Behavior**:
+
+```typescript
+// In subscription-service.ts
+// "canceled" status is NOT equal to "active", so hasActiveSubscription returns false
+return org.subscriptionStatus === "active";
+```
+
+**Note**: The current implementation blocks immediately on cancellation. For grace period access, the code would need modification to check `subscriptionEndsAt`.
+
+#### Scenario 3: Customer Deletion from Polar
+
+**Trigger**: Polar admin deletes customer OR account fraud detected
+
+**Impact**:
+
+- `customer.deleted` webhook fires
+- Organization's `subscriptionStatus` set to `none`
+- ALL members immediately lose access
+
+**Webhook Handler**:
+
+```typescript
+// In polar-webhooks.ts
+await db
+  .update(organization)
+  .set({
+    subscriptionStatus: "none",
+  })
+  .where(eq(organization.id, org.id));
+```
+
+#### Scenario 4: Subscription Revocation
+
+**Trigger**: Polar sends `subscription.revoked` (fraud, repeated payment failures, etc.)
+
+**Impact**:
+
+- `subscriptionStatus` set to `none`
+- `subscriptionPlan` cleared
+- ALL members immediately lose access
+- More severe than cancellation
+
+#### Scenario 5: Plan Downgrade (Pro → Plus)
+
+**Trigger**: User downgrades plan in billing portal
+
+**Impact**:
+
+- New plan limits apply immediately
+- If over new limits, users see warnings but can continue
+- No new resources can be created above new limits
+- All members get new (lower) limits
+
+#### Scenario 6: Plan Upgrade (Plus → Pro)
+
+**Trigger**: User upgrades plan in billing portal
+
+**Impact**:
+
+- New (higher) limits apply immediately
+- All members benefit from increased limits
+- Usage counters continue (not reset)
+
+### Member Permission Matrix
+
+| Action             | Owner (active) | Owner (no sub) | Member (org active) | Member (org no sub) |
+| ------------------ | -------------- | -------------- | ------------------- | ------------------- |
+| Create test        | ✅             | ❌             | ✅                  | ❌                  |
+| Create job         | ✅             | ❌             | ✅                  | ❌                  |
+| Create monitor     | ✅             | ❌             | ✅                  | ❌                  |
+| Create project     | ✅             | ❌             | ✅ (if admin+)      | ❌                  |
+| Execute test       | ✅             | ❌             | ✅                  | ❌                  |
+| Trigger job        | ✅             | ❌             | ✅                  | ❌                  |
+| Use AI features    | ✅             | ❌             | ✅                  | ❌                  |
+| View existing data | ✅             | ✅             | ✅                  | ✅                  |
+| Access billing     | ✅             | ✅             | ❌                  | ❌                  |
+| Invite members     | ✅             | ❌             | ❌                  | ❌                  |
+
+### Edge Cases
+
+#### Already Running Jobs
+
+**Question**: What happens to running jobs when subscription becomes invalid?
+
+**Answer**: Jobs that are already running will complete. The subscription check happens at job **trigger** time, not execution time. The worker doesn't re-check subscription during execution.
+
+#### Scheduled Monitors
+
+**Question**: Do monitors stop running when subscription is invalid?
+
+**Answer**: Monitor execution is handled by the worker, which checks subscription status before each execution. Monitors will fail to run until subscription is restored.
+
+#### Multiple Organizations
+
+**Question**: If a user is a member of multiple organizations, does subscription status affect all?
+
+**Answer**: No. Each organization has its own subscription. A user can have:
+
+- Org A: Active subscription (full access)
+- Org B: No subscription (blocked)
+
+Access is checked per-organization, not per-user.
 
 ---

@@ -11,7 +11,11 @@ import {
 } from "@/lib/session-security";
 import { renderPasswordResetEmail } from "@/lib/email-renderer";
 import { nextCookies } from "better-auth/next-js";
-import { isPolarEnabled, getPolarConfig, getPolarProducts } from "@/lib/feature-flags";
+import {
+  isPolarEnabled,
+  getPolarConfig,
+  getPolarProducts,
+} from "@/lib/feature-flags";
 
 /**
  * Get Polar plugin configuration if enabled
@@ -24,7 +28,13 @@ function getPolarPlugin() {
 
   try {
     /* eslint-disable @typescript-eslint/no-require-imports */
-    const { polar, checkout, portal, usage, webhooks } = require("@polar-sh/better-auth");
+    const {
+      polar,
+      checkout,
+      portal,
+      usage,
+      webhooks,
+    } = require("@polar-sh/better-auth");
     const { Polar } = require("@polar-sh/sdk");
     /* eslint-enable @typescript-eslint/no-require-imports */
 
@@ -46,15 +56,23 @@ function getPolarPlugin() {
       // Provide additional customer metadata
       // Note: email and name are handled by the plugin from the user object
       // For social auth users, data sync happens in /api/auth/setup-defaults after OAuth completes
-      getCustomerCreateParams: async ({ user }: { user: { id?: string; email?: string; name?: string } }) => {
-        console.log('[Polar] Creating customer for user:', { id: user.id, email: user.email, name: user.name });
-        
+      getCustomerCreateParams: async ({
+        user,
+      }: {
+        user: { id?: string; email?: string; name?: string };
+      }) => {
+        console.log("[Polar] Creating customer for user:", {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+        });
+
         // Only return metadata - the plugin handles email/name from user object
         // Social auth users get their data synced via syncPolarCustomerData() in setup-defaults
         return {
           metadata: {
             ...(user.id ? { userId: String(user.id) } : {}),
-            source: 'supercheck-signup',
+            source: "supercheck-signup",
           },
         };
       },
@@ -73,7 +91,7 @@ function getPolarPlugin() {
               ]
             : [],
           // Use absolute URL to ensure correct redirect after checkout
-          successUrl: `${process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || 'http://localhost:3000'}/billing/success?checkout_id={CHECKOUT_ID}`,
+          successUrl: `${process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL || "http://localhost:3000"}/billing/success?checkout_id={CHECKOUT_ID}`,
           authenticatedUsersOnly: true,
         }),
         portal({
@@ -86,53 +104,85 @@ function getPolarPlugin() {
           // Customer lifecycle handlers - critical for linking customer to organization
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           onCustomerCreated: async (payload: any) => {
-            console.log('[Polar] Webhook: customer.created');
-            const { handleCustomerCreated } = await import("@/lib/webhooks/polar-webhooks");
+            console.log("[Polar] Webhook: customer.created");
+            const { handleCustomerCreated } = await import(
+              "@/lib/webhooks/polar-webhooks"
+            );
             await handleCustomerCreated(payload);
           },
           // Subscription lifecycle handlers
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           onSubscriptionActive: async (payload: any) => {
-            console.log('[Polar] Webhook: subscription.active');
-            const { handleSubscriptionActive } = await import("@/lib/webhooks/polar-webhooks");
+            console.log("[Polar] Webhook: subscription.active");
+            const { handleSubscriptionActive } = await import(
+              "@/lib/webhooks/polar-webhooks"
+            );
             await handleSubscriptionActive(payload);
           },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           onSubscriptionCreated: async (payload: any) => {
-            console.log('[Polar] Webhook: subscription.created');
-            const { handleSubscriptionActive } = await import("@/lib/webhooks/polar-webhooks");
+            console.log("[Polar] Webhook: subscription.created");
+            const { handleSubscriptionActive } = await import(
+              "@/lib/webhooks/polar-webhooks"
+            );
             await handleSubscriptionActive(payload);
           },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           onSubscriptionUpdated: async (payload: any) => {
-            console.log('[Polar] Webhook: subscription.updated');
-            const { handleSubscriptionUpdated } = await import("@/lib/webhooks/polar-webhooks");
+            console.log("[Polar] Webhook: subscription.updated");
+            const { handleSubscriptionUpdated } = await import(
+              "@/lib/webhooks/polar-webhooks"
+            );
             await handleSubscriptionUpdated(payload);
           },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           onSubscriptionCanceled: async (payload: any) => {
-            console.log('[Polar] Webhook: subscription.canceled');
-            const { handleSubscriptionCanceled } = await import("@/lib/webhooks/polar-webhooks");
+            console.log("[Polar] Webhook: subscription.canceled");
+            const { handleSubscriptionCanceled } = await import(
+              "@/lib/webhooks/polar-webhooks"
+            );
             await handleSubscriptionCanceled(payload);
+          },
+          // CRITICAL: Handle subscription revocation - immediate access termination
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onSubscriptionRevoked: async (payload: any) => {
+            console.log("[Polar] Webhook: subscription.revoked");
+            const { handleSubscriptionRevoked } = await import(
+              "@/lib/webhooks/polar-webhooks"
+            );
+            await handleSubscriptionRevoked(payload);
           },
           // Payment confirmation handler
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           onOrderPaid: async (payload: any) => {
-            console.log('[Polar] Webhook: order.paid');
-            const { handleOrderPaid } = await import("@/lib/webhooks/polar-webhooks");
+            console.log("[Polar] Webhook: order.paid");
+            const { handleOrderPaid } = await import(
+              "@/lib/webhooks/polar-webhooks"
+            );
             await handleOrderPaid(payload);
           },
           // Customer state change - useful for syncing customer data
           onCustomerStateChanged: async () => {
-            console.log('[Polar] Webhook: customer.state_changed');
-            const { handleCustomerStateChanged } = await import("@/lib/webhooks/polar-webhooks");
+            console.log("[Polar] Webhook: customer.state_changed");
+            const { handleCustomerStateChanged } = await import(
+              "@/lib/webhooks/polar-webhooks"
+            );
             await handleCustomerStateChanged();
+          },
+          // CRITICAL: Handle customer deletion - revoke access immediately
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onCustomerDeleted: async (payload: any) => {
+            console.log("[Polar] Webhook: customer.deleted");
+            const { handleCustomerDeleted } = await import(
+              "@/lib/webhooks/polar-webhooks"
+            );
+            await handleCustomerDeleted(payload);
           },
           // Catch-all for logging and handling any other events
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           onPayload: async (payload: any) => {
             // Log all events for debugging/monitoring
-            console.log('[Polar] Webhook received:', payload.type);
+            console.log("[Polar] Webhook received:", payload.type);
           },
         }),
       ],
@@ -161,12 +211,16 @@ export const auth = betterAuth({
     github: {
       clientId: process.env.GITHUB_CLIENT_ID as string,
       clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
-      enabled: !!(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET),
+      enabled: !!(
+        process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
+      ),
     },
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID as string,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
-      enabled: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+      enabled: !!(
+        process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+      ),
       // Get refresh token on first login and prompt for account selection
       accessType: "offline",
       prompt: "select_account consent",

@@ -16,6 +16,8 @@ import {
 import { getActiveOrganization } from "@/lib/session";
 import { usageTracker } from "@/lib/services/usage-tracker";
 import { headers } from "next/headers";
+import { logAuditEvent } from "@/lib/audit-logger";
+import { subscriptionService } from "@/lib/services/subscription-service";
 
 // S3 Client configuration
 const s3Client = new S3Client({
@@ -37,6 +39,29 @@ export async function POST(request: NextRequest) {
 
     // Step 2: Authentication and authorization
     const session = await AuthService.validateUserAccess(request, testId);
+
+    // Step 2.5: CRITICAL - Check subscription in cloud mode (billing enforcement)
+    // This must happen BEFORE any AI calls to prevent unpaid usage
+    const activeOrg = await getActiveOrganization();
+    if (activeOrg) {
+      try {
+        await subscriptionService.blockUntilSubscribed(activeOrg.id);
+        await subscriptionService.requireValidPolarCustomer(activeOrg.id);
+      } catch (error) {
+        return NextResponse.json(
+          {
+            success: false,
+            reason: "subscription_required",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Subscription required to use AI features",
+            guidance: "Please subscribe to a plan at /billing to use AI Fix",
+          },
+          { status: 402 }
+        );
+      }
+    }
 
     // Step 3: Rate limiting check (with user/org context)
     const headersList = await headers();
@@ -261,6 +286,25 @@ export async function POST(request: NextRequest) {
             session.tier
           );
         }
+
+        // Log audit event for AI fix action
+        await logAuditEvent({
+          userId: session.user.id,
+          organizationId: activeOrg.id,
+          action: "ai_fix",
+          resource: "test",
+          resourceId: testId,
+          success: true,
+          ipAddress: clientIp,
+          metadata: {
+            testId,
+            testType,
+            contextSource,
+            confidence: finalConfidence,
+            model: aiResponse.model,
+            tokensUsed: aiResponse.usage.totalTokens,
+          },
+        });
       }
     } catch (trackingError) {
       console.error("[AI Fix] Failed to track AI usage:", trackingError);

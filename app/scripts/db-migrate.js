@@ -281,16 +281,16 @@ async function ensurePolarColumns() {
 
     // Define all required Polar columns
     const requiredColumns = [
-      { name: 'polar_customer_id', type: 'text' },
-      { name: 'subscription_plan', type: 'text' },
-      { name: 'subscription_status', type: 'text DEFAULT \'none\'' },
-      { name: 'subscription_id', type: 'text' },
-      { name: 'subscription_started_at', type: 'timestamp' },
-      { name: 'subscription_ends_at', type: 'timestamp' },
-      { name: 'playwright_minutes_used', type: 'integer DEFAULT 0' },
-      { name: 'k6_vu_minutes_used', type: 'integer DEFAULT 0' },
-      { name: 'usage_period_start', type: 'timestamp' },
-      { name: 'usage_period_end', type: 'timestamp' },
+      { name: "polar_customer_id", type: "text" },
+      { name: "subscription_plan", type: "text" },
+      { name: "subscription_status", type: "text DEFAULT 'none'" },
+      { name: "subscription_id", type: "text" },
+      { name: "subscription_started_at", type: "timestamp" },
+      { name: "subscription_ends_at", type: "timestamp" },
+      { name: "playwright_minutes_used", type: "integer DEFAULT 0" },
+      { name: "k6_vu_minutes_used", type: "integer DEFAULT 0" },
+      { name: "usage_period_start", type: "timestamp" },
+      { name: "usage_period_end", type: "timestamp" },
     ];
 
     for (const column of requiredColumns) {
@@ -305,12 +305,14 @@ async function ensurePolarColumns() {
 
       if (!columnExists) {
         log(`Adding missing ${column.name} column to organization table`);
-        
+
         try {
-          await client.unsafe(`ALTER TABLE organization ADD COLUMN IF NOT EXISTS ${column.name} ${column.type}`);
+          await client.unsafe(
+            `ALTER TABLE organization ADD COLUMN IF NOT EXISTS ${column.name} ${column.type}`
+          );
           logSuccess(`Added ${column.name} column`);
         } catch (err) {
-          if (err.message.includes('already exists')) {
+          if (err.message.includes("already exists")) {
             log(`${column.name} column already exists`);
           } else {
             logError(`Failed to add ${column.name}: ${err.message}`);
@@ -372,6 +374,37 @@ async function verifyMigrations() {
   }
 }
 
+// Function to run database seeds (idempotent)
+async function runSeeds() {
+  log("Running database seeds...");
+
+  try {
+    const seedModule = require("./db-seed.js");
+    const client = postgres(DATABASE_URL);
+
+    // Run plan_limits seeding
+    if (!(await seedModule.seedPlanLimits(client))) {
+      await client.end();
+      logError("Failed to seed plan_limits");
+      return false;
+    }
+
+    // Run overage_pricing seeding
+    if (!(await seedModule.seedOveragePricing(client))) {
+      await client.end();
+      logError("Failed to seed overage_pricing");
+      return false;
+    }
+
+    await client.end();
+    logSuccess("Database seeds completed successfully");
+    return true;
+  } catch (err) {
+    logError(`Seeding error: ${err.message}`);
+    return false;
+  }
+}
+
 // Function to verify plan_limits are seeded (CRITICAL)
 async function verifyPlanLimitsSeeded() {
   log("Verifying plan_limits table has required data...");
@@ -396,8 +429,8 @@ async function verifyPlanLimitsSeeded() {
 
     // Check if required plans exist
     const plans = await client`SELECT plan FROM plan_limits ORDER BY plan`;
-    const planNames = plans.map(p => p.plan);
-    
+    const planNames = plans.map((p) => p.plan);
+
     if (planNames.length === 0) {
       logError("plan_limits table is empty - no plans found");
       await client.end();
@@ -405,17 +438,19 @@ async function verifyPlanLimitsSeeded() {
     }
 
     // Verify all required plans exist
-    const requiredPlans = ['plus', 'pro', 'unlimited'];
-    const missingPlans = requiredPlans.filter(p => !planNames.includes(p));
-    
+    const requiredPlans = ["plus", "pro", "unlimited"];
+    const missingPlans = requiredPlans.filter((p) => !planNames.includes(p));
+
     if (missingPlans.length > 0) {
-      logError(`Missing required plans: ${missingPlans.join(', ')}`);
+      logError(`Missing required plans: ${missingPlans.join(", ")}`);
       await client.end();
       return false;
     }
 
     await client.end();
-    logSuccess(`Verified ${planNames.length} plan(s) in database: ${planNames.join(', ')}`);
+    logSuccess(
+      `Verified ${planNames.length} plan(s) in database: ${planNames.join(", ")}`
+    );
     return true;
   } catch (err) {
     logError(`Plan limits verification error: ${err.message}`);
@@ -455,10 +490,17 @@ async function main() {
       process.exit(1);
     }
 
-    // Step 5: Verify plan_limits are seeded (CRITICAL - app cannot function without this)
+    // Step 5: Run database seeds (idempotent - safe to run multiple times)
+    log("Running database seeds...");
+    if (!(await runSeeds())) {
+      logError("CRITICAL: Database seeding failed.");
+      process.exit(1);
+    }
+
+    // Step 6: Verify plan_limits are seeded (CRITICAL - app cannot function without this)
     log("Verifying plan_limits seeding...");
     if (!(await verifyPlanLimitsSeeded())) {
-      logError("CRITICAL: plan_limits table is empty. Database seeding failed.");
+      logError("CRITICAL: plan_limits table is empty after seeding.");
       process.exit(1);
     }
 
