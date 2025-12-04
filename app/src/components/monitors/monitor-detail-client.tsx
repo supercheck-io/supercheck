@@ -1364,7 +1364,18 @@ export function MonitorDetailClient({
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0 flex-1 flex flex-col">
-              <div className="w-full overflow-hidden">
+              <div className="w-full overflow-hidden relative">
+                {/* Loading overlay - shows on top of existing data for smooth transitions */}
+                {isLoadingResults && paginatedTableResults.length > 0 && (
+                  <div className="absolute inset-0 z-20 bg-card/80 backdrop-blur-[1px] flex items-center justify-center transition-opacity duration-200">
+                    <div className="bg-card border border-border rounded-lg shadow-sm px-6 py-4 flex flex-col items-center space-y-3">
+                      <Spinner size="lg" className="text-primary" />
+                      <div className="text-sm font-medium text-foreground">
+                        Loading check results
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div className="w-full">
                   <table className="w-full divide-y divide-border">
                     <thead className="bg-background sticky top-0 z-10 border-b">
@@ -1402,8 +1413,9 @@ export function MonitorDetailClient({
                       </tr>
                     </thead>
                     <tbody className="bg-card divide-y divide-border">
-                      {isLoadingResults ? (
-                        // Professional loading state with background
+                      {isLoadingResults &&
+                      paginatedTableResults.length === 0 ? (
+                        // Initial loading state (no data yet)
                         <tr>
                           <td
                             colSpan={monitor.type === "synthetic_test" ? 6 : 5}
@@ -1605,8 +1617,7 @@ export function MonitorDetailClient({
                   </table>
                 </div>
               </div>
-              {!isLoadingResults &&
-                paginatedTableResults &&
+              {paginatedTableResults &&
                 paginatedTableResults.length > 0 &&
                 paginationMeta &&
                 totalPages > 1 && (
@@ -1621,7 +1632,8 @@ export function MonitorDetailClient({
                         onClick={() =>
                           setCurrentPage((prev) => Math.max(1, prev - 1))
                         }
-                        disabled={currentPage === 1}
+                        disabled={currentPage === 1 || isLoadingResults}
+                        className="min-w-[80px]"
                       >
                         Previous
                       </Button>
@@ -1633,7 +1645,10 @@ export function MonitorDetailClient({
                             Math.min(totalPages, prev + 1)
                           )
                         }
-                        disabled={currentPage === totalPages}
+                        disabled={
+                          currentPage === totalPages || isLoadingResults
+                        }
+                        className="min-w-[60px]"
                       >
                         Next
                       </Button>

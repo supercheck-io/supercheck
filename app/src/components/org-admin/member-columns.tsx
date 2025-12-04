@@ -281,16 +281,12 @@ const MemberActionsCell = ({
   };
 
   if (member.role === "org_owner") {
-    return (
-      <div className="py-1 flex justify-start">
-        <span className="text-muted-foreground text-sm">None</span>
-      </div>
-    );
+    return <span className="text-muted-foreground text-sm">None</span>;
   }
 
   return (
     <>
-      <div className="flex items-center gap-2 py-1">
+      <div className="flex items-center gap-2">
         <Button
           variant="outline"
           size="sm"
@@ -377,12 +373,12 @@ export const createMemberColumns = (
   {
     accessorKey: "id",
     header: ({ column }) => (
-      <DataTableColumnHeader className="ml-2" column={column} title="ID" />
+      <DataTableColumnHeader className="pl-1" column={column} title="ID" />
     ),
     cell: ({ row }) => {
       const id = row.getValue("id") as string;
       return (
-        <div className="w-[90px]">
+        <div className="flex items-center h-10">
           <UUIDField
             value={id}
             maxLength={8}
@@ -405,7 +401,7 @@ export const createMemberColumns = (
       const isInvitation = item.type === "invitation";
 
       return (
-        <div className="py-1 flex items-center">
+        <div className="flex items-center h-10">
           <div>
             <div className="font-medium text-sm">
               {isInvitation
@@ -444,7 +440,7 @@ export const createMemberColumns = (
         : (item as OrgMember).role;
 
       return (
-        <div className="py-1 flex items-center">
+        <div className="flex items-center h-10">
           <Badge
             variant="outline"
             className={`${getRoleColor(role, isInvitation)} text-xs px-3 py-1.5 font-medium capitalize`}
@@ -480,7 +476,7 @@ export const createMemberColumns = (
       const isInvitation = item.type === "invitation";
 
       return (
-        <div className="py-1 flex items-center">
+        <div className="flex items-center h-10">
           {isInvitation ? (
             <Badge
               variant="outline"
@@ -518,23 +514,30 @@ export const createMemberColumns = (
       const item = row.original;
       const isInvitation = item.type === "invitation";
 
+      const formatDateTime = (dateString: string) => {
+        const date = new Date(dateString);
+        const formattedDate = date.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+        const formattedTime = date.toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        return { formattedDate, formattedTime };
+      };
+
       return (
-        <div className="py-1 flex items-center">
+        <div className="flex items-center h-10">
           {isInvitation ? (
             <div className="text-sm">
               <div className="text-muted-foreground text-xs">Expires:</div>
               <div className="font-medium">
                 {(() => {
-                  const date = new Date((item as PendingInvitation).expiresAt);
-                  const formattedDate = date.toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  });
-                  const formattedTime = date.toLocaleTimeString("en-US", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  });
+                  const { formattedDate, formattedTime } = formatDateTime(
+                    (item as PendingInvitation).expiresAt
+                  );
                   return (
                     <>
                       <span>{formattedDate}</span>
@@ -551,16 +554,9 @@ export const createMemberColumns = (
               <div className="text-muted-foreground text-xs">Joined:</div>
               <div className="font-medium">
                 {(() => {
-                  const date = new Date((item as OrgMember).joinedAt);
-                  const formattedDate = date.toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                    year: "numeric",
-                  });
-                  const formattedTime = date.toLocaleTimeString("en-US", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  });
+                  const { formattedDate, formattedTime } = formatDateTime(
+                    (item as OrgMember).joinedAt
+                  );
                   return (
                     <>
                       <span>{formattedDate}</span>
@@ -589,7 +585,7 @@ export const createMemberColumns = (
 
       if (isInvitation) {
         return (
-          <div className="py-1 flex justify-start">
+          <div className="flex items-center h-10">
             <span className="text-muted-foreground text-sm">None</span>
           </div>
         );
@@ -597,11 +593,13 @@ export const createMemberColumns = (
 
       const member = item as OrgMember;
       return (
-        <MemberActionsCell
-          member={member}
-          onMemberUpdate={onMemberUpdate}
-          projects={projects}
-        />
+        <div className="flex items-center h-10">
+          <MemberActionsCell
+            member={member}
+            onMemberUpdate={onMemberUpdate}
+            projects={projects}
+          />
+        </div>
       );
     },
   },

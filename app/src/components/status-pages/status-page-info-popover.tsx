@@ -1,5 +1,5 @@
 import React from "react";
-import { Info, BookOpen } from "lucide-react";
+import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -19,7 +19,6 @@ export function StatusPageInfoPopover() {
       <PopoverContent className="w-96 mt-2" side="right" sideOffset={8}>
         <div>
           <div className="flex items-center space-x-2 mb-3">
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
             <h4 className="font-semibold text-sm">Quick Setup Guide</h4>
           </div>
           <div className="space-y-3">

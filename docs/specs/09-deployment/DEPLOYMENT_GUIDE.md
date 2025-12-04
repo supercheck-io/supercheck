@@ -577,7 +577,7 @@ kubectl describe pod <pod-name> -n supercheck
 
 ## References
 
-- [Supercheck Architecture](../specs/01-core/SUPERCHECK_ARCHITECTURE.md)
+- [Supercheck Architecture](../docs/specs/01-core/SUPERCHECK_ARCHITECTURE.md)
 - [Kubernetes Node Affinity](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity)
 - [KEDA Scaler](https://keda.sh/docs/2.0/scalers/redis-lists/)
 - [Hetzner Cloud K3s](https://docs.hetzner.cloud/cloud/kubernetes/getting-started/create-cluster)
@@ -592,4 +592,4 @@ For issues or questions:
 1. Check [NODE_SETUP.md](./k8s/NODE_SETUP.md) for detailed node configuration
 2. Review deployment logs: `kubectl logs -f deployment/supercheck-app -n supercheck`
 3. Check KEDA status: `kubectl describe scaledobject scaler-worker-us -n supercheck`
-4. Review the Supercheck specs: `specs/` directory
+4. Review the Supercheck specs: `docs/specs/` directory

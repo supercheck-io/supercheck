@@ -101,7 +101,7 @@ The agents leverage these MCP browser tools:
 │   ├── planner.md      # Planning agent definition
 │   ├── generator.md    # Code generation agent
 │   └── healer.md       # Test healing agent
-specs/
+docs/specs/
 ├── feature1.md         # Generated test plans
 ├── feature2.md
 tests/

@@ -155,12 +155,12 @@ export const auditLogColumns: ColumnDef<AuditLog>[] = [
   {
     accessorKey: "id",
     header: ({ column }) => (
-      <DataTableColumnHeader className="ml-2" column={column} title="Log ID" />
+      <DataTableColumnHeader className="pl-1" column={column} title="Log ID" />
     ),
     cell: ({ row }) => {
       const id = row.getValue("id") as string;
       return (
-        <div className="w-[90px]">
+        <div className="flex items-center h-10">
           <UUIDField
             value={id}
             maxLength={8}
@@ -200,7 +200,7 @@ export const auditLogColumns: ColumnDef<AuditLog>[] = [
       }
 
       return (
-        <div className="py-1 min-w-[140px] flex items-center h-12">
+        <div className="flex items-center h-10 min-w-[140px]">
           <div>
             <div className="text-sm font-medium text-foreground">
               <span>{formattedDate}</span>
@@ -208,7 +208,7 @@ export const auditLogColumns: ColumnDef<AuditLog>[] = [
                 {formattedTime}
               </span>
             </div>
-            <div className="text-xs text-muted-foreground mt-1 font-medium">
+            <div className="text-xs text-muted-foreground font-medium">
               {timeAgo}
             </div>
           </div>
@@ -225,7 +225,7 @@ export const auditLogColumns: ColumnDef<AuditLog>[] = [
       const action = row.getValue("action") as string;
 
       return (
-        <div className="py-1 flex items-center h-12">
+        <div className="flex items-center h-10">
           <Badge
             variant="outline"
             className={`${getActionBadgeColor(action)} text-xs px-3 py-1.5 font-medium border-0`}
@@ -253,7 +253,7 @@ export const auditLogColumns: ColumnDef<AuditLog>[] = [
       const user = row.original.user as AuditUser;
 
       return (
-        <div className="py-1 min-w-[160px] flex items-center h-12">
+        <div className="flex items-center h-10 min-w-[160px]">
           <div className="flex items-center gap-2.5">
             <div className="flex-shrink-0">
               <div className="w-7 h-7 bg-muted rounded-full flex items-center justify-center">
@@ -265,7 +265,7 @@ export const auditLogColumns: ColumnDef<AuditLog>[] = [
                 {user.name || "System"}
               </div>
               {user.email && (
-                <div className="text-xs text-muted-foreground truncate mt-0.5">
+                <div className="text-xs text-muted-foreground truncate">
                   {user.email}
                 </div>
               )}
@@ -283,7 +283,11 @@ export const auditLogColumns: ColumnDef<AuditLog>[] = [
   {
     id: "actions",
     header: "",
-    cell: ({ row }) => <ActionsCell log={row.original} />,
+    cell: ({ row }) => (
+      <div className="flex items-center h-10">
+        <ActionsCell log={row.original} />
+      </div>
+    ),
   },
 ];
 
@@ -310,186 +314,184 @@ function ActionsCell({ log }: { log: AuditLog }) {
   const ipAddress = details.ipAddress as string | undefined;
 
   return (
-    <div className="py-1 flex items-center h-12">
-      <Dialog>
-        <DialogTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 w-8 p-0 hover:bg-muted transition-colors"
-          >
-            <Eye className="h-4 w-4 text-muted-foreground" />
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="min-w-[1000px] ">
-          <DialogHeader className="pb-2">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Activity className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <DialogTitle className="text-lg font-semibold">
-                  Audit Log Details
-                </DialogTitle>
-                <DialogDescription className="text-sm text-muted-foreground">
-                  Event recorded on {formattedDate} at {formattedTime}
-                </DialogDescription>
-              </div>
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0 hover:bg-muted transition-colors"
+        >
+          <Eye className="h-4 w-4 text-muted-foreground" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="min-w-[1000px] ">
+        <DialogHeader className="pb-2">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Activity className="h-5 w-5 text-primary" />
             </div>
-          </DialogHeader>
+            <div>
+              <DialogTitle className="text-lg font-semibold">
+                Audit Log Details
+              </DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground">
+                Event recorded on {formattedDate} at {formattedTime}
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
 
-          <Separator />
+        <Separator />
 
-          <ScrollArea className="max-h-[70vh]">
-            <div className="space-y-5 py-4 pr-4">
-              {/* Key Information Row */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {/* Action */}
-                <div className="p-3 rounded-lg border bg-card">
-                  <p className="text-xs font-medium text-muted-foreground mb-1.5">
-                    Action
-                  </p>
-                  <Badge
-                    variant="outline"
-                    className={`${getActionBadgeColor(log.action)} text-xs px-2.5 py-1 font-medium border-0`}
-                  >
-                    <Activity className="mr-1 h-3 w-3" />
-                    {log.action}
-                  </Badge>
-                </div>
+        <ScrollArea className="max-h-[70vh]">
+          <div className="space-y-5 py-4 pr-4">
+            {/* Key Information Row */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* Action */}
+              <div className="p-3 rounded-lg border bg-card">
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                  Action
+                </p>
+                <Badge
+                  variant="outline"
+                  className={`${getActionBadgeColor(log.action)} text-xs px-2.5 py-1 font-medium border-0`}
+                >
+                  <Activity className="mr-1 h-3 w-3" />
+                  {log.action}
+                </Badge>
+              </div>
 
-                {/* User */}
-                <div className="p-3 rounded-lg border bg-card">
-                  <p className="text-xs font-medium text-muted-foreground mb-1.5">
-                    User
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center">
-                      <User className="h-3 w-3 text-muted-foreground" />
-                    </div>
-                    <div className="min-w-0 text-sm font-medium truncate">
-                      {log.user.name || "System"}
-                    </div>
+              {/* User */}
+              <div className="p-3 rounded-lg border bg-card">
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                  User
+                </p>
+                <div className="flex items-center gap-2">
+                  <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center">
+                    <User className="h-3 w-3 text-muted-foreground" />
+                  </div>
+                  <div className="min-w-0 text-sm font-medium truncate">
+                    {log.user.name || "System"}
                   </div>
                 </div>
+              </div>
 
-                {/* Timestamp */}
-                <div className="p-3 rounded-lg border bg-card">
-                  <p className="text-xs font-medium text-muted-foreground mb-1.5">
-                    Timestamp
-                  </p>
+              {/* Timestamp */}
+              <div className="p-3 rounded-lg border bg-card">
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                  Timestamp
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-sm font-medium">{formattedDate}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {formattedTime}
+                  </span>
+                </div>
+              </div>
+
+              {/* Status */}
+              <div className="p-3 rounded-lg border bg-card">
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                  Status
+                </p>
+                {success !== undefined ? (
                   <div className="flex items-center gap-1.5">
-                    <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-sm font-medium">{formattedDate}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {formattedTime}
-                    </span>
+                    {success ? (
+                      <>
+                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                        <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                          Success
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="h-4 w-4 text-red-500" />
+                        <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                          Failed
+                        </span>
+                      </>
+                    )}
                   </div>
-                </div>
-
-                {/* Status */}
-                <div className="p-3 rounded-lg border bg-card">
-                  <p className="text-xs font-medium text-muted-foreground mb-1.5">
-                    Status
-                  </p>
-                  {success !== undefined ? (
-                    <div className="flex items-center gap-1.5">
-                      {success ? (
-                        <>
-                          <CheckCircle2 className="h-4 w-4 text-green-500" />
-                          <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                            Success
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <XCircle className="h-4 w-4 text-red-500" />
-                          <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                            Failed
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">—</span>
-                  )}
-                </div>
+                ) : (
+                  <span className="text-sm text-muted-foreground">—</span>
+                )}
               </div>
+            </div>
 
-              {/* Additional Context Row */}
-              {(resource || ipAddress || log.user.email) && (
-                <div className="grid grid-cols-3 gap-4">
-                  {resource && (
-                    <div className="p-3 rounded-lg border bg-muted/30">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">
-                        Resource
-                      </p>
-                      <Badge variant="secondary" className="font-mono text-xs">
-                        {resource}
-                      </Badge>
-                    </div>
-                  )}
-                  {ipAddress && (
-                    <div className="p-3 rounded-lg border bg-muted/30">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">
-                        IP Address
-                      </p>
-                      <div className="flex items-center gap-1.5">
-                        <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-                        <span className="text-sm font-mono">{ipAddress}</span>
-                      </div>
-                    </div>
-                  )}
-                  {log.user.email && (
-                    <div className="p-3 rounded-lg border bg-muted/30">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">
-                        User Email
-                      </p>
-                      <span className="text-sm">{log.user.email}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* JSON Details */}
-              {log.details && Object.keys(log.details).length > 0 && (
-                <>
-                  <Separator />
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-sm font-semibold">Event Details</h3>
-                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50 border">
-                          <Hash className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-xs font-mono text-muted-foreground">
-                            {log.id}
-                          </span>
-                        </div>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={copyToClipboard}
-                        className="h-7 gap-1.5 text-xs"
-                      >
-                        {copied ? (
-                          <Check className="h-3 w-3" />
-                        ) : (
-                          <Copy className="h-3 w-3" />
-                        )}
-                        {copied ? "Copied!" : "Copy JSON"}
-                      </Button>
-                    </div>
-                    <div className="p-4 bg-muted/50 dark:bg-muted/20 rounded-lg border overflow-hidden">
-                      <SyntaxHighlightedJSON data={log.details} />
+            {/* Additional Context Row */}
+            {(resource || ipAddress || log.user.email) && (
+              <div className="grid grid-cols-3 gap-4">
+                {resource && (
+                  <div className="p-3 rounded-lg border bg-muted/30">
+                    <p className="text-xs font-medium text-muted-foreground mb-1">
+                      Resource
+                    </p>
+                    <Badge variant="secondary" className="font-mono text-xs">
+                      {resource}
+                    </Badge>
+                  </div>
+                )}
+                {ipAddress && (
+                  <div className="p-3 rounded-lg border bg-muted/30">
+                    <p className="text-xs font-medium text-muted-foreground mb-1">
+                      IP Address
+                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-sm font-mono">{ipAddress}</span>
                     </div>
                   </div>
-                </>
-              )}
-            </div>
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
-    </div>
+                )}
+                {log.user.email && (
+                  <div className="p-3 rounded-lg border bg-muted/30">
+                    <p className="text-xs font-medium text-muted-foreground mb-1">
+                      User Email
+                    </p>
+                    <span className="text-sm">{log.user.email}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* JSON Details */}
+            {log.details && Object.keys(log.details).length > 0 && (
+              <>
+                <Separator />
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-sm font-semibold">Event Details</h3>
+                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/50 border">
+                        <Hash className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-xs font-mono text-muted-foreground">
+                          {log.id}
+                        </span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={copyToClipboard}
+                      className="h-7 gap-1.5 text-xs"
+                    >
+                      {copied ? (
+                        <Check className="h-3 w-3" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
+                      {copied ? "Copied!" : "Copy JSON"}
+                    </Button>
+                  </div>
+                  <div className="p-4 bg-muted/50 dark:bg-muted/20 rounded-lg border overflow-hidden">
+                    <SyntaxHighlightedJSON data={log.details} />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -412,7 +412,7 @@ export default function StatusPagesList() {
                   {/* URL Section */}
                   <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/50 mb-3">
                     <Globe className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    <code className="text-xs text-muted-foreground truncate flex-1 font-mono">
+                    <code className="text-sm text-muted-foreground truncate flex-1 font-mono">
                       {page.subdomain}.{getBaseDomain()}
                     </code>
                     <Button
@@ -422,7 +422,7 @@ export default function StatusPagesList() {
                       onClick={() => handleCopyUrl(page.subdomain)}
                       title="Copy URL"
                     >
-                      <Copy className="h-3.5 w-3.5" />
+                      <Copy className="h-3 w-3" />
                     </Button>
                   </div>
 

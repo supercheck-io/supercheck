@@ -57,12 +57,12 @@ export const createUserColumns = (
   {
     accessorKey: "id",
     header: ({ column }) => (
-      <DataTableColumnHeader className="ml-2" column={column} title="User ID" />
+      <DataTableColumnHeader className="pl-1" column={column} title="User ID" />
     ),
     cell: ({ row }) => {
       const id = row.getValue("id") as string;
       return (
-        <div className="w-[90px]">
+        <div className="flex items-center h-10">
           <UUIDField
             value={id}
             maxLength={8}
@@ -80,7 +80,7 @@ export const createUserColumns = (
       <DataTableColumnHeader column={column} title="Name" />
     ),
     cell: ({ row }) => (
-      <div className="py-2 flex items-center font-medium h-12">
+      <div className="flex items-center h-10 font-medium">
         {row.getValue("name")}
       </div>
     ),
@@ -91,7 +91,7 @@ export const createUserColumns = (
       <DataTableColumnHeader column={column} title="Email" />
     ),
     cell: ({ row }) => (
-      <div className="py-2 flex items-center text-sm h-12">
+      <div className="flex items-center h-10 text-sm text-muted-foreground">
         {row.getValue("email")}
       </div>
     ),
@@ -124,7 +124,7 @@ export const createUserColumns = (
       };
 
       return (
-        <div className="py-1 flex items-center h-12">
+        <div className="flex items-center h-10">
           <Badge
             variant="outline"
             className={`${getRoleColor(role)} text-xs px-3 py-1.5 font-medium`}
@@ -151,7 +151,7 @@ export const createUserColumns = (
     cell: ({ row }) => {
       const banned = row.original.banned as boolean;
       return (
-        <div className="py-1 flex items-center h-12">
+        <div className="flex items-center h-10">
           {banned ? (
             <Badge
               variant="outline"
@@ -197,7 +197,7 @@ export const createUserColumns = (
       });
 
       return (
-        <div className="py-1 flex items-center text-sm h-12">
+        <div className="flex items-center h-10 text-sm">
           <span>{formattedDate}</span>
           <span className="text-muted-foreground ml-1 text-xs">
             {formattedTime}
@@ -208,9 +208,14 @@ export const createUserColumns = (
   },
   {
     id: "actions",
+    header: "",
     cell: ({ row }) => {
       const user = row.original;
-      return <UserActions user={user} onUserUpdate={onUserUpdate} />;
+      return (
+        <div className="flex items-center h-10">
+          <UserActions user={user} onUserUpdate={onUserUpdate} />
+        </div>
+      );
     },
   },
 ];

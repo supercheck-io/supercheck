@@ -41,23 +41,27 @@ graph TB
 ## Dashboard Metrics
 
 ### Monitor Metrics
+
 - **Overall Uptime Percentage** - Last 30 days
 - **Availability Trends** - Daily aggregation
 - **Average Response Time** - P50, P95, P99
 - **Status Distribution** - Up/Down/Degraded counts
 
 ### Job Execution Statistics
+
 - **Total Executions** - Last 30 days
 - **Success Rate** - Percentage of successful runs
 - **Failure Rate** - Percentage of failed runs
 - **Average Duration** - Mean execution time
 
 ### Test Execution Metrics
+
 - **Playwright Tests** - Execution count
 - **K6 Performance Tests** - Execution count
 - **Monitor Checks** - Check count
 
 ### Playground Analytics
+
 - **Playground Executions** - Tracked via audit logs
 - **Usage Trends** - Daily/weekly patterns
 - **Popular Templates** - Most used examples
@@ -194,6 +198,7 @@ graph LR
 ### Endpoint: GET /api/dashboard
 
 **Response Structure:**
+
 ```mermaid
 graph TB
     RESPONSE[Dashboard Response] --> MONITORS[monitorMetrics]
@@ -254,6 +259,44 @@ graph TB
 
 ---
 
+## Report Viewer Component
+
+### Playwright HTML Report Viewer
+
+The `ReportViewer` component (`/app/src/components/shared/report-viewer.tsx`) displays Playwright HTML reports in a secure iframe:
+
+**Security Features:**
+
+- **Sandboxed iframe**: Uses `sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"` (no `allow-popups` to prevent external navigation)
+- **External Link Protection**: CSS injection hides external link buttons to prevent users from opening reports outside the secure viewer
+- **Content Security**: Multiple CSS selectors target external link UI elements:
+  - `.toolbar-button` icons with external link characteristics
+  - Elements with `aria-label` containing "external"
+  - SVG icons matching external link patterns
+
+**CSS Injection Targets:**
+
+```css
+/* Hide external link buttons in Playwright trace viewer */
+.toolbar-button:has(svg[d*="M10 6V8H5V19H16V14H18V20"]),
+[aria-label*="external"],
+[aria-label*="External"],
+[data-testid*="external"],
+.toolbar-button:has(svg path[d*="M10 6"]),
+a[target="_blank"]:has(svg),
+button[title*="external"],
+button[title*="External"]
+```
+
+**Implementation Notes:**
+
+- CSS is injected after iframe load completes
+- Fallback handling for cross-origin restrictions
+- Loading state with spinner during report fetch
+- Error handling for unavailable reports
+
+---
+
 ## Summary
 
 The Dashboard & Reports System provides:
@@ -263,4 +306,6 @@ The Dashboard & Reports System provides:
 ✅ **Efficient Caching** - Reduced database and S3 load
 ✅ **Secure Access** - RBAC-based report retrieval
 ✅ **Multiple Report Types** - Test, job, monitor, and K6 reports
+✅ **Performance Optimization** - Multi-layer caching strategy
+✅ **Secure Report Viewing** - Sandboxed iframe with external link protection
 ✅ **Performance Optimization** - Multi-layer caching strategy

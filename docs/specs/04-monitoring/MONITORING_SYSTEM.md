@@ -1192,6 +1192,16 @@ Response:
 - **Loading States**: Visual loading indicators during data fetching
 - **Error Handling**: Graceful degradation on API failures
 - **Memory Efficiency**: Only active page data kept in memory
+- **Smooth Pagination Transitions**: Loading overlay displayed on top of existing data to prevent flickering during page navigation
+
+#### **Pagination UX Improvements**
+
+The Recent Check Results table implements smooth pagination transitions:
+
+- **Loading Overlay**: When navigating between pages, a semi-transparent overlay with spinner is shown on top of existing data, preventing visual flickering
+- **Preserved Controls**: Pagination buttons remain visible during loading, showing current page context
+- **Disabled State**: Navigation buttons are disabled during data fetching to prevent double-clicks
+- **Initial vs Navigation Loading**: Different loading states for initial data load (centered spinner in empty table) vs page navigation (overlay on existing data)
 
 #### **Performance Impact**
 

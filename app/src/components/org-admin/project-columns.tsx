@@ -64,7 +64,7 @@ export function createProjectColumns(
       accessorKey: "id",
       header: ({ column }) => (
         <DataTableColumnHeader
-          className="ml-2"
+          className="pl-1"
           column={column}
           title="Project ID"
         />
@@ -72,7 +72,7 @@ export function createProjectColumns(
       cell: ({ row }) => {
         const id = row.getValue("id") as string;
         return (
-          <div className="w-[90px]">
+          <div className="flex items-center h-10">
             <UUIDField
               value={id}
               maxLength={8}
@@ -93,7 +93,7 @@ export function createProjectColumns(
         const project = row.original;
 
         return (
-          <div className="py-1 min-w-[200px] flex items-center">
+          <div className="flex items-center h-10 min-w-[200px]">
             <div className="flex items-center gap-2.5">
               <div className="flex-shrink-0">
                 <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -135,7 +135,7 @@ export function createProjectColumns(
         const status = row.getValue("status") as string;
 
         return (
-          <div className="py-1 flex items-center">
+          <div className="flex items-center h-10">
             <Badge
               variant="outline"
               className={`${getStatusBadgeColor(status)} text-xs px-3 py-1.5 font-medium capitalize`}
@@ -164,7 +164,7 @@ export function createProjectColumns(
         const remainingCount = Math.max(0, count - displayMembers.length);
 
         return (
-          <div className="py-1 flex items-center gap-2">
+          <div className="flex items-center h-10 gap-2">
             <div className="flex items-center">
               {displayMembers.length > 0 ? (
                 <>
@@ -195,7 +195,7 @@ export function createProjectColumns(
               ) : (
                 <>
                   <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
+                  <span className="ml-1 text-sm text-muted-foreground">
                     {count} member{count !== 1 ? "s" : ""}
                   </span>
                 </>
@@ -216,7 +216,7 @@ export function createProjectColumns(
         );
 
         return (
-          <div className="py-1 flex items-center text-sm">
+          <div className="flex items-center h-10 text-sm">
             <Calendar className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
             <span>{formattedDate}</span>
             <span className="text-muted-foreground ml-1 text-xs">
@@ -234,14 +234,14 @@ export function createProjectColumns(
 
         if (!canManageProject) {
           return (
-            <div className="py-1">
+            <div className="flex items-center h-10">
               <span className="text-xs text-muted-foreground">View only</span>
             </div>
           );
         }
 
         return (
-          <div className="py-1">
+          <div className="flex items-center h-10">
             <Button
               variant="outline"
               size="sm"

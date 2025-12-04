@@ -12,10 +12,18 @@ import { Role } from "@/lib/rbac/permissions";
 
 import type { NextBullBoardAdapterState } from "@/lib/bull-board/next-adapter";
 
-const serverAdapter = new NextBullBoardAdapter().setBasePath("/api/admin/queues");
+// Configuration constants
+const BULL_BOARD_BASE_PATH = "/api/admin/queues";
+const STATIC_CACHE_MAX_AGE = 31536000; // 1 year for immutable assets
+const INIT_TIMEOUT_MS = 30000; // 30 second timeout for initialization
+
+const serverAdapter = new NextBullBoardAdapter().setBasePath(
+  BULL_BOARD_BASE_PATH
+);
 
 let bullBoardInitialized = false;
 let cachedState: NextBullBoardAdapterState | null = null;
+let initializationPromise: Promise<NextBullBoardAdapterState> | null = null;
 
 class HttpError extends Error {
   statusCode: number;
@@ -27,11 +35,44 @@ class HttpError extends Error {
   }
 }
 
+/**
+ * Initialize Bull Board with proper singleton pattern and timeout handling.
+ * Uses a promise-based mutex to prevent race conditions during initialization.
+ */
 const ensureBullBoard = async (): Promise<NextBullBoardAdapterState> => {
+  // Return cached state if already initialized
   if (bullBoardInitialized && cachedState) {
     return cachedState;
   }
 
+  // If initialization is in progress, wait for it
+  if (initializationPromise) {
+    return initializationPromise;
+  }
+
+  // Start initialization with timeout
+  initializationPromise = Promise.race([
+    initializeBullBoard(),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new HttpError(503, "Bull Board initialization timed out")),
+        INIT_TIMEOUT_MS
+      )
+    ),
+  ]).catch((error) => {
+    // Reset initialization promise on failure
+    initializationPromise = null;
+    throw error;
+  });
+
+  return initializationPromise;
+};
+
+/**
+ * Core initialization logic for Bull Board.
+ * Separated from ensureBullBoard for cleaner error handling.
+ */
+const initializeBullBoard = async (): Promise<NextBullBoardAdapterState> => {
   const {
     playwrightQueues,
     k6Queues,
@@ -45,19 +86,28 @@ const ensureBullBoard = async (): Promise<NextBullBoardAdapterState> => {
 
   createBullBoard({
     queues: [
-      ...Object.entries(playwrightQueues).map(([region, queue]) => 
-        new BullMQAdapter(queue, { displayName: `Playwright Execution (${region})` })
+      ...Object.entries(playwrightQueues).map(
+        ([region, queue]) =>
+          new BullMQAdapter(queue, {
+            displayName: `Playwright Execution (${region})`,
+          })
       ),
-      ...Object.entries(k6Queues).map(([region, queue]) => 
-        new BullMQAdapter(queue, { displayName: `k6 Execution (${region})` })
+      ...Object.entries(k6Queues).map(
+        ([region, queue]) =>
+          new BullMQAdapter(queue, { displayName: `k6 Execution (${region})` })
       ),
-      ...Object.entries(monitorExecutionQueue).map(([region, queue]) => 
-        new BullMQAdapter(queue, { displayName: `Monitor Execution (${region})` })
+      ...Object.entries(monitorExecutionQueue).map(
+        ([region, queue]) =>
+          new BullMQAdapter(queue, {
+            displayName: `Monitor Execution (${region})`,
+          })
       ),
-        new BullMQAdapter(jobSchedulerQueue, { displayName: "Playwright Job Scheduler" }),
-        new BullMQAdapter(k6JobSchedulerQueue, {
-          displayName: "K6 Job Scheduler",
-        }),
+      new BullMQAdapter(jobSchedulerQueue, {
+        displayName: "Playwright Job Scheduler",
+      }),
+      new BullMQAdapter(k6JobSchedulerQueue, {
+        displayName: "K6 Job Scheduler",
+      }),
       new BullMQAdapter(monitorSchedulerQueue, {
         displayName: "Monitor Scheduler",
       }),
@@ -78,6 +128,8 @@ const ensureBullBoard = async (): Promise<NextBullBoardAdapterState> => {
 
   cachedState = serverAdapter.getState();
   bullBoardInitialized = true;
+  initializationPromise = null;
+
   return cachedState;
 };
 
@@ -96,7 +148,7 @@ const MIME_TYPES: Record<string, string> = {
   ".webp": "image/webp",
   ".woff": "font/woff",
   ".woff2": "font/woff2",
-};
+} as const;
 
 const DEFAULT_MIME_TYPE = "application/octet-stream";
 
@@ -159,7 +211,7 @@ const serveStaticAsset = async (
 
     const headers = new Headers({
       "Content-Type": mimeType,
-      "Cache-Control": "public, max-age=31536000, immutable",
+      "Cache-Control": `public, max-age=${STATIC_CACHE_MAX_AGE}, immutable`,
     });
 
     if (method === "HEAD") {
@@ -386,12 +438,7 @@ async function handleRequest(
     return viewResponse;
   }
 
-  const apiResponse = await handleApiRoute(
-    requestPath,
-    method,
-    state,
-    request
-  );
+  const apiResponse = await handleApiRoute(requestPath, method, state, request);
   if (apiResponse) {
     return apiResponse;
   }
