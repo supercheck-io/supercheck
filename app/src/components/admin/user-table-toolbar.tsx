@@ -1,5 +1,13 @@
 import type { Table } from "@tanstack/react-table";
-import { X, Search, Crown, User, UserCheck, UserX } from "lucide-react";
+import {
+  X,
+  Search,
+  Crown,
+  User,
+  UserCheck,
+  UserX,
+  Building2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,67 +16,89 @@ import { DataTableFacetedFilter } from "@/components/tests/data-table-faceted-fi
 
 import { userRoles, userStatuses } from "./user-data";
 
+interface Organization {
+  id: string;
+  name: string;
+}
+
 interface UserTableToolbarProps<TData> {
   table: Table<TData>;
+  organizations?: Organization[];
 }
 
 export function UserTableToolbar<TData>({
   table,
+  organizations = [],
 }: UserTableToolbarProps<TData>) {
   const isFiltered = table.getState().columnFilters.length > 0;
 
   // Get faceted unique values for roles from the table
   const roleColumn = table.getColumn("role");
   const roleFacets = roleColumn?.getFacetedUniqueValues();
-  
+
   // Create role filter options from faceted values with proper icons
   const getRoleIcon = (role: string) => {
-    if (!role || typeof role !== 'string') return User;
+    if (!role || typeof role !== "string") return User;
     switch (role) {
-      case 'super_admin': return Crown;
-      default: return User;
+      case "super_admin":
+        return Crown;
+      default:
+        return User;
     }
   };
-  
+
   const getRoleColor = (role: string) => {
-    if (!role || typeof role !== 'string') return 'text-gray-600';
+    if (!role || typeof role !== "string") return "text-gray-600";
     switch (role) {
-      case 'super_admin': return 'text-purple-600';
-      default: return 'text-gray-600';
+      case "super_admin":
+        return "text-purple-600";
+      default:
+        return "text-gray-600";
     }
   };
-  
-  const availableRoles = roleFacets ? 
-    Array.from(roleFacets.keys())
-      .filter(roleValue => roleValue != null)
-      .map(roleValue => ({
-        value: roleValue as string,
-        label: roleValue === 'super_admin' ? 'Super Admin' : (roleValue as string).charAt(0).toUpperCase() + (roleValue as string).slice(1),
-        icon: getRoleIcon(roleValue as string),
-        color: getRoleColor(roleValue as string),
-      })) : 
-    userRoles;
+
+  const availableRoles = roleFacets
+    ? Array.from(roleFacets.keys())
+        .filter((roleValue) => roleValue != null)
+        .map((roleValue) => ({
+          value: roleValue as string,
+          label:
+            roleValue === "super_admin"
+              ? "Super Admin"
+              : (roleValue as string).charAt(0).toUpperCase() +
+                (roleValue as string).slice(1),
+          icon: getRoleIcon(roleValue as string),
+          color: getRoleColor(roleValue as string),
+        }))
+    : userRoles;
 
   // Get faceted unique values for banned status from the table
   const bannedColumn = table.getColumn("banned");
   const bannedFacets = bannedColumn?.getFacetedUniqueValues();
-  
-  // Create status filter options from faceted values
-  const availableStatuses = bannedFacets ? 
-    Array.from(bannedFacets.keys())
-      .filter(statusValue => statusValue != null)
-      .map(statusValue => {
-        const status = statusValue as string;
-        const isBanned = status === 'banned';
-        return {
-          value: status,
-          label: isBanned ? 'Banned' : 'Active',
-          icon: isBanned ? UserX : UserCheck,
-          color: isBanned ? 'text-red-600' : 'text-green-600',
-        };
-      }) : 
-    userStatuses;
 
+  // Create status filter options from faceted values
+  const availableStatuses = bannedFacets
+    ? Array.from(bannedFacets.keys())
+        .filter((statusValue) => statusValue != null)
+        .map((statusValue) => {
+          const status = statusValue as string;
+          const isBanned = status === "banned";
+          return {
+            value: status,
+            label: isBanned ? "Banned" : "Active",
+            icon: isBanned ? UserX : UserCheck,
+            color: isBanned ? "text-red-600" : "text-green-600",
+          };
+        })
+    : userStatuses;
+
+  // Create organization filter options
+  const organizationOptions = organizations.map((org) => ({
+    value: org.id,
+    label: org.name,
+    icon: Building2,
+    color: "text-blue-600",
+  }));
 
   return (
     <div className="flex items-center justify-between">
@@ -105,6 +135,13 @@ export function UserTableToolbar<TData>({
             column={table.getColumn("banned")}
             title="Status"
             options={availableStatuses}
+          />
+        )}
+        {organizationOptions.length > 0 && table.getColumn("organizations") && (
+          <DataTableFacetedFilter
+            column={table.getColumn("organizations")}
+            title="Organization"
+            options={organizationOptions}
           />
         )}
         {isFiltered && (

@@ -208,9 +208,11 @@ describe("SubscriptionService", () => {
         });
 
         it("should throw error when subscription is canceled", async () => {
+          // Canceled subscription without end date should throw
           mockDbQueryOrgFindFirst.mockResolvedValue({
             ...mockOrganization,
             subscriptionStatus: "canceled",
+            subscriptionEndsAt: null, // No grace period without end date
           });
 
           await expect(service.getOrganizationPlan(testOrgId)).rejects.toThrow(
@@ -218,10 +220,44 @@ describe("SubscriptionService", () => {
           );
         });
 
-        it("should throw error when subscription is past_due", async () => {
+        it("should allow access for past_due subscription", async () => {
+          // past_due subscriptions still have access while payment is retried
           mockDbQueryOrgFindFirst.mockResolvedValue({
             ...mockOrganization,
             subscriptionStatus: "past_due",
+            subscriptionPlan: "plus",
+          });
+
+          mockDbQueryPlanLimitsFindFirst.mockResolvedValue(mockPlanLimits);
+
+          const result = await service.getOrganizationPlan(testOrgId);
+          expect(result).toEqual(mockPlanLimits);
+        });
+
+        it("should allow access for canceled subscription within grace period", async () => {
+          // Canceled subscriptions have access until subscriptionEndsAt
+          const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+          mockDbQueryOrgFindFirst.mockResolvedValue({
+            ...mockOrganization,
+            subscriptionStatus: "canceled",
+            subscriptionPlan: "plus",
+            subscriptionEndsAt: futureDate,
+          });
+
+          mockDbQueryPlanLimitsFindFirst.mockResolvedValue(mockPlanLimits);
+
+          const result = await service.getOrganizationPlan(testOrgId);
+          expect(result).toEqual(mockPlanLimits);
+        });
+
+        it("should throw error for canceled subscription past grace period", async () => {
+          // Canceled subscriptions lose access after subscriptionEndsAt
+          const pastDate = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000); // 1 day ago
+          mockDbQueryOrgFindFirst.mockResolvedValue({
+            ...mockOrganization,
+            subscriptionStatus: "canceled",
+            subscriptionPlan: "plus",
+            subscriptionEndsAt: pastDate,
           });
 
           await expect(service.getOrganizationPlan(testOrgId)).rejects.toThrow(
@@ -556,15 +592,55 @@ describe("SubscriptionService", () => {
           expect(result).toBe(false);
         });
 
-        it("should return false for canceled subscription", async () => {
+        it("should return false for canceled subscription without end date", async () => {
           mockDbQueryOrgFindFirst.mockResolvedValue({
             ...mockOrganization,
             subscriptionStatus: "canceled",
+            subscriptionEndsAt: null,
           });
 
           const result = await service.hasActiveSubscription(testOrgId);
 
           expect(result).toBe(false);
+        });
+
+        it("should return false for canceled subscription past grace period", async () => {
+          const pastDate = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000); // 1 day ago
+          mockDbQueryOrgFindFirst.mockResolvedValue({
+            ...mockOrganization,
+            subscriptionStatus: "canceled",
+            subscriptionEndsAt: pastDate,
+          });
+
+          const result = await service.hasActiveSubscription(testOrgId);
+
+          expect(result).toBe(false);
+        });
+
+        it("should return true for canceled subscription within grace period", async () => {
+          const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+          mockDbQueryOrgFindFirst.mockResolvedValue({
+            ...mockOrganization,
+            subscriptionStatus: "canceled",
+            subscriptionPlan: "plus",
+            subscriptionEndsAt: futureDate,
+          });
+
+          const result = await service.hasActiveSubscription(testOrgId);
+
+          expect(result).toBe(true);
+        });
+
+        it("should return true for past_due subscription", async () => {
+          mockDbQueryOrgFindFirst.mockResolvedValue({
+            ...mockOrganization,
+            subscriptionStatus: "past_due",
+            subscriptionPlan: "plus",
+          });
+
+          const result = await service.hasActiveSubscription(testOrgId);
+
+          expect(result).toBe(true);
         });
 
         it("should return false when Polar customer not found", async () => {

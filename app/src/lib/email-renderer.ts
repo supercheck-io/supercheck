@@ -9,6 +9,7 @@
 import { render } from "@react-email/render";
 import {
   PasswordResetEmail,
+  EmailVerificationEmail,
   OrganizationInvitationEmail,
   StatusPageVerificationEmail,
   StatusPageWelcomeEmail,
@@ -35,6 +36,23 @@ export async function renderPasswordResetEmail(params: {
 
   return {
     subject: "Reset your Supercheck password",
+    html: await render(component, { pretty: false }),
+    text: await render(component, { plainText: true }),
+  };
+}
+
+/**
+ * Email Verification Email
+ */
+export async function renderEmailVerificationEmail(params: {
+  verificationUrl: string;
+  userEmail: string;
+  userName?: string;
+}): Promise<RenderedEmail> {
+  const component = EmailVerificationEmail(params);
+
+  return {
+    subject: "Verify your email address - Supercheck",
     html: await render(component, { pretty: false }),
     text: await render(component, { plainText: true }),
   };
@@ -182,7 +200,9 @@ export async function renderUsageNotificationEmail(params: {
   };
 
   return {
-    subject: subjectMap[params.notificationType] || `Usage Alert - ${params.organizationName}`,
+    subject:
+      subjectMap[params.notificationType] ||
+      `Usage Alert - ${params.organizationName}`,
     html: await render(component, { pretty: false }),
     text: await render(component, { plainText: true }),
   };

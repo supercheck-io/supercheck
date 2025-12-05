@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { ChevronsUpDown, Search, Loader2 } from "lucide-react"
-import { CheckIcon } from "@/components/logo/supercheck-logo"
-import { useProjectContext } from "@/hooks/use-project-context"
+import * as React from "react";
+import { ChevronsUpDown, Search, Loader2 } from "lucide-react";
+import { CheckIcon } from "@/components/logo/supercheck-logo";
+import { useProjectContext } from "@/hooks/use-project-context";
 
 import {
   DropdownMenu,
@@ -11,79 +11,72 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from "@/components/ui/sidebar"
-import { Input } from "@/components/ui/input"
-import { useRef, useEffect } from "react"
+} from "@/components/ui/sidebar";
+import { Input } from "@/components/ui/input";
+import { useRef, useEffect } from "react";
 
 export function ProjectSwitcher() {
-  const { isMobile } = useSidebar()
-  const { 
-    currentProject, 
-    projects, 
-    loading, 
-    switchProject 
-  } = useProjectContext()
-  
-  const [searchQuery, setSearchQuery] = React.useState("")
-  const [isOpen, setIsOpen] = React.useState(false)
-  const searchInputRef = useRef<HTMLInputElement>(null)
+  const { isMobile } = useSidebar();
+  const { currentProject, projects, loading, switchProject } =
+    useProjectContext();
+
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [isOpen, setIsOpen] = React.useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Filter and sort projects based on search query
   const filteredProjects = (projects || [])
-    .filter(project =>
+    .filter((project) =>
       project.name.toLowerCase().includes(searchQuery.toLowerCase())
     )
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   // Reset search when dropdown closes
-  useEffect(() => {
-    if (!isOpen) {
-      setSearchQuery("")
-    }
-  }, [isOpen])
-
   const handleOpenChange = (open: boolean) => {
-    setIsOpen(open)
+    setIsOpen(open);
+    if (!open) {
+      setSearchQuery("");
+    }
     if (open) {
       // Focus the search input after the dropdown is rendered
       setTimeout(() => {
-        searchInputRef.current?.focus()
-      }, 50)
+        searchInputRef.current?.focus();
+      }, 50);
     }
-  }
+  };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setSearchQuery(e.target.value)
-  }
+    e.preventDefault();
+    e.stopPropagation();
+    setSearchQuery(e.target.value);
+  };
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape") {
-      setIsOpen(false)
+      setIsOpen(false);
     } else if (e.key === "Enter") {
-      e.preventDefault()
+      e.preventDefault();
       // Select the first filtered project if available
       if (filteredProjects.length > 0) {
-        handleProjectSelect(filteredProjects[0])
+        handleProjectSelect(filteredProjects[0]);
       }
     }
     // Prevent dropdown from closing on other key presses
-    e.stopPropagation()
-  }
+    e.stopPropagation();
+  };
 
   const handleProjectSelect = async (project: { id: string; name: string }) => {
-    const success = await switchProject(project.id)
+    const success = await switchProject(project.id);
     if (success) {
-      setIsOpen(false)
+      setIsOpen(false);
     }
-  }
+  };
 
   if (loading) {
     return (
@@ -103,14 +96,17 @@ export function ProjectSwitcher() {
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>
-    )
+    );
   }
 
   return (
     <SidebarMenu>
       <SidebarMenuItem>
         <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
-          <DropdownMenuTrigger asChild className="focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0">
+          <DropdownMenuTrigger
+            asChild
+            className="focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
+          >
             <SidebarMenuButton
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground group-data-[collapsible=icon]:ml-2.5 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
@@ -120,7 +116,9 @@ export function ProjectSwitcher() {
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">Supercheck</span>
-                <span className="truncate text-xs">{currentProject?.name || "No project"}</span>
+                <span className="truncate text-xs">
+                  {currentProject?.name || "No project"}
+                </span>
               </div>
               <ChevronsUpDown className="ml-auto" />
             </SidebarMenuButton>
@@ -134,9 +132,12 @@ export function ProjectSwitcher() {
             <DropdownMenuLabel className="text-muted-foreground text-xs">
               Projects
             </DropdownMenuLabel>
-            
+
             {/* Search Bar */}
-            <div className="px-2 py-1.5" onMouseDown={(e) => e.stopPropagation()}>
+            <div
+              className="px-2 py-1.5"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                 <Input
@@ -178,5 +179,5 @@ export function ProjectSwitcher() {
         </DropdownMenu>
       </SidebarMenuItem>
     </SidebarMenu>
-  )
+  );
 }

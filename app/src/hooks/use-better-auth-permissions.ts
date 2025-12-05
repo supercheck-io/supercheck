@@ -2,10 +2,10 @@
  * Better Auth permission checking hooks for React components
  */
 
-import { useState, useEffect, useMemo } from 'react';
-import { authClient } from '@/utils/auth-client';
-import { useSession } from '@/utils/auth-client';
-import { checkRolePermissions } from '@/lib/rbac/permissions';
+import { useState, useEffect, useMemo } from "react";
+import { authClient } from "@/utils/auth-client";
+import { useSession } from "@/utils/auth-client";
+import { checkRolePermissionsClient as checkRolePermissions } from "@/lib/rbac/permissions-client";
 
 /**
  * Hook to check if user has specific permissions
@@ -29,14 +29,19 @@ export function useHasPermission(permissions: Record<string, string[]>) {
     const checkPermissions = async () => {
       try {
         setIsLoading(true);
-        
+
         // Use Better Auth's hasPermission for organization/admin permissions
-        if (stablePermissions.organization || stablePermissions.member || stablePermissions.invitation || stablePermissions.user) {
+        if (
+          stablePermissions.organization ||
+          stablePermissions.member ||
+          stablePermissions.invitation ||
+          stablePermissions.user
+        ) {
           const { data, error } = await authClient.organization.hasPermission({
-            permissions: stablePermissions
+            permissions: stablePermissions,
           });
           if (error) {
-            console.error('Permission check failed:', error);
+            console.error("Permission check failed:", error);
             setHasPermission(false);
           } else {
             setHasPermission(!!data);
@@ -47,7 +52,7 @@ export function useHasPermission(permissions: Record<string, string[]>) {
           setHasPermission(true);
         }
       } catch (error) {
-        console.error('Permission check failed:', error);
+        console.error("Permission check failed:", error);
         setHasPermission(false);
       } finally {
         setIsLoading(false);
@@ -65,8 +70,8 @@ export function useHasPermission(permissions: Record<string, string[]>) {
  */
 export function useIsOrgAdmin() {
   return useHasPermission({
-    organization: ['update'],
-    member: ['create', 'update', 'delete']
+    organization: ["update"],
+    member: ["create", "update", "delete"],
   });
 }
 
@@ -75,7 +80,7 @@ export function useIsOrgAdmin() {
  */
 export function useIsSystemAdmin() {
   return useHasPermission({
-    user: ['create', 'update', 'delete']
+    user: ["create", "update", "delete"],
   });
 }
 
@@ -84,14 +89,17 @@ export function useIsSystemAdmin() {
  */
 export function useCanManageProjects() {
   return useHasPermission({
-    organization: ['update']
+    organization: ["update"],
   });
 }
 
 /**
  * Hook to check role-based permissions without server calls
  */
-export function useCheckRolePermission(role: string, permissions: Record<string, string[]>) {
+export function useCheckRolePermission(
+  role: string,
+  permissions: Record<string, string[]>
+) {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
 
   const permissionsString = JSON.stringify(permissions);
@@ -104,7 +112,7 @@ export function useCheckRolePermission(role: string, permissions: Record<string,
       const result = checkRolePermissions(role, stablePermissions);
       setHasPermission(result);
     } catch (error) {
-      console.error('Role permission check failed:', error);
+      console.error("Role permission check failed:", error);
       setHasPermission(false);
     }
   }, [role, stablePermissions]);
@@ -129,12 +137,12 @@ export function useCanEditJobs() {
     // Get user role from project context and check permissions
     const getUserRole = async () => {
       try {
-        const response = await fetch('/api/projects/current');
+        const response = await fetch("/api/projects/current");
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.project?.userRole) {
             // Use client-side permission checking
-            import('@/lib/rbac/client-permissions').then(({ canEditJobs }) => {
+            import("@/lib/rbac/client-permissions").then(({ canEditJobs }) => {
               setCanEdit(canEditJobs(data.project.userRole));
             });
           } else {
@@ -144,7 +152,7 @@ export function useCanEditJobs() {
           setCanEdit(false);
         }
       } catch (error) {
-        console.error('Error checking job edit permissions:', error);
+        console.error("Error checking job edit permissions:", error);
         setCanEdit(false);
       }
     };
@@ -168,14 +176,16 @@ export function useCanDeleteJobs() {
     // Get user role from project context and check permissions
     const getUserRole = async () => {
       try {
-        const response = await fetch('/api/projects/current');
+        const response = await fetch("/api/projects/current");
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.project?.userRole) {
             // Use client-side permission checking
-            import('@/lib/rbac/client-permissions').then(({ canDeleteJobs }) => {
-              setCanDelete(canDeleteJobs(data.project.userRole));
-            });
+            import("@/lib/rbac/client-permissions").then(
+              ({ canDeleteJobs }) => {
+                setCanDelete(canDeleteJobs(data.project.userRole));
+              }
+            );
           } else {
             setCanDelete(false);
           }
@@ -183,7 +193,7 @@ export function useCanDeleteJobs() {
           setCanDelete(false);
         }
       } catch (error) {
-        console.error('Error checking job delete permissions:', error);
+        console.error("Error checking job delete permissions:", error);
         setCanDelete(false);
       }
     };
@@ -207,12 +217,12 @@ export function useCanEditTests() {
     // Get user role from project context and check permissions
     const getUserRole = async () => {
       try {
-        const response = await fetch('/api/projects/current');
+        const response = await fetch("/api/projects/current");
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.project?.userRole) {
             // Use client-side permission checking
-            import('@/lib/rbac/client-permissions').then(({ canEditTests }) => {
+            import("@/lib/rbac/client-permissions").then(({ canEditTests }) => {
               setCanEdit(canEditTests(data.project.userRole));
             });
           } else {
@@ -222,7 +232,7 @@ export function useCanEditTests() {
           setCanEdit(false);
         }
       } catch (error) {
-        console.error('Error checking test edit permissions:', error);
+        console.error("Error checking test edit permissions:", error);
         setCanEdit(false);
       }
     };
@@ -246,14 +256,16 @@ export function useCanDeleteTests() {
     // Get user role from project context and check permissions
     const getUserRole = async () => {
       try {
-        const response = await fetch('/api/projects/current');
+        const response = await fetch("/api/projects/current");
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.project?.userRole) {
             // Use client-side permission checking
-            import('@/lib/rbac/client-permissions').then(({ canDeleteTests }) => {
-              setCanDelete(canDeleteTests(data.project.userRole));
-            });
+            import("@/lib/rbac/client-permissions").then(
+              ({ canDeleteTests }) => {
+                setCanDelete(canDeleteTests(data.project.userRole));
+              }
+            );
           } else {
             setCanDelete(false);
           }
@@ -261,7 +273,7 @@ export function useCanDeleteTests() {
           setCanDelete(false);
         }
       } catch (error) {
-        console.error('Error checking test delete permissions:', error);
+        console.error("Error checking test delete permissions:", error);
         setCanDelete(false);
       }
     };

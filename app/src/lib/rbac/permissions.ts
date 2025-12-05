@@ -16,7 +16,15 @@
 
 import { createAccessControl } from "better-auth/plugins/access";
 
+// Re-export Role enum from client-safe module (DRY principle)
+// This ensures Role is defined in one place and used everywhere
+export { Role, statement as clientStatement } from "./permissions-client";
+
+// Import for use in this file
+import { Role } from "./permissions-client";
+
 // Better Auth statements object defining resources and actions
+// Note: This duplicates clientStatement but is required for createAccessControl type inference
 export const statement = {
   // System-level resources (SUPER_ADMIN only)
   system: [
@@ -52,15 +60,8 @@ export const statement = {
 // Create Better Auth access controller
 export const ac = createAccessControl(statement);
 
-// Role names (used in database)
-export enum Role {
-  SUPER_ADMIN = "super_admin",
-  ORG_OWNER = "org_owner",
-  ORG_ADMIN = "org_admin",
-  PROJECT_ADMIN = "project_admin",
-  PROJECT_EDITOR = "project_editor",
-  PROJECT_VIEWER = "project_viewer",
-}
+// Note: Role enum is imported and re-exported from permissions-client.ts above
+// This maintains a single source of truth for the Role enum (DRY principle)
 
 // SUPER_ADMIN: Full system access
 export const superAdmin = ac.newRole({

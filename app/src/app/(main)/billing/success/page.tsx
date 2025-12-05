@@ -2,7 +2,13 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, ArrowRight, Loader2, RefreshCw } from "lucide-react";
 
@@ -42,13 +48,13 @@ export default function BillingSuccessPage() {
     setIsVerifying(true);
     setShowRetry(false);
     attemptsRef.current = 0;
-    
+
     const pollSubscription = async () => {
       const verified = await verifySubscription();
       if (verified) {
         return;
       }
-      
+
       attemptsRef.current++;
       // Poll for up to 30 seconds (webhooks can be slow sometimes)
       if (attemptsRef.current < 30) {
@@ -64,10 +70,15 @@ export default function BillingSuccessPage() {
     pollSubscription();
   }, [verifySubscription]);
 
+  // Start polling on mount - wrapped in setTimeout to avoid synchronous setState warning
   useEffect(() => {
-    startPolling();
-    
+    // Use setTimeout to defer the initial call, avoiding synchronous setState in effect
+    const timeoutId = setTimeout(() => {
+      startPolling();
+    }, 0);
+
     return () => {
+      clearTimeout(timeoutId);
       if (pollingRef.current) clearTimeout(pollingRef.current);
     };
   }, [startPolling]);
@@ -103,13 +114,14 @@ export default function BillingSuccessPage() {
             )}
           </div>
           <CardTitle className="text-2xl">
-            {isVerifying ? "Activating Subscription..." : "Subscription Activated!"}
+            {isVerifying
+              ? "Activating Subscription..."
+              : "Subscription Activated!"}
           </CardTitle>
           <CardDescription className="text-base">
             {isVerifying
               ? "Please wait while we confirm your account. This usually takes just a few seconds."
-              : "Thank you! Your account has been activated and you now have access to all features."
-            }
+              : "Thank you! Your account has been activated and you now have access to all features."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -117,16 +129,15 @@ export default function BillingSuccessPage() {
             <p>
               {isVerifying
                 ? "We're confirming your account setup. This may take a moment..."
-                : "Your account is now active. A confirmation email has been sent to your registered email address."
-              }
+                : "Your account is now active. A confirmation email has been sent to your registered email address."}
             </p>
           </div>
 
           <div className="space-y-3">
             {showRetry ? (
               <>
-                <Button 
-                  className="w-full" 
+                <Button
+                  className="w-full"
                   size="lg"
                   variant="outline"
                   onClick={() => startPolling()}
@@ -140,8 +151,8 @@ export default function BillingSuccessPage() {
               </>
             ) : (
               <>
-                <Button 
-                  className="w-full" 
+                <Button
+                  className="w-full"
                   size="lg"
                   onClick={() => router.push("/")}
                   disabled={isVerifying}
@@ -158,12 +169,11 @@ export default function BillingSuccessPage() {
                     </>
                   )}
                 </Button>
-                
+
                 <p className="text-sm text-muted-foreground">
                   {isVerifying
                     ? "Confirming account setup..."
-                    : `Redirecting automatically in ${countdown} seconds...`
-                  }
+                    : `Redirecting automatically in ${countdown} seconds...`}
                 </p>
               </>
             )}

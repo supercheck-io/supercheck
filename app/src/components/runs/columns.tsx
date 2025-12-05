@@ -20,20 +20,29 @@ import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
 
 // Helper to validate status is one of the allowed values
-function mapDbStatusToDisplayStatus(dbStatus: string, errorDetails?: string | null): string {
+function mapDbStatusToDisplayStatus(
+  dbStatus: string,
+  errorDetails?: string | null
+): string {
   // Convert the dbStatus to lowercase for case-insensitive comparison
   const status = typeof dbStatus === "string" ? dbStatus.toLowerCase() : "";
 
   // Check if this is a cancelled run (status is error but errorDetails contains cancellation)
   if (status === "error" && errorDetails) {
     const lowerErrorDetails = errorDetails.toLowerCase();
-    if (lowerErrorDetails.includes("cancellation") || lowerErrorDetails.includes("cancelled")) {
+    if (
+      lowerErrorDetails.includes("cancellation") ||
+      lowerErrorDetails.includes("cancelled")
+    ) {
       return "cancelled";
     }
   }
 
   // Check if this is a billing-blocked run
-  if (status === "blocked" || (errorDetails && errorDetails.includes("BILLING_BLOCKED"))) {
+  if (
+    status === "blocked" ||
+    (errorDetails && errorDetails.includes("BILLING_BLOCKED"))
+  ) {
     return "blocked";
   }
 
@@ -108,7 +117,7 @@ export const createColumns = (
         <div className="w-[90px]">
           <UUIDField
             value={id}
-            maxLength={24}
+            maxLength={8}
             onCopy={() => toast.success("Run ID copied to clipboard")}
           />
         </div>
@@ -199,7 +208,8 @@ export const createColumns = (
     id: "status",
     // Use accessorFn to return the mapped status (including cancelled)
     // This ensures facet counts are correct
-    accessorFn: (row) => mapDbStatusToDisplayStatus(row.status, row.errorDetails),
+    accessorFn: (row) =>
+      mapDbStatusToDisplayStatus(row.status, row.errorDetails),
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Status" />
     ),
@@ -219,10 +229,7 @@ export const createColumns = (
               <span>{statusInfo.label}</span>
             </div>
           ) : (
-            <JobStatus
-              runId={row.original.id}
-              initialStatus={mappedStatus}
-            />
+            <JobStatus runId={row.original.id} initialStatus={mappedStatus} />
           )}
         </div>
       );

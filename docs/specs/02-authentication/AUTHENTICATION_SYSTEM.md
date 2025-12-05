@@ -2,27 +2,75 @@
 
 ## Overview
 
-Supercheck uses **Better Auth 1.2.8** as its comprehensive authentication framework, providing:
+Supercheck uses **Better Auth 1.4.5** as its comprehensive authentication framework, providing:
+
 - **Email/Password Authentication**: Traditional credential-based sign-in
 - **Social Authentication**: GitHub and Google OAuth 2.0 sign-in
 - **Multi-Tenant Organization Management**: Built-in organization support
 - **Role-Based Access Control (RBAC)**: Fine-grained permissions
 - **Admin Capabilities**: User impersonation and management
 - **Polar Billing Integration**: Automatic customer creation for cloud deployments
+- **Email Verification**: Required for cloud mode, optional for self-hosted
+
+## Cloud vs Self-Hosted Modes
+
+Supercheck supports two deployment modes with different authentication behaviors:
+
+### Feature Comparison
+
+| Feature                         | Cloud Mode                | Self-Hosted Mode |
+| ------------------------------- | ------------------------- | ---------------- |
+| **Email Verification**          | Required                  | Not required     |
+| **Disposable Email Check**      | Blocked                   | Allowed          |
+| **Billing Integration (Polar)** | Enabled                   | Disabled         |
+| **Plan Limits**                 | Enforced per subscription | No enforcement   |
+| **Polar Customer Creation**     | Automatic on signup       | Disabled         |
+
+### Configuration
+
+The hosting mode is determined by the `SELF_HOSTED` environment variable:
+
+```bash
+# Cloud Mode (default)
+SELF_HOSTED=false  # or not set
+
+# Self-Hosted Mode
+SELF_HOSTED=true
+```
+
+### Implementation Details
+
+**Feature Flag (app/src/lib/feature-flags.ts):**
+
+```typescript
+export function isCloudHosted(): boolean {
+  return process.env.SELF_HOSTED !== "true";
+}
+
+export function isSelfHosted(): boolean {
+  return process.env.SELF_HOSTED === "true";
+}
+```
+
+**Authentication Differences:**
+
+- **Cloud Mode**: Users must verify their email before accessing the dashboard. After sign-up, they are redirected to `/verify-email`.
+- **Self-Hosted Mode**: Users can access the dashboard immediately after sign-up. Email verification is not required.
 
 ## Table of Contents
 
 1. [System Architecture](#system-architecture)
 2. [Authentication Flows](#authentication-flows)
-3. [Better Auth Configuration](#better-auth-configuration)
-4. [RBAC System](#rbac-system)
-5. [Session Management](#session-management)
-6. [Security Features](#security-features)
-7. [Email Integration](#email-integration)
-8. [Organization Management](#organization-management)
-9. [API Integration](#api-integration)
-10. [Database Schema](#database-schema)
-11. [Testing Guide](#testing-guide)
+3. [Email Verification](#email-verification)
+4. [Better Auth Configuration](#better-auth-configuration)
+5. [RBAC System](#rbac-system)
+6. [Session Management](#session-management)
+7. [Security Features](#security-features)
+8. [Email Integration](#email-integration)
+9. [Organization Management](#organization-management)
+10. [API Integration](#api-integration)
+11. [Database Schema](#database-schema)
+12. [Testing Guide](#testing-guide)
 
 ## System Architecture
 
@@ -143,6 +191,7 @@ sequenceDiagram
     participant Frontend
     participant BetterAuth
     participant Database
+    participant Email as Email Service
     participant OrgPlugin
 
     User->>Frontend: Enter name, email, password
@@ -163,8 +212,15 @@ sequenceDiagram
         Database-->>OrgPlugin: Org created
 
         BetterAuth-->>Frontend: 200 Success
-        Frontend->>Frontend: Redirect to sign-in
-        Frontend-->>User: Show success message
+
+        alt Cloud Mode
+            BetterAuth->>Email: Send verification email
+            Frontend->>Frontend: Redirect to /verify-email
+            Frontend-->>User: "Check your email to verify"
+        else Self-Hosted Mode
+            Frontend->>Frontend: Redirect to sign-in
+            Frontend-->>User: Show success message
+        end
     end
 ```
 
@@ -338,6 +394,143 @@ sequenceDiagram
     Callback-->>User: Redirect to dashboard
 ```
 
+## Email Verification
+
+Email verification is **required in Cloud mode** and **disabled in Self-Hosted mode**. This ensures that cloud users have valid email addresses while allowing self-hosted deployments to skip this step for internal use.
+
+### Email Verification Flow (Cloud Mode Only)
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant SignUp as Sign Up Page
+    participant Auth as Better Auth
+    participant DB as Database
+    participant Email as Email Service
+    participant VerifyPage as Verify Email Page
+
+    User->>SignUp: Enter name, email, password
+    SignUp->>Auth: POST /api/auth/sign-up/email
+    Auth->>DB: Create user (emailVerified: null)
+    Auth->>Email: Send verification email
+    Email-->>User: Verification link sent
+
+    SignUp->>VerifyPage: Redirect to /verify-email
+    VerifyPage-->>User: "Check your email to verify"
+
+    Note over User: User clicks link in email
+
+    User->>Auth: GET /api/auth/verify-email?token=xxx
+    Auth->>DB: Verify token & update emailVerified
+    Auth-->>User: Redirect to dashboard
+```
+
+### Configuration
+
+**Better Auth Configuration (app/src/utils/auth.ts):**
+
+```typescript
+import { isCloudHosted } from "@/lib/feature-flags";
+
+export const auth = betterAuth({
+  // ... other config
+
+  // Email verification only for cloud mode
+  emailVerification: isCloudHosted()
+    ? {
+        sendVerificationEmail: async ({ user, url }) => {
+          await sendEmailVerification({
+            to: user.email,
+            verificationUrl: url,
+            userName: user.name || undefined,
+          });
+        },
+      }
+    : undefined,
+
+  // Require email verification only for cloud mode
+  requireEmailVerification: isCloudHosted(),
+});
+```
+
+### User Experience
+
+**Cloud Mode:**
+
+1. User signs up with email/password
+2. User is redirected to `/verify-email` page
+3. Page displays clear instructions to check email
+4. User can resend verification email if needed (with 5-minute cooldown)
+5. User clicks verification link in email
+6. User is redirected to `/sign-in?verified=true`
+7. Sign-in page shows **success alert** confirming email verification
+8. User signs in with their credentials
+
+**Self-Hosted Mode:**
+
+1. User signs up with email/password
+2. User is immediately redirected to the dashboard
+3. No email verification required
+
+### Verify Email Page
+
+**Location:** `app/src/app/(auth)/verify-email/page.tsx`
+
+The verify email page includes:
+
+- Clear message explaining email verification is required
+- Display of the email address to verify
+- Resend verification email button with **5-minute cooldown** (rate limiting)
+- Countdown timer showing remaining cooldown time
+- Link to sign in (if user already verified)
+- Consistent branding with other auth pages
+
+### Email Verification Success Alert
+
+After a user clicks the verification link in their email, they are redirected to the sign-in page with a success alert:
+
+- Green success banner displayed at the top of the form
+- Message: "Email verified successfully!"
+- Sub-message: "Your email has been verified. You can now sign in to your account."
+- Alert is only shown when `?verified=true` query parameter is present
+- URL is cleaned up after showing the alert (removes query parameter)
+
+### Resend Rate Limiting
+
+To prevent abuse of the verification email resend functionality, a **5-minute cooldown** is enforced:
+
+- After sending a verification email, users must wait 5 minutes before requesting another
+- Cooldown is tracked client-side using localStorage
+- A countdown timer displays the remaining wait time
+- The resend button is disabled during the cooldown period
+
+**Implementation (app/src/app/(auth)/verify-email/page.tsx):**
+
+```typescript
+const RESEND_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+const STORAGE_KEY_PREFIX = "verification_email_sent_";
+
+function getRemainingCooldown(email: string): number {
+  const lastSent = getLastSentTime(email);
+  if (!lastSent) return 0;
+  const elapsed = Date.now() - lastSent;
+  const remaining = RESEND_COOLDOWN_MS - elapsed;
+  return remaining > 0 ? remaining : 0;
+}
+```
+
+### Email Template
+
+**Location:** `app/src/emails/email-verification.tsx`
+
+The verification email includes:
+
+- Professional design matching other transactional emails
+- Clear call-to-action button
+- Verification link (valid for 24 hours)
+- Security notice about link expiration
+- Mobile-responsive layout
+
 ## Better Auth Configuration
 
 ### Core Configuration
@@ -345,14 +538,16 @@ sequenceDiagram
 **Location:** `app/src/utils/auth.ts`
 
 **Key Features:**
+
 - **Email/Password Authentication**: Traditional credential-based auth
 - **Social Authentication**:
   - GitHub OAuth 2.0 (conditionally enabled)
   - Google OAuth 2.0 (conditionally enabled, with offline access and refresh tokens)
+- **Email Verification**: Required for cloud mode, disabled for self-hosted
 - **Organization Plugin**: Org creation handled in the API layer (`/api/auth/setup-defaults` + invitations)
 - **Admin Plugin**: Super admin roles with impersonation support
 - **API Key Plugin**: Programmatic access for jobs and monitors
-- **Polar Plugin** *(Optional)*: Automatic customer creation for cloud deployments
+- **Polar Plugin** _(Optional)_: Automatic customer creation for cloud deployments
 - **Session Duration**: 7 days
 - **Session Update Age**: 24 hours (refreshes with activity)
 - **Database Adapter**: Drizzle ORM with PostgreSQL
@@ -360,6 +555,7 @@ sequenceDiagram
 ### Social Authentication Configuration
 
 **GitHub OAuth:**
+
 ```typescript
 socialProviders: {
   github: {
@@ -371,6 +567,7 @@ socialProviders: {
 ```
 
 **Google OAuth:**
+
 ```typescript
 socialProviders: {
   google: {
@@ -384,6 +581,7 @@ socialProviders: {
 ```
 
 **Environment Variables:**
+
 ```bash
 # GitHub OAuth (Optional - buttons shown automatically when configured)
 GITHUB_CLIENT_ID=your-github-client-id
@@ -397,10 +595,12 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 > **Note:** Social auth buttons are dynamically loaded via `/api/config/auth-providers` endpoint, allowing runtime configuration without rebuilding the application.
 
 **Callback URLs:**
+
 - GitHub: `{BASE_URL}/api/auth/callback/github`
 - Google: `{BASE_URL}/api/auth/callback/google`
 
 **Setup Requirements:**
+
 - GitHub: Create OAuth App at [GitHub Developer Settings](https://github.com/settings/developers)
   - **Important**: For GitHub Apps, enable email read permissions
 - Google: Create OAuth credentials at [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
@@ -467,14 +667,14 @@ graph TB
 
 ### Permission Matrix
 
-| Role | Create Project | Create Test | Execute Test | Create Job | Trigger Job | Manage Members | View Only |
-|------|----------------|-------------|--------------|------------|-------------|----------------|-----------|
-| `super_admin` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `org_owner` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `org_admin` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `project_admin` | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ (project) | ✅ |
-| `project_editor` | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| `project_viewer` | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Role             | Create Project | Create Test | Execute Test | Create Job | Trigger Job | Manage Members | View Only |
+| ---------------- | -------------- | ----------- | ------------ | ---------- | ----------- | -------------- | --------- |
+| `super_admin`    | ✅             | ✅          | ✅           | ✅         | ✅          | ✅             | ✅        |
+| `org_owner`      | ✅             | ✅          | ✅           | ✅         | ✅          | ✅             | ✅        |
+| `org_admin`      | ✅             | ✅          | ✅           | ✅         | ✅          | ✅             | ✅        |
+| `project_admin`  | ❌             | ✅          | ✅           | ✅         | ✅          | ✅ (project)   | ✅        |
+| `project_editor` | ❌             | ✅          | ✅           | ✅         | ✅          | ❌             | ✅        |
+| `project_viewer` | ❌             | ❌          | ❌           | ❌         | ❌          | ❌             | ✅        |
 
 ### Authorization Flow
 
@@ -533,6 +733,7 @@ graph LR
 ### Session Configuration
 
 **Properties:**
+
 - **Duration:** 7 days (604800 seconds)
 - **Update Age:** 24 hours (session token refreshes daily with activity)
 - **Cookie Settings:**
@@ -542,6 +743,7 @@ graph LR
   - `path: '/'` (application-wide)
 
 **Security Features:**
+
 - IP address tracking (optional verification)
 - User agent tracking
 - Last activity timestamp
@@ -582,6 +784,7 @@ graph TB
 ```
 
 **Rate Limiting Implementation:**
+
 - In-memory rate limit store (production should use Redis)
 - Automatic cleanup every 5 minutes
 - Separate limits for email and IP
@@ -591,6 +794,7 @@ graph TB
 ### Password Security
 
 **Requirements:**
+
 ```mermaid
 graph TB
     A[Password Policy] --> B[Minimum 8 characters]
@@ -619,6 +823,7 @@ graph TB
 ### Additional Security Measures
 
 **Implementation:**
+
 - CSRF protection via SameSite cookies
 - XSS prevention via httpOnly cookies
 - SQL injection prevention via parameterized queries
@@ -656,6 +861,7 @@ graph TB
 ### Email Templates
 
 **Password Reset Email Features:**
+
 - Professional HTML template with branding
 - Plain text fallback for compatibility
 - Clear call-to-action button
@@ -665,6 +871,7 @@ graph TB
 - Mobile-responsive design
 
 **Configuration Variables:**
+
 - `SMTP_HOST` - SMTP server hostname
 - `SMTP_PORT` - SMTP server port
 - `SMTP_USER` - SMTP username
@@ -706,21 +913,37 @@ sequenceDiagram
     participant NewUser
 
     Owner->>System: Send invitation
-    System->>Database: Create invitation record
-    Database-->>System: Invitation created
 
+    alt Cloud Mode
+        System->>System: Check for disposable email
+        alt Disposable Email
+            System-->>Owner: Error - Please use permanent email
+        else Valid Email
+            System->>Database: Create invitation record
+        end
+    else Self-Hosted Mode
+        System->>Database: Create invitation record
+    end
+
+    Database-->>System: Invitation created
     System->>Email: Send invitation email
     Email-->>NewUser: Invitation received
 
     NewUser->>System: Click invitation link
     System->>Database: Verify invitation token
 
-    alt Valid Invitation
+    alt Valid Invitation (User not authenticated)
         Database-->>System: Token valid
-        NewUser->>System: Sign in/sign up
+        System-->>NewUser: Redirect to /sign-up?invite=token
+        Note over NewUser: Sign-up page preferred for new users
+        NewUser->>System: Sign up with invited email
+        System->>Database: Create user + Accept invitation
+        Database->>Database: Add user to organization
+        System-->>NewUser: Welcome to organization
+    else Valid Invitation (User authenticated)
+        Database-->>System: Token valid
         System->>Database: Accept invitation
         Database->>Database: Add user to organization
-        Database-->>System: Member added
         System-->>NewUser: Welcome to organization
     else Invalid/Expired
         Database-->>System: Invalid token
@@ -728,11 +951,63 @@ sequenceDiagram
     end
 ```
 
+### Invitation Flow Details
+
+**When inviting a member (Cloud Mode):**
+
+- Disposable/throwaway emails are blocked (same validation as sign-up)
+- Only permanent email addresses are accepted
+- Validation happens client-side before API call
+
+**When accepting an invitation:**
+
+1. User clicks the invitation link
+2. If not authenticated, redirects to **sign-up page** (not sign-in) with invite token
+3. Sign-up page shows organization name and role being joined
+4. **Social auth buttons are hidden** - user must sign up with the invited email
+5. Sign-up page includes "Already have an account? Sign in instead" link
+6. Sign-in page (when accessed via invite) also hides social auth buttons
+7. **Email verification is skipped** - the invitation system validates email ownership
+8. **Subscription check is skipped** - invited members join the existing org's subscription
+9. After authentication, user is automatically added to the organization
+
+**Why Email Verification is Skipped for Invitations:**
+
+- The invitation was sent to a specific email address
+- User must sign up with that exact email (enforced by invitation system)
+- The invitation process itself validates email ownership
+- `/api/auth/verify-invited-user` marks the user's email as verified automatically
+
+**Why Subscription Check is Skipped for Invited Members:**
+
+- Invited members join an existing organization
+- The organization already has an active subscription
+- New members don't need their own subscription
+- They inherit the organization's plan limits
+
+**Why Social Auth is Hidden for Invitations:**
+
+- Invitations are sent to a specific email address
+- The invited email must match the account email for security
+- Social auth could result in a different email being used
+- Ensures the correct person accepts the invitation
+
+**Disposable Email Validation:**
+
+```typescript
+// In MemberAccessDialog.tsx (invite mode only)
+if (mode === "invite" && isCloudMode && isDisposableEmail(email)) {
+  toast.error(getDisposableEmailErrorMessage());
+  return;
+}
+```
+
 ## API Integration
 
 ### Authentication Endpoints
 
 **Better Auth handlers (App Router):**
+
 - `/api/auth/[...all]` and `/api/auth` handle sign-in, sign-up, sign-out, password reset, and session retrieval.
 - `/api/auth/sign-in/email` and `/api/auth/sign-up/email` are dedicated email/password entrypoints used by the auth pages.
 - `/api/auth/callback/github` - GitHub OAuth callback handler
@@ -741,27 +1016,36 @@ sequenceDiagram
 - `/api/auth/user` returns the current session's user.
 - `/api/auth/setup-defaults` creates a default org/project when the user has no memberships and no pending invites.
 - `/api/auth/verify-key` validates job-scoped API keys.
+- `/api/auth/verify-email` - Email verification endpoint (cloud mode only)
+- `/api/auth/verify-invited-user` - Marks invited user's email as verified (bypasses email verification for invitations)
 
 **Frontend Routes:**
+
 - `/sign-in` - Sign-in page with email/password and social auth buttons
 - `/sign-up` - Sign-up page with email/password and social auth buttons
+- `/verify-email` - Email verification pending page (cloud mode only)
 - `/auth-callback` - OAuth redirect handler, calls setup-defaults for new users
 - `/forgot-password` - Password reset request page
 - `/reset-password` - Password reset form page
+- `/invite/[token]` - Organization invitation acceptance page
 
 **Organization & membership APIs (outside Better Auth):**
+
 - `/api/organizations/*` and `/api/projects/*` manage orgs, projects, members, invitations, and variables; access is enforced via RBAC middleware rather than Better Auth plugins.
 
 ### Client SDK Methods
 
 **Email/Password Authentication:**
+
 - `authClient.signIn.email(credentials)` - Sign in with email/password
 - `authClient.signUp.email(userData)` - Sign up with email/password
 - `authClient.signOut()` - Sign out (all methods)
 - `authClient.forgetPassword(email)` - Request password reset
 - `authClient.resetPassword(data)` - Reset password with token
+- `authClient.sendVerificationEmail({ email })` - Resend verification email (cloud mode)
 
 **Social Authentication:**
+
 - `authClient.signIn.social({ provider: "github", callbackURL })` - Sign in with GitHub
 - `authClient.signIn.social({ provider: "google", callbackURL })` - Sign in with Google
 - Auto-redirects to OAuth provider, then back to callbackURL
@@ -769,11 +1053,13 @@ sequenceDiagram
 - Automatically links social accounts to existing email accounts
 
 **Organizations & Admin (Better Auth client plugins):**
+
 - `organization.create/list/setActive(...)` - Manage org membership context
 - `organization.inviteMember(...)`, `organization.removeMember(...)`, `organization.updateMemberRole(...)` - Org membership controls
 - `admin.listUsers/createUser/banUser/unbanUser/impersonateUser/removeUser` - Super-admin actions
 
 **React Hooks:**
+
 - `useSession()` - Get current session (works for all auth methods)
 
 ## Database Schema
@@ -852,19 +1138,52 @@ erDiagram
 
 ### Test Scenarios
 
-#### 1. Sign Up Flow
-**Steps:**
-1. Navigate to sign-up page
-2. Enter valid email, name, password
-3. Submit form
-4. Verify user created in database
-5. Verify default organization created
-6. Verify user assigned as owner
+#### 1. Sign Up Flow (Cloud Mode)
 
-**Expected:** User redirected to sign-in with success message
-
-#### 2. Sign In Flow
 **Steps:**
+
+1. Ensure `SELF_HOSTED=false` or unset
+2. Navigate to sign-up page
+3. Enter valid email, name, password
+4. Submit form
+5. Verify redirected to `/verify-email` page
+6. Verify user created in database with `emailVerified: null`
+7. Verify verification email sent
+
+**Expected:** User redirected to verify-email page with instructions
+
+#### 2. Sign Up Flow (Self-Hosted Mode)
+
+**Steps:**
+
+1. Set `SELF_HOSTED=true`
+2. Navigate to sign-up page
+3. Enter valid email, name, password (disposable emails allowed)
+4. Submit form
+5. Verify user created in database
+6. Verify default organization created
+7. Verify user assigned as owner
+
+**Expected:** User redirected to sign-in with success message (no verification required)
+
+#### 3. Email Verification (Cloud Mode)
+
+**Steps:**
+
+1. Complete sign-up in cloud mode
+2. Check email for verification link
+3. Click verification link
+4. Verify `emailVerified` timestamp set in database
+5. Verify redirected to sign-in page with `?verified=true` parameter
+6. Verify success alert displayed: "Email verified successfully!"
+7. Sign in to access dashboard
+
+**Expected:** Email verified, success message shown, user can sign in
+
+#### 4. Sign In Flow
+
+**Steps:**
+
 1. Navigate to sign-in page
 2. Enter registered email and password
 3. Submit form
@@ -873,8 +1192,10 @@ erDiagram
 
 **Expected:** User redirected to dashboard
 
-#### 3. Password Reset Flow
+#### 5. Password Reset Flow
+
 **Steps:**
+
 1. Navigate to forgot password
 2. Enter registered email
 3. Check email received
@@ -885,23 +1206,85 @@ erDiagram
 
 **Expected:** Password successfully reset, sign in works
 
-#### 4. Rate Limiting
+#### 6. Rate Limiting
+
 **Steps:**
+
 1. Request password reset 4 times in quick succession
 2. Verify 4th request blocked
 3. Check error message includes wait time
 
 **Expected:** Rate limit enforced after 3 attempts
 
-#### 5. Organization Invitation
-**Steps:**
-1. Owner sends invitation to email
-2. New user receives invitation email
-3. New user clicks link and signs up/in
-4. Verify user added to organization
-5. Verify correct role assigned
+#### 7. Organization Invitation (New User)
 
-**Expected:** New member added to organization
+**Steps:**
+
+1. Owner sends invitation to email (in cloud mode, verify disposable emails are blocked)
+2. New user receives invitation email
+3. New user clicks invitation link
+4. Verify user is redirected to sign-up page (not sign-in)
+5. Verify sign-up page shows organization name and role
+6. Verify sign-up page has "Already have an account? Sign in instead" link
+7. Verify social auth buttons are hidden (only email form shown)
+8. User signs up with invited email
+9. Verify user is NOT redirected to email verification page
+10. Verify user's email is automatically marked as verified
+11. Verify user is NOT redirected to subscription page
+12. Verify user added to organization with correct role
+
+**Expected:** New member added to organization after sign-up (email verification and subscription check bypassed)
+
+#### 8. Organization Invitation (Existing User)
+
+**Steps:**
+
+1. Owner sends invitation to email of existing user
+2. Existing user receives invitation email
+3. User clicks invitation link
+4. If not logged in, redirected to sign-up page with sign-in link
+5. User clicks "Sign in instead" and signs in
+6. Verify social auth buttons are hidden on sign-in page (only email form shown)
+7. Verify user is NOT redirected to subscription page
+8. User is automatically added to organization
+
+**Expected:** Existing user added to organization after sign-in (social auth disabled, subscription check bypassed)
+
+#### 9. Disposable Email Blocking (Cloud Mode Only)
+
+**Steps:**
+
+1. Ensure `SELF_HOSTED=false`
+2. Attempt sign-up with disposable email (e.g., mailinator.com)
+3. Verify error shown
+
+**Expected:** Sign-up blocked with "Please use a permanent email address"
+
+#### 10. Disposable Email Blocking in Member Invitation (Cloud Mode)
+
+**Steps:**
+
+1. Ensure `SELF_HOSTED=false`
+2. Open member invitation dialog in org-admin
+3. Enter disposable email address (e.g., test@10minutemail.com)
+4. Click "Send Invitation"
+5. Verify error toast shown
+
+**Expected:** Invitation blocked with "Please use a permanent email address"
+
+#### 11. Email Verification Resend Rate Limiting (Cloud Mode)
+
+**Steps:**
+
+1. Sign up in cloud mode
+2. On verify-email page, click "Resend verification email"
+3. Verify email is sent
+4. Immediately try to resend again
+5. Verify button is disabled with countdown timer (5 minutes)
+6. Wait for cooldown to expire
+7. Verify button is enabled again
+
+**Expected:** Resend rate limited to once every 5 minutes
 
 ## Related Documentation
 

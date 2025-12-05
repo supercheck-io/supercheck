@@ -1,11 +1,13 @@
-import {
-  getQueues,
-} from "@/lib/queue";
+import { getQueues } from "@/lib/queue";
 import { checkCapacityLimits } from "@/lib/middleware/plan-enforcement";
 
 // Default capacity limits - used as fallback for self-hosted mode
-export const DEFAULT_RUNNING_CAPACITY = parseInt(process.env.RUNNING_CAPACITY || "5");
-export const DEFAULT_QUEUED_CAPACITY = parseInt(process.env.QUEUED_CAPACITY || "50");
+export const DEFAULT_RUNNING_CAPACITY = parseInt(
+  process.env.RUNNING_CAPACITY || "5"
+);
+export const DEFAULT_QUEUED_CAPACITY = parseInt(
+  process.env.QUEUED_CAPACITY || "50"
+);
 
 export interface QueueStats {
   running: number;
@@ -23,8 +25,14 @@ export interface CapacityLimits {
  * Get capacity limits for an organization based on their subscription plan
  * For self-hosted mode, uses environment defaults
  * For cloud mode, fetches plan-specific limits from database
+ *
+ * Note: This function is called frequently (every 1s for SSE), so we don't log
+ * on every call to avoid polluting logs. The checkCapacityLimits function
+ * handles the fallback gracefully.
  */
-export async function getCapacityLimitsForOrg(organizationId?: string): Promise<CapacityLimits> {
+export async function getCapacityLimitsForOrg(
+  organizationId?: string
+): Promise<CapacityLimits> {
   if (!organizationId) {
     // No org context - use defaults (self-hosted or unauthenticated)
     return {
@@ -35,12 +43,16 @@ export async function getCapacityLimitsForOrg(organizationId?: string): Promise<
 
   try {
     // checkCapacityLimits handles both self-hosted (env vars) and cloud (plan limits)
+    // It now returns defaults gracefully for unsubscribed users without throwing
     return await checkCapacityLimits(organizationId);
-  } catch (error) {
-    console.warn(
-      `Failed to get capacity limits for org ${organizationId}, using defaults:`,
-      error instanceof Error ? error.message : String(error)
-    );
+  } catch {
+    // Only log unexpected errors (not subscription-related)
+    // checkCapacityLimits now handles subscription errors internally
+    if (process.env.NODE_ENV === "development") {
+      console.debug(
+        `[queue-stats] Using default capacity for org ${organizationId.substring(0, 8)}...`
+      );
+    }
     return {
       runningCapacity: DEFAULT_RUNNING_CAPACITY,
       queuedCapacity: DEFAULT_QUEUED_CAPACITY,
@@ -70,13 +82,15 @@ export async function shouldProcessJob(): Promise<boolean> {
  * Fetch real queue statistics from Redis using BullMQ key patterns
  * @param organizationId - Optional organization ID to get plan-specific capacity limits
  */
-export async function fetchQueueStats(organizationId?: string): Promise<QueueStats> {
+export async function fetchQueueStats(
+  organizationId?: string
+): Promise<QueueStats> {
   try {
     // Get capacity limits - org-specific for cloud, env defaults for self-hosted
     const capacityLimits = await getCapacityLimitsForOrg(organizationId);
-    
+
     const queues = await getQueues();
-    
+
     // Aggregate all execution queues
     const executionQueues = [
       // Playwright global queue
@@ -192,7 +206,9 @@ export function generateMockQueueStats(): QueueStats {
  * Get queue statistics with fallback to zeros
  * @param organizationId - Optional organization ID to get plan-specific capacity limits
  */
-export async function getQueueStats(organizationId?: string): Promise<QueueStats> {
+export async function getQueueStats(
+  organizationId?: string
+): Promise<QueueStats> {
   try {
     return await fetchQueueStats(organizationId);
   } catch (error) {

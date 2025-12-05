@@ -33,55 +33,56 @@ const typeColors = {
 } as const;
 
 // Separate component for notification provider cell to fix React hooks issue
-const NotificationProviderCell = ({ provider }: { provider: string | object | null | undefined }) => {
+const NotificationProviderCell = ({
+  provider,
+}: {
+  provider: string | object | null | undefined;
+}) => {
   const [isOpen, setIsOpen] = useState(false);
-  
+
   // Handle null/undefined provider
   if (!provider) {
-    return (
-      <div className="text-muted-foreground text-sm">
-        No providers
-      </div>
-    );
+    return <div className="text-muted-foreground text-sm">No providers</div>;
   }
-  
+
   // Handle case where provider is an object or not a string
   let providerString: string;
-  if (typeof provider === 'string') {
+  if (typeof provider === "string") {
     providerString = provider;
-  } else if (typeof provider === 'object' && provider !== null) {
+  } else if (typeof provider === "object" && provider !== null) {
     // If it's an object, try to extract a string representation
     providerString = JSON.stringify(provider);
   } else {
     providerString = String(provider);
   }
-  
+
   // Parse providers from comma-separated string
   const providers = providerString
-    .split(',')
-    .map(p => p.trim())
-    .filter(p => p.length > 0);
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
 
   if (!providers || providers.length === 0) {
-    return (
-      <div className="text-muted-foreground text-sm">
-        No providers
-      </div>
-    );
+    return <div className="text-muted-foreground text-sm">No providers</div>;
   }
 
   // Group providers by type and count them
-  const providerCounts = providers.reduce((acc, providerType) => {
-    acc[providerType] = (acc[providerType] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
+  const providerCounts = providers.reduce(
+    (acc, providerType) => {
+      acc[providerType] = (acc[providerType] || 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>
+  );
 
   // Convert to array of unique providers with counts
-  const uniqueProviders = Object.entries(providerCounts).map(([type, count]) => ({
-    type,
-    count,
-    config: getNotificationProviderConfig(type)
-  }));
+  const uniqueProviders = Object.entries(providerCounts).map(
+    ([type, count]) => ({
+      type,
+      count,
+      config: getNotificationProviderConfig(type),
+    })
+  );
 
   const displayProviders = uniqueProviders.slice(0, 2);
   const remainingCount = uniqueProviders.length - 2;
@@ -139,7 +140,10 @@ const NotificationProviderCell = ({ provider }: { provider: string | object | nu
             );
           })}
           {remainingCount > 0 && (
-            <Badge variant="outline" className="text-xs whitespace-nowrap flex-shrink-0 flex items-center gap-1 px-2.5 py-1 bg-background border-border">
+            <Badge
+              variant="outline"
+              className="text-xs whitespace-nowrap flex-shrink-0 flex items-center gap-1 px-2.5 py-1 bg-background border-border"
+            >
               +{remainingCount}
             </Badge>
           )}
@@ -160,7 +164,7 @@ const NotificationProviderCell = ({ provider }: { provider: string | object | nu
                 {count > 1 && (
                   <span className="ml-1 px-1 text-xs bg-primary text-primary-foreground rounded-sm">
                     {count}
-                </span>
+                  </span>
                 )}
               </Badge>
             );
@@ -175,15 +179,19 @@ export const columns: ColumnDef<AlertHistory>[] = [
   {
     accessorKey: "id",
     header: ({ column }) => (
-      <DataTableColumnHeader className="ml-2" column={column} title="Alert ID" />
+      <DataTableColumnHeader
+        className="ml-2"
+        column={column}
+        title="Alert ID"
+      />
     ),
     cell: ({ row }) => {
       const id = row.getValue("id") as string;
       return (
         <div className="w-[90px] ml-2">
-          <UUIDField 
-            value={id} 
-            maxLength={24} 
+          <UUIDField
+            value={id}
+            maxLength={8}
             onCopy={() => toast.success("Alert ID copied to clipboard")}
           />
         </div>
@@ -200,7 +208,7 @@ export const columns: ColumnDef<AlertHistory>[] = [
     cell: ({ row }) => {
       const targetName = row.getValue("targetName") as string;
       return (
-        <TruncatedTextWithTooltip 
+        <TruncatedTextWithTooltip
           text={targetName}
           className="font-medium"
           maxWidth="200px"
@@ -216,7 +224,9 @@ export const columns: ColumnDef<AlertHistory>[] = [
     ),
     cell: ({ row }) => {
       const type = row.getValue("type") as string;
-      const colorClass = typeColors[type as keyof typeof typeColors] || "bg-gray-100 text-gray-800 hover:bg-gray-200";
+      const colorClass =
+        typeColors[type as keyof typeof typeColors] ||
+        "bg-gray-100 text-gray-800 hover:bg-gray-200";
       return (
         <Badge className={`capitalize ${colorClass}`}>
           {type.replace(/_/g, " ")}
@@ -235,9 +245,7 @@ export const columns: ColumnDef<AlertHistory>[] = [
     cell: ({ row }) => {
       const status = row.getValue("status") as keyof typeof statusColors;
       return (
-        <Badge className={`capitalize ${statusColors[status]}`}>
-          {status}
-        </Badge>
+        <Badge className={`capitalize ${statusColors[status]}`}>{status}</Badge>
       );
     },
     filterFn: (row, id, value) => {
@@ -256,15 +264,15 @@ export const columns: ColumnDef<AlertHistory>[] = [
     filterFn: (row, id, value: string[]) => {
       const providerString = row.getValue(id) as string;
       if (!providerString || value.length === 0) return true;
-      
+
       const providers = providerString
-        .split(',')
-        .map(p => p.trim())
-        .filter(p => p.length > 0);
-      
-      return value.some(filterProvider => 
-        providers.some(provider => 
-          provider.toLowerCase() === filterProvider.toLowerCase()
+        .split(",")
+        .map((p) => p.trim())
+        .filter((p) => p.length > 0);
+
+      return value.some((filterProvider) =>
+        providers.some(
+          (provider) => provider.toLowerCase() === filterProvider.toLowerCase()
         )
       );
     },

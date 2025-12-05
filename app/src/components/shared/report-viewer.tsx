@@ -18,6 +18,52 @@ import {
 } from "./cancellation-error-page";
 import { useTheme } from "next-themes";
 
+// Static error page component - defined outside to avoid recreation each render
+function StaticErrorPage({
+  title,
+  message,
+  backToUrl,
+  backToLabel,
+  hideReloadButton,
+}: {
+  title: string;
+  message: string;
+  backToUrl?: string;
+  backToLabel?: string;
+  hideReloadButton?: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center w-full h-full p-8">
+      <div className="flex flex-col items-center text-center max-w-md">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-4" />
+        <h1 className="text-3xl font-bold mb-2">{title}</h1>
+        <p className="text-muted-foreground mb-6">{message}</p>
+        <div className="flex gap-4">
+          {backToUrl && (
+            <Link
+              href={backToUrl}
+              className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
+            >
+              {backToLabel || "Back"}
+            </Link>
+          )}
+          {!hideReloadButton && (
+            <Button
+              onClick={() => {
+                // Reload the entire page instead of just adding parameters to a broken URL
+                window.location.reload();
+              }}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              Reload Report
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface ReportViewerProps {
   reportUrl: string | null;
   isRunning?: boolean;
@@ -67,82 +113,96 @@ export function ReportViewer({
     useState<CancellationErrorInfo | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fullscreenIframeRef = useRef<HTMLIFrameElement>(null);
+  const prevReportUrl = useRef(reportUrl);
 
-  // Update URL when prop changes
+  // Update URL when prop changes - deferred to avoid synchronous setState
   useEffect(() => {
+    // Only run when reportUrl actually changes
+    if (reportUrl === prevReportUrl.current) {
+      return;
+    }
+    prevReportUrl.current = reportUrl;
+
     if (reportUrl) {
-      // Always ensure we have a timestamp parameter to prevent caching issues
-      const finalUrl = reportUrl.includes("?")
-        ? `${reportUrl}&t=${Date.now()}`
-        : `${reportUrl}?t=${Date.now()}`;
+      // Defer all state updates to avoid synchronous setState in effect
+      setTimeout(() => {
+        // Always ensure we have a timestamp parameter to prevent caching issues
+        const finalUrl = reportUrl.includes("?")
+          ? `${reportUrl}&t=${Date.now()}`
+          : `${reportUrl}?t=${Date.now()}`;
 
-      setCurrentReportUrl(finalUrl);
-      setIsReportLoading(true);
-      setIframeError(false);
-      setReportError(null);
-      setTimeoutInfo(null);
-      setCancellationInfo(null);
-      setPreCheckComplete(false);
+        setCurrentReportUrl(finalUrl);
+        setIsReportLoading(true);
+        setIframeError(false);
+        setReportError(null);
+        setTimeoutInfo(null);
+        setCancellationInfo(null);
+        setPreCheckComplete(false);
 
-      // Pre-check the URL to detect cancellation or timeout errors early
-      // Use GET instead of HEAD to get the response body for error details
-      fetch(finalUrl, { method: "GET" })
-        .then(async (response) => {
-          if (!response.ok) {
-            // Try to parse the response body for error details
-            try {
-              const contentType = response.headers.get("content-type");
-              if (contentType?.includes("application/json")) {
-                const errorData = await response.json();
+        // Pre-check the URL to detect cancellation or timeout errors early
+        // Use GET instead of HEAD to get the response body for error details
+        fetch(finalUrl, { method: "GET" })
+          .then(async (response) => {
+            if (!response.ok) {
+              // Try to parse the response body for error details
+              try {
+                const contentType = response.headers.get("content-type");
+                if (contentType?.includes("application/json")) {
+                  const errorData = await response.json();
 
-                // Check if this is a cancellation error
-                if (errorData.cancellationInfo?.isCancelled) {
-                  setCancellationInfo(errorData.cancellationInfo);
-                  setIframeError(true);
-                  setIsReportLoading(false);
-                  return;
+                  // Check if this is a cancellation error
+                  if (errorData.cancellationInfo?.isCancelled) {
+                    setCancellationInfo(errorData.cancellationInfo);
+                    setIframeError(true);
+                    setIsReportLoading(false);
+                    return;
+                  }
+
+                  // Check if this is a timeout error
+                  if (errorData.timeoutInfo?.isTimeout) {
+                    setTimeoutInfo(errorData.timeoutInfo);
+                    setIframeError(true);
+                    setIsReportLoading(false);
+                    return;
+                  }
+
+                  // Generic error with message
+                  if (errorData.error || errorData.message) {
+                    setReportError(errorData.message || errorData.error);
+                    setIframeError(true);
+                    setIsReportLoading(false);
+                    return;
+                  }
                 }
-
-                // Check if this is a timeout error
-                if (errorData.timeoutInfo?.isTimeout) {
-                  setTimeoutInfo(errorData.timeoutInfo);
-                  setIframeError(true);
-                  setIsReportLoading(false);
-                  return;
-                }
-
-                // Generic error with message
-                if (errorData.error || errorData.message) {
-                  setReportError(errorData.message || errorData.error);
-                  setIframeError(true);
-                  setIsReportLoading(false);
-                  return;
-                }
+              } catch {
+                // Failed to parse JSON, continue with generic error
               }
-            } catch {
-              // Failed to parse JSON, continue with generic error
-            }
 
-            if (response.status === 404) {
-              setIsReportLoading(false);
-              setIframeError(true);
-              setReportError("The test report could not be found.");
+              if (response.status === 404) {
+                setIsReportLoading(false);
+                setIframeError(true);
+                setReportError("The test report could not be found.");
+              }
+            } else {
+              // Pre-check passed, allow iframe to load
+              setPreCheckComplete(true);
             }
-          } else {
-            // Pre-check passed, allow iframe to load
-            setPreCheckComplete(true);
-          }
-        })
-        .catch((error) => {
-          console.error("ReportViewer: Error pre-checking report URL:", error);
-          setIsReportLoading(false);
-          setIframeError(true);
-          setReportError(
-            "Failed to load test report. The report server might be unreachable."
-          );
-        });
+          })
+          .catch((error) => {
+            console.error(
+              "ReportViewer: Error pre-checking report URL:",
+              error
+            );
+            setIsReportLoading(false);
+            setIframeError(true);
+            setReportError(
+              "Failed to load test report. The report server might be unreachable."
+            );
+          });
+      }, 0);
     } else {
-      setCurrentReportUrl(null);
+      // Defer to avoid synchronous setState in effect
+      setTimeout(() => setCurrentReportUrl(null), 0);
     }
   }, [reportUrl]);
 
@@ -345,44 +405,6 @@ export function ReportViewer({
     }
   }, [isReportLoading, currentReportUrl]);
 
-  // Static error page component
-  const StaticErrorPage = ({
-    title,
-    message,
-  }: {
-    title: string;
-    message: string;
-  }) => (
-    <div className="flex flex-col items-center justify-center w-full h-full p-8">
-      <div className="flex flex-col items-center text-center max-w-md">
-        <AlertCircle className="h-16 w-16 text-red-500 mb-4" />
-        <h1 className="text-3xl font-bold mb-2">{title}</h1>
-        <p className="text-muted-foreground mb-6">{message}</p>
-        <div className="flex gap-4">
-          {backToUrl && (
-            <Link
-              href={backToUrl}
-              className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
-            >
-              {backToLabel || "Back"}
-            </Link>
-          )}
-          {!hideReloadButton && (
-            <Button
-              onClick={() => {
-                // Reload the entire page instead of just adding parameters to a broken URL
-                window.location.reload();
-              }}
-              className="bg-primary text-primary-foreground hover:bg-primary/90"
-            >
-              Reload Report
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
   // Loading state when the test is running - prioritize this check
   if (isRunning) {
     return (
@@ -456,6 +478,9 @@ export function ReportViewer({
           message={
             reportError || "Test results not found or have been removed."
           }
+          backToUrl={backToUrl}
+          backToLabel={backToLabel}
+          hideReloadButton={hideReloadButton}
         />
       </div>
     );

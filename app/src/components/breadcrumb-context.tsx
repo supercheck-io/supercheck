@@ -1,6 +1,12 @@
-'use client';
+"use client";
 
-import React, { createContext, useContext, ReactNode, useState } from 'react';
+import React, {
+  createContext,
+  useContext,
+  ReactNode,
+  useState,
+  useMemo,
+} from "react";
 
 export type BreadcrumbItem = {
   label: string;
@@ -13,13 +19,21 @@ type BreadcrumbContextType = {
   setBreadcrumbs: (breadcrumbs: BreadcrumbItem[]) => void;
 };
 
-const BreadcrumbContext = createContext<BreadcrumbContextType | undefined>(undefined);
+const BreadcrumbContext = createContext<BreadcrumbContextType | undefined>(
+  undefined
+);
 
 export function BreadcrumbProvider({ children }: { children: ReactNode }) {
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
 
+  // Memoize context value to prevent unnecessary re-renders
+  const contextValue = useMemo(
+    () => ({ breadcrumbs, setBreadcrumbs }),
+    [breadcrumbs]
+  );
+
   return (
-    <BreadcrumbContext.Provider value={{ breadcrumbs, setBreadcrumbs }}>
+    <BreadcrumbContext.Provider value={contextValue}>
       {children}
     </BreadcrumbContext.Provider>
   );
@@ -28,24 +42,24 @@ export function BreadcrumbProvider({ children }: { children: ReactNode }) {
 export function useBreadcrumbs() {
   const context = useContext(BreadcrumbContext);
   if (context === undefined) {
-    throw new Error('useBreadcrumbs must be used within a BreadcrumbProvider');
+    throw new Error("useBreadcrumbs must be used within a BreadcrumbProvider");
   }
   return context;
 }
 
 export function Breadcrumbs({ items }: { items: BreadcrumbItem[] }) {
   const { setBreadcrumbs } = useBreadcrumbs();
-  
+
   // Set breadcrumbs on component mount
   React.useEffect(() => {
     setBreadcrumbs(items);
-    
+
     // Clean up on unmount
     return () => {
       setBreadcrumbs([]);
     };
   }, [items, setBreadcrumbs]);
-  
+
   // This component doesn't render anything visible
   return null;
 }

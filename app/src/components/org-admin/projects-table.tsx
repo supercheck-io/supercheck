@@ -18,7 +18,7 @@ interface ProjectsTableProps {
 export function ProjectsTable({ projects, onCreateProject, onEditProject, canCreateProjects = false, canManageProject = false }: ProjectsTableProps) {
   const columns = React.useMemo(() => createProjectColumns(onEditProject, canManageProject), [onEditProject, canManageProject]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const CustomToolbar = React.useCallback(({ table }: { table: any }) => (
     <ProjectTableToolbar table={table} onCreateProject={onCreateProject} canCreateProjects={canCreateProjects} />
   ), [onCreateProject, canCreateProjects]);

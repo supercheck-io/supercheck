@@ -183,24 +183,19 @@ export async function getAllUsers(limit = 50, offset = 0) {
     .limit(limit)
     .offset(offset);
 
-  // Enrich with actual RBAC roles (highest role across all orgs) and org count
+  // Enrich with actual RBAC roles (highest role across all orgs), org count, and organizations
   const enrichedUsers = await Promise.all(
     users.map(async (u) => {
       try {
-        const [highestRole, orgCount] = await Promise.all([
+        const [highestRole, userOrganizations] = await Promise.all([
           getUserHighestRole(u.id),
-          getUserOrgCount(u.id),
+          getUserOrganizations(u.id),
         ]);
-        // Debug logging removed - implementation complete
-
-        // Add org count to name if user is in multiple orgs
-        const nameWithOrgCount =
-          orgCount > 1 ? `${u.name} (${orgCount} orgs)` : u.name;
 
         return {
           ...u,
-          name: nameWithOrgCount,
           role: highestRole,
+          organizations: userOrganizations,
         };
       } catch (error) {
         console.error(`Error getting role for user ${u.id}:`, error);
@@ -208,6 +203,7 @@ export async function getAllUsers(limit = 50, offset = 0) {
         return {
           ...u,
           role: u.role || "project_viewer",
+          organizations: [],
         };
       }
     })
@@ -263,6 +259,30 @@ async function getUserOrgCount(userId: string): Promise<number> {
     .where(eq(member.userId, userId));
 
   return memberships.length;
+}
+
+/**
+ * Get all organizations a user belongs to with their roles
+ */
+async function getUserOrganizations(userId: string): Promise<
+  {
+    organizationId: string;
+    organizationName: string;
+    role: string;
+  }[]
+> {
+  const userOrganizations = await db
+    .select({
+      organizationId: member.organizationId,
+      organizationName: organization.name,
+      role: member.role,
+    })
+    .from(member)
+    .innerJoin(organization, eq(member.organizationId, organization.id))
+    .where(eq(member.userId, userId))
+    .orderBy(member.id); // UUIDv7 is time-ordered
+
+  return userOrganizations;
 }
 
 export async function getAllOrganizations(limit = 50, offset = 0) {

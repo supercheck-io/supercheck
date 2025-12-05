@@ -99,7 +99,7 @@ export async function saveTest(
       const testId = validatedData.id;
 
       // Remove the id from the data to update
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+       
       const { id: _, ...updateData } = validatedData;
 
       // Update the test in the database

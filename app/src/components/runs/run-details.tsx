@@ -17,7 +17,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { canManageRuns } from "@/lib/rbac/client-permissions";
-import { Role } from "@/lib/rbac/permissions";
+import { Role } from "@/lib/rbac/permissions-client";
 import { Spinner } from "@/components/ui/spinner";
 import { RunStatusListener } from "./run-status-listener";
 import { TestRunStatus } from "@/db/schema";
@@ -85,8 +85,14 @@ export function RunDetails({
 
   // Helper function to format location display with flag and name
   // Using same flags as rest of the app (from location-service.ts)
-  const formatLocationDisplay = (location: string | null): { flag: string; name: string } => {
-    if (!location || location.toLowerCase() === "local" || location.toLowerCase() === "global") {
+  const formatLocationDisplay = (
+    location: string | null
+  ): { flag: string; name: string } => {
+    if (
+      !location ||
+      location.toLowerCase() === "local" ||
+      location.toLowerCase() === "global"
+    ) {
       return { flag: "🌍", name: "Global" };
     }
 
@@ -205,11 +211,7 @@ export function RunDetails({
 
   // Handle status updates from SSE - memoized to prevent unnecessary re-renders
   const handleStatusUpdate = useCallback(
-    (
-      status: string,
-      newReportUrl?: string,
-      newDuration?: string
-    ) => {
+    (status: string, newReportUrl?: string, newDuration?: string) => {
       if (status !== currentStatus) {
         setCurrentStatus(mapStatusForDisplay(status as TestRunStatus));
       }
@@ -423,10 +425,13 @@ export function RunDetails({
                 </div>
                 <div className="text-sm font-semibold truncate flex items-center gap-1.5">
                   {(() => {
-                    const locationDisplay = formatLocationDisplay(headerLocation);
+                    const locationDisplay =
+                      formatLocationDisplay(headerLocation);
                     return (
                       <>
-                        <span className="text-base">{locationDisplay.flag}</span>
+                        <span className="text-base">
+                          {locationDisplay.flag}
+                        </span>
                         <span>{locationDisplay.name}</span>
                       </>
                     );
@@ -472,8 +477,8 @@ export function RunDetails({
                       addSuffix: true,
                     })
                   : currentStatus === "running"
-                  ? "In Progress"
-                  : "Unknown"}
+                    ? "In Progress"
+                    : "Unknown"}
               </div>
             </div>
           </div>
@@ -520,7 +525,6 @@ export function RunDetails({
       </div>
 
       <div className="bg-card rounded-lg border overflow-hidden">
-     
         {isPerformanceRun ? (
           <div className="h-[calc(100vh-270px)]">
             <PerformanceTestReport

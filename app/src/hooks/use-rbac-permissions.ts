@@ -1,13 +1,13 @@
 /**
  * Unified RBAC Permission Hook
- * 
+ *
  * This hook provides a single, consistent way to check permissions across all UI components.
  * It replaces the scattered permission checking logic throughout the codebase.
  */
 
-import { useMemo } from 'react';
-import { useProjectContext } from './use-project-context';
-import { normalizeRole } from '@/lib/rbac/role-normalizer';
+import { useMemo } from "react";
+import { useProjectContext } from "./use-project-context";
+import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import {
   canCreateTests,
   canEditTests,
@@ -30,9 +30,9 @@ import {
   canManageProject,
   canViewAPIKeys,
   canManageAPIKeys,
-  canExportResults
-} from '@/lib/rbac/client-permissions';
-import { Role } from '@/lib/rbac/permissions';
+  canExportResults,
+} from "@/lib/rbac/client-permissions";
+import { Role } from "@/lib/rbac/permissions-client";
 
 export interface RBACPermissions {
   // Test permissions
@@ -207,28 +207,96 @@ export function useRBACPermissions(): RBACPermissions {
  */
 
 export function useTestPermissions() {
-  const { canCreateTest, canEditTest, canDeleteTest, canRunTest, isLoading, hasError } = useRBACPermissions();
-  return { canCreateTest, canEditTest, canDeleteTest, canRunTest, isLoading, hasError };
+  const {
+    canCreateTest,
+    canEditTest,
+    canDeleteTest,
+    canRunTest,
+    isLoading,
+    hasError,
+  } = useRBACPermissions();
+  return {
+    canCreateTest,
+    canEditTest,
+    canDeleteTest,
+    canRunTest,
+    isLoading,
+    hasError,
+  };
 }
 
 export function useJobPermissions() {
-  const { canCreateJob, canEditJob, canDeleteJob, canTriggerJob, isLoading, hasError } = useRBACPermissions();
-  return { canCreateJob, canEditJob, canDeleteJob, canTriggerJob, isLoading, hasError };
+  const {
+    canCreateJob,
+    canEditJob,
+    canDeleteJob,
+    canTriggerJob,
+    isLoading,
+    hasError,
+  } = useRBACPermissions();
+  return {
+    canCreateJob,
+    canEditJob,
+    canDeleteJob,
+    canTriggerJob,
+    isLoading,
+    hasError,
+  };
 }
 
 export function useMonitorPermissions() {
-  const { canCreateMonitor, canEditMonitor, canDeleteMonitor, isLoading, hasError } = useRBACPermissions();
-  return { canCreateMonitor, canEditMonitor, canDeleteMonitor, isLoading, hasError };
+  const {
+    canCreateMonitor,
+    canEditMonitor,
+    canDeleteMonitor,
+    isLoading,
+    hasError,
+  } = useRBACPermissions();
+  return {
+    canCreateMonitor,
+    canEditMonitor,
+    canDeleteMonitor,
+    isLoading,
+    hasError,
+  };
 }
 
 export function useOrganizationPermissions() {
-  const { canManageOrg, canDeleteOrg, canInviteMember, canRemoveMember, canManageMember, isLoading, hasError } = useRBACPermissions();
-  return { canManageOrg, canDeleteOrg, canInviteMember, canRemoveMember, canManageMember, isLoading, hasError };
+  const {
+    canManageOrg,
+    canDeleteOrg,
+    canInviteMember,
+    canRemoveMember,
+    canManageMember,
+    isLoading,
+    hasError,
+  } = useRBACPermissions();
+  return {
+    canManageOrg,
+    canDeleteOrg,
+    canInviteMember,
+    canRemoveMember,
+    canManageMember,
+    isLoading,
+    hasError,
+  };
 }
 
 export function useProjectPermissions() {
-  const { canCreateProject, canDeleteProject, canManageProject, isLoading, hasError } = useRBACPermissions();
-  return { canCreateProject, canDeleteProject, canManageProject, isLoading, hasError };
+  const {
+    canCreateProject,
+    canDeleteProject,
+    canManageProject,
+    isLoading,
+    hasError,
+  } = useRBACPermissions();
+  return {
+    canCreateProject,
+    canDeleteProject,
+    canManageProject,
+    isLoading,
+    hasError,
+  };
 }
 
 /**
@@ -248,8 +316,8 @@ export function useRBACDebug() {
   }, [currentProject, permissions]);
 
   // Only log in development
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[RBAC Debug]', debugInfo);
+  if (process.env.NODE_ENV === "development") {
+    console.log("[RBAC Debug]", debugInfo);
   }
 
   return debugInfo;

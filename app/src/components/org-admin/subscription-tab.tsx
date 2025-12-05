@@ -111,7 +111,19 @@ const planDetails: Record<string, { name: string; color: string }> = {
   unlimited: { name: "Unlimited", color: "bg-green-500" },
 };
 
-export function SubscriptionTab() {
+interface SubscriptionTabProps {
+  /**
+   * Current user's role in the organization.
+   * Only org_owner can manage subscription (access Polar customer portal).
+   * This is because the Polar customer is linked to the org owner's email,
+   * so only they can access the billing portal.
+   */
+  currentUserRole?: string;
+}
+
+export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
+  // Only org owners can manage subscription (access Polar customer portal)
+  const canManageSubscription = currentUserRole === "org_owner";
   const [data, setData] = useState<SubscriptionData | null>(null);
   const [spending, setSpending] = useState<SpendingData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -160,7 +172,7 @@ export function SubscriptionTab() {
   const handleManageSubscription = async () => {
     setOpeningPortal(true);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const result = await (authClient as any).customer.portal();
       if (result?.data?.url) {
         toast.success("Opening Polar customer portal...", {
@@ -292,15 +304,18 @@ export function SubscriptionTab() {
                 )}
               </p>
             </div>
-            <Button
-              variant="outline"
-              onClick={handleManageSubscription}
-              disabled={openingPortal}
-            >
-              <CreditCard className="h-4 w-4 mr-2" />
-              {openingPortal ? "Opening..." : "Manage Subscription"}
-              <ExternalLink className="h-3.5 w-3.5 ml-2" />
-            </Button>
+            {/* Only org owners can manage subscription - Polar customer portal is linked to owner's email */}
+            {canManageSubscription && (
+              <Button
+                variant="outline"
+                onClick={handleManageSubscription}
+                disabled={openingPortal}
+              >
+                <CreditCard className="h-4 w-4 mr-2" />
+                {openingPortal ? "Opening..." : "Manage Subscription"}
+                <ExternalLink className="h-3.5 w-3.5 ml-2" />
+              </Button>
+            )}
           </div>
         )}
       </div>

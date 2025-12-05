@@ -26,7 +26,7 @@ export const statusPageColumns: ColumnDef<Monitor>[] = [
         <div className="w-[90px]">
           <UUIDField
             value={id}
-            maxLength={24}
+            maxLength={8}
             onCopy={() => toast.success("Monitor ID copied to clipboard")}
           />
         </div>

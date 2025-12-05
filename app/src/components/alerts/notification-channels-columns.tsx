@@ -7,11 +7,11 @@ import { UUIDField } from "@/components/ui/uuid-field";
 import { toast } from "sonner";
 import { Clock, Edit, Trash2, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getNotificationProviderConfig } from "./data";
 import { formatDistance } from "date-fns";
@@ -27,15 +27,19 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
   {
     accessorKey: "id",
     header: ({ column }) => (
-      <DataTableColumnHeader className="ml-2" column={column} title="Channel ID" />
+      <DataTableColumnHeader
+        className="ml-2"
+        column={column}
+        title="Channel ID"
+      />
     ),
     cell: ({ row }) => {
       const id = row.getValue("id") as string;
       return (
         <div className="w-[90px] ml-2">
-          <UUIDField 
-            value={id} 
-            maxLength={24} 
+          <UUIDField
+            value={id}
+            maxLength={8}
             onCopy={() => toast.success("Channel ID copied to clipboard")}
           />
         </div>
@@ -51,9 +55,7 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
     ),
     cell: ({ row }) => {
       const name = row.getValue("name") as string;
-      return (
-        <div className="font-medium max-w-[200px] truncate">{name}</div>
-      );
+      return <div className="font-medium max-w-[200px] truncate">{name}</div>;
     },
   },
   {
@@ -86,7 +88,11 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
       return (
         <div className="flex items-center">
           <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
-          <span>{formatDistance(new Date(createdAt), new Date(), { addSuffix: true })}</span>
+          <span>
+            {formatDistance(new Date(createdAt), new Date(), {
+              addSuffix: true,
+            })}
+          </span>
         </div>
       );
     },
@@ -104,7 +110,11 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
       return (
         <div className="flex items-center">
           <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
-          <span>{formatDistance(new Date(lastUsed), new Date(), { addSuffix: true })}</span>
+          <span>
+            {formatDistance(new Date(lastUsed), new Date(), {
+              addSuffix: true,
+            })}
+          </span>
         </div>
       );
     },
@@ -115,7 +125,7 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
     cell: ({ row, table }) => {
       const channel = row.original;
       const meta = table.options.meta as TableMeta;
-      
+
       return (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -126,10 +136,14 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem
-              onClick={meta?.canEdit ? (e) => {
-                e.stopPropagation();
-                meta?.onEdit?.(channel);
-              } : undefined}
+              onClick={
+                meta?.canEdit
+                  ? (e) => {
+                      e.stopPropagation();
+                      meta?.onEdit?.(channel);
+                    }
+                  : undefined
+              }
               disabled={!meta?.canEdit}
               className={!meta?.canEdit ? "opacity-50 cursor-not-allowed" : ""}
             >
@@ -137,10 +151,14 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
               Edit
             </DropdownMenuItem>
             <DropdownMenuItem
-              onClick={meta?.canDelete ? (e) => {
-                e.stopPropagation();
-                meta?.onDelete?.(channel);
-              } : undefined}
+              onClick={
+                meta?.canDelete
+                  ? (e) => {
+                      e.stopPropagation();
+                      meta?.onDelete?.(channel);
+                    }
+                  : undefined
+              }
               disabled={!meta?.canDelete}
               className={`text-destructive ${!meta?.canDelete ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
             >
@@ -152,4 +170,4 @@ export const notificationChannelColumns: ColumnDef<NotificationChannel>[] = [
       );
     },
   },
-]; 
+];

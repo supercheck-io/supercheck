@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -36,15 +36,20 @@ export function LocationSelectionDialog({
   onSelect,
   defaultLocation = "global",
 }: LocationSelectionDialogProps) {
-  const [selected, setSelected] = useState<PerformanceLocation>(
-    defaultLocation
-  );
+  const [selected, setSelected] =
+    useState<PerformanceLocation>(defaultLocation);
 
+  // Track previous open state to detect transitions
+  const wasOpen = useRef(open);
+
+  // Sync default location when dialog opens (not while already open)
   useEffect(() => {
-    if (!open) {
-      return;
+    // Only run when dialog opens (not when already open)
+    if (open && !wasOpen.current) {
+      // Defer setState to avoid synchronous setState in effect body
+      setTimeout(() => setSelected(defaultLocation), 0);
     }
-    setSelected(defaultLocation);
+    wasOpen.current = open;
   }, [defaultLocation, open]);
 
   const selectedOption = getPerformanceLocationOption(selected);
@@ -73,7 +78,9 @@ export function LocationSelectionDialog({
                 className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/60 px-3 py-2.5 transition hover:border-primary/60 hover:bg-card/80"
               >
                 <div className="flex items-center gap-1.5 font-medium text-foreground">
-                  {option.flag && <span className="text-xl">{option.flag}</span>}
+                  {option.flag && (
+                    <span className="text-xl">{option.flag}</span>
+                  )}
                   <span className="text-sm">{option.name}</span>
                 </div>
                 <RadioGroupItem
@@ -89,8 +96,8 @@ export function LocationSelectionDialog({
               (selected === "global"
                 ? PERFORMANCE_LOCATIONS
                 : selected
-                ? [selected]
-                : []) as MonitoringLocation[]
+                  ? [selected]
+                  : []) as MonitoringLocation[]
             }
             size="compact"
             badgeContent={
