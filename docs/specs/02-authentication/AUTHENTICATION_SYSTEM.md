@@ -2,7 +2,7 @@
 
 ## Overview
 
-Supercheck uses **Better Auth 1.2.8** as its comprehensive authentication framework, providing:
+Supercheck uses **Better Auth 1.4.5** as its comprehensive authentication framework, providing:
 
 - **Email/Password Authentication**: Traditional credential-based sign-in
 - **Social Authentication**: GitHub and Google OAuth 2.0 sign-in
@@ -460,8 +460,11 @@ export const auth = betterAuth({
 1. User signs up with email/password
 2. User is redirected to `/verify-email` page
 3. Page displays clear instructions to check email
-4. User can resend verification email if needed
-5. After clicking the link, user is verified and can access the dashboard
+4. User can resend verification email if needed (with 5-minute cooldown)
+5. User clicks verification link in email
+6. User is redirected to `/sign-in?verified=true`
+7. Sign-in page shows **success alert** confirming email verification
+8. User signs in with their credentials
 
 **Self-Hosted Mode:**
 
@@ -481,6 +484,16 @@ The verify email page includes:
 - Countdown timer showing remaining cooldown time
 - Link to sign in (if user already verified)
 - Consistent branding with other auth pages
+
+### Email Verification Success Alert
+
+After a user clicks the verification link in their email, they are redirected to the sign-in page with a success alert:
+
+- Green success banner displayed at the top of the form
+- Message: "Email verified successfully!"
+- Sub-message: "Your email has been verified. You can now sign in to your account."
+- Alert is only shown when `?verified=true` query parameter is present
+- URL is cleaned up after showing the alert (removes query parameter)
 
 ### Resend Rate Limiting
 
@@ -951,9 +964,33 @@ sequenceDiagram
 1. User clicks the invitation link
 2. If not authenticated, redirects to **sign-up page** (not sign-in) with invite token
 3. Sign-up page shows organization name and role being joined
-4. Sign-up page includes "Already have an account? Sign in instead" link
-5. Sign-in page also includes "Don't have an account? Sign up instead" link
-6. After authentication, user is automatically added to the organization
+4. **Social auth buttons are hidden** - user must sign up with the invited email
+5. Sign-up page includes "Already have an account? Sign in instead" link
+6. Sign-in page (when accessed via invite) also hides social auth buttons
+7. **Email verification is skipped** - the invitation system validates email ownership
+8. **Subscription check is skipped** - invited members join the existing org's subscription
+9. After authentication, user is automatically added to the organization
+
+**Why Email Verification is Skipped for Invitations:**
+
+- The invitation was sent to a specific email address
+- User must sign up with that exact email (enforced by invitation system)
+- The invitation process itself validates email ownership
+- `/api/auth/verify-invited-user` marks the user's email as verified automatically
+
+**Why Subscription Check is Skipped for Invited Members:**
+
+- Invited members join an existing organization
+- The organization already has an active subscription
+- New members don't need their own subscription
+- They inherit the organization's plan limits
+
+**Why Social Auth is Hidden for Invitations:**
+
+- Invitations are sent to a specific email address
+- The invited email must match the account email for security
+- Social auth could result in a different email being used
+- Ensures the correct person accepts the invitation
 
 **Disposable Email Validation:**
 
@@ -980,6 +1017,7 @@ if (mode === "invite" && isCloudMode && isDisposableEmail(email)) {
 - `/api/auth/setup-defaults` creates a default org/project when the user has no memberships and no pending invites.
 - `/api/auth/verify-key` validates job-scoped API keys.
 - `/api/auth/verify-email` - Email verification endpoint (cloud mode only)
+- `/api/auth/verify-invited-user` - Marks invited user's email as verified (bypasses email verification for invitations)
 
 **Frontend Routes:**
 
@@ -1136,9 +1174,11 @@ erDiagram
 2. Check email for verification link
 3. Click verification link
 4. Verify `emailVerified` timestamp set in database
-5. Verify redirected to dashboard
+5. Verify redirected to sign-in page with `?verified=true` parameter
+6. Verify success alert displayed: "Email verified successfully!"
+7. Sign in to access dashboard
 
-**Expected:** Email verified, full access granted
+**Expected:** Email verified, success message shown, user can sign in
 
 #### 4. Sign In Flow
 
@@ -1186,10 +1226,14 @@ erDiagram
 4. Verify user is redirected to sign-up page (not sign-in)
 5. Verify sign-up page shows organization name and role
 6. Verify sign-up page has "Already have an account? Sign in instead" link
-7. User signs up with invited email
-8. Verify user added to organization with correct role
+7. Verify social auth buttons are hidden (only email form shown)
+8. User signs up with invited email
+9. Verify user is NOT redirected to email verification page
+10. Verify user's email is automatically marked as verified
+11. Verify user is NOT redirected to subscription page
+12. Verify user added to organization with correct role
 
-**Expected:** New member added to organization after sign-up
+**Expected:** New member added to organization after sign-up (email verification and subscription check bypassed)
 
 #### 8. Organization Invitation (Existing User)
 
@@ -1200,9 +1244,11 @@ erDiagram
 3. User clicks invitation link
 4. If not logged in, redirected to sign-up page with sign-in link
 5. User clicks "Sign in instead" and signs in
-6. User is automatically added to organization
+6. Verify social auth buttons are hidden on sign-in page (only email form shown)
+7. Verify user is NOT redirected to subscription page
+8. User is automatically added to organization
 
-**Expected:** Existing user added to organization after sign-in
+**Expected:** Existing user added to organization after sign-in (social auth disabled, subscription check bypassed)
 
 #### 9. Disposable Email Blocking (Cloud Mode Only)
 

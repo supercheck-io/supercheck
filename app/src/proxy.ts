@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Lightweight middleware for status page subdomain and custom domain routing
+ * Lightweight proxy for status page subdomain and custom domain routing
+ * (Renamed from middleware to proxy in Next.js 16)
  *
  * Responsibility: ONLY domain detection and URL rewriting
  * - Detects UUID subdomains (e.g., f134b5f9f2b048069deaf7cfb924a0b3.supercheck.io)
@@ -10,13 +11,13 @@ import { NextRequest, NextResponse } from "next/server";
  * - All authentication is handled by layout/route handlers
  *
  * Why this approach?
- * - Middleware stays fast and focused (one job: subdomain/custom domain routing)
+ * - Proxy stays fast and focused (one job: subdomain/custom domain routing)
  * - Auth logic in layout follows Next.js best practices
- * - Avoids middleware-induced redirect loops
- * - Database lookup for custom domains happens in route handler (not middleware)
+ * - Avoids proxy-induced redirect loops
+ * - Database lookup for custom domains happens in route handler (not proxy)
  *
  * Performance considerations:
- * - Avoid database calls in middleware (blocks every request)
+ * - Avoid database calls in proxy (blocks every request)
  * - Use simple string operations over regex where possible
  * - Cache expensive computations
  *
@@ -134,10 +135,10 @@ function getMainAppHostname(): string | null {
   return cachedMainAppHostname;
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Fast path: Skip middleware for static assets and API routes
+  // Fast path: Skip proxy for static assets and API routes
   // API routes and internal Next.js routes should never be rewritten
   // These are shared functionality accessed from any domain
   if (pathname.startsWith("/api/") || pathname.startsWith("/_next/")) {

@@ -413,7 +413,7 @@ export const columns: ColumnDef<Job>[] = [
         <div className="w-[90px]">
           <UUIDField
             value={id}
-            maxLength={24}
+            maxLength={8}
             onCopy={() => toast.success("ID copied to clipboard")}
           />
         </div>

@@ -31,36 +31,36 @@ const ContentSecurityPolicy = `
  */
 const securityHeaders = [
   {
-    key: 'Content-Security-Policy',
-    value: ContentSecurityPolicy.replace(/\s{2,}/g, ' ').trim(),
+    key: "Content-Security-Policy",
+    value: ContentSecurityPolicy.replace(/\s{2,}/g, " ").trim(),
   },
   {
-    key: 'X-DNS-Prefetch-Control',
-    value: 'on',
+    key: "X-DNS-Prefetch-Control",
+    value: "on",
   },
   {
-    key: 'Strict-Transport-Security',
-    value: 'max-age=63072000; includeSubDomains; preload',
+    key: "Strict-Transport-Security",
+    value: "max-age=63072000; includeSubDomains; preload",
   },
   {
-    key: 'X-Frame-Options',
-    value: 'SAMEORIGIN',
+    key: "X-Frame-Options",
+    value: "SAMEORIGIN",
   },
   {
-    key: 'X-Content-Type-Options',
-    value: 'nosniff',
+    key: "X-Content-Type-Options",
+    value: "nosniff",
   },
   {
-    key: 'X-XSS-Protection',
-    value: '1; mode=block',
+    key: "X-XSS-Protection",
+    value: "1; mode=block",
   },
   {
-    key: 'Referrer-Policy',
-    value: 'strict-origin-when-cross-origin',
+    key: "Referrer-Policy",
+    value: "strict-origin-when-cross-origin",
   },
   {
-    key: 'Permissions-Policy',
-    value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=(), interest-cohort=()",
   },
 ];
 
@@ -78,6 +78,11 @@ const createNextConfig = (phase: string): NextConfig => {
       "bullmq",
       "@bull-board/api",
       "@bull-board/express",
+      // Pino and its dependencies need to be external for Turbopack compatibility
+      "pino",
+      "pino-pretty",
+      "pino-http",
+      "thread-stream",
     ],
     images: {
       remotePatterns: [
@@ -89,32 +94,27 @@ const createNextConfig = (phase: string): NextConfig => {
       unoptimized: true,
     },
     // Security headers (only in production)
-    ...(isDev ? {} : {
-      headers: async () => [
-        {
-          source: '/:path*',
-          headers: securityHeaders,
-        },
-      ],
-    }),
-    // Turbopack configuration (stable in Next.js 15+)
-    ...(isDev && {
-      turbopack: {
-        rules: {
-          // Add any Turbopack-specific rules here if needed
-        },
+    ...(isDev
+      ? {}
+      : {
+          headers: async () => [
+            {
+              source: "/:path*",
+              headers: securityHeaders,
+            },
+          ],
+        }),
+    // Turbopack configuration (default in Next.js 16+)
+    // Turbopack is now the default bundler, turbopack config at root level
+    turbopack: {
+      rules: {
+        // Add any Turbopack-specific rules here if needed
       },
-    }),
-    // Configure server options
-    serverRuntimeConfig: {
-      // Will only be available on the server side
-      ignoreSSLErrors: true,
+      // Note: resolveAlias not needed - polarClient removed from auth-client.ts
+      // to avoid node:async_hooks import issues in the browser
     },
-    // Configure environment variables for both client and server
-    publicRuntimeConfig: {
-      // Will be available on both server and client
-      apiTimeout: 60000, // 60 seconds
-    },
+    // Note: serverRuntimeConfig and publicRuntimeConfig are deprecated in Next.js 16
+    // Use environment variables directly instead
   };
 
   // Only apply Webpack customizations in production (when not using Turbopack)

@@ -126,15 +126,20 @@ export function SignupForm({
               </FieldDescription>
             </div>
 
-            {/* Social Auth - Now at the top */}
-            <SocialAuthButtons
-              mode="signup"
-              callbackUrl={inviteToken ? `/invite/${inviteToken}` : "/"}
-              disabled={isLoading}
-            />
+            {/* Social Auth - Only show when NOT from an invitation */}
+            {/* For invitations, user must sign up with the invited email address */}
+            {!inviteData && (
+              <>
+                <SocialAuthButtons
+                  mode="signup"
+                  callbackUrl={inviteToken ? `/invite/${inviteToken}` : "/"}
+                  disabled={isLoading}
+                />
 
-            {/* Separator */}
-            <FieldSeparator>Or continue with email</FieldSeparator>
+                {/* Separator */}
+                <FieldSeparator>Or continue with email</FieldSeparator>
+              </>
+            )}
 
             {/* Name Field */}
             <FormField

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { CheckIcon } from "@/components/logo/supercheck-logo";
 import { Loader2, ArrowLeft, CheckCircle } from "lucide-react";
 import Link from "next/link";
-import { forgetPassword } from "@/utils/auth-client";
+import { requestPasswordReset } from "@/utils/auth-client";
 import {
   FieldGroup,
   Field,
@@ -26,7 +26,7 @@ export default function ForgotPasswordPage() {
     setIsLoading(true);
 
     try {
-      const result = await forgetPassword({
+      const result = await requestPasswordReset({
         email,
         redirectTo: `${window.location.origin}/reset-password`,
       });

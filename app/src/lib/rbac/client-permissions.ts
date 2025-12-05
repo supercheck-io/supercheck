@@ -2,7 +2,7 @@
  * Client-side permission checking utilities for Better Auth RBAC System
  */
 
-import { Role } from "./permissions";
+import { Role } from "./permissions-client";
 
 /**
  * Check if role has permission to perform action on resource
