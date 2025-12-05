@@ -14,7 +14,10 @@ const eslintConfig = [
       "react-hooks/refs": "warn",
       "react-hooks/purity": "warn",
       "react-hooks/static-components": "warn",
-      "react-hooks/incompatible-library": "warn",
+      // Disable incompatible-library: TanStack Table and React Hook Form are inherently
+      // incompatible with React Compiler's memoization. This is expected and documented.
+      // See: https://github.com/facebook/react/issues/31878
+      "react-hooks/incompatible-library": "off",
       // Existing rules
       "react/jsx-no-constructed-context-values": "warn",
       "react/no-unescaped-entities": "warn",
