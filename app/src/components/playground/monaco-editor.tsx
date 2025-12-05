@@ -33,9 +33,12 @@ export const MonacoEditorClient = memo(
       const styleSheetRef = useRef<HTMLStyleElement | null>(null);
       const isInitialized = useRef(false);
       const [showFullscreen, setShowFullscreen] = useState(false);
+      // Store the editor instance in state to safely pass to hooks without reading refs during render
+      const [editorInstance, setEditorInstance] =
+        useState<editor.IStandaloneCodeEditor | null>(null);
 
-      // Performance monitoring hook - enables automatic performance tracking
-      useMonacoPerformance(editorInstanceRef.current);
+      // Performance monitoring hook - uses state-based editor instance (not ref)
+      useMonacoPerformance(editorInstance);
 
       // Handle keyboard navigation for fullscreen
       useEffect(() => {
@@ -399,8 +402,11 @@ export const MonacoEditorClient = memo(
       // Handle editor mount - this should only happen once
       const handleEditorMount = useCallback(
         (editor: editor.IStandaloneCodeEditor) => {
-          // Store the editor instance in our ref
+          // Store the editor instance in our ref (for imperative access)
           editorInstanceRef.current = editor;
+
+          // Store in state for performance monitoring hook (avoids reading ref during render)
+          setEditorInstance(editor);
 
           // Set the ref passed from the parent
           if (ref && typeof ref === "object") {

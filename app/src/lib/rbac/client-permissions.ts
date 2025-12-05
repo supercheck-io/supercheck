@@ -375,7 +375,7 @@ export interface ClientPermissionContext {
  */
 export function canDeleteResource(
   context: ClientPermissionContext,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   _resource: keyof typeof import("./permissions").statement
 ): boolean {
   const { role } = context;

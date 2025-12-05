@@ -14,7 +14,7 @@ interface SocialAuthButtonsProps {
 }
 
 export function SocialAuthButtons({
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   mode,
   callbackUrl = "/",
   disabled = false,

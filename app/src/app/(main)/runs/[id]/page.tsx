@@ -7,9 +7,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 type Params = {
   params: Promise<{
-    id: string
-  }>
-}
+    id: string;
+  }>;
+};
 
 function DetailSkeleton() {
   return (
@@ -26,41 +26,42 @@ function DetailSkeleton() {
 
 export default async function RunPage({ params }: Params) {
   const { id } = await params;
-  
+
+  let run;
   try {
-    const run = await getRun(id);
-    
-    if (!run) {
-      notFound();
-    }
-    
-    const jobLabel =
-      run.jobName && run.jobName.length > 20
-        ? `${run.jobName.substring(0, 20)}...`
-        : run.jobName || id;
-
-    const breadcrumbs = [
-      { label: "Home", href: "/" },
-      { label: "Runs", href: "/runs" },
-      {
-        label: jobLabel,
-        href: run.jobId ? `/jobs?job=${run.jobId}` : "/runs",
-      },
-      { label: "Report", isCurrentPage: true },
-    ];
-
-    return (
-      <div>
-        <PageBreadcrumbs items={breadcrumbs} />
-        <div className="m-4">
-          <Suspense fallback={<DetailSkeleton />}>
-            <RunDetails run={run} />
-          </Suspense>
-        </div>
-      </div>
-    );
+    run = await getRun(id);
   } catch (error) {
-    console.error('Error fetching run:', error);
+    console.error("Error fetching run:", error);
     notFound();
   }
+
+  if (!run) {
+    notFound();
+  }
+
+  const jobLabel =
+    run.jobName && run.jobName.length > 20
+      ? `${run.jobName.substring(0, 20)}...`
+      : run.jobName || id;
+
+  const breadcrumbs = [
+    { label: "Home", href: "/" },
+    { label: "Runs", href: "/runs" },
+    {
+      label: jobLabel,
+      href: run.jobId ? `/jobs?job=${run.jobId}` : "/runs",
+    },
+    { label: "Report", isCurrentPage: true },
+  ];
+
+  return (
+    <div>
+      <PageBreadcrumbs items={breadcrumbs} />
+      <div className="m-4">
+        <Suspense fallback={<DetailSkeleton />}>
+          <RunDetails run={run} />
+        </Suspense>
+      </div>
+    </div>
+  );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import React, { useEffect, useRef } from "react";
 
 const FAVICON_STATE_KEY = "__supercheckFaviconState";
 const FAVICON_RELS = ["icon", "shortcut icon", "apple-touch-icon"] as const;
@@ -29,21 +29,41 @@ type ExtendedWindow = Window & {
  * Restores the original app favicon once the last public view unmounts.
  */
 export function useStatusPageFavicon(faviconLogo?: string | null) {
-  const cacheBustedHref = useMemo(() => {
+  // Use state to store cache-busted URL - computed in effect to avoid impure render
+  const [cacheBustedHref, setCacheBustedHref] = React.useState<string | null>(
+    null
+  );
+  const prevFaviconLogoRef = useRef(faviconLogo);
+
+  // Compute cache-busted URL in effect (not during render) to keep render pure
+  useEffect(() => {
+    // Only update if faviconLogo changed
+    if (
+      faviconLogo === prevFaviconLogoRef.current &&
+      cacheBustedHref !== null
+    ) {
+      return;
+    }
+    prevFaviconLogoRef.current = faviconLogo;
+
     if (!faviconLogo) {
-      return null;
+      // Defer setState to avoid synchronous setState in effect body
+      setTimeout(() => setCacheBustedHref(null), 0);
+      return;
     }
 
     // Use multiple cache-busting techniques:
     // 1. Current timestamp for uniqueness
     // 2. Random component to prevent aggressive caching
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).substring(2, 8);
-    const cacheBuster = `v=${timestamp}-${random}`;
-    const separator = faviconLogo.includes("?") ? "&" : "?";
-    return `${faviconLogo}${separator}${cacheBuster}`;
-  }, [faviconLogo]);
-
+    // Defer setState to avoid synchronous setState in effect body
+    setTimeout(() => {
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(2, 8);
+      const cacheBuster = `v=${timestamp}-${random}`;
+      const separator = faviconLogo.includes("?") ? "&" : "?";
+      setCacheBustedHref(`${faviconLogo}${separator}${cacheBuster}`);
+    }, 0);
+  }, [faviconLogo, cacheBustedHref]);
   useEffect(() => {
     if (!cacheBustedHref || typeof window === "undefined") {
       return;

@@ -1,7 +1,7 @@
 "use client";
 import { signIn } from "@/utils/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { LoginForm } from "@/components/auth/login-form";
 
 interface InviteData {
@@ -15,46 +15,51 @@ export default function SignInPage() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [inviteData, setInviteData] = useState<InviteData | null>(null);
   const [isFromNotification, setIsFromNotification] = useState(false);
   const [emailVerified, setEmailVerified] = useState(false);
 
-  useEffect(() => {
-    const invite = searchParams.get("invite");
-    const from = searchParams.get("from");
-    const verified = searchParams.get("verified");
+  // Derive invite token from URL params (not state)
+  const inviteToken = useMemo(() => searchParams.get("invite"), [searchParams]);
 
-    if (invite) {
-      setInviteToken(invite);
-      fetchInviteData(invite);
-    }
-
-    if (from === "notification") {
-      setIsFromNotification(true);
-    }
-
-    // Check if user just verified their email
-    if (verified === "true") {
-      setEmailVerified(true);
-      // Clean up the URL without refreshing the page
-      const url = new URL(window.location.href);
-      url.searchParams.delete("verified");
-      window.history.replaceState({}, "", url.toString());
-    }
-  }, [searchParams]);
-
-  const fetchInviteData = async (token: string) => {
+  // Fetch invite data - defined before useEffect that uses it
+  const fetchInviteData = useCallback(async (token: string) => {
     try {
       const response = await fetch(`/api/invite/${token}`);
       const data = await response.json();
       if (data.success) {
         setInviteData(data.data);
       }
-    } catch (error) {
-      console.error("Error fetching invite data:", error);
+    } catch (fetchError) {
+      console.error("Error fetching invite data:", fetchError);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const from = searchParams.get("from");
+    const verified = searchParams.get("verified");
+
+    // Defer fetchInviteData to avoid synchronous setState in effect body
+    if (inviteToken) {
+      setTimeout(() => fetchInviteData(inviteToken), 0);
+    }
+
+    // Defer state updates to avoid synchronous setState in effect body
+    if (from === "notification") {
+      setTimeout(() => setIsFromNotification(true), 0);
+    }
+
+    // Check if user just verified their email
+    if (verified === "true") {
+      setTimeout(() => {
+        setEmailVerified(true);
+        // Clean up the URL without refreshing the page
+        const url = new URL(window.location.href);
+        url.searchParams.delete("verified");
+        window.history.replaceState({}, "", url.toString());
+      }, 0);
+    }
+  }, [searchParams, inviteToken, fetchInviteData]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

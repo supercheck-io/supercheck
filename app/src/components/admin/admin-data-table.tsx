@@ -213,7 +213,7 @@ export function AdminDataTable<TData, TValue>({
     columns,
     initialState: {
       pagination: {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         pageSize: (meta as any)?.initialPageSize || 8,
         pageIndex: 0,
       },
@@ -257,7 +257,7 @@ export function AdminDataTable<TData, TValue>({
   React.useEffect(() => {
     if (mounted && table) {
       // Set page size based on meta or default to 7
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const pageSize = (meta as any)?.initialPageSize || 8;
       table.setPageSize(pageSize);
       table.setPageIndex(0);

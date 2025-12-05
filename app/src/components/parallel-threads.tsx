@@ -29,9 +29,11 @@ export function ParallelThreads() {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const eventSourceRef = useRef<EventSource | null>(null);
+  // Use ref to store setup function for recursive calls
+  const setupEventSourceRef = useRef<(() => EventSource | null) | null>(null);
 
   // Function to create and set up the SSE connection
-  const setupEventSource = useCallback(() => {
+  const setupEventSource = useCallback((): EventSource | null => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
@@ -58,9 +60,7 @@ export function ParallelThreads() {
 
       source.onerror = () => {
         // Only change connection status if we're not already trying to reconnect
-        if (connectionStatus !== "connecting") {
-          setConnectionStatus("connecting");
-        }
+        setConnectionStatus("connecting");
 
         // Close the current connection
         source.close();
@@ -78,10 +78,13 @@ export function ParallelThreads() {
           clearTimeout(reconnectTimeoutRef.current);
         }
 
-        // Schedule reconnection
+        // Schedule reconnection using ref to avoid stale closure
         reconnectTimeoutRef.current = setTimeout(() => {
-          if (document.visibilityState !== "hidden") {
-            setupEventSource();
+          if (
+            document.visibilityState !== "hidden" &&
+            setupEventSourceRef.current
+          ) {
+            setupEventSourceRef.current();
           }
         }, backoffTime);
       };
@@ -92,7 +95,12 @@ export function ParallelThreads() {
       setConnectionStatus("disconnected");
       return null;
     }
-  }, [connectionStatus]);
+  }, []);
+
+  // Keep ref updated with latest function
+  useEffect(() => {
+    setupEventSourceRef.current = setupEventSource;
+  }, [setupEventSource]);
 
   useEffect(() => {
     // Set up visibility change listener to reconnect when tab becomes visible
@@ -104,19 +112,23 @@ export function ParallelThreads() {
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    // Initial setup
-    const source = setupEventSource();
+    // Initial setup - defer to next tick to avoid synchronous setState in effect
+    const timeoutId = setTimeout(() => {
+      setupEventSource();
+    }, 0);
 
     // Cleanup function
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
 
+      clearTimeout(timeoutId);
+
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
 
-      if (source) {
-        source.close();
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
       }
     };
   }, [setupEventSource]);

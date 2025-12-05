@@ -32,7 +32,7 @@ export function UserTable({ users, onUserUpdate }: UserTableProps) {
     return Array.from(orgsMap.values());
   }, [users]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const CustomToolbar = React.useCallback(
     ({ table }: { table: any }) => (
       <UserTableToolbar table={table} organizations={uniqueOrganizations} />
