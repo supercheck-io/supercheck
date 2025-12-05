@@ -75,13 +75,17 @@ RUN mkdir -p /home/nextjs/.npm && \
     chown -R nextjs:nodejs /home/nextjs && \
     chown -R nextjs:nodejs /app
 
-# Copy only necessary files for execution with proper ownership
-COPY --from=deps-prod --chown=nextjs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-
-# Copy standalone build
+# Copy standalone build first (includes server.js and minimal node_modules)
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+
+# Copy additional production dependencies needed for migrations/scripts
+# These are merged with standalone's node_modules (standalone doesn't include all deps)
+COPY --from=deps-prod --chown=nextjs:nodejs /app/node_modules ./node_modules
+
+# Copy package.json for scripts that may need it (like npm run commands in dev fallback)
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 
 # Copy migration files, scripts, and bootstrap admin script
 COPY --from=builder --chown=nextjs:nodejs /app/src/db ./src/db
