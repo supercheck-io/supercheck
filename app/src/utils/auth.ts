@@ -245,10 +245,19 @@ export const auth = betterAuth({
         sendVerificationEmail: async ({ user, url }) => {
           const emailService = EmailService.getInstance();
 
+          // Modify the verification URL to redirect to sign-in with verified flag
+          const verificationUrl = new URL(url);
+          // The callback URL after verification should be sign-in with verified flag
+          verificationUrl.searchParams.set(
+            "callbackURL",
+            "/sign-in?verified=true"
+          );
+          const modifiedUrl = verificationUrl.toString();
+
           try {
             // Render email using react-email template
             const emailContent = await renderEmailVerificationEmail({
-              verificationUrl: url,
+              verificationUrl: modifiedUrl,
               userEmail: user.email,
               userName: user.name || undefined,
             });
@@ -271,6 +280,8 @@ export const auth = betterAuth({
             throw error;
           }
         },
+        // Don't auto sign in - redirect to sign-in page with verified flag
+        autoSignInAfterVerification: false,
       }
     : undefined,
   emailAndPassword: {

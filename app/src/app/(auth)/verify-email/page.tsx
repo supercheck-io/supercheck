@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { CheckIcon } from "@/components/logo/supercheck-logo";
 import { Loader2, Mail, CheckCircle, ArrowLeft, Clock } from "lucide-react";
 import Link from "next/link";
 import { sendVerificationEmail } from "@/utils/auth-client";
@@ -98,7 +97,7 @@ export default function VerifyEmailPage() {
     try {
       const result = await sendVerificationEmail({
         email,
-        callbackURL: "/",
+        callbackURL: "/sign-in?verified=true",
       });
 
       if (result.error) {
@@ -119,23 +118,10 @@ export default function VerifyEmailPage() {
   return (
     <div className="flex flex-col gap-6 w-full max-w-sm px-4">
       <FieldGroup>
-        {/* Header */}
-        <div className="flex flex-col items-center gap-3 text-center">
-          <Link
-            href="/"
-            className="flex flex-col items-center gap-3 font-medium"
-          >
-            <div className="flex size-14 items-center justify-center rounded-md">
-              <CheckIcon className="size-12" />
-            </div>
-            <span className="sr-only">Supercheck</span>
-          </Link>
-        </div>
-
-        {/* Email Icon */}
+        {/* Email Icon - Primary visual element */}
         <div className="flex justify-center">
-          <div className="flex size-16 items-center justify-center rounded-full bg-primary/10">
-            <Mail className="size-8 text-primary" />
+          <div className="flex size-20 items-center justify-center rounded-full bg-primary/10">
+            <Mail className="size-10 text-primary" />
           </div>
         </div>
 

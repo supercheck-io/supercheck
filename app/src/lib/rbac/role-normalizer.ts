@@ -5,7 +5,7 @@
  * and handles all the inconsistencies in the RBAC system.
  */
 
-import { Role } from "./permissions";
+import { Role } from "./permissions-client";
 
 /**
  * New RBAC role string formats ONLY

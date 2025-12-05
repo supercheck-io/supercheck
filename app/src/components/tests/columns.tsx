@@ -32,9 +32,7 @@ function TitleWithPopover({ title }: { title: string }) {
   if (!isTruncated) {
     return (
       <div className="flex space-x-2">
-        <span className="font-medium max-w-[160px] truncate">
-          {title}
-        </span>
+        <span className="font-medium max-w-[160px] truncate">{title}</span>
       </div>
     );
   }
@@ -47,16 +45,12 @@ function TitleWithPopover({ title }: { title: string }) {
           onMouseEnter={() => setIsOpen(true)}
           onMouseLeave={() => setIsOpen(false)}
         >
-          <span className="max-w-[160px] truncate">
-            {title}
-          </span>
+          <span className="max-w-[160px] truncate">{title}</span>
         </div>
       </PopoverTrigger>
       <PopoverContent className="flex justify-center items-center w-auto max-w-[500px]">
         <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">
-            {title}
-          </p>
+          <p className="text-xs text-muted-foreground">{title}</p>
         </div>
       </PopoverContent>
     </Popover>
@@ -64,17 +58,17 @@ function TitleWithPopover({ title }: { title: string }) {
 }
 
 // Separate component for description with popover
-function DescriptionWithPopover({ description }: { description: string | null }) {
+function DescriptionWithPopover({
+  description,
+}: {
+  description: string | null;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const displayText = description || "No description provided";
   const isTruncated = displayText.length > 25; // Approximate character limit
 
   if (!isTruncated) {
-    return (
-      <div className="max-w-[200px] truncate">
-        {displayText}
-      </div>
-    );
+    return <div className="max-w-[200px] truncate">{displayText}</div>;
   }
 
   return (
@@ -98,15 +92,15 @@ function DescriptionWithPopover({ description }: { description: string | null })
 }
 
 // Separate component for tags cell to fix React hooks issue
-const TagsCell = ({ tags }: { tags: Array<{ id: string; name: string; color: string | null }> }) => {
+const TagsCell = ({
+  tags,
+}: {
+  tags: Array<{ id: string; name: string; color: string | null }>;
+}) => {
   const [isOpen, setIsOpen] = useState(false);
 
   if (!tags || tags.length === 0) {
-    return (
-      <div className="text-muted-foreground text-sm">
-        No tags
-      </div>
-    );
+    return <div className="text-muted-foreground text-sm">No tags</div>;
   }
 
   const displayTags = tags.slice(0, 2);
@@ -121,7 +115,11 @@ const TagsCell = ({ tags }: { tags: Array<{ id: string; name: string; color: str
             key={tag.id}
             variant="secondary"
             className="text-xs whitespace-nowrap flex-shrink-0"
-            style={tag.color ? { backgroundColor: tag.color + "20", color: tag.color } : {}}
+            style={
+              tag.color
+                ? { backgroundColor: tag.color + "20", color: tag.color }
+                : {}
+            }
           >
             {tag.name}
           </Badge>
@@ -143,13 +141,20 @@ const TagsCell = ({ tags }: { tags: Array<{ id: string; name: string; color: str
               key={tag.id}
               variant="secondary"
               className="text-xs whitespace-nowrap flex-shrink-0"
-              style={tag.color ? { backgroundColor: tag.color + "20", color: tag.color } : {}}
+              style={
+                tag.color
+                  ? { backgroundColor: tag.color + "20", color: tag.color }
+                  : {}
+              }
             >
               {tag.name}
             </Badge>
           ))}
           {remainingCount > 0 && (
-            <Badge variant="secondary" className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
+            <Badge
+              variant="secondary"
+              className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0"
+            >
               +{remainingCount}
             </Badge>
           )}
@@ -163,7 +168,11 @@ const TagsCell = ({ tags }: { tags: Array<{ id: string; name: string; color: str
               key={tag.id}
               variant="secondary"
               className="text-xs"
-              style={tag.color ? { backgroundColor: tag.color + "20", color: tag.color } : {}}
+              style={
+                tag.color
+                  ? { backgroundColor: tag.color + "20", color: tag.color }
+                  : {}
+              }
             >
               {tag.name}
             </Badge>
@@ -187,7 +196,7 @@ export const columns: ColumnDef<Test>[] = [
         <div className="w-[90px]">
           <UUIDField
             value={id}
-            maxLength={24}
+            maxLength={8}
             onCopy={() => toast.success("Test ID copied to clipboard")}
           />
         </div>
@@ -236,10 +245,7 @@ export const columns: ColumnDef<Test>[] = [
       return (
         <div className="flex items-center w-[120px]">
           {Icon && (
-            <Icon
-              className={`mr-2 h-4 w-4 ${type.color}`}
-              {...iconProps}
-            />
+            <Icon className={`mr-2 h-4 w-4 ${type.color}`} {...iconProps} />
           )}
           <span>{type.label}</span>
         </div>
@@ -267,9 +273,7 @@ export const columns: ColumnDef<Test>[] = [
       return (
         <div className="flex items-center w-[100px]">
           {priority.icon && (
-            <priority.icon
-              className={`mr-2 h-4 w-4 ${priority.color}`}
-            />
+            <priority.icon className={`mr-2 h-4 w-4 ${priority.color}`} />
           )}
           <span>{priority.label}</span>
         </div>
@@ -286,14 +290,24 @@ export const columns: ColumnDef<Test>[] = [
       <DataTableColumnHeader column={column} title="Tags" />
     ),
     cell: ({ row }) => {
-      const tags = row.getValue("tags") as Array<{ id: string; name: string; color: string | null }>;
+      const tags = row.getValue("tags") as Array<{
+        id: string;
+        name: string;
+        color: string | null;
+      }>;
       return <TagsCell tags={tags} />;
     },
     filterFn: (row, id, value: string[]) => {
-      const tags = row.getValue(id) as Array<{ id: string; name: string; color: string | null }>;
+      const tags = row.getValue(id) as Array<{
+        id: string;
+        name: string;
+        color: string | null;
+      }>;
       if (!tags || tags.length === 0) return false;
-      return value.some(filterTag =>
-        tags.some(tag => tag.name.toLowerCase().includes(filterTag.toLowerCase()))
+      return value.some((filterTag) =>
+        tags.some((tag) =>
+          tag.name.toLowerCase().includes(filterTag.toLowerCase())
+        )
       );
     },
   },
@@ -322,7 +336,9 @@ export const columns: ColumnDef<Test>[] = [
         <div className="flex items-center w-[170px]">
           <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
           <span>{formattedDate}</span>
-          <span className="text-muted-foreground ml-1 text-xs">{formattedTime}</span>
+          <span className="text-muted-foreground ml-1 text-xs">
+            {formattedTime}
+          </span>
         </div>
       );
     },
@@ -335,7 +351,7 @@ export const columns: ColumnDef<Test>[] = [
     cell: ({ row }) => {
       const updatedAt = row.getValue("updatedAt") as string;
       const createdAt = row.getValue("createdAt") as string;
-      
+
       // Only show updatedAt if it's different from createdAt (indicating an actual update)
       if (!updatedAt || updatedAt === createdAt) {
         return (
@@ -361,11 +377,12 @@ export const columns: ColumnDef<Test>[] = [
         <div className="flex items-center w-[170px]">
           <ClockIcon className="mr-2 h-4 w-4 text-muted-foreground" />
           <span>{formattedDate}</span>
-          <span className="text-muted-foreground ml-1 text-xs">{formattedTime}</span>
+          <span className="text-muted-foreground ml-1 text-xs">
+            {formattedTime}
+          </span>
         </div>
       );
     },
-
   },
   {
     id: "actions",

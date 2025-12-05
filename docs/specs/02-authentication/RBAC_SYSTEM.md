@@ -788,11 +788,16 @@ _\* PROJECT_ADMIN and PROJECT_EDITOR permissions apply only to their assigned pr
 
 ### Core Better Auth Integration
 
-- `/app/src/utils/auth.ts` - Better Auth server configuration with plugins
-- `/app/src/utils/auth-client.ts` - Better Auth client configuration
-- `/app/src/lib/rbac/permissions.ts` - Access control statements and roles
+- `/app/src/utils/auth.ts` - Better Auth server configuration with full plugins (including Polar)
+- `/app/src/utils/auth-client.ts` - Better Auth client configuration (browser-safe plugins only)
+- `/app/src/lib/rbac/permissions.ts` - Server-side access control with Better Auth integration
+- `/app/src/lib/rbac/permissions-client.ts` - Client-safe Role enum and permissions (source of truth for Role)
 - `/app/src/lib/rbac/middleware.ts` - Server-side permission checking
 - `/app/src/hooks/use-better-auth-permissions.ts` - Client-side permission hooks
+
+> **Important (Better Auth 1.4.x)**: The `@polar-sh/better-auth` package imports server-side modules
+> that use `node:async_hooks`, which is not available in browsers. Therefore, `polarClient()` is
+> only configured in `auth.ts` (server-side) and NOT in `auth-client.ts` (client-side).
 
 ### Variable & Secret Management
 

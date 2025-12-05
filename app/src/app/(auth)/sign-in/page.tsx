@@ -18,10 +18,12 @@ export default function SignInPage() {
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [inviteData, setInviteData] = useState<InviteData | null>(null);
   const [isFromNotification, setIsFromNotification] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
 
   useEffect(() => {
     const invite = searchParams.get("invite");
     const from = searchParams.get("from");
+    const verified = searchParams.get("verified");
 
     if (invite) {
       setInviteToken(invite);
@@ -30,6 +32,15 @@ export default function SignInPage() {
 
     if (from === "notification") {
       setIsFromNotification(true);
+    }
+
+    // Check if user just verified their email
+    if (verified === "true") {
+      setEmailVerified(true);
+      // Clean up the URL without refreshing the page
+      const url = new URL(window.location.href);
+      url.searchParams.delete("verified");
+      window.history.replaceState({}, "", url.toString());
     }
   }, [searchParams]);
 
@@ -77,6 +88,7 @@ export default function SignInPage() {
       inviteData={inviteData}
       inviteToken={inviteToken}
       isFromNotification={isFromNotification}
+      emailVerified={emailVerified}
     />
   );
 }

@@ -1,5 +1,5 @@
 "use client";
-import { signUp } from "@/utils/auth-client";
+import { signUp, signIn } from "@/utils/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { SignupForm } from "@/components/auth/signup-form";
@@ -80,6 +80,38 @@ export default function SignUpPage() {
 
     if (signUpError) {
       // Handle email verification required error gracefully
+      // For invitation flow, the user was created but needs verification
+      // We'll mark their email as verified since the invitation validates it
+      if (inviteToken && signUpError.status === 403) {
+        // User was created but blocked due to email verification
+        // Call our API to verify the invited user and redirect to accept invitation
+        try {
+          const verifyResponse = await fetch("/api/auth/verify-invited-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: inviteToken, email }),
+          });
+
+          if (verifyResponse.ok) {
+            // Now sign in the user and redirect to invitation acceptance
+            const { error: signInError } = await signIn.email({
+              email,
+              password,
+            });
+            if (!signInError) {
+              router.push(`/invite/${inviteToken}`);
+              return;
+            }
+          }
+        } catch (verifyError) {
+          console.error("Error verifying invited user:", verifyError);
+        }
+        // If verification fails, redirect to sign-in to try again
+        router.push(`/sign-in?invite=${inviteToken}`);
+        return;
+      }
+
+      // For non-invitation flow, redirect to email verification page
       if (
         signUpError.message?.includes("verify") ||
         signUpError.message?.includes("email") ||
@@ -89,6 +121,7 @@ export default function SignUpPage() {
         router.push(`/verify-email?email=${encodeURIComponent(email)}`);
         return;
       }
+
       setError(signUpError.message || "An error occurred");
       setIsLoading(false);
       return;
@@ -96,12 +129,31 @@ export default function SignUpPage() {
 
     // In cloud mode with email verification enabled, redirect to verify-email page
     // The user needs to verify their email before they can proceed
-    if (isCloudMode) {
+    // EXCEPTION: For invitation flow, skip email verification since the email is already verified
+    // by the invitation system (the invite was sent to that specific email)
+    if (isCloudMode && !inviteToken) {
       router.push(`/verify-email?email=${encodeURIComponent(email)}`);
       return;
     }
 
-    // Self-hosted mode: no email verification required, proceed with setup
+    // For invitation flow in cloud mode: mark email as verified
+    if (isCloudMode && inviteToken) {
+      try {
+        const verifyResponse = await fetch("/api/auth/verify-invited-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: inviteToken, email }),
+        });
+
+        if (!verifyResponse.ok) {
+          console.warn("Could not auto-verify email for invited user");
+        }
+      } catch (verifyError) {
+        console.error("Error verifying invited user:", verifyError);
+      }
+    }
+
+    // Self-hosted mode or invitation flow: no email verification required, proceed with setup
     // Wait a moment for the session to be established
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
@@ -124,6 +176,7 @@ export default function SignUpPage() {
     }
 
     // If user signed up with an invite token, redirect to accept invitation
+    // Skip subscription check - invited members join the existing org's subscription
     if (inviteToken) {
       router.push(`/invite/${inviteToken}`);
       setIsLoading(false);
@@ -131,6 +184,8 @@ export default function SignUpPage() {
     }
 
     // Check hosting mode - only verify subscription for cloud mode
+    // Note: This check is for new user signup WITHOUT invitation
+    // Invited members skip this check entirely (handled above)
     try {
       const modeResponse = await fetch("/api/config/hosting-mode");
       if (modeResponse.ok) {

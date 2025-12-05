@@ -40,6 +40,7 @@ interface LoginFormProps {
   inviteData: InviteData | null;
   inviteToken: string | null;
   isFromNotification?: boolean;
+  emailVerified?: boolean;
 }
 
 export function LoginForm({
@@ -51,6 +52,7 @@ export function LoginForm({
   inviteToken,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   isFromNotification = false,
+  emailVerified = false,
 }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
 
@@ -128,15 +130,50 @@ export function LoginForm({
               </FieldDescription>
             </div>
 
-            {/* Social Auth - Now at the top */}
-            <SocialAuthButtons
-              mode="signin"
-              callbackUrl={inviteToken ? `/invite/${inviteToken}` : "/"}
-              disabled={isLoading}
-            />
+            {/* Email Verified Success Alert */}
+            {emailVerified && (
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-green-500/10 border border-green-500/20">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/20">
+                  <svg
+                    className="h-4 w-4 text-green-600 dark:text-green-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-medium text-sm text-green-700 dark:text-green-300">
+                    Email verified successfully!
+                  </p>
+                  <p className="text-xs text-green-600/80 dark:text-green-400/80">
+                    Your email has been verified. You can now sign in to your
+                    account.
+                  </p>
+                </div>
+              </div>
+            )}
 
-            {/* Separator */}
-            <FieldSeparator>Or continue with email</FieldSeparator>
+            {/* Social Auth - Only show when NOT from an invitation */}
+            {/* For invitations, user must sign in with the invited email address */}
+            {!inviteData && (
+              <>
+                <SocialAuthButtons
+                  mode="signin"
+                  callbackUrl={inviteToken ? `/invite/${inviteToken}` : "/"}
+                  disabled={isLoading}
+                />
+
+                {/* Separator */}
+                <FieldSeparator>Or continue with email</FieldSeparator>
+              </>
+            )}
 
             {/* Email Field */}
             <FormField
