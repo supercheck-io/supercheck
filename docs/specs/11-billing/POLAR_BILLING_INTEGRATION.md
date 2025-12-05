@@ -967,22 +967,51 @@ Body:
   - Uses **specific event handlers** for critical events + `onPayload` catch-all for logging
 - **Handlers configured** (in `app/src/utils/auth.ts`):
   ```typescript
+  onCustomerCreated: async (payload) => {
+    // Link new Polar customer to user's organization
+    // Critical for checkout flow
+  },
+  onCustomerDeleted: async (payload) => {
+    // CRITICAL: Revoke subscription when customer deleted from Polar
+    // Prevents access after customer deletion
+  },
+  onCustomerStateChanged: async (payload) => {
+    // Aggregated event for customer changes
+    // Used for syncing customer data
+  },
   onSubscriptionActive: async (payload) => {
     // Extract customerId, productId, orgId from payload
     // Update organization subscription status
     // Reset usage counters for new billing period
+  },
+  onSubscriptionCreated: async (payload) => {
+    // Handle new subscription creation
+    // Same logic as onSubscriptionActive
   },
   onSubscriptionUpdated: async (payload) => {
     // Handle plan changes (upgrade/downgrade)
     // Update limits accordingly
   },
   onSubscriptionCanceled: async (payload) => {
-    // Mark as canceled but keep access until period ends
+    // Mark as canceled but keep access until period ends (grace period)
     // Send cancellation notifications
+  },
+  onSubscriptionUncanceled: async (payload) => {
+    // Restore subscription when cancellation is reversed
+    // User re-subscribed during grace period
+  },
+  onSubscriptionRevoked: async (payload) => {
+    // CRITICAL: Immediate access termination
+    // Set status to 'none' immediately
   },
   onOrderPaid: async (payload) => {
     // Log payment confirmation
+    // Activate subscription for subscription products
     // Handle one-time purchases if any
+  },
+  onPayload: async (payload) => {
+    // Catch-all for logging all events
+    // Debug/monitoring purposes
   }
   ```
 
@@ -1739,37 +1768,37 @@ export function UpgradeButton({ planId }: { planId: string }) {
 
 ### Customer Portal
 
+> [!IMPORTANT] > **Access Control**: Only Organization Owners (`org_owner` role) can access the Manage Subscription button and Polar customer portal. This is because:
+>
+> 1. The Polar customer is created and linked to the organization owner's email during signup
+> 2. The Polar customer portal authenticates based on the customer's email
+> 3. Org admins invited later have different emails that don't match the Polar customer
+>
+> **Implementation**: The `SubscriptionTab` component receives `currentUserRole` prop and conditionally renders the "Manage Subscription" button only for `org_owner` role.
+
 ```typescript
-// app/components/billing/manage-subscription.tsx
-export function ManageSubscription() {
-  const { data: billing } = useQuery({
-    queryKey: ["billing-current"],
-    queryFn: () => fetch("/api/billing/current").then((r) => r.json()),
-  });
+// app/components/org-admin/subscription-tab.tsx
+interface SubscriptionTabProps {
+  /**
+   * Current user's role in the organization.
+   * Only org_owner can manage subscription (access Polar customer portal).
+   */
+  currentUserRole?: string;
+}
 
-  const openPortal = async () => {
-    const response = await fetch("/api/billing/portal", {
-      method: "POST",
-    });
+export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
+  // Only org owners can manage subscription (access Polar customer portal)
+  const canManageSubscription = currentUserRole === "org_owner";
 
-    const { portalUrl } = await response.json();
-    window.location.href = portalUrl;
-  };
+  // ... component logic ...
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>
-          Current Plan: {billing?.organization?.subscriptionPlan}
-        </CardTitle>
-        <CardDescription>
-          Status: {billing?.organization?.subscriptionStatus}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Button onClick={openPortal}>Manage Subscription</Button>
-      </CardContent>
-    </Card>
+    <div>
+      {/* Only show Manage Subscription button for org owners */}
+      {canManageSubscription && (
+        <Button onClick={handleManageSubscription}>Manage Subscription</Button>
+      )}
+    </div>
   );
 }
 ```
@@ -3459,5 +3488,289 @@ await db
 - Org B: No subscription (blocked)
 
 Access is checked per-organization, not per-user.
+
+---
+
+## Security Audit (December 2025)
+
+### Audit Overview
+
+This section documents a comprehensive security audit of the Polar billing integration, identifying critical issues and the fixes implemented to ensure production-ready, secure code.
+
+### Findings Summary
+
+| ID      | Severity     | Status   | Issue                                            | Resolution                                                    |
+| ------- | ------------ | -------- | ------------------------------------------------ | ------------------------------------------------------------- |
+| SEC-101 | **CRITICAL** | ✅ Fixed | Webhook idempotency race condition               | Changed to atomic INSERT ON CONFLICT pattern                  |
+| SEC-102 | **HIGH**     | ✅ Fixed | Missing unique constraint on idempotency table   | Changed `index()` to `uniqueIndex()` in schema                |
+| SEC-103 | **HIGH**     | ✅ Fixed | Customer ID linking race condition               | Added conditional update with `isNull()` check                |
+| SEC-104 | **HIGH**     | ✅ Fixed | Canceled subscription loses access immediately   | Fixed `hasActiveSubscription()` to check `subscriptionEndsAt` |
+| SEC-105 | **MEDIUM**   | ✅ Fixed | order.paid handler missing subscriptionId        | Now extracts and sets subscription ID from order payload      |
+| SEC-106 | **MEDIUM**   | ✅ Fixed | Manage Subscription button visible to non-owners | Added role check to only show for `org_owner`                 |
+
+### SEC-101: Webhook Idempotency Race Condition (CRITICAL)
+
+**Problem**: The idempotency check and mark operations were not atomic:
+
+```typescript
+// BEFORE: Race condition possible between check and mark
+if (await isWebhookProcessed(webhookId, eventType)) return;
+// ... process webhook ...
+await markWebhookProcessed(webhookId, eventType);
+```
+
+**Impact**: If Polar sends the same webhook twice simultaneously (retries), both could pass the idempotency check before either marks as processed, leading to double processing.
+
+**Fix Applied**: Changed to atomic INSERT ON CONFLICT pattern:
+
+```typescript
+// AFTER: Atomic claim using database unique constraint
+async function tryClaimWebhook(
+  webhookId: string,
+  eventType: string
+): Promise<boolean> {
+  const result = await db
+    .insert(webhookIdempotency)
+    .values({ webhookId, eventType, resultStatus: "success", expiresAt })
+    .onConflictDoNothing({
+      target: [webhookIdempotency.webhookId, webhookIdempotency.eventType],
+    })
+    .returning();
+  return result.length > 0; // Only process if insert succeeded
+}
+```
+
+### SEC-102: Missing Unique Constraint on Idempotency Table (HIGH)
+
+**Problem**: The schema used `index()` instead of `uniqueIndex()`:
+
+```typescript
+// BEFORE: Regular index doesn't prevent duplicates
+uniqueWebhookEvent: index("webhook_idempotency_unique_idx")
+  .on(table.webhookId, table.eventType)
+  .concurrently(),
+```
+
+**Impact**: The idempotency mechanism couldn't prevent duplicate inserts.
+
+**Fix Applied**:
+
+```typescript
+// AFTER: Proper unique constraint
+uniqueWebhookEvent: uniqueIndex("webhook_idempotency_unique_idx").on(
+  table.webhookId,
+  table.eventType
+),
+```
+
+### SEC-103: Customer ID Linking Race Condition (HIGH)
+
+**Problem**: Customer ID linking used simple update without conditional check:
+
+```typescript
+// BEFORE: Race condition - another customer could be linked between check and update
+if (!org.polarCustomerId) {
+  await db
+    .update(organization)
+    .set({ polarCustomerId: customerId })
+    .where(eq(organization.id, org.id));
+}
+```
+
+**Impact**: An attacker triggering multiple webhooks could potentially link their customer ID to another organization.
+
+**Fix Applied**:
+
+```typescript
+// AFTER: Conditional update with null check
+await db
+  .update(organization)
+  .set({ polarCustomerId: customerId })
+  .where(
+    and(eq(organization.id, org.id), isNull(organization.polarCustomerId))
+  );
+```
+
+### SEC-104: Canceled Subscription Loses Access Immediately (HIGH)
+
+**Problem**: The `hasActiveSubscription()` method only checked for `status === "active"`:
+
+```typescript
+// BEFORE: Canceled subscriptions lose access immediately
+return org.subscriptionPlan !== null && org.subscriptionStatus === "active";
+```
+
+**Impact**: Users who canceled their subscription lost access immediately instead of at the end of their billing period.
+
+**Fix Applied**:
+
+```typescript
+// AFTER: Proper handling of subscription status with grace period
+switch (org.subscriptionStatus) {
+  case "active":
+    return true;
+  case "canceled":
+    // Access until period end
+    if (org.subscriptionEndsAt) {
+      return new Date() < new Date(org.subscriptionEndsAt);
+    }
+    return false;
+  case "past_due":
+    return true; // Access while payment retried
+  default:
+    return false;
+}
+```
+
+### SEC-105: order.paid Handler Missing subscriptionId (MEDIUM)
+
+**Problem**: The `handleOrderPaid` function didn't set the `subscriptionId`:
+
+```typescript
+// BEFORE: Missing subscriptionId
+await subscriptionService.updateSubscription(org.id, {
+  subscriptionPlan: plan,
+  subscriptionStatus: "active",
+  polarCustomerId: customerId,
+  // subscriptionId not set!
+});
+```
+
+**Impact**: Future webhook handlers that look up by `subscriptionId` would fail for subscriptions activated via `order.paid`.
+
+**Fix Applied**:
+
+```typescript
+// AFTER: Extract subscription ID from order payload
+const subscriptionId =
+  payload.data.subscription?.id || payload.data.subscriptionId || webhookId;
+
+await subscriptionService.updateSubscription(org.id, {
+  subscriptionPlan: plan,
+  subscriptionStatus: "active",
+  subscriptionId: subscriptionId,
+  polarCustomerId: customerId,
+});
+```
+
+### SEC-106: Manage Subscription Button Visible to Non-Owners (MEDIUM)
+
+**Problem**: The "Manage Subscription" button in org admin was visible to all org admins, but only the org owner's email is linked to the Polar customer.
+
+**Impact**: Org admins clicking the button would see an error because their email doesn't match the Polar customer.
+
+**Fix Applied**:
+
+```typescript
+// SubscriptionTab now accepts currentUserRole prop
+interface SubscriptionTabProps {
+  currentUserRole?: string;
+}
+
+export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
+  const canManageSubscription = currentUserRole === "org_owner";
+
+  return (
+    <div>
+      {canManageSubscription && (
+        <Button onClick={handleManageSubscription}>Manage Subscription</Button>
+      )}
+    </div>
+  );
+}
+```
+
+### Best Practices Implemented
+
+1. **Atomic Operations**: All webhook idempotency now uses database-level atomic operations
+2. **Conditional Updates**: All customer linking uses conditional updates to prevent race conditions
+3. **Proper Unique Constraints**: Changed from index to uniqueIndex for actual uniqueness enforcement
+4. **Grace Period Handling**: Canceled subscriptions retain access until billing period ends
+5. **Role-Based Access**: Billing management restricted to organization owners only
+6. **Comprehensive Logging**: All webhook handlers log truncated IDs for debugging without exposing sensitive data
+
+### Polar Documentation Verification (December 2025)
+
+This section documents a thorough verification of our implementation against official Polar documentation.
+
+#### Documentation Sources Reviewed
+
+1. https://polar.sh/docs/features/usage-based-billing/introduction
+2. https://polar.sh/docs/features/usage-based-billing/event-ingestion
+3. https://polar.sh/docs/features/usage-based-billing/meters
+4. https://polar.sh/docs/features/usage-based-billing/billing
+5. https://polar.sh/docs/features/usage-based-billing/ingestion-strategies
+6. https://polar.sh/docs/features/products
+7. https://polar.sh/docs/features/orders
+8. https://polar.sh/docs/integrate/sdk/adapters/better-auth
+
+#### Verification Results
+
+| Feature                        | Status        | Notes                                                                     |
+| ------------------------------ | ------------- | ------------------------------------------------------------------------- |
+| Better Auth Plugin Integration | ✅ Compliant  | Uses `checkout()`, `portal()`, `usage()`, `webhooks()` plugins            |
+| Event Ingestion API            | ✅ Compliant  | Uses `/v1/events/ingest` endpoint with correct payload format             |
+| Customer ID Format             | ✅ Compliant  | Uses `customer_id` (Polar's ID) since we store `polarCustomerId`          |
+| Event Immutability             | ✅ Understood | Events cannot be changed/deleted once ingested                            |
+| Meter Configuration            | ✅ Compliant  | Documentation updated with correct filter setup                           |
+| Grace Period Handling          | ✅ Compliant  | Per Polar docs: "subscription remains active until end of billing period" |
+| Webhook Handlers               | ✅ Complete   | All critical handlers + `onSubscriptionUncanceled` now implemented        |
+| Usage-Based Billing Workflow   | ✅ Compliant  | Event ingestion → Meter aggregation → Metered prices on products          |
+
+#### Polar Event Ingestion Format Verification
+
+Our implementation matches Polar's documented format:
+
+```typescript
+// Polar-documented format:
+{
+  events: [
+    {
+      name: "<event_name>", // ✅ We use: "playwright_minutes", "k6_vu_minutes", "ai_credits"
+      customer_id: "<polar_customer_id>", // ✅ We use org.polarCustomerId
+      // OR external_customer_id: "<your_user_id>",  // Alternative - we use customer_id
+      timestamp: "ISO-8601-timestamp", // ✅ We pass timestamp
+      metadata: {
+        // ✅ We include:
+        event_id: "...", //    - event_id for deduplication
+        value: 123, //    - value for meter aggregation
+        // ... additional fields
+      },
+    },
+  ];
+}
+```
+
+#### Meter Configuration Alignment
+
+Per Polar docs, meters use filters to aggregate events:
+
+| Our Event Name       | Meter Filter Setup               | Aggregation |
+| -------------------- | -------------------------------- | ----------- |
+| `playwright_minutes` | Name equals `playwright_minutes` | Sum(value)  |
+| `k6_vu_minutes`      | Name equals `k6_vu_minutes`      | Sum(value)  |
+| `ai_credits`         | Name equals `ai_credits`         | Sum(value)  |
+
+#### Webhook Handler Completeness
+
+Per Better Auth Polar plugin documentation, we now implement all critical handlers:
+
+- ✅ `onCustomerCreated` - Link customer to organization
+- ✅ `onCustomerDeleted` - Revoke access on deletion
+- ✅ `onCustomerStateChanged` - Log state changes
+- ✅ `onSubscriptionActive` - Activate subscription
+- ✅ `onSubscriptionCreated` - Handle new subscriptions
+- ✅ `onSubscriptionUpdated` - Handle plan changes
+- ✅ `onSubscriptionCanceled` - Mark canceled with grace period
+- ✅ `onSubscriptionUncanceled` - Restore reversed cancellations **(Added)**
+- ✅ `onSubscriptionRevoked` - Immediate access termination
+- ✅ `onOrderPaid` - Payment confirmation
+- ✅ `onPayload` - Catch-all logging
+
+#### Key Polar Behaviors Verified
+
+1. **Grace Period on Cancellation**: Per Polar docs, "subscription remains active until the end of the current billing period" - our `hasActiveSubscription()` correctly handles this
+2. **Usage Charges on Cancel**: Per Polar billing docs, "all accumulated usage-based charges continue to be tracked" during grace period - our implementation continues tracking
+3. **Events are Immutable**: Per Polar docs, "events cannot be changed or deleted" - we handle this by using unique event IDs
 
 ---

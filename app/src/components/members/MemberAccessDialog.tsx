@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
@@ -36,6 +36,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import {
+  isDisposableEmail,
+  getDisposableEmailErrorMessage,
+} from "@/lib/validations/disposable-email-domains";
 
 interface Project {
   id: string;
@@ -59,6 +63,7 @@ interface MemberAccessDialogProps {
   projects: Project[];
   onSubmit: (memberData: MemberData) => Promise<void>;
   isLoading?: boolean;
+  isCloudMode?: boolean;
 }
 
 const accessLevels = [
@@ -157,6 +162,7 @@ export function MemberAccessDialog({
   projects,
   onSubmit,
   isLoading = false,
+  isCloudMode = true,
 }: MemberAccessDialogProps) {
   const [formData, setFormData] = useState<MemberData>({
     email: "",
@@ -164,33 +170,45 @@ export function MemberAccessDialog({
     selectedProjects: [],
   });
 
-  // Initialize form data when dialog opens or member changes
+  // Track previous open state to detect transitions
+  const wasOpen = useRef(open);
+
+  // Initialize form data only when transitioning from closed to open
   useEffect(() => {
-    if (open) {
-      if (mode === "edit" && member) {
-        setFormData({
-          id: member.id,
-          name: member.name,
-          email: member.email,
-          role: member.role,
-          selectedProjects: member.selectedProjects || [],
-        });
-      } else {
-        setFormData({
-          email: "",
-          role: "project_editor",
-          selectedProjects: [],
-        });
-      }
+    // Only run when dialog opens (not when already open)
+    if (open && !wasOpen.current) {
+      // Defer setState to avoid synchronous setState in effect body
+      setTimeout(() => {
+        if (mode === "edit" && member) {
+          setFormData({
+            id: member.id,
+            name: member.name,
+            email: member.email,
+            role: member.role,
+            selectedProjects: member.selectedProjects || [],
+          });
+        } else {
+          setFormData({
+            email: "",
+            role: "project_editor",
+            selectedProjects: [],
+          });
+        }
+      }, 0);
     }
+    wasOpen.current = open;
   }, [open, mode, member]);
 
-  // Clear project assignments when project_viewer is selected
-  useEffect(() => {
-    if (formData.role === "project_viewer") {
-      setFormData((prev) => ({ ...prev, selectedProjects: [] }));
-    }
-  }, [formData.role]);
+  // Handle role change - clear projects when project_viewer is selected
+  const handleRoleChange = (newRole: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      role: newRole,
+      // Clear project assignments when project_viewer is selected
+      selectedProjects:
+        newRole === "project_viewer" ? [] : prev.selectedProjects,
+    }));
+  };
 
   const handleProjectToggle = (projectId: string) => {
     setFormData((prev) => ({
@@ -223,6 +241,16 @@ export function MemberAccessDialog({
       role: formData.role,
       selectedProjects: formData.selectedProjects,
     };
+
+    // Check for disposable email in cloud mode (invite only)
+    if (
+      mode === "invite" &&
+      isCloudMode &&
+      isDisposableEmail(dataToValidate.email)
+    ) {
+      toast.error(getDisposableEmailErrorMessage());
+      return;
+    }
 
     // Validate form data using appropriate schema
     try {
@@ -373,9 +401,7 @@ export function MemberAccessDialog({
                   <button
                     key={level.role}
                     type="button"
-                    onClick={() =>
-                      setFormData({ ...formData, role: level.role })
-                    }
+                    onClick={() => handleRoleChange(level.role)}
                     className={cn(
                       "relative flex flex-col items-start p-3 rounded-lg border-2 transition-all text-left",
                       isSelected

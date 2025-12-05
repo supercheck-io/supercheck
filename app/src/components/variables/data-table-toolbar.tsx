@@ -14,7 +14,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { VariableDialog } from "./variable-dialog";
-import { useState, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import { useSearchParams } from "next/navigation";
 
@@ -37,24 +37,34 @@ export function DataTableToolbar<TData>({
   const isFiltered = table.getState().columnFilters.length > 0;
   const meta = table.options.meta as TableMeta;
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
   const searchParams = useSearchParams();
-  const [defaultIsSecret, setDefaultIsSecret] = useState(false);
 
+  // Initialize dialog open state from URL params
+  const [dialogOpen, setDialogOpen] = useState(
+    () => searchParams.get("create") === "true"
+  );
+
+  // Track if we've handled the initial URL-based open
+  const initialOpenHandled = useRef(false);
+
+  // Compute default secret state from URL params
+  const defaultIsSecret = searchParams.get("type") === "secret";
+
+  // Handle subsequent URL changes (not initial mount)
   useEffect(() => {
-    const create = searchParams.get("create");
-    const type = searchParams.get("type");
-
-    if (create === "true") {
-      if (type === "secret") {
-        setDefaultIsSecret(true);
-      } else {
-        setDefaultIsSecret(false);
-      }
-      setDialogOpen(true);
+    // Skip the initial mount - already handled by useState initializer
+    if (!initialOpenHandled.current) {
+      initialOpenHandled.current = true;
+      return;
     }
-  }, [searchParams]);
 
+    // For subsequent URL changes, update dialog state
+    // Defer to avoid synchronous setState in effect body
+    const create = searchParams.get("create");
+    if (create === "true" && !dialogOpen) {
+      setTimeout(() => setDialogOpen(true), 0);
+    }
+  }, [searchParams, dialogOpen]);
   const handleCopyCode = async (code: string) => {
     try {
       await navigator.clipboard.writeText(code);

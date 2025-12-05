@@ -566,7 +566,7 @@ export function TestForm({
       const base64Script = btoa(unescape(encodeURIComponent(editorContent)));
 
       // Update the test case with base64-encoded script
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+       
       const { location: _playgroundLocation, ...testCaseForSave } = testCase;
       const updatedTestCase = {
         ...testCaseForSave,

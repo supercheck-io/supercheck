@@ -1,31 +1,29 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { Clock } from 'lucide-react';
-import { getNextRunDate, formatNextRunDate } from '@/lib/cron-utils';
+import React, { useMemo } from "react";
+import { Clock } from "lucide-react";
+import { getNextRunDate, formatNextRunDate } from "@/lib/cron-utils";
 
 interface NextRunDisplayProps {
   cronExpression: string | null | undefined;
 }
 
 const NextRunDisplay: React.FC<NextRunDisplayProps> = ({ cronExpression }) => {
-  const [nextRun, setNextRun] = useState<string>('No date');
-
-  useEffect(() => {
-    if (cronExpression && cronExpression.trim() !== '') {
-      try {
-        const nextDate = getNextRunDate(cronExpression);
-        setNextRun(formatNextRunDate(nextDate));
-      } catch (error) {
-        console.error('Error calculating next run date:', error);
-        setNextRun('No date');
-      }
-    } else {
-      setNextRun('No date');
+  // Compute next run date directly - no need for useState/useEffect
+  const nextRun = useMemo(() => {
+    if (!cronExpression || cronExpression.trim() === "") {
+      return "No date";
+    }
+    try {
+      const nextDate = getNextRunDate(cronExpression);
+      return formatNextRunDate(nextDate);
+    } catch (error) {
+      console.error("Error calculating next run date:", error);
+      return "No date";
     }
   }, [cronExpression]);
 
-  if (!cronExpression || cronExpression.trim() === '') {
+  if (!cronExpression || cronExpression.trim() === "") {
     return null;
   }
 
@@ -37,4 +35,4 @@ const NextRunDisplay: React.FC<NextRunDisplayProps> = ({ cronExpression }) => {
   );
 };
 
-export default NextRunDisplay; 
+export default NextRunDisplay;

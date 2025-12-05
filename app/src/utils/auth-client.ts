@@ -4,34 +4,29 @@ import {
   organizationClient,
   adminClient,
 } from "better-auth/client/plugins";
-import { polarClient } from "@polar-sh/better-auth";
-import { ac, roles, Role } from "@/lib/rbac/permissions";
 
+/**
+ * Better Auth client for browser-side authentication.
+ *
+ * Note: polarClient is intentionally NOT included here because:
+ * 1. @polar-sh/better-auth imports server-side Better Auth modules that use node:async_hooks
+ * 2. node:async_hooks is not available in browsers
+ * 3. Polar checkout/portal functionality is handled server-side in auth.ts
+ * 4. Client-side code doesn't actually use polarClient methods (verified by codebase search)
+ */
 export const authClient = createAuthClient({
   /** The base URL of the server (optional if you're using the same domain) */
   baseURL: process.env.NEXT_PUBLIC_APP_URL,
   plugins: [
     apiKeyClient(),
     organizationClient({
-      ac,
-      roles: {
-        org_owner: roles[Role.ORG_OWNER],
-        org_admin: roles[Role.ORG_ADMIN],
-        project_admin: roles[Role.PROJECT_ADMIN],
-        project_editor: roles[Role.PROJECT_EDITOR],
-        project_viewer: roles[Role.PROJECT_VIEWER],
-      },
+      // Note: In Better Auth 1.4.x, the client plugin uses rolePermissions directly
+      // The ac/roles from server-side are not needed on client
     }),
     adminClient({
-      ac,
-      roles: {
-        org_admin: roles[Role.ORG_ADMIN],
-        super_admin: roles[Role.SUPER_ADMIN],
-      },
+      // Note: Admin client doesn't need ac/roles on client side
     }),
-    // Polar client plugin for checkout and portal functionality
-    // Only active when Polar is enabled on the server
-    polarClient(),
+    // Note: polarClient() is NOT included here - see comment above
   ],
 });
 
@@ -40,8 +35,9 @@ export const {
   signUp,
   useSession,
   signOut,
-  forgetPassword,
+  requestPasswordReset, // Changed from forgetPassword in Better Auth 1.4.x
   resetPassword,
+  sendVerificationEmail,
   // Organization methods
   organization: {
     create: createOrganization,

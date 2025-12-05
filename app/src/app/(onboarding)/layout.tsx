@@ -4,6 +4,12 @@ import { redirect } from "next/navigation";
 import { QueryProvider } from "@/lib/query-provider";
 import { CheckIcon } from "@/components/logo/supercheck-logo";
 import { SignOutButton } from "@/components/sign-out-button";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Subscription | Supercheck",
+  description: "Manage your subscription and billing information",
+};
 
 /**
  * Onboarding Layout - Clean layout without sidebar for subscription/setup flows
@@ -15,7 +21,7 @@ export default async function OnboardingLayout({
   children: React.ReactNode;
 }>) {
   const session = await auth.api.getSession({
-    headers: await headers()
+    headers: await headers(),
   });
 
   if (!session) {
@@ -40,16 +46,16 @@ export default async function OnboardingLayout({
             </div>
           </div>
         </header>
-        
+
         {/* Main Content */}
-        <main className="container mx-auto px-4 py-8">
-          {children}
-        </main>
+        <main className="container mx-auto px-4 py-8">{children}</main>
 
         {/* Footer */}
         <footer className="border-t bg-muted/30 mt-auto">
           <div className="container mx-auto px-4 py-6 text-center text-sm text-muted-foreground">
-            <p>© {new Date().getFullYear()} Supercheck. All rights reserved.</p>
+            <p>
+              © {new Date().getFullYear()} Supercheck. All rights reserved.
+            </p>
           </div>
         </footer>
       </div>

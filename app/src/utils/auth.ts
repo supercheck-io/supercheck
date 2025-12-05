@@ -9,12 +9,16 @@ import {
   checkPasswordResetRateLimit,
   getClientIP,
 } from "@/lib/session-security";
-import { renderPasswordResetEmail } from "@/lib/email-renderer";
+import {
+  renderPasswordResetEmail,
+  renderEmailVerificationEmail,
+} from "@/lib/email-renderer";
 import { nextCookies } from "better-auth/next-js";
 import {
   isPolarEnabled,
   getPolarConfig,
   getPolarProducts,
+  isCloudHosted,
 } from "@/lib/feature-flags";
 
 /**
@@ -27,7 +31,7 @@ function getPolarPlugin() {
   }
 
   try {
-    /* eslint-disable @typescript-eslint/no-require-imports */
+     
     const {
       polar,
       checkout,
@@ -36,7 +40,7 @@ function getPolarPlugin() {
       webhooks,
     } = require("@polar-sh/better-auth");
     const { Polar } = require("@polar-sh/sdk");
-    /* eslint-enable @typescript-eslint/no-require-imports */
+     
 
     const config = getPolarConfig()!;
     const products = getPolarProducts();
@@ -102,7 +106,7 @@ function getPolarPlugin() {
         webhooks({
           secret: config.webhookSecret!,
           // Customer lifecycle handlers - critical for linking customer to organization
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onCustomerCreated: async (payload: any) => {
             console.log("[Polar] Webhook: customer.created");
             const { handleCustomerCreated } = await import(
@@ -111,7 +115,7 @@ function getPolarPlugin() {
             await handleCustomerCreated(payload);
           },
           // Subscription lifecycle handlers
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onSubscriptionActive: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.active");
             const { handleSubscriptionActive } = await import(
@@ -119,7 +123,7 @@ function getPolarPlugin() {
             );
             await handleSubscriptionActive(payload);
           },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onSubscriptionCreated: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.created");
             const { handleSubscriptionActive } = await import(
@@ -127,7 +131,7 @@ function getPolarPlugin() {
             );
             await handleSubscriptionActive(payload);
           },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onSubscriptionUpdated: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.updated");
             const { handleSubscriptionUpdated } = await import(
@@ -135,7 +139,7 @@ function getPolarPlugin() {
             );
             await handleSubscriptionUpdated(payload);
           },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onSubscriptionCanceled: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.canceled");
             const { handleSubscriptionCanceled } = await import(
@@ -143,8 +147,17 @@ function getPolarPlugin() {
             );
             await handleSubscriptionCanceled(payload);
           },
+          // Handle subscription uncancellation - user reverses cancellation during grace period
+           
+          onSubscriptionUncanceled: async (payload: any) => {
+            console.log("[Polar] Webhook: subscription.uncanceled");
+            const { handleSubscriptionUncanceled } = await import(
+              "@/lib/webhooks/polar-webhooks"
+            );
+            await handleSubscriptionUncanceled(payload);
+          },
           // CRITICAL: Handle subscription revocation - immediate access termination
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onSubscriptionRevoked: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.revoked");
             const { handleSubscriptionRevoked } = await import(
@@ -153,7 +166,7 @@ function getPolarPlugin() {
             await handleSubscriptionRevoked(payload);
           },
           // Payment confirmation handler
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onOrderPaid: async (payload: any) => {
             console.log("[Polar] Webhook: order.paid");
             const { handleOrderPaid } = await import(
@@ -170,7 +183,7 @@ function getPolarPlugin() {
             await handleCustomerStateChanged();
           },
           // CRITICAL: Handle customer deletion - revoke access immediately
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onCustomerDeleted: async (payload: any) => {
             console.log("[Polar] Webhook: customer.deleted");
             const { handleCustomerDeleted } = await import(
@@ -179,7 +192,7 @@ function getPolarPlugin() {
             await handleCustomerDeleted(payload);
           },
           // Catch-all for logging and handling any other events
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onPayload: async (payload: any) => {
             // Log all events for debugging/monitoring
             console.log("[Polar] Webhook received:", payload.type);
@@ -226,9 +239,55 @@ export const auth = betterAuth({
       prompt: "select_account consent",
     },
   },
+  // Email verification - only required in cloud mode
+  emailVerification: isCloudHosted()
+    ? {
+        sendVerificationEmail: async ({ user, url }) => {
+          const emailService = EmailService.getInstance();
+
+          // Modify the verification URL to redirect to sign-in with verified flag
+          const verificationUrl = new URL(url);
+          // The callback URL after verification should be sign-in with verified flag
+          verificationUrl.searchParams.set(
+            "callbackURL",
+            "/sign-in?verified=true"
+          );
+          const modifiedUrl = verificationUrl.toString();
+
+          try {
+            // Render email using react-email template
+            const emailContent = await renderEmailVerificationEmail({
+              verificationUrl: modifiedUrl,
+              userEmail: user.email,
+              userName: user.name || undefined,
+            });
+
+            const result = await emailService.sendEmail({
+              to: user.email,
+              subject: emailContent.subject,
+              text: emailContent.text,
+              html: emailContent.html,
+            });
+
+            if (!result.success) {
+              console.error("Failed to send verification email:", result.error);
+              throw new Error("Failed to send verification email");
+            }
+
+            console.log("Verification email sent successfully to:", user.email);
+          } catch (error) {
+            console.error("Error sending verification email:", error);
+            throw error;
+          }
+        },
+        // Don't auto sign in - redirect to sign-in page with verified flag
+        autoSignInAfterVerification: false,
+      }
+    : undefined,
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: false,
+    // Only require email verification in cloud mode
+    requireEmailVerification: isCloudHosted(),
     sendResetPassword: async ({ user, url }, request) => {
       const emailService = EmailService.getInstance();
 

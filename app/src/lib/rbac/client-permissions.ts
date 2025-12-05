@@ -2,7 +2,7 @@
  * Client-side permission checking utilities for Better Auth RBAC System
  */
 
-import { Role } from "./permissions";
+import { Role } from "./permissions-client";
 
 /**
  * Check if role has permission to perform action on resource
@@ -375,7 +375,7 @@ export interface ClientPermissionContext {
  */
 export function canDeleteResource(
   context: ClientPermissionContext,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   _resource: keyof typeof import("./permissions").statement
 ): boolean {
   const { role } = context;

@@ -2,11 +2,23 @@
 
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
-import { Crown, Shield, User } from "lucide-react";
+import { Crown, Shield, User, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UserActions } from "./user-actions";
 import { UUIDField } from "@/components/ui/uuid-field";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
+export interface UserOrganization {
+  organizationId: string;
+  organizationName: string;
+  role: string;
+}
 
 export interface AdminUser {
   id: string;
@@ -16,6 +28,7 @@ export interface AdminUser {
   banned?: boolean;
   banReason?: string;
   createdAt: string;
+  organizations?: UserOrganization[];
 }
 
 // Role changes are handled at the organization level via org admin interface
@@ -175,6 +188,85 @@ export const createUserColumns = (
       const status = banned ? "banned" : "active";
       return value.includes(status);
     },
+  },
+  {
+    id: "organizations",
+    accessorFn: (row) => row.organizations || [],
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Organizations" />
+    ),
+    cell: ({ row }) => {
+      const organizations = row.original.organizations || [];
+
+      if (organizations.length === 0) {
+        return (
+          <div className="flex items-center h-10 text-sm text-muted-foreground">
+            <span className="italic">No organization</span>
+          </div>
+        );
+      }
+
+      // Show first organization with count if more
+      const firstOrg = organizations[0];
+      const remainingCount = organizations.length - 1;
+
+      return (
+        <div className="flex items-center h-10">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-2 cursor-default">
+                  <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  <span className="truncate max-w-[150px] text-sm">
+                    {firstOrg.organizationName}
+                  </span>
+                  {remainingCount > 0 && (
+                    <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                      +{remainingCount}
+                    </Badge>
+                  )}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-xs">
+                <div className="space-y-1">
+                  <p className="font-medium text-xs">
+                    Organizations ({organizations.length})
+                  </p>
+                  <div className="space-y-0.5">
+                    {organizations.map((org) => (
+                      <div
+                        key={org.organizationId}
+                        className="flex items-center justify-between gap-3 text-xs"
+                      >
+                        <span className="truncate">{org.organizationName}</span>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] px-1 py-0"
+                        >
+                          {org.role.replace("_", " ")}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      );
+    },
+    filterFn: (row, id, value) => {
+      const organizations = row.original.organizations || [];
+      // Filter by organization ID (value is an array of selected org IDs from faceted filter)
+      if (Array.isArray(value)) {
+        return organizations.some((org) => value.includes(org.organizationId));
+      }
+      // Fallback for string search
+      return organizations.some((org) =>
+        org.organizationName.toLowerCase().includes(String(value).toLowerCase())
+      );
+    },
+    // enableSorting: false,
   },
   {
     accessorKey: "createdAt",

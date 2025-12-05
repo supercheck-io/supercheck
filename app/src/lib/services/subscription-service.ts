@@ -234,6 +234,12 @@ export class SubscriptionService {
   /**
    * Check if organization has an active paid subscription
    * Returns false if cloud mode and no subscription or customer doesn't exist in Polar
+   *
+   * IMPORTANT: This handles the canceled subscription grace period:
+   * - status === "active": Always has access
+   * - status === "canceled": Has access until subscriptionEndsAt date
+   * - status === "past_due": Has access (payment will be retried)
+   * - status === "none" or null plan: No access
    */
   async hasActiveSubscription(organizationId: string): Promise<boolean> {
     if (!isPolarEnabled()) {
@@ -260,14 +266,49 @@ export class SubscriptionService {
       }
     }
 
-    // Check if subscription is active
-    return org.subscriptionPlan !== null && org.subscriptionStatus === "active";
+    // Must have a plan to have access
+    if (!org.subscriptionPlan) {
+      return false;
+    }
+
+    // Check subscription status
+    switch (org.subscriptionStatus) {
+      case "active":
+        // Active subscription - full access
+        return true;
+
+      case "canceled":
+        // Canceled subscription - access until period end
+        // User retains access until subscriptionEndsAt date
+        if (org.subscriptionEndsAt) {
+          const now = new Date();
+          const endsAt = new Date(org.subscriptionEndsAt);
+          return now < endsAt;
+        }
+        // If no end date set, default to no access (shouldn't happen normally)
+        console.warn(
+          `[SubscriptionService] Canceled subscription for org ${organizationId.substring(0, 8)}... has no end date`
+        );
+        return false;
+
+      case "past_due":
+        // Past due - still has access while payment is being retried
+        // Polar will revoke if payment ultimately fails
+        return true;
+
+      case "none":
+      default:
+        // No subscription or unknown status
+        return false;
+    }
   }
 
   /**
    * Get the subscription plan information for an organization
    * For cloud mode: returns actual plan or throws if no subscription (use getOrganizationPlanSafe for non-throwing version)
    * For self-hosted: always returns unlimited
+   *
+   * IMPORTANT: This handles canceled subscriptions with grace period
    */
   async getOrganizationPlan(organizationId: string) {
     const org = await db.query.organization.findFirst({
@@ -283,8 +324,10 @@ export class SubscriptionService {
       return this.getPlanLimits("unlimited");
     }
 
-    // Cloud mode: require active subscription
-    if (!org.subscriptionPlan || org.subscriptionStatus !== "active") {
+    // Cloud mode: require subscription with valid access
+    // This handles active, canceled (with grace period), and past_due
+    const hasAccess = await this.hasActiveSubscription(organizationId);
+    if (!org.subscriptionPlan || !hasAccess) {
       throw new Error(
         "No active subscription. Please subscribe to a plan to continue."
       );
@@ -344,26 +387,31 @@ export class SubscriptionService {
       }
     }
 
-    // Cloud mode: return actual plan if subscribed, otherwise return plus limits for display
-    if (org.subscriptionPlan && org.subscriptionStatus === "active") {
-      // SECURITY: Validate plan is legitimate for cloud mode (same as getOrganizationPlan)
-      if (org.subscriptionPlan === "unlimited") {
-        console.error(
-          `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has unlimited plan in cloud mode (getOrganizationPlanSafe) - possible database tampering`
-        );
-        // Return blocked state instead of unlimited for security
-        return this.getPlanLimits("blocked");
-      }
+    // Cloud mode: return actual plan if subscribed and has access
+    // Handle canceled subscriptions with grace period
+    if (org.subscriptionPlan) {
+      const hasAccess = await this.hasActiveSubscription(organizationId);
 
-      if (!["plus", "pro"].includes(org.subscriptionPlan)) {
-        console.error(
-          `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has invalid plan ${org.subscriptionPlan} in cloud mode (getOrganizationPlanSafe)`
-        );
-        // Return blocked state for invalid plans
-        return this.getPlanLimits("blocked");
-      }
+      if (hasAccess) {
+        // SECURITY: Validate plan is legitimate for cloud mode (same as getOrganizationPlan)
+        if (org.subscriptionPlan === "unlimited") {
+          console.error(
+            `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has unlimited plan in cloud mode (getOrganizationPlanSafe) - possible database tampering`
+          );
+          // Return blocked state instead of unlimited for security
+          return this.getPlanLimits("blocked");
+        }
 
-      return this.getPlanLimits(org.subscriptionPlan);
+        if (!["plus", "pro"].includes(org.subscriptionPlan)) {
+          console.error(
+            `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has invalid plan ${org.subscriptionPlan} in cloud mode (getOrganizationPlanSafe)`
+          );
+          // Return blocked state for invalid plans
+          return this.getPlanLimits("blocked");
+        }
+
+        return this.getPlanLimits(org.subscriptionPlan);
+      }
     }
 
     // Return plus plan limits for display purposes (user will see what they'd get)

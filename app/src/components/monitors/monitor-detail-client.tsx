@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { canEditMonitors } from "@/lib/rbac/client-permissions";
-import { Role } from "@/lib/rbac/permissions";
+import { Role } from "@/lib/rbac/permissions-client";
 import { LoadingBadge, Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { deleteMonitor } from "@/actions/delete-monitor";

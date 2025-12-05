@@ -6,7 +6,6 @@ import { CalendarIcon, ClockIcon } from "lucide-react";
 import { UUIDField } from "@/components/ui/uuid-field";
 import { toast } from "sonner";
 
-
 import { MonitorStatusIndicator } from "./monitor-status-indicator";
 import { monitorTypes } from "./data";
 import { formatDurationMinutes } from "@/lib/date-utils";
@@ -23,17 +22,21 @@ export const columns: ColumnDef<Monitor>[] = [
   {
     accessorKey: "id",
     header: ({ column }) => (
-      <DataTableColumnHeader className="ml-2" column={column} title="Monitor ID" />
+      <DataTableColumnHeader
+        className="ml-2"
+        column={column}
+        title="Monitor ID"
+      />
     ),
     cell: ({ row }) => {
-      const id = row.getValue("id") as string;    
+      const id = row.getValue("id") as string;
       return (
         <div className="w-[90px]">
-                <UUIDField 
-                  value={id} 
-                  maxLength={24} 
-                  onCopy={() => toast.success("Monitor ID copied to clipboard")}
-                />
+          <UUIDField
+            value={id}
+            maxLength={8}
+            onCopy={() => toast.success("Monitor ID copied to clipboard")}
+          />
         </div>
       );
     },
@@ -46,10 +49,10 @@ export const columns: ColumnDef<Monitor>[] = [
     ),
     cell: ({ row }) => {
       const name = row.getValue("name") as string;
-      
+
       return (
         <div className="flex space-x-2">
-          <TruncatedTextWithTooltip 
+          <TruncatedTextWithTooltip
             text={name}
             className="font-medium"
             maxWidth="160px"
@@ -67,12 +70,11 @@ export const columns: ColumnDef<Monitor>[] = [
     cell: ({ row }) => {
       const target = row.getValue("target") as string;
       const legacyUrl = row.original.url as string; // Fallback for legacy data
-      
-      
+
       const displayValue = target || legacyUrl || "—";
-      
+
       return (
-        <TruncatedTextWithTooltip 
+        <TruncatedTextWithTooltip
           text={displayValue}
           className="font-mono text-sm block"
           maxWidth="170px"
@@ -88,7 +90,9 @@ export const columns: ColumnDef<Monitor>[] = [
       <DataTableColumnHeader column={column} title="Type" />
     ),
     cell: ({ row }) => {
-      const type = monitorTypes.find((type) => type.value === row.getValue("type"));
+      const type = monitorTypes.find(
+        (type) => type.value === row.getValue("type")
+      );
 
       if (!type) {
         return null;
@@ -111,8 +115,18 @@ export const columns: ColumnDef<Monitor>[] = [
       <DataTableColumnHeader column={column} title="Status" />
     ),
     cell: ({ row }) => {
-      const statusValue = row.getValue("status") as "up" | "down" | "paused" | "pending" | "maintenance";
-      return <MonitorStatusIndicator status={statusValue} monitorId={row.original.id} />;
+      const statusValue = row.getValue("status") as
+        | "up"
+        | "down"
+        | "paused"
+        | "pending"
+        | "maintenance";
+      return (
+        <MonitorStatusIndicator
+          status={statusValue}
+          monitorId={row.original.id}
+        />
+      );
     },
     filterFn: (row, id, value) => {
       return value.includes(row.getValue(id));
@@ -125,7 +139,7 @@ export const columns: ColumnDef<Monitor>[] = [
     ),
     cell: ({ row }) => {
       const frequencyMinutes = row.getValue("frequencyMinutes") as number;
-      
+
       // Format interval to be readable (i.e. 1 -> 1m, 60 -> 1h)
       const formatted = formatDurationMinutes(frequencyMinutes);
 
@@ -161,7 +175,9 @@ export const columns: ColumnDef<Monitor>[] = [
         <div className="flex items-center w-[170px]">
           <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground" />
           <span>{formattedDate}</span>
-          <span className="text-muted-foreground ml-1 text-xs">{formattedTime}</span>
+          <span className="text-muted-foreground ml-1 text-xs">
+            {formattedTime}
+          </span>
         </div>
       );
     },
@@ -174,7 +190,7 @@ export const columns: ColumnDef<Monitor>[] = [
     cell: ({ row }) => {
       const updatedAt = row.getValue("updatedAt") as string;
       const createdAt = row.getValue("createdAt") as string;
-      
+
       // Only show updatedAt if it's different from createdAt (indicating an actual update)
       if (!updatedAt || updatedAt === createdAt) {
         return (
@@ -200,7 +216,9 @@ export const columns: ColumnDef<Monitor>[] = [
         <div className="flex items-center w-[170px]">
           <ClockIcon className="mr-2 h-4 w-4 text-muted-foreground" />
           <span>{formattedDate}</span>
-          <span className="text-muted-foreground ml-1 text-xs">{formattedTime}</span>
+          <span className="text-muted-foreground ml-1 text-xs">
+            {formattedTime}
+          </span>
         </div>
       );
     },
@@ -224,4 +242,4 @@ export const columns: ColumnDef<Monitor>[] = [
       );
     },
   },
-]; 
+];

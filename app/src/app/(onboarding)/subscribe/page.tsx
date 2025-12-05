@@ -155,7 +155,7 @@ export default function SubscribePage() {
       }
 
       // Use Better Auth Polar checkout client method with referenceId
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       await (authClient as any).checkout({
         slug: planSlug,
         referenceId: organizationId, // Link subscription to organization

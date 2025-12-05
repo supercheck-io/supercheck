@@ -1,15 +1,19 @@
 import { Metadata } from "next";
 import { AlertCircle } from "lucide-react";
-import { MonitorDetailClient, MonitorWithResults, MonitorResultItem } from "@/components/monitors/monitor-detail-client";
+import {
+  MonitorDetailClient,
+  MonitorWithResults,
+  MonitorResultItem,
+} from "@/components/monitors/monitor-detail-client";
 import { db } from "@/utils/db";
-import { 
-    monitors, 
-    monitorResults, 
-    projects,
-    MonitorStatus as DBMoniotorStatusType, 
-    MonitorType as DBMonitorType,
-    MonitorResultStatus as DBMonitorResultStatusType,
-    MonitorConfig
+import {
+  monitors,
+  monitorResults,
+  projects,
+  MonitorStatus as DBMoniotorStatusType,
+  MonitorType as DBMonitorType,
+  MonitorResultStatus as DBMonitorResultStatusType,
+  MonitorConfig,
 } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { getCurrentUser } from "@/lib/session";
@@ -25,7 +29,9 @@ type MonitorDetailsPageProps = {
 };
 
 // Direct server-side data fetching function
-async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults | null> {
+async function getMonitorDetailsDirectly(
+  id: string
+): Promise<MonitorWithResults | null> {
   try {
     // Ensure user is authenticated
     await requireAuth();
@@ -58,14 +64,17 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
       .limit(1);
 
     if (!monitorData || monitorData.length === 0) {
-      return null; 
+      return null;
     }
 
     const monitor = monitorData[0];
 
     // Enforce organization membership for access
     if (monitor.organizationId) {
-      const orgRole = await getUserOrgRole(currentUser.id, monitor.organizationId);
+      const orgRole = await getUserOrgRole(
+        currentUser.id,
+        monitor.organizationId
+      );
       if (!orgRole) {
         return null;
       }
@@ -79,20 +88,24 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
       .limit(chartResultsLimit);
 
     // Map DB results to MonitorResultItem structure for charts only
-    const mappedRecentResults: MonitorResultItem[] = recentResultsData.map((r) => ({
-      id: r.id,
-      monitorId: r.monitorId,
-      checkedAt: r.checkedAt ? new Date(r.checkedAt).toISOString() : new Date().toISOString(),
-      status: r.status as DBMonitorResultStatusType,
-      responseTimeMs: r.responseTimeMs,
-      details: r.details,
-      isUp: r.isUp,
-      isStatusChange: r.isStatusChange,
-      testExecutionId: r.testExecutionId ?? undefined,
-      testReportS3Url: r.testReportS3Url ?? undefined,
-      location: r.location ?? null,
-    }));
-    
+    const mappedRecentResults: MonitorResultItem[] = recentResultsData.map(
+      (r) => ({
+        id: r.id,
+        monitorId: r.monitorId,
+        checkedAt: r.checkedAt
+          ? new Date(r.checkedAt).toISOString()
+          : new Date().toISOString(),
+        status: r.status as DBMonitorResultStatusType,
+        responseTimeMs: r.responseTimeMs,
+        details: r.details,
+        isUp: r.isUp,
+        isStatusChange: r.isStatusChange,
+        testExecutionId: r.testExecutionId ?? undefined,
+        testReportS3Url: r.testReportS3Url ?? undefined,
+        location: r.location ?? null,
+      })
+    );
+
     const frequencyMinutes = monitor.frequencyMinutes ?? 0;
 
     const transformedMonitor: MonitorWithResults = {
@@ -104,12 +117,18 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
       enabled: monitor.enabled,
       frequencyMinutes,
       status: monitor.status as DBMoniotorStatusType,
-      active: monitor.status !== 'paused',
-      createdAt: monitor.createdAt ? new Date(monitor.createdAt).toISOString() : undefined,
-      updatedAt: monitor.updatedAt ? new Date(monitor.updatedAt).toISOString() : undefined,
-      lastCheckedAt: monitor.lastCheckAt ? new Date(monitor.lastCheckAt).toISOString() : undefined,
+      active: monitor.status !== "paused",
+      createdAt: monitor.createdAt
+        ? new Date(monitor.createdAt).toISOString()
+        : undefined,
+      updatedAt: monitor.updatedAt
+        ? new Date(monitor.updatedAt).toISOString()
+        : undefined,
+      lastCheckedAt: monitor.lastCheckAt
+        ? new Date(monitor.lastCheckAt).toISOString()
+        : undefined,
       responseTime: mappedRecentResults[0]?.responseTimeMs ?? undefined,
-      uptime: undefined, 
+      uptime: undefined,
       recentResults: mappedRecentResults,
       config: monitor.config as MonitorConfig,
       alertConfig: monitor.alertConfig || undefined,
@@ -117,16 +136,17 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
     };
 
     return transformedMonitor;
-
   } catch (error) {
     console.error(`Error in getMonitorDetailsDirectly for ${id}:`, error);
     throw error;
   }
 }
 
-export async function generateMetadata({ params }: MonitorDetailsPageProps): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: MonitorDetailsPageProps): Promise<Metadata> {
   const { id } = await params;
-  const monitor = await getMonitorDetailsDirectly(id); 
+  const monitor = await getMonitorDetailsDirectly(id);
   if (!monitor) {
     return {
       title: "Monitor Not Found | Supercheck",
@@ -138,42 +158,66 @@ export async function generateMetadata({ params }: MonitorDetailsPageProps): Pro
   };
 }
 
-export default async function NotificationMonitorDetailsPage({ params }: MonitorDetailsPageProps) {
-  const { id } = await params;
-  try {
-    const monitorWithData = await getMonitorDetailsDirectly(id);
-
-    if (!monitorWithData) {
-      return (
-        <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
-          <div className="flex flex-col items-center text-center">
-            <AlertCircle className="h-16 w-16 text-amber-500 mb-4" />
-            <h1 className="text-3xl font-bold mb-2">Monitor Not Found</h1>
-            <p className="text-muted-foreground mb-6">
-              This monitor is unavailable or you do not have access to view it.
-            </p>
-          </div>
-        </div>
-      );
-    }
-    
-    return (
-      <div className="w-full max-w-full">
-        <MonitorDetailClient monitor={monitorWithData} isNotificationView={true} />
+// Separate component for not found state
+function MonitorNotFound() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
+      <div className="flex flex-col items-center text-center">
+        <AlertCircle className="h-16 w-16 text-amber-500 mb-4" />
+        <h1 className="text-3xl font-bold mb-2">Monitor Not Found</h1>
+        <p className="text-muted-foreground mb-6">
+          This monitor is unavailable or you do not have access to view it.
+        </p>
       </div>
-    );
+    </div>
+  );
+}
+
+// Separate component for error state
+function MonitorError() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
+      <div className="flex flex-col items-center text-center">
+        <AlertCircle className="h-16 w-16 text-red-500 mb-4" />
+        <h1 className="text-3xl font-bold mb-2">Error Loading Monitor</h1>
+        <p className="text-muted-foreground">
+          Unable to load this monitor. It may not exist or you may not have
+          permission to view it.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export default async function NotificationMonitorDetailsPage({
+  params,
+}: MonitorDetailsPageProps) {
+  const { id } = await params;
+
+  let monitorWithData;
+  let hasError = false;
+
+  try {
+    monitorWithData = await getMonitorDetailsDirectly(id);
   } catch (error) {
     console.error("Error loading notification monitor:", error);
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
-        <div className="flex flex-col items-center text-center">
-          <AlertCircle className="h-16 w-16 text-red-500 mb-4" />
-          <h1 className="text-3xl font-bold mb-2">Error Loading Monitor</h1>
-          <p className="text-muted-foreground">
-            Unable to load this monitor. It may not exist or you may not have permission to view it.
-          </p>
-        </div>
-      </div>
-    );
+    hasError = true;
   }
+
+  if (hasError) {
+    return <MonitorError />;
+  }
+
+  if (!monitorWithData) {
+    return <MonitorNotFound />;
+  }
+
+  return (
+    <div className="w-full max-w-full">
+      <MonitorDetailClient
+        monitor={monitorWithData}
+        isNotificationView={true}
+      />
+    </div>
+  );
 }

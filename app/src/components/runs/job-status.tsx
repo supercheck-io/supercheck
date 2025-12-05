@@ -12,6 +12,10 @@ interface JobStatusProps {
 }
 
 export function JobStatus({ runId, initialStatus }: JobStatusProps) {
+  // Initialize state based on whether initial status is terminal
+  const isTerminalStatus = ["completed", "failed", "passed", "error"].includes(
+    initialStatus
+  );
   const [status, setStatus] = useState(initialStatus);
   const router = useRouter();
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -20,8 +24,7 @@ export function JobStatus({ runId, initialStatus }: JobStatusProps) {
 
   useEffect(() => {
     // Only set up SSE if the job is not in a terminal state
-    if (["completed", "failed", "passed", "error"].includes(initialStatus)) {
-      setStatus(initialStatus);
+    if (isTerminalStatus) {
       return;
     }
 
@@ -102,6 +105,8 @@ export function JobStatus({ runId, initialStatus }: JobStatusProps) {
 
     // Clean up on unmount
     return cleanupSSE;
+    // isTerminalStatus is computed inside the callback, not a dependency
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runId, initialStatus, router]);
 
   // Find the status object based on current status

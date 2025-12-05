@@ -76,7 +76,8 @@ export function AIDiffViewer({
     if (isStreaming) return;
 
     if (fixedScript) {
-      setCurrentFixedScript(fixedScript);
+      // Defer state update to avoid synchronous setState in effect
+      setTimeout(() => setCurrentFixedScript(fixedScript), 0);
       const modifiedEditor = editorRef.current?.getModifiedEditor?.();
       if (modifiedEditor) {
         try {
@@ -327,9 +328,7 @@ export function AIDiffViewer({
         <div className={`flex-shrink-0 px-4 py-3 ${headerClasses}`}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <Wand2
-                className={`h-5 w-5 ${isDarkTheme ? "text-white" : "text-gray-900"}`}
-              />
+              <Wand2 className="h-5 w-5 text-purple-500" />
               <h2 className="text-base font-semibold flex items-center gap-2">
                 AI Fix Review
                 {isStreaming && (

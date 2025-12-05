@@ -83,9 +83,6 @@ type SubscribersTabProps = {
 
 export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
-  const [filteredSubscribers, setFilteredSubscribers] = useState<Subscriber[]>(
-    []
-  );
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [stats, setStats] = useState({ total: 0, verified: 0, pending: 0 });
@@ -106,29 +103,30 @@ export function SubscribersTab({ statusPageId }: SubscribersTabProps) {
     const result = await getStatusPageSubscribers(statusPageId);
     if (result.success) {
       setSubscribers(result.subscribers);
-      setFilteredSubscribers(result.subscribers);
       setStats(result.stats);
     }
     setLoading(false);
   }, [statusPageId]);
 
+  // Load subscribers on mount - deferred to avoid synchronous setState warning
   useEffect(() => {
-    loadSubscribers();
+    const timeoutId = setTimeout(() => {
+      loadSubscribers();
+    }, 0);
+    return () => clearTimeout(timeoutId);
   }, [loadSubscribers]);
 
-  useEffect(() => {
+  // Compute filtered subscribers based on search query - using useMemo instead of useEffect+setState
+  const filteredSubscribers = React.useMemo(() => {
     if (searchQuery.trim() === "") {
-      setFilteredSubscribers(subscribers);
-    } else {
-      const query = searchQuery.toLowerCase();
-      setFilteredSubscribers(
-        subscribers.filter(
-          (s) =>
-            s.email?.toLowerCase().includes(query) ||
-            s.endpoint?.toLowerCase().includes(query)
-        )
-      );
+      return subscribers;
     }
+    const query = searchQuery.toLowerCase();
+    return subscribers.filter(
+      (s) =>
+        s.email?.toLowerCase().includes(query) ||
+        s.endpoint?.toLowerCase().includes(query)
+    );
   }, [searchQuery, subscribers]);
 
   // Sorting function

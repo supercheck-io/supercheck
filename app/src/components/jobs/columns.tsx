@@ -336,12 +336,7 @@ function RunButton({ job }: { job: Job }) {
                 variant="ghost"
                 disabled={isCancelling}
                 className={cn(
-                  "absolute -top-2 -right-2 z-10",
-                  "h-5 w-5 min-w-5 p-0 rounded-full",
-                  "bg-red-500 hover:bg-red-600",
-                  "shadow-md border-2 border-background",
-                  "transition-colors",
-                  "flex items-center justify-center",
+                  "absolute -top-1.5 -right-1.5 h-5 w-5 p-0 rounded-full bg-red-500 hover:bg-red-600 shadow-md transition-colors",
                   isCancelling && "cursor-not-allowed"
                 )}
                 title={isCancelling ? "Cancelling..." : "Cancel run"}
@@ -413,7 +408,7 @@ export const columns: ColumnDef<Job>[] = [
         <div className="w-[90px]">
           <UUIDField
             value={id}
-            maxLength={24}
+            maxLength={8}
             onCopy={() => toast.success("ID copied to clipboard")}
           />
         </div>

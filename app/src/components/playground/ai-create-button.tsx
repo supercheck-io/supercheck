@@ -11,7 +11,10 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Wand2, Loader2 } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Wand2, Loader2, Sparkles, Info } from "lucide-react";
 import { toast } from "sonner";
 
 interface AICreateButtonProps {
@@ -19,10 +22,7 @@ interface AICreateButtonProps {
   testType: string;
   isVisible: boolean;
   disabled?: boolean;
-  onAICreateSuccess: (
-    generatedScript: string,
-    explanation: string
-  ) => void;
+  onAICreateSuccess: (generatedScript: string, explanation: string) => void;
   onAnalyzing?: (isAnalyzing: boolean) => void;
   onStreamingStart?: () => void;
   onStreamingUpdate?: (text: string) => void;
@@ -56,7 +56,9 @@ export function AICreateButton({
     }
   };
 
-  const parseAIResponse = (fullText: string): {
+  const parseAIResponse = (
+    fullText: string
+  ): {
     script: string;
     explanation: string;
   } => {
@@ -127,7 +129,8 @@ export function AICreateButton({
 
     if (userRequest.trim().length < 10) {
       toast.error("Description too short", {
-        description: "Please provide a more detailed description (at least 10 characters).",
+        description:
+          "Please provide a more detailed description (at least 10 characters).",
       });
       return;
     }
@@ -136,7 +139,8 @@ export function AICreateButton({
     onAnalyzing?.(true);
     onStreamingStart?.(); // Notify parent that streaming has started
 
-    let reader: ReadableStreamDefaultReader<Uint8Array> | null | undefined = null;
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null | undefined =
+      null;
 
     try {
       const response = await fetch("/api/ai/create-test", {
@@ -156,7 +160,9 @@ export function AICreateButton({
         try {
           result = await response.json();
         } catch {
-          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+          throw new Error(
+            `Server error: ${response.status} ${response.statusText}`
+          );
         }
 
         switch (response.status) {
@@ -167,16 +173,21 @@ export function AICreateButton({
             return;
           case 429:
             toast.error("Rate limit exceeded", {
-              description: "Please wait before making another AI create request.",
+              description:
+                "Please wait before making another AI create request.",
             });
             return;
           case 400:
             toast.error("Invalid request", {
-              description: result.message || "Please check your input and try again.",
+              description:
+                result.message || "Please check your input and try again.",
             });
             return;
           default:
-            throw new Error(result.message || `Failed to generate test code (${response.status})`);
+            throw new Error(
+              result.message ||
+                `Failed to generate test code (${response.status})`
+            );
         }
       }
 
@@ -252,12 +263,17 @@ export function AICreateButton({
       // Provide specific error messages
       let errorDescription = "Please try again in a few moments.";
       if (error instanceof Error) {
-        if (error.message.includes("network") || error.message.includes("fetch")) {
-          errorDescription = "Network connection error. Please check your connection and try again.";
+        if (
+          error.message.includes("network") ||
+          error.message.includes("fetch")
+        ) {
+          errorDescription =
+            "Network connection error. Please check your connection and try again.";
         } else if (error.message.includes("timeout")) {
           errorDescription = "Request timed out. Please try again.";
         } else if (error.message.includes("No output generated")) {
-          errorDescription = "AI did not generate any output. Please try again or rephrase your request.";
+          errorDescription =
+            "AI did not generate any output. Please try again or rephrase your request.";
         } else if (error.message.includes("invalid or empty code")) {
           errorDescription = error.message;
         } else {
@@ -300,37 +316,72 @@ export function AICreateButton({
       </Button>
 
       <Dialog open={isDialogOpen} onOpenChange={handleCloseDialog}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-[640px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Wand2 className="h-5 w-5 text-purple-500" />
-              AI Create Test
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500/20 to-pink-500/20">
+                <Wand2 className="h-4 w-4 text-purple-500" />
+              </div>
+              <span>AI Create Test</span>
             </DialogTitle>
-            <DialogDescription>
-              Describe what you want to test, and AI will generate a complete test script for you.
+            <DialogDescription className="pt-1">
+              Create new test scripts or enhance existing ones with AI
+              assistance. Describe your test requirements and AI will generate
+              or refine the complete test script.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <Separator className="my-1" />
+
+          <div className="space-y-4">
+            <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-900/50">
+              <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs mt-0.5">
+                For best results, be specific about the actions, verifications,
+                and expected outcomes.
+              </AlertDescription>
+            </Alert>
+
             <div className="space-y-2">
-              <label htmlFor="user-request" className="text-sm font-medium">
-                What do you want to test?
-              </label>
+              <Label htmlFor="user-request" className="text-sm font-medium">
+                What do you want to test?{" "}
+                <span className="text-destructive">*</span>
+              </Label>
               <Textarea
                 id="user-request"
-                placeholder={`Example: "Create a test that logs into the application, navigates to the user profile page, and verifies the user's email is displayed correctly"`}
+                placeholder={`Step 1: Select the right template (Browser, API, DB, Performance, etc.)\nStep 2: Describe your test requirements\n\n🌐 Playwright API Test Example:\nGET request to https://jsonplaceholder.typicode.com/todos/1, assert status 200, validate response schema (userId, id, title, completed)\n\n⚡ k6 Performance Test Example:\nGET requests to https://test-api.k6.io/public/crocodiles/, 10 VUs for 30s, verify status 200, response time < 500ms, p95 < 500ms, error rate < 10%`}
                 value={userRequest}
                 onChange={(e) => setUserRequest(e.target.value)}
                 disabled={isProcessing}
-                className="min-h-[120px] resize-none"
+                className="min-h-[160px] resize-none placeholder:text-xs"
+                aria-describedby="request-hint"
               />
-              <p className="text-xs text-muted-foreground">
-                Be specific about the actions, verifications, and expected outcomes.
-              </p>
+              <div className="flex items-center justify-between">
+                <p id="request-hint" className="text-xs text-muted-foreground">
+                  Minimum 10 characters required
+                </p>
+                <p
+                  className={`text-xs ${userRequest.length < 10 ? "text-muted-foreground" : "text-green-600 dark:text-green-400"}`}
+                >
+                  {userRequest.length} characters
+                </p>
+              </div>
             </div>
+
+            {isProcessing && (
+              <Alert className="bg-purple-50 border-purple-200 dark:bg-purple-950/30 dark:border-purple-900/50">
+                <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400 animate-pulse" />
+                <AlertDescription className="text-purple-700 dark:text-purple-300 text-sm">
+                  AI is analyzing your request and generating test code. This
+                  may take a few moments...
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
 
-          <DialogFooter>
+          <Separator className="my-1" />
+
+          <DialogFooter className="gap-2">
             <Button
               variant="outline"
               onClick={handleCloseDialog}
@@ -340,7 +391,7 @@ export function AICreateButton({
             </Button>
             <Button
               onClick={handleGenerate}
-              disabled={isProcessing || !userRequest.trim()}
+              disabled={isProcessing || userRequest.trim().length < 10}
               className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
             >
               {isProcessing ? (

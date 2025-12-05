@@ -22,7 +22,7 @@ interface AuditUser {
 interface AuditLog {
   id: string;
   action: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   details: Record<string, any> | null;
   createdAt: string;
   user: AuditUser;
@@ -50,7 +50,7 @@ interface AuditTableProps {
 }
 
 // JSON viewer component
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function JsonViewer({ data, title }: { data: any; title: string }) {
   const [copied, setCopied] = useState(false);
   
@@ -65,7 +65,7 @@ function JsonViewer({ data, title }: { data: any; title: string }) {
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const formatJsonWithSyntaxHighlight = (obj: any): React.JSX.Element => {
     if (obj === null) return <span className="text-muted-foreground">null</span>;
     if (obj === undefined) return <span className="text-muted-foreground">undefined</span>;
@@ -242,7 +242,7 @@ export default function AuditTable({ className }: AuditTableProps) {
     return "outline";
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const renderDetailsPreview = (details: Record<string, any> | null) => {
     if (!details) return <span className="text-muted-foreground text-sm">No details</span>;
     

@@ -13,7 +13,7 @@ const isBrowser = typeof window !== 'undefined';
 
 export class Logger {
   private prefix: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   private pinoLogger: any;
 
   constructor(prefix: string = "[App]") {

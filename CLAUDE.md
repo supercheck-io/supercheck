@@ -6,10 +6,64 @@ This document provides essential information for Claude AI assistants working on
 
 SuperCheck is a comprehensive testing and monitoring platform that runs Playwright tests and provides monitoring capabilities with alerting, status pages, and AI-powered debugging.
 
+## 🌐 Hosting Modes: Cloud vs Self-Hosted
+
+SuperCheck supports two hosting modes with different behaviors:
+
+### Cloud Mode (Default)
+
+When `SELF_HOSTED` is NOT set or set to any value other than `"true"`/`"1"`:
+
+- **Billing Required**: Users must subscribe to a plan (Plus or Pro) via Polar
+- **Email Verification**: Required before users can sign in
+- **Disposable Emails**: Blocked during signup (e.g., tempmail.com)
+- **Plan Limits**: Enforced based on subscription (monitors, minutes, capacity)
+- **Polar Integration**: Customer creation, subscription management, webhooks
+
+**Signup Flow (Cloud):**
+
+1. User fills signup form
+2. Account created with email verification required
+3. Verification email sent automatically
+4. User redirected to `/verify-email` page
+5. User clicks verification link in email
+6. After verification, user signs in
+7. Redirected to `/subscribe` to choose a plan
+8. After subscription, access to dashboard
+
+### Self-Hosted Mode
+
+When `SELF_HOSTED=true` or `SELF_HOSTED=1`:
+
+- **No Billing**: All features available without subscription
+- **No Email Verification**: Users can sign in immediately after signup
+- **All Emails Allowed**: No disposable email blocking
+- **Unlimited Plan**: All plan limits set to maximum values
+- **No Polar**: Billing integration completely disabled
+
+**Signup Flow (Self-Hosted):**
+
+1. User fills signup form
+2. Account created immediately
+3. Default organization and project created
+4. User redirected to dashboard
+
+### Environment Variable
+
+```bash
+# Cloud mode (default if not set)
+# SELF_HOSTED is not defined, or:
+SELF_HOSTED=false
+
+# Self-hosted mode
+SELF_HOSTED=true
+```
+
 ## 🏗️ Architecture
 
 - **Monorepo Structure**: App (Next.js frontend) + Worker (job execution)
-- **Frontend**: Next.js 15.4.6, React 19.1.1, TypeScript, TailwindCSS
+- **Frontend**: Next.js 16.0.7, React 19.2.0, TypeScript, TailwindCSS
+- **Authentication**: Better Auth 1.4.5 (ESM-only, see auth notes below)
 - **Backend**: Node.js, PostgreSQL, Redis, BullMQ
 - **Testing**: Playwright execution in Docker containers
 - **Storage**: MinIO/S3 compatible for reports and artifacts
@@ -193,10 +247,30 @@ SuperCheck is a comprehensive testing and monitoring platform that runs Playwrig
 
 ### Authentication & Authorization
 
-- Better Auth 1.2.8 for authentication
-- RBAC implementation with roles
+- **Better Auth 1.4.5** for authentication (ESM-only package)
+- RBAC implementation with roles defined in `/app/src/lib/rbac/`
 - API keys with scoped permissions
 - See `/docs/specs/02-authentication/` for details
+
+#### Better Auth Client/Server Architecture
+
+Better Auth 1.4.x has important client/server separation requirements:
+
+- **Server-side** (`auth.ts`): Uses full Better Auth plugins including `polarClient`
+- **Client-side** (`auth-client.ts`): Uses only browser-safe plugins
+- **IMPORTANT**: The `@polar-sh/better-auth` package imports server-side modules that use `node:async_hooks`, which is NOT available in browsers. Therefore:
+  - `polarClient()` must NOT be included in client-side auth configuration
+  - Polar checkout/portal functionality is handled server-side only
+  - All Polar-related operations happen via server actions, not client plugins
+
+#### RBAC Architecture (DRY Principle)
+
+The Role enum and permissions are defined following DRY principles:
+
+- **`permissions-client.ts`**: Client-safe Role enum and permission constants (source of truth for Role)
+- **`permissions.ts`**: Server-side Better Auth integration, re-exports Role from permissions-client
+- Client components import `Role` from `permissions-client.ts`
+- Server components can import from either (but prefer `permissions.ts` for full access)
 
 ## 🚀 Common Tasks
 
@@ -349,7 +423,7 @@ Key tables (see ERD for complete schema):
 ---
 
 **Last Updated**: 2025-12-01
-**Version**: v1.1.9-beta.31
+**Version**: v1.1.9-beta.35
 **Node Version**: 20.0.0+
 
 ## 📝 Notable Updates

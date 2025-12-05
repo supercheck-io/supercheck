@@ -30,9 +30,8 @@ export function AICreateViewer({
   isStreaming = false,
   streamingContent = "",
 }: AICreateViewerProps) {
-  const [currentGeneratedScript, setCurrentGeneratedScript] = useState(
-    generatedScript
-  );
+  const [currentGeneratedScript, setCurrentGeneratedScript] =
+    useState(generatedScript);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const monaco = useMonaco();
   const isMountedRef = useRef(true);
@@ -69,10 +68,12 @@ export function AICreateViewer({
         if (model && !model.isDisposed?.()) {
           model.setValue(generatedScript);
         } else {
-          setCurrentGeneratedScript(generatedScript);
+          // Defer state update to avoid synchronous setState in effect
+          setTimeout(() => setCurrentGeneratedScript(generatedScript), 0);
         }
       } catch {
-        setCurrentGeneratedScript(generatedScript);
+        // Defer state update to avoid synchronous setState in effect
+        setTimeout(() => setCurrentGeneratedScript(generatedScript), 0);
       }
     }
   }, [generatedScript, isStreaming]);
@@ -82,7 +83,10 @@ export function AICreateViewer({
       isMountedRef.current = false;
       // Let Monaco handle its own cleanup
       try {
-        if (editorRef.current && typeof editorRef.current.dispose === "function") {
+        if (
+          editorRef.current &&
+          typeof editorRef.current.dispose === "function"
+        ) {
           editorRef.current.dispose();
         }
       } catch {
@@ -167,9 +171,7 @@ export function AICreateViewer({
         <div className={`flex-shrink-0 px-4 py-3 ${headerClasses}`}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <Wand2
-                className={`h-5 w-5 ${isDarkTheme ? "text-indigo-300" : "text-indigo-500"}`}
-              />
+              <Wand2 className="h-5 w-5 text-purple-500" />
               <h2 className="text-base font-semibold flex items-center gap-2">
                 AI Generated Script
                 {isStreaming && (

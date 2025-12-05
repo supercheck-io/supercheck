@@ -614,7 +614,7 @@ export default function OrgAdminDashboard() {
                       showCharacterCount={true}
                     />
                   </div>
-                  <DialogFooter className="gap-2 sm:gap-0">
+                  <DialogFooter className="gap-2">
                     <Button
                       variant="outline"
                       onClick={() => setShowCreateProjectDialog(false)}
@@ -802,6 +802,7 @@ export default function OrgAdminDashboard() {
                   }
                 }}
                 isLoading={inviting}
+                isCloudMode={isCloudHosted}
               />
             </TabsContent>
 
@@ -811,7 +812,7 @@ export default function OrgAdminDashboard() {
 
             {isCloudHosted && (
               <TabsContent value="subscription" className="space-y-4">
-                <SubscriptionTab />
+                <SubscriptionTab currentUserRole={currentUserRole} />
               </TabsContent>
             )}
           </Tabs>

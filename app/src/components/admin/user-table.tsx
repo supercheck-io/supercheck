@@ -11,12 +11,34 @@ interface UserTableProps {
 }
 
 export function UserTable({ users, onUserUpdate }: UserTableProps) {
-  const columns = React.useMemo(() => createUserColumns(onUserUpdate), [onUserUpdate]);
+  const columns = React.useMemo(
+    () => createUserColumns(onUserUpdate),
+    [onUserUpdate]
+  );
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const CustomToolbar = React.useCallback(({ table }: { table: any }) => (
-    <UserTableToolbar table={table} />
-  ), []);
+  // Extract unique organizations from users for filtering
+  const uniqueOrganizations = React.useMemo(() => {
+    const orgsMap = new Map<string, { id: string; name: string }>();
+    users.forEach((user) => {
+      user.organizations?.forEach((org) => {
+        if (!orgsMap.has(org.organizationId)) {
+          orgsMap.set(org.organizationId, {
+            id: org.organizationId,
+            name: org.organizationName,
+          });
+        }
+      });
+    });
+    return Array.from(orgsMap.values());
+  }, [users]);
+
+   
+  const CustomToolbar = React.useCallback(
+    ({ table }: { table: any }) => (
+      <UserTableToolbar table={table} organizations={uniqueOrganizations} />
+    ),
+    [uniqueOrganizations]
+  );
 
   return (
     <AdminDataTable
