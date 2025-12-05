@@ -76,7 +76,8 @@ export function AIDiffViewer({
     if (isStreaming) return;
 
     if (fixedScript) {
-      setCurrentFixedScript(fixedScript);
+      // Defer state update to avoid synchronous setState in effect
+      setTimeout(() => setCurrentFixedScript(fixedScript), 0);
       const modifiedEditor = editorRef.current?.getModifiedEditor?.();
       if (modifiedEditor) {
         try {

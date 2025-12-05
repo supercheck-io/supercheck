@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import React, { useEffect, useRef, useCallback } from "react";
@@ -193,6 +192,50 @@ export const useMonacoPerformance = (
     getMemoryUsage,
   ]);
 
+  // Generate performance recommendations - defined before generatePerformanceReport that uses it
+  const generateRecommendations = useCallback(
+    (metrics: PerformanceMetrics, avgTypingLatency: number): string[] => {
+      const recommendations: string[] = [];
+
+      if (metrics.loadTime > 1000) {
+        recommendations.push(
+          "Consider lazy loading editor features to improve load time"
+        );
+      }
+
+      if (metrics.renderTime > 200) {
+        recommendations.push(
+          "Editor render time is high, consider reducing editor options"
+        );
+      }
+
+      if (avgTypingLatency > 100) {
+        recommendations.push(
+          "Typing latency is high, check for expensive operations on content change"
+        );
+      }
+
+      if (metrics.memoryUsage > 100) {
+        recommendations.push(
+          "Memory usage is high, consider implementing cleanup strategies"
+        );
+      }
+
+      if (metrics.errorCount > 0) {
+        recommendations.push(
+          "Errors detected, review console logs for details"
+        );
+      }
+
+      if (recommendations.length === 0) {
+        recommendations.push("Performance is optimal");
+      }
+
+      return recommendations;
+    },
+    []
+  );
+
   // Performance report generation
   const generatePerformanceReport = useCallback(() => {
     const metrics = getMetrics();
@@ -218,49 +261,7 @@ export const useMonacoPerformance = (
       slowOperations: slowOperations.slice(0, 10), // Top 10 slow operations
       recommendations: generateRecommendations(metrics, avgTypingLatency),
     };
-  }, [getMetrics, getPerformanceLog]);
-
-  // Generate performance recommendations
-  const generateRecommendations = (
-    metrics: PerformanceMetrics,
-    avgTypingLatency: number
-  ): string[] => {
-    const recommendations: string[] = [];
-
-    if (metrics.loadTime > 1000) {
-      recommendations.push(
-        "Consider lazy loading editor features to improve load time"
-      );
-    }
-
-    if (metrics.renderTime > 200) {
-      recommendations.push(
-        "Editor render time is high, consider reducing editor options"
-      );
-    }
-
-    if (avgTypingLatency > 100) {
-      recommendations.push(
-        "Typing latency is high, check for expensive operations on content change"
-      );
-    }
-
-    if (metrics.memoryUsage > 100) {
-      recommendations.push(
-        "Memory usage is high, consider implementing cleanup strategies"
-      );
-    }
-
-    if (metrics.errorCount > 0) {
-      recommendations.push("Errors detected, review console logs for details");
-    }
-
-    if (recommendations.length === 0) {
-      recommendations.push("Performance is optimal");
-    }
-
-    return recommendations;
-  };
+  }, [getMetrics, getPerformanceLog, generateRecommendations]);
 
   return {
     measureOperation,

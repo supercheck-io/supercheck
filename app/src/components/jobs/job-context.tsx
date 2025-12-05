@@ -7,6 +7,7 @@ import React, {
   useEffect,
   useRef,
   useCallback,
+  useMemo,
 } from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -61,33 +62,34 @@ export function JobStatusDisplay({
   lastRunErrorDetails?: string | null;
 }) {
   const { isJobRunning, getJobStatus } = useJobContext();
-  const [effectiveStatus, setEffectiveStatus] = useState<string | null>(null);
 
+  // Compute effective status directly - no need for useState/useEffect
   // Determine status priority: running > context status > db status
-  // Ensure terminal statuses (passed/failed/error) persist from context
-  useEffect(() => {
+  const computeEffectiveStatus = (): string => {
     if (isJobRunning(jobId)) {
-      setEffectiveStatus("running");
-    } else {
-      const contextStatus = getJobStatus(jobId);
-      // Use context status if available (especially for terminal statuses)
-      // Otherwise fall back to db status
-      let statusToUse = contextStatus || dbStatus;
-
-      // Check if this is a cancelled run (status is error but errorDetails contains cancellation)
-      if (statusToUse === "error" && lastRunErrorDetails) {
-        const lowerErrorDetails = lastRunErrorDetails.toLowerCase();
-        if (lowerErrorDetails.includes("cancellation") || lowerErrorDetails.includes("cancelled")) {
-          statusToUse = "cancelled";
-        }
-      }
-
-      setEffectiveStatus(statusToUse || "pending");
+      return "running";
     }
-  }, [jobId, dbStatus, isJobRunning, getJobStatus, lastRunErrorDetails]);
 
-  // Fallback to dbStatus if effectiveStatus hasn't been set yet
-  const displayStatus = effectiveStatus || dbStatus || "pending";
+    const contextStatus = getJobStatus(jobId);
+    // Use context status if available (especially for terminal statuses)
+    // Otherwise fall back to db status
+    let statusToUse = contextStatus || dbStatus;
+
+    // Check if this is a cancelled run (status is error but errorDetails contains cancellation)
+    if (statusToUse === "error" && lastRunErrorDetails) {
+      const lowerErrorDetails = lastRunErrorDetails.toLowerCase();
+      if (
+        lowerErrorDetails.includes("cancellation") ||
+        lowerErrorDetails.includes("cancelled")
+      ) {
+        statusToUse = "cancelled";
+      }
+    }
+
+    return statusToUse || "pending";
+  };
+
+  const displayStatus = computeEffectiveStatus();
 
   const statusInfo =
     jobStatuses.find((status) => status.value === displayStatus) ||
@@ -97,7 +99,9 @@ export function JobStatusDisplay({
 
   return (
     <div className="flex w-[120px] items-center">
-      <StatusIcon className={`mr-2 h-4 w-4 ${statusInfo?.color || jobStatuses[0].color}`} />
+      <StatusIcon
+        className={`mr-2 h-4 w-4 ${statusInfo?.color || jobStatuses[0].color}`}
+      />
       <span>{statusInfo?.label || jobStatuses[0].label}</span>
     </div>
   );
@@ -112,7 +116,9 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
   const eventSourcesRef = useRef<Map<string, EventSource>>(new Map());
   const activeRunsRef = useRef<ActiveRunsMap>({});
   const globalEventSourceRef = useRef<EventSource | null>(null);
-  const runToJobMapRef = useRef<Map<string, { jobId: string; jobName?: string }>>(new Map());
+  const runToJobMapRef = useRef<
+    Map<string, { jobId: string; jobName?: string }>
+  >(new Map());
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const router = useRouter();
@@ -209,13 +215,16 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
 
   const handleGlobalJobEvent = useCallback(
     (payload: JobStatusSSEPayload) => {
-      const runId = typeof payload.runId === "string" ? payload.runId : undefined;
+      const runId =
+        typeof payload.runId === "string" ? payload.runId : undefined;
       if (!runId || !payload?.status) {
         return;
       }
 
       const mapped = runToJobMapRef.current.get(runId);
-      const jobId = mapped?.jobId || (typeof payload.jobId === "string" ? payload.jobId : runId);
+      const jobId =
+        mapped?.jobId ||
+        (typeof payload.jobId === "string" ? payload.jobId : runId);
       const status = String(payload.status).toLowerCase();
 
       if (status === "running") {
@@ -227,15 +236,15 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
         }
 
         const jobName =
-          mapped?.jobName ||
-          activeRunsRef.current[jobId]?.jobName ||
-          jobId;
+          mapped?.jobName || activeRunsRef.current[jobId]?.jobName || jobId;
 
         startJobRun(runId, jobId, jobName);
         return;
       }
 
-      if (["completed", "passed", "failed", "error", "cancelled"].includes(status)) {
+      if (
+        ["completed", "passed", "failed", "error", "cancelled"].includes(status)
+      ) {
         setJobStatus(jobId, payload.status);
         if (activeRunsRef.current[jobId]?.runId === runId) {
           const jobName = activeRunsRef.current[jobId]?.jobName || jobId;
@@ -268,8 +277,12 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
 
           if (isActualJob) {
             // Show completion toast for job runs only
-            let toastType: "success" | "error" | "info" = passed ? "success" : "error";
-            let toastTitle = passed ? "Job execution passed" : "Job execution failed";
+            let toastType: "success" | "error" | "info" = passed
+              ? "success"
+              : "error";
+            let toastTitle = passed
+              ? "Job execution passed"
+              : "Job execution failed";
             let toastMessage = passed
               ? "All tests executed successfully."
               : "One or more tests did not complete successfully.";
@@ -284,10 +297,7 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
               description: (
                 <>
                   {jobName}: {toastMessage}{" "}
-                  <a
-                    href={`/runs/${runId}`}
-                    className="underline font-medium"
-                  >
+                  <a href={`/runs/${runId}`} className="underline font-medium">
                     View Run Report
                   </a>
                 </>
@@ -377,7 +387,10 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
           const data = JSON.parse(event.data) as JobStatusSSEPayload;
           handleGlobalJobEvent(data);
         } catch (parseError) {
-          console.error("[JobContext] Failed to parse job status event:", parseError);
+          console.error(
+            "[JobContext] Failed to parse job status event:",
+            parseError
+          );
         }
       };
 
@@ -427,144 +440,162 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const setJobRunning = (isRunning: boolean, jobId?: string) => {
-    if (isRunning && jobId) {
-      // Add job to running jobs
-      setRunningJobs((prev) => {
-        const newSet = new Set(prev);
-        newSet.add(jobId);
-        return newSet;
-      });
-      setIsAnyJobRunning(true);
-
-      // Update job status in context
-      setJobStatus(jobId, "running");
-    } else if (!isRunning) {
-      if (jobId) {
-        // Remove specific job from running jobs
+  const setJobRunning = useCallback(
+    (isRunning: boolean, jobId?: string) => {
+      if (isRunning && jobId) {
+        // Add job to running jobs
         setRunningJobs((prev) => {
           const newSet = new Set(prev);
-          newSet.delete(jobId);
-          // Update global state if no more jobs are running
-          if (newSet.size === 0) {
-            setIsAnyJobRunning(false);
-          }
+          newSet.add(jobId);
           return newSet;
         });
+        setIsAnyJobRunning(true);
 
-        // Remove the job from active runs
-        setActiveRuns((prev) => {
-          const newRuns = { ...prev };
-          delete newRuns[jobId];
-          activeRunsRef.current = newRuns;
-          return newRuns;
-        });
+        // Update job status in context
+        setJobStatus(jobId, "running");
+      } else if (!isRunning) {
+        if (jobId) {
+          // Remove specific job from running jobs
+          setRunningJobs((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(jobId);
+            // Update global state if no more jobs are running
+            if (newSet.size === 0) {
+              setIsAnyJobRunning(false);
+            }
+            return newSet;
+          });
 
-        runToJobMapRef.current.forEach((meta, runKey) => {
-          if (meta.jobId === jobId) {
-            runToJobMapRef.current.delete(runKey);
+          // Remove the job from active runs
+          setActiveRuns((prev) => {
+            const newRuns = { ...prev };
+            delete newRuns[jobId];
+            activeRunsRef.current = newRuns;
+            return newRuns;
+          });
+
+          runToJobMapRef.current.forEach((meta, runKey) => {
+            if (meta.jobId === jobId) {
+              runToJobMapRef.current.delete(runKey);
+            }
+          });
+
+          // Close the event source for this job
+          if (eventSourcesRef.current.has(jobId)) {
+            eventSourcesRef.current.get(jobId)?.close();
+            eventSourcesRef.current.delete(jobId);
           }
-        });
+        } else {
+          // Clear all running jobs
+          setRunningJobs(new Set());
+          setIsAnyJobRunning(false);
 
-        // Close the event source for this job
-        if (eventSourcesRef.current.has(jobId)) {
-          eventSourcesRef.current.get(jobId)?.close();
-          eventSourcesRef.current.delete(jobId);
+          // Reset all active runs
+          setActiveRuns({});
+          activeRunsRef.current = {};
+          runToJobMapRef.current.clear();
+
+          // Close all event sources
+          eventSourcesRef.current.forEach((eventSource) => {
+            eventSource.close();
+          });
+          eventSourcesRef.current.clear();
         }
-      } else {
-        // Clear all running jobs
-        setRunningJobs(new Set());
-        setIsAnyJobRunning(false);
-
-        // Reset all active runs
-        setActiveRuns({});
-        activeRunsRef.current = {};
-        runToJobMapRef.current.clear();
-
-        // Close all event sources
-        eventSourcesRef.current.forEach((eventSource) => {
-          eventSource.close();
-        });
-        eventSourcesRef.current.clear();
       }
-    }
-  };
+    },
+    [setJobStatus]
+  );
 
-  const completeJobRun = (success: boolean, jobId: string, runId: string) => {
-    // This can be called manually if needed
-    if (!activeRuns[jobId]) return;
+  const completeJobRun = useCallback(
+    (success: boolean, jobId: string, runId: string) => {
+      // This can be called manually if needed
+      if (!activeRunsRef.current[jobId]) return;
 
-    // Get job info
-    const jobInfo = activeRuns[jobId];
+      // Get job info
+      const jobInfo = activeRunsRef.current[jobId];
 
-    // Clean up resources
-    if (eventSourcesRef.current.has(jobId)) {
-      eventSourcesRef.current.get(jobId)?.close();
-      eventSourcesRef.current.delete(jobId);
-    }
-
-    // Update job status
-    setJobStatus(jobId, success ? "passed" : "failed");
-
-    // Remove from running jobs
-    setRunningJobs((prev) => {
-      const newSet = new Set(prev);
-      newSet.delete(jobId);
-      if (newSet.size === 0) {
-        setIsAnyJobRunning(false);
+      // Clean up resources
+      if (eventSourcesRef.current.has(jobId)) {
+        eventSourcesRef.current.get(jobId)?.close();
+        eventSourcesRef.current.delete(jobId);
       }
-      return newSet;
-    });
 
-    // Remove from active runs
-    setActiveRuns((prev) => {
-      const newRuns = { ...prev };
-      delete newRuns[jobId];
-      activeRunsRef.current = newRuns;
-      return newRuns;
-    });
+      // Update job status
+      setJobStatus(jobId, success ? "passed" : "failed");
 
-    runToJobMapRef.current.delete(runId);
+      // Remove from running jobs
+      setRunningJobs((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(jobId);
+        if (newSet.size === 0) {
+          setIsAnyJobRunning(false);
+        }
+        return newSet;
+      });
 
-    // Show completion toast
-    toast[success ? "success" : "error"](
-      success ? "Job execution passed" : "Job execution failed",
-      {
-        description: (
-          <>
-            {jobInfo.jobName}:{" "}
-            {success
-              ? "All tests executed successfully."
-              : "One or more tests did not complete successfully."}{" "}
-            <a href={`/runs/${runId}`} className="underline font-medium">
-              View Run Report
-            </a>
-          </>
-        ),
-        duration: 10000,
-      }
-    );
+      // Remove from active runs
+      setActiveRuns((prev) => {
+        const newRuns = { ...prev };
+        delete newRuns[jobId];
+        activeRunsRef.current = newRuns;
+        return newRuns;
+      });
 
-    // Refresh the page
-    router.refresh();
-  };
+      runToJobMapRef.current.delete(runId);
+
+      // Show completion toast
+      toast[success ? "success" : "error"](
+        success ? "Job execution passed" : "Job execution failed",
+        {
+          description: (
+            <>
+              {jobInfo.jobName}:{" "}
+              {success
+                ? "All tests executed successfully."
+                : "One or more tests did not complete successfully."}{" "}
+              <a href={`/runs/${runId}`} className="underline font-medium">
+                View Run Report
+              </a>
+            </>
+          ),
+          duration: 10000,
+        }
+      );
+
+      // Refresh the page
+      router.refresh();
+    },
+    [router, setJobStatus]
+  );
+
+  // Memoize context value to prevent unnecessary re-renders
+  const contextValue = useMemo(
+    () => ({
+      isAnyJobRunning,
+      runningJobs,
+      isJobRunning,
+      getJobStatus,
+      setJobRunning,
+      setJobStatus,
+      activeRuns,
+      startJobRun,
+      completeJobRun,
+    }),
+    [
+      isAnyJobRunning,
+      runningJobs,
+      isJobRunning,
+      getJobStatus,
+      setJobRunning,
+      setJobStatus,
+      activeRuns,
+      startJobRun,
+      completeJobRun,
+    ]
+  );
 
   return (
-    <JobContext.Provider
-      value={{
-        isAnyJobRunning,
-        runningJobs,
-        isJobRunning,
-        getJobStatus,
-        setJobRunning,
-        setJobStatus,
-        activeRuns,
-        startJobRun,
-        completeJobRun,
-      }}
-    >
-      {children}
-    </JobContext.Provider>
+    <JobContext.Provider value={contextValue}>{children}</JobContext.Provider>
   );
 }
 

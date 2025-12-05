@@ -1,7 +1,7 @@
 "use client";
 import { signUp, signIn } from "@/utils/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { SignupForm } from "@/components/auth/signup-form";
 import {
   isDisposableEmail,
@@ -19,25 +19,14 @@ export default function SignUpPage() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [inviteData, setInviteData] = useState<InviteData | null>(null);
   const [isCloudMode, setIsCloudMode] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    const invite = searchParams.get("invite");
-    if (invite) {
-      setInviteToken(invite);
-      fetchInviteData(invite);
-    }
+  // Derive invite token from URL params (not state)
+  const inviteToken = useMemo(() => searchParams.get("invite"), [searchParams]);
 
-    // Check hosting mode
-    fetch("/api/config/hosting-mode")
-      .then((res) => res.json())
-      .then((data) => setIsCloudMode(data.cloudHosted))
-      .catch(() => setIsCloudMode(true)); // Default to cloud mode if check fails
-  }, [searchParams]);
-
-  const fetchInviteData = async (token: string) => {
+  // Fetch invite data - defined before useEffect that uses it
+  const fetchInviteData = useCallback(async (token: string) => {
     try {
       const response = await fetch(`/api/invite/${token}`);
       const data = await response.json();
@@ -47,7 +36,20 @@ export default function SignUpPage() {
     } catch (fetchError) {
       console.error("Error fetching invite data:", fetchError);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // Defer fetchInviteData to avoid synchronous setState in effect body
+    if (inviteToken) {
+      setTimeout(() => fetchInviteData(inviteToken), 0);
+    }
+
+    // Check hosting mode - fetch already returns a promise, so this is async
+    fetch("/api/config/hosting-mode")
+      .then((res) => res.json())
+      .then((data) => setIsCloudMode(data.cloudHosted))
+      .catch(() => setIsCloudMode(true)); // Default to cloud mode if check fails
+  }, [inviteToken, fetchInviteData]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

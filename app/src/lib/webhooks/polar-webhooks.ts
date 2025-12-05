@@ -255,12 +255,12 @@ function getOrganizationIdFromPayload(
     return payload.data.checkout.metadata.referenceId;
   }
   // Check subscription metadata (for order events)
-  const subscription = (payload.data as any).subscription; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const subscription = (payload.data as any).subscription;  
   if (subscription?.metadata?.referenceId) {
     return subscription.metadata.referenceId;
   }
   // Check product metadata
-  const product = (payload.data as any).product; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const product = (payload.data as any).product;  
   if (product?.metadata?.referenceId) {
     return product.metadata.referenceId;
   }
@@ -700,8 +700,8 @@ export async function handleOrderPaid(payload: PolarWebhookPayload) {
 
     // Get subscription ID from order's subscription reference if available
     const subscriptionId =
-      (payload.data as any).subscription?.id || // eslint-disable-line @typescript-eslint/no-explicit-any
-      (payload.data as any).subscriptionId || // eslint-disable-line @typescript-eslint/no-explicit-any
+      (payload.data as any).subscription?.id ||  
+      (payload.data as any).subscriptionId ||  
       webhookId; // Fallback to order ID
 
     await subscriptionService.updateSubscription(org.id, {
@@ -731,8 +731,8 @@ export async function handleCustomerCreated(payload: PolarWebhookPayload) {
 
   // Get userId from customer metadata or externalId
   // The Polar plugin sets externalId = user.id when creating customers
-  const externalId = (payload.data as any).externalId; // eslint-disable-line @typescript-eslint/no-explicit-any
-  const metadataUserId = (payload.data as any).metadata?.userId; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const externalId = (payload.data as any).externalId;  
+  const metadataUserId = (payload.data as any).metadata?.userId;  
   const userId = externalId || metadataUserId;
 
   if (!userId) {

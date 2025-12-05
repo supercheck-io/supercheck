@@ -31,7 +31,7 @@ function getPolarPlugin() {
   }
 
   try {
-    /* eslint-disable @typescript-eslint/no-require-imports */
+     
     const {
       polar,
       checkout,
@@ -40,7 +40,7 @@ function getPolarPlugin() {
       webhooks,
     } = require("@polar-sh/better-auth");
     const { Polar } = require("@polar-sh/sdk");
-    /* eslint-enable @typescript-eslint/no-require-imports */
+     
 
     const config = getPolarConfig()!;
     const products = getPolarProducts();
@@ -106,7 +106,7 @@ function getPolarPlugin() {
         webhooks({
           secret: config.webhookSecret!,
           // Customer lifecycle handlers - critical for linking customer to organization
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onCustomerCreated: async (payload: any) => {
             console.log("[Polar] Webhook: customer.created");
             const { handleCustomerCreated } = await import(
@@ -115,7 +115,7 @@ function getPolarPlugin() {
             await handleCustomerCreated(payload);
           },
           // Subscription lifecycle handlers
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onSubscriptionActive: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.active");
             const { handleSubscriptionActive } = await import(
@@ -123,7 +123,7 @@ function getPolarPlugin() {
             );
             await handleSubscriptionActive(payload);
           },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onSubscriptionCreated: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.created");
             const { handleSubscriptionActive } = await import(
@@ -131,7 +131,7 @@ function getPolarPlugin() {
             );
             await handleSubscriptionActive(payload);
           },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onSubscriptionUpdated: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.updated");
             const { handleSubscriptionUpdated } = await import(
@@ -139,7 +139,7 @@ function getPolarPlugin() {
             );
             await handleSubscriptionUpdated(payload);
           },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onSubscriptionCanceled: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.canceled");
             const { handleSubscriptionCanceled } = await import(
@@ -148,7 +148,7 @@ function getPolarPlugin() {
             await handleSubscriptionCanceled(payload);
           },
           // Handle subscription uncancellation - user reverses cancellation during grace period
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onSubscriptionUncanceled: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.uncanceled");
             const { handleSubscriptionUncanceled } = await import(
@@ -157,7 +157,7 @@ function getPolarPlugin() {
             await handleSubscriptionUncanceled(payload);
           },
           // CRITICAL: Handle subscription revocation - immediate access termination
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onSubscriptionRevoked: async (payload: any) => {
             console.log("[Polar] Webhook: subscription.revoked");
             const { handleSubscriptionRevoked } = await import(
@@ -166,7 +166,7 @@ function getPolarPlugin() {
             await handleSubscriptionRevoked(payload);
           },
           // Payment confirmation handler
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onOrderPaid: async (payload: any) => {
             console.log("[Polar] Webhook: order.paid");
             const { handleOrderPaid } = await import(
@@ -183,7 +183,7 @@ function getPolarPlugin() {
             await handleCustomerStateChanged();
           },
           // CRITICAL: Handle customer deletion - revoke access immediately
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onCustomerDeleted: async (payload: any) => {
             console.log("[Polar] Webhook: customer.deleted");
             const { handleCustomerDeleted } = await import(
@@ -192,7 +192,7 @@ function getPolarPlugin() {
             await handleCustomerDeleted(payload);
           },
           // Catch-all for logging and handling any other events
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           
           onPayload: async (payload: any) => {
             // Log all events for debugging/monitoring
             console.log("[Polar] Webhook received:", payload.type);

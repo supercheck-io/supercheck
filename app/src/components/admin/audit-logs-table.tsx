@@ -106,7 +106,7 @@ export function AuditLogsTable({ className }: AuditLogsTableProps) {
   }, [data?.logs]);
 
   const CustomToolbar = React.useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Table type from react-table is complex
+     
     ({ table }: { table: any }) => {
       return (
         <AuditTableToolbar table={table} availableUsers={availableUsers} />

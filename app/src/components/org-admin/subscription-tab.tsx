@@ -172,7 +172,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
   const handleManageSubscription = async () => {
     setOpeningPortal(true);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       const result = await (authClient as any).customer.portal();
       if (result?.data?.url) {
         toast.success("Opening Polar customer portal...", {

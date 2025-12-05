@@ -50,7 +50,7 @@ export function LoginForm({
   error,
   inviteData,
   inviteToken,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   isFromNotification = false,
   emailVerified = false,
 }: LoginFormProps) {
