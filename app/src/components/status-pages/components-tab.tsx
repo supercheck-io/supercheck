@@ -13,6 +13,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Plus,
   Pencil,
   Trash2,
@@ -58,6 +63,100 @@ import { format } from "date-fns";
 import { getComponents } from "@/actions/get-components";
 import { deleteComponent } from "@/actions/delete-component";
 import { ComponentFormDialog } from "./component-form-dialog";
+
+// LinkedMonitorsCell component for displaying linked monitors with hover tooltip
+const LinkedMonitorsCell = ({
+  monitors,
+  legacyMonitor,
+}: {
+  monitors: { id: string; name: string; type: string; status: string }[];
+  legacyMonitor: { id: string; name: string; type: string; status: string } | null;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  // Handle both new monitors array and legacy single monitor
+  const allMonitors = monitors && monitors.length > 0
+    ? monitors
+    : legacyMonitor
+      ? [legacyMonitor]
+      : [];
+
+  if (allMonitors.length === 0) {
+    return (
+      <span className="text-muted-foreground text-sm">
+        No monitors linked
+      </span>
+    );
+  }
+
+  const displayMonitors = allMonitors.slice(0, 2);
+  const remainingCount = allMonitors.length - 2;
+
+  // Only show popover if there are more than 2 monitors
+  if (allMonitors.length <= 2) {
+    return (
+      <div className="flex flex-wrap gap-1">
+        {allMonitors.map((monitor) => (
+          <Badge
+            key={monitor.id}
+            variant="outline"
+            className="text-xs max-w-[120px]"
+          >
+            <LinkIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+            <span className="truncate">
+              {monitor.name}
+            </span>
+          </Badge>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <div
+          className="flex flex-wrap gap-1 cursor-pointer"
+          onMouseEnter={() => setIsOpen(true)}
+          onMouseLeave={() => setIsOpen(false)}
+        >
+          {displayMonitors.map((monitor) => (
+            <Badge
+              key={monitor.id}
+              variant="outline"
+              className="text-xs max-w-[120px]"
+            >
+              <LinkIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+              <span className="truncate">
+                {monitor.name}
+              </span>
+            </Badge>
+          ))}
+          {remainingCount > 0 && (
+            <Badge variant="outline" className="text-xs">
+              +{remainingCount}
+            </Badge>
+          )}
+        </div>
+      </PopoverTrigger>
+
+      <PopoverContent className="w-auto max-w-[400px] p-3">
+        <div className="flex flex-wrap gap-1.5">
+          {allMonitors.map((monitor) => (
+            <Badge
+              key={monitor.id}
+              variant="outline"
+              className="text-xs"
+            >
+              <LinkIcon className="h-3 w-3 mr-1 flex-shrink-0" />
+              {monitor.name}
+            </Badge>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
 
 type ComponentStatus =
   | "operational"
@@ -430,7 +529,7 @@ export function ComponentsTab({
                         >
                           Status
                           {sortColumn === "status" &&
-                          sortDirection === "asc" ? (
+                            sortDirection === "asc" ? (
                             <ArrowUp className="ml-1 h-4 w-4 text-primary" />
                           ) : sortColumn === "status" &&
                             sortDirection === "desc" ? (
@@ -447,13 +546,13 @@ export function ComponentsTab({
                           className={cn(
                             "flex items-center gap-1 hover:bg-muted/50 -ml-3 px-3 py-1.5 rounded-md transition-colors",
                             sortColumn === "createdAt" &&
-                              "bg-muted font-semibold"
+                            "bg-muted font-semibold"
                           )}
                           onClick={() => handleSort("createdAt")}
                         >
                           Created
                           {sortColumn === "createdAt" &&
-                          sortDirection === "asc" ? (
+                            sortDirection === "asc" ? (
                             <ArrowUp className="ml-1 h-4 w-4 text-primary" />
                           ) : sortColumn === "createdAt" &&
                             sortDirection === "desc" ? (
@@ -519,42 +618,10 @@ export function ComponentsTab({
                           )}
                         </TableCell>
                         <TableCell>
-                          {component.monitors &&
-                          component.monitors.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {component.monitors.slice(0, 2).map((monitor) => (
-                                <Badge
-                                  key={monitor.id}
-                                  variant="outline"
-                                  className="text-xs max-w-[120px]"
-                                >
-                                  <LinkIcon className="h-3 w-3 mr-1 flex-shrink-0" />
-                                  <span className="truncate">
-                                    {monitor.name}
-                                  </span>
-                                </Badge>
-                              ))}
-                              {component.monitors.length > 2 && (
-                                <Badge variant="outline" className="text-xs">
-                                  +{component.monitors.length - 2}
-                                </Badge>
-                              )}
-                            </div>
-                          ) : component.monitor ? (
-                            <Badge
-                              variant="outline"
-                              className="text-xs max-w-[120px]"
-                            >
-                              <LinkIcon className="h-3 w-3 mr-1 flex-shrink-0" />
-                              <span className="truncate">
-                                {component.monitor.name}
-                              </span>
-                            </Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">
-                              No monitors linked
-                            </span>
-                          )}
+                          <LinkedMonitorsCell
+                            monitors={component.monitors || []}
+                            legacyMonitor={component.monitor}
+                          />
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center w-[170px]">
@@ -562,9 +629,9 @@ export function ComponentsTab({
                             <span>
                               {component.createdAt
                                 ? format(
-                                    new Date(component.createdAt),
-                                    "MMM d, yyyy"
-                                  )
+                                  new Date(component.createdAt),
+                                  "MMM d, yyyy"
+                                )
                                 : "-"}
                             </span>
                             {component.createdAt && (
