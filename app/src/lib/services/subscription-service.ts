@@ -271,6 +271,24 @@ export class SubscriptionService {
       return false;
     }
 
+    // SECURITY: Reject unlimited plan in cloud mode
+    // This prevents orgs created in self-hosted mode from having unlimited access
+    // when the environment is switched to cloud mode
+    if (org.subscriptionPlan === "unlimited") {
+      console.error(
+        `[SubscriptionService] SECURITY: hasActiveSubscription rejecting unlimited plan for org ${organizationId.substring(0, 8)}... in cloud mode`
+      );
+      return false;
+    }
+
+    // SECURITY: Only allow plus/pro plans in cloud mode
+    if (!["plus", "pro"].includes(org.subscriptionPlan)) {
+      console.error(
+        `[SubscriptionService] SECURITY: hasActiveSubscription rejecting invalid plan ${org.subscriptionPlan} for org ${organizationId.substring(0, 8)}... in cloud mode`
+      );
+      return false;
+    }
+
     // Check subscription status
     switch (org.subscriptionStatus) {
       case "active":
@@ -324,16 +342,8 @@ export class SubscriptionService {
       return this.getPlanLimits("unlimited");
     }
 
-    // Cloud mode: require subscription with valid access
-    // This handles active, canceled (with grace period), and past_due
-    const hasAccess = await this.hasActiveSubscription(organizationId);
-    if (!org.subscriptionPlan || !hasAccess) {
-      throw new Error(
-        "No active subscription. Please subscribe to a plan to continue."
-      );
-    }
-
-    // SECURITY: Validate plan is legitimate for cloud mode
+    // SECURITY: Validate plan is legitimate for cloud mode FIRST
+    // This catches tampered plans before checking subscription status
     if (org.subscriptionPlan === "unlimited") {
       console.error(
         `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has unlimited plan in cloud mode - possible database tampering`
@@ -343,12 +353,21 @@ export class SubscriptionService {
       );
     }
 
-    if (!["plus", "pro"].includes(org.subscriptionPlan)) {
+    if (org.subscriptionPlan && !["plus", "pro"].includes(org.subscriptionPlan)) {
       console.error(
         `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has invalid plan ${org.subscriptionPlan} in cloud mode`
       );
       throw new Error(
         `Invalid subscription plan: ${org.subscriptionPlan}. Only plus and pro plans are available.`
+      );
+    }
+
+    // Cloud mode: require subscription with valid access
+    // This handles active, canceled (with grace period), and past_due
+    const hasAccess = await this.hasActiveSubscription(organizationId);
+    if (!org.subscriptionPlan || !hasAccess) {
+      throw new Error(
+        "No active subscription. Please subscribe to a plan to continue."
       );
     }
 
@@ -390,26 +409,27 @@ export class SubscriptionService {
     // Cloud mode: return actual plan if subscribed and has access
     // Handle canceled subscriptions with grace period
     if (org.subscriptionPlan) {
+      // SECURITY: Validate plan is legitimate for cloud mode BEFORE checking access
+      // This catches tampered unlimited/invalid plans even if hasActiveSubscription returns false
+      if (org.subscriptionPlan === "unlimited") {
+        console.error(
+          `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has unlimited plan in cloud mode (getOrganizationPlanSafe) - possible database tampering`
+        );
+        // Return blocked state instead of unlimited for security
+        return this.getPlanLimits("blocked");
+      }
+
+      if (!["plus", "pro"].includes(org.subscriptionPlan)) {
+        console.error(
+          `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has invalid plan ${org.subscriptionPlan} in cloud mode (getOrganizationPlanSafe)`
+        );
+        // Return blocked state for invalid plans
+        return this.getPlanLimits("blocked");
+      }
+
       const hasAccess = await this.hasActiveSubscription(organizationId);
 
       if (hasAccess) {
-        // SECURITY: Validate plan is legitimate for cloud mode (same as getOrganizationPlan)
-        if (org.subscriptionPlan === "unlimited") {
-          console.error(
-            `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has unlimited plan in cloud mode (getOrganizationPlanSafe) - possible database tampering`
-          );
-          // Return blocked state instead of unlimited for security
-          return this.getPlanLimits("blocked");
-        }
-
-        if (!["plus", "pro"].includes(org.subscriptionPlan)) {
-          console.error(
-            `[SubscriptionService] SECURITY: Organization ${organizationId.substring(0, 8)}... has invalid plan ${org.subscriptionPlan} in cloud mode (getOrganizationPlanSafe)`
-          );
-          // Return blocked state for invalid plans
-          return this.getPlanLimits("blocked");
-        }
-
         return this.getPlanLimits(org.subscriptionPlan);
       }
     }

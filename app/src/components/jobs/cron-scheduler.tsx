@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Cron, OnError } from "react-js-cron";
 import "react-js-cron/dist/styles.css"; // Import base styles
 import { Input } from "@/components/ui/input"; // Import shadcn Input
@@ -27,6 +27,37 @@ const CronScheduler: React.FC<CronSchedulerProps> = ({
   disabled = false,
   readOnly = false,
 }) => {
+  const originalConsoleWarn = useRef<typeof console.warn>(console.warn);
+
+  useEffect(() => {
+    // Store original console.warn
+    originalConsoleWarn.current = console.warn;
+
+    // Override console.warn to filter out the specific Ant Design deprecation warning
+    console.warn = (...args: unknown[]) => {
+      const message = args[0];
+
+      // Filter out the specific antd Select popupClassName deprecation warning
+      if (
+        typeof message === 'string' &&
+        message.includes('[antd: Select]') &&
+        message.includes('popupClassName') &&
+        message.includes('deprecated')
+      ) {
+        return; // Suppress this specific warning
+      }
+
+      // Pass all other warnings through
+      originalConsoleWarn.current?.(...args);
+    };
+
+    // Cleanup: restore original console.warn on unmount
+    return () => {
+      if (originalConsoleWarn.current) {
+        console.warn = originalConsoleWarn.current;
+      }
+    };
+  }, []);
 
   return (
     <div className="cron-widget-container space-y-2"> 

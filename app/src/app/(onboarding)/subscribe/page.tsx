@@ -129,6 +129,10 @@ export default function SubscribePage() {
   const [subscribing, setSubscribing] = useState<string | null>(null);
 
   useEffect(() => {
+    // NOTE: Organization setup is handled by SetupChecker in the layout
+    // Do not call setup-defaults here to avoid race conditions
+
+    // Fetch pricing data
     fetch("/api/billing/pricing")
       .then((res) => res.json())
       .then((data) => setPricingData(data))
@@ -142,6 +146,15 @@ export default function SubscribePage() {
   const handleSubscribe = async (planSlug: string) => {
     setSubscribing(planSlug);
     try {
+      // IMPORTANT: Ensure organization exists before checkout
+      // In cloud mode, users may arrive at /subscribe without having an organization yet
+      // (e.g., after email verification, the signup flow skips setup-defaults)
+      try {
+        await fetch("/api/auth/setup-defaults", { method: "POST" });
+      } catch (setupError) {
+        console.log("Setup defaults call completed (may already exist):", setupError);
+      }
+
       // Get the user's organization ID to link the subscription
       const orgsResponse = await fetch("/api/organizations");
       const orgsResult = await orgsResponse.json();
@@ -151,11 +164,11 @@ export default function SubscribePage() {
 
       if (!organizationId) {
         console.error("No organization found in response:", orgsResult);
-        throw new Error("No organization found");
+        throw new Error("No organization found. Please try refreshing the page.");
       }
 
       // Use Better Auth Polar checkout client method with referenceId
-       
+
       await (authClient as any).checkout({
         slug: planSlug,
         referenceId: organizationId, // Link subscription to organization

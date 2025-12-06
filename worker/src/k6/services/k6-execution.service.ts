@@ -532,7 +532,7 @@ export class K6ExecutionService {
           entityId: runId,
           entityType: 'k6_performance',
           reportPath: `${s3KeyPrefix}/report`,
-          status: thresholdsPassed ? 'passed' : 'failed',
+          status: overallSuccess ? 'passed' : 'failed',
           s3Url: reportUrl ?? undefined,
         });
       } catch (metadataError) {
@@ -546,8 +546,13 @@ export class K6ExecutionService {
           `[${runId}] k6 execution timed out after ${executionTimeoutMs}ms`,
         );
       } else {
+        const statusMsg = overallSuccess ? 'PASSED' : 'FAILED';
+        const details: string[] = [];
+        if (!thresholdsPassed) details.push('thresholds breached');
+        if (checksFailed) details.push('checks failed');
+        const detailStr = details.length > 0 ? ` (${details.join(', ')})` : '';
         this.logger.log(
-          `[${runId}] k6 completed: ${thresholdsPassed ? 'PASSED' : 'FAILED'}`,
+          `[${runId}] k6 completed: ${statusMsg}${detailStr}`,
         );
       }
     } catch (error) {
@@ -831,12 +836,12 @@ export class K6ExecutionService {
   }
 
   /**
-   * Check if thresholds passed by examining the summary.json structure
-   * K6 exit code doesn't always reflect threshold status accurately
+   * Check if thresholds passed by examining the summary.json structure and k6 exit code.
+   * K6 exit code 99 definitively indicates threshold failure.
    * @param summary The K6 summary object from summary.json
    * @param timedOut Whether the execution timed out
-   * @param exitCode The k6 process exit code (used as fallback when summary is missing)
-   * @returns true if all thresholds passed or no thresholds defined, false otherwise
+   * @param exitCode The k6 process exit code (99 = threshold failure)
+   * @returns true if all thresholds passed, false otherwise
    */
   private checkThresholdsFromSummary(
     summary: any,
@@ -845,6 +850,14 @@ export class K6ExecutionService {
   ): boolean {
     // If timed out, thresholds are considered failed
     if (timedOut) {
+      this.logger.debug('Thresholds failed: execution timed out');
+      return false;
+    }
+
+    // K6 exit code 99 definitively means threshold failure
+    // This takes precedence over summary.json parsing since k6 knows best
+    if (exitCode === 99) {
+      this.logger.debug('Thresholds failed: k6 exit code 99 (threshold breach)');
       return false;
     }
 
@@ -852,7 +865,11 @@ export class K6ExecutionService {
     // Missing summary indicates k6 crashed (syntax error, missing module, etc.)
     if (!summary || !summary.metrics) {
       // Exit code 0 means success, non-zero means failure
-      return exitCode === 0;
+      const passed = exitCode === 0;
+      this.logger.debug(
+        `Thresholds ${passed ? 'passed' : 'failed'}: no summary available, using exit code ${exitCode}`,
+      );
+      return passed;
     }
 
     // Check each metric's thresholds for failures
@@ -881,6 +898,7 @@ export class K6ExecutionService {
     }
 
     // All thresholds passed (or no thresholds defined)
+    this.logger.debug('All thresholds passed');
     return true;
   }
 

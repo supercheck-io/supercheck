@@ -76,19 +76,37 @@ export async function GET() {
       org.usagePeriodEnd || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30 days from now
 
     // Get plan pricing - determine appropriate plan based on hosting mode
-    // In cloud mode: use actual subscription plan or 'plus' for display
+    // In cloud mode: use actual subscription plan (only plus/pro are valid)
     // In self-hosted mode: always 'unlimited'
     const { isCloudHosted: cloudHosted } = await import("@/lib/feature-flags");
-    const effectivePlan = cloudHosted()
-      ? (org.subscriptionPlan as "plus" | "pro") || "plus" // Cloud: use actual plan or default to plus for unsubscribed
-      : "unlimited"; // Self-hosted: always unlimited
+    let effectivePlan: "plus" | "pro" | "unlimited";
+    if (cloudHosted()) {
+      // Cloud mode: only plus/pro are valid plans
+      // If org has unlimited or invalid plan, treat as unsubscribed (show plus for display)
+      if (org.subscriptionPlan === "plus" || org.subscriptionPlan === "pro") {
+        effectivePlan = org.subscriptionPlan;
+      } else {
+        // Unlimited or null in cloud mode = needs subscription
+        effectivePlan = "plus"; // Default to plus for display purposes
+      }
+    } else {
+      // Self-hosted: always unlimited
+      effectivePlan = "unlimited";
+    }
     const planType = effectivePlan;
     const pricing = getPlanPricing(planType);
+
+    // Determine effective subscription status
+    // In cloud mode with invalid plan (unlimited), status should be 'none' regardless of DB value
+    let effectiveStatus = org.subscriptionStatus || "none";
+    if (cloudHosted() && org.subscriptionPlan !== "plus" && org.subscriptionPlan !== "pro") {
+      effectiveStatus = "none"; // Invalid plan = no subscription
+    }
 
     return NextResponse.json({
       subscription: {
         plan: effectivePlan,
-        status: org.subscriptionStatus || "none",
+        status: effectiveStatus,
         subscriptionId: org.subscriptionId,
         polarCustomerId: org.polarCustomerId,
         currentPeriodStart: periodStart,

@@ -18,6 +18,7 @@ export default function SignInPage() {
   const [inviteData, setInviteData] = useState<InviteData | null>(null);
   const [isFromNotification, setIsFromNotification] = useState(false);
   const [emailVerified, setEmailVerified] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   // Derive invite token from URL params (not state)
   const inviteToken = useMemo(() => searchParams.get("invite"), [searchParams]);
@@ -69,7 +70,15 @@ export default function SignInPage() {
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
 
-    const { error } = await signIn.email({ email, password });
+    // Include CAPTCHA token in request headers if available
+    // Better Auth captcha plugin validates via x-captcha-response header
+    const { error } = await signIn.email({
+      email,
+      password,
+      fetchOptions: {
+        headers: captchaToken ? { "x-captcha-response": captchaToken } : {},
+      },
+    });
 
     if (error) {
       setError(error.message || "An error occurred");
@@ -94,6 +103,7 @@ export default function SignInPage() {
       inviteToken={inviteToken}
       isFromNotification={isFromNotification}
       emailVerified={emailVerified}
+      onCaptchaToken={setCaptchaToken}
     />
   );
 }

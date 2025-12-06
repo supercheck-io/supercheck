@@ -140,6 +140,12 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
 
+  # CAPTCHA Configuration (optional - Cloudflare Turnstile)
+  # CAPTCHA is automatically enabled when both keys are set
+  # Get keys from https://dash.cloudflare.com/?to=/:account/turnstile
+  TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+  TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+
 services:
   # Traefik Reverse Proxy with HTTPS
   traefik:

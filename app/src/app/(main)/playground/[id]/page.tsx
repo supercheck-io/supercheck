@@ -2,7 +2,7 @@
 import Playground from "@/components/playground";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 // import { getTest } from "@/actions/get-test"; // Replaced with API call
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams, notFound } from "next/navigation";
 import { TestPriority, TestType } from "@/db/schema";
 import { PlaygroundSkeleton } from "@/components/playground/playground-skeleton";
@@ -37,7 +37,7 @@ export default function PlaygroundPage() {
       try {
         const response = await fetch(`/api/tests/${id}`);
         const result = await response.json();
-        
+
         if (response.ok && result) {
           setTestData({
             ...result,
@@ -62,6 +62,21 @@ export default function PlaygroundPage() {
     fetchTestData();
   }, [id]);
 
+  // Memoize initialTestData to prevent unnecessary re-renders and effect triggers in Playground
+  const initialTestDataMemo = useMemo(() => {
+    if (!testData) return undefined;
+    return {
+      id: testData.id,
+      title: testData.title,
+      description: testData.description || "",
+      script: testData.script,
+      priority: testData.priority,
+      type: testData.type,
+      updatedAt: testData.updatedAt || undefined,
+      createdAt: testData.createdAt || undefined,
+    };
+  }, [testData]);
+
   // If no test data is available and we're done loading, don't try to render the playground
   if (!isLoading && !testData) {
     notFound();
@@ -80,19 +95,10 @@ export default function PlaygroundPage() {
               : "opacity-100 transition-opacity duration-300"
           }
         >
-          {testData && (
+          {initialTestDataMemo && (
             <Playground
               initialTestId={id}
-              initialTestData={{
-                id: testData.id,
-                title: testData.title,
-                description: testData.description || "",
-                script: testData.script,
-                priority: testData.priority,
-                type: testData.type,
-                updatedAt: testData.updatedAt || undefined,
-                createdAt: testData.createdAt || undefined,
-              }}
+              initialTestData={initialTestDataMemo}
             />
           )}
         </div>

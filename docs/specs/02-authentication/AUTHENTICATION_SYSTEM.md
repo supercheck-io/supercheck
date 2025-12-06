@@ -4,13 +4,14 @@
 
 Supercheck uses **Better Auth 1.4.5** as its comprehensive authentication framework, providing:
 
-- **Email/Password Authentication**: Traditional credential-based sign-in
-- **Social Authentication**: GitHub and Google OAuth 2.0 sign-in
+- **Social Authentication (Primary)**: GitHub and Google OAuth 2.0 for new user signup
+- **Email/Password Authentication**: For existing users and invitation-based signup only
 - **Multi-Tenant Organization Management**: Built-in organization support
 - **Role-Based Access Control (RBAC)**: Fine-grained permissions
 - **Admin Capabilities**: User impersonation and management
 - **Polar Billing Integration**: Automatic customer creation for cloud deployments
 - **Email Verification**: Required for cloud mode, optional for self-hosted
+- **Last Login Method Tracking**: Shows "Last used" badge on sign-in page
 
 ## Cloud vs Self-Hosted Modes
 
@@ -20,11 +21,13 @@ Supercheck supports two deployment modes with different authentication behaviors
 
 | Feature                         | Cloud Mode                | Self-Hosted Mode |
 | ------------------------------- | ------------------------- | ---------------- |
+| **Signup Method**               | Social-only (GitHub/Google) | Social-only (GitHub/Google) |
+| **Email/Password Signup**       | Invitation flow only      | Invitation flow only |
 | **Email Verification**          | Required                  | Not required     |
-| **Disposable Email Check**      | Blocked                   | Allowed          |
 | **Billing Integration (Polar)** | Enabled                   | Disabled         |
 | **Plan Limits**                 | Enforced per subscription | No enforcement   |
-| **Polar Customer Creation**     | Automatic on signup       | Disabled         |
+| **Polar Customer Creation**     | Via /api/auth/setup-defaults | Disabled         |
+| **Last Login Method Tracking**  | Enabled                   | Enabled          |
 
 ### Configuration
 
@@ -185,42 +188,34 @@ sequenceDiagram
 
 ### Sign Up Flow
 
+> **Important:** The `/sign-up` page is only for invitation-based signups. New users without an invitation should use the sign-in page with social auth (GitHub/Google), which automatically creates accounts.
+
 ```mermaid
 sequenceDiagram
     participant User
     participant Frontend
     participant BetterAuth
     participant Database
-    participant Email as Email Service
     participant OrgPlugin
 
-    User->>Frontend: Enter name, email, password
-    Frontend->>BetterAuth: POST /api/auth/sign-up/email
-    BetterAuth->>BetterAuth: Validate password strength
-    BetterAuth->>Database: Check email uniqueness
-
-    alt Email Already Exists
-        BetterAuth-->>Frontend: 400 Email already registered
-        Frontend-->>User: Show error
-    else Email Available
-        BetterAuth->>Database: Create user record
-        Database-->>BetterAuth: User created
-
-        BetterAuth->>OrgPlugin: Create default organization
-        OrgPlugin->>Database: Insert organization
-        OrgPlugin->>Database: Add user as owner
-        Database-->>OrgPlugin: Org created
-
-        BetterAuth-->>Frontend: 200 Success
-
-        alt Cloud Mode
-            BetterAuth->>Email: Send verification email
-            Frontend->>Frontend: Redirect to /verify-email
-            Frontend-->>User: "Check your email to verify"
-        else Self-Hosted Mode
-            Frontend->>Frontend: Redirect to sign-in
-            Frontend-->>User: Show success message
-        end
+    alt New User (No Invitation)
+        User->>Frontend: Navigate to /sign-up
+        Frontend->>Frontend: Check for invite token
+        Frontend->>Frontend: Redirect to /sign-in
+        User->>Frontend: Click "Continue with GitHub/Google"
+        Frontend->>BetterAuth: OAuth flow
+        BetterAuth->>Database: Create user (email verified via OAuth)
+        BetterAuth-->>Frontend: Success
+        Frontend-->>User: Redirect to dashboard
+    else Invited User
+        User->>Frontend: Click invitation link (/sign-up?invite=TOKEN)
+        Frontend->>Frontend: Fetch invite data
+        User->>Frontend: Enter name, password (email locked)
+        Frontend->>BetterAuth: POST /api/auth/sign-up/email
+        BetterAuth->>Database: Create user with invited email
+        BetterAuth-->>Frontend: Success
+        Frontend->>Frontend: Auto-accept invitation
+        Frontend-->>User: Redirect to organization dashboard
     end
 ```
 
@@ -328,11 +323,9 @@ sequenceDiagram
         BetterAuth->>Database: Create user record
         BetterAuth->>Database: Create account record
 
-        Note over BetterAuth,Polar: Cloud Mode: Polar customer creation
+        Note over BetterAuth,Polar: Cloud Mode: Polar customer created via setup-defaults
         opt Polar Enabled
-            BetterAuth->>Polar: Create customer
-            Polar-->>BetterAuth: Customer ID
-            BetterAuth->>Database: Store polar_customer_id
+            Note over Callback: setup-defaults creates Polar customer
         end
     end
 
@@ -547,7 +540,7 @@ The verification email includes:
 - **Organization Plugin**: Org creation handled in the API layer (`/api/auth/setup-defaults` + invitations)
 - **Admin Plugin**: Super admin roles with impersonation support
 - **API Key Plugin**: Programmatic access for jobs and monitors
-- **Polar Plugin** _(Optional)_: Automatic customer creation for cloud deployments
+- **Polar Plugin** _(Optional)_: Customer creation via `/api/auth/setup-defaults` (NOT during signup)
 - **Session Duration**: 7 days
 - **Session Update Age**: 24 hours (refreshes with activity)
 - **Database Adapter**: Drizzle ORM with PostgreSQL
@@ -832,6 +825,155 @@ graph TB
 - Token invalidation after successful reset
 - Automatic session cleanup on suspicious activity
 
+### CAPTCHA Protection (Cloudflare Turnstile)
+
+Supercheck supports optional CAPTCHA protection using Cloudflare Turnstile to prevent automated bot attacks on authentication endpoints.
+
+#### Configuration
+
+CAPTCHA is automatically enabled when both Turnstile keys are set:
+
+```bash
+# Cloudflare Turnstile Keys
+# Get from https://dash.cloudflare.com/?to=/:account/turnstile
+TURNSTILE_SITE_KEY=your-site-key
+TURNSTILE_SECRET_KEY=your-secret-key
+```
+
+The site key is exposed to the client via the `/api/config/captcha` endpoint (not as a NEXT_PUBLIC_ variable).
+
+#### Protected Endpoints
+
+When enabled, CAPTCHA verification is required for:
+
+| Endpoint | Description |
+|----------|-------------|
+| `/api/auth/sign-in/email` | Email/password sign in |
+| `/api/auth/sign-up/email` | Email/password registration (invitation flow) |
+| `/api/auth/forget-password` | Password reset requests |
+
+> [!NOTE]
+> CAPTCHA is **not required** for social authentication (GitHub/Google) as these providers have their own bot protection.
+
+#### How It Works
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Browser
+    participant Turnstile as Cloudflare Turnstile
+    participant App as Supercheck App
+    participant CF as Cloudflare API
+
+    User->>Browser: Fill login form
+    Browser->>App: Fetch /api/config/captcha
+    App-->>Browser: {enabled: true, siteKey: "..."}
+    Browser->>Turnstile: Initialize widget (invisible mode)
+    Turnstile-->>Browser: Return CAPTCHA token
+    Browser->>App: Submit form with x-captcha-response header
+    App->>CF: Validate token via /siteverify
+    CF-->>App: Validation result
+    alt Token Valid
+        App->>App: Process authentication
+        App-->>Browser: Success response
+    else Token Invalid
+        App-->>Browser: 403 CAPTCHA validation failed
+    end
+```
+
+#### Implementation Details
+
+**Server-Side (Better Auth Plugin):**
+
+The CAPTCHA plugin is conditionally added to Better Auth in `app/src/utils/auth.ts`:
+
+```typescript
+import { captcha } from "better-auth/plugins";
+
+function getCaptchaPlugin() {
+  if (!process.env.TURNSTILE_SECRET_KEY) {
+    return null;
+  }
+
+  return captcha({
+    provider: "cloudflare-turnstile",
+    secretKey: process.env.TURNSTILE_SECRET_KEY,
+    endpoints: ["/sign-up/email", "/sign-in/email", "/forget-password"],
+  });
+}
+```
+
+**Client-Side (React Component):**
+
+The `TurnstileCaptcha` component (`app/src/components/auth/turnstile-captcha.tsx`) fetches config from the API and renders an invisible Turnstile widget:
+
+```typescript
+// Usage in auth forms
+<TurnstileCaptcha
+  ref={captchaRef}
+  onSuccess={(token) => setCaptchaToken(token)}
+  onError={() => setError("CAPTCHA verification failed")}
+  onExpire={() => setError("CAPTCHA expired")}
+/>
+
+// Include token in API requests
+await signIn.email({
+  email,
+  password,
+  fetchOptions: {
+    headers: captchaToken ? { "x-captcha-response": captchaToken } : {},
+  },
+});
+```
+
+#### Feature Detection
+
+Clients fetch CAPTCHA config (including site key) via the config endpoint:
+
+```bash
+GET /api/config/captcha
+```
+
+Response:
+```json
+{
+  "enabled": true,
+  "siteKey": "0x4AAAA..."
+}
+```
+
+#### Deployment Configuration
+
+**Docker Compose:**
+
+```yaml
+environment:
+  TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+  TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+```
+
+**Kubernetes:**
+
+ConfigMap (public key - exposed via API):
+```yaml
+data:
+  TURNSTILE_SITE_KEY: "0x4AAAA..."
+```
+
+Secret (private key):
+```yaml
+stringData:
+  TURNSTILE_SECRET_KEY: "0x4BBBB..."
+```
+
+#### Testing
+
+For local development without Cloudflare keys, simply leave the environment variables empty to disable CAPTCHA.
+
+For testing with CAPTCHA, Cloudflare provides test keys:
+- **Site Key (Always Pass):** `1x00000000000000000000AA`
+- **Secret Key (Always Pass):** `1x0000000000000000000000000000000AA`
+
 ## Email Integration
 
 ### Email Service Architecture
@@ -913,17 +1055,7 @@ sequenceDiagram
     participant NewUser
 
     Owner->>System: Send invitation
-
-    alt Cloud Mode
-        System->>System: Check for disposable email
-        alt Disposable Email
-            System-->>Owner: Error - Please use permanent email
-        else Valid Email
-            System->>Database: Create invitation record
-        end
-    else Self-Hosted Mode
-        System->>Database: Create invitation record
-    end
+    System->>Database: Create invitation record
 
     Database-->>System: Invitation created
     System->>Email: Send invitation email
@@ -992,15 +1124,7 @@ sequenceDiagram
 - Social auth could result in a different email being used
 - Ensures the correct person accepts the invitation
 
-**Disposable Email Validation:**
-
-```typescript
-// In MemberAccessDialog.tsx (invite mode only)
-if (mode === "invite" && isCloudMode && isDisposableEmail(email)) {
-  toast.error(getDisposableEmailErrorMessage());
-  return;
-}
-```
+> **Note:** Disposable email validation has been removed. Social-only signup for new users eliminates the throwaway email problem since OAuth providers (GitHub/Google) require verified, real email addresses. For invitations, the inviter already trusts the email they're inviting.
 
 ## API Integration
 
@@ -1250,27 +1374,31 @@ erDiagram
 
 **Expected:** Existing user added to organization after sign-in (social auth disabled, subscription check bypassed)
 
-#### 9. Disposable Email Blocking (Cloud Mode Only)
+#### 9. Social-Only Signup Verification
 
 **Steps:**
 
-1. Ensure `SELF_HOSTED=false`
-2. Attempt sign-up with disposable email (e.g., mailinator.com)
-3. Verify error shown
+1. Navigate to `/sign-up` without an invite token
+2. Verify only social auth buttons (GitHub/Google) are displayed
+3. Verify no email/password form is shown
+4. Sign up with GitHub or Google
+5. Verify user is created with verified email from OAuth provider
 
-**Expected:** Sign-up blocked with "Please use a permanent email address"
+**Expected:** New users can only sign up via OAuth, email form is hidden
 
-#### 10. Disposable Email Blocking in Member Invitation (Cloud Mode)
+#### 10. Last Login Method Badge
 
 **Steps:**
 
-1. Ensure `SELF_HOSTED=false`
-2. Open member invitation dialog in org-admin
-3. Enter disposable email address (e.g., test@10minutemail.com)
-4. Click "Send Invitation"
-5. Verify error toast shown
+1. Sign in with GitHub OAuth
+2. Sign out
+3. Navigate to `/sign-in`
+4. Verify GitHub button shows "Last used" badge
+5. Sign in with Google instead
+6. Sign out and return to `/sign-in`
+7. Verify Google button now shows "Last used" badge
 
-**Expected:** Invitation blocked with "Please use a permanent email address"
+**Expected:** "Last used" badge correctly tracks and displays the last used auth method
 
 #### 11. Email Verification Resend Rate Limiting (Cloud Mode)
 

@@ -173,12 +173,6 @@ export function ExecutionsDialog({
         try {
           const data = JSON.parse(event.data);
 
-          // Handle sync request from server (triggered by Redis Pub/Sub)
-          if (data.type === "sync") {
-            triggerSync();
-            return;
-          }
-
           // Update running jobs
           if (data.status === "running" && data.runId) {
             setRunning((prev) => {
@@ -231,7 +225,7 @@ export function ExecutionsDialog({
                 "Execution completed before cancellation could be processed"
               );
             }
-            
+
             // Also trigger a sync to ensure lists are consistent
             triggerSync();
           }
@@ -322,7 +316,7 @@ export function ExecutionsDialog({
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
-      
+
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
       }

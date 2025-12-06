@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
 import { getQueueStats } from "@/lib/queue-stats";
 import { getActiveOrganization } from "@/lib/session";
-import { getRedisConnection, QUEUE_STATS_UPDATE_CHANNEL } from "@/lib/queue";
-import { Redis } from "ioredis";
+import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
 
 // SSE Configuration
 const SSE_CONFIG = {
@@ -10,7 +9,7 @@ const SSE_CONFIG = {
   MAX_CONNECTION_DURATION_MS: 5 * 60 * 1000,
   // Heartbeat interval to keep connection alive (30 seconds)
   HEARTBEAT_INTERVAL_MS: 30 * 1000,
-  // Periodic reconciliation interval (60 seconds) - catches any missed pub/sub messages
+  // Periodic reconciliation interval (60 seconds) - catches any missed events
   RECONCILIATION_INTERVAL_MS: 60 * 1000,
 };
 
@@ -48,7 +47,7 @@ export async function GET(request: NextRequest) {
       let lastStats: string | null = null;
       let heartbeatIntervalId: ReturnType<typeof setInterval> | null = null;
       let reconciliationIntervalId: ReturnType<typeof setInterval> | null = null;
-      let subscriber: Redis | null = null;
+      let unsubscribeQueueEventHub: (() => void) | null = null;
       const connectionStartTime = Date.now();
 
       // Cleanup function
@@ -62,9 +61,9 @@ export async function GET(request: NextRequest) {
           clearInterval(reconciliationIntervalId);
           reconciliationIntervalId = null;
         }
-        if (subscriber) {
-          subscriber.quit().catch(() => {});
-          subscriber = null;
+        if (unsubscribeQueueEventHub) {
+          unsubscribeQueueEventHub();
+          unsubscribeQueueEventHub = null;
         }
         try {
           controller.close();
@@ -115,22 +114,25 @@ export async function GET(request: NextRequest) {
         return false;
       };
 
-      // Set up Redis subscription for real-time updates
+      // Set up QueueEventHub subscription for real-time updates
+      // This is the same approach used by the executions dialog for immediate updates
       try {
-        const redis = await getRedisConnection();
-        subscriber = redis.duplicate();
+        const hub = getQueueEventHub();
+        await hub.ready();
 
-        subscriber.on("message", (channel) => {
-          if (channel === QUEUE_STATS_UPDATE_CHANNEL) {
-            // Immediately fetch and send updated stats
+        const handleQueueEvent = (event: NormalizedQueueEvent) => {
+          // Trigger refresh for all job/test lifecycle events to update counts
+          if (event.category === "job" || event.category === "test") {
+            // Refresh on all state changes: waiting (added), active (started),
+            // completed, failed, stalled (finished)
             sendStats(true);
           }
-        });
+        };
 
-        await subscriber.subscribe(QUEUE_STATS_UPDATE_CHANNEL);
+        unsubscribeQueueEventHub = hub.subscribe(handleQueueEvent);
       } catch (err) {
-        console.error("Failed to set up Redis subscription for SSE:", err);
-        // Without pub/sub, fall back to periodic reconciliation only
+        console.error("Failed to set up QueueEventHub subscription for SSE:", err);
+        // Fall back to periodic reconciliation only
       }
 
       // Send initial stats
@@ -146,7 +148,7 @@ export async function GET(request: NextRequest) {
         }
       }, SSE_CONFIG.HEARTBEAT_INTERVAL_MS);
 
-      // Set up periodic reconciliation to catch any missed pub/sub messages
+      // Set up periodic reconciliation to catch any missed events
       reconciliationIntervalId = setInterval(async () => {
         if (aborted) return;
         if (checkMaxDuration()) return;

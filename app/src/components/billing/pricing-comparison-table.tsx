@@ -75,7 +75,7 @@ export function PricingComparisonTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {categories.flatMap((category, categoryIndex) => [
+          {(categories || []).flatMap((category, categoryIndex) => [
             // Category header row
             <TableRow
               key={`category-${categoryIndex}`}

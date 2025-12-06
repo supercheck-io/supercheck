@@ -36,10 +36,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import {
-  isDisposableEmail,
-  getDisposableEmailErrorMessage,
-} from "@/lib/validations/disposable-email-domains";
 
 interface Project {
   id: string;
@@ -242,15 +238,8 @@ export function MemberAccessDialog({
       selectedProjects: formData.selectedProjects,
     };
 
-    // Check for disposable email in cloud mode (invite only)
-    if (
-      mode === "invite" &&
-      isCloudMode &&
-      isDisposableEmail(dataToValidate.email)
-    ) {
-      toast.error(getDisposableEmailErrorMessage());
-      return;
-    }
+    // Note: Disposable email check removed - invitations go to trusted emails
+    // The inviter already trusts the email they're inviting
 
     // Validate form data using appropriate schema
     try {
@@ -518,21 +507,21 @@ export function MemberAccessDialog({
           {/* Org Admin / Viewer Info */}
           {(formData.role === "project_viewer" ||
             formData.role === "org_admin") && (
-            <div
-              className={cn(
-                "flex items-start gap-3 p-3 rounded-lg border",
-                selectedRole?.bgColor,
-                selectedRole?.borderColor
-              )}
-            >
-              <Info className={cn("h-4 w-4 mt-0.5", selectedRole?.color)} />
-              <p className="text-sm text-muted-foreground">
-                {formData.role === "project_viewer"
-                  ? "Viewers automatically get read-only access to all projects."
-                  : "Organization admins have full access to all projects and settings."}
-              </p>
-            </div>
-          )}
+              <div
+                className={cn(
+                  "flex items-start gap-3 p-3 rounded-lg border",
+                  selectedRole?.bgColor,
+                  selectedRole?.borderColor
+                )}
+              >
+                <Info className={cn("h-4 w-4 mt-0.5", selectedRole?.color)} />
+                <p className="text-sm text-muted-foreground">
+                  {formData.role === "project_viewer"
+                    ? "Viewers automatically get read-only access to all projects."
+                    : "Organization admins have full access to all projects and settings."}
+                </p>
+              </div>
+            )}
         </div>
 
         <DialogFooter className="gap-2">

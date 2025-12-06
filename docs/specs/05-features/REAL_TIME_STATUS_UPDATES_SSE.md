@@ -2,7 +2,7 @@
 
 ## Overview
 
-Supercheck implements real-time status updates using **Server-Sent Events (SSE)** combined with **BullMQ Queue Events** and **Redis Pub/Sub**. This provides instant feedback to users during test execution, job processing, and system operations without the overhead of HTTP polling. The system uses a centralized Queue Event Hub that listens to BullMQ queue events and streams them to connected clients.
+Supercheck implements real-time status updates using **Server-Sent Events (SSE)** combined with **BullMQ Queue Events** via a centralized **Queue Event Hub**. This provides instant feedback to users during test execution, job processing, and system operations without the overhead of HTTP polling. The Queue Event Hub listens to BullMQ queue events (waiting, active, completed, failed, stalled) and streams them to connected SSE clients.
 
 ## Table of Contents
 
