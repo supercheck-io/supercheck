@@ -4,6 +4,13 @@
 
 This guide provides step-by-step instructions for implementing the SuperCheck MCP Server, enabling AI assistants to interact with the SuperCheck testing and monitoring platform.
 
+**Key Design Principles**:
+
+- **Read-First**: Prioritize read operations; write operations limited to safe creates
+- **No Destructive Actions**: Delete and update operations are excluded
+- **RBAC-Aware**: All operations respect SuperCheck's role-based permissions
+- **User-Identified**: API keys are tied to specific users for audit and permissions
+
 ---
 
 ## 🚀 Quick Start
@@ -13,7 +20,7 @@ This guide provides step-by-step instructions for implementing the SuperCheck MC
 - Node.js 20+
 - npm or yarn
 - Access to a SuperCheck instance
-- SuperCheck API key
+- SuperCheck API key (generated from SuperCheck UI)
 
 ### Installation
 
@@ -217,12 +224,318 @@ export function loadConfig(): SuperCheckConfig {
 }
 ```
 
+---
+
+## 🔐 Authentication & RBAC Implementation
+
+### User Context from API Key
+
+The API key identifies the user and their permissions. Here's how to extract and cache user context:
+
+```typescript
+// src/lib/auth.ts
+import { SuperCheckApiClient } from "./api-client.js";
+import { logger } from "./logger.js";
+
+export interface UserContext {
+  userId: string;
+  email: string;
+  name: string;
+  role: string;
+  organizationId: string;
+  organizationName: string;
+  permissions: string[];
+  assignedProjectIds: string[];
+  apiKeyScope: {
+    projectId?: string;
+    jobId?: string;
+  };
+}
+
+export class AuthService {
+  private userContext: UserContext | null = null;
+  private contextFetchedAt: Date | null = null;
+  private readonly CONTEXT_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+  constructor(private apiClient: SuperCheckApiClient) {}
+
+  async getUserContext(): Promise<UserContext> {
+    // Return cached context if still valid
+    if (this.userContext && this.contextFetchedAt) {
+      const age = Date.now() - this.contextFetchedAt.getTime();
+      if (age < this.CONTEXT_TTL_MS) {
+        return this.userContext;
+      }
+    }
+
+    // Fetch fresh context
+    try {
+      const response = await this.apiClient.validateApiKey();
+
+      this.userContext = {
+        userId: response.user.id,
+        email: response.user.email,
+        name: response.user.name,
+        role: response.member.role,
+        organizationId: response.organization.id,
+        organizationName: response.organization.name,
+        permissions: response.permissions,
+        assignedProjectIds: response.assignedProjectIds || [],
+        apiKeyScope: {
+          projectId: response.apiKey.projectId,
+          jobId: response.apiKey.jobId,
+        },
+      };
+      this.contextFetchedAt = new Date();
+
+      logger.info("User context loaded", {
+        userId: this.userContext.userId,
+        role: this.userContext.role,
+      });
+
+      return this.userContext;
+    } catch (error) {
+      logger.error("Failed to validate API key", { error });
+      throw new Error("Invalid API key or authentication failed");
+    }
+  }
+
+  async hasPermission(
+    resource: string,
+    action: string,
+    projectId?: string
+  ): Promise<boolean> {
+    const context = await this.getUserContext();
+
+    // Super admin has all permissions
+    if (context.role === "SUPER_ADMIN") {
+      return true;
+    }
+
+    // Check if the required permission exists
+    const requiredPermission = `${resource}:${action}`;
+    if (!context.permissions.includes(requiredPermission)) {
+      return false;
+    }
+
+    // For project-scoped roles, check project access
+    if (
+      projectId &&
+      ["PROJECT_ADMIN", "PROJECT_EDITOR"].includes(context.role)
+    ) {
+      // These roles can only access assigned projects (except for view)
+      if (
+        action !== "view" &&
+        !context.assignedProjectIds.includes(projectId)
+      ) {
+        return false;
+      }
+    }
+
+    // Check API key scope restrictions
+    if (context.apiKeyScope.projectId && projectId) {
+      if (context.apiKeyScope.projectId !== projectId) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  async requirePermission(
+    resource: string,
+    action: string,
+    projectId?: string
+  ): Promise<void> {
+    const hasAccess = await this.hasPermission(resource, action, projectId);
+    if (!hasAccess) {
+      const context = await this.getUserContext();
+      throw new PermissionDeniedError(
+        `User ${context.email} (role: ${
+          context.role
+        }) does not have ${resource}:${action} permission${
+          projectId ? ` for project ${projectId}` : ""
+        }`
+      );
+    }
+  }
+}
+
+export class PermissionDeniedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PermissionDeniedError";
+  }
+}
+```
+
+### Permission-Aware Tools
+
+Each tool should check permissions before executing:
+
+```typescript
+// src/tools/tests.ts (updated with permission checks)
+export function registerTestTools(
+  server: McpServer,
+  apiClient: SuperCheckApiClient,
+  authService: AuthService
+) {
+  server.tool(
+    "listTests",
+    "List all tests in the project with optional filters",
+    {
+      projectId: z.string().optional().describe("Project ID to filter tests"),
+      tags: z.array(z.string()).optional().describe("Filter by tags"),
+      limit: z.number().optional().default(20).describe("Maximum results"),
+    },
+    async (args): Promise<CallToolResult> => {
+      try {
+        // Check permission
+        await authService.requirePermission("test", "view", args.projectId);
+
+        const tests = await apiClient.listTests(args);
+        return {
+          content: [{ type: "text", text: formatTestList(tests) }],
+        };
+      } catch (error) {
+        return handleToolError("listTests", error);
+      }
+    }
+  );
+
+  server.tool(
+    "executeTest",
+    "Run a test immediately",
+    {
+      testId: z.string().describe("The test ID to execute"),
+      variables: z
+        .record(z.string())
+        .optional()
+        .describe("Environment variables"),
+    },
+    async (args): Promise<CallToolResult> => {
+      try {
+        // Get test to check project
+        const test = await apiClient.getTest(args.testId);
+
+        // Check execute permission for the test's project
+        await authService.requirePermission("test", "run", test.projectId);
+
+        const result = await apiClient.executeTest(args.testId, args.variables);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `🚀 Test execution started!\n\nRun ID: ${result.runId}\nStatus: ${result.status}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return handleToolError("executeTest", error);
+      }
+    }
+  );
+
+  // Create is allowed (safe operation)
+  server.tool(
+    "createTest",
+    "Create a new Playwright or K6 test",
+    {
+      name: z.string().describe("Test name"),
+      type: z.enum(["playwright", "k6"]).describe("Test type"),
+      script: z
+        .string()
+        .max(1_000_000)
+        .describe("Test script content (max 1MB)"),
+      projectId: z.string().describe("Project ID"),
+      tags: z.array(z.string()).optional().describe("Tags for the test"),
+    },
+    async (args): Promise<CallToolResult> => {
+      try {
+        // Check create permission
+        await authService.requirePermission("test", "create", args.projectId);
+
+        const test = await apiClient.createTest(args);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `✅ Test "${test.name}" created successfully!\n\nTest ID: ${test.id}\nType: ${test.type}\nProject: ${test.projectId}`,
+            },
+          ],
+        };
+      } catch (error) {
+        return handleToolError("createTest", error);
+      }
+    }
+  );
+
+  // NOTE: updateTest and deleteTest are intentionally NOT implemented
+  // These destructive actions must be performed in the SuperCheck UI
+}
+```
+
+### Error Handling for Permission Issues
+
+```typescript
+// src/lib/errors.ts
+export function handleToolError(
+  toolName: string,
+  error: unknown
+): CallToolResult {
+  const logger = getLogger();
+
+  if (error instanceof PermissionDeniedError) {
+    logger.warn(`Permission denied for ${toolName}`, { error: error.message });
+    return {
+      content: [
+        {
+          type: "text",
+          text: `❌ Permission denied: ${error.message}\n\nYour API key doesn't have the required permissions for this action. Please check your role and project assignments in the SuperCheck UI.`,
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  if (error instanceof ApiKeyError) {
+    logger.error(`API key error for ${toolName}`, { error: error.message });
+    return {
+      content: [
+        {
+          type: "text",
+          text: `❌ Authentication error: ${error.message}\n\nPlease verify your SUPERCHECK_API_KEY is valid and not expired.`,
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  // Generic error handling
+  const message = error instanceof Error ? error.message : "Unknown error";
+  logger.error(`Tool ${toolName} failed`, { error });
+  return {
+    content: [{ type: "text", text: `❌ Failed to ${toolName}: ${message}` }],
+    isError: true,
+  };
+}
+```
+
+---
+
 ### 4. API Client (`src/lib/api-client.ts`)
 
 ```typescript
 import axios, { AxiosInstance, AxiosError } from "axios";
 import { SuperCheckConfig } from "../config.js";
 import { logger } from "./logger.js";
+
+export class ApiKeyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ApiKeyError";
+  }
+}
 
 export class SuperCheckApiClient {
   private client: AxiosInstance;
@@ -256,15 +569,26 @@ export class SuperCheckApiClient {
 
   private formatError(error: AxiosError): Error {
     if (error.response?.status === 401) {
-      return new Error("Authentication failed. Check your API key.");
+      return new ApiKeyError("Authentication failed. Check your API key.");
     }
     if (error.response?.status === 403) {
-      return new Error("Permission denied. Check your API key permissions.");
+      return new PermissionDeniedError(
+        "Permission denied. Check your API key permissions."
+      );
     }
     if (error.response?.status === 404) {
       return new Error("Resource not found.");
     }
+    if (error.response?.status === 429) {
+      return new Error("Rate limit exceeded. Please wait before retrying.");
+    }
     return new Error(error.message || "API request failed");
+  }
+
+  // Authentication
+  async validateApiKey() {
+    const response = await this.client.post("/api/auth/validate-key");
+    return response.data;
   }
 
   // Test API methods
@@ -407,6 +731,15 @@ export class SuperCheckApiClient {
     return response.data;
   }
 
+  async listAlerts(params?: {
+    projectId?: string;
+    severity?: string;
+    status?: string;
+  }) {
+    const response = await this.client.get("/api/alerts", { params });
+    return response.data;
+  }
+
   // AI API methods
   async analyzeFailure(runId: string) {
     const response = await this.client.post(`/api/ai/fix-test`, { runId });
@@ -420,6 +753,247 @@ export class SuperCheckApiClient {
     });
     return response.data;
   }
+
+  // Billing API methods
+  async getSubscriptionStatus() {
+    const response = await this.client.get("/api/billing/subscription");
+    return response.data;
+  }
+
+  async getUsageStats(params?: { periodStart?: string; periodEnd?: string }) {
+    const response = await this.client.get("/api/billing/usage", { params });
+    return response.data;
+  }
+
+  async getSpendingLimits() {
+    const response = await this.client.get("/api/billing/spending-limits");
+    return response.data;
+  }
+
+  // Status Page API methods (read-only)
+  async listStatusPages(params?: { projectId?: string }) {
+    const response = await this.client.get("/api/status-pages", { params });
+    return response.data;
+  }
+
+  async getStatusPageHealth(statusPageId: string) {
+    const response = await this.client.get(
+      `/api/status-pages/${statusPageId}/health`
+    );
+    return response.data;
+  }
+}
+```
+
+---
+
+## 💰 Billing Tools Implementation
+
+### Billing Tools (`src/tools/billing.ts`)
+
+```typescript
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { SuperCheckApiClient } from "../lib/api-client.js";
+import { AuthService } from "../lib/auth.js";
+import { handleToolError } from "../lib/errors.js";
+
+export function registerBillingTools(
+  server: McpServer,
+  apiClient: SuperCheckApiClient,
+  authService: AuthService
+) {
+  // Get Subscription Status
+  server.tool(
+    "getSubscriptionStatus",
+    "Get current subscription plan and status",
+    {},
+    async (): Promise<CallToolResult> => {
+      try {
+        await authService.requirePermission("organization", "view");
+
+        const subscription = await apiClient.getSubscriptionStatus();
+        return {
+          content: [
+            { type: "text", text: formatSubscriptionStatus(subscription) },
+          ],
+        };
+      } catch (error) {
+        return handleToolError("getSubscriptionStatus", error);
+      }
+    }
+  );
+
+  // Get Usage Statistics
+  server.tool(
+    "getUsageStats",
+    "Get usage statistics for the billing period",
+    {
+      periodStart: z.string().optional().describe("Start date (ISO 8601)"),
+      periodEnd: z.string().optional().describe("End date (ISO 8601)"),
+    },
+    async (args): Promise<CallToolResult> => {
+      try {
+        await authService.requirePermission("organization", "view");
+
+        const usage = await apiClient.getUsageStats(args);
+        return {
+          content: [{ type: "text", text: formatUsageStats(usage) }],
+        };
+      } catch (error) {
+        return handleToolError("getUsageStats", error);
+      }
+    }
+  );
+
+  // Get Spending Limits
+  server.tool(
+    "getSpendingLimits",
+    "Get configured spending limits",
+    {},
+    async (): Promise<CallToolResult> => {
+      try {
+        await authService.requirePermission("organization", "view");
+
+        const limits = await apiClient.getSpendingLimits();
+        return {
+          content: [{ type: "text", text: formatSpendingLimits(limits) }],
+        };
+      } catch (error) {
+        return handleToolError("getSpendingLimits", error);
+      }
+    }
+  );
+}
+
+function formatSubscriptionStatus(sub: any): string {
+  const planEmoji =
+    {
+      free: "🆓",
+      pro: "⭐",
+      team: "👥",
+      enterprise: "🏢",
+    }[sub.plan] || "📦";
+
+  const statusEmoji =
+    sub.status === "active"
+      ? "✅"
+      : sub.status === "trialing"
+      ? "🔄"
+      : sub.status === "past_due"
+      ? "⚠️"
+      : "❌";
+
+  return `
+${planEmoji} **Subscription Status**
+
+**Plan**: ${sub.plan.charAt(0).toUpperCase() + sub.plan.slice(1)}
+**Status**: ${statusEmoji} ${sub.status}
+**Period**: ${new Date(
+    sub.currentPeriod.start
+  ).toLocaleDateString()} - ${new Date(
+    sub.currentPeriod.end
+  ).toLocaleDateString()}
+
+**Limits**:
+- Tests per month: ${sub.limits.testsPerMonth.toLocaleString()}
+- Monitors: ${sub.limits.monitorsPerMonth.toLocaleString()}
+- Team members: ${sub.limits.teamMembers}
+- Data retention: ${sub.limits.retentionDays} days
+
+**Features**:
+${sub.features.aiFixEnabled ? "✅" : "❌"} AI Fix Suggestions
+${sub.features.multiLocation ? "✅" : "❌"} Multi-location Monitoring
+${sub.features.ssoEnabled ? "✅" : "❌"} SSO
+${sub.features.customDomains ? "✅" : "❌"} Custom Domains
+`.trim();
+}
+
+function formatUsageStats(usage: any): string {
+  const formatBar = (used: number, limit: number): string => {
+    const percentage = Math.min((used / limit) * 100, 100);
+    const filled = Math.round(percentage / 10);
+    const empty = 10 - filled;
+    return `[${"█".repeat(filled)}${"░".repeat(empty)}] ${percentage.toFixed(
+      0
+    )}%`;
+  };
+
+  return `
+📊 **Usage Statistics**
+
+**Period**: ${new Date(usage.period.start).toLocaleDateString()} - ${new Date(
+    usage.period.end
+  ).toLocaleDateString()}
+
+**Test Executions**:
+${formatBar(usage.usage.testExecutions.used, usage.usage.testExecutions.limit)}
+${usage.usage.testExecutions.used.toLocaleString()} / ${usage.usage.testExecutions.limit.toLocaleString()}
+
+**Monitor Checks**:
+${formatBar(usage.usage.monitorChecks.used, usage.usage.monitorChecks.limit)}
+${usage.usage.monitorChecks.used.toLocaleString()} / ${usage.usage.monitorChecks.limit.toLocaleString()}
+
+**AI Fix Requests**:
+${formatBar(usage.usage.aiFixRequests.used, usage.usage.aiFixRequests.limit)}
+${usage.usage.aiFixRequests.used} / ${usage.usage.aiFixRequests.limit}
+
+**Spending**:
+- Current: $${(usage.spending.current / 100).toFixed(2)}
+- Limit: ${
+    usage.spending.limit
+      ? `$${(usage.spending.limit / 100).toFixed(2)}`
+      : "No limit"
+  }
+- Projected: $${(usage.spending.projectedMonthEnd / 100).toFixed(2)}
+`.trim();
+}
+
+function formatSpendingLimits(limits: any): string {
+  const statusIcon = limits.enabled ? "✅" : "❌";
+  const percentUsed = limits.percentUsed || 0;
+  const warningLevel =
+    percentUsed >= 90
+      ? "🔴"
+      : percentUsed >= 80
+      ? "🟡"
+      : percentUsed >= 50
+      ? "🟠"
+      : "🟢";
+
+  return `
+💰 **Spending Limits**
+
+**Status**: ${statusIcon} ${limits.enabled ? "Enabled" : "Disabled"}
+${
+  limits.enabled
+    ? `**Monthly Limit**: $${(limits.monthlyLimitCents / 100).toFixed(2)}`
+    : ""
+}
+${
+  limits.enabled
+    ? `**Current Spending**: $${(limits.currentSpendingCents / 100).toFixed(
+        2
+      )} (${percentUsed.toFixed(1)}%)`
+    : ""
+}
+${
+  limits.enabled
+    ? `**Behavior on Limit**: ${
+        limits.hardStopOnLimit ? "🛑 Hard stop" : "⚠️ Warning only"
+      }`
+    : ""
+}
+
+${warningLevel} **Spending Status**: ${percentUsed.toFixed(1)}% of limit used
+
+**Notification Thresholds**:
+${limits.notifications.at50Percent ? "✅" : "❌"} Alert at 50%
+${limits.notifications.at80Percent ? "✅" : "❌"} Alert at 80%
+${limits.notifications.at90Percent ? "✅" : "❌"} Alert at 90%
+${limits.notifications.at100Percent ? "✅" : "❌"} Alert at 100%
+`.trim();
 }
 ```
 

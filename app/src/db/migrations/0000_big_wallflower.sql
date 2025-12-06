@@ -834,7 +834,7 @@ CREATE INDEX "usage_events_created_at_idx" ON "usage_events" USING btree ("creat
 CREATE INDEX "usage_notifications_org_id_idx" ON "usage_notifications" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "usage_notifications_type_idx" ON "usage_notifications" USING btree ("notification_type");--> statement-breakpoint
 CREATE INDEX "usage_notifications_billing_period_idx" ON "usage_notifications" USING btree ("billing_period_start","billing_period_end");--> statement-breakpoint
-CREATE INDEX CONCURRENTLY "webhook_idempotency_unique_idx" ON "webhook_idempotency" USING btree ("webhook_id","event_type");--> statement-breakpoint
+CREATE UNIQUE INDEX "webhook_idempotency_unique_idx" ON "webhook_idempotency" USING btree ("webhook_id","event_type");--> statement-breakpoint
 CREATE INDEX "webhook_idempotency_expires_idx" ON "webhook_idempotency" USING btree ("expires_at");--> statement-breakpoint
 CREATE INDEX "invitation_organization_id_idx" ON "invitation" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "invitation_email_idx" ON "invitation" USING btree ("email");--> statement-breakpoint

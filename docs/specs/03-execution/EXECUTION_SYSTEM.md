@@ -659,6 +659,12 @@ Execution queues counted in statistics:
 - playwright-global
 - k6-{region} (us-east, eu-central, asia-pacific, global)
 
+**Real-time Updates (Redis Pub/Sub):**
+To ensure instant UI feedback without polling, the system uses a Redis Pub/Sub architecture:
+1. **Event Publication**: When a job is added to a queue, `publishQueueStatsUpdate()` publishes to `supercheck:queue-stats:update`.
+2. **SSE Trigger**: The Server-Sent Events endpoints (`/api/queue-stats/sse` and `/api/executions/events`) subscribe to this channel.
+3. **Client Sync**: Connected clients receive an immediate "sync" event or updated stats, triggering a UI refresh.
+
 **Monitor Execution Bypass:**
 - ✅ **Critical monitors bypass capacity limits entirely**
 - ✅ Monitor queues are excluded from capacity calculations

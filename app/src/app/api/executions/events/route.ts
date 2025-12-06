@@ -4,6 +4,8 @@ import { requireProjectContext } from "@/lib/project-context";
 import { db } from "@/utils/db";
 import { runs, jobs, tests, projects } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { getRedisConnection, QUEUE_STATS_UPDATE_CHANNEL } from "@/lib/queue";
+import { Redis } from "ioredis";
 
 const encoder = new TextEncoder();
 
@@ -33,6 +35,7 @@ export async function GET(request: Request) {
       async start(controller) {
         const hub = getQueueEventHub();
         await hub.ready();
+        let subscriber: Redis | null = null;
 
         const sendEvent = async (event: NormalizedQueueEvent) => {
           if (event.category !== "job" && event.category !== "test") {
@@ -130,6 +133,26 @@ export async function GET(request: Request) {
 
         const unsubscribe = hub.subscribe(sendEvent);
 
+        // Set up Redis subscription for real-time sync requests
+        try {
+          const redis = await getRedisConnection();
+          subscriber = redis.duplicate();
+
+          subscriber.on("message", (channel, message) => {
+            if (channel === QUEUE_STATS_UPDATE_CHANNEL) {
+              // Send a sync event to client to trigger a re-fetch
+              const payload = { type: "sync", timestamp: Date.now() };
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)
+              );
+            }
+          });
+
+          await subscriber.subscribe(QUEUE_STATS_UPDATE_CHANNEL);
+        } catch (err) {
+          console.error("Failed to set up Redis subscription for Executions SSE:", err);
+        }
+
         controller.enqueue(encoder.encode(": connected\n\n"));
 
         const keepAlive = setInterval(() => {
@@ -139,6 +162,10 @@ export async function GET(request: Request) {
         const cleanup = () => {
           clearInterval(keepAlive);
           unsubscribe();
+          if (subscriber) {
+            subscriber.quit().catch(() => {});
+            subscriber = null;
+          }
           try {
             controller.close();
           } catch {
