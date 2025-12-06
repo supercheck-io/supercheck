@@ -30,23 +30,6 @@ export default function SignUpPage() {
   // Derive invite token from URL params (not state)
   const inviteToken = useMemo(() => searchParams.get("invite"), [searchParams]);
 
-  // Fetch invite data - defined before useEffect that uses it
-  const fetchInviteData = useCallback(async (token: string) => {
-    try {
-      const response = await fetch(`/api/invite/${token}`);
-      const data = await response.json();
-      if (data.success) {
-        setInviteData(data.data);
-      } else {
-        // Invalid invite token, redirect to sign-in
-        router.replace("/sign-in");
-      }
-    } catch (fetchError) {
-      console.error("Error fetching invite data:", fetchError);
-      router.replace("/sign-in");
-    }
-  }, [router]);
-
   useEffect(() => {
     // REDIRECT: If no invite token, redirect to sign-in page
     // New users should use social auth (GitHub/Google) on sign-in page
@@ -56,14 +39,29 @@ export default function SignUpPage() {
     }
 
     // Fetch invite data for valid tokens
-    fetchInviteData(inviteToken);
+    const fetchInviteData = async () => {
+      try {
+        const response = await fetch(`/api/invite/${inviteToken}`);
+        const data = await response.json();
+        if (data.success) {
+          setInviteData(data.data);
+        } else {
+          // Invalid invite token, redirect to sign-in
+          router.replace("/sign-in");
+        }
+      } catch (fetchError) {
+        console.error("Error fetching invite data:", fetchError);
+        router.replace("/sign-in");
+      }
+    };
+    fetchInviteData();
 
     // Check hosting mode
     fetch("/api/config/hosting-mode")
       .then((res) => res.json())
       .then((data) => setIsCloudMode(data.cloudHosted))
       .catch(() => setIsCloudMode(true)); // Default to cloud mode if check fails
-  }, [inviteToken, fetchInviteData, router]);
+  }, [inviteToken, router]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
