@@ -88,7 +88,8 @@ export function ExecutionsDialog({
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // Debounce ref for sync events
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update active tab when dialog opens or defaultTab changes
   useEffect(() => {
@@ -142,6 +143,17 @@ export function ExecutionsDialog({
     }
   }, []);
 
+  // Helper to debounce sync requests
+  const triggerSync = useCallback(() => {
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+    }
+    // Debounce for 500ms to batch rapid updates
+    syncTimeoutRef.current = setTimeout(() => {
+      fetchExecutions();
+    }, 500);
+  }, [fetchExecutions]);
+
   // Set up SSE connection with reconnection logic
   const setupEventSource = useCallback(() => {
     if (eventSourceRef.current) {
@@ -160,6 +172,12 @@ export function ExecutionsDialog({
       source.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+
+          // Handle sync request from server (triggered by Redis Pub/Sub)
+          if (data.type === "sync") {
+            triggerSync();
+            return;
+          }
 
           // Update running jobs
           if (data.status === "running" && data.runId) {
@@ -213,6 +231,9 @@ export function ExecutionsDialog({
                 "Execution completed before cancellation could be processed"
               );
             }
+            
+            // Also trigger a sync to ensure lists are consistent
+            triggerSync();
           }
         } catch (error) {
           console.error("Error processing SSE event:", error);
@@ -246,7 +267,7 @@ export function ExecutionsDialog({
       console.error("Failed to initialize SSE:", err);
       return null;
     }
-  }, []);
+  }, [triggerSync]);
 
   // Fetch initial data when dialog opens
   useEffect(() => {
@@ -259,7 +280,7 @@ export function ExecutionsDialog({
     fetchExecutions(true);
   }, [open, fetchExecutions]);
 
-  // SSE connection management with polling fallback
+  // SSE connection management
   useEffect(() => {
     if (!open) {
       // Cleanup when dialog closes
@@ -271,9 +292,9 @@ export function ExecutionsDialog({
         clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = null;
       }
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+        syncTimeoutRef.current = null;
       }
       return;
     }
@@ -295,23 +316,15 @@ export function ExecutionsDialog({
     // Initial SSE setup
     const source = setupEventSource();
 
-    // Polling fallback: refresh data every 10 seconds to catch any missed SSE events
-    // This ensures robustness against SSE connection issues
-    pollingIntervalRef.current = setInterval(() => {
-      if (document.visibilityState === "visible") {
-        fetchExecutions();
-      }
-    }, 10000);
-
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
 
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
-
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
+      
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
       }
 
       if (source) {

@@ -113,7 +113,7 @@ export function ReportViewer({
     useState<CancellationErrorInfo | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fullscreenIframeRef = useRef<HTMLIFrameElement>(null);
-  const prevReportUrl = useRef(reportUrl);
+  const prevReportUrl = useRef<string | null>(undefined as unknown as string | null);
 
   // Update URL when prop changes - deferred to avoid synchronous setState
   useEffect(() => {
@@ -395,9 +395,8 @@ export function ReportViewer({
       // Set a shorter timeout for initial retry
       const retryTimeout = setTimeout(() => {
         // Add timestamp to force reload and bypass cache
-        const refreshedUrl = `${
-          currentReportUrl.split("?")[0]
-        }?retry=true&t=${Date.now()}`;
+        const refreshedUrl = `${currentReportUrl.split("?")[0]
+          }?retry=true&t=${Date.now()}`;
         setCurrentReportUrl(refreshedUrl);
       }, 5000); // 5 second timeout before retry
 
@@ -518,9 +517,8 @@ export function ReportViewer({
             ref={iframeRef}
             key={currentReportUrl}
             src={preCheckComplete ? currentReportUrl : undefined}
-            className={`${iframeClassName} ${
-              isReportLoading ? "opacity-0 pointer-events-none" : "opacity-100"
-            } ${isValidationError ? "h-4/5 flex-grow" : "h-full"} ${!isK6Report ? "bg-card" : ""}`}
+            className={`${iframeClassName} ${isReportLoading ? "opacity-0 pointer-events-none" : "opacity-100"
+              } ${isValidationError ? "h-4/5 flex-grow" : "h-full"} ${!isK6Report ? "bg-card" : ""}`}
             sandbox="allow-same-origin allow-scripts allow-forms allow-downloads"
             style={{
               visibility: isReportLoading ? "hidden" : "visible",
@@ -666,14 +664,12 @@ export function ReportViewer({
       {/* Manual fullscreen implementation */}
       {showFullscreen && currentReportUrl && (
         <div
-          className={`fixed inset-0 z-50 backdrop-blur-sm ${
-            isK6Report && !isDarkMode ? "" : "bg-card/80"
-          }`}
+          className={`fixed inset-0 z-50 backdrop-blur-sm ${isK6Report && !isDarkMode ? "" : "bg-card/80"
+            }`}
         >
           <div
-            className={`fixed inset-8 rounded-lg shadow-lg flex flex-col overflow-hidden border ${
-              isK6Report && !isDarkMode ? "bg-white" : "bg-card"
-            }`}
+            className={`fixed inset-8 rounded-lg shadow-lg flex flex-col overflow-hidden border ${isK6Report && !isDarkMode ? "bg-white" : "bg-card"
+              }`}
           >
             <div className="p-4 border-b flex items-center justify-between">
               <div className="flex items-center gap-2">

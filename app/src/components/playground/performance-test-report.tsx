@@ -100,7 +100,7 @@ export function PerformanceTestReport({
             setActiveTab("report");
             const reportHref = `/api/test-results/${encodeURIComponent(
               runId
-            )}/index.html?forceIframe=true`;
+            )}/report/report.html?forceIframe=true`;
             onStatusChangeRef.current?.(derivedStatus, {
               reportUrl: reportHref,
               location: details.location ?? null,
@@ -234,8 +234,8 @@ export function PerformanceTestReport({
           const hasReport = details.reportS3Url || details.runReportUrl;
           const reportHref = hasReport
             ? `/api/test-results/${encodeURIComponent(
-                runId
-              )}/index.html?forceIframe=true`
+              runId
+            )}/report/report.html?forceIframe=true`
             : undefined;
 
           // Switch to report tab if report is available
@@ -476,7 +476,7 @@ export function PerformanceTestReport({
     if (runDetails.reportS3Url || runDetails.runReportUrl) {
       return `/api/test-results/${encodeURIComponent(
         runId
-      )}/index.html?forceIframe=true`;
+      )}/report/report.html?forceIframe=true`;
     }
     return null;
   }, [runDetails, runId]);
@@ -518,9 +518,8 @@ export function PerformanceTestReport({
         {/* Tab Headers - Absolute Positioned with proper shadcn styling */}
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
           <TabsList
-            className={`h-10 ${reportUrl ? "w-60" : "w-32"} grid ${
-              reportUrl ? "grid-cols-2" : "grid-cols-1"
-            } shadow-lg`}
+            className={`h-10 ${reportUrl ? "w-60" : "w-32"} grid ${reportUrl ? "grid-cols-2" : "grid-cols-1"
+              } shadow-lg`}
           >
             <TabsTrigger
               value="logs"
@@ -612,8 +611,8 @@ export function PerformanceTestReport({
                 status === "running"
                   ? consoleBuffer
                   : completedConsoleLog ||
-                    runDetails?.consoleOutput ||
-                    consoleBuffer
+                  runDetails?.consoleOutput ||
+                  consoleBuffer
               }
               className="rounded-none border-0"
             />

@@ -1,6 +1,6 @@
 # Use platform-agnostic base image with pinned LTS version for reproducible builds
-# Node 20.18 is the latest LTS as of Dec 2024
-FROM node:20.18-slim AS base
+# Node 22.x LTS for compatibility with @noble/hashes and other modern packages
+FROM node:22-slim AS base
 
 # Install system dependencies in base stage for better layer caching
 RUN apt-get update && apt-get install -y \
@@ -75,13 +75,18 @@ RUN mkdir -p /home/nextjs/.npm && \
     chown -R nextjs:nodejs /home/nextjs && \
     chown -R nextjs:nodejs /app
 
-# Copy only necessary files for execution with proper ownership
-COPY --from=deps-prod --chown=nextjs:nodejs /app/node_modules ./node_modules
+# Copy standalone build first (includes server.js and minimal node_modules)
+# Note: Next.js standalone output mirrors the WORKDIR structure, so server.js is in .next/standalone/app/
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone/app ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
-# Copy standalone build
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Copy additional production dependencies needed for migrations/scripts
+# These are merged with standalone's node_modules (standalone doesn't include all deps)
+COPY --from=deps-prod --chown=nextjs:nodejs /app/node_modules ./node_modules
+
+# Copy package.json for scripts that may need it (like npm run commands in dev fallback)
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 
 # Copy migration files, scripts, and bootstrap admin script
 COPY --from=builder --chown=nextjs:nodejs /app/src/db ./src/db

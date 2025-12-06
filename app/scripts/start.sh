@@ -52,13 +52,26 @@ run_migrations() {
 start_server() {
     log "Starting Next.js server..."
     
+    # Debug: List files in current directory
+    log "Files in /app directory:"
+    ls -la /app/ 2>/dev/null || log "Cannot list /app directory"
+    
     # Check if we're in production (standalone build) or development
     if [ -f "server.js" ]; then
         log "Running in production mode with standalone server"
         exec node server.js
-    else
-        log "Running in development mode"
+    elif [ -f "/app/server.js" ]; then
+        log "Running in production mode with standalone server (from /app)"
+        exec node /app/server.js
+    elif [ -f "package.json" ]; then
+        log "Running in development mode (server.js not found, using npm run dev)"
         exec npm run dev
+    else
+        log_error "Neither server.js nor package.json found. Build may have failed."
+        log_error "Current directory: $(pwd)"
+        log_error "Directory contents:"
+        ls -la
+        exit 1
     fi
 }
 

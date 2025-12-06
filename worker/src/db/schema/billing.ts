@@ -13,6 +13,7 @@ import {
   uuid,
   numeric,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -42,9 +43,12 @@ export const webhookIdempotency = pgTable(
   },
   (table) => ({
     // Unique constraint on webhook_id + event_type
-    uniqueWebhookEvent: index("webhook_idempotency_unique_idx")
-      .on(table.webhookId, table.eventType)
-      .concurrently(),
+    // CRITICAL: Must be uniqueIndex (not index) to prevent race conditions
+    // in multi-instance deployments where duplicate webhooks could be processed
+    uniqueWebhookEvent: uniqueIndex("webhook_idempotency_unique_idx").on(
+      table.webhookId,
+      table.eventType
+    ),
     // Index for cleanup queries
     expiresAtIdx: index("webhook_idempotency_expires_idx").on(table.expiresAt),
   })
