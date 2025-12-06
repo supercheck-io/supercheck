@@ -100,6 +100,9 @@ export const REDIS_EVENT_KEY_TTL = 24 * 60 * 60; // 24 hours for events/stats
 export const REDIS_METRICS_TTL = 48 * 60 * 60; // 48 hours for metrics data
 export const REDIS_CLEANUP_BATCH_SIZE = 100; // Process keys in smaller batches to reduce memory pressure
 
+// Pub/Sub Channels
+export const QUEUE_STATS_UPDATE_CHANNEL = "supercheck:queue-stats:update";
+
 // Regions for K6 performance tests (includes global option for any location)
 export type Region = "us-east" | "eu-central" | "asia-pacific" | "global";
 export const REGIONS: Region[] = ["us-east", "eu-central", "asia-pacific", "global"];
@@ -631,6 +634,27 @@ function getQueue(
 }
 
 /**
+ * Publish a message to the queue stats update channel.
+ * This triggers the SSE endpoint to fetch and send updated stats to the client.
+ */
+export async function publishQueueStatsUpdate(
+  organizationId?: string
+): Promise<void> {
+  try {
+    const redis = await getRedisConnection();
+    await redis.publish(
+      QUEUE_STATS_UPDATE_CHANNEL,
+      JSON.stringify({ organizationId, timestamp: Date.now() })
+    );
+  } catch (error) {
+    queueLogger.error(
+      { err: error, organizationId },
+      "Error publishing queue stats update"
+    );
+  }
+}
+
+/**
  * Add a test execution task to the queue.
  * Test executions participate in the shared parallel execution capacity.
  */
@@ -651,6 +675,10 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<string> {
     };
     // Use runId as job name for direct matching
     await queue.add(jobUuid, task, jobOptions);
+
+    // Trigger stats update
+    await publishQueueStatsUpdate(task.organizationId);
+
     // Test added successfully
     return jobUuid;
   } catch (error) {
@@ -684,6 +712,10 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<string> {
     await queue.add(runId, task, {
       jobId: runId, // Use runId as BullMQ job ID for consistency
     });
+
+    // Trigger stats update
+    await publishQueueStatsUpdate(task.organizationId);
+
     // Job added successfully
     return runId;
   } catch (error) {
@@ -714,6 +746,10 @@ export async function addK6TestToQueue(
     await queue.add(jobName, task, {
       jobId: task.runId,
     });
+
+    // Trigger stats update
+    await publishQueueStatsUpdate(task.organizationId);
+
     return task.runId;
   } catch (error) {
     queueLogger.error({ err: error, runId: task.runId },
@@ -744,6 +780,10 @@ export async function addK6JobToQueue(
     await queue.add(jobName, task, {
       jobId: task.runId,
     });
+
+    // Trigger stats update
+    await publishQueueStatsUpdate(task.organizationId);
+
     return task.runId;
   } catch (error) {
     queueLogger.error({ err: error, runId: task.runId },
