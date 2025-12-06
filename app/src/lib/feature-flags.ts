@@ -153,3 +153,27 @@ export const PLAN_PRICING = {
 export const getPlanPricing = (plan: "plus" | "pro" | "unlimited") => {
   return PLAN_PRICING[plan] || PLAN_PRICING.plus;
 };
+
+/**
+ * Check if CAPTCHA verification is enabled
+ *
+ * CAPTCHA (Cloudflare Turnstile) is automatically enabled when
+ * both TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY are set.
+ *
+ * This provides bot protection on authentication endpoints:
+ * - /sign-in/email
+ * - /sign-up/email
+ * - /forget-password
+ */
+export const isCaptchaEnabled = (): boolean => {
+  return !!process.env.TURNSTILE_SECRET_KEY && !!process.env.TURNSTILE_SITE_KEY;
+};
+
+/**
+ * Get Turnstile site key for client-side widget
+ * Returns null if CAPTCHA is not configured
+ */
+export const getTurnstileSiteKey = (): string | null => {
+  if (!isCaptchaEnabled()) return null;
+  return process.env.TURNSTILE_SITE_KEY || null;
+};

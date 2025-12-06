@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "@/utils/db";
 import { authSchema } from "@/db/schema";
-import { apiKey, organization, admin } from "better-auth/plugins";
+import { apiKey, organization, admin, lastLoginMethod, captcha } from "better-auth/plugins";
 import { ac, roles, Role } from "@/lib/rbac/permissions";
 import { EmailService } from "@/lib/email-service";
 import {
@@ -19,6 +19,7 @@ import {
   getPolarConfig,
   getPolarProducts,
   isCloudHosted,
+  isCaptchaEnabled,
 } from "@/lib/feature-flags";
 
 /**
@@ -54,12 +55,16 @@ function getPolarPlugin() {
 
     return polar({
       client: polarClient,
-      // Enable automatic customer creation on signup
-      // The plugin automatically uses user.email and user.name from the user object
-      createCustomerOnSignUp: true,
-      // Provide additional customer metadata
-      // Note: email and name are handled by the plugin from the user object
-      // For social auth users, data sync happens in /api/auth/setup-defaults after OAuth completes
+      // IMPORTANT: Disable automatic customer creation on signup
+      // This is intentionally disabled because:
+      // 1. If Polar customer creation fails during signup (e.g., external_id conflict),
+      //    the entire signup process would fail and throw an error to the user
+      // 2. Instead, customer creation is handled by /api/auth/setup-defaults after signup
+      //    which has proper error handling (ensurePolarCustomerAndLink function)
+      // 3. This ensures signup always succeeds, and Polar customer is created gracefully
+      createCustomerOnSignUp: false,
+      // Note: getCustomerCreateParams is kept for reference but won't be called
+      // since createCustomerOnSignUp is false
       getCustomerCreateParams: async ({
         user,
       }: {
@@ -165,6 +170,17 @@ function getPolarPlugin() {
             );
             await handleSubscriptionRevoked(payload);
           },
+          // Order creation handler - activates subscription when payment is initiated
+          // Polar sends order.created when checkout completes successfully
+           
+          onOrderCreated: async (payload: any) => {
+            console.log("[Polar] Webhook: order.created - activating subscription");
+            const { handleOrderPaid } = await import(
+              "@/lib/webhooks/polar-webhooks"
+            );
+            // Use the same handler as order.paid since order.created means payment was successful
+            await handleOrderPaid(payload);
+          },
           // Payment confirmation handler
            
           onOrderPaid: async (payload: any) => {
@@ -204,6 +220,37 @@ function getPolarPlugin() {
     console.error("[Better Auth] Failed to initialize Polar plugin:", error);
     return null;
   }
+}
+
+/**
+ * Get CAPTCHA plugin configuration if enabled
+ *
+ * CAPTCHA protection is automatically enabled when TURNSTILE_SECRET_KEY is set.
+ * Uses Cloudflare Turnstile in invisible mode for seamless user experience.
+ *
+ * Protected endpoints:
+ * - /sign-in/email - Email/password sign in
+ * - /sign-up/email - Email/password registration
+ * - /forget-password - Password reset requests
+ */
+function getCaptchaPlugin() {
+  if (!isCaptchaEnabled()) {
+    return null;
+  }
+
+  const secretKey = process.env.TURNSTILE_SECRET_KEY;
+  if (!secretKey) {
+    return null;
+  }
+
+  console.log("[Better Auth] CAPTCHA protection enabled (Cloudflare Turnstile)");
+
+  return captcha({
+    provider: "cloudflare-turnstile",
+    secretKey,
+    // Protect authentication endpoints from bot attacks
+    endpoints: ["/sign-up/email", "/sign-in/email", "/forget-password"],
+  });
 }
 
 export const auth = betterAuth({
@@ -400,8 +447,12 @@ export const auth = betterAuth({
     }),
     apiKey(),
     nextCookies(),
+    // Track last login method for better UX (shows "Last used" badge)
+    lastLoginMethod(),
     // Conditionally add Polar plugin if enabled
     ...(getPolarPlugin() ? [getPolarPlugin()!] : []),
+    // Conditionally add CAPTCHA plugin if enabled (Cloudflare Turnstile)
+    ...(getCaptchaPlugin() ? [getCaptchaPlugin()!] : []),
   ],
   advanced: {
     database: {
@@ -415,6 +466,6 @@ export const auth = betterAuth({
   // Note: Organization and project creation for social auth signups
   // is handled client-side by checking for new users and calling
   // /api/auth/setup-defaults from the sign-in/sign-up pages.
-  // Polar customer creation is handled automatically by the Polar plugin
-  // via createCustomerOnSignUp: true
+  // Polar customer creation is handled by /api/auth/setup-defaults
+  // (NOT by the Polar plugin - createCustomerOnSignUp is disabled to prevent errors)
 });

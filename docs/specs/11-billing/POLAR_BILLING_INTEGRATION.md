@@ -351,7 +351,7 @@ npm run dev
 
 Expected behavior:
 
-- Customer created in Polar on signup
+- Customer created in Polar via `/api/auth/setup-defaults` after signup (not during signup)
 - Plan limits enforced based on subscription
 - Usage tracked to Polar for billing
 - Checkout flows work correctly
@@ -723,7 +723,7 @@ graph TB
 - Purpose: Integrate Polar checkout, customer management, and webhooks
 - Features:
   - Conditional loading based on `SELF_HOSTED` flag
-  - Customer creation on signup
+  - Customer creation via `/api/auth/setup-defaults` (NOT during signup - disabled to prevent errors)
   - Checkout sessions for plan upgrades
   - Webhook signature verification
 
@@ -1266,7 +1266,7 @@ graph LR
 **Polar Plugin Setup**: Conditional plugin loading based on feature flags
 
 - Polar SDK client initialization with server (sandbox/production)
-- Customer creation on signup with metadata linking to user ID
+- Customer creation via `/api/auth/setup-defaults` after signup (NOT during signup - createCustomerOnSignUp is disabled to prevent errors when customer already exists with different external_id)
 - Checkout session configuration for Plus/Pro products
 - Webhook handlers for subscription lifecycle events
 - Customer portal access for subscription management

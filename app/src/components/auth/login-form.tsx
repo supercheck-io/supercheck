@@ -8,6 +8,8 @@ import { Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { SocialAuthButtons } from "./social-auth-buttons";
+import { TurnstileCaptcha } from "./turnstile-captcha";
+import { useCaptcha } from "@/hooks/use-captcha";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -41,6 +43,8 @@ interface LoginFormProps {
   inviteToken: string | null;
   isFromNotification?: boolean;
   emailVerified?: boolean;
+  /** Callback when CAPTCHA token changes (null when expired/failed) */
+  onCaptchaToken?: (token: string | null) => void;
 }
 
 export function LoginForm({
@@ -50,11 +54,26 @@ export function LoginForm({
   error,
   inviteData,
   inviteToken,
-   
   isFromNotification = false,
   emailVerified = false,
+  onCaptchaToken,
 }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
+
+  // CAPTCHA state management
+  const {
+    captchaToken,
+    captchaError,
+    captchaRef,
+    handleCaptchaSuccess,
+    handleCaptchaError,
+    handleCaptchaExpire,
+  } = useCaptcha();
+
+  // Notify parent when CAPTCHA token changes
+  useEffect(() => {
+    onCaptchaToken?.(captchaToken);
+  }, [captchaToken, onCaptchaToken]);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginFormSchema),
@@ -81,15 +100,12 @@ export function LoginForm({
           <FieldGroup>
             {/* Header */}
             <div className="flex flex-col items-center gap-3 text-center">
-              <Link
-                href="/"
-                className="flex flex-col items-center gap-3 font-medium"
-              >
-                <div className="flex size-14 items-center justify-center rounded-md">
-                  <CheckIcon className="size-12" />
-                </div>
-                <span className="sr-only">Supercheck</span>
-              </Link>
+
+              <div className="flex size-14 items-center justify-center rounded-md">
+                <CheckIcon className="size-12" />
+              </div>
+              <span className="sr-only">Supercheck</span>
+
               <h1 className="text-2xl font-bold">
                 {inviteData
                   ? `Welcome to ${inviteData.organizationName}`
@@ -109,23 +125,14 @@ export function LoginForm({
                         href={`/sign-up?invite=${inviteToken}`}
                         className="underline underline-offset-2"
                       >
-                        Sign up instead
+                        Create one
                       </Link>
                     </span>
                   </>
                 ) : (
-                  <>
-                    Don&apos;t have an account?{" "}
-                    <Link
-                      href={
-                        inviteToken
-                          ? `/sign-up?invite=${inviteToken}`
-                          : "/sign-up"
-                      }
-                    >
-                      Sign up
-                    </Link>
-                  </>
+                  <span className="text-xs text-muted-foreground">
+                    New here? Sign in with GitHub or Google
+                  </span>
                 )}
               </FieldDescription>
             </div>
@@ -254,6 +261,21 @@ export function LoginForm({
                 {error}
               </p>
             )}
+
+            {/* CAPTCHA Error */}
+            {captchaError && (
+              <p className="text-sm font-medium text-destructive text-center">
+                {captchaError}
+              </p>
+            )}
+
+            {/* Invisible CAPTCHA - auto-verifies users */}
+            <TurnstileCaptcha
+              ref={captchaRef}
+              onSuccess={handleCaptchaSuccess}
+              onError={handleCaptchaError}
+              onExpire={handleCaptchaExpire}
+            />
 
             {/* Submit Button */}
             <Field>

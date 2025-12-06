@@ -1,11 +1,12 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { signIn } from "@/utils/auth-client";
-import { useState } from "react";
+import { authClient, signIn } from "@/utils/auth-client";
+import { useState, useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { GitHubIcon, GoogleIcon } from "./social-icons";
 import { useAuthProviders } from "@/hooks/use-auth-providers";
+import { Badge } from "@/components/ui/badge";
 
 interface SocialAuthButtonsProps {
   mode: "signin" | "signup";
@@ -14,7 +15,6 @@ interface SocialAuthButtonsProps {
 }
 
 export function SocialAuthButtons({
-   
   mode,
   callbackUrl = "/",
   disabled = false,
@@ -27,6 +27,15 @@ export function SocialAuthButtons({
     isGoogleEnabled,
     isLoading: isProvidersLoading,
   } = useAuthProviders();
+
+  // Get the last used login method for "Last used" badge
+  const lastMethod = useMemo(() => {
+    try {
+      return authClient.getLastUsedLoginMethod?.() ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   const handleGitHubSignIn = async () => {
     try {
@@ -74,9 +83,6 @@ export function SocialAuthButtons({
     return null;
   }
 
-  // Determine if we should use grid layout (both providers enabled)
-  const useGridLayout = isGoogleEnabled && isGithubEnabled;
-
   return (
     <div className="flex flex-col gap-3">
       {error && (
@@ -85,51 +91,66 @@ export function SocialAuthButtons({
         </p>
       )}
 
-      <div
-        className={
-          useGridLayout ? "grid gap-3 sm:grid-cols-2" : "flex flex-col gap-3"
-        }
-      >
+      {/* Always stack vertically for clean, professional look */}
+      <div className="flex flex-col gap-3">
         {isGoogleEnabled && (
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={handleGoogleSignIn}
-            disabled={isDisabled}
-          >
-            {isGoogleLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <GoogleIcon className="h-4 w-4" />
+          <div className="relative w-full">
+            {lastMethod === "google" && (
+              <Badge
+                variant="secondary"
+                className="absolute -top-1 -right-1 text-[10px] uppercase tracking-wide py-0 px-1.5 font-medium"
+              >
+                Last used
+              </Badge>
             )}
-            <span className={useGridLayout ? "hidden sm:inline" : ""}>
-              Continue with{" "}
-            </span>
-            Google
-          </Button>
+            <Button
+              type="button"
+              variant={lastMethod === "google" ? "default" : "outline"}
+              size="lg"
+              className="w-full justify-center gap-3"
+              onClick={handleGoogleSignIn}
+              disabled={isDisabled}
+            >
+              {isGoogleLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <GoogleIcon className="h-5 w-5" />
+              )}
+              <span>Continue with Google</span>
+            </Button>
+          </div>
         )}
 
         {isGithubEnabled && (
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            onClick={handleGitHubSignIn}
-            disabled={isDisabled}
-          >
-            {isGithubLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <GitHubIcon className="h-4 w-4" />
+          <div className="relative w-full">
+            {lastMethod === "github" && (
+              <Badge
+                variant="secondary"
+                className="absolute -top-1 -right-1 text-[10px] uppercase tracking-wide py-0 px-1.5 font-medium"
+              >
+                Last used
+              </Badge>
             )}
-            <span className={useGridLayout ? "hidden sm:inline" : ""}>
-              Continue with{" "}
-            </span>
-            GitHub
-          </Button>
+            <Button
+              type="button"
+              variant={lastMethod === "github" ? "default" : "outline"}
+              size="lg"
+              className="w-full justify-center gap-3"
+              onClick={handleGitHubSignIn}
+              disabled={isDisabled}
+            >
+              {isGithubLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <GitHubIcon className="h-5 w-5" />
+              )}
+              <span>Continue with GitHub</span>
+            </Button>
+          </div>
         )}
       </div>
     </div>
   );
 }
+
+

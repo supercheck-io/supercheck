@@ -127,28 +127,52 @@ export default function ResetPasswordPage() {
     return (
       <div className="flex flex-col gap-6 w-full max-w-sm px-4">
         <FieldGroup>
-          <div className="flex flex-col items-center gap-4 text-center">
-            <div className="flex size-12 items-center justify-center rounded-full bg-green-500/10">
-              <CheckCircle className="size-6 text-green-500" />
+          {/* Logo */}
+          <div className="flex justify-center">
+            <Link href="/" className="flex flex-col items-center gap-3 font-medium">
+              <div className="flex size-14 items-center justify-center rounded-md">
+                <CheckIcon className="size-12" />
+              </div>
+              <span className="sr-only">Supercheck</span>
+            </Link>
+          </div>
+
+          {/* Success Icon */}
+          <div className="flex justify-center">
+            <div className="flex size-20 items-center justify-center rounded-full bg-green-500/10">
+              <CheckCircle className="size-10 text-green-500" />
             </div>
-            <h1 className="text-xl font-bold">Password reset successfully</h1>
-            <FieldDescription className="text-center">
+          </div>
+
+          {/* Content */}
+          <div className="text-center space-y-2">
+            <h1 className="text-2xl font-bold">Password reset successfully</h1>
+            <FieldDescription>
               Your password has been successfully reset. You can now sign in
               with your new password.
             </FieldDescription>
           </div>
 
+          {/* Redirect Message */}
           <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             <span>Redirecting to sign in...</span>
           </div>
 
+          {/* Action Button */}
           <Field>
             <Button onClick={() => router.push("/sign-in")} className="w-full">
               Go to Sign In
             </Button>
           </Field>
         </FieldGroup>
+
+        {/* Footer */}
+        <FieldDescription className="px-6 text-center">
+          By clicking continue, you agree to our{" "}
+          <Link href="/terms">Terms of Service</Link> and{" "}
+          <Link href="/privacy">Privacy Policy</Link>.
+        </FieldDescription>
       </div>
     );
   }
@@ -263,6 +287,13 @@ export default function ResetPasswordPage() {
           </Field>
         </FieldGroup>
       </form>
+
+      {/* Footer */}
+      <FieldDescription className="px-6 text-center">
+        By clicking continue, you agree to our{" "}
+        <Link href="/terms">Terms of Service</Link> and{" "}
+        <Link href="/privacy">Privacy Policy</Link>.
+      </FieldDescription>
     </div>
   );
 }

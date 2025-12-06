@@ -1,12 +1,8 @@
 "use client";
 import { signUp, signIn } from "@/utils/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { SignupForm } from "@/components/auth/signup-form";
-import {
-  isDisposableEmail,
-  getDisposableEmailErrorMessage,
-} from "@/lib/validations/disposable-email-domains";
 
 interface InviteData {
   organizationName: string;
@@ -14,6 +10,13 @@ interface InviteData {
   email?: string;
 }
 
+/**
+ * Sign-Up Page - INVITATION ONLY
+ * 
+ * This page is only for users who have been invited to an organization.
+ * New users without an invitation should use the sign-in page with social auth
+ * (GitHub/Google), which automatically creates accounts.
+ */
 export default function SignUpPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -21,6 +24,8 @@ export default function SignUpPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [inviteData, setInviteData] = useState<InviteData | null>(null);
   const [isCloudMode, setIsCloudMode] = useState<boolean | null>(null);
+  // Store captcha token in ref since we need latest value in async handlers
+  const captchaTokenRef = useRef<string | null>(null);
 
   // Derive invite token from URL params (not state)
   const inviteToken = useMemo(() => searchParams.get("invite"), [searchParams]);
@@ -32,24 +37,33 @@ export default function SignUpPage() {
       const data = await response.json();
       if (data.success) {
         setInviteData(data.data);
+      } else {
+        // Invalid invite token, redirect to sign-in
+        router.replace("/sign-in");
       }
     } catch (fetchError) {
       console.error("Error fetching invite data:", fetchError);
+      router.replace("/sign-in");
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
-    // Defer fetchInviteData to avoid synchronous setState in effect body
-    if (inviteToken) {
-      setTimeout(() => fetchInviteData(inviteToken), 0);
+    // REDIRECT: If no invite token, redirect to sign-in page
+    // New users should use social auth (GitHub/Google) on sign-in page
+    if (!inviteToken) {
+      router.replace("/sign-in");
+      return;
     }
 
-    // Check hosting mode - fetch already returns a promise, so this is async
+    // Fetch invite data for valid tokens
+    fetchInviteData(inviteToken);
+
+    // Check hosting mode
     fetch("/api/config/hosting-mode")
       .then((res) => res.json())
       .then((data) => setIsCloudMode(data.cloudHosted))
       .catch(() => setIsCloudMode(true)); // Default to cloud mode if check fails
-  }, [inviteToken, fetchInviteData]);
+  }, [inviteToken, fetchInviteData, router]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -67,17 +81,21 @@ export default function SignUpPage() {
       return;
     }
 
-    // Only check disposable emails in cloud mode
-    if (isCloudMode && isDisposableEmail(email)) {
-      setError(getDisposableEmailErrorMessage());
-      setIsLoading(false);
-      return;
-    }
+    // Note: Disposable email check removed - social-only signup prevents throwaway emails
+    // Email/password form is only shown for invitation flow where email is already trusted
+
+    // Get CAPTCHA headers for auth requests
+    const captchaHeaders: Record<string, string> = captchaTokenRef.current
+      ? { "x-captcha-response": captchaTokenRef.current }
+      : {};
 
     const { error: signUpError } = await signUp.email({
       name,
       email,
       password,
+      fetchOptions: {
+        headers: captchaHeaders,
+      },
     });
 
     if (signUpError) {
@@ -99,8 +117,26 @@ export default function SignUpPage() {
             const { error: signInError } = await signIn.email({
               email,
               password,
+              fetchOptions: {
+                headers: captchaHeaders,
+              },
             });
             if (!signInError) {
+              // Auto-accept the invitation instead of redirecting to accept page
+              try {
+                const acceptResponse = await fetch(`/api/invite/${inviteToken}`, {
+                  method: "POST",
+                });
+                const acceptResult = await acceptResponse.json();
+                if (acceptResponse.ok && acceptResult.success) {
+                  console.log(`✅ Auto-accepted invitation to ${acceptResult.data?.organizationName}`);
+                  router.push("/");
+                  return;
+                }
+              } catch (acceptError) {
+                console.error("Error auto-accepting invitation:", acceptError);
+              }
+              // Fallback if auto-accept fails
               router.push(`/invite/${inviteToken}`);
               return;
             }
@@ -138,7 +174,8 @@ export default function SignUpPage() {
       return;
     }
 
-    // For invitation flow in cloud mode: mark email as verified
+    // For invitation flow in cloud mode: mark email as verified and SIGN IN
+    // signUp doesn't establish a session, we need to explicitly sign in
     if (isCloudMode && inviteToken) {
       try {
         const verifyResponse = await fetch("/api/auth/verify-invited-user", {
@@ -152,6 +189,24 @@ export default function SignUpPage() {
         }
       } catch (verifyError) {
         console.error("Error verifying invited user:", verifyError);
+      }
+
+      // CRITICAL: Sign in the user to establish session
+      // Without this, setup-defaults and auto-accept will fail with 401
+      const { error: signInError } = await signIn.email({
+        email,
+        password,
+        fetchOptions: {
+          headers: captchaHeaders,
+        },
+      });
+
+      if (signInError) {
+        console.error("Error signing in after signup:", signInError);
+        // Fallback: redirect to sign-in page with invite token
+        router.push(`/sign-in?invite=${inviteToken}`);
+        setIsLoading(false);
+        return;
       }
     }
 
@@ -177,9 +232,27 @@ export default function SignUpPage() {
       );
     }
 
-    // If user signed up with an invite token, redirect to accept invitation
-    // Skip subscription check - invited members join the existing org's subscription
+    // If user signed up with an invite token, AUTO-ACCEPT the invitation
+    // This eliminates the redundant step of showing the accept page again
     if (inviteToken) {
+      try {
+        const acceptResponse = await fetch(`/api/invite/${inviteToken}`, {
+          method: "POST",
+        });
+        const acceptResult = await acceptResponse.json();
+
+        if (acceptResponse.ok && acceptResult.success) {
+          // Success - redirect directly to dashboard
+          console.log(`✅ Auto-accepted invitation to ${acceptResult.data?.organizationName}`);
+          router.push("/");
+          return;
+        } else {
+          console.warn("Could not auto-accept invitation:", acceptResult.error);
+        }
+      } catch (error) {
+        console.error("Error auto-accepting invitation:", error);
+      }
+      // Fallback to invite page if auto-accept fails
       router.push(`/invite/${inviteToken}`);
       setIsLoading(false);
       return;
@@ -237,6 +310,11 @@ export default function SignUpPage() {
     setIsLoading(false);
   };
 
+  // Handler for CAPTCHA token updates
+  const handleCaptchaToken = useCallback((token: string | null) => {
+    captchaTokenRef.current = token;
+  }, []);
+
   return (
     <SignupForm
       className="w-full max-w-sm px-4"
@@ -245,6 +323,7 @@ export default function SignUpPage() {
       error={error}
       inviteData={inviteData}
       inviteToken={inviteToken}
+      onCaptchaToken={handleCaptchaToken}
     />
   );
 }

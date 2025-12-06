@@ -220,14 +220,14 @@ const Playground: React.FC<PlaygroundProps> = ({
   >(
     initialTestData
       ? {
-          title: initialTestData.title,
-          description: initialTestData.description,
-          priority: initialResolvedPriority,
-          type: initialResolvedType,
-          updatedAt: initialTestData.updatedAt || undefined,
-          createdAt: initialTestData.createdAt || undefined,
-          location: initialPerformanceLocation,
-        }
+        title: initialTestData.title,
+        description: initialTestData.description,
+        priority: initialResolvedPriority,
+        type: initialResolvedType,
+        updatedAt: initialTestData.updatedAt || undefined,
+        createdAt: initialTestData.createdAt || undefined,
+        location: initialPerformanceLocation,
+      }
       : {}
   );
   const [testCase, setTestCase] = useState<TestCaseFormData>({
@@ -329,6 +329,11 @@ const Playground: React.FC<PlaygroundProps> = ({
 
   // Editor reference
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
+  // Track if validation has already been reset for this test (to avoid resetting after successful run)
+  const validationResetRef = useRef(false);
+  // Track the last editor content to prevent spurious onChange events from resetting state
+  // Monaco editor sometimes fires onChange during re-renders even when content hasn't changed
+  const lastEditorContentRef = useRef<string>(editorContent);
   const searchParams = useSearchParams();
 
   // Manual validation function (called only on run/submit)
@@ -393,14 +398,27 @@ const Playground: React.FC<PlaygroundProps> = ({
     return () => clearTimeout(timer);
   }, []);
 
-  // Initialize validation state for existing test data
+  // Initialize validation state for existing test data (only once per test load)
   useEffect(() => {
-    if (initialTestData && initialTestData.script) {
+    if (initialTestData && initialTestData.script && !validationResetRef.current) {
       // For existing tests, consider them as needing revalidation for security
       resetValidationState();
       setLastValidatedScript(""); // Force revalidation of existing scripts
+      validationResetRef.current = true;
     }
   }, [initialTestData]);
+
+  // Reset the validation ref when the test ID changes (loading a different test)
+  useEffect(() => {
+    validationResetRef.current = false;
+  }, [initialTestId]);
+
+  // Sync the editor content ref when editorContent changes programmatically
+  // (e.g., from loadTestById, template selection, AI generation)
+  // This ensures the ref stays accurate for spurious onChange detection
+  useEffect(() => {
+    lastEditorContentRef.current = editorContent;
+  }, [editorContent]);
 
   // Load test data if testId is provided
   useEffect(() => {
@@ -485,9 +503,9 @@ const Playground: React.FC<PlaygroundProps> = ({
       const defaultType = "browser" as TestType;
       const typeToSet =
         scriptTypeParam &&
-        ["browser", "api", "custom", "database", "performance"].includes(
-          scriptTypeParam
-        )
+          ["browser", "api", "custom", "database", "performance"].includes(
+            scriptTypeParam
+          )
           ? scriptTypeParam
           : defaultType;
 
@@ -824,9 +842,8 @@ const Playground: React.FC<PlaygroundProps> = ({
                 eventSourceClosed = true;
 
                 if (result.testId) {
-                  const apiUrl = `/api/test-results/${
-                    result.testId
-                  }/report/index.html?t=${Date.now()}&forceIframe=true`;
+                  const apiUrl = `/api/test-results/${result.testId
+                    }/report/index.html?t=${Date.now()}&forceIframe=true`;
                   setReportUrl(apiUrl);
                   setActiveTab("report");
 
@@ -890,9 +907,8 @@ const Playground: React.FC<PlaygroundProps> = ({
             eventSourceClosed = true;
 
             if (result.testId) {
-              const apiUrl = `/api/test-results/${
-                result.testId
-              }/report/index.html?t=${Date.now()}&forceIframe=true`;
+              const apiUrl = `/api/test-results/${result.testId
+                }/report/index.html?t=${Date.now()}&forceIframe=true`;
               setReportUrl(apiUrl);
               setActiveTab("report");
             } else {
@@ -1419,13 +1435,23 @@ const Playground: React.FC<PlaygroundProps> = ({
                           <CodeEditor
                             value={editorContent}
                             onChange={(value) => {
-                              setEditorContent(value || "");
-                              // Clear validation and test execution state when content changes
-                              if (hasValidated) {
-                                resetValidationState();
-                              }
-                              if (testExecutionStatus !== "none") {
-                                resetTestExecutionState();
+                              const newValue = value || "";
+
+                              // CRITICAL: Only reset validation/execution state if content ACTUALLY changed
+                              // Monaco editor fires onChange during re-renders (e.g., when tags update)
+                              // even when the content is identical. This prevents spurious resets.
+                              if (newValue !== lastEditorContentRef.current) {
+                                // Content has genuinely changed - update state
+                                setEditorContent(newValue);
+                                lastEditorContentRef.current = newValue;
+
+                                // Clear validation and test execution state when script changes
+                                if (hasValidated) {
+                                  resetValidationState();
+                                }
+                                if (testExecutionStatus !== "none") {
+                                  resetTestExecutionState();
+                                }
                               }
                             }}
                             ref={editorRef}
@@ -1438,20 +1464,26 @@ const Playground: React.FC<PlaygroundProps> = ({
                       className="h-full border-0 p-0 mt-0"
                     >
                       {executionTestType === "performance" &&
-                      performanceRunId ? (
+                        performanceRunId ? (
                         <PerformanceTestReport
                           runId={performanceRunId}
                           onStatusChange={(status) => {
                             if (status !== "running") {
                               setIsRunning(false);
-                              // Update test execution status for performance tests
-                              if (status === "passed") {
+                              // For K6 performance tests:
+                              // - "passed" = script ran && thresholds passed && checks passed
+                              // - "failed" = script ran but thresholds/checks failed
+                              // - "error" = script failed to execute (syntax error, timeout, etc.)
+                              // 
+                              // For SAVING purposes, we consider both "passed" and "failed" as 
+                              // successful execution because the script RAN to completion.
+                              // Only "error" should block saving (indicates script didn't execute).
+                              if (status === "passed" || status === "failed") {
+                                // Script executed successfully - allow saving
                                 setTestExecutionStatus("passed");
                                 setLastExecutedScript(editorContent);
-                              } else if (
-                                status === "failed" ||
-                                status === "error"
-                              ) {
+                              } else if (status === "error") {
+                                // Script failed to execute - don't allow saving
                                 setTestExecutionStatus("failed");
                               }
                             }

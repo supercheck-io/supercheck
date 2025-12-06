@@ -1,21 +1,15 @@
 import { z } from "zod";
-import {
-  isDisposableEmail,
-  getDisposableEmailErrorMessage,
-} from "./disposable-email-domains";
 
 /**
- * Email validation schema with disposable email blocking
- * Used for signup to prevent throwaway emails
+ * Email validation schema for signup (invitation flow only)
+ * No disposable email blocking since social-only signup prevents throwaway emails.
+ * New users must sign up with GitHub or Google OAuth.
  */
 export const signupEmailSchema = z
   .string()
   .min(1, "Email is required")
   .email("Please enter a valid email address")
-  .max(255, "Email must be 255 characters or less")
-  .refine((email) => !isDisposableEmail(email), {
-    message: getDisposableEmailErrorMessage(),
-  });
+  .max(255, "Email must be 255 characters or less");
 
 /**
  * Email validation schema for login (without disposable check)

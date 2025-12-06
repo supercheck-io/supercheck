@@ -111,3 +111,10 @@ data:
   # Social auth buttons are automatically shown when GITHUB_CLIENT_ID/GOOGLE_CLIENT_ID are set in secrets
   # Configure OAuth secrets (GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
   # in a separate Kubernetes Secret resource
+
+  # CAPTCHA Configuration (optional - Cloudflare Turnstile)
+  # CAPTCHA is automatically enabled when both keys are set in secrets
+  # Get keys from https://dash.cloudflare.com/?to=/:account/turnstile
+  # Site key (public) - exposed via /api/config/captcha endpoint
+  TURNSTILE_SITE_KEY: ""
+  # Secret key should be stored in Kubernetes Secret, not ConfigMap

@@ -55,9 +55,9 @@ Comprehensive coverage of authentication flows (email/password, OAuth), session 
 
 | Test ID | Description | Type | Priority | Page | Prerequisites | Steps | Expected Result |
 |---------|-------------|------|----------|------|---------------|-------|-----------------|
-| AUTH-001 | Sign up with valid credentials | Positive | Critical | /sign-up | None | 1. Navigate to /sign-up<br>2. Fill email, password, name<br>3. Accept terms<br>4. Submit form | User created, email verification sent, redirected to verify email page |
-| AUTH-002 | Sign up with existing email | Negative | High | /sign-up | User with email exists | 1. Navigate to /sign-up<br>2. Fill form with existing email<br>3. Submit | Error message: "Email already exists" |
-| AUTH-003 | Sign up with invalid email format | Negative | High | /sign-up | None | 1. Navigate to /sign-up<br>2. Enter invalid email<br>3. Submit | Validation error on email field |
+| AUTH-001 | Sign up with GitHub OAuth (social-only) | Positive | Critical | /sign-up | None | 1. Navigate to /sign-up<br>2. Verify only social auth buttons shown (no email form)<br>3. Click "Continue with GitHub"<br>4. Authorize app | User created, email verified via OAuth, redirected to dashboard |
+| AUTH-002 | Sign up with Google OAuth (social-only) | Positive | Critical | /sign-up | None | 1. Navigate to /sign-up<br>2. Verify only social auth buttons shown (no email form)<br>3. Click "Continue with Google"<br>4. Authorize app | User created, email verified via OAuth, redirected to dashboard |
+| AUTH-003 | Invitation flow email signup | Positive | Critical | /sign-up?invite=token | Valid invite token | 1. Click invitation link<br>2. Verify email form is shown (locked to invited email)<br>3. Fill name and password<br>4. Submit | User created with invited email, auto-joined organization |
 | AUTH-004 | Sign in with valid credentials | Positive | Critical | /sign-in | User exists and verified | 1. Navigate to /sign-in<br>2. Enter email and password<br>3. Submit | Redirected to dashboard, session created |
 | AUTH-005 | Sign in with invalid password | Negative | High | /sign-in | User exists | 1. Navigate to /sign-in<br>2. Enter correct email, wrong password<br>3. Submit | Error: "Invalid credentials" |
 | AUTH-006 | Sign in with non-existent email | Negative | High | /sign-in | None | 1. Navigate to /sign-in<br>2. Enter non-existent email<br>3. Submit | Error: "Invalid credentials" (generic for security) |
@@ -71,6 +71,7 @@ Comprehensive coverage of authentication flows (email/password, OAuth), session 
 | AUTH-014 | Google OAuth sign up | Positive | High | /sign-up | None | 1. Navigate to /sign-up<br>2. Click "Sign up with Google"<br>3. Authorize app | User created with Google profile, signed in |
 | AUTH-015 | Google OAuth sign in | Positive | High | /sign-in | User created via Google OAuth | 1. Navigate to /sign-in<br>2. Click "Sign in with Google"<br>3. Authorize | User signed in with existing account |
 | AUTH-016 | Accept organization invitation | Positive | Critical | /invite/{token} | Invitation token exists | 1. Click invitation link<br>2. Sign in or create account<br>3. Accept invitation | User added to organization with assigned role |
+| AUTH-016b | Last used badge on sign-in page | Positive | High | /sign-in | User signed in with GitHub previously | 1. Sign in with GitHub<br>2. Sign out<br>3. Navigate to /sign-in<br>4. Verify GitHub button shows "Last used" badge | Last used badge displayed on previously used auth method |
 | AUTH-017 | Reject organization invitation | Positive | High | /invite/{token} | Invitation token exists | 1. Click invitation link<br>2. Click "Decline"<br>3. Confirm | User not added, invitation marked declined |
 | AUTH-018 | Sign out | Positive | High | Any page | User signed in | 1. Click user menu<br>2. Click "Sign out" | Session destroyed, redirected to /sign-in |
 | AUTH-019 | Sign out all sessions | Positive | High | Settings | User signed in on multiple devices | 1. Navigate to Settings > Security<br>2. Click "Sign out all sessions"<br>3. Confirm | All sessions destroyed, must sign in again |

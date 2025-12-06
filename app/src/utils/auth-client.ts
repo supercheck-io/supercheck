@@ -3,6 +3,7 @@ import {
   apiKeyClient,
   organizationClient,
   adminClient,
+  lastLoginMethodClient,
 } from "better-auth/client/plugins";
 
 /**
@@ -26,6 +27,8 @@ export const authClient = createAuthClient({
     adminClient({
       // Note: Admin client doesn't need ac/roles on client side
     }),
+    // Track last login method to show "Last used" badge on sign-in page
+    lastLoginMethodClient(),
     // Note: polarClient() is NOT included here - see comment above
   ],
 });

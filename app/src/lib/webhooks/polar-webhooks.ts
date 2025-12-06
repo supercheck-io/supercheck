@@ -191,9 +191,14 @@ function getSubscriptionDatesFromPayload(payload: PolarWebhookPayload): {
  * Helper to get product ID from payload (handles different webhook formats)
  */
 function getProductIdFromPayload(payload: PolarWebhookPayload): string {
-  // Direct productId
+  // Direct productId (camelCase)
   if (payload.data.productId) {
     return payload.data.productId;
+  }
+  // Snake_case (Polar sends this format)
+  const snakeData = payload.data as Record<string, unknown>;
+  if (snakeData.product_id && typeof snakeData.product_id === 'string') {
+    return snakeData.product_id;
   }
   // Nested in product object
   if (payload.data.product?.id) {
@@ -208,9 +213,14 @@ function getProductIdFromPayload(payload: PolarWebhookPayload): string {
 function getCustomerIdFromPayload(
   payload: PolarWebhookPayload
 ): string | undefined {
-  // Direct customerId
+  // Direct customerId (camelCase)
   if (payload.data.customerId) {
     return payload.data.customerId;
+  }
+  // Snake_case (Polar sends this format)
+  const snakeData = payload.data as Record<string, unknown>;
+  if (snakeData.customer_id && typeof snakeData.customer_id === 'string') {
+    return snakeData.customer_id;
   }
   // Nested in customer object
   const customer = payload.data.customer as { id?: string } | undefined;
@@ -322,12 +332,21 @@ async function findOrganizationByUserId(userId: string) {
  * Extract user ID from customer metadata in payload
  */
 function getUserIdFromPayload(payload: PolarWebhookPayload): string | null {
-  // Check customer metadata
+  // Check customer metadata.userId
   const customer = payload.data.customer as
-    | { metadata?: { userId?: string } }
+    | { metadata?: { userId?: string }; external_id?: string; externalId?: string }
     | undefined;
   if (customer?.metadata?.userId) {
     return customer.metadata.userId;
+  }
+
+  // Check customer.external_id (set during customer creation as user.id)
+  if (customer?.external_id) {
+    return customer.external_id;
+  }
+  // Also check camelCase version
+  if (customer?.externalId) {
+    return customer.externalId;
   }
 
   // Check direct metadata
