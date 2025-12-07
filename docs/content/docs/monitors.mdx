@@ -1,0 +1,105 @@
+---
+title: Monitors
+description: 24/7 uptime monitoring
+icon: Globe
+---
+
+Monitor services from multiple regions. Get alerts when things go down.
+
+![Monitors List](/screenshots/monitors-list.png)
+
+## Monitor Types
+
+<Cards>
+<Card icon={<ArrowLeftRight className="text-teal-600" />} title="HTTP Monitor">
+Check HTTP/HTTPS endpoints for availability and response time
+</Card>
+
+<Card icon={<LaptopMinimal className="text-sky-600" />} title="Website Monitor">
+Monitor website availability with SSL certificate tracking
+</Card>
+
+<Card icon={<ChevronsLeftRightEllipsis className="text-cyan-600" />} title="Ping Monitor">
+ICMP ping checks for host availability and latency
+</Card>
+
+<Card icon={<EthernetPort className="text-blue-600" />} title="Port Monitor">
+TCP/UDP port checks for service accessibility
+</Card>
+
+<Card icon={<Laptop className="text-purple-600" />} title="Synthetic Monitor">
+Playwright browser tests on a schedule
+</Card>
+</Cards>
+
+## Create HTTP Monitor
+
+![Create HTTP Monitor](/screenshots/create-http-monitor.png)
+
+## Create Website Monitor
+
+![Create Website Monitor](/screenshots/create-website-monitor.png)
+
+## Create Ping Monitor
+
+![Create Ping Monitor](/screenshots/create-ping-monitor.png)
+
+## Create Port Monitor
+
+![Create Port Monitor](/screenshots/create-port-monitor.png)
+
+## Create Synthetic Monitor
+
+![Create Synthetic Monitor](/screenshots/create-synthetic-monitor.png)
+
+## Multi-Location Testing
+
+Check from multiple regions to detect localized issues.
+
+![Multi-Location Selector](/screenshots/create-monitor-mutilocation-selector.png)
+
+| Region | Location |
+|--------|----------|
+| **US East** | Virginia, USA |
+| **EU Central** | Frankfurt, Germany |
+| **Asia Pacific** | Singapore |
+
+## Alert Settings
+
+Configure notifications when monitors fail.
+
+![Alert Settings](/screenshots/create-monitor-alerts-setting.png)
+
+### Alert Components
+
+| Component | Description |
+|-----------|-------------|
+| **Enable Alerts** | Toggle to enable/disable notifications |
+| **Alert Types** | Choose "Alert on failure" and/or "Alert on recovery" |
+| **Failure Threshold** | Number of consecutive failures before alerting (e.g., 1-5) |
+| **Recovery Threshold** | Number of consecutive successes before recovery alert |
+| **Notification Channels** | Select which providers to notify (Slack, Discord, Email, Webhook) |
+
+## Configuration
+
+| Setting | Description |
+|---------|-------------|
+| **Interval** | Check frequency (1-60 min) |
+| **Timeout** | Request timeout (5-30s) |
+| **Threshold** | Consecutive failures before alerting |
+
+## Status
+
+| Status | Description |
+|--------|-------------|
+| **Up** | All checks passing |
+| **Degraded** | Intermittent failures |
+| **Down** | Threshold exceeded, alerting |
+| **Paused** | Monitoring disabled |
+
+## Best Practices
+
+- Monitor from multiple locations
+- Set appropriate timeouts
+- Use threshold of 2-3 to avoid false positives
+- Enable SSL certificate monitoring

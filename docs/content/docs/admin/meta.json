@@ -1,0 +1,9 @@
+{
+    "title": "Admin",
+    "description": "Organization and system administration",
+    "icon": "UserCog",
+    "pages": [
+        "organization",
+        "super-admin"
+    ]
+}

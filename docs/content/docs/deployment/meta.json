@@ -1,0 +1,9 @@
+{
+    "title": "Deployment",
+    "description": "Self-hosted deployment with Docker Compose",
+    "icon": "Server",
+    "pages": [
+        "self-hosted",
+        "configuration"
+    ]
+}

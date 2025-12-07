@@ -1,103 +1,64 @@
 ---
 title: Variables
-description: Store and reuse configuration values
+description: Store configuration and secrets
 icon: Variable
 ---
 
-Store reusable configuration values and sensitive data securely across your tests. Variables can be regular (plain text) or secrets (encrypted), providing flexibility while maintaining security.
+Store reusable values and sensitive data securely across tests.
 
-## How It Works
+![Variables List](/screenshots/variables-list.png)
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant UI
-    participant Database
-    participant Test
+## Types
 
-    User->>UI: Create Variable
-    UI->>Database: Store (encrypted if secret)
+| Type | Storage | Use For |
+|------|---------|---------|
+| **Variable** | Plain text | URLs, timeouts, config |
+| **Secret** | Encrypted | API keys, passwords |
 
-    Note over Test: During test execution
+## Create Variable
 
-    Test->>Database: Request variables
-    Database->>Test: Return values (decrypted)
-    Test->>Test: Use in test script
-```
+1. Go to **Project → Variables**
+2. Click **Add Variable**
+3. Enter key and value
+4. Save
 
-## Variable Types
+![Add Variable](/screenshots/add-variable.png)
 
-**Regular Variables** - Stored in plain text, visible in UI
-- URLs, timeouts, usernames
-- Configuration values, feature flags
-- Non-sensitive data
+## Create Secret
 
-**Secrets** - AES-256 encrypted, masked in UI
-- API keys, passwords, tokens
-- Database credentials
-- Any sensitive data
+Secrets are encrypted and masked in logs.
 
-## Using Variables
+![Add Secret](/screenshots/add-secret.png)
 
-### Regular Variables
+## Usage
 
 ```javascript
-// Access configuration values
-const baseUrl = getVariable("BASE_URL");
-const timeout = getVariable("TIMEOUT");
+// Regular variables
+const baseUrl = getVariable('BASE_URL');
+const timeout = getVariable('TIMEOUT');
 
-// Use in tests
-await page.goto(baseUrl + "/login");
+// Secrets (auto-redacted in logs)
+const apiKey = getSecret('API_KEY');
+const password = getSecret('DB_PASSWORD');
 ```
-
-### Secrets
-
-```javascript
-// Access sensitive data (automatically protected from logs)
-const apiKey = getSecret("API_KEY");
-const password = getSecret("PASSWORD");
-
-// Use securely
-await page.fill("#password", password);
-
-// Logging is automatically masked
-console.log(apiKey); // Output: "***REDACTED***"
-```
-
-## Creating Variables
-
-<Steps>
-  <Step>Go to **Automate → Variables**</Step>
-  <Step>Click **Add Variable**</Step>
-  <Step>Enter key and value</Step>
-  <Step>Mark as **Secret** if sensitive</Step>
-  <Step>Save</Step>
-</Steps>
 
 ## Common Patterns
 
 ```javascript
-// Environment-specific configuration
-const env = getVariable("ENVIRONMENT");
+// Environment config
+const env = getVariable('ENVIRONMENT');
 const apiUrl = getVariable(`${env}_API_URL`);
 
 // Database connection
 const dbConfig = {
-  host: getVariable("DB_HOST"),
-  port: getVariable("DB_PORT"),
-  password: getSecret("DB_PASSWORD")
+  host: getVariable('DB_HOST'),
+  port: getVariable('DB_PORT'),
+  password: getSecret('DB_PASSWORD')
 };
-
-// Feature flags
-const newFeatureEnabled = getVariable("FEATURE_X_ENABLED");
-if (newFeatureEnabled === "true") {
-  // Test new feature
-}
 ```
 
 ## Security
 
-- **Encryption**: Secrets use AES-256-GCM encryption
-- **Access Control**: Role-based permissions (Owner/Admin/Editor)
-- **Log Protection**: Secrets automatically redacted from logs and screenshots
-- **Audit Trail**: All variable access is logged
+- **Encrypted** — Secrets use AES-256-GCM
+- **Masked** — Auto-redacted from logs and screenshots
+- **RBAC** — Role-based access control

@@ -3,270 +3,52 @@ title: Database Test
 description: Query and validate database state
 icon: Database
 ---
-Run SQL queries and validate your database state directly.
 
-## Database Test Execution Flow
+Run SQL queries and validate database state directly.
 
-```mermaid
-flowchart TB
-    A[Database Test] --> B[Retrieve Connection]
-    B --> C{Connection Method}
-    C -->|Direct| D[Direct Connection]
-    C -->|SSH Tunnel| E[SSH Tunnel]
-    C -->|Proxy| F[Proxy Connection]
+## Create Test
 
-    D --> G[Establish Connection]
-    E --> G
-    F --> G
+1. Go to **Create → Database Test**
+2. Select database connection
+3. Write SQL query
+4. Add assertions
+5. Run and save
 
-    G --> H{Connected?}
-    H -->|Yes| I[Execute Query]
-    H -->|No| J[✗ Connection Failed]
-
-    I --> K{Query Type}
-    K -->|SELECT| L[Fetch Results]
-    K -->|INSERT/UPDATE| M[Execute Statement]
-    K -->|PROCEDURE| N[Call Procedure]
-
-    L --> O{Results Returned?}
-    O -->|Yes| P[Parse Result Set]
-    O -->|No| Q[Empty Result]
-
-    M --> R{Affected Rows}
-    R -->|> 0| S[✓ Statement Executed]
-    R -->|= 0| T[⚠ No Rows Affected]
-
-    N --> U{Procedure Result}
-    U -->|Success| V[✓ Procedure Executed]
-    U -->|Error| W[✗ Procedure Failed]
-
-    P --> X{Validate Results}
-    X -->|Row Count| Y[Assert Count]
-    X -->|Field Values| Z[Assert Data]
-    X -->|Data Types| AA[Assert Types]
-
-    Y --> AB{Assertion Result}
-    Z --> AB
-    AA --> AB
-
-    AB -->|Pass| AC[✓ Test Passed]
-    AB -->|Fail| AD[✗ Assertions Failed]
-
-    Q --> AC
-    S --> AC
-    V --> AC
-
-    J --> AE[Log Error]
-    W --> AE
-    AD --> AE
-
-    AE --> AF[✗ Test Failed]
-
-    AC --> AG[Close Connection]
-    AF --> AG
-
-    style A fill:#3b82f6,color:#fff
-    style S fill:#10b981,color:#fff
-    style V fill:#10b981,color:#fff
-    style AC fill:#10b981,color:#fff
-    style T fill:#f59e0b,color:#fff
-    style Q fill:#f59e0b,color:#fff
-    style J fill:#ef4444,color:#fff
-    style W fill:#ef4444,color:#fff
-    style AD fill:#ef4444,color:#fff
-    style AF fill:#ef4444,color:#fff
-```
-
-## What is a Database Test?
-
-Database tests allow you to:
-- Query database tables
-- Validate data integrity
-- Check row counts
-- Verify relationships
-- Test stored procedures
-
-## Creating a Database Test
-
-```mermaid
-graph LR
-    A[Start] --> B[Click Create]
-    B --> C[Select Database Test]
-    C --> D[Choose Connection]
-    D --> E[Select Database Type]
-    E --> F[Enter Credentials]
-    F --> G[Test Connection]
-    G --> H{Connection Works?}
-    H -->|Yes| I[Write SQL Query]
-    H -->|No| J[Fix Connection]
-    J --> G
-    I --> K[Add Assertions]
-    K --> L[Run Test]
-    L --> M{Test Passes?}
-    M -->|Yes| N[Save Test]
-    M -->|No| O[Debug Query]
-    O --> L
-    N --> P[✓ Test Created]
-
-    style A fill:#3b82f6,color:#fff
-    style P fill:#10b981,color:#fff
-    style C fill:#8b5cf6,color:#fff
-    style G fill:#f59e0b,color:#fff
-```
-
-<Steps>
-  <Step>Click **Create → Database Test** in the sidebar</Step>
-  <Step>Select your database connection</Step>
-  <Step>Write your SQL query</Step>
-  <Step>Add assertions for the results</Step>
-  <Step>Run the test</Step>
-</Steps>
-
-## Connection & Security Architecture
-
-```mermaid
-graph TB
-    A[Database Connection] --> B[Connection Methods]
-    B --> C[Direct Connection]
-    B --> D[SSH Tunnel]
-    B --> E[Proxy/VPN]
-
-    C --> F[Public Database]
-    D --> G[Private Network]
-    E --> H[Corporate Network]
-
-    F --> I[Security Layer]
-    G --> I
-    H --> I
-
-    I --> J[Encrypted Credentials]
-    I --> K[TLS/SSL]
-    I --> L[IP Whitelisting]
-    I --> M[Read-Only Access]
-
-    J --> N[Secret Storage]
-    N --> O[AES-128-GCM]
-
-    K --> P[Encrypted Connection]
-    L --> P
-    M --> P
-
-    P --> Q[Secure Query Execution]
-
-    style A fill:#3b82f6,color:#fff
-    style I fill:#f59e0b,color:#fff
-    style J fill:#ef4444,color:#fff
-    style O fill:#ef4444,color:#fff
-    style Q fill:#10b981,color:#fff
-```
-
-## Supported Databases
-
-```mermaid
-graph TB
-    A[Database Support] --> B[Relational]
-    A --> C[NoSQL]
-    A --> D[Cloud]
-
-    B --> B1[PostgreSQL]
-    B --> B2[MySQL]
-    B --> B3[SQL Server]
-    B --> B4[Oracle]
-    B --> B5[MariaDB]
-
-    C --> C1[MongoDB]
-    C --> C2[Redis]
-    C --> C3[Cassandra]
-
-    D --> D1[Amazon RDS]
-    D --> D2[Azure SQL]
-    D --> D3[Google Cloud SQL]
-    D --> D4[Amazon DynamoDB]
-
-    B1 --> E[Connection Pool]
-    B2 --> E
-    B3 --> E
-    C1 --> E
-    D1 --> E
-
-    E --> F[Query Execution Engine]
-
-    style A fill:#3b82f6,color:#fff
-    style B fill:#10b981,color:#fff
-    style C fill:#8b5cf6,color:#fff
-    style D fill:#f59e0b,color:#fff
-    style F fill:#6366f1,color:#fff
-```
-
-## Example Test
+## Example
 
 ```sql
--- Query active users
+-- Check active user count
 SELECT COUNT(*) as user_count
 FROM users
 WHERE active = true;
 
--- Expected: user_count > 0
+-- Assertion: user_count > 0
 ```
 
-## Common Use Cases
+## Supported Databases
 
-```mermaid
-mindmap
-  root((Database Testing))
-    Data Integrity
-      Row counts
-      Foreign keys
-      Unique constraints
-      NOT NULL checks
-    Data Validation
-      Field values
-      Date ranges
-      Enum values
-      Calculated fields
-    Performance
-      Query execution time
-      Index usage
-      Table scans
-      Connection pooling
-    Business Logic
-      Stored procedures
-      Triggers
-      Views
-      Functions
-```
+| Type | Databases |
+|------|-----------|
+| **Relational** | PostgreSQL, MySQL, SQL Server, MariaDB |
+| **Cloud** | Amazon RDS, Azure SQL, Google Cloud SQL |
+
+## Connection Methods
+
+- **Direct** — Public database with credentials
+- **SSH Tunnel** — Private network via bastion host
+- **Secrets** — Store credentials securely with `getSecret()`
+
+## Common Assertions
+
+| Assertion | Example |
+|-----------|---------|
+| Row count | `COUNT(*) > 0` |
+| Value check | `status = 'active'` |
+| Not null | `email IS NOT NULL` |
 
 ## Best Practices
 
-- **Read-Only Access**: Use read-only database users for testing
-  - Prevents accidental data modification
-  - Safer for production database testing
-  - Create dedicated test user with SELECT permissions only
-- **Credentials Security**: Store credentials as encrypted secrets
-  - Use `getSecret()` for passwords
-  - Never hardcode credentials in tests
-  - Rotate credentials regularly
-- **SSH Tunneling**: Use SSH tunnels for private databases
-  - Secure connection to private networks
-  - No need to expose database publicly
-  - Configure bastion host for access
-- **IP Whitelisting**: Whitelist Supercheck IPs for database access
-  - Additional security layer
-  - Control access to database
-- **Connection Pooling**: Reuse connections for better performance
-  - Reduces connection overhead
-  - Faster test execution
-- **Query Optimization**: Write efficient queries
-  - Use proper indexes
-  - Avoid SELECT *
-  - Limit result sets when possible
-- **Timeout Settings**: Set appropriate query timeouts
-  - Simple queries: 5-10 seconds
-  - Complex queries: 30-60 seconds
-  - Report queries: up to 5 minutes
-
-## Next Steps
-
-- [Custom tests](./custom-test)
-- [Manage variables](./variables)
-- [View test history](./runs)
+- Use **read-only** database users
+- Store credentials as **secrets**
+- Set appropriate **query timeouts**
+- Use **SSH tunnels** for private databases

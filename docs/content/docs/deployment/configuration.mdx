@@ -1,0 +1,133 @@
+---
+title: Configuration
+description: Environment variables and scaling reference
+icon: Settings
+---
+
+## Required Variables
+
+```bash
+# Application URLs
+NEXT_PUBLIC_APP_URL=https://supercheck.yourdomain.com
+APP_URL=https://supercheck.yourdomain.com
+BETTER_AUTH_URL=https://supercheck.yourdomain.com
+
+# Security (generate with: openssl rand -hex 16)
+BETTER_AUTH_SECRET=your-32-char-secret
+SECRET_ENCRYPTION_KEY=your-32-char-key
+
+# Domain
+APP_DOMAIN=supercheck.yourdomain.com
+ACME_EMAIL=admin@yourdomain.com
+
+# Self-hosted mode (enables unlimited features)
+SELF_HOSTED=true
+```
+
+## Database & Cache
+
+```bash
+DATABASE_URL=postgresql://postgres:password@postgres:5432/supercheck
+DB_PASSWORD=your-secure-password
+REDIS_PASSWORD=your-redis-password
+```
+
+## Optional: Email (SMTP)
+
+```bash
+SMTP_HOST=smtp.resend.com
+SMTP_PORT=587
+SMTP_USER=resend
+SMTP_PASSWORD=your-smtp-key
+SMTP_FROM_EMAIL=notifications@yourdomain.com
+```
+
+## Optional: OAuth
+
+```bash
+# GitHub
+GITHUB_CLIENT_ID=your-client-id
+GITHUB_CLIENT_SECRET=your-client-secret
+
+# Google
+GOOGLE_CLIENT_ID=your-client-id
+GOOGLE_CLIENT_SECRET=your-client-secret
+```
+
+## Optional: AI Features
+
+```bash
+OPENAI_API_KEY=sk-your-key
+AI_MODEL=gpt-4o-mini
+```
+
+## Worker Settings
+
+```bash
+# Concurrent executions per worker
+MAX_CONCURRENT_EXECUTIONS=1
+
+# Total capacity
+RUNNING_CAPACITY=4
+QUEUED_CAPACITY=10
+
+# Timeouts (milliseconds)
+TEST_EXECUTION_TIMEOUT_MS=120000
+JOB_EXECUTION_TIMEOUT_MS=900000
+K6_TEST_EXECUTION_TIMEOUT_MS=3600000
+
+# Worker region (local, us-east, eu-central, asia-pacific)
+WORKER_LOCATION=local
+```
+
+## Data Retention
+
+```bash
+MONITOR_RETENTION_DAYS=90
+JOB_RUNS_RETENTION_DAYS=90
+```
+
+## Scaling Workers
+
+Scale workers horizontally for more throughput:
+
+```bash
+docker compose -f docker-compose-secure.yml up -d --scale worker=6
+```
+
+### Capacity Planning
+
+| Workers | Concurrent Tests | RAM Needed |
+|---------|------------------|------------|
+| 1 | 1 | 4GB |
+| 3 | 3 | 8GB |
+| 6 | 6 | 16GB |
+
+<Callout type="info">
+Each worker runs one test at a time. Scale workers, not concurrency per worker.
+</Callout>
+
+### Multi-Region Workers
+
+For geo-distributed monitoring:
+
+```bash
+# US workers
+WORKER_LOCATION=us-east
+
+# EU workers
+WORKER_LOCATION=eu-central
+
+# APAC workers
+WORKER_LOCATION=asia-pacific
+```
+
+### Monitoring Resources
+
+```bash
+# Container resource usage
+docker stats
+
+# Worker logs
+docker compose logs -f worker
+```
