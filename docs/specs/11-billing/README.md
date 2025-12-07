@@ -12,7 +12,7 @@ This section covers billing integration, payment processing, and usage-based pri
 - **Pricing Model**: Subscription-based with usage limits
 - **Billing for**:
   - Playwright execution minutes
-  - K6 load testing VU minutes
+  - k6 load testing VU minutes
   - Plan-based limits for monitors, status pages, projects, and team members
 - **Self-Hosted**: Always free and unlimited
 - **SaaS**: Subscription tiers with different feature access

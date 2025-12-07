@@ -189,7 +189,7 @@
   background-color: rgba(156, 163, 175, 0.7);
 }
 
-/* K6 Console Output Color-Coding Styles */
+/* k6 Console Output Color-Coding Styles */
 /* Light theme colors */
 .console-line-error {
   color: #dc2626 !important; /* red-600 */

@@ -1,11 +1,18 @@
 {
   "title": "Documentation",
   "pages": [
+    "---Home---",
+    "index",
     "quickstart",
+    "---Deployment---",
+    "deployment",
+    "---Communicate---",
     "communicate",
+    "---Automate---",
     "automate",
-    "monitor",
-    "observe",
-    "integration"
+    "---Monitor---",
+    "monitors",
+    "---Settings---",
+    "admin"
   ]
 }

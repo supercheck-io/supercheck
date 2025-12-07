@@ -1,91 +1,82 @@
 ---
 title: Jobs
-description: Group and schedule tests together
+description: Schedule and automate test execution
 icon: CalendarClock
 ---
 
-Group multiple tests into a suite and run them on a schedule or on-demand. Jobs support sequential or parallel execution with flexible scheduling options.
+Jobs schedule tests to run automatically on a recurring basis or via triggers.
 
-## How Jobs Work
+![Jobs List](/screenshots/jobs-list.png)
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant Job
-    participant Tests
-    participant Results
+## Create Job
 
-    User->>Job: Trigger (manual/scheduled/API)
-    Job->>Tests: Execute test suite
-    Tests->>Results: Collect results
-    Results->>User: Report + Alerts
-```
+1. Go to **Create → Job**
+2. Enter job name and description
+3. Select tests to include
+4. Configure schedule or trigger
+5. Set up alerts
+6. Save
 
-## Execution Modes
+![Create Job Form](/screenshots/create-job-form.png)
 
-**Sequential** - Tests run one after another
-- Use when tests depend on each other
-- Total time = sum of all tests
-- Example: Login → Add Item → Checkout
+## Select Tests
 
-**Parallel** - Tests run simultaneously
-- Use for independent tests
-- Faster execution (up to 10x)
-- Example: Homepage + API + Database tests
+Choose which tests to include in the job.
 
-```javascript
-// Job configuration example
-{
-  "name": "Regression Suite",
-  "tests": ["login-test", "checkout-test", "profile-test"],
-  "mode": "parallel",  // or "sequential"
-  "schedule": "0 2 * * *"  // Daily at 2 AM
-}
-```
+![Select Tests](/screenshots/create-job-select-tests.png)
 
-## Scheduling
+## Parallel Execution
 
-Set up recurring job executions using cron syntax:
+Execute tests and jobs simultaneously for faster execution, and view executions across all projects in organization, depends on parallel execution queue capacity configured.
 
-```javascript
-// Common schedules
-"0 * * * *"     // Every hour
-"0 2 * * *"     // Daily at 2 AM
-"0 9 * * 1-5"   // Weekdays at 9 AM
-"*/15 * * * *"  // Every 15 minutes
-```
+![Parallel Execution Dialog](/screenshots/parallel-execution-dialog.png)
 
-## Triggers
+## Schedule Options
 
-Jobs can be triggered in three ways:
+| Type | Description |
+|------|-------------|
+| **Interval** | Every X minutes/hours |
+| **Cron** | Custom cron expression |
+| **Manual** | Run on demand |
+| **API Trigger** | Remote execution via API |
 
-1. **Manual** - Click "Run" in the UI
-2. **Scheduled** - Automatic execution via cron
-3. **Remote** - API trigger from CI/CD
+## Alert Configuration
+
+Configure who gets notified when the job fails.
+
+![Alert Configuration](/screenshots/create-job-alerts-config.png)
+
+## CI/CD Integration
+
+Trigger jobs remotely from your CI/CD pipeline.
+
+### Generate API Key
+
+1. Open job settings
+2. Go to **CI/CD** tab
+3. Click **Generate API Key**
+
+![CI/CD Tab](/screenshots/edit-job-add-cicd-apikey-1.png)
+
+![Generate API Key](/screenshots/edit-job-add-cicd-apikey-2.png)
+
+### Configure Trigger
+
+Copy the trigger URL and API key for your CI/CD pipeline.
+
+![API Key Configuration](/screenshots/edit-job-cicd-apikey-configure.png)
+
+### Example Request
 
 ```bash
-# Remote trigger via API
-curl -X POST https://app.supercheck.io/api/jobs/{job-id}/trigger \
+curl -X POST https://your-instance.com/api/jobs/{jobId}/trigger \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
-## Creating a Job
+## Best Practices
 
-<Steps>
-  <Step>Go to **Automate → Jobs**</Step>
-  <Step>Click **Create Job**</Step>
-  <Step>Name your job</Step>
-  <Step>Select tests to include</Step>
-  <Step>Choose execution mode (sequential/parallel)</Step>
-  <Step>Set schedule (optional)</Step>
-  <Step>Configure alerts (optional)</Step>
-  <Step>Save and run</Step>
-</Steps>
-
-## Use Cases
-
-- **Regression Testing**: Run full test suite before releases
-- **Smoke Tests**: Quick validation after deployments
-- **Nightly Builds**: Comprehensive tests during off-hours
-- **CI/CD Integration**: Automated testing in pipelines
-- **Synthetic Monitoring**: 24/7 user journey validation
+- Group related tests into a single job
+- Set appropriate failure thresholds
+- Configure alerts for production jobs
+- Use cron for specific timing requirements
+- Generate unique API keys per CI/CD pipeline

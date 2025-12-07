@@ -40,11 +40,11 @@ export function baseOptions(): BaseLayoutProps {
           <Image
             src="/supercheck-logo.png"
             alt="Supercheck Logo"
-            width={24}
-            height={24}
+            width={32}
+            height={32}
             className="rounded-md"
           />
-          <span className="font-semibold max-md:hidden">Supercheck</span>
+          <span className="font-semibold">Supercheck</span>
         </>
       ),
     },

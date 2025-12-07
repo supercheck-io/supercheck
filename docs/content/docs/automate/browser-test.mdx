@@ -1,214 +1,74 @@
 ---
 title: Browser Test
-description: Automate user interactions with your web application
+description: Playwright-based UI testing
 icon: Chrome
 ---
-Create automated browser tests to simulate real user interactions with your web application.
 
-## Browser Test Execution Flow
+Automate user interactions with Playwright. Navigate pages, fill forms, click buttons, and validate content.
 
-```mermaid
-flowchart TB
-    A[Browser Test] --> B[Initialize Playwright]
-    B --> C[Launch Browser Context]
-    C --> D[Execute Test Steps]
-
-    D --> E{Test Actions}
-    E --> F[Navigate]
-    E --> G[Click]
-    E --> H[Fill Input]
-    E --> I[Assertions]
-
-    F --> J{Navigation Success?}
-    J -->|Yes| K[Page Loaded]
-    J -->|No| L[✗ Navigation Failed]
-
-    G --> M{Element Found?}
-    M -->|Yes| N[Click Performed]
-    M -->|No| O[✗ Element Not Found]
-
-    H --> P{Input Filled?}
-    P -->|Yes| Q[Value Set]
-    P -->|No| R[✗ Fill Failed]
-
-    I --> S{Assertion Result}
-    S -->|Pass| T[✓ Assertion Passed]
-    S -->|Fail| U[✗ Assertion Failed]
-
-    K --> V[Continue Test]
-    N --> V
-    Q --> V
-    T --> V
-
-    L --> W[Capture Screenshot]
-    O --> W
-    R --> W
-    U --> W
-
-    W --> X[Log Error Details]
-    X --> Y[Mark Test Failed]
-
-    V --> Z{More Steps?}
-    Z -->|Yes| E
-    Z -->|No| AA[All Steps Complete]
-
-    AA --> AB[Close Browser]
-    Y --> AB
-
-    AB --> AC{Final Status}
-    AC -->|Success| AD[✓ Test Passed]
-    AC -->|Failure| AE[✗ Test Failed]
-
-    style A fill:#3b82f6,color:#fff
-    style T fill:#10b981,color:#fff
-    style AD fill:#10b981,color:#fff
-    style W fill:#f59e0b,color:#fff
-    style L fill:#ef4444,color:#fff
-    style O fill:#ef4444,color:#fff
-    style R fill:#ef4444,color:#fff
-    style U fill:#ef4444,color:#fff
-    style AE fill:#ef4444,color:#fff
-```
-
-## What is a Browser Test?
-
-Browser tests use a headless browser (powered by Playwright) to:
-- Navigate through your application
-- Click buttons and fill forms
-- Validate page content
-- Take screenshots
-- Measure performance
-
-## Creating a Browser Test
-
-```mermaid
-graph LR
-    A[Start] --> B[Click Create]
-    B --> C[Select Browser Test]
-    C --> D[Name Your Test]
-    D --> E[Write Test Script]
-    E --> F[Use Recorder]
-    F --> G[Run Test Locally]
-    G --> H{Test Passes?}
-    H -->|Yes| I[Save Test]
-    H -->|No| J[Debug & Fix]
-    J --> G
-    I --> K[Schedule or Add to Job]
-    K --> L[✓ Test Created]
-
-    style A fill:#3b82f6,color:#fff
-    style L fill:#10b981,color:#fff
-    style C fill:#8b5cf6,color:#fff
-    style F fill:#f59e0b,color:#fff
-```
-
-<Steps>
-  <Step>Click **Create → Browser Test** in the sidebar</Step>
-  <Step>Give your test a descriptive name</Step>
-  <Step>Write your test script or use the recorder</Step>
-  <Step>Run the test to verify it works</Step>
-  <Step>Schedule or add to a job</Step>
-</Steps>
-
-## Test Interaction Patterns
-
-```mermaid
-graph TB
-    A[Playwright Actions] --> B[Navigation]
-    A --> C[Interaction]
-    A --> D[Validation]
-
-    B --> B1[page.goto]
-    B --> B2[page.reload]
-    B --> B3[page.goBack]
-
-    C --> C1[page.click]
-    C --> C2[page.fill]
-    C --> C3[page.selectOption]
-    C --> C4[page.check]
-    C --> C5[page.upload]
-
-    D --> D1[expect.toHaveURL]
-    D --> D2[expect.toHaveText]
-    D --> D3[expect.toBeVisible]
-    D --> D4[expect.toBeEnabled]
-
-    B1 --> E[Wait Strategies]
-    C1 --> E
-    D1 --> E
-
-    E --> F[waitForLoadState]
-    E --> G[waitForSelector]
-    E --> H[waitForNavigation]
-
-    style A fill:#3b82f6,color:#fff
-    style B fill:#10b981,color:#fff
-    style C fill:#8b5cf6,color:#fff
-    style D fill:#f59e0b,color:#fff
-    style E fill:#6366f1,color:#fff
-```
-
-## Example Test
+## Example
 
 ```typescript
 import { test, expect } from '@playwright/test';
 
 test('user can login', async ({ page }) => {
   await page.goto('https://app.example.com/login');
-
-  await page.fill('input[name="email"]', 'user@example.com');
-  await page.fill('input[name="password"]', 'password');
-
+  await page.fill('#email', 'user@example.com');
+  await page.fill('#password', 'password');
   await page.click('button[type="submit"]');
-
-  await expect(page).toHaveURL('https://app.example.com/dashboard');
+  await expect(page).toHaveURL('/dashboard');
 });
 ```
 
-## Best Practices
+## Create Test
 
-```mermaid
-mindmap
-  root((Browser Test Best Practices))
-    Selectors
-      Use data-testid
-      Avoid CSS classes
-      Stable attributes
-      Semantic HTML
-    Waiting
-      waitForSelector
-      waitForLoadState
-      Avoid fixed timeouts
-      Auto-waiting built-in
-    Independence
-      No shared state
-      Clean setup/teardown
-      Isolated tests
-      Parallel execution safe
-    Maintainability
-      Page Object Pattern
-      Reusable functions
-      Clear naming
-      Good comments
+1. Go to **Create → Browser Test**
+2. Write your test script
+3. Click **Run** to validate
+4. **Save** when passing
+
+## Common Actions
+
+| Action | Code |
+|--------|------|
+| Navigate | `await page.goto('url')` |
+| Click | `await page.click('selector')` |
+| Fill input | `await page.fill('selector', 'value')` |
+| Check text | `await expect(page.locator('selector')).toHaveText('text')` |
+| Wait | `await page.waitForSelector('selector')` |
+| Screenshot | `await page.screenshot({ path: 'file.png' })` |
+
+## Selectors
+
+Use stable selectors:
+
+```typescript
+// Good - data attributes
+await page.click('[data-testid="submit-btn"]');
+
+// Good - role-based
+await page.click('button:has-text("Submit")');
+
+// Avoid - class names change
+await page.click('.btn-primary');
 ```
 
-## Best Practices
+## Assertions
 
-- **Selectors**: Use stable selectors (data-testid attributes)
-  - Good: `[data-testid="login-button"]`
-  - Bad: `.btn.btn-primary.mt-3`
-- **Waiting**: Wait for elements before interacting
-  - Use Playwright's auto-waiting
-  - `waitForSelector()` for dynamic content
-  - Avoid fixed `wait()` calls
-- **Screenshots**: Take screenshots on failure for debugging
-- **Independence**: Keep tests independent (no shared state)
-- **Reusability**: Use page objects for common patterns
-- **Performance**: Run tests in parallel when possible
-- **Assertions**: Use specific, meaningful assertions
+```typescript
+// URL
+await expect(page).toHaveURL('/dashboard');
 
-## Next Steps
+// Text visible
+await expect(page.locator('.message')).toBeVisible();
 
-- [View all tests](./tests)
-- [Create a job](./jobs)
-- [Learn about API tests](./api-test)
+// Text content
+await expect(page.locator('h1')).toHaveText('Welcome');
+```
+
+## Tips
+
+- Use `data-testid` attributes for stable selectors
+- Playwright auto-waits for elements
+- Avoid fixed `waitForTimeout()` calls
+- Take screenshots on failure for debugging

@@ -1,0 +1,101 @@
+---
+title: Playground
+description: Interactive test editor with AI assistance
+icon: FlaskConical
+---
+
+The Playground is an interactive editor for writing, running, and debugging tests with AI-powered assistance.
+
+![Playground Editor](/screenshots/playground-editor.png)
+
+## Features
+
+- **Monaco Editor** — Full-featured code editor with syntax highlighting
+- **Live Execution** — Run tests and see results in real-time
+- **Rich Reports** — Screenshots, traces, videos, and logs
+- **Variables** — Access project secrets and configuration
+- **AI Assistance** — Generate and fix tests automatically
+
+## AI Create
+
+Generate complete test scripts from natural language descriptions.
+
+![AI Create Prompt](/screenshots/ai-create-prompt.png)
+
+**How to use:**
+
+1. Click **AI Create** button
+2. Describe what you want to test in plain English
+3. The AI generates a complete test script
+4. Review and customize the generated code
+5. Run to validate
+
+![AI Create Result](/screenshots/ai-create-result-dialog.png)
+
+**Example prompts:**
+- "Test login with valid credentials and verify dashboard loads"
+- "Check that the API returns 200 for /health endpoint"
+- "Verify user can add item to cart and checkout"
+
+## AI Fix
+
+Automatically fix failing tests by analyzing errors and suggesting corrections.
+
+![AI Fix Button](/screenshots/ai-fix-button.png)
+
+**How to use:**
+
+1. Run a test that fails
+2. Click **AI Fix** button
+3. AI analyzes the error and suggests fixes
+4. Review the proposed changes
+5. Apply and re-run
+
+![AI Fix Result](/screenshots/ai-fix-result-dialog.png)
+
+**What it fixes:**
+- Selector issues (element not found)
+- Timing problems (add waits)
+- Assertion failures
+- API response handling
+
+## Templates
+
+Start quickly with pre-built templates for common scenarios.
+
+![Code Templates](/screenshots/code-template.png)
+
+**Available templates:**
+- Login flow
+- Form submission
+- API CRUD operations
+- Database queries
+- E-commerce checkout
+- Authentication flows
+
+**How to use:**
+
+1. Click **Templates** in the editor
+2. Select a template category
+3. Choose specific template
+4. Customize for your application
+
+## Test Reports
+
+After running a test, view detailed execution reports.
+
+![Playground Report](/screenshots/playground-report.png)
+
+**Report includes:**
+- **Screenshots** — Visual state at each step
+- **Trace** — Step-by-step execution replay
+- **Video** — Full browser recording
+- **Logs** — Console output and errors
+- **Network** — HTTP requests and responses
+
+## Tips
+
+- Use **AI Create** to bootstrap tests quickly
+- Use **AI Fix** when you encounter selector or timing issues
+- Start with **Templates** for standard workflows
+- Access **Variables** for secrets like API keys
