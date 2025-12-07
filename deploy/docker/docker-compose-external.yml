@@ -22,13 +22,14 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   BETTER_AUTH_URL: ${BETTER_AUTH_URL}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
-  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-2} # 3 worker replicas × 1 concurrent run (align with worker deploy block)
-  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10}
-  MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-1} # One Playwright run per worker; add replicas before raising this
-  CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5} # Increased for 2 CPU nodes
-  CONTAINER_MEMORY_LIMIT_MB: ${CONTAINER_MEMORY_LIMIT_MB:-2048} # Increased for 4GB nodes
-  TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-120000}
-  JOB_EXECUTION_TIMEOUT_MS: ${JOB_EXECUTION_TIMEOUT_MS:-900000}
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1} # 1 worker replica × 1 concurrent run (keep in sync with replicas)
+  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10} # Queue size for single worker
+  # Note: MAX_CONCURRENT_EXECUTIONS is hardcoded to 1 in worker code. Scale via worker replicas instead.
+  # Container limits for 2 vCPU / 4GB servers
+  CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5}
+  CONTAINER_MEMORY_LIMIT_MB: ${CONTAINER_MEMORY_LIMIT_MB:-2048}
+  TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-300000}
+  JOB_EXECUTION_TIMEOUT_MS: ${JOB_EXECUTION_TIMEOUT_MS:-3600000}
   K6_TEST_EXECUTION_TIMEOUT_MS: ${K6_TEST_EXECUTION_TIMEOUT_MS:-3600000}
   K6_JOB_EXECUTION_TIMEOUT_MS: ${K6_JOB_EXECUTION_TIMEOUT_MS:-3600000}
 
@@ -53,6 +54,7 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
 
   # Playwright Configuration - Optimized for Supercheck execution service
   # PLAYWRIGHT_HEADLESS: ${PLAYWRIGHT_HEADLESS:-true}
+  PLAYWRIGHT_WORKERS: ${PLAYWRIGHT_WORKERS:-1} # Single worker for 2GB container memory
   PLAYWRIGHT_RETRIES: ${PLAYWRIGHT_RETRIES:-1}
   PLAYWRIGHT_TRACE: ${PLAYWRIGHT_TRACE:-retain-on-failure}
   PLAYWRIGHT_SCREENSHOT: ${PLAYWRIGHT_SCREENSHOT:-on}
@@ -255,14 +257,16 @@ services:
     networks:
       - supercheck-network
     deploy:
-      replicas: 4 # 4 workers for Medium instances (4GB/2CPU each)
+      replicas: ${WORKER_REPLICAS:-1} # Default: 1 worker for self-hosted (scale with WORKER_REPLICAS)
       resources:
+        # Resource limits for 2 vCPU / 4GB servers
+        # Worker spawns containers with 1.5 CPU + 2GB RAM
         limits:
-          cpus: "1.8" # Optimized for Medium instances (allows worker + 2GB/1.5CPU container)
-          memory: 3.0G # Optimized for Medium instances
+          cpus: "1.8"
+          memory: 3G
         reservations:
           cpus: "0.5"
-          memory: 1.5G
+          memory: 1G
 
       # Container Restart Protection (handles stuck/crashed containers)
       restart_policy:
