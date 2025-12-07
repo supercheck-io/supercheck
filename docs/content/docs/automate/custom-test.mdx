@@ -1,61 +1,43 @@
 ---
 title: Custom Test
-description: Write custom test scripts in TypeScript/JavaScript
+description: Write custom Node.js test scripts
 icon: SquareFunction
 ---
-Write fully custom test scripts for advanced testing scenarios.
 
-## What is a Custom Test?
+Write custom test scripts for advanced scenarios.
 
-Custom tests give you complete flexibility to:
-- Combine multiple test types
-- Use custom libraries
-- Implement complex logic
-- Integrate with external services
+## Create Test
 
-## Creating a Custom Test
+1. Go to **Create → Custom Test**
+2. Write TypeScript/JavaScript code
+3. Run and debug
+4. Save when passing
 
-1. Click **Create** → **Custom Test** in the sidebar
-2. Write your test script in TypeScript/JavaScript
-3. Use any npm packages you need
-4. Run and debug your test
-
-## Example Test
+## Example
 
 ```typescript
 import { test, expect } from '@supercheck/test';
-import axios from 'axios';
 
-test('complex workflow test', async () => {
-  // Step 1: Create user via API
-  const createResponse = await axios.post(
-    'https://api.example.com/users',
-    { name: 'Test User', email: 'test@example.com' }
-  );
-
-  const userId = createResponse.data.id;
-
-  // Step 2: Verify user exists
-  const getResponse = await axios.get(
-    `https://api.example.com/users/${userId}`
-  );
-
-  expect(getResponse.data.name).toBe('Test User');
-
-  // Step 3: Delete user
-  await axios.delete(`https://api.example.com/users/${userId}`);
+test('workflow test', async () => {
+  // Create user
+  const res = await fetch('https://api.example.com/users', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Test User' })
+  });
+  
+  const user = await res.json();
+  expect(user.id).toBeDefined();
+  
+  // Verify user
+  const getRes = await fetch(`https://api.example.com/users/${user.id}`);
+  const fetched = await getRes.json();
+  expect(fetched.name).toBe('Test User');
 });
 ```
 
-## Available Libraries
+## Features
 
-- All standard Node.js modules
-- Popular npm packages (axios, lodash, etc.)
-- Database clients
-- Testing utilities
-
-## Next Steps
-
-- [Organize tests](/docs/automate/tests)
-- [Create jobs](/docs/automate/jobs)
-- [Set up monitoring](/docs/monitor)
+- Full Node.js environment
+- Popular npm packages available
+- Access to variables and secrets
+- Custom assertions

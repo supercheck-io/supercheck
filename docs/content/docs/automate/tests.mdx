@@ -1,118 +1,87 @@
 ---
 title: Tests
-description: View and manage all your tests
+description: Create and manage test scripts
 icon: Code
 ---
 
-Create, manage, and organize all your automated tests in one place. Supercheck supports browser, API, database, custom, and performance tests.
+Tests are reusable scripts that validate your application. Create browser, API, database, custom, or performance tests.
+
+![Tests List](/screenshots/tests-list.png)
 
 ## Test Types
 
-**Browser Tests** - Automate web application interactions using Playwright
-- User flows, form submissions, navigation
-- Visual testing, screenshots
-- Cross-browser support
+<Cards>
+<Card icon={<Chrome className="text-sky-600" />} title="Browser Test">
+Playwright-based UI testing for user flows
+</Card>
 
-**API Tests** - Validate REST APIs and GraphQL endpoints
-- HTTP requests with assertions
-- Response validation
-- Authentication testing
+<Card icon={<ArrowLeftRight className="text-teal-600" />} title="API Test">
+HTTP and GraphQL endpoint validation
+</Card>
 
-**Database Tests** - Query and validate database state
-- SQL queries
-- Data validation
-- Schema checks
+<Card icon={<Database className="text-cyan-600" />} title="Database Test">
+SQL queries and data validation
+</Card>
 
-**Custom Tests** - Write flexible TypeScript/JavaScript tests
-- Any testing scenario
-- Custom logic and assertions
-- Third-party integrations
+<Card icon={<SquareFunction className="text-blue-600" />} title="Custom Test">
+Node.js scripts for any scenario
+</Card>
 
-**Performance Tests** - Load testing with k6
-- Stress testing
-- Scalability validation
-- Performance benchmarking
+<Card icon={<TrendingUp className="text-purple-600" />} title="Performance Test">
+k6 load testing from multiple regions
+</Card>
+</Cards>
 
-## Creating Tests
+## Create Test
 
-Each test type has a dedicated editor:
+1. Go to **Create** and select test type
+2. Write script in the [Playground](/docs/automate/playground)
+3. Use **AI Create** to generate from natural language
+4. Use **Templates** to start with pre-built scripts
+5. Click **Run** to validate
+6. **Save** when passing
 
-<Steps>
-  <Step>Navigate to **Automate**</Step>
-  <Step>Choose test type</Step>
-  <Step>Write or record your test</Step>
-  <Step>Run locally to validate</Step>
-  <Step>Save test</Step>
-  <Step>Add to job or schedule</Step>
-</Steps>
+## AI Features
 
-## Test Editor Features
+- **AI Create** — Generate tests from plain English descriptions
+- **AI Fix** — Automatically fix failing tests by analyzing errors
+- **Templates** — Pre-built scripts for common scenarios
 
-**Code Editor**
-- Syntax highlighting
-- Auto-completion
-- Error detection
-- Live validation
+See [Playground](/docs/automate/playground) for details.
 
-**Test Runner**
-- Run tests on-demand
-- View real-time results
-- Debug failures
-- AI-powered fix suggestions
-
-## Organizing Tests
-
-**Playground** - Quick test development and debugging
-- Temporary workspace
-- Rapid iteration
-- No save required
-
-**Saved Tests** - Production-ready tests
-- Version controlled
-- Can be added to jobs
-- Scheduled execution
-- CI/CD integration
-
-## Example: Browser Test
+## Browser Test Example
 
 ```typescript
-// Navigate and interact
-await page.goto("https://example.com/login");
-await page.fill("#email", "user@example.com");
-await page.fill("#password", getSecret("PASSWORD"));
-await page.click("button[type='submit']");
+import { test, expect } from '@playwright/test';
 
-// Assert success
-await expect(page.locator(".dashboard")).toBeVisible();
-```
-
-## Example: API Test
-
-```typescript
-// Make API request
-const response = await fetch("https://api.example.com/users", {
-  headers: { Authorization: `Bearer ${getSecret("API_KEY")}` }
+test('login flow', async ({ page }) => {
+  await page.goto('https://app.example.com/login');
+  await page.fill('#email', 'user@example.com');
+  await page.fill('#password', 'password');
+  await page.click('button[type="submit"]');
+  await expect(page).toHaveURL('/dashboard');
 });
-
-// Validate response
-expect(response.status).toBe(200);
-const data = await response.json();
-expect(data.users).toHaveLength(10);
 ```
 
-## AI-Powered Fixes
+## API Test Example
 
-When tests fail, use AI to suggest fixes:
-- Analyzes error messages
-- Reviews execution context
-- Generates fix suggestions
-- Updates test automatically
+```typescript
+const response = await fetch('https://api.example.com/users', {
+  headers: { 'Authorization': `Bearer ${getSecret('API_KEY')}` }
+});
+expect(response.status).toBe(200);
+```
 
-## Best Practices
+## Database Test Example
 
-- Use descriptive test names
-- Add comments for complex logic
-- Use variables for configuration
-- Add assertions for key validations
-- Keep tests independent
-- Regular maintenance and updates
+```sql
+SELECT COUNT(*) as user_count FROM users WHERE active = true;
+-- Assertion: user_count > 0
+```
+
+## Features
+
+- **Playground** — Interactive editor with AI assistance
+- **Variables** — Project-scoped secrets and config
+- **Reports** — Screenshots, traces, and logs
+- **Multi-region** — Performance tests from US, EU, APAC

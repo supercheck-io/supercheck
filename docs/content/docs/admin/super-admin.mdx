@@ -1,0 +1,71 @@
+---
+title: Super Admin
+description: System-wide administration for self-hosted deployments
+icon: UserPlus
+---
+
+Super Admin provides system-wide control for self-hosted deployments.
+
+## Enable Super Admin
+
+Set the `SUPER_ADMIN_EMAIL` environment variable:
+
+```bash
+SUPER_ADMIN_EMAIL=admin@yourdomain.com
+```
+
+The user with this email is automatically promoted to super admin on login.
+
+## Overview
+
+The Super Admin dashboard provides a system-wide view of all organizations, users, and queue status.
+
+![Super Admin Overview](/screenshots/super-admin-overview.png)
+
+## Organizations
+
+View and manage all organizations in the system. See member counts, project counts, and organization status.
+
+![Organizations](/screenshots/super-admin-organizations.png)
+
+## Users
+
+Manage all users system-wide. View user details, organization memberships, and account status.
+
+![Users](/screenshots/super-admin-users.png)
+
+## Queue Management
+
+Monitor BullMQ queues for test execution, monitoring, and background jobs. View queue health, pending jobs, and processing status.
+
+![BullMQ Queues](/screenshots/super-admin-bullmq-queues.png)
+
+## Capabilities
+
+| Feature | Description |
+|---------|-------------|
+| **Organizations** | View and manage all organizations |
+| **Users** | Manage all users system-wide |
+| **Impersonation** | Log in as any user for support |
+| **Queue Monitoring** | View BullMQ queue status and health |
+| **System Settings** | Configure global settings |
+
+## Impersonation
+
+Super admins can impersonate users for troubleshooting:
+
+1. Go to **Super Admin → Users**
+2. Find the user
+3. Click **Impersonate**
+4. A banner shows you're impersonating
+5. Click **Exit** to return
+
+<Callout type="warning">
+Impersonation is logged for audit purposes.
+</Callout>
+
+## Security
+
+- Only one super admin email is supported
+- Multiple emails will cause a startup error
+- All super admin actions are logged

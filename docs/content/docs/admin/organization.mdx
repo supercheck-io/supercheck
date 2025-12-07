@@ -1,0 +1,99 @@
+---
+title: Organization Admin
+description: Manage organization members, projects, and settings
+icon: UserCog
+---
+
+Manage your organization's members, projects, and view audit trails from the Admin panel.
+
+## Overview
+
+The organization admin dashboard provides a summary of your organization's activity, including member count, project count, and recent activity.
+
+![Organization Overview](/screenshots/org-admin-overview.png)
+
+## Projects
+
+Manage all projects within your organization. Create, edit, or archive projects as needed.
+
+![Projects List](/screenshots/org-admin-projects.png)
+
+### Create Project
+
+Create a new project to organize your tests, jobs, and monitors.
+
+1. Go to **Admin → Projects**
+2. Click **Create Project**
+3. Enter project name and description
+4. Configure project settings
+5. Save
+
+![Create Project](/screenshots/org-admin-create-project.png)
+
+## Members
+
+Invite and manage team members with role-based access control.
+
+### Invite Member
+
+1. Go to **Admin → Members**
+2. Click **Invite Member**
+3. Enter email and select role
+4. Send invitation
+
+![Invite Member Dialog](/screenshots/org-admin-member-intvite-dialog.png)
+
+### Email Invitation
+
+The invited member receives an email with a link to join your organization.
+
+![Email Invitation](/screenshots/org-admin-member-email-invitation.png)
+
+### Accept Invitation
+
+New members accept the invitation to join the organization.
+
+![Accept Invitation](/screenshots/org-admin-member-invite-aceptance.png)
+
+After accepting the invitation, new members can sign up or sign in to join the organization.
+
+![Invitation Signup](/screenshots/org-admin-member-invite-signup.png)
+
+
+
+## Roles
+
+The system uses a 6-role RBAC system with specialized roles for organization and project management.
+
+### Organization Roles
+
+| Role | Permissions |
+|------|-------------|
+| **Super Admin** | System-wide control, user management, and full access to everything. |
+| **Org Owner** | Full organization control, billing, and member management. |
+| **Org Admin** | Managing members and organization settings (cannot delete org). |
+
+### Project Roles
+
+| Role | Permissions |
+|------|-------------|
+| **Project Admin** | Full control of assigned projects (create/edit/delete resources). |
+| **Project Editor** | Create and edit resources in assigned projects (cannot delete). |
+| **Project Viewer** | Read-only access to assigned projects. |
+
+## Audit Log
+
+Track all actions performed within your organization. View who did what and when for compliance and security monitoring.
+
+![Audit Log](/screenshots/org-admin-audit-list.png)
+
+### Event Categories
+
+The audit log captures events across these categories:
+
+- **Authentication** — Login, logout, password resets
+- **Authorization** — Role changes, permission grants
+- **Resource Management** — Test creation, monitor updates, job deletions
+- **Execution** — Manual test runs, job triggers
+- **Configuration** — Settings changes, integration updates
+- **Security** — Failed logins, unauthorized access attempts
