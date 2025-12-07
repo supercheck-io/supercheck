@@ -113,10 +113,37 @@ export class ExecutionService implements OnModuleDestroy {
   private readonly testExecutionTimeoutMs: number;
   private readonly jobExecutionTimeoutMs: number;
   private readonly playwrightConfigPath: string;
-  private readonly maxConcurrentExecutions: number; // Configurable via MAX_CONCURRENT_EXECUTIONS env var
+
+  /**
+   * Maximum concurrent executions per worker instance.
+   *
+   * ARCHITECTURE DECISION: This is hardcoded to 1 because:
+   *
+   * 1. HORIZONTAL SCALING: We scale by adding more worker replicas (WORKER_REPLICAS=2)
+   *    rather than running multiple executions in a single worker. This provides:
+   *    - Better resource isolation (each test gets dedicated CPU/memory)
+   *    - Simpler failure handling (one test failure doesn't affect others)
+   *    - More predictable performance (no resource contention)
+   *
+   * 2. CONTAINER RESOURCES: Each test container uses 1.5 CPU and 2GB RAM
+   *    (default for 2 vCPU / 4GB servers). Running multiple Playwright
+   *    instances in parallel would cause:
+   *    - Memory pressure and OOM kills
+   *    - CPU contention affecting test reliability
+   *    - Video/trace recording failures
+   *
+   * 3. PLAYWRIGHT PARALLELIZATION: Playwright's --workers flag controls test-level
+   *    parallelism WITHIN a single execution. We use 1 worker (see playwright.config.js)
+   *    which is optimal for 2GB container. For faster execution on larger servers,
+   *    set PLAYWRIGHT_WORKERS=2 and increase container resources.
+   *
+   * To increase capacity: docker compose up -d --scale worker=4 (not this value)
+   */
+  private readonly maxConcurrentExecutions = 1;
+
   private readonly containerCpuLimit: number;
   private readonly containerMemoryLimitMb: number;
-  private readonly memoryThresholdMB = 2048; // 2GB memory threshold
+  private readonly memoryThresholdMB = 2048; // 2GB memory threshold (matches container limit)
   private activeExecutions: Map<
     string,
     {
@@ -148,20 +175,15 @@ export class ExecutionService implements OnModuleDestroy {
       60 * 60 * 1000, // 1 hour default
     );
 
-    const maxConcurrencyRaw =
-      this.configService.get<string>('MAX_CONCURRENT_EXECUTIONS') ??
-      process.env.MAX_CONCURRENT_EXECUTIONS;
-    const parsedConcurrency = Number.parseInt(maxConcurrencyRaw ?? '', 10);
-    this.maxConcurrentExecutions = Number.isFinite(parsedConcurrency)
-      ? Math.max(1, parsedConcurrency)
-      : 1; // Default to 1 concurrent execution (scale horizontally via replicas instead)
-
-    // Container resource limits
+    // Container resource limits (configurable for different deployment environments)
+    // Defaults for 2 vCPU / 4GB servers:
+    // - Container gets 1.5 CPU, 2GB RAM
+    // - Leaves 0.5 CPU, 2GB RAM for worker process + OS
     this.containerCpuLimit = parseFloat(
-      this.configService.get<string>('CONTAINER_CPU_LIMIT', '1.0'),
+      this.configService.get<string>('CONTAINER_CPU_LIMIT', '1.5'),
     );
     this.containerMemoryLimitMb = parseInt(
-      this.configService.get<string>('CONTAINER_MEMORY_LIMIT_MB', '1536'),
+      this.configService.get<string>('CONTAINER_MEMORY_LIMIT_MB', '2048'),
       10,
     );
 
@@ -193,7 +215,7 @@ export class ExecutionService implements OnModuleDestroy {
 
     // Log configuration
     this.logger.log(
-      `Max concurrent executions: ${this.maxConcurrentExecutions}`,
+      `Concurrent executions per worker: ${this.maxConcurrentExecutions} (scale via WORKER_REPLICAS, not this value)`,
     );
     this.logger.log(
       `Container limits: CPU=${this.containerCpuLimit}, Memory=${this.containerMemoryLimitMb}MB`,

@@ -1378,6 +1378,8 @@ graph LR
 - Shared Memory: 512m (for browsers)
 - Temporary Files: Uses regular container filesystem
 
+> **Note**: Defaults for 2 vCPU / 4GB servers. For larger servers, increase container resources.
+
 ### Resource Allocation Strategy
 
 ```mermaid
@@ -1598,7 +1600,7 @@ Partial reports available for analysis
 
 **Timeout Configuration:**
 - `TEST_EXECUTION_TIMEOUT_MS=300000` (5 minutes per test)
-- `JOB_EXECUTION_TIMEOUT_MS=900000` (15 minutes per job)
+- `JOB_EXECUTION_TIMEOUT_MS=3600000` (60 minutes per job)
 - `K6_TEST_EXECUTION_TIMEOUT_MS=3600000` (60 minutes for k6)
 
 | Out of memory | Fail job, don't retry | Resource issue, needs manual intervention |
@@ -1668,10 +1670,12 @@ graph TB
 
 | Environment | CPU Limits | Memory Limits | CPU Reservations | Memory Reservations |
 |-------------|-----------|---------------|------------------|-------------------|
-| **Production** (docker-compose.yml) | 1.8 | 3.0G | 0.5 | 1.5G |
-| **Staging/Secure** (docker-compose-secure.yml) | 1.8 | 3.0G | 0.5 | 1.5G |
-| **External** (docker-compose-external.yml) | 1.8 | 3.0G | 0.5 | 1.5G |
-| **Local Dev** (docker-compose-local.yml) | 1.8 | 3.0G | 0.5 | 1.5G |
+| **Production** (docker-compose.yml) | 1.8 | 3G | 0.5 | 1G |
+| **Staging/Secure** (docker-compose-secure.yml) | 1.8 | 3G | 0.5 | 1G |
+| **External** (docker-compose-external.yml) | 1.8 | 3G | 0.5 | 1G |
+| **Local Dev** (docker-compose-local.yml) | 1.8 | 3G | 0.5 | 1G |
+
+> **Note**: Worker resource limits for orchestrating container execution. Adjust based on server specifications.
 
 Worker container resources provide overhead for:
 - Docker socket communication with execution containers
@@ -1681,49 +1685,53 @@ Worker container resources provide overhead for:
 
 **Environment variables to tune:**
 - `TEST_EXECUTION_TIMEOUT_MS=300000` (Test timeout in milliseconds, default 5 min)
-- `MAX_CONCURRENT_EXECUTIONS=1` (Single Playwright container execution per worker)
-- `PLAYWRIGHT_WORKERS=2` (Parallel test execution within container)
-- `K6_MAX_CONCURRENCY=1` (Single k6 test container per worker)
-- `RUNNING_CAPACITY=6` (Global queue system parallelism, 3 replicas × 2 concurrent)
-- `QUEUED_CAPACITY=50` (Queue depth limit)
+- `PLAYWRIGHT_WORKERS=1` (Parallel test execution within container, default for 2GB)
+- `RUNNING_CAPACITY=1` (Default: 1 worker × 1 concurrent run, keep in sync with WORKER_REPLICAS)
+- `QUEUED_CAPACITY=10` (Queue depth limit for single worker)
 - `CONTAINER_CPU_LIMIT=1.5` (CPU limit per execution container)
 - `CONTAINER_MEMORY_LIMIT_MB=2048` (Memory limit per execution container in MB)
 
+> **Note**: `MAX_CONCURRENT_EXECUTIONS` and `K6_MAX_CONCURRENCY` are hardcoded to 1 in the worker code. Scale capacity by adding more worker replicas instead.
+
 **Playwright Performance Tuning:**
 - **Test Timeout**: 240s per individual test (global timeout 5 minutes)
-- **Worker Count**: 2 workers run tests in parallel inside container
+- **Worker Count**: 1 worker runs tests inside container (default for 2GB container memory)
 - **Retry Strategy**: 1 retry on failure
-- **Expected throughput**: 2 parallel workers × multiple tests = 1.5-2x faster execution
-- **Container Resources**: 2048MB RAM, 1.5 CPUs per execution container (configurable via env vars)
+- **Expected throughput**: 1 worker × sequential test execution
+- **Container Resources**: 2GB RAM, 1.5 CPUs per execution container (default for 2 vCPU / 4GB servers)
+
+> **Worker Count Guidance:**
+> - Default: 1 worker for 2GB container memory (2 vCPU / 4GB servers)
+> - For larger servers (4+ vCPU, 8GB+ RAM), set `PLAYWRIGHT_WORKERS=2` for better performance
+> - Each Chromium instance uses ~600MB-1GB RAM
 
 **K6 Performance Tuning:**
 - **VU Limit**: 100-500 concurrent virtual users depending on endpoint complexity
-- **Container Resources**: 2048MB RAM, 1.5 CPUs per execution container
+- **Container Resources**: 2GB RAM, 1.5 CPUs per execution container
 - **Expected throughput**: Can handle high-concurrency load tests efficiently
 - **Shared Memory**: Default container configuration for dashboard exports
 
 **Tuning Guidelines:**
-- Increase `MAX_CONCURRENT_EXECUTIONS` if worker has spare resources (CPU/RAM)
-- Increase `PLAYWRIGHT_WORKERS` for faster test execution (requires more memory)
+- Increase `PLAYWRIGHT_WORKERS` for faster test execution (requires more container memory)
 - Increase `TEST_EXECUTION_TIMEOUT_MS` if tests consistently timeout
 - Adjust `CONTAINER_CPU_LIMIT` and `CONTAINER_MEMORY_LIMIT_MB` for container resources
 - Adjust `RUNNING_CAPACITY` based on available system resources (scale horizontally with replicas)
 - Monitor queue depth to detect bottlenecks
-- Each worker replica requires: 1.8 CPUs limit, 3.0GB memory limit (for orchestration)
+- Each worker replica requires: 1.8 CPUs limit, 3GB memory limit (for orchestration)
 
 ### Key Performance Metrics
 
 | Metric | Target | Current | Status | Notes |
 |--------|--------|---------|--------|-------|
 | Queue Wait Time | < 30s | 15s avg | ✅ | BullMQ with efficient queue processing |
-| Test Execution Time (Playwright) | < 2 min | 1.0-1.5 min avg | ✅ | 2 parallel workers per container |
+| Test Execution Time (Playwright) | < 2 min | 1.0-1.5 min avg | ✅ | 1 worker per container |
 | Test Execution Time (K6) | < 10 min | 5-8 min avg | ✅ | High-concurrency load testing |
 | Artifact Upload Time | < 10s | 8s avg | ✅ | S3/MinIO transfer with optimized chunks |
-| Worker Utilization | 70-80% | 75% avg | ✅ | 3 replicas with balanced load |
-| Memory per Container | 2048MB | 2048MB (Playwright/K6) | ✅ | Configurable via CONTAINER_MEMORY_LIMIT_MB |
+| Worker Utilization | 70-80% | 75% avg | ✅ | Scale with WORKER_REPLICAS |
+| Memory per Container | 2GB | 2048MB (Playwright/K6) | ✅ | Configurable via CONTAINER_MEMORY_LIMIT_MB |
 | CPU per Container | 1.5 | 1.5 (Playwright/K6) | ✅ | Configurable via CONTAINER_CPU_LIMIT |
-| Concurrent Executions | 2 per worker | 2 | ✅ | Scale horizontally with replicas |
-| Global Throughput (3 replicas) | 6 concurrent | 6 | ✅ | 3 workers × 2 concurrent executions |
+| Playwright Workers | 1 | 1 | ✅ | Default for 2GB container memory |
+| Concurrent Executions | 1 per worker | 1 | ✅ | Scale horizontally with replicas |
 
 ### Redis Memory Management
 
@@ -1806,11 +1814,10 @@ graph TB
 ### Environment Variables
 
 **Capacity Configuration:**
-- `RUNNING_CAPACITY` - Maximum concurrent executions (default: 5)
-- `QUEUED_CAPACITY` - Maximum queued jobs (default: 50)
-- `MAX_CONCURRENT_EXECUTIONS` - Per-worker concurrency (default: 1)
+- `RUNNING_CAPACITY` - Maximum concurrent executions (default: 1)
+- `QUEUED_CAPACITY` - Maximum queued jobs (default: 10)
 
-> **Note:** These defaults are placeholders. When subscription-aware capacity management ships, limits will be derived from organization settings stored in the database.
+> **Note**: `MAX_CONCURRENT_EXECUTIONS` is hardcoded to 1 in the worker code. Scale capacity by adding more worker replicas (`WORKER_REPLICAS`) instead.
 
 **Redis Capacity Keys:**
 - `capacity:running:{orgId}` - Running job counter per organization
@@ -1818,8 +1825,8 @@ graph TB
 - TTL: 24 hours for all capacity keys
 
 **Timeout Configuration:**
-- `TEST_EXECUTION_TIMEOUT_MS` - Single test timeout (default: 120000 = 2 min)
-- `JOB_EXECUTION_TIMEOUT_MS` - Job timeout (default: 900000 = 15 min)
+- `TEST_EXECUTION_TIMEOUT_MS` - Single test timeout (default: 300000 = 5 min)
+- `JOB_EXECUTION_TIMEOUT_MS` - Job timeout (default: 3600000 = 60 min)
 
 **Playwright Configuration:**
 - `PLAYWRIGHT_HEADLESS` - Run headless (default: true)

@@ -22,25 +22,24 @@ x-common-env: &common-env # Database Configuration
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
   # Scaling Configuration
-  # Environment variables for scaling:
-  # - WORKER_REPLICAS: Number of worker replicas (default: 3)
-  # - RUNNING_CAPACITY: Total concurrent test capacity (default: 6)
-  # - QUEUED_CAPACITY: Maximum queue size (default: 50)
+  # Default: 1 worker for single-server self-hosted deployments
+  # Scale by setting WORKER_REPLICAS and RUNNING_CAPACITY to the same value
   #
   # Scaling Examples:
-  #   Medium (4GB/2CPU): WORKER_REPLICAS=4 RUNNING_CAPACITY=4
-  #   Large (8GB/4CPU): WORKER_REPLICAS=8 RUNNING_CAPACITY=8
-  #   X-Large (16GB/8CPU): WORKER_REPLICAS=16 RUNNING_CAPACITY=16
+  #   Single Server (4GB/4CPU): WORKER_REPLICAS=1 RUNNING_CAPACITY=1 (default)
+  #   Medium Server (8GB/4CPU): WORKER_REPLICAS=2 RUNNING_CAPACITY=2
+  #   Large Server (16GB/8CPU): WORKER_REPLICAS=4 RUNNING_CAPACITY=4
   #
-  # Usage: WORKER_REPLICAS=4 docker-compose up -d
+  # Usage: WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker-compose up -d
 
-  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-4} # 4 worker replicas × 1 concurrent run (keep env + replicas in sync)
-  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-50}
-  MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-1} # One Playwright run per worker for Medium instances; scale replicas for concurrency
-  CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5} # Increased for 2 CPU nodes
-  CONTAINER_MEMORY_LIMIT_MB: ${CONTAINER_MEMORY_LIMIT_MB:-2048} # Increased for 4GB nodes
-  TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-120000}
-  JOB_EXECUTION_TIMEOUT_MS: ${JOB_EXECUTION_TIMEOUT_MS:-900000}
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1} # 1 worker replica × 1 concurrent run (keep in sync with replicas)
+  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10} # Queue size for single worker
+  # Note: MAX_CONCURRENT_EXECUTIONS is hardcoded to 1 in worker code. Scale via WORKER_REPLICAS instead.
+  # Container limits for 2 vCPU / 4GB servers
+  CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5}
+  CONTAINER_MEMORY_LIMIT_MB: ${CONTAINER_MEMORY_LIMIT_MB:-2048}
+  TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-300000}
+  JOB_EXECUTION_TIMEOUT_MS: ${JOB_EXECUTION_TIMEOUT_MS:-3600000}
   K6_TEST_EXECUTION_TIMEOUT_MS: ${K6_TEST_EXECUTION_TIMEOUT_MS:-3600000}
   K6_JOB_EXECUTION_TIMEOUT_MS: ${K6_JOB_EXECUTION_TIMEOUT_MS:-3600000}
 
@@ -68,6 +67,7 @@ x-common-env: &common-env # Database Configuration
 
   # Playwright Configuration - Optimized for Supercheck execution service
   # PLAYWRIGHT_HEADLESS: ${PLAYWRIGHT_HEADLESS:-true}
+  PLAYWRIGHT_WORKERS: ${PLAYWRIGHT_WORKERS:-1} # Single worker for 2GB container memory
   PLAYWRIGHT_RETRIES: ${PLAYWRIGHT_RETRIES:-1}
   PLAYWRIGHT_TRACE: ${PLAYWRIGHT_TRACE:-retain-on-failure}
   PLAYWRIGHT_SCREENSHOT: ${PLAYWRIGHT_SCREENSHOT:-on}
@@ -206,7 +206,7 @@ services:
     environment:
       <<: *common-env
       # Worker-specific configuration (inherits all common env vars)
-      MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-1} # One per worker, scale horizontally
+      # Note: MAX_CONCURRENT_EXECUTIONS=1 is hardcoded in worker code (scale via replicas)
     volumes:
       # Mount Docker socket for container-based execution
       # Worker spawns isolated containers for Playwright and K6 tests
@@ -239,14 +239,16 @@ services:
     networks:
       - supercheck-network
     deploy:
-      replicas: ${WORKER_REPLICAS:-4} # Scale horizontally for 4 Medium instances
+      replicas: ${WORKER_REPLICAS:-1} # Default: 1 worker for self-hosted (scale with WORKER_REPLICAS)
       resources:
+        # Resource limits for 2 vCPU / 4GB servers
+        # Worker spawns containers with 1.5 CPU + 2GB RAM
         limits:
-          cpus: "1.8" # Optimized for Medium instances (allows worker + 2GB/1.5CPU container)
-          memory: 3.0G # Reduced from 6G - optimized for Medium instances
+          cpus: "1.8"
+          memory: 3G
         reservations:
           cpus: "0.5"
-          memory: 1.5G
+          memory: 1G
 
       # Container Restart Protection (handles stuck/crashed containers)
       restart_policy:

@@ -31,14 +31,15 @@ const getOptimalWorkerCount = () => {
   const isDevelopment = process.env.NODE_ENV === 'development';
   const isProduction = process.env.NODE_ENV === 'production';
 
-  // Use 2 workers for better performance
-  // Container has 2GB RAM and 2 CPUs - can handle 2 parallel browser instances
+  // Use 1 worker for 2 vCPU / 4GB server (2GB container memory)
+  // Each Chromium instance uses ~600MB-1GB, so 1 worker = ~1GB, leaving headroom
+  // For larger servers, override with PLAYWRIGHT_WORKERS=2 env var
   if (isProduction || isCI) {
-    return 2; // Optimized for container resources (2 CPUs, 2GB RAM)
+    return 1; // Default for 2GB container memory
   }
 
-  // For development, allow slightly more parallelism
-  return isDevelopment ? 2 : 1;
+  // For development, use single worker for stability
+  return isDevelopment ? 1 : 1;
 };
 
 console.log(`Playwright Config Loaded`);

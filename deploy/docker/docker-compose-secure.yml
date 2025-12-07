@@ -13,21 +13,23 @@ x-common-env: &common-env # Database Configuration
   REDIS_PASSWORD: ${REDIS_PASSWORD:-supersecure-redis-password-change-this}
   REDIS_URL: ${REDIS_URL:-redis://:supersecure-redis-password-change-this@redis:6379}
 
-  # App Configuration
-  NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://demo.supercheck.io}
-  # Runtime env vars for middleware (middleware can't access NEXT_PUBLIC_ vars at runtime)
-  APP_URL: https://demo.supercheck.io
-  STATUS_PAGE_DOMAIN: supercheck.io
-  BETTER_AUTH_URL: https://demo.supercheck.io
+  # App Configuration - all URLs derived from APP_DOMAIN
+  # Users only need to set APP_DOMAIN in .env file
+  APP_DOMAIN: ${APP_DOMAIN:-demo.supercheck.io}
+  NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://${APP_DOMAIN:-demo.supercheck.io}}
+  APP_URL: ${APP_URL:-https://${APP_DOMAIN:-demo.supercheck.io}}
+  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-${APP_DOMAIN:-demo.supercheck.io}}
+  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://${APP_DOMAIN:-demo.supercheck.io}}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
-  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-4} # 4 worker replicas × 1 concurrent run (keep env + replicas in sync)
-  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10} # Max queued jobs before backpressure (default: 10)
-  MAX_CONCURRENT_EXECUTIONS: ${MAX_CONCURRENT_EXECUTIONS:-1} # One Playwright run per worker for Medium instances; scale replicas for concurrency
-  CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5} # Increased for 2 CPU nodes
-  CONTAINER_MEMORY_LIMIT_MB: ${CONTAINER_MEMORY_LIMIT_MB:-2048} # Increased for 4GB nodes
-  TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-120000}
-  JOB_EXECUTION_TIMEOUT_MS: ${JOB_EXECUTION_TIMEOUT_MS:-900000}
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1} # 1 worker replica × 1 concurrent run (keep in sync with replicas)
+  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10} # Queue size for single worker
+  # Note: MAX_CONCURRENT_EXECUTIONS is hardcoded to 1 in worker code. Scale via WORKER_REPLICAS instead.
+  # Container limits for 2 vCPU / 4GB servers
+  CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5}
+  CONTAINER_MEMORY_LIMIT_MB: ${CONTAINER_MEMORY_LIMIT_MB:-2048}
+  TEST_EXECUTION_TIMEOUT_MS: ${TEST_EXECUTION_TIMEOUT_MS:-300000}
+  JOB_EXECUTION_TIMEOUT_MS: ${JOB_EXECUTION_TIMEOUT_MS:-3600000}
   K6_TEST_EXECUTION_TIMEOUT_MS: ${K6_TEST_EXECUTION_TIMEOUT_MS:-3600000}
   K6_JOB_EXECUTION_TIMEOUT_MS: ${K6_JOB_EXECUTION_TIMEOUT_MS:-3600000}
 
@@ -52,6 +54,7 @@ x-common-env: &common-env # Database Configuration
 
   # Playwright Configuration - Optimized for Supercheck execution service
   # PLAYWRIGHT_HEADLESS: ${PLAYWRIGHT_HEADLESS:-true}
+  PLAYWRIGHT_WORKERS: ${PLAYWRIGHT_WORKERS:-1} # Single worker for 2GB container memory
   PLAYWRIGHT_RETRIES: ${PLAYWRIGHT_RETRIES:-1}
   PLAYWRIGHT_TRACE: ${PLAYWRIGHT_TRACE:-retain-on-failure}
   PLAYWRIGHT_SCREENSHOT: ${PLAYWRIGHT_SCREENSHOT:-on}
@@ -118,9 +121,8 @@ x-common-env: &common-env # Database Configuration
   # Options: local (for local dev - processes all regions) | us-east | eu-central | asia-pacific (for production)
   WORKER_LOCATION: ${WORKER_LOCATION:-local}
 
-  # Traefik/HTTPS Configuration
-  APP_DOMAIN: demo.supercheck.io
-  ACME_EMAIL: hello@supercheck.io
+  # ACME/Let's Encrypt email for SSL certificates
+  ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
 
   # Demo mode - shows demo badge in UI (runtime configurable)
   DEMO_MODE: ${DEMO_MODE:-true}
@@ -210,30 +212,29 @@ services:
     labels:
       - "traefik.enable=true"
 
-      # Main app — exact host (demo.supercheck.io or override with APP_DOMAIN env var)
-      - "traefik.http.routers.app.rule=Host(`demo.supercheck.io`)"
+      # Main app — uses APP_DOMAIN from environment
+      - "traefik.http.routers.app.rule=Host(`${APP_DOMAIN:-app.supercheck.io}`)"
       - "traefik.http.routers.app.priority=100"
       - "traefik.http.routers.app.entrypoints=websecure"
       - "traefik.http.routers.app.tls=true"
       - "traefik.http.routers.app.service=app"
 
-      # Status pages — any subdomain under supercheck.io (priority 50 to match after main app)
-      # Traefik v3 HostRegexp: match alphanumeric subdomains (UUIDs)
-      # Main app router handles demo.supercheck.io first (higher priority)
-      - "traefik.http.routers.status-pages.rule=HostRegexp(`[a-zA-Z0-9-]+\\.supercheck\\.io`)"
+      # Status pages — wildcard subdomain (extracts base domain from APP_DOMAIN)
+      # Note: For status pages, configure STATUS_PAGE_BASE_DOMAIN separately if needed
+      - "traefik.http.routers.status-pages.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_BASE_DOMAIN:-supercheck.io}`)"
       - "traefik.http.routers.status-pages.priority=50"
       - "traefik.http.routers.status-pages.entrypoints=websecure"
       - "traefik.http.routers.status-pages.tls=true"
       - "traefik.http.routers.status-pages.service=app"
 
       # HTTP → HTTPS redirect for main app
-      - "traefik.http.routers.app-http.rule=Host(`demo.supercheck.io`)"
+      - "traefik.http.routers.app-http.rule=Host(`${APP_DOMAIN:-app.supercheck.io}`)"
       - "traefik.http.routers.app-http.entrypoints=web"
       - "traefik.http.routers.app-http.middlewares=app-https-redirect"
       - "traefik.http.routers.app-http.service=app"
 
       # HTTP → HTTPS redirect for status pages
-      - "traefik.http.routers.status-pages-http.rule=HostRegexp(`[a-zA-Z0-9-]+\\.supercheck\\.io`)"
+      - "traefik.http.routers.status-pages-http.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_BASE_DOMAIN:-supercheck.io}`)"
       - "traefik.http.routers.status-pages-http.entrypoints=web"
       - "traefik.http.routers.status-pages-http.middlewares=app-https-redirect"
       - "traefik.http.routers.status-pages-http.service=app"
@@ -296,14 +297,16 @@ services:
     networks:
       - supercheck-network
     deploy:
-      replicas: 3 # 3 monitor workers for critical monitoring (1 spare node for tests)
+      replicas: ${WORKER_REPLICAS:-1} # Default: 1 worker for self-hosted (scale with WORKER_REPLICAS)
       resources:
+        # Resource limits for 2 vCPU / 4GB servers
+        # Worker spawns containers with 1.5 CPU + 2GB RAM
         limits:
-          cpus: "1.8" # Allows worker + one 2GB/1.5CPU container execution
-          memory: 3.0G
+          cpus: "1.8"
+          memory: 3G
         reservations:
           cpus: "0.5"
-          memory: 1.5G
+          memory: 1G
 
       # Container Restart Protection (handles stuck/crashed containers)
       restart_policy:
