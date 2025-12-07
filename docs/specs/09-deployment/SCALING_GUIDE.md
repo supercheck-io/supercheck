@@ -183,24 +183,24 @@ The scaling configuration is built into the main Docker Compose files:
 
 | Host Configuration | Recommended Workers | Total Capacity   | Environment Variables                    |
 | ------------------ | ------------------- | ---------------- | ---------------------------------------- |
-| 4 vCPU / 8 GB      | 2 workers           | 4 concurrent     | `WORKER_REPLICAS=2 RUNNING_CAPACITY=4`   |
-| 8 vCPU / 16 GB     | 3-4 workers         | 6-8 concurrent   | `WORKER_REPLICAS=3 RUNNING_CAPACITY=6`   |
-| 16 vCPU / 32 GB    | 6-8 workers         | 12-16 concurrent | `WORKER_REPLICAS=6 RUNNING_CAPACITY=12`  |
-| 32 vCPU / 64 GB    | 12-16 workers       | 24-32 concurrent | `WORKER_REPLICAS=12 RUNNING_CAPACITY=24` |
+| 4 vCPU / 8 GB      | 1 worker (default)  | 1 concurrent     | `WORKER_REPLICAS=1 RUNNING_CAPACITY=1`   |
+| 8 vCPU / 16 GB     | 2 workers           | 2 concurrent     | `WORKER_REPLICAS=2 RUNNING_CAPACITY=2`   |
+| 16 vCPU / 32 GB    | 4 workers           | 4 concurrent     | `WORKER_REPLICAS=4 RUNNING_CAPACITY=4`   |
+| 32 vCPU / 64 GB    | 8 workers           | 8 concurrent     | `WORKER_REPLICAS=8 RUNNING_CAPACITY=8`   |
 
 ### Workload-Based Scaling
 
 #### High-Throughput Workloads
 
 - **Many small tests**: More workers, standard memory
-- **Configuration**: `WORKER_REPLICAS=8` `MAX_CONCURRENT_EXECUTIONS=1`
-- **Total**: 8 concurrent capacity
+- **Configuration**: `WORKER_REPLICAS=8 RUNNING_CAPACITY=8`
+- **Total**: 8 concurrent capacity (one test per worker)
 
 #### Memory-Intensive Workloads
 
 - **Large browser tests**: Fewer workers, more memory per worker
-- **Configuration**: `WORKER_REPLICAS=4` `MAX_CONCURRENT_EXECUTIONS=1`
-- **Total**: 4 concurrent capacity with 3GB per worker
+- **Configuration**: `WORKER_REPLICAS=4 RUNNING_CAPACITY=4`
+- **Total**: 4 concurrent capacity with 6GB per worker
 
 ### Auto-Scaling Considerations
 
@@ -256,6 +256,8 @@ Test execution containers have these limits enforced by the ContainerExecutorSer
 - **Processes**: 100 max processes
 - **Shared Memory**: 512MB for browsers
 - **Temporary Storage**: 512MB tmpfs
+
+> **Note**: These defaults are for 2 vCPU / 4GB servers. Increase for larger deployments.
 
 ### Resource Monitoring
 
@@ -530,29 +532,30 @@ WORKER_REPLICAS=8 RUNNING_CAPACITY=16 docker-compose up -d
 ### High-Throughput Setup
 
 ```bash
-# Optimized for many small tests
-WORKER_REPLICAS=8 MAX_CONCURRENT_EXECUTIONS=1 RUNNING_CAPACITY=8 docker-compose up -d
+# Optimized for many small tests (one per worker for stability)
+WORKER_REPLICAS=8 RUNNING_CAPACITY=8 docker-compose up -d
 ```
 
 ### Memory-Intensive Setup
 
 ```bash
-# Optimized for large browser tests
-WORKER_REPLICAS=4 MAX_CONCURRENT_EXECUTIONS=1 RUNNING_CAPACITY=4 docker-compose up -d
+# Optimized for large browser tests with more memory per worker
+WORKER_REPLICAS=4 RUNNING_CAPACITY=4 docker-compose up -d
 ```
 
 ## Environment Variables
 
 | Variable                    | Default | Description                          |
 | --------------------------- | ------- | ------------------------------------ |
-| `WORKER_REPLICAS`           | 3       | Number of worker replicas            |
-| `WORKER_CPU_LIMIT`          | 2.0     | CPU limit per worker                 |
-| `WORKER_MEMORY_LIMIT`       | 2G      | Memory limit per worker              |
-| `RUNNING_CAPACITY`          | 6       | Total concurrent test capacity       |
-| `QUEUED_CAPACITY`           | 50      | Maximum queue size                   |
-| `MAX_CONCURRENT_EXECUTIONS` | 1       | Concurrent tests per worker          |
+| `WORKER_REPLICAS`           | 1       | Number of worker replicas            |
+| `WORKER_CPU_LIMIT`          | 1.8     | CPU limit per worker                 |
+| `WORKER_MEMORY_LIMIT`       | 3G      | Memory limit per worker              |
+| `RUNNING_CAPACITY`          | 1       | Total concurrent test capacity       |
+| `QUEUED_CAPACITY`           | 10      | Queue size for single worker         |
 | `CONTAINER_CPU_LIMIT`       | 1.5     | CPU limit per test container         |
 | `CONTAINER_MEMORY_LIMIT_MB` | 2048    | Memory limit per test container (MB) |
+
+> **Note**: `MAX_CONCURRENT_EXECUTIONS` is hardcoded to 1 in the worker code. Scale capacity by adding more worker replicas. Defaults for 2 vCPU / 4GB servers.
 
 ## Next Steps
 

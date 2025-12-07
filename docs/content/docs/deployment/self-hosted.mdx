@@ -1,87 +1,228 @@
 ---
 title: Self-Hosted Setup
-description: Step-by-step Docker Compose deployment
+description: Docker Compose deployment and configuration
 icon: Container
 ---
 
-## 1. Install Docker
+## Deployment Options
 
+| Option | SSL/HTTPS | Status Pages |
+|--------|-----------|--------------| 
+| **Without Domain** | ❌ HTTP only | ❌ No |
+| **With Domain** | ✅ Automatic | ✅ Yes |
+
+---
+
+## Option 1: Without Domain
+
+Best for testing or internal networks. **No configuration required** — all secrets are auto-generated.
+
+### 1. Install Docker
+
+<Callout type="info">
+**Skip this step** if you already have Docker or Docker Desktop installed.
+</Callout>
+
+**Option A: Docker Engine (Linux/Server)**
 ```bash
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 ```
 
-## 2. Clone Repository
+**Option B: Docker Desktop (Mac/Windows/Linux)**
+
+Download from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
+
+### 2. Clone Repository
 
 ```bash
 git clone https://github.com/supercheck-io/supercheck.git
 cd supercheck/deploy/docker
 ```
 
-## 3. Generate Secrets
+### 3. Configure OAuth
+
+At least one OAuth provider is required. Create a `.env` file:
 
 ```bash
-export BETTER_AUTH_SECRET=$(openssl rand -hex 16)
-export SECRET_ENCRYPTION_KEY=$(openssl rand -hex 16)
+# GitHub OAuth (get from https://github.com/settings/developers)
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
 ```
 
-<Callout type="warning">
-Save these secrets. You'll need them for future updates.
+See [OAuth Setup](#oauth-required) for detailed instructions.
+
+### 4. Deploy
+
+```bash
+docker compose up -d
+```
+
+Access at `http://localhost:3000`.
+
+<Callout type="info">
+Security secrets (`BETTER_AUTH_SECRET`, `SECRET_ENCRYPTION_KEY`, database passwords) are auto-generated with secure defaults. Override in `.env` only if needed.
 </Callout>
 
-## 4. Configure Environment
+---
 
-Create `.env` file:
+## Option 2: With Domain
+
+For deployments with HTTPS and status pages.
+
+### 1. Install Docker
+
+<Callout type="info">
+**Skip this step** if you already have Docker or Docker Desktop installed.
+</Callout>
+
+**Option A: Docker Engine (Linux/Server)**
+```bash
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+```
+
+**Option B: Docker Desktop (Mac/Windows/Linux)**
+
+Download from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
+
+### 2. Configure DNS
+
+1. Go to your DNS provider (Cloudflare, Route53, etc.)
+2. Create an **A Record**: `app.yourdomain.com` → Your server IP
+3. For status pages: `*.yourdomain.com` → Your server IP
+
+<Callout type="info">
+DNS changes take 5-30 minutes. Verify with `dig app.yourdomain.com`.
+</Callout>
+
+### 3. Clone Repository
 
 ```bash
-# Required
-NEXT_PUBLIC_APP_URL=https://supercheck.yourdomain.com
-APP_URL=https://supercheck.yourdomain.com
-BETTER_AUTH_URL=https://supercheck.yourdomain.com
-BETTER_AUTH_SECRET=your-generated-secret
-SECRET_ENCRYPTION_KEY=your-generated-key
+git clone https://github.com/supercheck-io/supercheck.git
+cd supercheck/deploy/docker
+```
 
-# Domain
-APP_DOMAIN=supercheck.yourdomain.com
+### 4. Configure Environment
+
+Create `.env` file with your domain:
+
+```bash
+# Your domain (required) - all URLs are derived from this
+APP_DOMAIN=app.yourdomain.com
 ACME_EMAIL=admin@yourdomain.com
 
-# Self-hosted mode
-SELF_HOSTED=true
-
-# Database passwords
-DB_PASSWORD=change-this
-REDIS_PASSWORD=change-this
+# OAuth (at least one provider required)
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
 ```
 
-## 5. Deploy
+<Callout type="info">
+Security secrets are auto-generated. Only your domain is required.
+</Callout>
+
+### 5. Deploy
 
 ```bash
 docker compose -f docker-compose-secure.yml up -d
 ```
 
-## 6. Verify
+Access at `https://app.yourdomain.com`.
+
+---
+
+## OAuth (Required)
+
+At least one provider is required for authentication.
+
+### GitHub OAuth
+
+1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
+2. Click **New OAuth App**
+3. Set callback URL: `https://app.yourdomain.com/api/auth/callback/github`
 
 ```bash
-# Check status
-docker compose -f docker-compose-secure.yml ps
-
-# View logs
-docker compose -f docker-compose-secure.yml logs -f app
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
 ```
 
-Open `https://supercheck.yourdomain.com` and create your account.
+### Google OAuth
 
-## Update
+1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+2. Create OAuth 2.0 credentials
+3. Add redirect URI: `https://app.yourdomain.com/api/auth/callback/google`
 
 ```bash
-docker compose -f docker-compose-secure.yml pull
-docker compose -f docker-compose-secure.yml up -d
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+```
+
+---
+
+## Optional: Email (SMTP)
+
+Required for alerts, password resets, and invitations.
+
+```bash
+# Your SMTP server (Gmail, SendGrid, Mailgun, AWS SES, etc.)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM_EMAIL=notifications@yourdomain.com
+```
+
+---
+
+## Optional: AI Features
+
+Enables AI-powered test fix suggestions.
+
+```bash
+# OpenAI API key from https://platform.openai.com
+OPENAI_API_KEY=sk-your-api-key
+
+# Model options: gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo
+AI_MODEL=gpt-4o-mini
+```
+
+---
+
+## Scaling Workers
+
+By default, Supercheck runs with **1 worker** for single-server deployments. Scale for more concurrent tests:
+
+```bash
+# Scale to 2 workers (requires RUNNING_CAPACITY adjustment)
+WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
+```
+
+### Capacity Planning
+
+| Workers | Concurrent Tests | Server Size |
+|---------|------------------|-------------|
+| 1 | 1 | 4 vCPU / 8GB |
+| 2 | 2 | 8 vCPU / 16GB |
+| 4 | 4 | 16 vCPU / 32GB |
+
+<Callout type="info">
+Each worker runs one Playwright test at a time with **2 parallel browser workers** inside the container. Scale workers (not Playwright workers) for more throughput.
+</Callout>
+
+---
+
+## Updates
+
+```bash
+# Pull latest images
+docker compose pull
+docker compose up -d
 ```
 
 ## Backup
 
 ```bash
-# Database
+# Export database
 docker exec supercheck-postgres pg_dump -U postgres supercheck > backup.sql
 
 # Restore
@@ -90,8 +231,10 @@ cat backup.sql | docker exec -i supercheck-postgres psql -U postgres supercheck
 
 ## Troubleshooting
 
-**Container won't start**: Check logs with `docker compose logs app`
+**Container won't start**: `docker compose logs app`
 
-**Database errors**: Verify PostgreSQL is healthy with `docker compose ps`
+**Database errors**: `docker compose ps`
 
-**SSL issues**: Ensure ports 80/443 are open and DNS is configured
+**SSL issues**: Ensure ports 80/443 are open
+
+**DNS not resolving**: Wait for propagation or check with `dig yourdomain.com`

@@ -671,9 +671,10 @@ WORKER_REPLICAS=4 docker-compose -f docker/docker-compose.yml up -d
 ```bash
 NODE_ENV=production
 WORKER_LOCATION=global                    # or us-east, eu-central, asia-pacific
-MAX_CONCURRENT_EXECUTIONS=1               # Keep at 1, scale replicas instead
-RUNNING_CAPACITY=4
-QUEUED_CAPACITY=50
+# Note: MAX_CONCURRENT_EXECUTIONS is hardcoded to 1 in worker code
+RUNNING_CAPACITY=1                        # Default: 1 worker × 1 concurrent run
+QUEUED_CAPACITY=10                        # Queue size for single worker
+# Container limits for 2 vCPU / 4GB servers
 CONTAINER_CPU_LIMIT=1.5
 CONTAINER_MEMORY_LIMIT_MB=2048
 ```

@@ -849,7 +849,7 @@ export function MonitorForm({
         testTitle: selectedTest?.name || sanitizedData.syntheticConfig_testId,
         playwrightOptions: {
           headless: true,
-          timeout: 120000, // 2 minutes default
+          timeout: 300000, // 5 minutes default
           retries: 0,
         },
       };
@@ -1489,13 +1489,12 @@ export function MonitorForm({
                       name="httpConfig_headers"
                       render={({ field }) => (
                         <FormItem
-                          className={`${
-                            httpMethod === "POST" ||
-                            httpMethod === "PUT" ||
-                            httpMethod === "PATCH"
+                          className={`${httpMethod === "POST" ||
+                              httpMethod === "PUT" ||
+                              httpMethod === "PATCH"
                               ? ""
                               : "md:col-span-2"
-                          }`}
+                            }`}
                         >
                           <FormLabel>
                             HTTP Headers{" "}
@@ -1518,24 +1517,24 @@ export function MonitorForm({
                     {(httpMethod === "POST" ||
                       httpMethod === "PUT" ||
                       httpMethod === "PATCH") && (
-                      <FormField
-                        control={form.control}
-                        name="httpConfig_body"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>HTTP Body</FormLabel>
-                            <FormControl>
-                              <Textarea
-                                placeholder="Request body (e.g., JSON)"
-                                {...field}
-                                rows={3}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    )}
+                        <FormField
+                          control={form.control}
+                          name="httpConfig_body"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>HTTP Body</FormLabel>
+                              <FormControl>
+                                <Textarea
+                                  placeholder="Request body (e.g., JSON)"
+                                  {...field}
+                                  rows={3}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
                   </div>
 
                   {/* Authentication and Response Content Validation sections side by side */}
@@ -1858,9 +1857,9 @@ export function MonitorForm({
                               {isCustomStatusCode
                                 ? "Enter specific status codes (e.g., 200, 404, 500-599)"
                                 : "Current selection: " +
-                                  (statusCodePresets.find(
-                                    (p) => p.value === currentValue
-                                  )?.label || "Any 2xx (Success)")}
+                                (statusCodePresets.find(
+                                  (p) => p.value === currentValue
+                                )?.label || "Any 2xx (Success)")}
                             </FormDescription>
                             <FormMessage />
                           </FormItem>

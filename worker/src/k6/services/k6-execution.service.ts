@@ -99,14 +99,21 @@ export class K6ExecutionService {
         process.env.NODE_ENV === 'production' ? '/usr/local/bin/k6' : 'k6';
     }
 
-    this.maxConcurrentK6Runs = this.configService.get<number>(
-      'K6_MAX_CONCURRENCY',
-      1,
-    );
+    /**
+     * Maximum concurrent k6 runs per worker instance.
+     *
+     * ARCHITECTURE DECISION: This is hardcoded to 1 because:
+     * - Horizontal scaling: Scale by adding worker replicas, not concurrent runs
+     * - Resource isolation: Each k6 test gets dedicated CPU/memory
+     * - Predictable performance: No resource contention between tests
+     *
+     * To increase capacity: use WORKER_REPLICAS environment variable
+     */
+    this.maxConcurrentK6Runs = 1;
 
     this.logger.log(`K6 binary path: ${this.k6BinaryPath}`);
     this.logger.log(`K6 Docker image: ${this.k6DockerImage}`);
-    this.logger.log(`Max concurrent k6 runs: ${this.maxConcurrentK6Runs}`);
+    this.logger.log(`Max concurrent k6 runs: ${this.maxConcurrentK6Runs} (hardcoded for horizontal scaling)`);
     this.testExecutionTimeoutMs = this.configService.get<number>(
       'K6_TEST_EXECUTION_TIMEOUT_MS',
       60 * 60 * 1000,

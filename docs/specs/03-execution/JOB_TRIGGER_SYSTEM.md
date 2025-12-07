@@ -338,10 +338,9 @@ graph TB
 **Environment Overrides (Self-hosted):**
 
 - `RUNNING_CAPACITY`: Override plan-specific running limit
-- `QUEUED_CAPACITY`: Override plan-specific queued limit |
-  | **Queued Capacity** | 50 | `QUEUED_CAPACITY` | Global |
-  | **Execution Timeout** | 15 min | `JOB_EXECUTION_TIMEOUT_MS` | Per Job |
-  | **Max Concurrent Tests** | 1 | `MAX_CONCURRENT_EXECUTIONS` | Per Worker |
+- `QUEUED_CAPACITY`: Override plan-specific queued limit
+
+> **Note**: `MAX_CONCURRENT_EXECUTIONS` is hardcoded to 1 in the worker code. Scale capacity by adding more worker replicas.
 
 ## Security & Authorization
 

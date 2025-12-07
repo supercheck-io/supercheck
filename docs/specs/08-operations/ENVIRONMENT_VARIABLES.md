@@ -184,16 +184,17 @@ Worker scaling and test execution settings.
 | Variable                       | Description                     | Default   | Required | Secret |
 | ------------------------------ | ------------------------------- | --------- | -------- | ------ |
 | `WORKER_LOCATION`              | Worker region identifier        | `global`  | No       | No     |
-| `WORKER_REPLICAS`              | Number of worker replicas       | `4`       | No       | No     |
-| `RUNNING_CAPACITY`             | Total concurrent test capacity  | `4`       | No       | No     |
-| `QUEUED_CAPACITY`              | Maximum queue size              | `50`      | No       | No     |
-| `MAX_CONCURRENT_EXECUTIONS`    | Concurrent tests per worker     | `1`       | No       | No     |
+| `WORKER_REPLICAS`              | Number of worker replicas       | `1`       | No       | No     |
+| `RUNNING_CAPACITY`             | Total concurrent test capacity  | `1`       | No       | No     |
+| `QUEUED_CAPACITY`              | Maximum queue size              | `10`      | No       | No     |
 | `CONTAINER_CPU_LIMIT`          | CPU limit per test container    | `1.5`     | No       | No     |
 | `CONTAINER_MEMORY_LIMIT_MB`    | Memory limit per container (MB) | `2048`    | No       | No     |
-| `TEST_EXECUTION_TIMEOUT_MS`    | Test timeout (ms)               | `120000`  | No       | No     |
-| `JOB_EXECUTION_TIMEOUT_MS`     | Job timeout (ms)                | `900000`  | No       | No     |
+| `TEST_EXECUTION_TIMEOUT_MS`    | Test timeout (ms)               | `300000`  | No       | No     |
+| `JOB_EXECUTION_TIMEOUT_MS`     | Job timeout (ms)                | `3600000`  | No       | No     |
 | `K6_TEST_EXECUTION_TIMEOUT_MS` | K6 test timeout (ms)            | `3600000` | No       | No     |
 | `K6_JOB_EXECUTION_TIMEOUT_MS`  | K6 job timeout (ms)             | `3600000` | No       | No     |
+
+> **Note**: `MAX_CONCURRENT_EXECUTIONS` is hardcoded to 1 in the worker code. Scale capacity by adding more worker replicas instead.
 
 ### Worker Location Values
 
@@ -211,20 +212,17 @@ Worker scaling and test execution settings.
 # Local Development (1 worker)
 WORKER_REPLICAS=1
 RUNNING_CAPACITY=1
-MAX_CONCURRENT_EXECUTIONS=1
 
-# Small Production (4 workers)
+# Small Production (4 workers on Hetzner CX33 nodes)
 WORKER_REPLICAS=4
 RUNNING_CAPACITY=4
-MAX_CONCURRENT_EXECUTIONS=1
 
 # Large Production (8 workers)
 WORKER_REPLICAS=8
 RUNNING_CAPACITY=8
-MAX_CONCURRENT_EXECUTIONS=1
 ```
 
-> **Best Practice**: Scale workers horizontally (`WORKER_REPLICAS`) instead of increasing `MAX_CONCURRENT_EXECUTIONS`.
+> **Best Practice**: Scale workers horizontally (`WORKER_REPLICAS`) instead of trying to run multiple tests per worker. Each worker runs one Playwright test at a time for stability.
 
 ---
 
@@ -234,10 +232,15 @@ Playwright test execution settings.
 
 | Variable                | Description            | Default             | Required | Secret |
 | ----------------------- | ---------------------- | ------------------- | -------- | ------ |
+| `PLAYWRIGHT_WORKERS`    | Parallel workers in container | `1`           | No       | No     |
 | `PLAYWRIGHT_RETRIES`    | Number of test retries | `1`                 | No       | No     |
 | `PLAYWRIGHT_TRACE`      | Trace recording mode   | `retain-on-failure` | No       | No     |
 | `PLAYWRIGHT_SCREENSHOT` | Screenshot mode        | `only-on-failure`   | No       | No     |
 | `PLAYWRIGHT_VIDEO`      | Video recording mode   | `retain-on-failure` | No       | No     |
+
+> **Worker Count Guidance**: Default of 1 worker is for 2 vCPU / 4GB servers (2GB container memory).
+> Each Chromium instance uses ~600MB-1GB. For larger servers (4+ vCPU, 8GB+ RAM),
+> set `PLAYWRIGHT_WORKERS=2` for better performance.
 
 ### Trace/Screenshot/Video Options
 
