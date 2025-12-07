@@ -1,16 +1,13 @@
 {
   "title": "Automate",
-  "icon": "Workflow",
-  "defaultOpen": true,
+  "description": "Tests, jobs, and automation",
+  "icon": "CalendarClock",
   "pages": [
-    "browser-test",
-    "api-test",
-    "database-test",
-    "custom-test",
-    "performance-test",
     "tests",
     "jobs",
     "runs",
-    "variables"
+    "variables",
+    "playground",
+    "performance-test"
   ]
 }

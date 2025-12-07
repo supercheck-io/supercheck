@@ -1,0 +1,97 @@
+---
+title: Self-Hosted Setup
+description: Step-by-step Docker Compose deployment
+icon: Container
+---
+
+## 1. Install Docker
+
+```bash
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+```
+
+## 2. Clone Repository
+
+```bash
+git clone https://github.com/supercheck-io/supercheck.git
+cd supercheck/deploy/docker
+```
+
+## 3. Generate Secrets
+
+```bash
+export BETTER_AUTH_SECRET=$(openssl rand -hex 16)
+export SECRET_ENCRYPTION_KEY=$(openssl rand -hex 16)
+```
+
+<Callout type="warning">
+Save these secrets. You'll need them for future updates.
+</Callout>
+
+## 4. Configure Environment
+
+Create `.env` file:
+
+```bash
+# Required
+NEXT_PUBLIC_APP_URL=https://supercheck.yourdomain.com
+APP_URL=https://supercheck.yourdomain.com
+BETTER_AUTH_URL=https://supercheck.yourdomain.com
+BETTER_AUTH_SECRET=your-generated-secret
+SECRET_ENCRYPTION_KEY=your-generated-key
+
+# Domain
+APP_DOMAIN=supercheck.yourdomain.com
+ACME_EMAIL=admin@yourdomain.com
+
+# Self-hosted mode
+SELF_HOSTED=true
+
+# Database passwords
+DB_PASSWORD=change-this
+REDIS_PASSWORD=change-this
+```
+
+## 5. Deploy
+
+```bash
+docker compose -f docker-compose-secure.yml up -d
+```
+
+## 6. Verify
+
+```bash
+# Check status
+docker compose -f docker-compose-secure.yml ps
+
+# View logs
+docker compose -f docker-compose-secure.yml logs -f app
+```
+
+Open `https://supercheck.yourdomain.com` and create your account.
+
+## Update
+
+```bash
+docker compose -f docker-compose-secure.yml pull
+docker compose -f docker-compose-secure.yml up -d
+```
+
+## Backup
+
+```bash
+# Database
+docker exec supercheck-postgres pg_dump -U postgres supercheck > backup.sql
+
+# Restore
+cat backup.sql | docker exec -i supercheck-postgres psql -U postgres supercheck
+```
+
+## Troubleshooting
+
+**Container won't start**: Check logs with `docker compose logs app`
+
+**Database errors**: Verify PostgreSQL is healthy with `docker compose ps`
+
+**SSL issues**: Ensure ports 80/443 are open and DNS is configured

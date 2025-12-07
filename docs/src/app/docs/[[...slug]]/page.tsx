@@ -1,14 +1,16 @@
-import { getPageImage, source } from '@/lib/source';
+import type { Metadata } from 'next';
+import { source, getPageImage } from '@/lib/source';
+import { getMDXComponents } from '@/mdx-components';
+import { notFound } from 'next/navigation';
+import { createRelativeLink } from 'fumadocs-ui/mdx';
 import {
   DocsBody,
-  DocsDescription,
   DocsPage,
-  DocsTitle,
 } from 'fumadocs-ui/page';
-import { notFound } from 'next/navigation';
-import { getMDXComponents } from '@/mdx-components';
-import type { Metadata } from 'next';
-import { createRelativeLink } from 'fumadocs-ui/mdx';
+import { Edit } from 'lucide-react';
+import Link from 'next/link';
+
+export const revalidate = false;
 
 export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   const params = await props.params;
@@ -16,29 +18,33 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   if (!page) notFound();
 
   const MDX = page.data.body;
+  const path = params.slug?.join('/') || 'index';
 
   return (
     <DocsPage
       toc={page.data.toc}
-      full={page.data.full}
-      lastUpdate={page.data.lastModified}
-      editOnGithub={{
-        owner: 'supercheck-io',
-        repo: 'supercheck',
-        sha: 'main',
-        path: `docs/content/docs/${params.slug?.join('/') || 'index'}.mdx`,
-      }}
       tableOfContent={{
-        enabled: true,
         style: 'clerk',
       }}
     >
-      <DocsTitle>{page.data.title}</DocsTitle>
-      <DocsDescription>{page.data.description}</DocsDescription>
-      <DocsBody>
+      <div className="flex items-start justify-between gap-4 mb-2">
+        <h1 className="text-[1.75em] font-semibold">{page.data.title}</h1>
+        <Link
+          href={`https://github.com/supercheck-io/supercheck/blob/main/docs/content/docs/${path}.mdx`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors border rounded-md px-2.5 py-1 shrink-0 mt-1"
+        >
+          <Edit className="size-3.5" />
+          Edit on GitHub
+        </Link>
+      </div>
+      <p className="text-lg text-fd-muted-foreground border-b pb-6 mb-6">
+        {page.data.description}
+      </p>
+      <DocsBody className="prose flex-1 text-fd-foreground/90">
         <MDX
           components={getMDXComponents({
-            // this allows you to link to other pages with relative file paths
             a: createRelativeLink(source, page),
           })}
         />

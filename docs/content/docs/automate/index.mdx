@@ -1,321 +1,73 @@
 ---
 title: Automate
-description: Create and manage automated tests with scheduling and execution
-icon: Workflow
+description: Create and schedule automated tests
+icon: Play
 ---
-Design, schedule, and run browser, API, database, performance, and custom tests—locally, on a schedule, or from CI/CD.
 
-<Callout type="info">
-  Use Playwright for browser flows, REST/GraphQL for APIs, SQL for databases, and k6 for performance tests. Keep Playwright and k6 scripts separate for predictable runs.
-</Callout>
+Create browser, API, database, and performance tests. Schedule them or trigger from CI/CD.
 
-## Overview
+## Getting Started
 
-What you can do:
-- **Mix Test Types**: Browser, API, DB, custom, and performance (k6).
-- **Schedule & Retry**: Cron jobs with timezones, retries, and alerts.
-- **Use Variables & Secrets**: Project-scoped values with RBAC.
-- **Go Parallel Safely**: Capacity controls prevent noisy neighbors.
-- **Integrate Easily**: Trigger jobs/tests from CI/CD or API.
+<Cards>
+<Card icon={<FlaskConical />} title="Playground" href="/docs/automate/playground">
+Interactive editor with live execution and AI suggestions
+</Card>
+
+<Card icon={<Code />} title="Tests" href="/docs/automate/tests">
+Manage and organize test scripts
+</Card>
+</Cards>
+
+## Quick Create
+
+Use the Create menu to quickly add tests, jobs, or monitors from anywhere in the app.
+
+![Quick Create Menu](/screenshots/quick-create.png)
 
 ## Test Types
 
 <Cards>
-  <Card
-    title="Browser Test"
-    description="Simulate user interactions with Playwright"
-    href="./browser-test"
-  />
-  <Card
-    title="API Test"
-    description="Validate REST APIs and GraphQL endpoints"
-    href="./api-test"
-  />
-  <Card
-    title="Database Test"
-    description="Query and verify database state"
-    href="./database-test"
-  />
-  <Card
-    title="Custom Test"
-    description="Write custom test scripts with full Node.js access"
-    href="./custom-test"
-  />
+<Card icon={<Chrome />} title="Browser Test" href="/docs/automate/browser-test">
+Playwright-based UI testing
+</Card>
+
+<Card icon={<ArrowLeftRight />} title="API Test" href="/docs/automate/api-test">
+HTTP and GraphQL endpoints
+</Card>
+
+<Card icon={<Database />} title="Database Test" href="/docs/automate/database-test">
+SQL queries and assertions
+</Card>
+
+<Card icon={<ChartSpline />} title="Performance Test" href="/docs/automate/performance-test">
+k6 load testing from multiple regions
+</Card>
+
+<Card icon={<SquareFunction />} title="Custom Test" href="/docs/automate/custom-test">
+Node.js scripts for anything else
+</Card>
 </Cards>
 
-<Callout type="warning">
-  Performance tests run <code>k6</code> scripts. If your script imports from <code>k6/*</code>, choose the **Performance** test type; Playwright-based test types only accept Playwright scripts. Avoid mixing Playwright and k6 modules in the same script—split them into separate tests.
-</Callout>
-
-## Core Concepts
-
-### Tests
-Individual test cases that validate specific functionality. Tests are reusable and can be run independently or as part of jobs.
-
-**Features**:
-- Playground editor with real-time validation
-- AI-powered fix suggestions when tests fail
-- Rich HTML reports with screenshots and traces
-- Variable support for dynamic configuration
-
-### Jobs
-Collections of tests that run together on a schedule or trigger. Jobs provide:
-
-- **Scheduling**: Cron-based automatic execution
-- **Triggers**: Manual, remote (API), or scheduled execution
-- **Grouped Results**: Combined reports for all tests
-- **Alert Integration**: Notifications on success/failure
-
-### Runs
-Execution history of jobs with detailed results:
-
-- **Execution Logs**: Stdout and stderr from test runs
-- **Performance Metrics**: Execution time tracking
-- **Artifacts**: Screenshots, videos, and trace files
-- **Status Tracking**: Success, failure, timeout tracking
-
-### Variables
-Secure storage for reusable configuration:
-
-- **Regular Variables**: URLs, timeouts, configuration values
-- **Secrets**: API keys, passwords, database credentials (encrypted)
-- **Project-Scoped**: Variables isolated per project
-- **Access Control**: Role-based permissions
-
-## Quick Start Guide
-
-### Step 1: Create Your First Test
-
-<Steps>
-  <Step>Go to **Automate → Create** and pick a test type.</Step>
-  <Step>Author the test in the playground; validate with **Run Test**.</Step>
-  <Step>Save it for reuse in jobs and monitors.</Step>
-</Steps>
-
-### Step 2: Create a Job
-
-<Steps>
-  <Step>Open **Automate → Jobs** and choose **Create Job**.</Step>
-  <Step>Select tests (mix types if needed) and set timeouts/retries.</Step>
-  <Step>Save and run once to verify the combined report.</Step>
-</Steps>
-
-### Step 3: Schedule Automatic Execution
-
-<Steps>
-  <Step>Edit the job and enable scheduling (cron with timezone).</Step>
-  <Step>Attach alerts (Slack/email/webhook) for failures and recoveries.</Step>
-  <Step>Save—your job now runs hands-free.</Step>
-</Steps>
-
-## Execution Flow
-
-The test execution flow follows these stages:
-
-```mermaid
-flowchart LR
-    A[Create Test] --> B[Save Test]
-    B --> C[Add to Job]
-    C --> D{Trigger Type}
-    D -->|Manual| E[User Clicks Run]
-    D -->|Schedule| F[Cron Triggers]
-    D -->|Remote| G[API Call]
-    E --> H[Job Executes]
-    F --> H
-    G --> H
-    H --> I[Worker Processes]
-    I --> J[Generate Reports]
-    J --> K[Send Alerts]
-    K --> L[View Results]
-```
-
-**Trigger Types:**
-- **Manual**: User clicks Run button in the UI
-- **Schedule**: Automatic execution based on cron schedule
-- **Remote**: API-triggered from CI/CD or external systems
-
-## Parallel Execution
-
-Supercheck manages execution capacity to ensure system stability:
-
-### Capacity Limits
-- **Running Capacity**: Max concurrent executions (default: 5)
-- **Queued Capacity**: Max queued submissions (default: 50)
-
-### Execution States
-- **Running**: Currently executing tests
-- **Queued**: Waiting for available capacity
-- **Completed**: Finished executions
-
-<Callout type="warning">
-  When limits are reached, jobs queue. If the queue is full, requests return **429 (Too Many Requests)**—retry with backoff.
-</Callout>
-
-## Variables and Secrets
-
-### Using Variables in Tests
-
-```javascript
-// Regular variables for configuration
-const baseUrl = getVariable("BASE_URL");
-const timeout = getVariable("TIMEOUT", { type: "number" });
-
-// Secrets for sensitive data (protected from logging)
-const apiKey = getSecret("API_KEY");
-const password = getSecret("DB_PASSWORD");
-
-// Use in your tests
-await page.goto(baseUrl + "/login");
-await page.fill("#password", password);
-await page.setExtraHTTPHeaders({
-  Authorization: `Bearer ${apiKey}`
-});
-```
-
-### Secret Protection
-
-Secrets are automatically protected from console logging:
-
-```javascript
-console.log(apiKey); // Shows: "[SECRET]"
-console.log(`Key: ${apiKey}`); // Shows: "Key: [SECRET]"
-JSON.stringify({ key: apiKey }); // Shows: {"key":"[SECRET]"}
-```
-
-## Job Triggers at a Glance
-- **Manual**: Ad-hoc runs from the UI for debugging and verification.
-- **Scheduled**: Cron-based runs for continuous coverage.
-- **Remote**: API-triggered for CI/CD and external workflows.
-
-### Schedule Trigger
-Automatic execution based on cron schedules.
-
-**Use Cases**:
-- Nightly regression tests
-- Hourly health checks
-- Weekly compliance checks
-
-### Remote Trigger
-API-based execution from external systems.
-
-**Use Cases**:
-- CI/CD integration
-- Deploy verification
-- External automation tools
-
-**Example**:
-```bash
-curl -X POST https://api.supercheck.io/api/jobs/[job-id]/trigger \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-## Best Practices
-
-### Test Organization
-
-<Steps>
-  <Step>Group related tests into logical jobs</Step>
-  <Step>Use descriptive names for tests and jobs</Step>
-  <Step>Keep tests focused and atomic</Step>
-  <Step>Use variables for environment-specific configuration</Step>
-</Steps>
-
-### Scheduling Strategy
-
-- **Critical Tests**: Run every 5-15 minutes
-- **Regression Suites**: Run after each deployment
-- **Compliance Checks**: Run daily or weekly
-- **Performance Tests**: Run during off-peak hours
-
-### Variable Management
-
-- **Regular Variables**: URLs, timeouts, configuration
-- **Secrets**: API keys, passwords, credentials
-- **Naming Convention**: Use UPPER_CASE for consistency
-- **Documentation**: Add descriptions for team clarity
-
-### Error Handling
-
-- **Retries**: Configure automatic retries for flaky tests
-- **Timeouts**: Set appropriate timeouts based on test complexity
-- **Alerts**: Set up notifications for critical test failures
-- **Thresholds**: Use failure thresholds to prevent alert fatigue
-
-## Common Workflows
-
-### CI/CD Integration
-
-<Steps>
-  <Step>Create a job with your regression tests</Step>
-  <Step>Generate an API key in Settings</Step>
-  <Step>Add remote trigger call to your CI/CD pipeline</Step>
-  <Step>Configure job to fail the build on test failure</Step>
-</Steps>
-
-### Environment Testing
-
-<Steps>
-  <Step>Create variables for each environment (BASE_URL, API_KEY, etc.)</Step>
-  <Step>Create identical jobs for staging and production</Step>
-  <Step>Schedule staging tests to run on every deploy</Step>
-  <Step>Schedule production tests to run every hour</Step>
-</Steps>
-
-## Troubleshooting
-
-### Test Execution Timeout
-
-**Problem**: Test times out before completion
-
-**Solutions**:
-- Increase test timeout in Playwright config
-- Optimize test for better performance
-- Check for infinite loops or waiting conditions
-- Review test logs for bottlenecks
-
-### Job Failing Intermittently
-
-**Problem**: Job passes sometimes but fails randomly
-
-**Solutions**:
-- Enable retries (2-3 attempts recommended)
-- Use failure thresholds in alerts
-- Check for race conditions in tests
-- Review timing and wait strategies
-
-### Variables Not Resolving
-
-**Problem**: getVariable() returns undefined
-
-**Solutions**:
-- Verify variable exists in project variables
-- Check variable name spelling (case-sensitive)
-- Ensure job has access to project variables
-- Review variable permissions
-
-## Related Features
+## Concepts
 
 <Cards>
-  <Card
-    title="Monitors"
-    description="Continuous monitoring of endpoints and services"
-    href="../monitor/monitors"
-  />
-  <Card
-    title="Alerts"
-    description="Set up notifications for test failures"
-    href="../communicate/alerts"
-  />
-  <Card
-    title="Dashboard"
-    description="View execution trends and metrics"
-    href="../communicate/dashboard"
-  />
+<Card icon={<CalendarClock />} title="Jobs" href="/docs/automate/jobs">
+Group tests with scheduling and triggers
+</Card>
+
+<Card icon={<ClipboardList />} title="Runs" href="/docs/automate/runs">
+Execution history and results
+</Card>
+
+<Card icon={<Variable />} title="Variables" href="/docs/automate/variables">
+Secure environment values and secrets
+</Card>
 </Cards>
 
-## Need Help?
+## Features
 
-- **Test Writing**: Check test type documentation for examples
-- **Scheduling**: Use [crontab.guru](https://crontab.guru) for cron syntax
-- **CI/CD**: Review API reference for remote trigger documentation
-- **Support**: Contact us at support@supercheck.io
+- **Playground** — Write and test with live validation
+- **AI Fixes** — Automatic suggestions when tests fail
+- **Rich Reports** — Screenshots, traces, and metrics
+- **Scheduling** — Cron-based with timezone support
+- **Multi-Region** — Run performance tests from US, EU, APAC

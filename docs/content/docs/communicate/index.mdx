@@ -1,72 +1,68 @@
 ---
 title: Communicate
-description: Share system status and communicate with your users
+description: Alerts, dashboards, and status pages
+icon: Bell
 ---
-Keep customers, stakeholders, and teammates informed with clear, timely updates.
 
-## Overview
+Keep your team and customers informed with alerts and public status pages.
 
-Use Supercheck to:
-
-- **Detect & Alert**: Multi-channel notifications with thresholds to avoid noise.
-- **Explain Clearly**: Incidents, maintenance, and recovery notes that match your brand.
-- **Share Publicly**: Status pages for customers and dashboards for internal teams.
-
-## Key Features
+## Features
 
 <Cards>
-  <Card
-    title="Dashboards"
-    description="Project-level health, capacity, and run status at a glance."
-    href="./dashboard"
-  />
-  <Card
-    title="Alerts"
-    description="Email, Slack, webhook, and SMS (via proxy) with smart thresholds."
-    href="./alerts"
-  />
-  <Card
-    title="Status Pages"
-    description="Public pages for incidents, uptime, and scheduled maintenance."
-    href="./status-pages"
-  />
+<Card icon={<LayoutDashboard />} title="Dashboard" href="/docs/communicate/dashboard">
+Project health at a glance
+</Card>
+
+<Card icon={<Bell />} title="Alerts" href="/docs/communicate/alerts">
+Multi-channel notifications
+</Card>
+
+<Card icon={<Tally4 />} title="Status Pages" href="/docs/communicate/status-pages">
+Public incident communication
+</Card>
 </Cards>
 
-## Common Workflows
-
-### Setting Up Incident Response
-
-<Steps>
-  <Step>Connect notification providers (email, Slack, webhooks).</Step>
-  <Step>Create alert rules with sensible retry thresholds.</Step>
-  <Step>Publish a status page for customers with your logo and domain.</Step>
-  <Step>Test the flow by triggering a sample incident.</Step>
-</Steps>
-
-### Monitoring System Health
-
-The Dashboard gives a single view of:
-
-- **Runs & Jobs**: Pass/fail, duration, and history.
-- **Monitors**: Live status, SSL expiry, and multi-location checks.
-- **Capacity**: Queue depth, active workers, and recent errors.
-
-## Next Steps
+## Alert Providers
 
 <Cards>
-  <Card
-    title="Explore Dashboard"
-    description="See live project health, capacity, and failures."
-    href="./dashboard"
-  />
-  <Card
-    title="Set Up Alerts"
-    description="Tune thresholds, channels, and audience for critical events."
-    href="./alerts"
-  />
-  <Card
-    title="Create Status Page"
-    description="Publish branded pages for incidents and uptime history."
-    href="./status-pages"
-  />
+<Card icon={<Mail />} title="Email">
+SMTP-based notifications
+</Card>
+
+<Card icon={<MessageSquare />} title="Slack">
+Channel and DM messages
+</Card>
+
+<Card icon={<Webhook />} title="Webhook">
+Custom HTTP integrations
+</Card>
+
+<Card icon={<Send />} title="Telegram">
+Bot notifications
+</Card>
+
+<Card icon={<Hash />} title="Discord">
+Server webhooks
+</Card>
 </Cards>
+
+## Threshold Logic
+
+Prevent alert noise with consecutive failure thresholds:
+
+| Check | Status | Result |
+|-------|--------|--------|
+| 1 | ❌ Fail | No alert (1/3) |
+| 2 | ❌ Fail | No alert (2/3) |
+| 3 | ❌ Fail | **Alert sent** |
+| 4 | ✅ Pass | Recovery sent |
+
+## Status Pages
+
+Create public status pages with:
+
+- **Custom branding** — Logo and colors
+- **Component status** — Operational, degraded, outage
+- **Incident history** — Timeline of issues
+- **Scheduled maintenance** — Planned downtime
+- **Custom domains** — Your subdomain
