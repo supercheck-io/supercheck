@@ -201,12 +201,12 @@ WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
 
 | Workers | Concurrent Tests | Server Size |
 |---------|------------------|-------------|
-| 1 | 1 | 4 vCPU / 8GB |
-| 2 | 2 | 8 vCPU / 16GB |
-| 4 | 4 | 16 vCPU / 32GB |
+| 1 | 1 | 2 vCPU / 4GB |
+| 2 | 2 | 4 vCPU / 8GB |
+| 4 | 4 | 8 vCPU / 16GB |
 
 <Callout type="info">
-Each worker runs one Playwright test at a time with **2 parallel browser workers** inside the container. Scale workers (not Playwright workers) for more throughput.
+Each worker runs one Playwright test at a time with **1 browser worker** inside the container (default for 2GB container memory). For larger servers, set `PLAYWRIGHT_WORKERS=2`.
 </Callout>
 
 ---
