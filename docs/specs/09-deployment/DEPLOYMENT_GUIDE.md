@@ -521,8 +521,8 @@ kubectl describe pod <pod-name> -n supercheck
 
 **Solution:**
 
-- Increase node size
-- Reduce MAX_CONCURRENT_EXECUTIONS
+- Increase node size (recommend Hetzner CX33: 4 vCPU, 8GB)
+- Scale horizontally with more worker replicas instead of increasing resources per worker
 - Implement resource quotas per namespace
 - Use KEDA to scale more workers instead of higher limits
 

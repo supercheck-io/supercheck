@@ -75,7 +75,7 @@ describe('K6ExecutionService', () => {
     get: jest.fn((key: string, defaultValue?: any) => {
       const config: Record<string, any> = {
         K6_BIN_PATH: '/usr/local/bin/k6',
-        K6_MAX_CONCURRENCY: 2,
+        // K6_MAX_CONCURRENCY is now hardcoded to 1 in the service
         K6_TEST_EXECUTION_TIMEOUT_MS: 3600000,
         K6_JOB_EXECUTION_TIMEOUT_MS: 3600000,
         K6_WEB_DASHBOARD_START_PORT: 6000,
@@ -171,11 +171,9 @@ describe('K6ExecutionService', () => {
       expect(mockConfigService.get).toHaveBeenCalledWith('K6_BIN_PATH', '');
     });
 
-    it('should read max concurrency from config', () => {
-      expect(mockConfigService.get).toHaveBeenCalledWith(
-        'K6_MAX_CONCURRENCY',
-        1,
-      );
+    it('should have hardcoded max concurrency of 1', () => {
+      // K6_MAX_CONCURRENCY is now hardcoded to 1 for horizontal scaling
+      expect(service['maxConcurrentK6Runs']).toBe(1);
     });
 
     it('should read dashboard port config', () => {
@@ -575,8 +573,9 @@ describe('K6ExecutionService', () => {
   // ==========================================================================
 
   describe('Concurrency Limits', () => {
-    it('should respect max concurrent runs', () => {
-      expect(service['maxConcurrentK6Runs']).toBe(2);
+    it('should have hardcoded max concurrent runs of 1', () => {
+      // K6_MAX_CONCURRENCY is hardcoded to 1 for horizontal scaling
+      expect(service['maxConcurrentK6Runs']).toBe(1);
     });
 
     it('should track current active runs count', () => {
