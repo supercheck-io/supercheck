@@ -17,11 +17,6 @@ Include:
 - Potential impact
 - Suggested fix (if any)
 
-### Disclosure Policy
-
-- We will acknowledge your report within 48 hours
-- We will work to validate and fix verified vulnerabilities
-- We will coordinate public disclosure after a fix is available
 
 ## Security Best Practices
 
