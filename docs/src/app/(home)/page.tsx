@@ -5,20 +5,17 @@ import { motion } from "framer-motion";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import {
-  Activity,
   ArrowRight,
-  BookOpen,
   Building2,
   Container,
-  Database,
   GitBranch,
   Globe,
-  Shield,
   Zap,
   Moon,
   Sun,
   Tally4,
   ChartSpline,
+  BookOpenText,
   Chromium,
 } from "lucide-react";
 
@@ -204,7 +201,7 @@ export default function HomePage() {
               className="p-2 md:px-3 md:py-2 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition"
               aria-label="Documentation"
             >
-              <BookOpen className="size-5" />
+              <BookOpenText className="size-5" />
               <span className="hidden md:inline">Docs</span>
             </Link>
             <a
@@ -374,7 +371,7 @@ export default function HomePage() {
             {/* Documentation */}
             <div>
               <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-500 mb-4">
-                <BookOpen className="size-4" />
+                <BookOpenText className="size-4" />
                 Docs
               </h4>
               <ul className="space-y-2.5 text-sm">
