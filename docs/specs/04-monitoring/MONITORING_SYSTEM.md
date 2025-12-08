@@ -124,11 +124,11 @@ graph TB
 
 The system uses distributed multi-location monitoring by default. Every monitor run is expanded into per-location jobs handled by regional workers, providing global coverage out of the box.
 
-| Region       | Worker Location Code     | Description                                                                                        |
-| ------------ | ------------------------ | -------------------------------------------------------------------------------------------------- |
-| US East      | `us-east` (Ashburn)      | Primary North American vantage point with low-latency access to US-based services.                 |
-| EU Central   | `eu-central` (Frankfurt) | Core European vantage point ensuring GDPR-compliant monitoring coverage. **Default for monitors.** |
-| Asia Pacific | `asia-pacific` (Mumbai)  | High-availability APAC vantage point for latency-sensitive checks.                                 |
+| Region | Worker Location Code | Description |
+| ------------ | -------------------------- | -------------------------------------------------------------------------------------------------- |
+| US East | `us-east` (Ashburn) | Primary North American vantage point with low-latency access to US-based services. |
+| EU Central | `eu-central` (Nuremberg) | Core European vantage point ensuring GDPR-compliant monitoring coverage. **Default for monitors.** |
+| Asia Pacific | `asia-pacific` (Singapore) | High-availability APAC vantage point for latency-sensitive checks. |
 
 #### Worker Architecture
 
@@ -1265,8 +1265,8 @@ interface MonitorConfig {
 
 type MonitoringLocation =
   | "us-east" // Ashburn, USA
-  | "eu-central" // Frankfurt, Germany
-  | "asia-pacific"; // Mumbai, India
+  | "eu-central" // Nuremberg, Germany
+  | "asia-pacific"; // Singapore
 ```
 
 ### Security Configuration

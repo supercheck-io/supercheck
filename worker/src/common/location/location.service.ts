@@ -48,20 +48,20 @@ export class LocationService {
     [MONITORING_LOCATIONS.US_EAST]: {
       code: MONITORING_LOCATIONS.US_EAST,
       name: 'US East',
-      region: 'N. Virginia',
-      coordinates: { lat: 38.9072, lon: -77.0369 },
+      region: 'Ashburn',
+      coordinates: { lat: 39.0438, lon: -77.4874 },
     },
     [MONITORING_LOCATIONS.EU_CENTRAL]: {
       code: MONITORING_LOCATIONS.EU_CENTRAL,
       name: 'EU Central',
-      region: 'Frankfurt',
-      coordinates: { lat: 50.1109, lon: 8.6821 },
+      region: 'Nuremberg',
+      coordinates: { lat: 49.4521, lon: 11.0767 },
     },
     [MONITORING_LOCATIONS.ASIA_PACIFIC]: {
       code: MONITORING_LOCATIONS.ASIA_PACIFIC,
       name: 'Asia Pacific',
-      region: 'Mumbai',
-      coordinates: { lat: 19.076, lon: 72.8777 },
+      region: 'Singapore',
+      coordinates: { lat: 1.3521, lon: 103.8198 },
     },
   };
 
