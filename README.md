@@ -69,7 +69,6 @@ Full documentation available at **[supercheck.io/docs](https://supercheck.io/doc
 | Topic | Description |
 |-------|-------------|
 | [Deployment](https://supercheck.io/docs/deployment) | Self-host with Docker Compose |
-| [Configuration](https://supercheck.io/docs/deployment/configuration) | Environment variables and setup |
 | [Automate](https://supercheck.io/docs/automate) | Browser, API, and database tests |
 | [Monitor](https://supercheck.io/docs/monitors) | HTTP, ping, port, and synthetic monitoring |
 | [Communicate](https://supercheck.io/docs/communicate) | Alerts, dashboards, and status pages |
