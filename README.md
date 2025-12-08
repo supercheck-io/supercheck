@@ -74,15 +74,6 @@ Full documentation available at **[supercheck.io/docs](https://supercheck.io/doc
 | [Communicate](https://supercheck.io/docs/communicate) | Alerts, dashboards, and status pages |
 | [Admin](https://supercheck.io/docs/admin) | User management, RBAC, and audit trails |
 
-## Project Structure
-
-```
-supercheck/
-├── app/              # Next.js frontend & API
-├── worker/           # NestJS worker service
-├── docs/             # Documentation site
-└── deploy/           # Docker & Kubernetes configs
-```
 
 ## Community
 
