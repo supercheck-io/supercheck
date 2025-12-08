@@ -58,6 +58,20 @@ See [OAuth Setup](#oauth-required) for detailed instructions.
 docker compose up -d
 ```
 
+### 5. Create Super Admin
+
+After deployment, create your first super admin account:
+
+```bash
+docker compose exec app npm run setup:admin your-email@example.com
+```
+
+This creates an admin account with the provided email. Sign in using GitHub/Google OAuth with the same email address to gain super admin access.
+
+<Callout type="info">
+The super admin has full platform access including user management, organization oversight, and system configuration. See [Admin Documentation](https://supercheck.io/docs/admin) for details.
+</Callout>
+
 Access at `http://localhost:3000`.
 
 <Callout type="info">
@@ -126,6 +140,20 @@ Security secrets are auto-generated. Only your domain is required.
 ```bash
 docker compose -f docker-compose-secure.yml up -d
 ```
+
+### 6. Create Super Admin
+
+After deployment, create your first super admin account:
+
+```bash
+docker compose exec app npm run setup:admin your-email@example.com
+```
+
+This creates an admin account with the provided email. Sign in using GitHub/Google OAuth with the same email address to gain super admin access.
+
+<Callout type="info">
+The super admin has full platform access including user management, organization oversight, and system configuration. See [Admin Documentation](https://supercheck.io/docs/admin) for details.
+</Callout>
 
 Access at `https://app.yourdomain.com`.
 
