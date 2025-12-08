@@ -23,11 +23,20 @@ export const metadata: Metadata = {
     url: 'https://supercheck.io',
     siteName: 'Supercheck',
     type: 'website',
+    images: [
+      {
+        url: '/screenshots/playground-editor.png',
+        width: 1200,
+        height: 630,
+        alt: 'Supercheck - AI-powered test automation',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Supercheck',
     description: 'Open source AI-powered test automation and monitoring platform',
+    images: ['/screenshots/playground-editor.png'],
   },
 };
 
