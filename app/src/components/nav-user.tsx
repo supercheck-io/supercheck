@@ -21,7 +21,7 @@ export function NavUser() {
   const [isClient, setIsClient] = useState(false);
   const user = session?.user;
   const { theme, setTheme } = useTheme();
-  
+
   // Safely try to get project context, handle case where component is used outside provider
   let currentProject = null;
   try {
@@ -49,7 +49,7 @@ export function NavUser() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="h-8 w-8 rounded-full focus-visible:ring-ring flex items-center focus-visible:outline-none">
+        <button data-testid="user-menu" className="h-8 w-8 rounded-full focus-visible:ring-ring flex items-center focus-visible:outline-none">
           <Avatar className="h-8 w-8 rounded-full">
             <AvatarImage src={user?.image || ""} alt={user?.name || ""} />
             <AvatarFallback className="rounded-full">
@@ -97,9 +97,9 @@ export function NavUser() {
           <span className="mr-2 flex items-center"><Sun className="h-4 w-4 mr-2" />Light</span>
           <span className="ml-auto">{theme === "light" && <span className="inline-block w-2 h-2 rounded-full bg-primary" />}</span>
         </DropdownMenuItem>
-       
+
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleLogout}>Log out</DropdownMenuItem>
+        <DropdownMenuItem onClick={handleLogout} data-testid="sign-out-button">Log out</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

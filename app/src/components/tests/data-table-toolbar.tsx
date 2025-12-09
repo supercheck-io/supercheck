@@ -31,7 +31,7 @@ export function DataTableToolbar<TData>({
             Manage tests and their configurations
           </p>
         </div>
-     
+
       </div>
 
       <div className="flex items-center space-x-2">
@@ -42,6 +42,7 @@ export function DataTableToolbar<TData>({
             value={(table.getState().globalFilter as string) ?? ""}
             onChange={(event) => table.setGlobalFilter(event.target.value)}
             className="h-8 w-[250px] pr-8 pl-8"
+            data-testid="search-input"
           />
           {(table.getState().globalFilter as string)?.length > 0 && (
             <button
@@ -79,6 +80,7 @@ export function DataTableToolbar<TData>({
         <Button
           onClick={() => router.push("/tests/create")}
           disabled={!canCreateTest}
+          data-testid="create-test-button"
         >
           <PlusIcon className="h-4 w-4 mr-2" />
           Create Test

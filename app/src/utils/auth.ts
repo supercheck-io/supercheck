@@ -256,16 +256,40 @@ function getCaptchaPlugin() {
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET!,
   baseURL: process.env.BETTER_AUTH_URL,
+  // Trusted origins for CORS and CSRF protection
+  // In production, defaults to APP_URL and STATUS_PAGE_DOMAIN
+  // Can be extended via TRUSTED_ORIGINS env var (comma-separated)
   trustedOrigins:
     process.env.NODE_ENV === "production"
-      ? [
-          process.env.NEXT_PUBLIC_APP_URL || process.env.BETTER_AUTH_URL!,
-          // Add status page domain for wildcard subdomains
-          process.env.STATUS_PAGE_DOMAIN || "supercheck.io",
-          // Add wildcard pattern for all subdomains
-          "https://*.supercheck.io",
-          "https://*.demo.supercheck.io",
-        ]
+      ? (() => {
+          const origins: string[] = [];
+          
+          // Always include the app URL
+          if (process.env.NEXT_PUBLIC_APP_URL) {
+            origins.push(process.env.NEXT_PUBLIC_APP_URL);
+          } else if (process.env.BETTER_AUTH_URL) {
+            origins.push(process.env.BETTER_AUTH_URL);
+          }
+          
+          // Add status page domain if configured
+          const statusDomain = process.env.STATUS_PAGE_DOMAIN;
+          if (statusDomain) {
+            // Support wildcard subdomains for status pages
+            origins.push(`https://*.${statusDomain.replace(/^https?:\/\//, "")}`);
+          }
+          
+          // Add any additional trusted origins from env (comma-separated)
+          const additionalOrigins = process.env.TRUSTED_ORIGINS;
+          if (additionalOrigins) {
+            additionalOrigins
+              .split(",")
+              .map((o) => o.trim())
+              .filter(Boolean)
+              .forEach((o) => origins.push(o));
+          }
+          
+          return origins.length > 0 ? origins : undefined;
+        })()
       : undefined,
   socialProviders: {
     github: {
@@ -342,7 +366,7 @@ export const auth = betterAuth({
       const clientIP = request ? getClientIP(request.headers) : "unknown";
 
       // Rate limit by email address
-      const emailRateLimit = checkPasswordResetRateLimit(user.email);
+      const emailRateLimit = await checkPasswordResetRateLimit(user.email);
       if (!emailRateLimit.allowed) {
         const resetTime = emailRateLimit.resetTime
           ? new Date(emailRateLimit.resetTime)
@@ -356,7 +380,7 @@ export const auth = betterAuth({
       }
 
       // Rate limit by IP address as additional protection
-      const ipRateLimit = checkPasswordResetRateLimit(clientIP);
+      const ipRateLimit = await checkPasswordResetRateLimit(clientIP);
       if (!ipRateLimit.allowed) {
         const resetTime = ipRateLimit.resetTime
           ? new Date(ipRateLimit.resetTime)

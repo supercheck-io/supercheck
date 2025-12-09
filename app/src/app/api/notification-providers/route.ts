@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
       .insert(notificationProviders)
       .values({
         name: newProviderData.name!,
-        type: newProviderData.type!,
+        type: newProviderData.type as NotificationProviderType,
         config: encryptedConfig,
         organizationId: newProviderData.organizationId,
         projectId: newProviderData.projectId,

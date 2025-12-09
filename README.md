@@ -51,7 +51,7 @@ Empowering development and SRE teams with a scalable, distributed, and robust pl
                     ┌────────────────────┼────────────────────┐
                     │                    │                    │
           ┌─────────▼─────────┐ ┌────────▼────────┐ ┌─────────▼─────────┐
-          │   Worker Node 1   │ │  Worker Node 2  │ │   Worker Node N   │
+          │  NestJS Worker 1  │ │ NestJS Worker 2 │ │  NestJS Worker N  │
           │  ┌─────────────┐  │ │ ┌─────────────┐ │ │  ┌─────────────┐  │
           │  │ Playwright  │  │ │ │ Playwright  │ │ │  │ Playwright  │  │
           │  │ k6 Load     │  │ │ │ k6 Load     │ │ │  │ k6 Load     │  │
@@ -60,7 +60,7 @@ Empowering development and SRE teams with a scalable, distributed, and robust pl
           └───────────────────┘ └─────────────────┘ └───────────────────┘
 ```
 
-**Stack**: Next.js 16 · React 19 · NestJS · Playwright · Grafana k6 · PostgreSQL · Redis · MinIO
+**Stack**: [Next.js 16](https://nextjs.org) · [React 19](https://react.dev) · [NestJS](https://nestjs.com) · [Playwright](https://playwright.dev) · [Grafana k6](https://k6.io) · [PostgreSQL](https://www.postgresql.org) · [Redis](https://redis.io) · [MinIO](https://github.com/minio/minio)
 
 ## Documentation
 

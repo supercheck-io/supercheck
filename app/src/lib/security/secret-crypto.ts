@@ -29,13 +29,13 @@ function getBaseKey(): Buffer {
 
   if (!key) {
     throw new Error(
-      `${KEY_ENV} environment variable is not set. Please configure it to enable encryption.`,
+      `${KEY_ENV} environment variable is not set. Please configure it to enable encryption.`
     );
   }
 
   if (key.length < RAW_KEY_LENGTH) {
     throw new Error(
-      `${KEY_ENV} must be at least ${RAW_KEY_LENGTH} characters long.`,
+      `${KEY_ENV} must be at least ${RAW_KEY_LENGTH} characters long.`
     );
   }
 
@@ -46,7 +46,7 @@ function getBaseKey(): Buffer {
 
   if (buffer.length < RAW_KEY_LENGTH) {
     throw new Error(
-      `${KEY_ENV} must resolve to at least ${RAW_KEY_LENGTH} bytes of key material.`,
+      `${KEY_ENV} must resolve to at least ${RAW_KEY_LENGTH} bytes of key material.`
     );
   }
 
@@ -64,10 +64,10 @@ function deriveKey(baseKey: Buffer, context?: string): Buffer {
     baseKey,
     salt,
     HKDF_INFO,
-    DERIVED_KEY_LENGTH,
+    DERIVED_KEY_LENGTH
   );
 
-  return Buffer.isBuffer(derived) ? derived : Buffer.from(derived);
+  return Buffer.from(derived);
 }
 
 function encodeEnvelope(envelope: RawEnvelope): string {
@@ -94,7 +94,7 @@ function decodeEnvelope(payload: string): RawEnvelope {
 
 export function encryptSecret(
   value: string,
-  options: EncryptionOptions = {},
+  options: EncryptionOptions = {}
 ): SecretEnvelope {
   const baseKey = getBaseKey();
   const key = deriveKey(baseKey, options.context);
@@ -102,7 +102,10 @@ export function encryptSecret(
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv("aes-128-gcm", key, iv);
 
-  const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  const ciphertext = Buffer.concat([
+    cipher.update(value, "utf8"),
+    cipher.final(),
+  ]);
   const authTag = cipher.getAuthTag();
 
   const payload = encodeEnvelope({
@@ -122,7 +125,7 @@ export function encryptSecret(
 
 export function decryptSecret(
   envelope: SecretEnvelope,
-  options: EncryptionOptions = {},
+  options: EncryptionOptions = {}
 ): string {
   if (!envelope?.encrypted) {
     throw new Error("Invalid encrypted envelope");
@@ -131,7 +134,7 @@ export function decryptSecret(
   const baseKey = getBaseKey();
   const key = deriveKey(
     baseKey,
-    options.context ?? envelope.context ?? undefined,
+    options.context ?? envelope.context ?? undefined
   );
 
   const raw = decodeEnvelope(envelope.payload);
@@ -148,14 +151,14 @@ export function decryptSecret(
 
 export function encryptJson<T>(
   data: T,
-  options: EncryptionOptions = {},
+  options: EncryptionOptions = {}
 ): SecretEnvelope {
   return encryptSecret(JSON.stringify(data), options);
 }
 
 export function decryptJson<T>(
   envelope: SecretEnvelope,
-  options: EncryptionOptions = {},
+  options: EncryptionOptions = {}
 ): T {
   const json = decryptSecret(envelope, options);
   return JSON.parse(json) as T;

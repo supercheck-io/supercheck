@@ -1,0 +1,37 @@
+{
+  "cookies": [
+    {
+      "name": "cf_clearance",
+      "value": "eVRAb9XkRxFsi17_ndA862ma0a0mxDn8P5Gg2Vcw.JM-1765226370-1.2.1.1-GS9mQY20_El5_wwMdeqGARR5KMFIGL2sx7OkXK378RN78kpHmp.tiQ0kggdmlACVtfnY4.WEdX3FbuaAGJ7itpvH6DrkN4VVaIMkFLtrlM6flbI1cqqlKxieD2Gh0RDWgmv.d7pR8c.BDw6omjxilaxzeQxtVVh_8CH3QOnJ7wkRT6CX.eXVxiA8zVPvWaCIGZgwtQjapuzy.3vKzG05BPus_Ufyfk2lnJ86Oviaj5M",
+      "domain": ".supercheck.io",
+      "path": "/",
+      "expires": 1796762370.77754,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None",
+      "partitionKey": "https://supercheck.io",
+      "_crHasCrossSiteAncestor": false
+    },
+    {
+      "name": "__Secure-better-auth.session_token",
+      "value": "qwgZrVT346rrydUrsxgH6MuloFFQZHDU.3yRe5zOtMiIgzbgdrnLNFxOURVLyS2AMcdzcjZoQg94%3D",
+      "domain": "demo.supercheck.io",
+      "path": "/",
+      "expires": 1765831170.910648,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "better-auth.last_used_login_method",
+      "value": "email",
+      "domain": "demo.supercheck.io",
+      "path": "/",
+      "expires": 1767818370.910682,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": []
+}

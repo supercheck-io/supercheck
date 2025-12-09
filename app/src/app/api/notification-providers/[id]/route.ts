@@ -11,7 +11,11 @@ import {
 import { eq, desc, and, count, sql } from "drizzle-orm";
 import { hasPermission } from "@/lib/rbac/middleware";
 import { requireProjectContext } from "@/lib/project-context";
-import { decryptNotificationProviderConfig, encryptNotificationProviderConfig, sanitizeConfigForClient } from "@/lib/notification-providers/crypto";
+import {
+  decryptNotificationProviderConfig,
+  encryptNotificationProviderConfig,
+  sanitizeConfigForClient,
+} from "@/lib/notification-providers/crypto";
 import { validateProviderConfig } from "@/lib/notification-providers/validation";
 import type { NotificationProviderType } from "@/db/schema";
 
@@ -22,16 +26,16 @@ export async function GET(
   try {
     const { id } = await context.params;
     const { project, organizationId } = await requireProjectContext();
-    
+
     // Check permission to view notification providers
-    const canView = await hasPermission('monitor', 'view', {
+    const canView = await hasPermission("monitor", "view", {
       organizationId,
-      projectId: project.id
+      projectId: project.id,
     });
-    
+
     if (!canView) {
       return NextResponse.json(
-        { error: 'Insufficient permissions' },
+        { error: "Insufficient permissions" },
         { status: 403 }
       );
     }
@@ -39,11 +43,13 @@ export async function GET(
     const [provider] = await db
       .select()
       .from(notificationProviders)
-      .where(and(
-        eq(notificationProviders.id, id),
-        eq(notificationProviders.organizationId, organizationId),
-        eq(notificationProviders.projectId, project.id)
-      ));
+      .where(
+        and(
+          eq(notificationProviders.id, id),
+          eq(notificationProviders.organizationId, organizationId),
+          eq(notificationProviders.projectId, project.id)
+        )
+      );
 
     if (!provider) {
       return NextResponse.json(
@@ -144,8 +150,7 @@ export async function PUT(
 
     const updateData = validationResult.data;
 
-    const plainConfig = (updateData.config ??
-      {}) as Record<string, unknown>;
+    const plainConfig = (updateData.config ?? {}) as Record<string, unknown>;
 
     try {
       validateProviderConfig(
@@ -173,7 +178,7 @@ export async function PUT(
       .update(notificationProviders)
       .set({
         name: updateData.name!,
-        type: updateData.type!,
+        type: updateData.type as NotificationProviderType,
         config: encryptedConfig,
         updatedAt: new Date(),
       })
@@ -289,4 +294,4 @@ export async function DELETE(
       { status: 500 }
     );
   }
-} 
+}

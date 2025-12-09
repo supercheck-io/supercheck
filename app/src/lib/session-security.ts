@@ -119,15 +119,25 @@ export function validateSessionContext(
 
 /**
  * Rate limiting for admin and auth operations
+ * Uses Redis-based sliding window for multi-instance support
  */
-const operationCounts = new Map<string, { count: number; resetTime: number }>();
+import { getRedisConnection } from "@/lib/queue";
+import { createLogger } from "@/lib/logger/index";
 
-export function checkAdminRateLimit(
+const rateLimitLogger = createLogger({ module: "session-rate-limit" }) as {
+  debug: (data: unknown, msg?: string) => void;
+  warn: (data: unknown, msg?: string) => void;
+  error: (data: unknown, msg?: string) => void;
+};
+
+const RATE_LIMIT_KEY_PREFIX = "supercheck:session:ratelimit";
+
+export async function checkAdminRateLimit(
   userId: string,
   operation: string,
   maxOperations = 5,
   windowMs = 5 * 60 * 1000 // 5 minutes
-): { allowed: boolean; resetTime?: number } {
+): Promise<{ allowed: boolean; resetTime?: number }> {
   return checkRateLimit(
     `admin:${userId}:${operation}`,
     maxOperations,
@@ -139,12 +149,12 @@ export function checkAdminRateLimit(
  * Rate limiting for password reset requests
  * More restrictive than admin operations for security
  */
-export function checkPasswordResetRateLimit(
+export async function checkPasswordResetRateLimit(
   identifier: string, // email or IP address
   maxAttempts = 3,
   windowMs = 15 * 60 * 1000 // 15 minutes
-): { allowed: boolean; resetTime?: number; attemptsLeft?: number } {
-  const result = checkRateLimit(
+): Promise<{ allowed: boolean; resetTime?: number; attemptsLeft?: number }> {
+  const result = await checkRateLimit(
     `password-reset:${identifier}`,
     maxAttempts,
     windowMs
@@ -154,50 +164,111 @@ export function checkPasswordResetRateLimit(
     return result;
   }
 
-  // Calculate attempts left
-  const key = `password-reset:${identifier}`;
-  const current = operationCounts.get(key);
-  const attemptsLeft = maxAttempts - (current?.count || 0);
+  // Get current count from Redis for attemptsLeft calculation
+  try {
+    const redis = await getRedisConnection();
+    if (redis) {
+      const key = `${RATE_LIMIT_KEY_PREFIX}:password-reset:${identifier}`;
+      const count = await redis.zcard(key);
+      const attemptsLeft = Math.max(0, maxAttempts - count);
+      return { ...result, attemptsLeft };
+    }
+  } catch {
+    // Fall through to default
+  }
 
-  return { ...result, attemptsLeft };
+  return { ...result, attemptsLeft: maxAttempts - 1 };
 }
 
 /**
- * Generic rate limiting function
+ * Redis-based sliding window rate limiting
+ * Supports multi-instance deployments and fails open on Redis unavailability
  */
-function checkRateLimit(
+async function checkRateLimit(
   key: string,
   maxOperations: number,
   windowMs: number
-): { allowed: boolean; resetTime?: number } {
-  const now = Date.now();
-  const current = operationCounts.get(key);
+): Promise<{ allowed: boolean; resetTime?: number }> {
+  try {
+    const redis = await getRedisConnection();
+    if (!redis) {
+      // Fail open if Redis is unavailable
+      rateLimitLogger.warn(
+        { key },
+        "Redis unavailable for rate limiting, allowing request"
+      );
+      return { allowed: true };
+    }
 
-  if (!current || now > current.resetTime) {
-    // First operation or window expired
-    operationCounts.set(key, { count: 1, resetTime: now + windowMs });
+    const redisKey = `${RATE_LIMIT_KEY_PREFIX}:${key}`;
+    const now = Date.now();
+    const windowStart = now - windowMs;
+
+    // Atomic pipeline: remove old entries, count current, add new if allowed
+    const multi = redis.multi();
+
+    // Remove entries outside the window
+    multi.zremrangebyscore(redisKey, 0, windowStart);
+
+    // Count current entries
+    multi.zcard(redisKey);
+
+    // Get the oldest entry for reset time calculation
+    multi.zrange(redisKey, 0, 0, "WITHSCORES");
+
+    const results = await multi.exec();
+
+    if (!results) {
+      rateLimitLogger.warn({ key }, "Redis transaction failed, allowing request");
+      return { allowed: true };
+    }
+
+    const currentCount = (results[1]?.[1] as number) ?? 0;
+
+    if (currentCount >= maxOperations) {
+      // Calculate reset time from oldest entry
+      const oldestEntry = results[2]?.[1] as string[] | undefined;
+      let resetTime = now + windowMs;
+
+      if (oldestEntry && oldestEntry.length >= 2) {
+        const oldestTimestamp = parseInt(oldestEntry[1], 10);
+        resetTime = oldestTimestamp + windowMs;
+      }
+
+      rateLimitLogger.debug(
+        { key, count: currentCount, limit: maxOperations },
+        "Rate limit exceeded"
+      );
+
+      return { allowed: false, resetTime };
+    }
+
+    // Add this request with unique member (timestamp + random suffix)
+    const member = `${now}:${Math.random().toString(36).slice(2)}`;
+    await redis.zadd(redisKey, now, member);
+
+    // Set expiry slightly longer than window to handle edge cases
+    await redis.expire(redisKey, Math.ceil(windowMs / 1000) + 10);
+
+    return { allowed: true };
+  } catch (error) {
+    // Fail open on any Redis error
+    rateLimitLogger.error(
+      { error, key },
+      "Rate limiting error, allowing request"
+    );
     return { allowed: true };
   }
-
-  if (current.count >= maxOperations) {
-    return { allowed: false, resetTime: current.resetTime };
-  }
-
-  // Increment count
-  current.count++;
-  return { allowed: true };
 }
 
 /**
- * Clear expired rate limit entries (should be called periodically)
+ * Clean up expired rate limit entries
+ * Note: With Redis implementation, this is mostly handled by Redis TTL,
+ * but this function can be called to proactively clean up if needed
  */
-export function cleanupRateLimitEntries(): void {
-  const now = Date.now();
-  for (const [key, data] of operationCounts.entries()) {
-    if (now > data.resetTime) {
-      operationCounts.delete(key);
-    }
-  }
+export async function cleanupRateLimitEntries(): Promise<void> {
+  // Redis TTL handles expiry automatically
+  // This function is kept for API compatibility but is now a no-op
 }
 
 /**

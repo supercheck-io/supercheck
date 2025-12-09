@@ -22,6 +22,7 @@ Thumbs.db
 # CLAUDE.md
 AGENTS.md
 AI_RULES.md
+./test-results/
 
 ## IDE - VSCode
 .vscode/*
@@ -77,6 +78,10 @@ app/.yarn/*
 
 ## Testing
 app/coverage
+app/e2e/test-results/
+app/e2e/playwright-report/
+app/e2e/auth-state.json
+test-results/
 
 ## Next.js
 app/.next/
@@ -116,7 +121,7 @@ coverage/
 *.lcov
 
 # Package managers
-package-lock.json
+# package-lock.json
 yarn.lock
 pnpm-lock.yaml
 .pnp.cjs

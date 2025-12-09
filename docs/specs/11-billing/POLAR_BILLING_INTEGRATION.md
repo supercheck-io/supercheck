@@ -1110,7 +1110,7 @@ sequenceDiagram
 
     loop Every 5 minutes
         PolarSync->>DB: SELECT * FROM usage_events WHERE synced=false
-        PolarSync->>PolarAPI: POST /customers/{id}/meters/events
+        PolarSync->>PolarAPI: POST /v1/events/ingest
         PolarAPI-->>PolarSync: Event recorded
         PolarSync->>DB: UPDATE usage_events SET synced=true
     end
@@ -1306,7 +1306,7 @@ graph LR
 
 **Event Synchronization**: Syncs usage events to Polar for billing
 
-- **API Integration**: Uses Polar's `/customers/{id}/meters/events` endpoint
+- **API Integration**: Uses Polar's `/v1/events/ingest` endpoint
 - **Meter Mapping**: Maps `playwright_execution` → `playwright_minutes`, `k6_execution` → `k6_vu_minutes`
 - **Batch Processing**: Processes pending events in configurable batch sizes
 - **Retry Logic**: Automatic retries with exponential backoff, max 5 attempts
@@ -3296,25 +3296,42 @@ export async function handleSubscriptionRevoked(payload: PolarWebhookPayload) {
 
 **Update (Jan 2025)**: Webhook idempotency is now database-backed using the `webhook_idempotency` table to handle multi-instance deployments. The in-memory Map has been replaced with persistent storage that survives restarts and works across multiple server instances.
 
-### SEC-006: Full Access for `past_due` Subscriptions (LOW) ✅ RESOLVED
+### SEC-006: `past_due` Subscription Handling (LOW) ✅ RESOLVED - AS INTENDED
 
-**Current Behavior**: Subscriptions with `status = 'past_due'` are **BLOCKED** from creating new resources.
+**Current Behavior**: Subscriptions with `status = 'past_due'` **RETAIN ACCESS** while payment is being retried.
 
-**How It Works**: The `hasActiveSubscription()` function in `subscription-service.ts` explicitly checks:
+**How It Works**: The `hasActiveSubscription()` function in `subscription-service.ts` uses a switch statement:
 
 ```typescript
-return (
-  org.subscriptionPlan !== null && org.subscriptionStatus === "active" // Only "active" status passes
-);
+switch (org.subscriptionStatus) {
+  case "active":
+    return true;  // Full access
+  case "canceled":
+    // Access until period end (grace period)
+    if (org.subscriptionEndsAt) {
+      return new Date() < new Date(org.subscriptionEndsAt);
+    }
+    return false;
+  case "past_due":
+    return true;  // Retain access while payment retried
+  default:
+    return false;
+}
 ```
 
-This means `past_due`, `canceled`, and `none` statuses are all blocked.
+**Rationale**: This is the **correct behavior** per industry best practices:
+
+- `past_due` means Polar is actively retrying payment (card declined, expired, etc.)
+- Users shouldn't lose access immediately due to temporary payment issues
+- If payment fails permanently, Polar sends `subscription.revoked` which terminates access immediately
+- This matches Stripe and other payment provider behavior
 
 **User Experience**:
 
-- Users with `past_due` status see subscription required errors when trying to create resources
-- They can still view existing data and access the billing page to resolve payment issues
-- Once payment is resolved, Polar sends `subscription.active` webhook to restore access
+- Users with `past_due` status continue working normally (no disruption)
+- They receive email notifications from Polar to update payment method
+- If payment ultimately fails, Polar revokes subscription → immediate termination
+- If payment succeeds, subscription returns to `active` → no change for user
 
 ### Best Practices Implemented
 
@@ -3324,6 +3341,7 @@ This means `past_due`, `canceled`, and `none` statuses are all blocked.
 4. **Audit Logging**: Webhook handlers log all subscription changes with truncated IDs
 5. **Graceful Degradation**: Cancellation allows access until period end, revocation terminates immediately
 6. **Database-Backed Idempotency**: Webhook deduplication survives restarts and works across instances
+7. **Payment Retry Grace**: `past_due` retains access (standard industry practice)
 
 ### Testing Coverage
 
@@ -3348,13 +3366,13 @@ Subscription checks are **organization-level**, not user-level. This means all m
 
 ### Subscription Status Impact on Members
 
-| Subscription Status | Owner Access                | Member Access               | Notes                                            |
-| ------------------- | --------------------------- | --------------------------- | ------------------------------------------------ |
-| `active`            | ✅ Full access              | ✅ Full access              | Normal operation                                 |
-| `past_due`          | ❌ Blocked                  | ❌ Blocked                  | Payment failed, can view billing page to resolve |
-| `canceled`          | ⚠️ Limited until period end | ⚠️ Limited until period end | Can still access until subscriptionEndsAt        |
-| `none`              | ❌ Blocked                  | ❌ Blocked                  | No subscription, must subscribe                  |
-| Customer deleted    | ❌ Blocked                  | ❌ Blocked                  | Polar customer no longer exists                  |
+| Subscription Status | Owner Access                | Member Access               | Notes                                                           |
+| ------------------- | --------------------------- | --------------------------- | --------------------------------------------------------------- |
+| `active`            | ✅ Full access              | ✅ Full access              | Normal operation                                                |
+| `past_due`          | ✅ Full access              | ✅ Full access              | Retains access while Polar retries payment                      |
+| `canceled`          | ⚠️ Limited until period end | ⚠️ Limited until period end | Can still access until subscriptionEndsAt                       |
+| `none`              | ❌ Blocked                  | ❌ Blocked                  | No subscription, must subscribe                                 |
+| Customer deleted    | ❌ Blocked                  | ❌ Blocked                  | Polar customer no longer exists                                 |
 
 ### Detailed Scenarios
 
@@ -3364,16 +3382,16 @@ Subscription checks are **organization-level**, not user-level. This means all m
 
 **Impact**:
 
-- ALL organization members are blocked from creating new resources
-- Existing data remains accessible (read-only)
-- Scheduled jobs/monitors continue running (they were already created)
-- Billing page shows warning and link to resolve payment
+- ALL organization members **RETAIN FULL ACCESS** while payment is being retried
+- Users may not even notice the issue (seamless for them)
+- Polar automatically sends email notifications to update payment method
+- Scheduled jobs/monitors continue running normally
 
 **Resolution**:
 
-- Organization owner updates payment method in Polar
-- Polar sends `subscription.active` webhook
-- Full access restored for all members
+- Organization owner updates payment method in Polar (via email link or portal)
+- Polar sends `subscription.active` webhook - status restored
+- If payment ultimately fails permanently, Polar sends `subscription.revoked` → immediate termination
 
 #### Scenario 2: Subscription Cancellation
 

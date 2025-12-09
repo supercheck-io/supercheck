@@ -91,20 +91,21 @@ module.exports = defineConfig({
     ],
   ],
 
-  /* Timeouts aligned with execution service limits */
-  // Increased to handle slower browser operations and network requests
-  timeout: 240000, // 4 minutes per test - well below 5min execution timeout
+  /* Per-test timeout: max time for ONE test (including all its steps) */
+  timeout: 120000, // 2 minutes per test
+  
+  /* Assertion timeout: max time for expect() calls */
   expect: {
-    timeout: 15000, // 15 seconds for assertions
+    timeout: 15000, // 15 seconds
   },
 
-  /* Global test setup timeout */
-  globalTimeout: 600000, // 10 minutes for entire test suite (job timeout is 15min)
+  /* Suite timeout: max time for ALL tests combined to complete */
+  globalTimeout: 300000, // 5 minutes total
 
   /* Optimized settings for Supercheck execution environment */
   use: {
-    /* Action timeout optimized for web application testing */
-    actionTimeout: 20000, // 20 seconds - balanced for real-world conditions
+    /* Action timeout optimized for quick feedback */
+    actionTimeout: 20000, // 20 seconds - fail fast on broken selectors
     navigationTimeout: 30000, // 30 seconds for page loads
 
     /* Timezone and locale settings */

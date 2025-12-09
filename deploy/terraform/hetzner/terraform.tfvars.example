@@ -1,0 +1,32 @@
+# Example Terraform Variables
+# Copy this file to terraform.tfvars and fill in your values
+
+# Required: Hetzner Cloud API Token
+# Get from: https://console.hetzner.cloud/projects/<project>/security/tokens
+hcloud_token = "your-hetzner-api-token"
+
+# Required: Your SSH public key
+ssh_public_key = "ssh-ed25519 AAAA... your-email@example.com"
+
+# -----------------------------------------------------------------------------
+# Optional: Customize your deployment
+# -----------------------------------------------------------------------------
+
+# Cluster name (used as prefix for all resources)
+cluster_name = "supercheck"
+
+# K3s version
+k3s_version = "v1.28.4+k3s2"
+
+# Server type (2 vCPU / 4 GB RAM)
+server_type = "cx22"
+
+# Node counts per region
+master_count    = 1   # Use 3 for HA
+app_node_count  = 1
+worker_count_eu   = 1
+worker_count_us   = 1
+worker_count_apac = 1
+
+# Restrict SSH access (recommended for production)
+# ssh_allowed_ips = ["YOUR_IP/32"]

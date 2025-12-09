@@ -255,7 +255,21 @@ export function getBetterAuthRole(role: Role): BetterAuthRole | undefined {
   return roles[role];
 }
 
-// Helper function to check if role has organization-wide access
+/**
+ * Check if role has organization-wide access (can view all projects in the org).
+ * 
+ * This function determines whether a user can access ALL projects in their organization
+ * without needing explicit project assignment:
+ * 
+ * - SUPER_ADMIN, ORG_OWNER, ORG_ADMIN: Full org-wide access
+ * - PROJECT_VIEWER: Read-only access to all projects (intentionally included)
+ * - PROJECT_ADMIN, PROJECT_EDITOR: Limited to assigned projects only
+ * 
+ * Note: PROJECT_VIEWER having org-wide access is intentional - they are granted
+ * read-only visibility across all projects to enable monitoring/oversight roles.
+ * PROJECT_ADMIN and PROJECT_EDITOR are project-limited because they have edit
+ * permissions that should be scoped to their assigned projects.
+ */
 export function hasOrganizationWideAccess(role: Role): boolean {
   return [
     Role.SUPER_ADMIN,

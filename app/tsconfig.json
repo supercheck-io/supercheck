@@ -3,20 +3,11 @@
   // The IDE may show an error but TypeScript compilation works correctly
   "compilerOptions": {
     "target": "ES2017",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
-    "types": [
-      "node",
-      "jest"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "types": ["node", "jest"],
     "allowJs": true,
     "skipLibCheck": true,
-    "typeRoots": [
-      "./node_modules/@types"
-    ],
+    "typeRoots": ["./node_modules/@types"],
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,
@@ -32,12 +23,8 @@
       }
     ],
     "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "~/*": [
-        "./src/*"
-      ]
+      "@/*": ["./src/*"],
+      "~/*": ["./src/*"]
     }
   },
   "include": [
@@ -47,7 +34,5 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-  "exclude": [
-    "node_modules"
-  ]
+  "exclude": ["node_modules", "public/supercheck.d.ts", "e2e"]
 }

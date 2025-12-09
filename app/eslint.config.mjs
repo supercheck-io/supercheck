@@ -41,6 +41,7 @@ const eslintConfig = [
       "node_modules/**",
       "coverage/**",
       ".env*",
+      "e2e/**",
     ],
   },
 ];
