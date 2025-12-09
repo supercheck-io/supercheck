@@ -5,7 +5,9 @@ import { notFound } from 'next/navigation';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
 import {
   DocsBody,
+  DocsDescription,
   DocsPage,
+  DocsTitle,
 } from 'fumadocs-ui/page';
 import { Edit } from 'lucide-react';
 import Link from 'next/link';
@@ -27,22 +29,20 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
         style: 'clerk',
       }}
     >
-      <div className="flex items-start justify-between gap-4 mb-2">
-        <h1 className="text-[1.75em] font-semibold">{page.data.title}</h1>
+      <DocsTitle>{page.data.title}</DocsTitle>
+      <DocsDescription className="flex items-center justify-between gap-4">
+        <span>{page.data.description}</span>
         <Link
           href={`https://github.com/supercheck-io/supercheck/blob/main/docs/content/docs/${path}.mdx`}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors border rounded-md px-2.5 py-1 shrink-0 mt-1"
+          className="inline-flex items-center gap-1.5 text-xs text-fd-muted-foreground hover:text-fd-foreground transition-colors border rounded-md px-2 py-1 shrink-0"
         >
-          <Edit className="size-3.5" />
-          Edit on GitHub
+          <Edit className="size-3" />
+          Edit
         </Link>
-      </div>
-      <p className="text-lg text-fd-muted-foreground border-b pb-6 mb-6">
-        {page.data.description}
-      </p>
-      <DocsBody className="prose flex-1 text-fd-foreground/90">
+      </DocsDescription>
+      <DocsBody>
         <MDX
           components={getMDXComponents({
             a: createRelativeLink(source, page),
