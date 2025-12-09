@@ -4,21 +4,48 @@ description: Playwright-based UI testing
 icon: Chrome
 ---
 
-Automate user interactions with Playwright. Navigate pages, fill forms, click buttons, and validate content.
+Automate user interactions with Playwright. Navigate pages, fill forms, click buttons, and validate content. Browser tests run in isolated containers with Chromium, Firefox, or WebKit.
 
 ## Example
 
 ```typescript
-import { test, expect } from '@playwright/test';
+/**
+ * Authentication flow test (Login & Logout).
+ * 
+ * Purpose:
+ * - Verify user can successfully log in with valid credentials
+ * - Verify user is redirected to the secure area
+ * - Verify user can log out successfully
+ * 
+ * @see https://playwright.dev/docs/writing-tests
+ */
+import { expect, test } from '@playwright/test';
 
-test('user can login', async ({ page }) => {
-  await page.goto('https://app.example.com/login');
-  await page.fill('#email', 'user@example.com');
-  await page.fill('#password', 'password');
-  await page.click('button[type="submit"]');
-  await expect(page).toHaveURL('/dashboard');
+const APP_URL = 'https://the-internet.herokuapp.com';
+const CREDENTIALS = { username: 'tomsmith', password: 'SuperSecretPassword!' };
+
+test.describe('authentication flow', () => {
+  test('user can sign in and sign out', async ({ page }) => {
+    await page.goto(APP_URL + '/login');
+
+    // Fill login form
+    await page.getByLabel('Username').fill(CREDENTIALS.username);
+    await page.getByLabel('Password').fill(CREDENTIALS.password);
+    await page.getByRole('button', { name: 'Login' }).click();
+
+    // Verify successful login
+    await expect(page.getByText('You logged into a secure area!')).toBeVisible();
+    
+    // Perform logout
+    await page.getByRole('link', { name: 'Logout' }).click();
+    
+    // Verify redirect to login page
+    await expect(page).toHaveURL(APP_URL + '/login');
+  });
 });
 ```
+
+📚 [Playwright Writing Tests](https://playwright.dev/docs/writing-tests)
 
 ## Create Test
 
@@ -72,3 +99,11 @@ await expect(page.locator('h1')).toHaveText('Welcome');
 - Playwright auto-waits for elements
 - Avoid fixed `waitForTimeout()` calls
 - Take screenshots on failure for debugging
+- Use `getSecret().toString()` for passwords and API keys
+
+## Learn More
+
+- **[Playwright Documentation](https://playwright.dev/docs/intro)** — Complete Playwright guide
+- **[Playwright Locators](https://playwright.dev/docs/locators)** — Finding elements reliably
+- **[Playwright Assertions](https://playwright.dev/docs/test-assertions)** — Available assertion methods
+- **[Playwright Auto-waiting](https://playwright.dev/docs/actionability)** — How Playwright waits for elements

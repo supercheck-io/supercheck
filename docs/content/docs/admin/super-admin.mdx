@@ -4,17 +4,37 @@ description: System-wide administration for self-hosted deployments
 icon: UserPlus
 ---
 
-Super Admin provides system-wide control for self-hosted deployments.
+Super Admin provides platform-level management for self-hosted deployments, including user management, organization oversight, scheduler control, and system health monitoring.
 
 ## Enable Super Admin
 
-Set the `SUPER_ADMIN_EMAIL` environment variable:
+There are two ways to enable super admin access:
+
+### Option 1: Environment Variable (Recommended)
+
+Set the `SUPER_ADMIN_EMAIL` environment variable in your deployment:
 
 ```bash
 SUPER_ADMIN_EMAIL=admin@yourdomain.com
 ```
 
 The user with this email is automatically promoted to super admin on login.
+
+### Option 2: Manual Script
+
+Run the bootstrap script inside the app container:
+
+```bash
+docker compose exec app npm run setup:admin admin@yourdomain.com
+```
+
+### Revoking Super Admin
+
+To downgrade a super admin to organization admin:
+
+```bash
+docker compose exec app npm run revoke:admin admin@yourdomain.com
+```
 
 ## Overview
 
@@ -44,28 +64,71 @@ Monitor BullMQ queues for test execution, monitoring, and background jobs. View 
 
 | Feature | Description |
 |---------|-------------|
+| **System Statistics** | View total users, organizations, projects, jobs, tests, monitors, and runs |
 | **Organizations** | View and manage all organizations |
-| **Users** | Manage all users system-wide |
-| **Impersonation** | Log in as any user for support |
-| **Queue Monitoring** | View BullMQ queue status and health |
-| **System Settings** | Configure global settings |
+| **Users** | Manage all users system-wide, ban/unban accounts |
+| **Impersonation** | Log in as any user for troubleshooting |
+| **Scheduler Control** | Initialize schedulers, view status, manually trigger jobs |
+| **Queue Monitoring** | Real-time BullMQ queue stats via Bull Dashboard |
 
-## Impersonation
+## User Management
 
-Super admins can impersonate users for troubleshooting:
+Manage all users across the platform:
+
+- **View Details** — See user profile, email, and organization memberships
+- **Ban/Unban** — Suspend accounts with a reason (banned users cannot log in)
+- **Impersonate** — Log in as any user for troubleshooting
+
+### Impersonation
 
 1. Go to **Super Admin → Users**
-2. Find the user
-3. Click **Impersonate**
-4. A banner shows you're impersonating
-5. Click **Exit** to return
+2. Find the user and click the menu (**⋮**)
+3. Select **Impersonate**
+4. If the user belongs to multiple organizations, select which one to impersonate into
+5. Click **Impersonate User** to confirm
+
+![Impersonate User Dialog](/screenshots/super-admin-impersonate-user.png)
+
+While impersonating:
+- A banner at the bottom shows "Impersonating" with the user's email
+- Click **Stop** to return to your admin session
+- You see the platform exactly as the user would
+
+![Impersonation Banner](/screenshots/super-admin-impersonation-banner.png)
 
 <Callout type="warning">
-Impersonation is logged for audit purposes.
+**Security Notice**: All impersonation sessions are logged for audit purposes. The original admin ID is preserved throughout the session.
 </Callout>
+
+### Banning Users
+
+To suspend a user account:
+
+1. Go to **Super Admin → Users**
+2. Find the user and click the menu (**⋮**)
+3. Select **Ban User**
+4. Enter a reason for the ban (minimum 20 characters)
+5. Click **Ban User** to confirm
+
+![Ban User Dialog](/screenshots/super-admin-ban-user.png)
+
+<Callout type="warning">
+**Reversible Action**: Banning is reversible. The user will be unable to sign in until unbanned, but all their data is preserved. To unban, click **Unban** from the same menu.
+</Callout>
+
+Banned users see a "403 Account suspended" message when attempting to log in.
+
+## Scheduler Control
+
+Manage the job scheduling system:
+
+- **Initialize Schedulers** — Start or restart the scheduling service
+- **View Status** — Check scheduler health and active jobs
+- **Manual Triggers** — Force-run scheduled jobs for testing
 
 ## Security
 
-- Only one super admin email is supported
-- Multiple emails will cause a startup error
-- All super admin actions are logged
+- **Single Admin** — Only one super admin email is supported per deployment
+- **Validation** — Multiple emails in `SUPER_ADMIN_EMAIL` will cause a startup error
+- **Audit Trail** — All super admin actions are logged with timestamps
+- **Session Tracking** — Impersonation sessions preserve the original admin ID for accountability

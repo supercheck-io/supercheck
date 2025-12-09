@@ -1,105 +1,271 @@
 ---
 title: Monitors
-description: 24/7 uptime monitoring
+description: 24/7 uptime monitoring from multiple regions
 icon: Globe
 ---
 
-Monitor services from multiple regions. Get alerts when things go down.
+Monitors continuously check your services and alert you when issues occur. Run checks from multiple geographic regions to detect localized outages and ensure global availability.
 
 ![Monitors List](/screenshots/monitors-list.png)
 
 ## Monitor Types
 
+Supercheck offers five monitor types, each designed for specific use cases:
+
 <Cards>
 <Card icon={<ArrowLeftRight className="text-teal-600" />} title="HTTP Monitor">
-Check HTTP/HTTPS endpoints for availability and response time
+Full-featured API and endpoint monitoring with custom headers, authentication, and response validation
 </Card>
 
 <Card icon={<LaptopMinimal className="text-sky-600" />} title="Website Monitor">
-Monitor website availability with SSL certificate tracking
+Simple website availability checks with SSL certificate expiration tracking
 </Card>
 
 <Card icon={<ChevronsLeftRightEllipsis className="text-cyan-600" />} title="Ping Monitor">
-ICMP ping checks for host availability and latency
+Network-level ICMP ping checks for server availability and latency measurement
 </Card>
 
 <Card icon={<EthernetPort className="text-blue-600" />} title="Port Monitor">
-TCP/UDP port checks for service accessibility
+TCP/UDP port checks to verify that specific services are accepting connections
 </Card>
 
 <Card icon={<Laptop className="text-purple-600" />} title="Synthetic Monitor">
-Playwright browser tests on a schedule
+Run full Playwright browser tests on a schedule to validate complete user journeys
 </Card>
 </Cards>
 
-## Create HTTP Monitor
+## HTTP Monitor
+
+The most versatile monitor type for APIs and web services.
+
+**What it checks:**
+- HTTP/HTTPS endpoint availability
+- Response status codes (2xx, 3xx, 4xx, 5xx)
+- Response time and latency
+- Response body content (keyword validation)
+- JSON response structure (JSON path validation)
+- SSL certificate validity and expiration
+
+**Configuration options:**
+- **HTTP Method** — GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
+- **Custom Headers** — Add authentication tokens, API keys, or custom headers
+- **Request Body** — Send JSON or form data for POST/PUT requests
+- **Authentication** — Basic Auth or Bearer Token support
+- **Expected Status** — Validate specific status codes or ranges
+- **Keyword Validation** — Check for presence or absence of text in response
 
 ![Create HTTP Monitor](/screenshots/create-http-monitor.png)
 
-## Create Website Monitor
+<Callout type="info">
+Use HTTP monitors for APIs, health check endpoints, and any service that responds to HTTP requests.
+</Callout>
+
+## Website Monitor
+
+Simplified monitoring for web pages with built-in SSL tracking.
+
+**What it checks:**
+- Page loads successfully (HTTP 200)
+- SSL certificate is valid
+- SSL certificate expiration date
+- Optional keyword presence on page
+
+**Best for:**
+- Marketing websites
+- Landing pages
+- Public-facing web applications
+- SSL certificate expiration alerts
 
 ![Create Website Monitor](/screenshots/create-website-monitor.png)
 
-## Create Ping Monitor
+## Ping Monitor
+
+Network-level monitoring using ICMP ping.
+
+**What it checks:**
+- Host is reachable on the network
+- Round-trip latency (response time)
+- Packet loss percentage
+
+**Best for:**
+- Server availability
+- Network infrastructure
+- VPN endpoints
+- Internal services
 
 ![Create Ping Monitor](/screenshots/create-ping-monitor.png)
 
-## Create Port Monitor
+<Callout type="warning">
+Some cloud providers and firewalls block ICMP traffic. If ping monitors fail unexpectedly, verify that ICMP is allowed on your target host.
+</Callout>
+
+## Port Monitor
+
+Verify that specific services are listening on expected ports.
+
+**What it checks:**
+- TCP or UDP port is open and accepting connections
+- Connection can be established within timeout
+- Service is responding on the specified port
+
+**Best for:**
+- Database servers (PostgreSQL 5432, MySQL 3306)
+- Cache servers (Redis 6379, Memcached 11211)
+- Mail servers (SMTP 25/587, IMAP 993)
+- Custom services on non-standard ports
 
 ![Create Port Monitor](/screenshots/create-port-monitor.png)
 
-## Create Synthetic Monitor
+## Synthetic Monitor
+
+Run full Playwright browser tests on a schedule to validate complete user flows.
+
+**What it checks:**
+- Complete user journeys (login, checkout, form submission)
+- JavaScript-rendered content
+- Multi-step workflows
+- Visual elements and interactions
+
+**Best for:**
+- Critical user flows (login, signup, checkout)
+- Single-page applications (SPAs)
+- Complex workflows requiring browser interaction
+- End-to-end validation of user experience
+
+**How it works:**
+1. Create a Playwright test in the [Playground](/docs/automate/playground)
+2. Save the test to your project
+3. Create a Synthetic Monitor and select your test
+4. Set the check interval (minimum 5 minutes recommended)
+5. Monitor runs your test and reports pass/fail status
 
 ![Create Synthetic Monitor](/screenshots/create-synthetic-monitor.png)
 
-## Multi-Location Testing
+<Callout type="info">
+Set synthetic monitor intervals longer than your test execution time to prevent overlapping runs. For a test that takes 2 minutes, use a 5+ minute interval.
+</Callout>
 
-Check from multiple regions to detect localized issues.
+📚 [Playwright Documentation](https://playwright.dev/docs/intro) — Learn more about writing browser tests
+
+## Multi-Region Monitoring
+
+Run checks from multiple geographic locations to detect regional outages and measure latency from different parts of the world.
 
 ![Multi-Location Selector](/screenshots/create-monitor-mutilocation-selector.png)
 
-| Region | Location |
-|--------|----------|
-| **US East** | Ashburn, USA |
-| **EU Central** | Nuremberg, Germany |
-| **Asia Pacific** | Singapore |
+### Available Regions
 
-## Alert Settings
+| Region | Location | Best For |
+|--------|----------|----------|
+| **US East** | Ashburn, Virginia, USA | North American users, US-hosted services |
+| **EU Central** | Nuremberg, Germany | European users, GDPR-compliant monitoring |
+| **Asia Pacific** | Singapore | Asian users, APAC-hosted services |
 
-Configure notifications when monitors fail.
+### How Multi-Region Works
+
+When you enable multiple regions:
+1. Each region runs the check independently
+2. Results are collected from all locations
+3. Status is aggregated (worst-case by default)
+4. You can see per-region latency and availability
+
+**Use cases:**
+- Detect CDN or DNS issues affecting specific regions
+- Measure latency from different geographic locations
+- Ensure global availability for international users
+- Identify regional network problems
+
+<Callout type="info">
+**Self-Hosted Deployments**: In self-hosted mode, all region selections execute from your single worker location. The multi-region selector is available for configuration consistency, but checks run sequentially from one location. For true geographic distribution, deploy workers in multiple regions.
+</Callout>
+
+## Alert Configuration
+
+Configure when and how you receive notifications about monitor status changes.
 
 ![Alert Settings](/screenshots/create-monitor-alerts-setting.png)
 
-### Alert Components
+### Alert Settings
 
-| Component | Description |
-|-----------|-------------|
-| **Enable Alerts** | Toggle to enable/disable notifications |
-| **Alert Types** | Choose "Alert on failure" and/or "Alert on recovery" |
-| **Failure Threshold** | Number of consecutive failures before alerting (e.g., 1-5) |
-| **Recovery Threshold** | Number of consecutive successes before recovery alert |
-| **Notification Channels** | Select which providers to notify (Slack, Discord, Email, Webhook) |
+| Setting | Description | Recommended |
+|---------|-------------|-------------|
+| **Enable Alerts** | Turn notifications on/off for this monitor | On for production services |
+| **Alert on Failure** | Notify when monitor exceeds failure threshold | Always enable |
+| **Alert on Recovery** | Notify when monitor returns to healthy state | Enable for critical services |
+| **Failure Threshold** | Consecutive failures before alerting (1-5) | 2-3 to avoid false positives |
+| **Recovery Threshold** | Consecutive successes before recovery alert (1-5) | 2 to confirm stability |
+| **Notification Channels** | Which providers receive alerts | Multiple channels for critical services |
 
-## Configuration
+### Threshold Logic
 
-| Setting | Description |
-|---------|-------------|
-| **Interval** | Check frequency (1-60 min) |
-| **Timeout** | Request timeout (5-30s) |
-| **Threshold** | Consecutive failures before alerting |
+Thresholds prevent alert fatigue from transient issues:
 
-## Status
+**Example with Failure Threshold = 3:**
 
-| Status | Description |
-|--------|-------------|
-| **Up** | All checks passing |
-| **Degraded** | Intermittent failures |
-| **Down** | Threshold exceeded, alerting |
-| **Paused** | Monitoring disabled |
+| Check # | Result | Failure Count | Alert Sent? |
+|---------|--------|---------------|-------------|
+| 1 | ❌ Fail | 1/3 | No |
+| 2 | ❌ Fail | 2/3 | No |
+| 3 | ❌ Fail | 3/3 | **Yes - Failure Alert** |
+| 4 | ✅ Pass | Reset to 0 | **Yes - Recovery Alert** |
+
+<Callout type="info">
+A threshold of 2-3 works well for most services. Use 1 only for extremely critical services where any failure requires immediate attention.
+</Callout>
+
+## Monitor Status
+
+| Status | Meaning | Action |
+|--------|---------|--------|
+| **Up** | All checks passing | No action needed |
+| **Degraded** | Some checks failing, below threshold | Investigate potential issues |
+| **Down** | Failure threshold exceeded | Alerts sent, investigate immediately |
+| **Paused** | Monitoring disabled | Re-enable when ready |
+
+## Check Intervals
+
+| Interval | Best For | Notes |
+|----------|----------|-------|
+| **1 minute** | Critical production APIs | Fastest detection, highest resource usage |
+| **5 minutes** | Standard production services | Good balance of speed and efficiency |
+| **15 minutes** | Less critical services | Reduced resource usage |
+| **30-60 minutes** | Low-priority or development | Minimal resource usage |
+
+<Callout type="info">
+**Synthetic Monitors**: Minimum interval is 5 minutes to prevent overlapping Playwright executions. Set intervals longer than your test execution time—for a 2-minute test, use 5+ minute intervals.
+</Callout>
 
 ## Best Practices
 
-- Monitor from multiple locations
-- Set appropriate timeouts
-- Use threshold of 2-3 to avoid false positives
-- Enable SSL certificate monitoring
+### General Recommendations
+- **Use multiple regions** for production services to detect regional issues
+- **Set appropriate thresholds** (2-3) to avoid false positive alerts
+- **Configure recovery alerts** to know when issues are resolved
+- **Use descriptive names** that identify the service and environment
+
+### HTTP Monitors
+- **Set realistic timeouts** based on your service's normal response time
+- **Validate response content** to catch partial failures
+- **Monitor health check endpoints** rather than heavy pages
+- **Use authentication** for private endpoints
+
+### Synthetic Monitors
+- **Keep tests focused** on critical user paths
+- **Set intervals longer than test duration** to prevent overlap
+- **Use stable selectors** (data-testid, aria-labels) for reliability
+- **Handle dynamic content** with appropriate waits
+
+### SSL Monitoring
+- **Enable SSL expiration alerts** at 30, 14, and 7 days before expiry
+- **Monitor all domains** including subdomains and CDN certificates
+- **Set up renewal reminders** well before expiration
+
+## Tags
+
+Organize monitors with color-coded tags for easy filtering and categorization.
+
+- **Create tags** — Add custom tags with any of 8 available colors
+- **Filter by tags** — Quickly find monitors by tag in the list view
+- **Bulk operations** — Apply or remove tags from multiple monitors
+
+Tags are project-scoped, so each project can have its own tagging system.

@@ -4,65 +4,85 @@ description: Alerts, dashboards, and status pages
 icon: Bell
 ---
 
-Keep your team and customers informed with alerts and public status pages.
+Keep your team informed when issues occur and communicate service status to your users. Supercheck provides multi-channel alerting for internal teams and public status pages for external communication.
 
-## Features
+## Core Features
 
 <Cards>
 <Card icon={<LayoutDashboard />} title="Dashboard" href="/docs/communicate/dashboard">
-Project health at a glance
+View project health, recent runs, and monitor status at a glance
 </Card>
 
 <Card icon={<Bell />} title="Alerts" href="/docs/communicate/alerts">
-Multi-channel notifications
+Get notified via Slack, email, Discord, Telegram, or webhooks when tests fail or monitors go down
 </Card>
 
 <Card icon={<Tally4 />} title="Status Pages" href="/docs/communicate/status-pages">
-Public incident communication
+Create public-facing pages to communicate system health, incidents, and maintenance to your users
 </Card>
 </Cards>
 
 ## Alert Providers
 
+Send notifications through multiple channels. Configure different providers for different severity levels or teams.
+
 <Cards>
 <Card icon={<Mail />} title="Email">
-SMTP-based notifications
+Professional HTML emails via SMTP with detailed status information and dashboard links
 </Card>
 
 <Card icon={<MessageSquare />} title="Slack">
-Channel and DM messages
+Rich formatted messages to channels or DMs with status badges and quick links
 </Card>
 
 <Card icon={<Webhook />} title="Webhook">
-Custom HTTP integrations
+JSON payloads to any HTTP endpoint for custom integrations with PagerDuty, Opsgenie, or internal systems
 </Card>
 
 <Card icon={<Send />} title="Telegram">
-Bot notifications
+Bot messages to chats or groups with Markdown formatting
 </Card>
 
 <Card icon={<Hash />} title="Discord">
-Server webhooks
+Embedded messages to server channels with color-coded status
 </Card>
 </Cards>
 
-## Threshold Logic
+## Smart Alert Thresholds
 
-Prevent alert noise with consecutive failure thresholds:
+Avoid alert fatigue with consecutive failure thresholds. Only get notified when issues persist, not for transient blips.
 
-| Check | Status | Result |
-|-------|--------|--------|
-| 1 | ❌ Fail | No alert (1/3) |
-| 2 | ❌ Fail | No alert (2/3) |
-| 3 | ❌ Fail | **Alert sent** |
-| 4 | ✅ Pass | Recovery sent |
+| Check | Status | Failure Count | Alert? |
+|-------|--------|---------------|--------|
+| 1 | ❌ Fail | 1/3 | No |
+| 2 | ❌ Fail | 2/3 | No |
+| 3 | ❌ Fail | 3/3 | **Yes - Failure Alert** |
+| 4 | ✅ Pass | Reset | **Yes - Recovery Alert** |
 
-## Status Pages
+**Recommended settings:**
+- **Failure threshold: 2-3** — Balances speed vs. false positives
+- **Recovery threshold: 2** — Confirms service is truly stable
 
-Create public status pages with:
+## Public Status Pages
 
-- **Custom branding** — Logo and colors
-- **Component status** — Operational, degraded, outage
-- **Incident history** — Timeline of issues
-- **Scheduled maintenance** — Planned downtime
-- **Custom domains** — Your subdomain
+Communicate service health to your users with branded status pages:
+
+- **Component Management** — Organize services with individual status tracking and linked monitors
+- **Incident Workflow** — Investigating → Identified → Monitoring → Resolved
+- **Scheduled Maintenance** — Announce planned downtime with automatic status transitions
+- **Subscriber Notifications** — Email, Slack, and webhook updates for incidents and status changes
+- **Custom Branding** — Match your brand with logos, colors, and custom domains
+- **90-Day Uptime History** — Visual uptime charts for transparency
+
+## Use Cases
+
+### For Internal Teams
+- **On-call alerts** — Route critical failures to Slack and PagerDuty
+- **Daily summaries** — Email digests of test results
+- **CI/CD notifications** — Webhook integration with build pipelines
+
+### For External Users
+- **Service status** — Public page showing current system health
+- **Incident updates** — Real-time communication during outages
+- **Maintenance windows** — Advance notice of planned downtime
+- **Subscriber notifications** — Automatic email updates for status changes

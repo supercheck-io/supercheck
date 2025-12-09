@@ -4,7 +4,7 @@ description: Write custom Node.js test scripts
 icon: SquareFunction
 ---
 
-Write custom test scripts for advanced scenarios.
+Write custom test scripts for advanced scenarios that don't fit into browser, API, or database categories. Custom tests have full access to Node.js and popular npm packages.
 
 ## Create Test
 
@@ -16,22 +16,56 @@ Write custom test scripts for advanced scenarios.
 ## Example
 
 ```typescript
-import { test, expect } from '@supercheck/test';
+/**
+ * API CRUD flow executed serially.
+ * 
+ * Purpose:
+ * - Test the full lifecycle of a resource (Create, Read, Delete)
+ * - Ensure data consistency across operations
+ * - Clean up test data after execution
+ * 
+ * Key Actions:
+ * - POST to create a resource
+ * - GET to verify creation
+ * - DELETE to clean up
+ * - test.describe.serial ensures tests run in order
+ * 
+ * @see https://playwright.dev/docs/api-testing
+ */
+import { expect, test } from '@playwright/test';
 
-test('workflow test', async () => {
-  // Create user
-  const res = await fetch('https://api.example.com/users', {
-    method: 'POST',
-    body: JSON.stringify({ name: 'Test User' })
+const API_URL = 'https://jsonplaceholder.typicode.com';
+
+// Use serial mode to share state (createdId) between tests
+test.describe.serial('posts CRUD', () => {
+  let createdId;
+
+  test('creates a post', async ({ request }) => {
+    const response = await request.post(API_URL + '/posts', {
+      data: { title: 'Playwright', body: 'API example', userId: 1 },
+    });
+
+    expect(response.status()).toBe(201);
+    const json = await response.json();
+    createdId = json.id;
+    expect(json).toMatchObject({ title: 'Playwright', body: 'API example' });
   });
-  
-  const user = await res.json();
-  expect(user.id).toBeDefined();
-  
-  // Verify user
-  const getRes = await fetch(`https://api.example.com/users/${user.id}`);
-  const fetched = await getRes.json();
-  expect(fetched.name).toBe('Test User');
+
+  test('fetches the created post', async ({ request }) => {
+    // Skip if creation failed
+    test.skip(!createdId, 'create step failed');
+    
+    const response = await request.get(API_URL + '/posts/' + createdId);
+    expect(response.ok()).toBeTruthy();
+    const json = await response.json();
+    expect(json.id).toBe(createdId);
+  });
+
+  // Cleanup after all tests in this group
+  test.afterAll(async ({ request }) => {
+    if (!createdId) return;
+    await request.delete(API_URL + '/posts/' + createdId);
+  });
 });
 ```
 
@@ -39,5 +73,13 @@ test('workflow test', async () => {
 
 - Full Node.js environment
 - Popular npm packages available
-- Access to variables and secrets
-- Custom assertions
+- Access to variables with `getVariable()`
+- Access to secrets with `getSecret().toString()`
+- Custom assertions and complex logic
+
+## Use Cases
+
+- **Multi-step workflows** — Create, update, delete sequences
+- **Data validation** — Complex business logic checks
+- **Integration tests** — Multiple services in one test
+- **Custom protocols** — WebSocket, gRPC, etc.

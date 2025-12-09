@@ -161,13 +161,38 @@ Access at `https://app.yourdomain.com`.
 
 ## OAuth (Required)
 
-At least one provider is required for authentication.
+At least one OAuth provider is required for authentication. You can configure GitHub, Google, or both.
 
 ### GitHub OAuth
 
+**Step 1: Create OAuth App**
+
 1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
-2. Click **New OAuth App**
-3. Set callback URL: `https://app.yourdomain.com/api/auth/callback/github`
+2. Click **OAuth Apps** in the left sidebar
+3. Click **New OAuth App**
+
+**Step 2: Configure the App**
+
+| Field | Value |
+|-------|-------|
+| **Application name** | Supercheck (or your preferred name) |
+| **Homepage URL** | `https://app.yourdomain.com` (or `http://localhost:3000` for local) |
+| **Authorization callback URL** | `https://app.yourdomain.com/api/auth/callback/github` |
+
+<Callout type="warning">
+For local development without a domain, use:
+- Homepage URL: `http://localhost:3000`
+- Callback URL: `http://localhost:3000/api/auth/callback/github`
+</Callout>
+
+**Step 3: Get Credentials**
+
+1. Click **Register application**
+2. Copy the **Client ID**
+3. Click **Generate a new client secret**
+4. Copy the **Client Secret** (shown only once)
+
+**Step 4: Add to Environment**
 
 ```bash
 GITHUB_CLIENT_ID=your-github-client-id
@@ -176,14 +201,70 @@ GITHUB_CLIENT_SECRET=your-github-client-secret
 
 ### Google OAuth
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-2. Create OAuth 2.0 credentials
-3. Add redirect URI: `https://app.yourdomain.com/api/auth/callback/google`
+**Step 1: Create Project**
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Go to **APIs & Services → Credentials**
+
+**Step 2: Configure OAuth Consent Screen**
+
+1. Click **OAuth consent screen** in the left sidebar
+2. Select **External** (or Internal for Google Workspace)
+3. Fill in the required fields:
+   - **App name**: Supercheck
+   - **User support email**: Your email
+   - **Developer contact**: Your email
+4. Click **Save and Continue**
+5. Skip **Scopes** (defaults are sufficient)
+6. Add test users if needed, then **Save and Continue**
+
+**Step 3: Create OAuth Credentials**
+
+1. Go to **Credentials** in the left sidebar
+2. Click **Create Credentials → OAuth client ID**
+3. Select **Web application**
+4. Configure:
+
+| Field | Value |
+|-------|-------|
+| **Name** | Supercheck Web Client |
+| **Authorized JavaScript origins** | `https://app.yourdomain.com` |
+| **Authorized redirect URIs** | `https://app.yourdomain.com/api/auth/callback/google` |
+
+<Callout type="warning">
+For local development without a domain, use:
+- JavaScript origins: `http://localhost:3000`
+- Redirect URI: `http://localhost:3000/api/auth/callback/google`
+</Callout>
+
+**Step 4: Get Credentials**
+
+1. Click **Create**
+2. Copy the **Client ID** and **Client Secret**
+
+**Step 5: Add to Environment**
 
 ```bash
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-client-secret
 ```
+
+### Verifying OAuth Setup
+
+After deployment, test your OAuth configuration:
+
+1. Go to your Supercheck instance
+2. Click **Sign in with GitHub** or **Sign in with Google**
+3. Complete the OAuth flow
+4. Verify you're redirected back and logged in
+
+<Callout type="info">
+If you encounter errors, check:
+- Callback URLs match exactly (including trailing slashes)
+- Client ID and Secret are correct
+- For Google: OAuth consent screen is configured
+</Callout>
 
 ---
 
