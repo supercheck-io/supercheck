@@ -12,9 +12,10 @@ import {
   isMonitoringLocation,
 } from "./location-service";
 import { createLogger } from "./logger/index";
+import type { QueueParameters } from "./capacity-manager";
 
 // Create queue logger
-export const queueLogger = createLogger({ module: 'queue-client' }) as {
+export const queueLogger = createLogger({ module: "queue-client" }) as {
   debug: (data: unknown, msg?: string) => void;
   info: (data: unknown, msg?: string) => void;
   warn: (data: unknown, msg?: string) => void;
@@ -100,14 +101,22 @@ export const REDIS_EVENT_KEY_TTL = 24 * 60 * 60; // 24 hours for events/stats
 export const REDIS_METRICS_TTL = 48 * 60 * 60; // 48 hours for metrics data
 export const REDIS_CLEANUP_BATCH_SIZE = 100; // Process keys in smaller batches to reduce memory pressure
 
-
 // Regions for K6 performance tests (includes global option for any location)
 export type Region = "us-east" | "eu-central" | "asia-pacific" | "global";
-export const REGIONS: Region[] = ["us-east", "eu-central", "asia-pacific", "global"];
+export const REGIONS: Region[] = [
+  "us-east",
+  "eu-central",
+  "asia-pacific",
+  "global",
+];
 
 // Monitor regions using kebab-case for queue names (no GLOBAL - monitors run from specific locations)
 export type MonitorRegion = "us-east" | "eu-central" | "asia-pacific";
-export const MONITOR_REGIONS: MonitorRegion[] = ["us-east", "eu-central", "asia-pacific"];
+export const MONITOR_REGIONS: MonitorRegion[] = [
+  "us-east",
+  "eu-central",
+  "asia-pacific",
+];
 
 // Singleton instances
 let redisClient: Redis | null = null;
@@ -132,7 +141,7 @@ let initPromise: Promise<void> | null = null;
 export type QueueEventType = "test" | "job";
 
 export function buildRedisOptions(
-  overrides: Partial<RedisOptions> = {},
+  overrides: Partial<RedisOptions> = {}
 ): RedisOptions {
   const host = process.env.REDIS_HOST || "localhost";
   const port = parseInt(process.env.REDIS_PORT || "6379");
@@ -203,7 +212,10 @@ export async function getRedisConnection(): Promise<Redis> {
       });
     });
   } catch (err) {
-    queueLogger.error({ err: err }, "[Queue Client] Failed initial Redis connection:");
+    queueLogger.error(
+      { err: err },
+      "[Queue Client] Failed initial Redis connection:"
+    );
     // Allow proceeding, BullMQ might handle reconnection attempts
   }
 
@@ -237,7 +249,7 @@ export async function getQueues(): Promise<{
           removeOnFail: { count: 1000, age: 7 * 24 * 3600 }, // Keep failed jobs for 7 days (1000 max)
           attempts: 3, // Retry up to 3 times for transient failures
           backoff: {
-            type: 'exponential',
+            type: "exponential",
             delay: 5000, // Start with 5 second delay, then 10s, 20s
           },
         };
@@ -279,7 +291,10 @@ export async function getQueues(): Promise<{
         }
 
         // Monitor Execution - Regional queues using kebab-case (no GLOBAL)
-        const monitorQueues: Record<MonitorRegion, Queue> = {} as Record<MonitorRegion, Queue>;
+        const monitorQueues: Record<MonitorRegion, Queue> = {} as Record<
+          MonitorRegion,
+          Queue
+        >;
         for (const region of MONITOR_REGIONS) {
           const monitorQueueName = `monitor-${region}`;
           const monitorQueue = new Queue(monitorQueueName, queueSettings);
@@ -293,10 +308,7 @@ export async function getQueues(): Promise<{
 
         // Schedulers
         jobSchedulerQueue = new Queue(JOB_SCHEDULER_QUEUE, queueSettings);
-        k6JobSchedulerQueue = new Queue(
-          K6_JOB_SCHEDULER_QUEUE,
-          queueSettings
-        );
+        k6JobSchedulerQueue = new Queue(K6_JOB_SCHEDULER_QUEUE, queueSettings);
         monitorSchedulerQueue = new Queue(
           MONITOR_SCHEDULER_QUEUE,
           queueSettings
@@ -306,10 +318,16 @@ export async function getQueues(): Promise<{
         emailTemplateQueue = new Queue(EMAIL_TEMPLATE_QUEUE, queueSettings);
 
         // Data lifecycle cleanup queue
-        dataLifecycleCleanupQueue = new Queue(DATA_LIFECYCLE_CLEANUP_QUEUE, queueSettings);
+        dataLifecycleCleanupQueue = new Queue(
+          DATA_LIFECYCLE_CLEANUP_QUEUE,
+          queueSettings
+        );
 
         // Monitor Execution Events - Regional (no GLOBAL)
-        const monitorEvents: Record<MonitorRegion, QueueEvents> = {} as Record<MonitorRegion, QueueEvents>;
+        const monitorEvents: Record<MonitorRegion, QueueEvents> = {} as Record<
+          MonitorRegion,
+          QueueEvents
+        >;
         for (const region of MONITOR_REGIONS) {
           const eventsConnection = redisClient!.duplicate();
           // ioredis connects automatically by default, so we don't need to call connect()
@@ -336,10 +354,16 @@ export async function getQueues(): Promise<{
         // Add error listeners for regional monitor queues
         for (const region of MONITOR_REGIONS) {
           monitorExecution[region].on("error", (error: Error) =>
-            queueLogger.error({ err: error, region }, `Monitor Queue (${region}) Error`)
+            queueLogger.error(
+              { err: error, region },
+              `Monitor Queue (${region}) Error`
+            )
           );
           monitorExecutionEvents[region].on("error", (error: Error) =>
-            queueLogger.error({ err: error, region }, `Monitor Events (${region}) Error`)
+            queueLogger.error(
+              { err: error, region },
+              `Monitor Events (${region}) Error`
+            )
           );
         }
 
@@ -356,15 +380,27 @@ export async function getQueues(): Promise<{
           queueLogger.error({ err: error }, "Email Template Queue Error")
         );
         dataLifecycleCleanupQueue.on("error", (error) =>
-          queueLogger.error({ err: error }, "Data Lifecycle Cleanup Queue Error")
+          queueLogger.error(
+            { err: error },
+            "Data Lifecycle Cleanup Queue Error"
+          )
         );
 
         // Set up periodic cleanup for orphaned Redis keys
-        await setupQueueCleanup(connection);
+        await setupQueueCleanup(connection, {
+          playwrightQueues,
+          k6Queues,
+          monitorExecution: monitorExecution!,
+          jobSchedulerQueue,
+          k6JobSchedulerQueue,
+          monitorSchedulerQueue,
+          emailTemplateQueue,
+          dataLifecycleCleanupQueue,
+        });
 
         // Set up capacity management with atomic counters (pass queues to prevent circular dependency)
         const { setupCapacityManagement } = await import("./capacity-manager");
-        
+
         // Create QueueEvents for remaining queues
         const jobSchedulerEvents = new QueueEvents(JOB_SCHEDULER_QUEUE, {
           connection: redisClient!.duplicate(),
@@ -372,39 +408,51 @@ export async function getQueues(): Promise<{
         const k6JobSchedulerEvents = new QueueEvents(K6_JOB_SCHEDULER_QUEUE, {
           connection: redisClient!.duplicate(),
         });
-        const monitorSchedulerEvents = new QueueEvents(MONITOR_SCHEDULER_QUEUE, {
-          connection: redisClient!.duplicate(),
-        });
+        const monitorSchedulerEvents = new QueueEvents(
+          MONITOR_SCHEDULER_QUEUE,
+          {
+            connection: redisClient!.duplicate(),
+          }
+        );
         const emailTemplateEvents = new QueueEvents(EMAIL_TEMPLATE_QUEUE, {
           connection: redisClient!.duplicate(),
         });
-        const dataLifecycleCleanupEvents = new QueueEvents(DATA_LIFECYCLE_CLEANUP_QUEUE, {
-          connection: redisClient!.duplicate(),
-        });
+        const dataLifecycleCleanupEvents = new QueueEvents(
+          DATA_LIFECYCLE_CLEANUP_QUEUE,
+          {
+            connection: redisClient!.duplicate(),
+          }
+        );
 
-        await setupCapacityManagement({
-          playwrightQueues,
-          k6Queues,
-          monitorExecution,
-          jobSchedulerQueue,
-          k6JobSchedulerQueue,
-          monitorSchedulerQueue,
-          emailTemplateQueue,
-          dataLifecycleCleanupQueue,
-        }, {
-          playwrightEvents,
-          k6Events,
-          monitorExecutionEvents,
-          jobSchedulerEvents,
-          k6JobSchedulerEvents,
-          monitorSchedulerEvents,
-          emailTemplateEvents,
-          dataLifecycleCleanupEvents,
-        });
+        await setupCapacityManagement(
+          {
+            playwrightQueues,
+            k6Queues,
+            monitorExecution,
+            jobSchedulerQueue,
+            k6JobSchedulerQueue,
+            monitorSchedulerQueue,
+            emailTemplateQueue,
+            dataLifecycleCleanupQueue,
+          },
+          {
+            playwrightEvents,
+            k6Events,
+            monitorExecutionEvents,
+            jobSchedulerEvents,
+            k6JobSchedulerEvents,
+            monitorSchedulerEvents,
+            emailTemplateEvents,
+            dataLifecycleCleanupEvents,
+          }
+        );
 
         // BullMQ Queues initialized
       } catch (error) {
-        queueLogger.error({ err: error }, "[Queue Client] Failed to initialize queues:");
+        queueLogger.error(
+          { err: error },
+          "[Queue Client] Failed to initialize queues:"
+        );
         // Reset promise to allow retrying later
         initPromise = null;
         throw error; // Re-throw to indicate failure
@@ -415,7 +463,7 @@ export async function getQueues(): Promise<{
 
   if (
     Object.keys(playwrightQueues).length !== 1 || // Single GLOBAL queue
-    Object.keys(k6Queues).length !== REGIONS.length || // Regional queues  
+    Object.keys(k6Queues).length !== REGIONS.length || // Regional queues
     !monitorExecution ||
     Object.keys(monitorExecution).length !== MONITOR_REGIONS.length || // Regional monitor queues (US, EU, APAC)
     !monitorExecutionEvents ||
@@ -450,7 +498,10 @@ export async function getQueues(): Promise<{
 // Track if cleanup has been set up to prevent duplicate event listeners
 let cleanupSetupComplete = false;
 
-async function setupQueueCleanup(connection: Redis): Promise<void> {
+async function setupQueueCleanup(
+  connection: Redis,
+  queues?: QueueParameters
+): Promise<void> {
   // Only set up cleanup once to prevent multiple process event listeners
   if (cleanupSetupComplete) {
     return;
@@ -461,41 +512,52 @@ async function setupQueueCleanup(connection: Redis): Promise<void> {
   try {
     // Run initial cleanup on startup to clear any existing orphaned keys
     await performQueueCleanup(connection);
-    
+
     // Run initial capacity reconciliation
     try {
       const { reconcileCapacityCounters } = await import("./capacity-manager");
-      await reconcileCapacityCounters();
+      await reconcileCapacityCounters(queues);
       queueLogger.info({}, "Initial capacity reconciliation completed");
     } catch (error) {
-      queueLogger.warn({ err: error }, "Initial capacity reconciliation failed (non-fatal)");
+      queueLogger.warn(
+        { err: error },
+        "Initial capacity reconciliation failed (non-fatal)"
+      );
     }
 
     // Schedule queue cleanup every 12 hours (43200000 ms)
-    const cleanupInterval = setInterval(async () => {
-      try {
-        await performQueueCleanup(connection);
-      } catch (error) {
-        queueLogger.error(
-          { err: error },
-          "Error during scheduled queue cleanup"
-        );
-      }
-    }, 12 * 60 * 60 * 1000); // Run cleanup every 12 hours
-    
+    const cleanupInterval = setInterval(
+      async () => {
+        try {
+          await performQueueCleanup(connection);
+        } catch (error) {
+          queueLogger.error(
+            { err: error },
+            "Error during scheduled queue cleanup"
+          );
+        }
+      },
+      12 * 60 * 60 * 1000
+    ); // Run cleanup every 12 hours
+
     // Schedule capacity reconciliation every 5 minutes
     // This helps detect and auto-correct any counter drift quickly
-    const capacityReconcileInterval = setInterval(async () => {
-      try {
-        const { reconcileCapacityCounters } = await import("./capacity-manager");
-        await reconcileCapacityCounters();
-      } catch (error) {
-        queueLogger.error(
-          { err: error },
-          "Error during scheduled capacity reconciliation"
-        );
-      }
-    }, 5 * 60 * 1000); // Run reconciliation every 5 minutes
+    const capacityReconcileInterval = setInterval(
+      async () => {
+        try {
+          const { reconcileCapacityCounters } = await import(
+            "./capacity-manager"
+          );
+          await reconcileCapacityCounters(queues);
+        } catch (error) {
+          queueLogger.error(
+            { err: error },
+            "Error during scheduled capacity reconciliation"
+          );
+        }
+      },
+      5 * 60 * 1000
+    ); // Run reconciliation every 5 minutes
 
     // Make sure intervals are properly cleared on process exit
     // Use process.once to prevent duplicate listeners
@@ -504,7 +566,10 @@ async function setupQueueCleanup(connection: Redis): Promise<void> {
       clearInterval(capacityReconcileInterval);
     });
   } catch (error) {
-    queueLogger.error({ err: error }, "[Queue Client] Failed to set up queue cleanup:");
+    queueLogger.error(
+      { err: error },
+      "[Queue Client] Failed to set up queue cleanup:"
+    );
   }
 }
 
@@ -651,12 +716,13 @@ function getQueue(
 
     const queue = queues.k6Queues[effectiveRegion];
     if (!queue) {
-      throw new Error("K6 execution queue is not available for the requested region");
+      throw new Error(
+        "K6 execution queue is not available for the requested region"
+      );
     }
     return queue;
   }
 }
-
 
 /**
  * Add a test execution task to the queue.
@@ -683,8 +749,10 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<string> {
     // Test added successfully
     return jobUuid;
   } catch (error) {
-    queueLogger.error({ err: error, jobUuid },
-      `Error adding test ${jobUuid} to queue`);
+    queueLogger.error(
+      { err: error, jobUuid },
+      `Error adding test ${jobUuid} to queue`
+    );
     throw new Error(
       `Failed to add test execution job: ${
         error instanceof Error ? error.message : String(error)
@@ -717,7 +785,10 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<string> {
     // Job added successfully
     return runId;
   } catch (error) {
-    queueLogger.error({ err: error }, `[Queue Client] Error adding job ${runId} to queue:`);
+    queueLogger.error(
+      { err: error },
+      `[Queue Client] Error adding job ${runId} to queue:`
+    );
     throw new Error(
       `Failed to add job execution job: ${
         error instanceof Error ? error.message : String(error)
@@ -746,8 +817,10 @@ export async function addK6TestToQueue(
 
     return task.runId;
   } catch (error) {
-    queueLogger.error({ err: error, runId: task.runId },
-      `Error adding k6 test ${task.runId} to queue`);
+    queueLogger.error(
+      { err: error, runId: task.runId },
+      `Error adding k6 test ${task.runId} to queue`
+    );
     throw new Error(
       `Failed to add k6 test execution job: ${
         error instanceof Error ? error.message : String(error)
@@ -776,8 +849,10 @@ export async function addK6JobToQueue(
 
     return task.runId;
   } catch (error) {
-    queueLogger.error({ err: error, runId: task.runId },
-      `Error adding k6 job ${task.runId} to queue`);
+    queueLogger.error(
+      { err: error, runId: task.runId },
+      `Error adding k6 job ${task.runId} to queue`
+    );
     throw new Error(
       `Failed to add k6 job execution: ${
         error instanceof Error ? error.message : String(error)
@@ -789,19 +864,21 @@ export async function addK6JobToQueue(
 /**
  * Atomically verify capacity and reserve a slot before adding a new job
  * Uses Redis-based atomic counters to prevent race conditions
- * 
+ *
  * @param organizationId - Organization ID to check plan-specific capacity limits
  * @throws Error if the queue capacity is exceeded
  * @returns Promise resolving to true if slot reserved, throws if at capacity
  */
-export async function verifyQueueCapacityOrThrow(organizationId?: string): Promise<void> {
+export async function verifyQueueCapacityOrThrow(
+  organizationId?: string
+): Promise<void> {
   // Import the capacity manager
   const { getCapacityManager } = await import("./capacity-manager");
-  
+
   try {
     const capacityManager = await getCapacityManager();
     const slotReserved = await capacityManager.reserveSlot(organizationId);
-    
+
     if (!slotReserved) {
       // Get capacity details for error message
       const limits = await capacityManager.getCurrentUsage(organizationId);
@@ -809,7 +886,7 @@ export async function verifyQueueCapacityOrThrow(organizationId?: string): Promi
         `Queue capacity limit reached (${limits.queued}/${limits.queuedCapacity} queued jobs). Please try again later when running capacity (${limits.running}/${limits.runningCapacity}) is available.`
       );
     }
-    
+
     // Slot successfully reserved - job can proceed
     return;
   } catch (error) {
@@ -820,8 +897,10 @@ export async function verifyQueueCapacityOrThrow(organizationId?: string): Promi
     }
 
     // For other errors, log but still enforce a basic check
-    queueLogger.error({ err: error, organizationId },
-      "Error checking queue capacity");
+    queueLogger.error(
+      { err: error, organizationId },
+      "Error checking queue capacity"
+    );
 
     // Fail closed on errors - be conservative when we can't verify capacity
     throw new Error(
@@ -864,7 +943,10 @@ export async function closeQueue(): Promise<void> {
     await Promise.all(promises);
     // All queues closed
   } catch (error) {
-    queueLogger.error({ err: error }, "[Queue Client] Error closing queues and events:");
+    queueLogger.error(
+      { err: error },
+      "[Queue Client] Error closing queues and events:"
+    );
   } finally {
     // Reset queues
     for (const key in playwrightQueues) delete playwrightQueues[key];
@@ -920,8 +1002,10 @@ export async function addMonitorExecutionJobToQueue(
     const { monitorExecutionQueue } = await getQueues();
 
     // Multi-location execution is the default behavior
-    const monitorConfig = (task.config as MonitorConfig | undefined) ?? undefined;
-    const locationConfig = (monitorConfig?.locationConfig as LocationConfig | null) ?? null;
+    const monitorConfig =
+      (task.config as MonitorConfig | undefined) ?? undefined;
+    const locationConfig =
+      (monitorConfig?.locationConfig as LocationConfig | null) ?? null;
     const effectiveLocations = getEffectiveLocations(locationConfig);
 
     const expectedLocations = Array.from(
@@ -935,7 +1019,9 @@ export async function addMonitorExecutionJobToQueue(
     ).toString("hex")}`;
 
     const locationsToSchedule =
-      expectedLocations.length > 0 ? expectedLocations : getEffectiveLocations(null);
+      expectedLocations.length > 0
+        ? expectedLocations
+        : getEffectiveLocations(null);
 
     await Promise.all(
       locationsToSchedule.map(async (location) => {
@@ -961,8 +1047,10 @@ export async function addMonitorExecutionJobToQueue(
 
     return executionGroupId;
   } catch (error) {
-    queueLogger.error({ err: error, monitorId: task.monitorId },
-      `Error adding monitor execution job for monitor ${task.monitorId}`);
+    queueLogger.error(
+      { err: error, monitorId: task.monitorId },
+      `Error adding monitor execution job for monitor ${task.monitorId}`
+    );
     throw new Error(
       `Failed to add monitor execution job: ${
         error instanceof Error ? error.message : String(error)
@@ -970,5 +1058,3 @@ export async function addMonitorExecutionJobToQueue(
     );
   }
 }
-
-
