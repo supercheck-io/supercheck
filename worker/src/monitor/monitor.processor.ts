@@ -11,10 +11,19 @@ import { MonitorExecutionResult } from './types/monitor-result.type';
 
 @Processor(MONITOR_EXECUTION_QUEUE)
 export class MonitorProcessor extends WorkerHost {
-  protected readonly logger = new Logger(MonitorProcessor.name);
+  protected readonly logger: Logger;
 
   constructor(protected readonly monitorService: MonitorService) {
     super();
+    this.logger = new Logger(this.getLoggerName());
+  }
+
+  /**
+   * Override this method in subclasses to customize the logger name.
+   * This provides a clean pattern for regional processors to have distinct log namespaces.
+   */
+  protected getLoggerName(): string {
+    return MonitorProcessor.name;
   }
 
   async process(
@@ -96,24 +105,22 @@ export class MonitorProcessor extends WorkerHost {
 
 @Processor('monitor-us-east')
 export class MonitorProcessorUSEast extends MonitorProcessor {
-  constructor(monitorService: MonitorService) {
-    super(monitorService);
-    (this as any).logger = new Logger(MonitorProcessorUSEast.name);
+  protected override getLoggerName(): string {
+    return MonitorProcessorUSEast.name;
   }
 }
 
 @Processor('monitor-eu-central')
 export class MonitorProcessorEUCentral extends MonitorProcessor {
-  constructor(monitorService: MonitorService) {
-    super(monitorService);
-    (this as any).logger = new Logger(MonitorProcessorEUCentral.name);
+  protected override getLoggerName(): string {
+    return MonitorProcessorEUCentral.name;
   }
 }
 
 @Processor('monitor-asia-pacific')
 export class MonitorProcessorAsiaPacific extends MonitorProcessor {
-  constructor(monitorService: MonitorService) {
-    super(monitorService);
-    (this as any).logger = new Logger(MonitorProcessorAsiaPacific.name);
+  protected override getLoggerName(): string {
+    return MonitorProcessorAsiaPacific.name;
   }
 }
+

@@ -296,7 +296,7 @@ graph TD
     subgraph "Project Level"
         PA[PROJECT_ADMIN<br/>Assigned Projects Only]
         PE[PROJECT_EDITOR<br/>Assigned Projects Only]
-        PV[PROJECT_VIEWER<br/>Read Only]
+        PV[PROJECT_VIEWER<br/>Org-Wide Read Only]
 
         PA --> PA1[Manage Project Members]
         PA --> PA2[Full Project Resources]
@@ -306,7 +306,8 @@ graph TD
         PE --> PE2[Create/Edit/Delete Own]
         PE -.->|Cannot| PA1
 
-        PV --> PV1[View All Resources]
+        PV --> PV1[View ALL Projects]
+        PV --> PV2[Read-Only Access]
         PV -.->|Cannot| PE1
         PV -.->|Cannot| PA1
     end
@@ -362,12 +363,16 @@ PROJECT_EDITOR (Project-specific Role)
     ├── Can cancel running test executions in assigned projects
     └── Cannot manage organization or members
 
-PROJECT_VIEWER (Project-specific Role - Read Only)
+PROJECT_VIEWER (Organization-Wide Read-Only Role)
     ├── View organization info
-    ├── Read-only access to assigned projects
+    ├── Read-only access to ALL projects in organization (org-wide visibility)
     ├── Can only VIEW jobs, tests, monitors, runs
     ├── Cannot cancel running executions
     └── Cannot create, edit, or delete any resources
+
+Note: PROJECT_VIEWER has org-wide read access by design. This enables monitoring/oversight
+roles to view all projects without needing explicit assignment. PROJECT_ADMIN and 
+PROJECT_EDITOR are limited to assigned projects since they have editing permissions.
 ```
 
 ### Current Permission Matrix

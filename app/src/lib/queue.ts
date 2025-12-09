@@ -461,8 +461,17 @@ async function setupQueueCleanup(connection: Redis): Promise<void> {
   try {
     // Run initial cleanup on startup to clear any existing orphaned keys
     await performQueueCleanup(connection);
+    
+    // Run initial capacity reconciliation
+    try {
+      const { reconcileCapacityCounters } = await import("./capacity-manager");
+      await reconcileCapacityCounters();
+      queueLogger.info({}, "Initial capacity reconciliation completed");
+    } catch (error) {
+      queueLogger.warn({ err: error }, "Initial capacity reconciliation failed (non-fatal)");
+    }
 
-    // Schedule queue cleanup every 12 hours (43200000 ms) - more frequent than before
+    // Schedule queue cleanup every 12 hours (43200000 ms)
     const cleanupInterval = setInterval(async () => {
       try {
         await performQueueCleanup(connection);
@@ -473,10 +482,27 @@ async function setupQueueCleanup(connection: Redis): Promise<void> {
         );
       }
     }, 12 * 60 * 60 * 1000); // Run cleanup every 12 hours
+    
+    // Schedule capacity reconciliation every 5 minutes
+    // This helps detect and auto-correct any counter drift quickly
+    const capacityReconcileInterval = setInterval(async () => {
+      try {
+        const { reconcileCapacityCounters } = await import("./capacity-manager");
+        await reconcileCapacityCounters();
+      } catch (error) {
+        queueLogger.error(
+          { err: error },
+          "Error during scheduled capacity reconciliation"
+        );
+      }
+    }, 5 * 60 * 1000); // Run reconciliation every 5 minutes
 
-    // Make sure interval is properly cleared on process exit
+    // Make sure intervals are properly cleared on process exit
     // Use process.once to prevent duplicate listeners
-    process.once("exit", () => clearInterval(cleanupInterval));
+    process.once("exit", () => {
+      clearInterval(cleanupInterval);
+      clearInterval(capacityReconcileInterval);
+    });
   } catch (error) {
     queueLogger.error({ err: error }, "[Queue Client] Failed to set up queue cleanup:");
   }

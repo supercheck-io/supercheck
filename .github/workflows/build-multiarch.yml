@@ -230,8 +230,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: app/e2e/package-lock.json
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-e2e-${{ hashFiles('app/e2e/package-lock.json') }}
+          restore-keys: npm-e2e-
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4

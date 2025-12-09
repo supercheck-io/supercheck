@@ -2,6 +2,11 @@ import Redis from "ioredis";
 import { queueLogger } from "./queue";
 import { checkCapacityLimits } from "./middleware/plan-enforcement";
 
+// Redis key for job-to-organization mapping
+// Used to track organizationId for each job to prevent counter drift
+const JOB_ORG_MAPPING_KEY = 'capacity:job_org_mapping';
+const JOB_ORG_MAPPING_TTL = 86400 * 2; // 48 hours (longer than max job retention)
+
 /**
  * Redis-based atomic capacity manager to prevent race conditions
  * in job queue capacity enforcement
@@ -86,10 +91,109 @@ export class CapacityManager {
   }
 
   /**
-   * Release a running slot when job completes
+   * Store job-to-organization mapping for capacity tracking
+   * This allows us to release capacity even when job data is unavailable
+   * @param jobId - The BullMQ job ID
    * @param organizationId - Organization ID
    */
-  async releaseRunningSlot(organizationId?: string): Promise<void> {
+  async trackJobOrganization(jobId: string, organizationId?: string): Promise<void> {
+    try {
+      const orgId = organizationId || 'global';
+      // Use HSET with expiry via a separate TTL tracking approach
+      // Since HSET doesn't support per-field TTL, we store timestamp with the value
+      const valueWithTimestamp = JSON.stringify({
+        organizationId: orgId,
+        createdAt: Date.now()
+      });
+      await this.redis.hset(JOB_ORG_MAPPING_KEY, jobId, valueWithTimestamp);
+    } catch (error) {
+      queueLogger.error({ err: error, jobId, organizationId },
+        "Failed to track job organization mapping");
+    }
+  }
+
+  /**
+   * Get organization ID for a job from our mapping
+   * @param jobId - The BullMQ job ID
+   * @returns Organization ID or undefined if not found
+   */
+  async getJobOrganization(jobId: string): Promise<string | undefined> {
+    try {
+      const value = await this.redis.hget(JOB_ORG_MAPPING_KEY, jobId);
+      if (!value) return undefined;
+      
+      const parsed = JSON.parse(value) as { organizationId: string; createdAt: number };
+      
+      // Check if mapping is too old (cleanup stale entries)
+      const age = Date.now() - parsed.createdAt;
+      if (age > JOB_ORG_MAPPING_TTL * 1000) {
+        await this.redis.hdel(JOB_ORG_MAPPING_KEY, jobId);
+        return undefined;
+      }
+      
+      return parsed.organizationId;
+    } catch (error) {
+      queueLogger.error({ err: error, jobId },
+        "Failed to get job organization mapping");
+      return undefined;
+    }
+  }
+
+  /**
+   * Remove job-to-organization mapping after job completes/fails
+   * @param jobId - The BullMQ job ID
+   */
+  async removeJobOrganization(jobId: string): Promise<void> {
+    try {
+      await this.redis.hdel(JOB_ORG_MAPPING_KEY, jobId);
+    } catch (error) {
+      queueLogger.error({ err: error, jobId },
+        "Failed to remove job organization mapping");
+    }
+  }
+
+  /**
+   * Clean up stale job-to-organization mappings
+   * Call periodically (e.g., every hour) to prevent unbounded growth
+   */
+  async cleanupStaleJobMappings(): Promise<number> {
+    try {
+      const allMappings = await this.redis.hgetall(JOB_ORG_MAPPING_KEY);
+      const now = Date.now();
+      let cleanedCount = 0;
+
+      for (const [jobId, value] of Object.entries(allMappings)) {
+        try {
+          const parsed = JSON.parse(value) as { organizationId: string; createdAt: number };
+          const age = now - parsed.createdAt;
+          
+          if (age > JOB_ORG_MAPPING_TTL * 1000) {
+            await this.redis.hdel(JOB_ORG_MAPPING_KEY, jobId);
+            cleanedCount++;
+          }
+        } catch {
+          // If parsing fails, remove the invalid entry
+          await this.redis.hdel(JOB_ORG_MAPPING_KEY, jobId);
+          cleanedCount++;
+        }
+      }
+
+      if (cleanedCount > 0) {
+        queueLogger.info({ cleanedCount }, "Cleaned up stale job-org mappings");
+      }
+      return cleanedCount;
+    } catch (error) {
+      queueLogger.error({ err: error }, "Failed to cleanup stale job mappings");
+      return 0;
+    }
+  }
+
+  /**
+   * Release a running slot when job completes
+   * @param organizationId - Organization ID
+   * @param jobId - Optional job ID for mapping cleanup
+   */
+  async releaseRunningSlot(organizationId?: string, jobId?: string): Promise<void> {
     try {
       const key = organizationId 
         ? `capacity:running:${organizationId}`
@@ -100,6 +204,11 @@ export class CapacityManager {
       // Clean up if counter reaches 0
       if (result <= 0) {
         await this.redis.del(key);
+      }
+
+      // Clean up job mapping if jobId provided
+      if (jobId) {
+        await this.removeJobOrganization(jobId);
       }
     } catch (error) {
       queueLogger.error({ err: error, organizationId }, 
@@ -142,8 +251,9 @@ export class CapacityManager {
   /**
    * Release a queued slot when job fails before becoming active
    * @param organizationId - Organization ID
+   * @param jobId - Optional job ID for mapping cleanup
    */
-  async releaseQueuedSlot(organizationId?: string): Promise<void> {
+  async releaseQueuedSlot(organizationId?: string, jobId?: string): Promise<void> {
     try {
       const key = organizationId 
         ? `capacity:queued:${organizationId}`
@@ -154,6 +264,11 @@ export class CapacityManager {
       // Clean up if counter reaches 0
       if (result <= 0) {
         await this.redis.del(key);
+      }
+
+      // Clean up job mapping if jobId provided
+      if (jobId) {
+        await this.removeJobOrganization(jobId);
       }
     } catch (error) {
       queueLogger.error({ err: error, organizationId }, 
@@ -203,6 +318,52 @@ export class CapacityManager {
         runningCapacity: limits.runningCapacity,
         queuedCapacity: limits.queuedCapacity
       };
+    }
+  }
+
+  /**
+   * Set the running counter to a specific value (for drift correction)
+   * @param value - The value to set
+   * @param organizationId - Organization ID
+   */
+  async setRunningCounter(value: number, organizationId?: string): Promise<void> {
+    try {
+      const key = organizationId 
+        ? `capacity:running:${organizationId}`
+        : `capacity:running:global`;
+      
+      if (value <= 0) {
+        await this.redis.del(key);
+      } else {
+        await this.redis.set(key, value.toString());
+        await this.redis.expire(key, 86400); // 24 hour TTL
+      }
+    } catch (error) {
+      queueLogger.error({ err: error, organizationId, value }, 
+        "Failed to set running counter");
+    }
+  }
+
+  /**
+   * Set the queued counter to a specific value (for drift correction)
+   * @param value - The value to set
+   * @param organizationId - Organization ID
+   */
+  async setQueuedCounter(value: number, organizationId?: string): Promise<void> {
+    try {
+      const key = organizationId 
+        ? `capacity:queued:${organizationId}`
+        : `capacity:queued:global`;
+      
+      if (value <= 0) {
+        await this.redis.del(key);
+      } else {
+        await this.redis.set(key, value.toString());
+        await this.redis.expire(key, 86400); // 24 hour TTL
+      }
+    } catch (error) {
+      queueLogger.error({ err: error, organizationId, value }, 
+        "Failed to set queued counter");
     }
   }
 
@@ -272,83 +433,96 @@ export async function setupCapacityManagement(queues: QueueParameters, queueEven
   for (const queueEvent of executionQueueEvents) {
     if (!queueEvent) continue;
     
+    // Helper to get organizationId from job or mapping fallback
+    async function getOrgId(jobId: string): Promise<string | undefined> {
+      const queue = queues.playwrightQueues["global"] || Object.values(queues.k6Queues)[0];
+      if (!queue) return undefined;
+      
+      try {
+        const job = await queue.getJob(jobId);
+        if (job) {
+          const task = job.data as { organizationId?: string };
+          return task.organizationId;
+        }
+      } catch {
+        // Job may have been removed, fall back to mapping
+      }
+      
+      // Fallback: try to get from our mapping
+      return await capacityManager.getJobOrganization(jobId);
+    }
+    
     // Job completed successfully
     queueEvent.on('completed', async ({ jobId }) => {
-      // Get job details to extract organizationId
-      const queue = queues.playwrightQueues["global"] || Object.values(queues.k6Queues)[0];
-      if (queue) {
-        try {
-          const job = await queue.getJob(jobId);
-          if (job) {
-            const task = job.data as { organizationId?: string };
-            await capacityManager.releaseRunningSlot(task.organizationId);
-          }
-        } catch (error) {
-          queueLogger.error({ err: error, jobId }, "Failed to get job details for completed event");
-        }
+      try {
+        const organizationId = await getOrgId(jobId);
+        await capacityManager.releaseRunningSlot(organizationId, jobId);
+      } catch (error) {
+        queueLogger.error({ err: error, jobId }, "Failed to release capacity for completed job");
+        // Still try to release with fallback to global if all else fails
+        await capacityManager.releaseRunningSlot(undefined, jobId);
       }
     });
     
     // Job failed - handle both queued and running states
     queueEvent.on('failed', async ({ jobId }) => {
-      // Get job details to extract organizationId and check if it was processed
       const queue = queues.playwrightQueues["global"] || Object.values(queues.k6Queues)[0];
-      if (queue) {
-        try {
+      
+      try {
+        let organizationId: string | undefined;
+        let wasProcessed = false;
+        
+        if (queue) {
           const job = await queue.getJob(jobId);
           if (job) {
             const task = job.data as { organizationId?: string };
-            // Check if job ever became active by looking at its processed state
-            const wasProcessed = job.processedOn !== undefined;
-            
-            if (wasProcessed) {
-              // Job was processed (became active), release running slot
-              await capacityManager.releaseRunningSlot(task.organizationId);
-            } else {
-              // Job failed before processing, release queued slot
-              await capacityManager.releaseQueuedSlot(task.organizationId);
-            }
+            organizationId = task.organizationId;
+            wasProcessed = job.processedOn !== undefined;
           }
-        } catch (error) {
-          queueLogger.error({ err: error, jobId }, "Failed to get job details for failed event");
         }
+        
+        // Fallback to mapping if job not found
+        if (!organizationId) {
+          organizationId = await capacityManager.getJobOrganization(jobId);
+        }
+        
+        if (wasProcessed) {
+          // Job was processed (became active), release running slot
+          await capacityManager.releaseRunningSlot(organizationId, jobId);
+        } else {
+          // Job failed before processing, release queued slot
+          await capacityManager.releaseQueuedSlot(organizationId, jobId);
+        }
+      } catch (error) {
+        queueLogger.error({ err: error, jobId }, "Failed to release capacity for failed job");
+        // Still try to release with fallback
+        await capacityManager.releaseQueuedSlot(undefined, jobId);
       }
     });
     
     // Job stalled (long-running job that might be stuck)
     queueEvent.on('stalled', async ({ jobId }) => {
-      // Get job details to extract organizationId
-      const queue = queues.playwrightQueues["global"] || Object.values(queues.k6Queues)[0];
-      if (queue) {
-        try {
-          const job = await queue.getJob(jobId);
-          if (job) {
-            const task = job.data as { organizationId?: string };
-            queueLogger.warn({ jobId, organizationId: task.organizationId }, 
-              "Job stalled, releasing capacity slot");
-            await capacityManager.releaseRunningSlot(task.organizationId);
-          }
-        } catch (error) {
-          queueLogger.error({ err: error, jobId }, "Failed to get job details for stalled event");
-        }
+      try {
+        const organizationId = await getOrgId(jobId);
+        queueLogger.warn({ jobId, organizationId }, 
+          "Job stalled, releasing capacity slot");
+        await capacityManager.releaseRunningSlot(organizationId, jobId);
+      } catch (error) {
+        queueLogger.error({ err: error, jobId }, "Failed to release capacity for stalled job");
+        await capacityManager.releaseRunningSlot(undefined, jobId);
       }
     });
     
     // Job starts running (transition from queued to running)
     queueEvent.on('active', async ({ jobId }) => {
-      // Get job details to extract organizationId
-      const queue = queues.playwrightQueues["global"] || Object.values(queues.k6Queues)[0];
-      if (queue) {
-        try {
-          const job = await queue.getJob(jobId);
-          if (job) {
-            const task = job.data as { organizationId?: string };
-            // When job becomes active, transition from queued to running
-            await capacityManager.transitionQueuedToRunning(task.organizationId);
-          }
-        } catch (error) {
-          queueLogger.error({ err: error, jobId }, "Failed to get job details for active event");
-        }
+      try {
+        const organizationId = await getOrgId(jobId);
+        // Track the job-org mapping for this job
+        await capacityManager.trackJobOrganization(jobId, organizationId);
+        // When job becomes active, transition from queued to running
+        await capacityManager.transitionQueuedToRunning(organizationId);
+      } catch (error) {
+        queueLogger.error({ err: error, jobId }, "Failed to transition job to active state");
       }
     });
   }
@@ -357,59 +531,89 @@ export async function setupCapacityManagement(queues: QueueParameters, queueEven
     "Capacity management event listeners setup complete");
 }
 
+// Threshold for auto-correcting drift (prevent false positives from timing issues)
+const DRIFT_AUTO_CORRECT_THRESHOLD = 2;
+
 /**
  * Periodic reconciliation to detect and fix counter drift
  * Compares Redis counters against actual BullMQ job counts
+ * Auto-corrects drift when persistent (above threshold)
+ * 
+ * @param queues - Optional queue parameters
+ * @param autoCorrect - If true, automatically correct drift when detected
  */
-export async function reconcileCapacityCounters(queues?: QueueParameters): Promise<void> {
-try {
-  const capacityManager = await getCapacityManager();
-  
-  // If no queues provided, get them (for standalone calls)
-  if (!queues) {
-    const queueModule = await import("./queue");
-    const queuesResult = await queueModule.getQueues();
-    queues = {
-      playwrightQueues: queuesResult.playwrightQueues,
-      k6Queues: queuesResult.k6Queues,
-      monitorExecution: queuesResult.monitorExecutionQueue,
-      jobSchedulerQueue: queuesResult.jobSchedulerQueue,
-      k6JobSchedulerQueue: queuesResult.k6JobSchedulerQueue,
-      monitorSchedulerQueue: queuesResult.monitorSchedulerQueue,
-      emailTemplateQueue: queuesResult.emailTemplateQueue,
-      dataLifecycleCleanupQueue: queuesResult.dataLifecycleCleanupQueue,
-    };
-  }
-  
-  // Get all execution queues (excluding monitors which bypass capacity)
-  const executionQueues = [
-    queues.playwrightQueues["global"],
-    ...Object.values(queues.k6Queues),
-  ].filter(Boolean);
-  
-  // Count actual jobs in BullMQ
-  let actualRunning = 0;
-  let actualQueued = 0;
-  
-  for (const queue of executionQueues) {
-    const counts = await queue.getJobCounts('active', 'waiting', 'delayed');
-    actualRunning += counts.active || 0;
-    actualQueued += (counts.waiting || 0) + (counts.delayed || 0);
-  }
+export async function reconcileCapacityCounters(
+  queues?: QueueParameters, 
+  autoCorrect: boolean = true
+): Promise<void> {
+  try {
+    const capacityManager = await getCapacityManager();
     
-    // Get Redis counter values
+    // Clean up stale job mappings first
+    await capacityManager.cleanupStaleJobMappings();
+    
+    // If no queues provided, get them (for standalone calls)
+    if (!queues) {
+      const queueModule = await import("./queue");
+      const queuesResult = await queueModule.getQueues();
+      queues = {
+        playwrightQueues: queuesResult.playwrightQueues,
+        k6Queues: queuesResult.k6Queues,
+        monitorExecution: queuesResult.monitorExecutionQueue,
+        jobSchedulerQueue: queuesResult.jobSchedulerQueue,
+        k6JobSchedulerQueue: queuesResult.k6JobSchedulerQueue,
+        monitorSchedulerQueue: queuesResult.monitorSchedulerQueue,
+        emailTemplateQueue: queuesResult.emailTemplateQueue,
+        dataLifecycleCleanupQueue: queuesResult.dataLifecycleCleanupQueue,
+      };
+    }
+    
+    // Get all execution queues (excluding monitors which bypass capacity)
+    const executionQueues = [
+      queues.playwrightQueues["global"],
+      ...Object.values(queues.k6Queues),
+    ].filter(Boolean);
+    
+    // Count actual jobs in BullMQ
+    let actualRunning = 0;
+    let actualQueued = 0;
+    
+    for (const queue of executionQueues) {
+      const counts = await queue.getJobCounts('active', 'waiting', 'delayed');
+      actualRunning += counts.active || 0;
+      actualQueued += (counts.waiting || 0) + (counts.delayed || 0);
+    }
+    
+    // Get Redis counter values for global organization
     const redisCounts = await capacityManager.getCurrentUsage();
     
-    // Log if there's drift (for debugging)
-    if (redisCounts.running !== actualRunning || redisCounts.queued !== actualQueued) {
+    const runningDrift = redisCounts.running - actualRunning;
+    const queuedDrift = redisCounts.queued - actualQueued;
+    
+    // Check if there's significant drift
+    if (Math.abs(runningDrift) > 0 || Math.abs(queuedDrift) > 0) {
       queueLogger.warn({
         redis: { running: redisCounts.running, queued: redisCounts.queued },
         actual: { running: actualRunning, queued: actualQueued },
-        drift: {
-          running: redisCounts.running - actualRunning,
-          queued: redisCounts.queued - actualQueued
+        drift: { running: runningDrift, queued: queuedDrift }
+      }, "Capacity counter drift detected");
+      
+      // Auto-correct if enabled and drift exceeds threshold
+      if (autoCorrect) {
+        // Only correct positive drift (counters too high) to avoid over-allocating
+        // Negative drift is less problematic as it just means we're being conservative
+        if (runningDrift > DRIFT_AUTO_CORRECT_THRESHOLD) {
+          queueLogger.info({ runningDrift, actualRunning }, 
+            "Auto-correcting running capacity counter");
+          await capacityManager.setRunningCounter(actualRunning);
         }
-      }, "Capacity counter drift detected - consider manual reset if persistent");
+        
+        if (queuedDrift > DRIFT_AUTO_CORRECT_THRESHOLD) {
+          queueLogger.info({ queuedDrift, actualQueued }, 
+            "Auto-correcting queued capacity counter");
+          await capacityManager.setQueuedCounter(actualQueued);
+        }
+      }
     }
   } catch (error) {
     queueLogger.error({ err: error }, "Failed to reconcile capacity counters");

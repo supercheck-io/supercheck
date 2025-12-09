@@ -4,34 +4,18 @@
  * Monitors BullMQ queue health and sends alerts when thresholds are exceeded.
  * Tracks queue depth, wait times, failure rates, and processing times.
  *
- * ## Alert Recipients Configuration
+ * Configuration:
+ * - Set `QUEUE_ALERT_SLACK_WEBHOOK_URL` to receive Slack notifications (Recommended).
+ * - Set `QUEUE_ALERT_WEBHOOK_URL` for generic JSON webhooks.
  *
- * Alerts can be sent via multiple channels. Configure the following environment variables:
+ * Alert Types:
+ * - QUEUE_DEPTH_HIGH: Queue has too many waiting/delayed jobs (>70% warning, >90% critical)
+ * - WAIT_TIME_HIGH: Jobs waiting too long (>15m warning, >45m critical)
+ * - FAILURE_RATE_HIGH: High failure percentage (>5% warning, >15% critical)
+ * - PROCESSING_TIME_HIGH: Slow processing (>15m warning, >30m critical)
+ * - QUEUE_STALLED: Active jobs with no completions detected
  *
- * ### Slack (Recommended for team notifications)
- * Set `QUEUE_ALERT_SLACK_WEBHOOK_URL` to your Slack Incoming Webhook URL.
- * 1. Go to https://api.slack.com/messaging/webhooks
- * 2. Create a new webhook for your channel (e.g., #ops-alerts)
- * 3. Copy the webhook URL and set the env var
- *
- * ### Custom Webhook (For integration with PagerDuty, Opsgenie, etc.)
- * Set `QUEUE_ALERT_WEBHOOK_URL` to receive JSON POST requests with alert data.
- * The payload format is: { type: 'queue_alert', alert: QueueAlert }
- *
- * ### Email (Future enhancement)
- * Set `QUEUE_ALERT_EMAILS` to a comma-separated list of email addresses.
- * Requires email service integration (not yet implemented).
- *
- * ## Default Thresholds (based on 1-hour max job execution, 5-minute test timeout)
- *
- * | Metric | Warning | Critical |
- * |--------|---------|----------|
- * | Queue Depth | 70% of max | 90% of max |
- * | Wait Time | 15 minutes | 45 minutes |
- * | Failure Rate | 5% | 15% |
- * | Processing Time | 15 minutes | 30 minutes |
- *
- * All thresholds can be customized via environment variables.
+ * Thresholds can be customized via environment variables (see config defaults).
  */
 
 import {
@@ -59,34 +43,40 @@ import { executeWithRetry } from '../common/utils/retry.util';
  * All queues in the system that should be monitored.
  *
  * Queue categories:
- * - Execution queues: playwright-global, k6-global (test execution)
- * - Monitor queues: monitor-* (scheduled monitoring)
- * - Scheduler queues: *-scheduler (job scheduling)
- * - Job queues: job-execution, k6-job-execution (job processing)
- * - Utility queues: email-template-render (email rendering)
+ * - Execution queues: playwright-global (all Playwright tests/jobs)
+ * - K6 queues: k6-global + regional (k6-us-east, k6-eu-central, k6-asia-pacific)
+ * - Monitor queues: regional only (monitor-us-east, monitor-eu-central, monitor-asia-pacific)
+ * - Scheduler queues: job-scheduler, k6-job-scheduler, monitor-scheduler
+ * - Utility queues: email-template-render, data-lifecycle-cleanup
+ *
+ * CRITICAL: Queue names must match exactly:
+ * - App queue definitions in app/src/lib/queue.ts
+ * - Worker constants (execution, k6, monitor modules)
+ * - KEDA ScaledObjects in deploy/k8s/keda-scaledobject.yaml
  */
 const MONITORED_QUEUES = [
-  // Playwright execution queues
+  // Playwright execution queue (global - all regions process this)
   'playwright-global',
 
-  // K6 performance test queues
+  // K6 performance test queues (global + regional)
   'k6-global',
-  'k6-job-scheduler',
-  'k6-job-execution',
+  'k6-us-east',
+  'k6-eu-central',
+  'k6-asia-pacific',
 
-  // Monitor queues (scheduled health checks)
-  'monitor-global',
-  'monitor-scheduler',
+  // Monitor queues (regional only - no global monitor queue in production)
   'monitor-us-east',
   'monitor-eu-central',
   'monitor-asia-pacific',
 
-  // Job execution queues
+  // Scheduler queues
   'job-scheduler',
-  'job-execution',
+  'k6-job-scheduler',
+  'monitor-scheduler',
 
   // Utility queues
   'email-template-render',
+  'data-lifecycle-cleanup',
 ];
 
 @Injectable()
