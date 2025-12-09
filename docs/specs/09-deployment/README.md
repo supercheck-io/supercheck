@@ -1,86 +1,93 @@
 # Deployment & Setup Documentation
 
-This section covers deployment strategies, configuration, and setup instructions for SuperCheck.
+This section covers deployment strategies, configuration, and setup instructions for Supercheck.
 
 ## Deployment Options
 
-| Method                           | Use Case                   | Infrastructure         | Complexity  |
-| -------------------------------- | -------------------------- | ---------------------- | ----------- |
-| **Docker Compose (Local)**       | Local development          | All services in Docker | Low         |
-| **Docker Compose (Self-Hosted)** | Self-hosted production     | Single server/VPS      | Medium      |
-| **Kubernetes**                   | Managed cloud deployment   | EKS, GKE, AKS, etc.    | Medium-High |
-| **Terraform + K3s**              | Cost-optimized self-hosted | Hetzner Cloud          | High        |
+| Method | Use Case | Infrastructure | Complexity |
+|--------|----------|----------------|------------|
+| **Docker Compose** | Local dev / Self-hosted | Single server/VPS | Low |
+| **Terraform + K3s** | Multi-region production | Hetzner Cloud | Medium |
+| **Kubernetes** | Managed cloud | EKS, GKE, AKS | Medium-High |
 
 ## Recommended Stack
 
-For production deployments, we recommend:
+### Self-Hosted (Hetzner)
 
-| Component    | Self-Hosted      | Cloud                 |
-| ------------ | ---------------- | --------------------- |
-| **Compute**  | Docker Compose   | Managed Kubernetes    |
-| **Database** | Local PostgreSQL | PlanetScale (managed) |
-| **Cache**    | Local Redis      | Redis Cloud (managed) |
-| **Storage**  | Local MinIO      | Cloudflare R2         |
+| Component | Service | Cost |
+|-----------|---------|------|
+| **Compute** | K3s on Hetzner (5× CX22) | ~€25/mo |
+| **Database** | Neon / PlanetScale | Free-$20/mo |
+| **Cache** | Upstash Redis | Free-$10/mo |
+| **Storage** | Cloudflare R2 | ~$0 (generous free tier) |
+| **Total** | | **~€30-60/mo** |
+
+### Cloud Managed
+
+| Component | Service |
+|-----------|---------|
+| **Compute** | EKS / GKE / AKS |
+| **Database** | RDS / Cloud SQL |
+| **Cache** | ElastiCache / Memorystore |
+| **Storage** | S3 / GCS |
+
+---
 
 ## Files
 
 ### Core Guides
 
-- **[DOCKER_COMPOSE_GUIDE.md](DOCKER_COMPOSE_GUIDE.md)** - Docker Compose deployment for self-hosted and local development
-- **[KUBERNETES_GUIDE.md](KUBERNETES_GUIDE.md)** - Kubernetes deployment for managed cloud services
-- **[TERRAFORM_GUIDE.md](TERRAFORM_GUIDE.md)** - Infrastructure provisioning on Hetzner Cloud
-
-### Configuration
-
-- **[LOCAL.md](LOCAL.md)** - Local development environment setup
-- **[SCALING_GUIDE.md](SCALING_GUIDE.md)** - Scaling strategies for Docker Compose and Kubernetes
+- **[DOCKER_COMPOSE_GUIDE.md](DOCKER_COMPOSE_GUIDE.md)** - Docker Compose for self-hosted and local dev
+- **[K3S_SCALING_GUIDE.md](K3S_SCALING_GUIDE.md)** - K3s multi-region setup on Hetzner
+- **[KUBERNETES_GUIDE.md](KUBERNETES_GUIDE.md)** - Managed Kubernetes deployment
+- **[TERRAFORM_GUIDE.md](TERRAFORM_GUIDE.md)** - Hetzner infrastructure provisioning
 
 ### Infrastructure Setup
 
-- **[VPS_SETUP_GUIDE.md](VPS_SETUP_GUIDE.md)** - Production-ready VPS setup with security hardening
-- **[NODE_SETUP.md](NODE_SETUP.md)** - Kubernetes node labeling and configuration
+- **[VPS_SETUP_GUIDE.md](VPS_SETUP_GUIDE.md)** - Manual VPS setup with security hardening
+- **[NODE_SETUP.md](NODE_SETUP.md)** - K8s node labeling and configuration
 
-### Reference
+### Configuration
 
-- **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Legacy comprehensive deployment guide
+- **[LOCAL.md](LOCAL.md)** - Local development environment
+- **[SCALING_GUIDE.md](SCALING_GUIDE.md)** - Scaling strategies
+
+---
 
 ## Quick Start
 
-### Local Development
+### Option A: Terraform (Recommended for Production)
 
 ```bash
-# Start all services
-docker-compose -f deploy/docker/docker-compose-local.yml up -d
+cd deploy/terraform/hetzner
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with Hetzner token + SSH key
 
-# Access the app
+terraform init && terraform apply
+$(terraform output -raw kubeconfig_command)
+kubectl apply -k ../../k8s/
+```
+
+### Option B: Docker Compose (Local/Single Server)
+
+```bash
+cd deploy/docker
+cp .env.example .env
+# Edit .env with your settings
+
+docker-compose up -d
 open http://localhost:3000
 ```
 
-### Self-Hosted Production
+### Option C: Managed Kubernetes
 
 ```bash
-# Configure environment
-cp deploy/docker/.env.example deploy/docker/.env
-# Edit .env with your settings
-
-# Deploy with external services
-docker-compose -f deploy/docker/docker-compose-external.yml up -d
-```
-
-### Kubernetes (Managed)
-
-```bash
-# Configure secrets and settings
 cd deploy/k8s
 # Edit configmap.yaml and secret.yaml
-
-# Deploy
 kubectl apply -k .
 ```
 
-## Environment Variables
-
-See **[Environment Variables Specification](../08-operations/ENVIRONMENT_VARIABLES.md)** for a complete reference of all configuration options.
+---
 
 ## Deploy Directory Structure
 
@@ -89,41 +96,45 @@ deploy/
 ├── docker/
 │   ├── docker-compose.yml          # Production (all-in-one)
 │   ├── docker-compose-local.yml    # Local development
-│   ├── docker-compose-secure.yml   # Production + Traefik HTTPS
-│   ├── docker-compose-external.yml # External services + Traefik
-│   └── scripts/
-│       └── setup-ngrok.sh          # ngrok tunnel setup
+│   ├── docker-compose-secure.yml   # With Traefik HTTPS
+│   └── docker-compose-external.yml # External services
+│
 ├── k8s/
-│   ├── kustomization.yaml          # Kustomize config
-│   ├── namespace.yaml              # Namespace definition
-│   ├── configmap.yaml              # Configuration
-│   ├── secret.yaml                 # Secrets template
-│   ├── app-deployment.yaml         # App deployment
-│   ├── worker-deployment.yaml      # Worker deployment
-│   ├── ingress.yaml                # Ingress rules
-│   └── keda-scaledobject.yaml      # KEDA autoscaling
+│   ├── kustomization.yaml
+│   ├── app-deployment.yaml
+│   ├── worker-deployment.yaml
+│   ├── keda-scaledobject.yaml
+│   ├── scripts/
+│   │   ├── setup-vps.sh
+│   │   ├── setup-master.sh
+│   │   ├── setup-worker.sh
+│   │   └── setup-app-node.sh
+│   └── ...
+│
 └── terraform/
-    ├── main.tf                     # Main configuration
-    ├── variables.tf                # Input variables
-    ├── outputs.tf                  # Output values
-    └── modules/
-        ├── k3s-cluster/            # K3s cluster module
-        └── monitoring/             # Prometheus/Grafana
+    └── hetzner/
+        ├── main.tf            # vSwitch, firewalls
+        ├── variables.tf       # Input variables
+        ├── master.tf          # K3s server
+        ├── workers.tf         # Regional workers
+        ├── outputs.tf         # IPs, commands
+        └── terraform.tfvars.example
 ```
 
-## External Services (Recommended)
+---
 
-For production, use managed services to reduce operational overhead:
+## External Services
 
-| Service        | Provider                                        | Benefits                                      |
-| -------------- | ----------------------------------------------- | --------------------------------------------- |
-| **PostgreSQL** | [PlanetScale](https://planetscale.com/postgres) | Built-in PgBouncer, automated backups, PITR   |
-| **Redis**      | [Redis Cloud](https://redis.com/cloud/)         | Managed HA, automatic failover                |
-| **Storage**    | [Cloudflare R2](https://cloudflare.com/r2/)     | S3-compatible, zero egress fees, built-in CDN |
+| Service | Recommended Provider | Notes |
+|---------|---------------------|-------|
+| **PostgreSQL** | [Neon](https://neon.tech) | Free tier, autoscaling |
+| **Redis** | [Upstash](https://upstash.com) | Serverless, pay-per-request |
+| **Storage** | [Cloudflare R2](https://cloudflare.com/r2/) | S3-compatible, zero egress |
+
+---
 
 ## Quick Links
 
 - [Back to Specs](../README.md)
 - [Environment Variables](../08-operations/ENVIRONMENT_VARIABLES.md)
-- [Operations & Optimization](../08-operations)
 - [Architecture Overview](../01-core/SUPERCHECK_ARCHITECTURE.md)

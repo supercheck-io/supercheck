@@ -1,7 +1,7 @@
 # Kubernetes Deployment Guide
 
-> **Version**: 1.0.0  
-> **Last Updated**: 2025-12-03  
+> **Version**: 1.1.0  
+> **Last Updated**: 2025-12-09  
 > **Status**: Production Ready
 
 ## Overview

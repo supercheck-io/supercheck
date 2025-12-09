@@ -1,7 +1,7 @@
 # VPS Setup Guide for K3s Nodes
 
-> **Version**: 1.0.0  
-> **Last Updated**: 2025-12-03  
+> **Version**: 1.1.0  
+> **Last Updated**: 2025-12-09  
 > **Status**: Production Ready
 
 This guide covers setting up a production-ready VPS from scratch on Hetzner Cloud (or any provider) to be used as K3s cluster nodes.
@@ -36,9 +36,9 @@ This guide covers setting up a production-ready VPS from scratch on Hetzner Clou
 
 | Node Type  | Hetzner Type | vCPU | RAM  | Use Case                |
 | ---------- | ------------ | ---- | ---- | ----------------------- |
-| **Master** | CX32         | 4    | 8GB  | K3s control plane       |
+| **Master** | CX22         | 2    | 4GB  | K3s control plane       |
 | **App**    | CX22         | 2    | 4GB  | Next.js app workloads   |
-| **Worker** | CX42         | 8    | 16GB | Playwright/K6 execution |
+| **Worker** | CX22         | 2    | 4GB  | Playwright/K6 execution |
 
 ---
 

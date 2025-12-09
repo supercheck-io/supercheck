@@ -147,6 +147,53 @@ export default function SignUpPage() {
         return;
       }
 
+      // For invitation flow with other email-related errors, also try to verify
+      if (
+        inviteToken &&
+        (signUpError.message?.includes("verify") ||
+          signUpError.message?.includes("email"))
+      ) {
+        // User was created but might need verification - try the same flow
+        try {
+          const verifyResponse = await fetch("/api/auth/verify-invited-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: inviteToken, email }),
+          });
+
+          if (verifyResponse.ok) {
+            const { error: signInError } = await signIn.email({
+              email,
+              password,
+              fetchOptions: {
+                headers: captchaHeaders,
+              },
+            });
+            if (!signInError) {
+              try {
+                const acceptResponse = await fetch(`/api/invite/${inviteToken}`, {
+                  method: "POST",
+                });
+                const acceptResult = await acceptResponse.json();
+                if (acceptResponse.ok && acceptResult.success) {
+                  console.log(`✅ Auto-accepted invitation to ${acceptResult.data?.organizationName}`);
+                  router.push("/");
+                  return;
+                }
+              } catch (acceptError) {
+                console.error("Error auto-accepting invitation:", acceptError);
+              }
+              router.push(`/invite/${inviteToken}`);
+              return;
+            }
+          }
+        } catch (verifyError) {
+          console.error("Error verifying invited user:", verifyError);
+        }
+        router.push(`/sign-in?invite=${inviteToken}`);
+        return;
+      }
+
       // For non-invitation flow, redirect to email verification page
       if (
         signUpError.message?.includes("verify") ||

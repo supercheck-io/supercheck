@@ -42,6 +42,7 @@ export function DataTableToolbar<TData>({
             value={(table.getState().globalFilter as string) ?? ""}
             onChange={(event) => table.setGlobalFilter(event.target.value)}
             className="h-8 w-[300px] pl-8"
+            data-testid="search-input"
           />
           {(table.getState().globalFilter as string)?.length > 0 && (
             <button
@@ -79,6 +80,7 @@ export function DataTableToolbar<TData>({
         <Button
           onClick={() => router.push("/jobs/create")}
           disabled={!canCreateJob}
+          data-testid="create-job-button"
         >
           <PlusIcon className="h-4 w-4 mr-2" />
           Create Job

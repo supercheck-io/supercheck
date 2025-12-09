@@ -39,13 +39,14 @@ export function DataTableToolbar<TData>({
 
       <div className="flex items-center space-x-2">
         <div className="relative">
-        <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Filter by all available fields..."
-          value={(table.getState().globalFilter as string) ?? ""}
-          onChange={(event) => table.setGlobalFilter(event.target.value)}
-          className="h-8 w-[300px] pl-8"
-        />
+          <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Filter by all available fields..."
+            value={(table.getState().globalFilter as string) ?? ""}
+            onChange={(event) => table.setGlobalFilter(event.target.value)}
+            className="h-8 w-[300px] pl-8"
+            data-testid="search-input"
+          />
           {(table.getState().globalFilter as string)?.length > 0 && (
             <button
               type="reset"
@@ -85,11 +86,12 @@ export function DataTableToolbar<TData>({
             <X className="ml-2 h-4 w-4" />
           </Button>
         )} */}
-     
+
         <DataTableViewOptions table={table} />
         <Button
           onClick={() => router.push("/monitors/create")}
           disabled={!userCanCreateMonitors}
+          data-testid="create-monitor-button"
         >
           <PlusIcon className="h-4 w-4 mr-2" />
           Create Monitor
