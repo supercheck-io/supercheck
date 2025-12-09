@@ -1,6 +1,6 @@
 import { test as base, Page, BrowserContext } from '@playwright/test';
 import { SignInPage, SignUpPage, ForgotPasswordPage, InvitePage } from '../pages/auth';
-import { env, routes } from '../utils/env';
+import { env } from '../utils/env';
 
 /**
  * Authentication Test Fixtures
