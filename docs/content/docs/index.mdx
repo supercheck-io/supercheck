@@ -1,50 +1,70 @@
 ---
 title: Welcome to Supercheck
-description: Testing, monitoring, and incident communication
+description: Testing, monitoring, and incident communication platform
 ---
 
-Supercheck is an open-source platform for automated testing, uptime monitoring, and status communication. Self-host it on your infrastructure.
+Supercheck is an open-source platform that combines automated testing, uptime monitoring, and incident communication in one unified solution. Self-host it on your infrastructure for complete control over your quality assurance and reliability workflows.
 
 ## Get Started
 
 <Cards>
 <Card icon={<Server />} title="Deploy" href="/docs/deployment">
-Self-host with Docker Compose
+Self-host with Docker Compose in under 10 minutes
 </Card>
 
 <Card icon={<Rocket />} title="Quick Start" href="/docs/quickstart">
-Run your first test in 5 minutes
+Run your first test and set up monitoring
 </Card>
 </Cards>
 
-## Features
+## Core Capabilities
 
 <Cards>
 <Card icon={<CalendarClock />} title="Automate" href="/docs/automate">
-Browser, API, database, and performance tests with AI-powered fixes
+Write browser, API, database, and performance tests with an AI-powered editor that generates code from plain English and automatically fixes failures
 </Card>
 
-<Card icon={<Globe />} title="Monitor" href="/docs/monitor">
-HTTP, website, ping, port, and synthetic monitors from multiple regions
+<Card icon={<Globe />} title="Monitor" href="/docs/monitors">
+Track uptime with HTTP, website, ping, port, and synthetic monitors running from multiple geographic regions with configurable check intervals
 </Card>
 
 <Card icon={<Radio />} title="Communicate" href="/docs/communicate">
-Alerts, dashboards, and public status pages
+Send alerts through Slack, email, Discord, Telegram, and webhooks. Create public status pages to keep users informed during incidents
 </Card>
 
 <Card icon={<UserCog />} title="Admin" href="/docs/admin">
-User management, organization management, project management, and audit trails
+Manage teams with role-based access control, organize work into projects, and maintain audit trails for compliance
 </Card>
 </Cards>
 
-## Why Supercheck
+## Why Teams Choose Supercheck
 
-- **All-in-One** — Tests, monitors, alerts, and status pages
-- **Self-Hosted** — Deploy on your infrastructure with unlimited features
-- **AI-Powered** — Automatic fix suggestions when tests fail
-- **Multi-Location** — Monitor from US, EU, and APAC regions
-- **Team-Ready** — RBAC, organizations, projects, and audit trails
+### Complete Testing Platform
+Run Playwright browser tests, API validations, database checks, and k6 performance tests from a single platform. Schedule tests to run automatically or trigger them from your CI/CD pipeline.
+
+### Intelligent Monitoring
+Monitor your services from US East, EU Central, and Asia Pacific regions. Configure failure thresholds to avoid alert fatigue and get notified only when issues persist.
+
+### AI-Powered Development
+Generate complete test scripts from natural language descriptions. When tests fail, AI analyzes the error and suggests fixes—saving hours of debugging time.
+
+### Incident Communication
+Create branded public status pages for your users. Manage incidents with a clear workflow from investigation to resolution, and keep subscribers informed with automatic email notifications.
+
+### Self-Hosted Control
+Deploy on your own infrastructure with Docker Compose or Kubernetes. Your data stays on your servers, and you control scaling, security, and access.
+
+## Key Features
+
+- **Playground Editor** — Write and debug tests with Monaco editor, syntax highlighting, and live execution
+- **AI Create & Fix** — Generate tests from descriptions (beta for browser tests) and automatically fix selector, timing, and assertion issues
+- **Multi-Region Execution** — Run tests and monitors from US, EU, and APAC for global coverage
+- **Smart Alerts** — Threshold-based notifications via Slack, email, Discord, Telegram, and webhooks
+- **Status Pages** — Public-facing pages with incident management and subscriber notifications
+- **Variables & Secrets** — Securely store API keys, passwords, and configuration with encryption
+- **Rich Reports** — Screenshots, traces, videos, and network logs for every test run
+- **Team Collaboration** — Organizations, projects, and role-based permissions
 
 <Callout>
-New here? Start with [Deploy](/docs/deployment) to set up your instance.
+New here? Start with [Deploy](/docs/deployment) to set up your instance, then follow the [Quick Start](/docs/quickstart) to run your first test.
 </Callout>

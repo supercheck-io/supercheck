@@ -4,7 +4,7 @@ description: Project overview and real-time metrics
 icon: ChartColumn
 ---
 
-The Dashboard provides a comprehensive view of your project with real-time insights.
+The Dashboard provides a comprehensive view of your project's health with real-time insights into tests, jobs, and monitors.
 
 ![Dashboard](/screenshots/dashboard.png)
 
@@ -12,7 +12,7 @@ The Dashboard provides a comprehensive view of your project with real-time insig
 
 | Metric | Description |
 |--------|-------------|
-| **Total Tests** | Test cases in your project |
+| **Total Tests** | Test cases saved in your project |
 | **Active Jobs** | Scheduled or running jobs |
 | **Active Monitors** | Enabled monitoring endpoints |
 | **Total Runs** | Job executions (last 7 days) |
@@ -21,26 +21,29 @@ The Dashboard provides a comprehensive view of your project with real-time insig
 ## Charts
 
 ### Job Runs
-Bar chart showing successful vs failed job runs over the last 7 days.
+Bar chart showing successful vs failed job runs over the last 7 days. Quickly identify failure patterns and trends.
 
 ### Monitor Status
-Current health distribution of all monitors (Up/Down).
+Current health distribution of all monitors:
+- **Up** — Monitors passing health checks
+- **Down** — Monitors failing health checks
 
 ### Test Types
-Pie chart breakdown of test types (Browser, API, Database, Custom).
+Pie chart breakdown of test types in your project:
+- Browser, API, Database, Custom, Performance
 
 ### Job Activity
 Stacked area chart showing job triggers by type:
 - **Manual** — User-initiated runs
 - **Scheduled** — Cron-based runs
-- **Remote** — API-triggered runs
+- **Remote** — API-triggered runs (CI/CD)
 
 ### Uptime Trend
-Line chart showing monitor uptime percentage over 7 days.
+Line chart showing monitor uptime percentage over 7 days. Track reliability trends over time.
 
 ## Best Practices
 
-1. Review key metrics daily
-2. Check Job Runs chart for failure patterns
-3. Monitor Uptime Trend for reliability
-4. Use Test Activity to track development velocity
+- **Review daily** — Check key metrics for anomalies
+- **Investigate failures** — Use Job Runs chart to spot patterns
+- **Track uptime** — Monitor Uptime Trend for SLA compliance
+- **Balance triggers** — Use Job Activity to ensure scheduled runs are working

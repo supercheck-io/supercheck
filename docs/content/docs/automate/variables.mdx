@@ -1,64 +1,275 @@
 ---
 title: Variables
-description: Store configuration and secrets
+description: Store configuration and secrets securely
 icon: Variable
 ---
 
-Store reusable values and sensitive data securely across tests.
+Variables let you store configuration values and sensitive credentials that your tests can access at runtime. Use variables for URLs, timeouts, and settings. Use secrets for API keys, passwords, and tokens that need encryption.
 
 ![Variables List](/screenshots/variables-list.png)
 
-## Types
+## Variables vs Secrets
 
-| Type | Storage | Use For |
-|------|---------|---------|
-| **Variable** | Plain text | URLs, timeouts, config |
-| **Secret** | Encrypted | API keys, passwords |
+| Feature | Variables | Secrets |
+|---------|-----------|---------|
+| **Storage** | Plain text | AES-128-GCM encrypted |
+| **Visibility** | Shown in UI | Masked with `***` |
+| **Logging** | Logged normally | Auto-redacted as `[SECRET]` |
+| **Use For** | URLs, timeouts, feature flags | API keys, passwords, tokens |
 
-## Create Variable
+## Creating Variables
 
-1. Go to **Project → Variables**
+### Add a Variable
+
+1. Go to your project's **Variables** page
 2. Click **Add Variable**
-3. Enter key and value
-4. Save
+3. Enter a **key** (e.g., `BASE_URL`)
+4. Enter the **value** (e.g., `https://staging.example.com`)
+5. Optionally add a **description** for your team
+6. Click **Save**
 
 ![Add Variable](/screenshots/add-variable.png)
 
-## Create Secret
+### Add a Secret
 
-Secrets are encrypted and masked in logs.
+1. Go to your project's **Variables** page
+2. Click **Add Variable**
+3. Enter a **key** (e.g., `API_KEY`)
+4. Enter the **value**
+5. Check the **Secret** checkbox
+6. Click **Save**
 
 ![Add Secret](/screenshots/add-secret.png)
 
-## Usage
+<Callout type="info">
+Once saved, secret values cannot be viewed in the UI. You can only update or delete them.
+</Callout>
+
+## Using Variables in Tests
+
+Access variables and secrets in your test code using the built-in functions:
+
+### getVariable()
+
+Use for non-sensitive configuration:
 
 ```javascript
-// Regular variables
+/**
+ * Variables store plain-text configuration values.
+ * Use getVariable() to retrieve them in your tests.
+ */
+
+// Basic usage
 const baseUrl = getVariable('BASE_URL');
 const timeout = getVariable('TIMEOUT');
 
-// Secrets (auto-redacted in logs)
-const apiKey = getSecret('API_KEY');
-const password = getSecret('DB_PASSWORD');
+// Navigate using variable
+await page.goto(baseUrl + '/login');
 ```
+
+### getSecret()
+
+Use for sensitive credentials. **Always call `.toString()`** to get the actual value:
+
+```javascript
+/**
+ * Secrets are encrypted and require .toString() to access the value.
+ * This ensures secrets are protected from accidental logging.
+ */
+
+// API authentication
+const apiKey = getSecret('API_KEY').toString();
+await page.setExtraHTTPHeaders({
+  'Authorization': `Bearer ${apiKey}`
+});
+
+// Form login
+const password = getSecret('TEST_PASSWORD').toString();
+await page.fill('#password', password);
+
+// Database connection
+const dbPassword = getSecret('DB_PASSWORD').toString();
+```
+
+<Callout type="warning">
+Always use `.toString()` when reading secrets. Without it, the secret object won't expose the actual value in most contexts.
+</Callout>
+
+### Secret Protection
+
+Secrets are automatically protected from accidental exposure:
+
+```javascript
+/**
+ * Secret values are masked in logs and console output.
+ * The actual value is only accessible via .toString().
+ */
+
+// These all show [SECRET] instead of the actual value
+console.log(getSecret('API_KEY'));           // "[SECRET]"
+console.log(`Key: ${getSecret('API_KEY')}`); // "Key: [SECRET]"
+JSON.stringify({ key: getSecret('API_KEY') }); // {"key":"[SECRET]"}
+
+// Use .toString() to get the actual value for operations
+const actualKey = getSecret('API_KEY').toString();
+```
+
+**Secrets work normally in:**
+- Playwright actions (`page.fill()`, `page.click()`)
+- HTTP headers and request bodies
+- URL parameters
+- Comparisons and conditionals
 
 ## Common Patterns
 
-```javascript
-// Environment config
-const env = getVariable('ENVIRONMENT');
-const apiUrl = getVariable(`${env}_API_URL`);
+### Environment-Based Configuration
 
-// Database connection
-const dbConfig = {
-  host: getVariable('DB_HOST'),
-  port: getVariable('DB_PORT'),
-  password: getSecret('DB_PASSWORD')
-};
+```javascript
+/**
+ * Load environment-specific configuration.
+ * Store different URLs for staging vs production.
+ */
+const env = getVariable('ENVIRONMENT'); // 'staging' or 'production'
+const baseUrl = getVariable(`${env.toUpperCase()}_URL`);
+
+await page.goto(baseUrl);
 ```
 
-## Security
+### API Testing with Playwright
 
-- **Encrypted** — Secrets use AES-256-GCM
-- **Masked** — Auto-redacted from logs and screenshots
-- **RBAC** — Role-based access control
+```javascript
+/**
+ * Authenticated API request using Playwright's request context.
+ * @see https://playwright.dev/docs/api-testing
+ */
+const apiUrl = getVariable('API_URL');
+const apiToken = getSecret('API_TOKEN').toString();
+const apiKey = getSecret('API_KEY').toString();
+
+const response = await request.get(apiUrl + '/users', {
+  headers: {
+    'Authorization': `Bearer ${apiToken}`,
+    'X-API-Key': apiKey
+  }
+});
+```
+
+### Database Testing
+
+```javascript
+/**
+ * PostgreSQL database connection with secure credentials.
+ * @requires pg - PostgreSQL client for Node.js
+ */
+import { Pool } from 'pg';
+
+const pool = new Pool({
+  host: getVariable('DB_HOST'),
+  port: parseInt(getVariable('DB_PORT')),
+  database: getVariable('DB_NAME'),
+  user: getVariable('DB_USER'),
+  password: getSecret('DB_PASSWORD').toString()
+});
+```
+
+### Feature Flags
+
+```javascript
+/**
+ * Conditional test logic based on feature flags.
+ * Useful for testing different UI versions.
+ */
+const featureEnabled = getVariable('ENABLE_NEW_CHECKOUT') === 'true';
+
+if (featureEnabled) {
+  await page.click('[data-testid="new-checkout"]');
+} else {
+  await page.click('[data-testid="classic-checkout"]');
+}
+```
+
+### k6 Performance Tests
+
+```javascript
+/**
+ * Using variables in k6 load tests.
+ * Variables are injected at runtime.
+ * @see https://grafana.com/docs/k6/latest/using-k6/http-requests/
+ */
+import http from 'k6/http';
+
+export default function () {
+  const baseUrl = getVariable('API_URL');
+  const apiKey = getSecret('API_KEY').toString();
+  
+  http.get(`${baseUrl}/protected`, {
+    headers: { Authorization: `Bearer ${apiKey}` }
+  });
+}
+```
+
+## Variable Naming Conventions
+
+Use clear, consistent naming for your variables:
+
+| Pattern | Example | Use For |
+|---------|---------|---------|
+| `SCREAMING_SNAKE_CASE` | `BASE_URL`, `API_KEY` | Standard convention |
+| `ENV_SPECIFIC` | `STAGING_URL`, `PROD_API_KEY` | Environment-specific values |
+| `SERVICE_NAME` | `STRIPE_API_KEY`, `SENDGRID_KEY` | Third-party service credentials |
+
+**Recommended variable names:**
+
+| Variable | Description |
+|----------|-------------|
+| `BASE_URL` | Application base URL |
+| `API_URL` | API endpoint base URL |
+| `TIMEOUT` | Default timeout in milliseconds |
+| `TEST_USER_EMAIL` | Test account email |
+| `TEST_USER_PASSWORD` | Test account password (secret) |
+| `API_KEY` | API authentication key (secret) |
+| `DB_CONNECTION_STRING` | Database connection (secret) |
+
+## Security Features
+
+### Encryption
+
+- Secrets are encrypted using **AES-128-GCM** with authenticated encryption
+- Encryption keys are derived per-project using HKDF-SHA256
+- Values are encrypted at rest in the database
+
+### Access Control
+
+Variables follow your project's role-based permissions:
+
+| Role | View | Create | Edit | Delete | View Secret Values |
+|------|------|--------|------|--------|-------------------|
+| **Owner** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Admin** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Editor** | ✅ | ✅ | ✅ | ❌ | ✅ |
+| **Viewer** | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+### Audit Trail
+
+All variable operations are logged:
+- Who created, updated, or deleted variables
+- When changes were made
+- Variable keys (not secret values)
+
+## Best Practices
+
+### Organization
+- **Use descriptive names** that indicate purpose
+- **Add descriptions** for team documentation
+- **Group related variables** by naming convention
+
+### Security
+- **Never commit secrets** to version control
+- **Use secrets for all credentials** even in development
+- **Rotate secrets regularly** for production environments
+- **Limit access** using project roles
+
+### Testing
+- **Use separate variables** for each environment
+- **Don't hardcode values** that might change
+- **Document required variables** for your test suite

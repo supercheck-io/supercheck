@@ -209,7 +209,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs",
       icon: BookOpenText,
-      badge: "v1.1.9-beta.47",
+      badge: "v1.1.9-beta.48",
     },
   ],
   documents: [
@@ -310,7 +310,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader className="group-data-[collapsible=icon]:px-0">
+      <SidebarHeader className="group-data-[collapsible=icon]:px-0 border-t">
         <ProjectSwitcher />
       </SidebarHeader>
       <SidebarContent>
