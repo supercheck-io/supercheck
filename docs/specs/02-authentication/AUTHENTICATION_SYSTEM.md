@@ -778,11 +778,12 @@ graph TB
 
 **Rate Limiting Implementation:**
 
-- In-memory rate limit store (production should use Redis)
-- Automatic cleanup every 5 minutes
+- Redis-based sliding window rate limiter (supports multi-instance deployments)
+- Fail-open behavior if Redis is unavailable (prevents service disruption)
 - Separate limits for email and IP
-- Clear error messages with wait time
+- Clear error messages with accurate wait time calculation
 - Prevents both user-targeted and distributed attacks
+- TTL-based automatic cleanup (no manual cleanup required)
 
 ### Password Security
 
@@ -1139,7 +1140,7 @@ sequenceDiagram
 - `/api/auth/impersonation-status`, `/api/admin/stop-impersonation` surface impersonation state/stop controls.
 - `/api/auth/user` returns the current session's user.
 - `/api/auth/setup-defaults` creates a default org/project when the user has no memberships and no pending invites.
-- `/api/auth/verify-key` validates job-scoped API keys.
+- `/api/auth/verify-key` validates job-scoped API keys (rate limited: 10 req/min per IP to prevent enumeration).
 - `/api/auth/verify-email` - Email verification endpoint (cloud mode only)
 - `/api/auth/verify-invited-user` - Marks invited user's email as verified (bypasses email verification for invitations)
 

@@ -18,7 +18,7 @@ import { eq } from 'drizzle-orm';
 import { jobs } from '../../db/schema';
 import { ErrorHandler } from '../../common/utils/error-handler';
 
-@Processor(PLAYWRIGHT_QUEUE, { concurrency: 5 }) // Increased concurrency for global queue
+@Processor(PLAYWRIGHT_QUEUE, { concurrency: 1 })
 export class PlaywrightExecutionProcessor extends WorkerHost {
   private readonly logger = new Logger(PlaywrightExecutionProcessor.name);
 

@@ -155,7 +155,26 @@ export class ApiKeyRateLimiter {
       // Check if we're at the limit
       if (currentCount >= config.maxRequests) {
         // Rate limited - don't add new entry
-        const retryAfter = Math.ceil(config.timeWindow - (now - windowStart));
+        // To calculate accurate retry-after, get the oldest entry in the window
+        // The oldest entry will be the first to expire from the sliding window
+        let retryAfter = config.timeWindow; // Default fallback
+
+        try {
+          // Get the oldest entry (lowest score) from the sorted set
+          const oldestEntries = await redis.zrange(key, 0, 0, "WITHSCORES");
+          if (oldestEntries && oldestEntries.length >= 2) {
+            const oldestTimestamp = parseInt(oldestEntries[1], 10);
+            // Retry after = when oldest entry will leave the window
+            // oldestTimestamp + timeWindow - now = seconds until oldest entry expires
+            retryAfter = Math.max(1, (oldestTimestamp + config.timeWindow) - now);
+          }
+        } catch (oldestError) {
+          // If we can't get oldest entry, use full window as fallback
+          logger.debug(
+            { error: oldestError },
+            "Could not get oldest entry for retry calculation"
+          );
+        }
 
         logger.warn(
           {
@@ -172,7 +191,7 @@ export class ApiKeyRateLimiter {
           remaining: 0,
           limit: config.maxRequests,
           resetAt,
-          retryAfter: Math.max(1, retryAfter),
+          retryAfter,
         };
       }
 
