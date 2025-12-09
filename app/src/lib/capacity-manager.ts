@@ -398,7 +398,7 @@ let capacityManager: CapacityManager | null = null;
  * This ensures counters are properly released when jobs complete/fail
  */
 // Interface for queue parameters to prevent circular dependency
-interface QueueParameters {
+export interface QueueParameters {
   playwrightQueues: Record<string, import('bullmq').Queue>;
   k6Queues: Record<string, import('bullmq').Queue>;
   monitorExecution: Record<string, import('bullmq').Queue>;
@@ -410,7 +410,7 @@ interface QueueParameters {
 }
 
 // Interface for QueueEvents parameters
-interface QueueEventsParameters {
+export interface QueueEventsParameters {
   playwrightEvents: Record<string, import('bullmq').QueueEvents>;
   k6Events: Record<string, import('bullmq').QueueEvents>;
   monitorExecutionEvents: Record<string, import('bullmq').QueueEvents>;
