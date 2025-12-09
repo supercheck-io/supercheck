@@ -337,7 +337,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="py-2">
+        <section className="py-2 mb-10">
           <div className="mx-auto max-w-6xl space-y-6 px-6">
             <motion.div
               variants={featureVariants.container}
