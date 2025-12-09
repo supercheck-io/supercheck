@@ -28,33 +28,60 @@ Run tests from multiple regions simultaneously to measure global performance.
 | **EU Central** | Nuremberg, Germany |
 | **Asia Pacific** | Singapore |
 
+<Callout type="info">
+**Self-Hosted Deployments**: In self-hosted mode, all region selections execute from your single worker instance. You can still select multiple regions for configuration purposes, but tests run from one location. To enable true multi-region testing, deploy workers in each target region.
+</Callout>
+
 ## Example Script
 
 ```javascript
+/**
+ * Ramping load profile to mirror real traffic patterns.
+ * 
+ * Purpose:
+ * - Simulate a gradual increase in traffic (ramp-up)
+ * - Hold traffic at peak load (steady state)
+ * - Gradually decrease traffic (ramp-down)
+ * 
+ * Configuration:
+ * - Stages:
+ *   1. Ramp up to 10 VUs over 2 minutes
+ *   2. Ramp up to 50 VUs over next 5 minutes
+ *   3. Ramp up to 80 VUs over next 3 minutes
+ *   4. Ramp down to 0 VUs over 2 minutes
+ * - Thresholds: Strict latency and error limits
+ * 
+ * @see https://grafana.com/docs/k6/latest/using-k6/scenarios/
+ */
 import http from 'k6/http';
-import { check, sleep } from 'k6';
+import { check } from 'k6';
 
 export const options = {
   stages: [
-    { duration: '30s', target: 10 },  // Ramp up
-    { duration: '1m', target: 10 },   // Steady state
-    { duration: '30s', target: 0 },   // Ramp down
+    { duration: '2m', target: 10 },   // Ramp-up to 10 VUs
+    { duration: '5m', target: 50 },   // Increase to 50 VUs
+    { duration: '3m', target: 80 },   // Peak load at 80 VUs
+    { duration: '2m', target: 0 },    // Ramp-down
   ],
   thresholds: {
-    http_req_duration: ['p(95)<500'],
-    http_req_failed: ['rate<0.01'],
+    http_req_failed: ['rate<0.02'],              // Error rate < 2%
+    http_req_duration: ['p(95)<600', 'p(99)<1200'], // Latency thresholds
+    checks: ['rate>0.95'],                       // 95% of checks pass
   },
 };
 
 export default function () {
-  const res = http.get('https://api.example.com/health');
-  check(res, {
-    'status is 200': (r) => r.status === 200,
-    'response time < 500ms': (r) => r.timings.duration < 500,
+  const baseUrl = 'https://test-api.k6.io';
+  const response = http.get(baseUrl + '/public/crocodiles/');
+
+  check(response, {
+    'status is 200': (res) => res.status === 200,
+    'p95 under budget': (res) => res.timings.duration < 600,
   });
-  sleep(1);
 }
 ```
+
+📚 [k6 Scenarios](https://grafana.com/docs/k6/latest/using-k6/scenarios/) | [k6 Checks](https://grafana.com/docs/k6/latest/using-k6/checks/)
 
 ## Streaming Logs
 
@@ -94,8 +121,40 @@ Analyze performance metrics after the test completes.
 Set pass/fail criteria:
 
 ```javascript
+/**
+ * Thresholds define pass/fail criteria for your test.
+ * @see https://grafana.com/docs/k6/latest/using-k6/thresholds/
+ */
 thresholds: {
   http_req_duration: ['p(95)<500'],  // 95% under 500ms
   http_req_failed: ['rate<0.01'],    // Less than 1% errors
 }
 ```
+
+📚 [k6 Thresholds Documentation](https://grafana.com/docs/k6/latest/using-k6/thresholds/)
+
+## Using Variables
+
+```javascript
+/**
+ * Using project variables and secrets in k6 tests.
+ * Secrets require .toString() to access the value.
+ */
+export default function () {
+  const baseUrl = getVariable('API_URL');
+  const apiKey = getSecret('API_KEY').toString();
+  
+  const response = http.get(`${baseUrl}/protected`, {
+    headers: { Authorization: `Bearer ${apiKey}` }
+  });
+  
+  check(response, { 'status is 200': (r) => r.status === 200 });
+}
+```
+
+## Learn More
+
+- **[k6 Documentation](https://grafana.com/docs/k6/latest/)** — Complete k6 guide
+- **[k6 HTTP Requests](https://grafana.com/docs/k6/latest/using-k6/http-requests/)** — Making HTTP calls
+- **[k6 Thresholds](https://grafana.com/docs/k6/latest/using-k6/thresholds/)** — Pass/fail criteria
+- **[k6 Checks](https://grafana.com/docs/k6/latest/using-k6/checks/)** — Response validation

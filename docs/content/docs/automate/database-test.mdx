@@ -4,7 +4,7 @@ description: Query and validate database state
 icon: Database
 ---
 
-Run SQL queries and validate database state directly.
+Run SQL queries and validate database state directly. Database tests connect to your databases securely and execute queries with result validation.
 
 ## Create Test
 
@@ -16,13 +16,46 @@ Run SQL queries and validate database state directly.
 
 ## Example
 
-```sql
--- Check active user count
-SELECT COUNT(*) as user_count
-FROM users
-WHERE active = true;
+```typescript
+/**
+ * PostgreSQL read health check.
+ * 
+ * Purpose:
+ * - Verify database connectivity
+ * - Check that a specific table exists and has expected columns
+ * - Ensure read operations are functioning
+ * 
+ * Configuration:
+ * - Requires 'pg' library (included in Supercheck runtime)
+ * - Connection string must be configured via project variables
+ * 
+ * @requires pg - PostgreSQL client for Node.js
+ */
+import { expect, test } from '@playwright/test';
+import { Pool } from 'pg';
 
--- Assertion: user_count > 0
+const pool = new Pool({
+  host: getVariable('DB_HOST'),
+  port: parseInt(getVariable('DB_PORT') || '5432'),
+  database: getVariable('DB_NAME'),
+  user: getVariable('DB_USER'),
+  password: getSecret('DB_PASSWORD').toString(),
+});
+
+test.afterAll(async () => {
+  await pool.end();
+});
+
+test.describe('database read health check', () => {
+  test('users table returns expected columns', async () => {
+    // Execute a simple SELECT query
+    const result = await pool.query('SELECT id, email FROM users LIMIT 1');
+    
+    // Verify we got results and the schema matches expectations
+    expect(result.rowCount).toBeGreaterThan(0);
+    expect(result.rows[0]).toHaveProperty('email');
+  });
+});
 ```
 
 ## Supported Databases
@@ -36,7 +69,7 @@ WHERE active = true;
 
 - **Direct** — Public database with credentials
 - **SSH Tunnel** — Private network via bastion host
-- **Secrets** — Store credentials securely with `getSecret()`
+- **Secrets** — Store credentials securely with `getSecret().toString()`
 
 ## Common Assertions
 
@@ -49,6 +82,7 @@ WHERE active = true;
 ## Best Practices
 
 - Use **read-only** database users
-- Store credentials as **secrets**
+- Store credentials as **secrets** with `getSecret().toString()`
 - Set appropriate **query timeouts**
 - Use **SSH tunnels** for private databases
+- Always close connections in a `finally` block

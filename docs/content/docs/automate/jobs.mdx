@@ -4,79 +4,230 @@ description: Schedule and automate test execution
 icon: CalendarClock
 ---
 
-Jobs schedule tests to run automatically on a recurring basis or via triggers.
+Jobs let you group tests together and run them automatically on a schedule or trigger them from your CI/CD pipeline. Use jobs to automate regression testing, smoke tests, and continuous validation of your applications.
 
 ![Jobs List](/screenshots/jobs-list.png)
 
-## Create Job
+## What Jobs Do
 
-1. Go to **Create → Job**
-2. Enter job name and description
-3. Select tests to include
-4. Configure schedule or trigger
-5. Set up alerts
-6. Save
+A job is a collection of tests that run together. When a job executes:
+
+1. All selected tests run in sequence
+2. Results are collected and aggregated
+3. Alerts are sent if any test fails
+4. Reports are generated with full details
+
+**Use jobs for:**
+- **Scheduled regression tests** — Run nightly or hourly to catch issues early
+- **Smoke tests** — Quick validation after deployments
+- **CI/CD integration** — Trigger tests from your build pipeline
+- **Monitoring** — Regular checks of critical user flows
+
+## Creating a Job
 
 ![Create Job Form](/screenshots/create-job-form.png)
 
-## Select Tests
+### Step 1: Basic Information
 
-Choose which tests to include in the job.
+1. Go to **Create → Job**
+2. Enter a descriptive **name** (e.g., "Nightly Regression Suite")
+3. Add an optional **description** explaining what the job tests
+
+### Step 2: Select Tests
+
+Choose which tests to include in the job. You can select any combination of:
+- Browser tests (Playwright)
+- API tests
+- Database tests
+- Custom tests
 
 ![Select Tests](/screenshots/create-job-select-tests.png)
 
-## Parallel Execution
+<Callout type="info">
+Tests run in the order you select them. Put critical tests first so failures are detected early.
+</Callout>
 
-Execute tests and jobs simultaneously for faster execution, and view executions across all projects in organization, depends on parallel execution queue capacity configured.
+### Step 3: Configure Schedule
 
-![Parallel Execution Dialog](/screenshots/parallel-execution-dialog.png)
+Choose when and how the job runs:
 
-## Schedule Options
+| Schedule Type | Description | Best For |
+|---------------|-------------|----------|
+| **Interval** | Run every X minutes or hours | Regular health checks |
+| **Cron** | Custom cron expression for precise timing | Specific schedules (nightly, weekly) |
+| **Manual** | Run only when triggered manually | On-demand testing |
+| **API Trigger** | Run via HTTP API call | CI/CD integration |
 
-| Type | Description |
-|------|-------------|
-| **Interval** | Every X minutes/hours |
-| **Cron** | Custom cron expression |
-| **Manual** | Run on demand |
-| **API Trigger** | Remote execution via API |
+**Common cron examples:**
 
-## Alert Configuration
+| Schedule | Cron Expression |
+|----------|-----------------|
+| Every hour | `0 * * * *` |
+| Every day at midnight | `0 0 * * *` |
+| Every Monday at 9 AM | `0 9 * * 1` |
+| Every 6 hours | `0 */6 * * *` |
 
-Configure who gets notified when the job fails.
+### Step 4: Configure Alerts
+
+Set up notifications for job results:
 
 ![Alert Configuration](/screenshots/create-job-alerts-config.png)
 
+| Setting | Description |
+|---------|-------------|
+| **Alert on Failure** | Notify when any test in the job fails |
+| **Alert on Success** | Notify when all tests pass (optional) |
+| **Alert on Timeout** | Notify if job exceeds maximum execution time |
+| **Notification Channels** | Select Slack, email, Discord, Telegram, or webhook |
+
+## Parallel Execution
+
+Run multiple jobs or tests simultaneously to reduce total execution time. The parallel execution panel in the header shows real-time status of all running and queued executions across your organization.
+
+![Parallel Execution Dialog](/screenshots/parallel-execution-dialog.png)
+
+**How it works:**
+- Jobs are queued and processed by available workers
+- Multiple jobs can run in parallel up to your plan's capacity limit
+- View all running executions across your organization in real-time
+- Cancel any running job if needed
+
+**Capacity limits by plan:**
+
+| Plan | Concurrent Jobs | Queued Jobs |
+|------|-----------------|-------------|
+| **Plus** | 5 | 50 |
+| **Pro** | 10 | 100 |
+| **Self-hosted** | Configurable | Configurable |
+
+<Callout type="info">
+The parallel execution indicator appears in the top navigation bar showing **RUNNING** and **QUEUED** counts. Click it to view details and manage executions.
+</Callout>
+
 ## CI/CD Integration
 
-Trigger jobs remotely from your CI/CD pipeline.
+Trigger jobs from your CI/CD pipeline to run tests after every deployment.
 
-### Generate API Key
+### Setting Up API Triggers
 
-1. Open job settings
-2. Go to **CI/CD** tab
+1. Open the job you want to trigger
+2. Go to the **CI/CD** tab
 3. Click **Generate API Key**
 
 ![CI/CD Tab](/screenshots/edit-job-add-cicd-apikey-1.png)
 
 ![Generate API Key](/screenshots/edit-job-add-cicd-apikey-2.png)
 
-### Configure Trigger
-
-Copy the trigger URL and API key for your CI/CD pipeline.
+4. Copy the trigger URL and API key
 
 ![API Key Configuration](/screenshots/edit-job-cicd-apikey-configure.png)
 
-### Example Request
+### Triggering from CI/CD
+
+**Basic trigger:**
 
 ```bash
 curl -X POST https://your-instance.com/api/jobs/{jobId}/trigger \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
+**GitHub Actions example:**
+
+```yaml
+- name: Run Supercheck Tests
+  run: |
+    curl -X POST ${{ secrets.SUPERCHECK_TRIGGER_URL }} \
+      -H "Authorization: Bearer ${{ secrets.SUPERCHECK_API_KEY }}"
+```
+
+**GitLab CI example:**
+
+```yaml
+test:
+  script:
+    - curl -X POST $SUPERCHECK_TRIGGER_URL -H "Authorization: Bearer $SUPERCHECK_API_KEY"
+```
+
+### API Key Security
+
+- **Generate unique keys** for each CI/CD pipeline
+- **Store keys as secrets** in your CI/CD platform
+- **Rotate keys periodically** for security
+- **Revoke keys** when no longer needed
+
+## Job Execution
+
+### Running Jobs Manually
+
+1. Go to **Jobs** list
+2. Click the **Run** button on any job
+3. View real-time progress in the execution dialog
+4. Results appear when complete
+
+### Canceling Jobs
+
+You can cancel a running job at any time:
+
+1. Click the **Cancel** button on the running job
+2. Confirm the cancellation
+3. All running tests are stopped immediately
+4. Partial results are saved
+
+### Viewing Results
+
+After a job completes:
+
+- **Summary** — Pass/fail status, duration, test count
+- **Test Results** — Individual test outcomes with details
+- **Reports** — Screenshots, traces, and logs for each test
+- **History** — Previous runs for comparison
+
+## Job Notifications
+
+Jobs send notifications through your configured alert channels:
+
+### Failure Notifications
+
+When a job fails, notifications include:
+- Job name and project
+- Which tests failed
+- Error summary
+- Link to full report
+- Execution duration
+
+### Success Notifications (Optional)
+
+When enabled, success notifications include:
+- Job name and project
+- All tests passed confirmation
+- Execution duration
+- Link to report
+
+### Timeout Notifications
+
+If a job exceeds the maximum execution time:
+- Job is automatically stopped
+- Timeout notification is sent
+- Partial results are saved
+
 ## Best Practices
 
-- Group related tests into a single job
-- Set appropriate failure thresholds
-- Configure alerts for production jobs
-- Use cron for specific timing requirements
-- Generate unique API keys per CI/CD pipeline
+### Job Organization
+- **Group related tests** — Put tests for the same feature or flow in one job
+- **Keep jobs focused** — Smaller jobs are easier to debug when they fail
+- **Use descriptive names** — Include what the job tests (e.g., "Checkout Flow - Production")
+
+### Scheduling
+- **Stagger schedules** — Don't run all jobs at the same time
+- **Match frequency to risk** — Critical paths need more frequent testing
+- **Consider time zones** — Schedule during low-traffic periods for load-sensitive tests
+
+### Alerts
+- **Always enable failure alerts** for production jobs
+- **Use multiple channels** for critical jobs (Slack + email)
+- **Set up escalation** — Different channels for different severity levels
+
+### CI/CD Integration
+- **Run after deployments** — Trigger jobs in your deployment pipeline
+- **Block deployments on failure** — Use job results as deployment gates
+- **Keep API keys secure** — Store in CI/CD secrets, never in code
