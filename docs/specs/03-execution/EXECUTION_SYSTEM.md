@@ -563,6 +563,18 @@ QUEUED_CAPACITY=100    # Override plan-specific queued limit
   - `failed` (before active): releases queued slots
   - `stalled`: releases running slots with warnings
 
+**✅ Job-to-Organization Mapping**
+- Redis hash stores `jobId → organizationId` mapping when jobs become active
+- Enables correct capacity release even when BullMQ job data is unavailable
+- Key: `capacity:job_org_mapping`, TTL: 48 hours
+- Fallback mechanism ensures counters are always released correctly
+
+**✅ Automatic Capacity Reconciliation**
+- Runs every 5 minutes to detect and correct counter drift
+- Compares Redis counters against actual BullMQ queue state
+- Auto-corrects drift exceeding threshold (±2)
+- Logs warnings for manual review when drift detected
+
 ### Atomic Capacity Check Flow
 
 ```mermaid

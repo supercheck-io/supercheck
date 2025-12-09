@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Test outputs
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Authentication state files (contain session tokens)
+auth-state.json
+*-auth-state.json
+
+# Environment files
+.env
+.env.local
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/

@@ -87,7 +87,7 @@ export default function ResetPasswordPage() {
       if (result.error) {
         setError(
           result.error.message ||
-            "An error occurred while resetting your password"
+          "An error occurred while resetting your password"
         );
       } else {
         setIsSuccess(true);
@@ -127,15 +127,6 @@ export default function ResetPasswordPage() {
     return (
       <div className="flex flex-col gap-6 w-full max-w-sm px-4">
         <FieldGroup>
-          {/* Logo */}
-          <div className="flex justify-center">
-            <Link href="/" className="flex flex-col items-center gap-3 font-medium">
-              <div className="flex size-14 items-center justify-center rounded-md">
-                <CheckIcon className="size-12" />
-              </div>
-              <span className="sr-only">Supercheck</span>
-            </Link>
-          </div>
 
           {/* Success Icon */}
           <div className="flex justify-center">

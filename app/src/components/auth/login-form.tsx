@@ -94,9 +94,9 @@ export function LoginForm({
   const passwordValue = form.watch("password");
 
   return (
-    <div className={cn("flex flex-col gap-6", className)}>
+    <div className={cn("flex flex-col gap-6", className)} data-testid="login-form">
       <Form {...form}>
-        <form onSubmit={onSubmit}>
+        <form onSubmit={onSubmit} data-testid="login-form-element">
           <FieldGroup>
             {/* Header */}
             <div className="flex flex-col items-center gap-3 text-center">
@@ -139,7 +139,7 @@ export function LoginForm({
 
             {/* Email Verified Success Alert */}
             {emailVerified && (
-              <div className="flex items-center gap-3 p-4 rounded-lg bg-green-500/10 border border-green-500/20">
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-green-500/10 border border-green-500/20" data-testid="email-verified-alert">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/20">
                   <svg
                     className="h-4 w-4 text-green-600 dark:text-green-400"
@@ -197,6 +197,7 @@ export function LoginForm({
                         placeholder="m@example.com"
                         autoComplete="email"
                         readOnly={!!inviteData?.email}
+                        data-testid="login-email-input"
                         {...field}
                       />
                     </FormControl>
@@ -218,6 +219,7 @@ export function LoginForm({
                       <Link
                         href="/forgot-password"
                         className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4"
+                        data-testid="login-forgot-password-link"
                       >
                         Forgot password?
                       </Link>
@@ -229,6 +231,7 @@ export function LoginForm({
                           type={showPassword ? "text" : "password"}
                           autoComplete="current-password"
                           className={passwordValue ? "pr-10" : ""}
+                          data-testid="login-password-input"
                           {...field}
                         />
                         {passwordValue && (
@@ -257,7 +260,7 @@ export function LoginForm({
 
             {/* Error Message */}
             {error && (
-              <p className="text-sm font-medium text-destructive text-center">
+              <p className="text-sm font-medium text-destructive text-center" data-testid="login-error-message" role="alert">
                 {error}
               </p>
             )}
@@ -279,7 +282,7 @@ export function LoginForm({
 
             {/* Submit Button */}
             <Field>
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full" disabled={isLoading} data-testid="login-submit-button">
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Login
               </Button>

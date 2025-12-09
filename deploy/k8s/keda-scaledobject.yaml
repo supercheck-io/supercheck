@@ -39,12 +39,12 @@ spec:
     name: supercheck-worker-us
 
   # Scaling limits
-  minReplicaCount: 0 # Scale to zero when idle
-  maxReplicaCount: 10
+  minReplicaCount: 1 # Always keep 1 worker running
+  maxReplicaCount: 5 # Max 5 per region (fits 2 vCPU/4GB nodes)
 
   # Polling interval
   pollingInterval: 15 # Check every 15 seconds
-  cooldownPeriod: 120 # Wait 2 minutes before scaling down
+  cooldownPeriod: 300 # Wait 5 minutes before scaling down
 
   # Advanced scaling behavior
   advanced:
@@ -123,10 +123,10 @@ spec:
   scaleTargetRef:
     name: supercheck-worker-eu
 
-  minReplicaCount: 0
-  maxReplicaCount: 10
+  minReplicaCount: 1 # Always keep 1 worker running
+  maxReplicaCount: 5 # Max 5 per region
   pollingInterval: 15
-  cooldownPeriod: 120
+  cooldownPeriod: 300
 
   advanced:
     horizontalPodAutoscalerConfig:
@@ -200,10 +200,10 @@ spec:
   scaleTargetRef:
     name: supercheck-worker-apac
 
-  minReplicaCount: 0
-  maxReplicaCount: 10
+  minReplicaCount: 1 # Always keep 1 worker running
+  maxReplicaCount: 5 # Max 5 per region
   pollingInterval: 15
-  cooldownPeriod: 120
+  cooldownPeriod: 300
 
   advanced:
     horizontalPodAutoscalerConfig:

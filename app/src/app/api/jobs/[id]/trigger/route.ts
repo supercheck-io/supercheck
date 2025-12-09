@@ -586,10 +586,16 @@ export async function GET(
       documentation: {
         method: "POST",
         headers: {
-          "x-api-key": "your-api-key-here",
+          Authorization: "Bearer YOUR_API_KEY",
           "Content-Type": "application/json",
         },
-        description: "Trigger this job remotely using your API key",
+        description: "Trigger this job remotely using your API key as a Bearer token",
+        example: `curl -X POST "${triggerUrl}" -H "Authorization: Bearer YOUR_API_KEY" -H "Content-Type: application/json"`,
+        notes: [
+          "Replace YOUR_API_KEY with the API key created for this job",
+          "API key must be associated with this specific job",
+          "Rate limits apply based on API key configuration",
+        ],
       },
     });
   } catch (error) {

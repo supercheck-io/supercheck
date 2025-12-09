@@ -120,3 +120,15 @@ data:
   # Site key (public) - exposed via /api/config/captcha endpoint
   TURNSTILE_SITE_KEY: ""
   # Secret key should be stored in Kubernetes Secret, not ConfigMap
+
+  # Queue Alerting Configuration (optional)
+  QUEUE_ALERTING_ENABLED: "true"
+
+  # Threshold Configuration
+  # QUEUE_DEPTH_WARNING_THRESHOLD: "70"
+  # QUEUE_DEPTH_CRITICAL_THRESHOLD: "90"
+  # MAX_QUEUE_DEPTH: "10000"
+  # QUEUE_WAIT_TIME_WARNING_MS: "900000"
+  # QUEUE_WAIT_TIME_CRITICAL_MS: "2700000"
+  # QUEUE_FAILURE_RATE_WARNING: "5"
+  # QUEUE_FAILURE_RATE_CRITICAL: "15"

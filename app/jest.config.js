@@ -11,6 +11,7 @@ const customJestConfig = {
     "<rootDir>/.next/",
     "<rootDir>/node_modules/",
     "<rootDir>/src/db/",
+    "<rootDir>/e2e/",
   ],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
