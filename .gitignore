@@ -121,7 +121,7 @@ coverage/
 *.lcov
 
 # Package managers
-package-lock.json
+# package-lock.json
 yarn.lock
 pnpm-lock.yaml
 .pnp.cjs
