@@ -66,35 +66,33 @@ export default function ForgotPasswordPage() {
 
   if (isSuccess) {
     return (
-      <div className="flex flex-col gap-6 w-full max-w-sm px-4">
+      <div className="flex flex-col gap-6 w-full max-w-sm px-4" data-testid="forgot-password-success">
         <FieldGroup>
-
-
-          {/* Success Icon */}
+          {/* Email Icon - Primary visual element */}
           <div className="flex justify-center">
-            <div className="flex size-20 items-center justify-center rounded-full bg-blue-500/10">
-              <Mail className="size-10" />
+            <div className="flex size-20 items-center justify-center rounded-full bg-primary/10">
+              <Mail className="size-10 text-primary" />
             </div>
           </div>
 
           {/* Content */}
-          <div className="text-center space-y-2">
+          <div className="text-center space-y-3">
             <h1 className="text-2xl font-bold">Check your email</h1>
-            <FieldDescription>
+            <p className="text-base text-muted-foreground">
               We&apos;ve sent a password reset link to
-            </FieldDescription>
-            <p className="font-medium text-foreground">{email}</p>
-            <FieldDescription>
+            </p>
+            <p className="text-lg font-semibold text-foreground">{email}</p>
+            <p className="text-base text-muted-foreground">
               Click the link in the email to reset your password.
-            </FieldDescription>
-            <p className="text-xs text-muted-foreground pt-2">
+            </p>
+            <p className="text-sm text-muted-foreground pt-2">
               The link will expire in 1 hour for security reasons.
             </p>
           </div>
 
-          {/* Resend Link */}
-          <FieldDescription className="text-center text-xs">
-            Didn&apos;t receive the email?{" "}
+          {/* Info */}
+          <p className="text-sm text-muted-foreground text-center">
+            Didn&apos;t receive the email? Check your spam folder or{" "}
             <button
               type="button"
               onClick={() => {
@@ -104,9 +102,10 @@ export default function ForgotPasswordPage() {
               }}
               className="underline underline-offset-4 hover:text-foreground"
             >
-              Try again
+              try again
             </button>
-          </FieldDescription>
+            .
+          </p>
 
           {/* Back Link */}
           <div className="text-center">
@@ -131,8 +130,8 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-sm px-4">
-      <form onSubmit={handleSubmit}>
+    <div className="flex flex-col gap-6 w-full max-w-sm px-4" data-testid="forgot-password-form">
+      <form onSubmit={handleSubmit} data-testid="forgot-password-form-element">
         <FieldGroup>
           {/* Header */}
           <div className="flex flex-col items-center gap-3 text-center">
@@ -161,12 +160,13 @@ export default function ForgotPasswordPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
+              data-testid="forgot-password-email-input"
             />
           </Field>
 
           {/* Error Message */}
           {error && (
-            <p className="text-sm font-medium text-destructive text-center">
+            <p className="text-sm font-medium text-destructive text-center" data-testid="forgot-password-error" role="alert">
               {error}
             </p>
           )}
@@ -192,6 +192,7 @@ export default function ForgotPasswordPage() {
               type="submit"
               className="w-full"
               disabled={isLoading || !email}
+              data-testid="forgot-password-submit"
             >
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Send reset link
@@ -203,6 +204,7 @@ export default function ForgotPasswordPage() {
             <Link
               href="/sign-in"
               className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+              data-testid="back-to-signin-link"
             >
               <ArrowLeft className="h-4 w-4" />
               Back to sign in

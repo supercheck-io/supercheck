@@ -92,8 +92,8 @@ spec:
             failureThreshold: 3
           resources:
             requests:
-              cpu: 300m
+              cpu: 250m
               memory: 512Mi
             limits:
               cpu: "1"
-              memory: 2Gi
+              memory: 1536Mi  # 1.5 GB - fits 2 vCPU / 4 GB nodes

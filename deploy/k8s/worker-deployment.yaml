@@ -125,11 +125,11 @@ spec:
 
           resources:
             requests:
-              cpu: "500m"
-              memory: "1Gi"
+              cpu: "300m"
+              memory: "768Mi"
             limits:
-              cpu: "2000m"
-              memory: "3Gi"
+              cpu: "1500m"
+              memory: "2Gi" # Fits 2 vCPU / 4 GB nodes
 
           livenessProbe:
             httpGet:
@@ -284,11 +284,11 @@ spec:
 
           resources:
             requests:
-              cpu: "500m"
-              memory: "1Gi"
+              cpu: "300m"
+              memory: "768Mi"
             limits:
-              cpu: "2000m"
-              memory: "3Gi"
+              cpu: "1500m"
+              memory: "2Gi" # Fits 2 vCPU / 4 GB nodes
 
           livenessProbe:
             httpGet:
@@ -443,11 +443,11 @@ spec:
 
           resources:
             requests:
-              cpu: "500m"
-              memory: "1Gi"
+              cpu: "300m"
+              memory: "768Mi"
             limits:
-              cpu: "2000m"
-              memory: "3Gi"
+              cpu: "1500m"
+              memory: "2Gi" # Fits 2 vCPU / 4 GB nodes
 
           livenessProbe:
             httpGet:

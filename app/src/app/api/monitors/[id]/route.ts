@@ -6,6 +6,7 @@ import {
   monitorsUpdateSchema,
   monitorNotificationSettings,
 } from "@/db/schema";
+import { MonitorType, MonitorStatus } from "@/db/schema/types";
 import { eq, desc } from "drizzle-orm";
 import {
   scheduleMonitor,
@@ -230,10 +231,19 @@ export async function PUT(
     }
 
     // Prepare update data - preserve existing alert config if not provided
+    const { type, status, ...restUpdate } = updateData;
     const updatePayload: Partial<typeof monitors.$inferInsert> = {
-      ...updateData,
+      ...restUpdate,
       updatedAt: new Date(),
     };
+
+    if (type) {
+      updatePayload.type = type as MonitorType;
+    }
+
+    if (status) {
+      updatePayload.status = status as MonitorStatus;
+    }
 
     // Only update alertConfig if it's explicitly provided
     if (rawData.hasOwnProperty("alertConfig")) {
@@ -458,7 +468,7 @@ function isObject(item: unknown): item is Record<string, unknown> {
 
 function deepMerge<
   T extends Record<string, unknown>,
-  U extends Record<string, unknown>
+  U extends Record<string, unknown>,
 >(target: T, source: U): T & U {
   const output = { ...target } as T & U;
 

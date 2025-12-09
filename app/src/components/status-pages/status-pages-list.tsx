@@ -244,7 +244,7 @@ export default function StatusPagesList() {
             onOpenChange={setIsCreateDialogOpen}
           >
             <DialogTrigger asChild>
-              <Button disabled={!canCreate}>
+              <Button disabled={!canCreate} data-testid="create-status-page-button">
                 <Plus className="h-4 w-4 mr-2" />
                 Create Status Page
               </Button>
@@ -302,7 +302,7 @@ export default function StatusPagesList() {
       </CardHeader>
 
       {statusPages.length === 0 ? (
-        <div className="text-center py-16 border-2 border-dashed rounded-xl bg-muted/20">
+        <div className="text-center py-16 border-2 border-dashed rounded-xl bg-muted/20" data-testid="empty-state">
           <div className="flex items-center justify-center h-16 w-16 rounded-2xl bg-primary/10 mx-auto mb-4">
             <Tally4 className="h-8 w-8 text-primary" />
           </div>
@@ -330,6 +330,7 @@ export default function StatusPagesList() {
               <Card
                 key={page.id}
                 className="group hover:shadow-lg transition-all duration-200 hover:border-primary/20"
+                data-testid="status-page-card"
               >
                 <div className="p-5">
                   {/* Header with Title and Status */}

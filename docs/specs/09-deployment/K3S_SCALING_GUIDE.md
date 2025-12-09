@@ -1,7 +1,7 @@
 # K3s Cluster Scaling Guide
 
-> **Version**: 1.0.0  
-> **Last Updated**: 2025-12-03  
+> **Version**: 1.1.0  
+> **Last Updated**: 2025-12-09  
 > **Status**: Production Ready
 
 This guide provides comprehensive instructions for scaling Supercheck on K3s clusters, including container runtime decisions, external services, security hardening, and production best practices.
@@ -70,41 +70,53 @@ Use the DinD sidecar approach (`worker-deployment-dind.yaml`) when:
 
 ## 2. Architecture Overview
 
-### Production K3s Architecture
+### Multi-Region K3s Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            K3s Cluster                                       │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐  │
-│  │   Master Node(s)    │  │   App Node Pool     │  │  Worker Node Pool   │  │
-│  │   (Control Plane)   │  │   (Next.js App)     │  │  (Test Execution)   │  │
-│  ├─────────────────────┤  ├─────────────────────┤  ├─────────────────────┤  │
-│  │ • K3s Server        │  │ • App Pods (2+)     │  │ • Worker Pods       │  │
-│  │ • API Server        │  │ • Ingress           │  │ • Docker Runtime    │  │
-│  │ • etcd/SQLite       │  │ • Cert-Manager      │  │ • KEDA Scaling      │  │
-│  │ • Controller Mgr    │  │                     │  │                     │  │
-│  └─────────────────────┘  └─────────────────────┘  └─────────────────────┘  │
-│                                                                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                         External Services (Managed)                          │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │ PostgreSQL  │  │    Redis    │  │  S3/R2      │  │   SMTP      │        │
-│  │ (PlanetScale│  │ (Redis Cloud│  │ (Cloudflare │  │ (Resend/    │        │
-│  │  or Neon)   │  │  or Upstash)│  │     R2)     │  │  SendGrid)  │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘        │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                  SINGLE K3S CLUSTER (Tailscale VPN Mesh)                         │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                  │
+│  EU CENTRAL (Primary)           US EAST              ASIA PACIFIC               │
+│  ┌─────────────────────┐       ┌─────────────────┐  ┌─────────────────┐         │
+│  │ Master Node         │       │ Worker Node     │  │ Worker Node     │         │
+│  │ (2 vCPU / 4 GB)     │──VPN──│ (2 vCPU / 4 GB) │──│ (2 vCPU / 4 GB) │         │
+│  │ • K3s Server        │       │ • K3s Agent     │  │ • K3s Agent     │         │
+│  │ • Ingress           │       │ • Docker        │  │ • Docker        │         │
+│  │ • KEDA              │       │ • Worker Pod    │  │ • Worker Pod    │         │
+│  └─────────────────────┘       └─────────────────┘  └─────────────────┘         │
+│  ┌─────────────────────┐                                                        │
+│  │ App Node            │                                                        │
+│  │ (2 vCPU / 4 GB)     │                                                        │
+│  │ • K3s Agent         │                                                        │
+│  │ • App Pod (Next.js) │                                                        │
+│  └─────────────────────┘                                                        │
+│  ┌─────────────────────┐                                                        │
+│  │ Worker Node         │                                                        │
+│  │ (2 vCPU / 4 GB)     │                                                        │
+│  │ • K3s Agent         │                                                        │
+│  │ • Docker            │                                                        │
+│  │ • Worker Pod        │                                                        │
+│  └─────────────────────┘                                                        │
+│                                                                                  │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                         External Services (Managed)                              │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│  PostgreSQL (Neon/PlanetScale) • Redis (Upstash) • S3 (Cloudflare R2)          │
+└─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Node Types and Sizing
+### Node Types and Sizing (2 vCPU / 4 GB Nodes)
 
-| Node Type  | Role           | Recommended Size   | Count | Labels/Taints                                          |
-| ---------- | -------------- | ------------------ | ----- | ------------------------------------------------------ |
-| **Master** | Control plane  | 4 vCPU / 8 GB      | 1-3   | `node-role.kubernetes.io/master`                       |
-| **App**    | Next.js app    | 2 vCPU / 4 GB      | 2+    | `workload=app`                                         |
-| **Worker** | Test execution | 4-8 vCPU / 8-16 GB | 2+    | `workload=worker`, taint: `workload=worker:NoSchedule` |
+| Node Type  | Role           | Size            | Count | Region       | Labels/Taints                    |
+| ---------- | -------------- | --------------- | ----- | ------------ | -------------------------------- |
+| **Master** | Control plane  | 2 vCPU / 4 GB   | 1     | EU Central   | `node-role.kubernetes.io/master` |
+| **App**    | Next.js app    | 2 vCPU / 4 GB   | 1     | EU Central   | `workload=app`                   |
+| **Worker** | Test execution | 2 vCPU / 4 GB   | 1     | EU Central   | `workload=worker, region=eu-central`, taint: `workload=worker:NoSchedule` |
+| **Worker** | Test execution | 2 vCPU / 4 GB   | 1     | US East      | `workload=worker, region=us-east`, taint: `workload=worker:NoSchedule` |
+| **Worker** | Test execution | 2 vCPU / 4 GB   | 1     | Asia Pacific | `workload=worker, region=asia-pacific`, taint: `workload=worker:NoSchedule` |
+
+**Total: 5 nodes (~€25/month on Hetzner CX22)**
 
 ---
 
@@ -215,19 +227,63 @@ stringData:
 
 ## 4. K3s Cluster Setup
 
+### Prerequisites: Hetzner vSwitch Network
+
+For multi-region clusters, use Hetzner vSwitch for private networking:
+
+1. Create a network in Hetzner Cloud Console (10.0.0.0/8)
+2. Create subnets for each region:
+   - EU: 10.0.1.0/24
+   - US: 10.0.2.0/24
+   - APAC: 10.0.3.0/24
+3. Attach all servers to the network
+
+### Deployment Options
+
+| Method | Complexity | Best For |
+|--------|------------|----------|
+| **Terraform** | Easiest | Production |
+| **Scripts** | Medium | Customization |
+| **Manual** | Most control | Learning |
+
+### Option A: Terraform (Recommended)
+
+```bash
+cd deploy/terraform/hetzner
+cp terraform.tfvars.example terraform.tfvars
+vim terraform.tfvars  # Add Hetzner token and SSH key
+
+terraform init
+terraform apply
+```
+
+### Option B: Setup Scripts
+
+We provide automated setup scripts in `deploy/k8s/scripts/`:
+
+| Script | Purpose |
+|--------|---------|
+| `setup-vps.sh` | Base VPS setup (firewall, sysctl, Tailscale) |
+| `setup-master.sh` | K3s master node with Ingress, KEDA |
+| `setup-worker.sh` | K3s worker node with Docker |
+| `setup-app-node.sh` | K3s app node (no Docker) |
+
 ### Master Node Installation
 
 ```bash
-# Install first master node
+# Using setup script (after attaching to vSwitch)
+./setup-master.sh --public-ip YOUR_PUBLIC_IP
+
+# Or manually with auto-detected IPs:
 curl -sfL https://get.k3s.io | sh -s - server \
   --cluster-init \
-  --tls-san YOUR_EXTERNAL_IP \
+  --tls-san $(curl -s ifconfig.me) \
   --tls-san app.supercheck.io \
   --disable traefik \
   --disable servicelb \
-  --write-kubeconfig-mode 644 \
-  --kube-apiserver-arg="enable-admission-plugins=NodeRestriction,PodSecurityPolicy" \
-  --kubelet-arg="max-pods=110"
+  --node-ip $(ip -4 addr show eth0 | grep -oP '(?<=inet\s)10\.\d+\.\d+\.\d+' | head -1) \
+  --flannel-iface eth0 \
+  --write-kubeconfig-mode 644
 
 # Get join token
 sudo cat /var/lib/rancher/k3s/server/node-token
@@ -241,17 +297,51 @@ sudo chown $(id -u):$(id -g) ~/.kube/config
 ### App Node Installation
 
 ```bash
-# Install app node (standard containerd)
-curl -sfL https://get.k3s.io | K3S_URL=https://MASTER_IP:6443 K3S_TOKEN=TOKEN sh -s - agent
+# Using setup script
+./setup-app-node.sh --master-ip 10.0.1.10 --token YOUR_TOKEN
 
-# Label app node
-kubectl label nodes app-node-1 workload=app
-kubectl taint nodes app-node-1 workload=app:NoSchedule
+# Or manually:
+curl -sfL https://get.k3s.io | K3S_URL=https://10.0.1.10:6443 \
+  K3S_TOKEN=TOKEN sh -s - agent \
+  --node-ip $(ip -4 addr show eth0 | grep -oP '(?<=inet\s)10\.\d+\.\d+\.\d+' | head -1) \
+  --flannel-iface eth0
+
+# Label app node (from master)
+kubectl label nodes k3s-app workload=app
+```
+
+# Get join token
+sudo cat /var/lib/rancher/k3s/server/node-token
+
+# Copy kubeconfig
+mkdir -p ~/.kube
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo chown $(id -u):$(id -g) ~/.kube/config
+```
+
+### App Node Installation
+
+```bash
+# Run setup script
+./setup-app-node.sh --master-ip MASTER_TAILSCALE_IP --token YOUR_TOKEN
+
+# Or manually:
+curl -sfL https://get.k3s.io | K3S_URL=https://MASTER_TAILSCALE_IP:6443 \
+  K3S_TOKEN=TOKEN sh -s - agent \
+  --flannel-iface tailscale0 \
+  --node-ip $(tailscale ip -4)
+
+# Label app node (from master)
+kubectl label nodes k3s-app-eu workload=app
 ```
 
 ### Worker Node Installation (with Docker)
 
 ```bash
+# Run setup script
+./setup-worker.sh --master-ip MASTER_TAILSCALE_IP --token YOUR_TOKEN --region us-east
+
+# Or manually:
 # Install Docker first
 curl -fsSL https://get.docker.com | sh
 sudo systemctl enable docker
@@ -266,40 +356,34 @@ sudo tee /etc/docker/daemon.json <<EOF
     "max-file": "3"
   },
   "storage-driver": "overlay2",
-  "live-restore": true,
-  "default-ulimits": {
-    "nofile": {
-      "Name": "nofile",
-      "Hard": 65536,
-      "Soft": 65536
-    }
-  }
+  "live-restore": true
 }
 EOF
 sudo systemctl restart docker
 
 # Install K3s with Docker runtime
-curl -sfL https://get.k3s.io | K3S_URL=https://MASTER_IP:6443 K3S_TOKEN=TOKEN sh -s - agent --docker
+curl -sfL https://get.k3s.io | K3S_URL=https://MASTER_TAILSCALE_IP:6443 \
+  K3S_TOKEN=TOKEN sh -s - agent \
+  --docker \
+  --flannel-iface tailscale0 \
+  --node-ip $(tailscale ip -4)
 
-# Verify Docker is being used
-docker ps | grep k3s
-
-# Label and taint worker node
-kubectl label nodes worker-node-1 workload=worker region=us-east
-kubectl taint nodes worker-node-1 workload=worker:NoSchedule
+# Label and taint worker node (from master)
+kubectl label nodes k3s-worker-us workload=worker region=us-east
+kubectl taint nodes k3s-worker-us workload=worker:NoSchedule
 ```
 
 ### Install Required Components
 
 ```bash
 # Install NGINX Ingress Controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.0/deploy/static/provider/cloud/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.0/deploy/static/provider/baremetal/deploy.yaml
 
 # Install cert-manager
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
 
 # Install KEDA
-kubectl apply -f https://github.com/kedacore/keda/releases/download/v2.13.0/keda-2.13.0.yaml
+kubectl apply --server-side -f https://github.com/kedacore/keda/releases/download/v2.13.0/keda-2.13.0.yaml
 
 # Install metrics-server (if not included)
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
@@ -1028,14 +1112,14 @@ kubectl port-forward -n supercheck svc/supercheck-worker 8000:8000
 curl -s http://localhost:8000/health | jq
 ```
 
-### Scaling Reference
+### Scaling Reference (2 vCPU / 4 GB Nodes)
 
-| Cluster Size   | Worker Nodes | Worker Pods | Concurrent Tests | Queue Capacity |
-| -------------- | ------------ | ----------- | ---------------- | -------------- |
-| **Small**      | 2 × 4 vCPU   | 4 pods      | 8 tests          | 50             |
-| **Medium**     | 4 × 4 vCPU   | 8 pods      | 16 tests         | 100            |
-| **Large**      | 8 × 8 vCPU   | 16 pods     | 32 tests         | 200            |
-| **Enterprise** | 16 × 8 vCPU  | 32 pods     | 64 tests         | 500            |
+| Cluster Size   | Total Nodes    | Worker Pods | Concurrent Tests | Est. Cost/mo |
+| -------------- | -------------- | ----------- | ---------------- | ------------ |
+| **Starter**    | 5 (3 regions)  | 3 pods      | 3 tests          | ~€25        |
+| **Small**      | 8 (3 regions)  | 6 pods      | 6 tests          | ~€40        |
+| **Medium**     | 12 (3 regions) | 9 pods      | 9 tests          | ~€60        |
+| **Large**      | 18 (3 regions) | 15 pods     | 15 tests         | ~€90        |
 
 ---
 

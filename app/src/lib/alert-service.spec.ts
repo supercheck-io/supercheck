@@ -317,7 +317,7 @@ describe("AlertService", () => {
             alertOnFailure: true,
           };
 
-          const result = await service.createAlert(newAlertData as object);
+          const result = await service.createAlert(newAlertData as any);
 
           expect(result).toEqual(mockAlert);
           expect(mockDb.insert).toHaveBeenCalled();
@@ -332,7 +332,7 @@ describe("AlertService", () => {
           };
           (mockDb.insert as jest.Mock).mockReturnValue(mockInsertChain);
 
-          await expect(service.createAlert({} as object)).rejects.toThrow(
+          await expect(service.createAlert({} as any)).rejects.toThrow(
             "Could not create alert"
           );
         });
@@ -523,7 +523,7 @@ describe("AlertService", () => {
         };
         (mockDb.insert as jest.Mock).mockReturnValue(mockInsertChain);
 
-        await expect(service.createAlert({} as object)).rejects.toThrow(
+        await expect(service.createAlert({} as any)).rejects.toThrow(
           "Could not create alert"
         );
       });
@@ -646,7 +646,7 @@ describe("AlertService", () => {
         service.createAlert({
           monitorId: testMonitorId,
           enabled: true,
-        } as object)
+        } as any)
       );
 
       const results = await Promise.all(promises);

@@ -10,13 +10,14 @@ This guide covers setting up and configuring your K3s cluster nodes for optimal 
 
 ## Node Architecture
 
-The Supercheck deployment uses three types of nodes:
+The Supercheck deployment uses two types of nodes:
 
 | Node Type    | Size               | Role                | Workload                     |
 | ------------ | ------------------ | ------------------- | ---------------------------- |
-| **App**      | cx31 (2vCPU, 4GB)  | Application servers | Next.js app, API, validation |
-| **Worker**   | cx41 (4vCPU, 16GB) | Test execution      | Playwright, K6, Docker       |
-| **Database** | cx31 (2vCPU, 4GB)  | Data persistence    | PostgreSQL, Redis, MinIO     |
+| **App**      | CX22 (2vCPU, 4GB)  | Application servers | Next.js app, API             |
+| **Worker**   | CX22 (2vCPU, 4GB)  | Test execution      | Playwright, K6, Docker       |
+
+> **Note**: Database services (PostgreSQL, Redis) are external managed services.
 
 ## Step 1: Label Your Nodes
 

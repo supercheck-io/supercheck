@@ -99,6 +99,7 @@ export function SocialAuthButtons({
               <Badge
                 variant="secondary"
                 className="absolute -top-1 -right-1 text-[10px] uppercase tracking-wide py-0 px-1.5 font-medium"
+                data-testid="last-used-badge"
               >
                 Last used
               </Badge>
@@ -110,6 +111,7 @@ export function SocialAuthButtons({
               className="w-full justify-center gap-3"
               onClick={handleGoogleSignIn}
               disabled={isDisabled}
+              data-testid="login-google-button"
             >
               {isGoogleLoading ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -127,6 +129,7 @@ export function SocialAuthButtons({
               <Badge
                 variant="secondary"
                 className="absolute -top-1 -right-1 text-[10px] uppercase tracking-wide py-0 px-1.5 font-medium"
+                data-testid="last-used-badge"
               >
                 Last used
               </Badge>
@@ -138,6 +141,7 @@ export function SocialAuthButtons({
               className="w-full justify-center gap-3"
               onClick={handleGitHubSignIn}
               disabled={isDisabled}
+              data-testid="login-github-button"
             >
               {isGithubLoading ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
