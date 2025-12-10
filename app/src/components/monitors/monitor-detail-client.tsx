@@ -1048,17 +1048,19 @@ export function MonitorDetailClient({
             </div>
           </div>
 
-          {/* Metric Cards */}
-          <div className="grid gap-4 mt-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-9 m-2">
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
-              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-                <StatusHeaderIcon status={currentActualStatus} />
-                <CardTitle className="text-xs font-semibold text-muted-foreground">
-                  Status
-                </CardTitle>
+          {/* Metric Cards - Single row with horizontal scroll on smaller screens */}
+          <div className="flex gap-2.5 mt-4 mx-3 overflow-x-auto pb-4">
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[120px] flex-shrink-0">
+              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
+                <div className="flex items-center space-x-2">
+                  <StatusHeaderIcon status={currentActualStatus} />
+                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
+                    Status
+                  </CardTitle>
+                </div>
               </CardHeader>
               <CardContent className="pb-4 px-4">
-                <div className="text-lg font-semibold">
+                <div className="text-xl font-semibold">
                   {statusInfo?.label ??
                     (currentActualStatus
                       ? currentActualStatus.charAt(0).toUpperCase() +
@@ -1068,15 +1070,17 @@ export function MonitorDetailClient({
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
-              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-                <Clock className="h-5 w-5 text-purple-500" />
-                <CardTitle className="text-xs font-semibold text-muted-foreground">
-                  Interval
-                </CardTitle>
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[120px] flex-shrink-0">
+              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
+                <div className="flex items-center space-x-2">
+                  <Clock className="h-5 w-5 text-purple-500" />
+                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
+                    Interval
+                  </CardTitle>
+                </div>
               </CardHeader>
               <CardContent className="pb-4 px-4">
-                <div className="text-lg font-semibold">
+                <div className="text-xl font-semibold">
                   {monitor.frequencyMinutes ? (
                     `${monitor.frequencyMinutes}m`
                   ) : (
@@ -1086,15 +1090,17 @@ export function MonitorDetailClient({
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
-              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-                <Activity className="h-5 w-5 text-blue-500" />
-                <CardTitle className="text-xs font-semibold text-muted-foreground">
-                  Resp Time
-                </CardTitle>
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[120px] flex-shrink-0">
+              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
+                <div className="flex items-center space-x-2">
+                  <Activity className="h-5 w-5 text-blue-500" />
+                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
+                    Resp Time
+                  </CardTitle>
+                </div>
               </CardHeader>
               <CardContent className="pb-4 px-4">
-                <div className="text-lg font-semibold">
+                <div className="text-xl font-semibold">
                   {currentResponseTime === "N/A" ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
@@ -1104,128 +1110,140 @@ export function MonitorDetailClient({
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
-              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-                <TrendingUp className="h-5 w-5 text-green-400" />
-                <CardTitle className="text-xs font-semibold text-muted-foreground">
-                  Uptime
-                </CardTitle>
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[130px] flex-shrink-0">
+              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
+                <div className="flex items-center space-x-2">
+                  <TrendingUp className="h-5 w-5 text-green-400" />
+                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
+                    Uptime
+                  </CardTitle>
+                </div>
+                <span className="px-1.5 py-0.5 rounded bg-muted text-[11px] font-medium text-muted-foreground ml-2">
+                  24h
+                </span>
               </CardHeader>
               <CardContent className="pb-4 px-4">
-                <div className="text-lg font-semibold flex items-center gap-2">
+                <div className="text-xl font-semibold">
                   {calculatedMetrics.uptime24h === "N/A" ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
                     calculatedMetrics.uptime24h
                   )}
-                  <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
-                    24h
-                  </span>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
-              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-                <Zap className="h-5 w-5 text-sky-500" />
-                <CardTitle className="text-xs font-semibold text-muted-foreground">
-                  Avg Resp
-                </CardTitle>
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[130px] flex-shrink-0">
+              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
+                <div className="flex items-center space-x-2">
+                  <Zap className="h-5 w-5 text-sky-500" />
+                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
+                    Avg Resp
+                  </CardTitle>
+                </div>
+                <span className="px-1.5 py-0.5 rounded bg-muted text-[11px] font-medium text-muted-foreground ml-2">
+                  24h
+                </span>
               </CardHeader>
               <CardContent className="pb-4 px-4">
-                <div className="text-lg font-semibold flex items-center gap-2">
+                <div className="text-xl font-semibold">
                   {calculatedMetrics.avgResponse24h === "N/A" ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
                     calculatedMetrics.avgResponse24h
                   )}
-                  <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
-                    24h
-                  </span>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
-              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-                <ChartNoAxesCombined className="h-5 w-5 text-orange-500" />
-                <CardTitle className="text-xs font-semibold text-muted-foreground">
-                  P95 Resp
-                </CardTitle>
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[130px] flex-shrink-0">
+              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
+                <div className="flex items-center space-x-2">
+                  <ChartNoAxesCombined className="h-5 w-5 text-orange-500" />
+                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
+                    P95 Resp
+                  </CardTitle>
+                </div>
+                <span className="px-1.5 py-0.5 rounded bg-muted text-[11px] font-medium text-muted-foreground ml-2">
+                  24h
+                </span>
               </CardHeader>
               <CardContent className="pb-4 px-4">
-                <div className="text-lg font-semibold flex items-center gap-2">
+                <div className="text-xl font-semibold">
                   {calculatedMetrics.p95Response24h === "N/A" ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
                     calculatedMetrics.p95Response24h
                   )}
-                  <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
-                    24h
-                  </span>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
-              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-                <TrendingUp className="h-5 w-5 text-green-400" />
-                <CardTitle className="text-xs font-semibold text-muted-foreground">
-                  Uptime
-                </CardTitle>
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[130px] flex-shrink-0">
+              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
+                <div className="flex items-center space-x-2">
+                  <TrendingUp className="h-5 w-5 text-green-400" />
+                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
+                    Uptime
+                  </CardTitle>
+                </div>
+                <span className="px-1.5 py-0.5 rounded bg-muted text-[11px] font-medium text-muted-foreground ml-2">
+                  30d
+                </span>
               </CardHeader>
               <CardContent className="pb-4 px-4">
-                <div className="text-lg font-semibold flex items-center gap-2">
+                <div className="text-xl font-semibold">
                   {calculatedMetrics.uptime30d === "N/A" ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
                     calculatedMetrics.uptime30d
                   )}
-                  <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
-                    30d
-                  </span>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
-              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-                <Zap className="h-5 w-5 text-sky-500" />
-                <CardTitle className="text-xs font-semibold text-muted-foreground">
-                  Avg Resp
-                </CardTitle>
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[130px] flex-shrink-0">
+              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
+                <div className="flex items-center space-x-2">
+                  <Zap className="h-5 w-5 text-sky-500" />
+                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
+                    Avg Resp
+                  </CardTitle>
+                </div>
+                <span className="px-1.5 py-0.5 rounded bg-muted text-[11px] font-medium text-muted-foreground ml-2">
+                  30d
+                </span>
               </CardHeader>
               <CardContent className="pb-4 px-4">
-                <div className="text-lg font-semibold flex items-center gap-2">
+                <div className="text-xl font-semibold">
                   {calculatedMetrics.avgResponse30d === "N/A" ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
                     calculatedMetrics.avgResponse30d
                   )}
-                  <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
-                    30d
-                  </span>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-h-[88px]">
-              <CardHeader className="flex flex-row items-center justify-start space-x-2 pb-1 pt-3 px-4">
-                <ChartNoAxesCombined className="h-5 w-5 text-orange-500" />
-                <CardTitle className="text-xs font-semibold text-muted-foreground">
-                  P95 Resp
-                </CardTitle>
+            <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 min-w-[130px] flex-shrink-0">
+              <CardHeader className="flex flex-row items-center justify-between pb-1 pt-3 px-4">
+                <div className="flex items-center space-x-2">
+                  <ChartNoAxesCombined className="h-5 w-5 text-orange-500" />
+                  <CardTitle className="text-[13px] font-semibold text-muted-foreground whitespace-nowrap">
+                    P95 Resp
+                  </CardTitle>
+                </div>
+                <span className="px-1.5 py-0.5 rounded bg-muted text-[11px] font-medium text-muted-foreground ml-2">
+                  30d
+                </span>
               </CardHeader>
               <CardContent className="pb-4 px-4">
-                <div className="text-lg font-semibold flex items-center gap-2">
+                <div className="text-xl font-semibold">
                   {calculatedMetrics.p95Response30d === "N/A" ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
                     calculatedMetrics.p95Response30d
                   )}
-                  <span className="px-1.5 py-0.5 rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
-                    30d
-                  </span>
                 </div>
               </CardContent>
             </Card>
