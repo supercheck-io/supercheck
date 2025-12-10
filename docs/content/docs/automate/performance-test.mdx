@@ -29,6 +29,10 @@ Run tests from multiple regions simultaneously to measure global performance.
 | **Asia Pacific** | Singapore |
 
 <Callout type="info">
+**Execution Context**: 
+- **Playground**: Select specific location (US East, EU Central, or Asia Pacific) for manual test runs
+- **Jobs**: Use global queue—tests execute from any available worker regardless of location
+
 **Self-Hosted Deployments**: In self-hosted mode, all region selections execute from your single worker instance. You can still select multiple regions for configuration purposes, but tests run from one location. To enable true multi-region testing, deploy workers in each target region.
 </Callout>
 
