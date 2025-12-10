@@ -941,6 +941,8 @@ graph TD
 
 #### **Key Features**
 
+- **Multi-Tenant Aware**: Cleanup respects per-organization retention based on subscription plan
+- **Self-Hosted Mode**: Uses `isPolarEnabled()` to detect mode - self-hosted gets unlimited plan retention
 - **Time-Based Retention**: Configurable retention period (default: 30 days)
 - **Status Change Preservation**: Critical status transitions preserved regardless of age
 - **Batch Processing**: Deletes in batches (default: 1000 records) to prevent database locks
@@ -974,15 +976,15 @@ interface MonitorCleanupConfig {
 
 #### **Data Reduction Impact**
 
-Current implementation with plan-based retention:
+Current implementation with plan-based retention (from `plan_limits` table):
 
-| Scale        | Records/Year (No Cleanup) | Records/Year (Plus/30d) | Records/Year (Pro/90d) | Reduction |
-| ------------ | ------------------------- | ----------------------- | ---------------------- | --------- |
-| 1 monitor    | 525,600                   | 43,200                  | 129,600                | 75-92%    |
-| 100 monitors | 52.6M                     | 4.3M                    | 13M                    | 75-92%    |
-| 500 monitors | 263M                      | 21.6M                   | 65M                    | 75-92%    |
+| Scale        | Records/Year (No Cleanup) | Records/Year (Plus/7d) | Records/Year (Pro/30d) | Reduction |
+| ------------ | ------------------------- | ---------------------- | ---------------------- | --------- |
+| 1 monitor    | 525,600                   | 10,080                 | 43,200                 | 92-98%    |
+| 100 monitors | 52.6M                     | 1.0M                   | 4.3M                   | 92-98%    |
+| 500 monitors | 263M                      | 5.0M                   | 21.6M                  | 92-98%    |
 
-_Assumes 1-minute check intervals_
+_Assumes 1-minute check intervals. Self-hosted (unlimited plan) uses 365 days retention._
 
 #### **Industry Best Practices Comparison**
 
@@ -1128,8 +1130,9 @@ graph TD
 #### **Key Features**
 
 - **Dual Loading Strategy**:
-  - Charts/metrics use 50 most recent results for performance
-  - Table data loads only 10 results per page via API
+  - Charts use 100 most recent results for visualization
+  - Metrics (24h/30d stats) fetched from dedicated `/stats` API endpoint for accurate calculations
+  - Table data loads only 10 results per page via paginated API
 - **Server-side Filtering**: Date and location filters processed on the server to minimize data transfer
 - **Configurable Page Sizes**: Default 10 results per page, configurable up to 100
 - **Pagination Metadata**: Complete pagination information (total count, pages, navigation)
@@ -1171,7 +1174,7 @@ Response:
   success: true,
   data: [
     {
-      location: "US",
+      location: "us-east",
       totalChecks: 100,
       upChecks: 98,
       uptimePercentage: 98.0,
@@ -1182,6 +1185,37 @@ Response:
     },
     // ... other locations
   ]
+}
+
+// Monitor statistics endpoint (24h and 30d metrics)
+GET /api/monitors/[id]/stats
+Query Parameters:
+- location: string (optional location filter)
+
+Response:
+{
+  success: true,
+  data: {
+    period24h: {
+      totalChecks: 1440,
+      upChecks: 1438,
+      uptimePercentage: 99.86,
+      avgResponseTimeMs: 145,
+      p95ResponseTimeMs: 320
+    },
+    period30d: {
+      totalChecks: 43200,
+      upChecks: 43150,
+      uptimePercentage: 99.88,
+      avgResponseTimeMs: 152,
+      p95ResponseTimeMs: 340
+    }
+  },
+  meta: {
+    monitorId: "uuid",
+    location: "all",
+    calculatedAt: "2025-12-10T07:00:00.000Z"
+  }
 }
 ```
 
@@ -1543,11 +1577,14 @@ graph TB
 
 #### **Monitor Metrics Calculation**
 
+- **Server-Side Calculation**: All metrics (24h and 30d) are computed server-side via `/api/monitors/[id]/stats` endpoint
+  - Queries database directly for accurate time-period filtering
+  - Not limited by client-side data loading constraints
 - **Uptime Tracking**: Calculated for both 24-hour and 30-day periods with location-aware filtering
 - **Average Response Time**: Computed from successful checks only, excluding failed requests
-- **P95 Response Time**: 95th percentile response time calculated for both 24h and 30d periods
+- **P95 Response Time**: 95th percentile response time calculated using shared `calculatePercentile()` utility
   - Provides insight into tail latency and worst-case performance scenarios
-  - Calculated using sorted response times with proper bounds checking
+  - Uses consistent calculation: `Math.ceil((percentile / 100) * sortedArr.length) - 1`
   - Displayed alongside average metrics for comprehensive performance visibility
 - **Location-Based Metrics**: All metrics support filtering by geographic location for multi-location monitors
 

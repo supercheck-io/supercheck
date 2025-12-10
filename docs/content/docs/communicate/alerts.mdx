@@ -77,6 +77,25 @@ After creating providers, attach them to monitors or jobs:
 
 Thresholds prevent alert noise from transient issues like network blips or brief service hiccups.
 
+```mermaid
+flowchart TD
+    A[Check] --> B{Result}
+    B -->|Pass| C{Was Down?}
+    B -->|Fail| D{Threshold?}
+    C -->|No| E[Reset]
+    C -->|Yes| F{Recovery?}
+    D -->|No| G[Count++]
+    D -->|Yes| H{Alerted?}
+    F -->|No| I[Count++]
+    F -->|Yes| J[Recovery Alert]
+    H -->|No| K[Failure Alert]
+    H -->|Yes| L[Skip]
+
+    style A fill:#3b82f6,stroke:#1e40af,color:#fff
+    style K fill:#ef4444,stroke:#b91c1c,color:#fff
+    style J fill:#10b981,stroke:#047857,color:#fff
+```
+
 ### How Thresholds Work
 
 **Failure Threshold:** Number of consecutive failures before sending an alert.

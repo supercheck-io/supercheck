@@ -167,6 +167,20 @@ Incidents communicate service disruptions to your users.
 
 ### Incident Status Workflow
 
+```mermaid
+flowchart LR
+    A[Investigating] --> B[Identified]
+    B --> C[Monitoring]
+    C --> D[Resolved]
+    S[Scheduled] --> C
+
+    style A fill:#f59e0b,stroke:#b45309,color:#fff
+    style B fill:#f97316,stroke:#c2410c,color:#fff
+    style C fill:#3b82f6,stroke:#1e40af,color:#fff
+    style D fill:#10b981,stroke:#047857,color:#fff
+    style S fill:#6366f1,stroke:#4338ca,color:#fff
+```
+
 | Status | Description |
 |--------|-------------|
 | **Investigating** | Issue detected, team investigating |

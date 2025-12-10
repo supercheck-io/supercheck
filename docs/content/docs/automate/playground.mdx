@@ -20,20 +20,28 @@ The Playground uses Monaco Editor (the same editor that powers VS Code) with fea
 
 ## Running Tests
 
-Click **Run** to execute your test in an isolated container environment:
+Click **Run** to execute your test in an isolated container environment.
 
-1. Your code runs in a secure Docker container
-2. Results stream back in real-time
-3. Screenshots, traces, and videos are captured automatically
-4. Reports are stored for 24 hours
+```mermaid
+sequenceDiagram
+    participant User
+    participant Editor
+    participant API
+    participant Worker
+    participant Container
 
-**Execution options:**
-- **Browser** — Choose Chromium, Firefox, or WebKit
-- **Timeout** — Set maximum execution time (default: 2 minutes)
-- **Region** — Select execution location for latency testing
+    User->>Editor: Click Run
+    Editor->>API: Submit code
+    API->>Worker: Queue job
+    API-->>Editor: Run ID + SSE
+    Worker->>Container: Execute test
+    Container-->>Worker: Results
+    Worker-->>API: Complete
+    API-->>Editor: Report URL
+```
 
 <Callout type="info">
-You can cancel a running test at any time by clicking the cancel button. The container is immediately stopped and resources are released.
+Cancel a running test at any time. The container is immediately stopped and resources are released.
 </Callout>
 
 ## AI Create
