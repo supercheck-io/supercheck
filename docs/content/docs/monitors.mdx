@@ -235,7 +235,6 @@ The header displays essential monitor information at a glance:
 - **Monitor Name** — The name you assigned to the monitor
 - **Test ID** — For synthetic monitors, shows the linked Playwright test ID (click to copy)
 - **Action Buttons** — Quick access to Pause, Edit, and Delete operations
-- **Demo Badge** — Indicates if this is a demo monitor (demo monitors are read-only)
 
 ### Key Metrics Bar
 
@@ -243,7 +242,7 @@ Eight key metrics are displayed prominently below the header:
 
 | Metric | Description |
 |--------|-------------|
-| **Status** | Current monitor status (Up, Down, Degraded, Paused) |
+| **Status** | Current monitor status (Up, Down, Paused, Pending, Maintenance, Error) |
 | **Interval** | How frequently checks run (e.g., 5m, 15m) |
 | **Resp Time** | Latest response time from the most recent check |
 | **Uptime (24h)** | Percentage of successful checks in the last 24 hours |
@@ -319,9 +318,11 @@ Use **Copy Prompt** to copy error details for AI-assisted debugging.
 | Status | Meaning | Action |
 |--------|---------|--------|
 | **Up** | All checks passing | No action needed |
-| **Degraded** | Some checks failing, below threshold | Investigate potential issues |
 | **Down** | Failure threshold exceeded | Alerts sent, investigate immediately |
 | **Paused** | Monitoring disabled | Re-enable when ready |
+| **Pending** | Initial check in progress | Wait for first result |
+| **Maintenance** | Under maintenance | Monitor temporarily disabled |
+| **Error** | Configuration or system error | Fix monitor configuration |
 
 ## Check Intervals
 

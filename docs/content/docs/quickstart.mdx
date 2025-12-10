@@ -25,8 +25,14 @@ The fastest way to create a test is using the Playground with AI assistance.
 4. Review the generated code
 5. Click **Accept** to use it
 
+![AI Create Prompt](/screenshots/ai-create-prompt.png)
+
 <Callout type="info">
-**Tip**: AI Create for browser tests is in beta. For complex flows, consider recording your test first with [Playwright Codegen](https://playwright.dev/docs/codegen) or [Playwright Browser Extension](https://chromewebstore.google.com/detail/playwright-crx/jambeljnbnfbkcpnoiaedcabbgmnnlcd?pli=1), then use AI to enhance it.
+  **Tip**: AI Create for browser tests is in beta. For complex flows, consider
+  recording your test first with [Playwright
+  Codegen](https://playwright.dev/docs/codegen) or [Playwright Browser
+  Extension](https://chromewebstore.google.com/detail/playwright-crx/jambeljnbnfbkcpnoiaedcabbgmnnlcd?pli=1),
+  then use AI to enhance it.
 </Callout>
 
 ### Option B: Use a Template
@@ -35,6 +41,8 @@ The fastest way to create a test is using the Playground with AI assistance.
 2. Click **Templates** in the toolbar
 3. Select a template (e.g., "Basic Page Load")
 4. Customize the URL and assertions
+
+![Code Template](/screenshots/code-template.png)
 
 ### Option C: Write from Scratch
 
@@ -58,9 +66,9 @@ import { expect, test } from '@playwright/test';
 const APP_URL = 'https://demo.playwright.dev/todomvc';
 
 test.describe('UI smoke test', () => {
-  test('home page renders primary UI', async ({ page }) => {
-    // Navigate to the application
-    await page.goto(APP_URL);
+test('home page renders primary UI', async ({ page }) => {
+// Navigate to the application
+await page.goto(APP_URL);
 
     // Verify page title and input visibility
     await expect(page).toHaveTitle(/TodoMVC/);
@@ -69,12 +77,14 @@ test.describe('UI smoke test', () => {
     // Perform interaction: Add a new task
     await page.getByPlaceholder('What needs to be done?').fill('Smoke task');
     await page.keyboard.press('Enter');
-    
+
     // Verify the task was added to the list
     await expect(page.getByRole('listitem').first()).toContainText('Smoke task');
-  });
+
 });
-```
+});
+
+````
 
 **What this tests:**
 - Page loads without errors
@@ -88,12 +98,12 @@ test.describe('UI smoke test', () => {
 ```typescript
 /**
  * API health probe with contract checks.
- * 
+ *
  * Purpose:
  * - Verify that the API is up and running (status 200)
  * - Check that the response headers are correct (Content-Type)
  * - Validate the structure and data types of the response body
- * 
+ *
  * @see https://playwright.dev/docs/api-testing
  */
 import { expect, test } from '@playwright/test';
@@ -116,14 +126,16 @@ test.describe('API health check', () => {
     expect(typeof body.title).toBe('string');
   });
 });
-```
+````
 
 **What this tests:**
+
 - API endpoint is reachable
 - Returns HTTP 200 with correct content type
 - Response body has expected structure
 
 📚 [Playwright API Testing Guide](https://playwright.dev/docs/api-testing)
+
 </Tab>
 <Tab value="Performance Test">
 ```javascript
@@ -158,15 +170,16 @@ export default function () {
   const baseUrl = 'https://test-api.k6.io';
   const response = http.get(baseUrl + '/public/crocodiles/1/');
 
-  // Validate response
-  check(response, {
-    'status is 200': (res) => res.status === 200,
-    'body is not empty': (res) => res.body && res.body.length > 0,
-  });
+// Validate response
+check(response, {
+'status is 200': (res) => res.status === 200,
+'body is not empty': (res) => res.body && res.body.length > 0,
+});
 
-  sleep(1); // Pause between requests
+sleep(1); // Pause between requests
 }
-```
+
+````
 
 **What this tests:**
 - API handles concurrent load
@@ -186,6 +199,10 @@ export default function () {
    - **Trace** — Step-by-step replay
    - **Logs** — Console output and errors
 
+![Playground Editor](/screenshots/playground-editor.png)
+
+![Playground Report](/screenshots/playground-report.png)
+
 ### If Your Test Fails
 
 1. Check the **screenshot** to see what the page looked like
@@ -196,6 +213,10 @@ export default function () {
    - Assertion mismatches
 
 ## Step 3: Save Your Test
+
+<Callout type="warning">
+**Only passing tests can be saved.** The Save button is disabled until your test executes successfully. If your test fails, fix the issues and run it again.
+</Callout>
 
 Once your test passes:
 
@@ -213,15 +234,11 @@ Jobs run your tests automatically on a schedule.
 1. Go to **Create → Job**
 2. Enter a name (e.g., "Nightly Regression")
 3. Select the tests to include
-4. Configure the schedule:
 
-| Schedule | Cron Expression | Use Case |
-|----------|-----------------|----------|
-| Every hour | `0 * * * *` | Critical paths |
-| Every 6 hours | `0 */6 * * *` | Standard monitoring |
-| Daily at midnight | `0 0 * * *` | Nightly regression |
-| Weekdays at 9 AM | `0 9 * * 1-5` | Business hours |
+![Create Job Form](/screenshots/create-job-form.png)
+![Select Tests for Job](/screenshots/create-job-select-tests.png)
 
+4. Configure the schedule from the dropdown.
 5. Click **Save**
 
 ## Step 5: Set Up Alerts
@@ -232,6 +249,9 @@ Get notified when tests fail.
 
 1. Go to **Alerts → Notification Channels**
 2. Click **Add Provider**
+
+![Notification Channels](/screenshots/notification-channels.png)
+
 3. Choose your preferred channel:
 
 | Provider | Setup |
@@ -251,6 +271,9 @@ Get notified when tests fail.
 2. Go to the **Alerts** section
 3. Select your notification provider
 4. Enable **Alert on Failure**
+
+![Create Job Alerts Config](/screenshots/create-job-alerts-config.png)
+
 5. Save
 
 ## Step 6: Create a Monitor (Optional)
@@ -262,6 +285,11 @@ Monitors check your services continuously, independent of your test suite.
    - **HTTP** — For APIs and endpoints
    - **Website** — For web pages with SSL tracking
    - **Ping** — For server availability
+   - **Port** — For service connectivity
+   - **Synthetic** — For full Playwright tests
+
+![Create HTTP Monitor](/screenshots/create-http-monitor.png)
+
 3. Enter the target URL
 4. Set check interval (e.g., 5 minutes)
 5. Configure alert thresholds
@@ -316,7 +344,7 @@ const password = getSecret('TEST_PASSWORD').toString();
 await page.fill('#email', email);
 await page.fill('#password', password);
 await page.click('button[type="submit"]');
-```
+````
 
 ### How do I run tests from CI/CD?
 
@@ -329,4 +357,13 @@ curl -X POST https://your-instance.com/api/jobs/{jobId}/trigger \
 
 ### How do I test from different regions?
 
-For performance tests, select the region when creating the test. Monitors can run from US East, EU Central, and Asia Pacific simultaneously.
+<Callout type="info">
+**Self-Hosted Deployments**: All tests and monitors execute from your local infrastructure. The multi-region selector is available for configuration consistency, but execution occurs sequentially from your single worker location.
+
+**Cloud Deployments**:
+
+- **Performance Tests**:
+  - **Playground**: Select specific location (US East, EU Central, or Asia Pacific) for manual test runs
+  - **Jobs**: Use global queue—tests execute from any available worker regardless of location
+- **Monitors**: Run simultaneously from US East, EU Central, and Asia Pacific using region-specific queues for true geographic distribution
+</Callout>

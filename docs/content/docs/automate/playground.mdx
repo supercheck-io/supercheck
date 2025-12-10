@@ -44,6 +44,10 @@ sequenceDiagram
 Cancel a running test at any time. The container is immediately stopped and resources are released.
 </Callout>
 
+<Callout type="warning">
+**Tests must pass before saving.** Only successfully executed tests can be saved. If your test fails, fix the issues and run it again until it passes.
+</Callout>
+
 ## AI Create
 
 Generate complete, working test scripts from plain English descriptions. AI Create uses GPT-4o-mini to understand your requirements and produce well-structured Playwright code.

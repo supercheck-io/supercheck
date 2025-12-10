@@ -37,6 +37,10 @@ flowchart TB
 **OAuth Required**: At least one OAuth provider (GitHub or Google) must be configured for user authentication.
 </Callout>
 
+<Callout type="info">
+**Location Behavior**: Self-hosted deployments execute all tests and monitors from your local infrastructure using `WORKER_LOCATION=local`. The multi-region selector in the UI is available for configuration consistency, but all checks run sequentially from your single worker location. For true geographic distribution, deploy multiple workers in different regions.
+</Callout>
+
 ## Deployment Options
 
 | Option | SSL/HTTPS | Status Pages |
