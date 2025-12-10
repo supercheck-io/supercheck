@@ -43,8 +43,6 @@ import {
   formatDistanceToNow,
   format,
   parseISO,
-  subHours,
-  subDays,
 } from "date-fns";
 import {
   Popover,
@@ -184,6 +182,22 @@ export function MonitorDetailClient({
     "all"
   );
   const [availableLocations, setAvailableLocations] = useState<string[]>([]);
+  const [monitorStats, setMonitorStats] = useState<{
+    period24h: {
+      totalChecks: number;
+      upChecks: number;
+      uptimePercentage: number | null;
+      avgResponseTimeMs: number | null;
+      p95ResponseTimeMs: number | null;
+    };
+    period30d: {
+      totalChecks: number;
+      upChecks: number;
+      uptimePercentage: number | null;
+      avgResponseTimeMs: number | null;
+      p95ResponseTimeMs: number | null;
+    };
+  } | null>(null);
   const resultsPerPage = 10;
 
   // Copy to clipboard handler
@@ -197,6 +211,29 @@ export function MonitorDetailClient({
         toast.error(`Failed to copy ${label}`);
       });
   }, []);
+
+  // Function to fetch monitor stats from API
+  const fetchMonitorStats = useCallback(
+    async (locationFilter?: "all" | string) => {
+      try {
+        const params = new URLSearchParams();
+        if (locationFilter && locationFilter !== "all") {
+          params.append("location", locationFilter);
+        }
+        const url = `/api/monitors/${monitor.id}/stats${params.toString() ? `?${params}` : ""}`;
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          setMonitorStats(data.data);
+        } else {
+          console.error("Failed to fetch monitor stats:", response.status);
+        }
+      } catch (error) {
+        console.error("Error fetching monitor stats:", error);
+      }
+    },
+    [monitor.id]
+  );
 
   // Function to fetch paginated results
   const fetchPaginatedResults = useCallback(
@@ -324,6 +361,11 @@ export function MonitorDetailClient({
     fetchPaginatedResults(currentPage, selectedDate, selectedLocation);
   }, [currentPage, selectedDate, selectedLocation, fetchPaginatedResults]);
 
+  // Fetch monitor stats when location changes
+  useEffect(() => {
+    fetchMonitorStats(selectedLocation);
+  }, [selectedLocation, fetchMonitorStats]);
+
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
@@ -431,9 +473,9 @@ export function MonitorDetailClient({
     return chartData;
   }, [monitor.recentResults, selectedLocation]);
 
-  // Calculate uptime and average response time from recent results
+  // Use stats from API for accurate 24h and 30d metrics
   const calculatedMetrics = useMemo(() => {
-    if (!monitor.recentResults || monitor.recentResults.length === 0) {
+    if (!monitorStats) {
       return {
         uptime24h: "N/A",
         uptime30d: "N/A",
@@ -444,122 +486,35 @@ export function MonitorDetailClient({
       };
     }
 
-    const now = new Date();
-    const last24Hours = subHours(now, 24);
-    const last30Days = subDays(now, 30);
-
-    // Filter by location first if selected
-    const locationFilteredResults =
-      selectedLocation === "all"
-        ? monitor.recentResults
-        : monitor.recentResults.filter((r) => r.location === selectedLocation);
-
-    // Filter results by time period
-    const results24h = locationFilteredResults.filter((r) => {
-      const resultDate =
-        typeof r.checkedAt === "string" ? parseISO(r.checkedAt) : r.checkedAt;
-      return resultDate >= last24Hours;
-    });
-
-    const results30d = locationFilteredResults.filter((r) => {
-      const resultDate =
-        typeof r.checkedAt === "string" ? parseISO(r.checkedAt) : r.checkedAt;
-      return resultDate >= last30Days;
-    });
-
-    // Calculate 24h uptime
-    const uptime24hPercent =
-      results24h.length > 0
-        ? (results24h.filter((r) => r.isUp).length / results24h.length) * 100
-        : 0;
-
-    // Calculate 30d uptime
-    const uptime30dPercent =
-      results30d.length > 0
-        ? (results30d.filter((r) => r.isUp).length / results30d.length) * 100
-        : 0;
-
-    // Calculate average response time for 24h (only for successful checks)
-    const validResponseTimes24h = results24h
-      .filter(
-        (r) =>
-          r.isUp && r.responseTimeMs !== null && r.responseTimeMs !== undefined
-      )
-      .map((r) => r.responseTimeMs!);
-
-    const avgResponse24hMs =
-      validResponseTimes24h.length > 0
-        ? Math.round(
-            validResponseTimes24h.reduce((sum, time) => sum + time, 0) /
-              validResponseTimes24h.length
-          )
-        : null;
-
-    // Calculate average response time for 30d (only for successful checks)
-    const validResponseTimes30d = results30d
-      .filter(
-        (r) =>
-          r.isUp && r.responseTimeMs !== null && r.responseTimeMs !== undefined
-      )
-      .map((r) => r.responseTimeMs!);
-
-    const avgResponse30dMs =
-      validResponseTimes30d.length > 0
-        ? Math.round(
-            validResponseTimes30d.reduce((sum, time) => sum + time, 0) /
-              validResponseTimes30d.length
-          )
-        : null;
-
-    // Calculate P95 response time for 24h
-    let p95Response24hMs: number | null = null;
-    if (validResponseTimes24h.length > 0) {
-      // Sort response times in ascending order
-      const sortedTimes = [...validResponseTimes24h].sort((a, b) => a - b);
-      // Calculate the index for the 95th percentile with proper bounds checking
-      const index = Math.min(
-        Math.floor(0.95 * sortedTimes.length),
-        sortedTimes.length - 1
-      );
-      p95Response24hMs = sortedTimes[index];
-    }
-
-    // Calculate P95 response time for 30d
-    let p95Response30dMs: number | null = null;
-    if (validResponseTimes30d.length > 0) {
-      // Sort response times in ascending order
-      const sortedTimes = [...validResponseTimes30d].sort((a, b) => a - b);
-      // Calculate the index for the 95th percentile with proper bounds checking
-      const index = Math.min(
-        Math.floor(0.95 * sortedTimes.length),
-        sortedTimes.length - 1
-      );
-      p95Response30dMs = sortedTimes[index];
-    }
+    const { period24h, period30d } = monitorStats;
 
     return {
       uptime24h:
-        results24h.length > 0 ? `${uptime24hPercent.toFixed(1)}%` : "N/A",
+        period24h.uptimePercentage !== null
+          ? `${period24h.uptimePercentage.toFixed(1)}%`
+          : "N/A",
       uptime30d:
-        results30d.length > 0 ? `${uptime30dPercent.toFixed(1)}%` : "N/A",
+        period30d.uptimePercentage !== null
+          ? `${period30d.uptimePercentage.toFixed(1)}%`
+          : "N/A",
       avgResponse24h:
-        avgResponse24hMs !== null
-          ? `${(avgResponse24hMs / 1000).toFixed(2)} s`
+        period24h.avgResponseTimeMs !== null
+          ? `${(period24h.avgResponseTimeMs / 1000).toFixed(2)} s`
           : "N/A",
       p95Response24h:
-        p95Response24hMs !== null
-          ? `${(p95Response24hMs / 1000).toFixed(2)} s`
+        period24h.p95ResponseTimeMs !== null
+          ? `${(period24h.p95ResponseTimeMs / 1000).toFixed(2)} s`
           : "N/A",
       avgResponse30d:
-        avgResponse30dMs !== null
-          ? `${(avgResponse30dMs / 1000).toFixed(2)} s`
+        period30d.avgResponseTimeMs !== null
+          ? `${(period30d.avgResponseTimeMs / 1000).toFixed(2)} s`
           : "N/A",
       p95Response30d:
-        p95Response30dMs !== null
-          ? `${(p95Response30dMs / 1000).toFixed(2)} s`
+        period30d.p95ResponseTimeMs !== null
+          ? `${(period30d.p95ResponseTimeMs / 1000).toFixed(2)} s`
           : "N/A",
     };
-  }, [monitor.recentResults, selectedLocation]);
+  }, [monitorStats]);
 
   // Get latest result filtered by selected location
   const filteredLatestResults =

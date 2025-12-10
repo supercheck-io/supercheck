@@ -155,25 +155,34 @@ Run checks from multiple geographic locations to detect regional outages and mea
 
 ### Available Regions
 
-| Region | Location | Best For |
-|--------|----------|----------|
-| **US East** | Ashburn, Virginia, USA | North American users, US-hosted services |
-| **EU Central** | Nuremberg, Germany | European users, GDPR-compliant monitoring |
-| **Asia Pacific** | Singapore | Asian users, APAC-hosted services |
+| Region | Location |
+|--------|----------|
+| **US East** | Ashburn, Virginia, USA |
+| **EU Central** | Nuremberg, Germany |
+| **Asia Pacific** | Singapore |
 
 ### How Multi-Region Works
 
-When you enable multiple regions:
-1. Each region runs the check independently
-2. Results are collected from all locations
-3. Status is aggregated (worst-case by default)
-4. You can see per-region latency and availability
+When you enable multiple regions, checks run independently from each location and results are aggregated to determine overall status.
 
-**Use cases:**
-- Detect CDN or DNS issues affecting specific regions
-- Measure latency from different geographic locations
-- Ensure global availability for international users
-- Identify regional network problems
+```mermaid
+sequenceDiagram
+    participant App
+    participant US as US East
+    participant EU as EU Central
+    participant AP as Asia Pacific
+    participant DB as Database
+
+    App->>US: Queue check
+    App->>EU: Queue check
+    App->>AP: Queue check
+    US->>DB: Save result
+    EU->>DB: Save result
+    AP->>DB: Save result
+    DB->>App: Aggregate status
+```
+
+**Status calculation:** Once all locations report, the system calculates overall status. A monitor is "Up" if the majority of locations report success.
 
 <Callout type="info">
 **Self-Hosted Deployments**: In self-hosted mode, all region selections execute from your single worker location. The multi-region selector is available for configuration consistency, but checks run sequentially from one location. For true geographic distribution, deploy workers in multiple regions.
@@ -211,6 +220,98 @@ Thresholds prevent alert fatigue from transient issues:
 
 <Callout type="info">
 A threshold of 2-3 works well for most services. Use 1 only for extremely critical services where any failure requires immediate attention.
+</Callout>
+
+## Monitor Details Page
+
+The monitor details page provides comprehensive visibility into your monitor's health, performance, and history.
+
+![Monitor Details Page](/screenshots/monitor-details.png)
+
+### Header Section
+
+The header displays essential monitor information at a glance:
+
+- **Monitor Name** — The name you assigned to the monitor
+- **Test ID** — For synthetic monitors, shows the linked Playwright test ID (click to copy)
+- **Action Buttons** — Quick access to Pause, Edit, and Delete operations
+- **Demo Badge** — Indicates if this is a demo monitor (demo monitors are read-only)
+
+### Key Metrics Bar
+
+Eight key metrics are displayed prominently below the header:
+
+| Metric | Description |
+|--------|-------------|
+| **Status** | Current monitor status (Up, Down, Degraded, Paused) |
+| **Interval** | How frequently checks run (e.g., 5m, 15m) |
+| **Resp Time** | Latest response time from the most recent check |
+| **Uptime (24h)** | Percentage of successful checks in the last 24 hours |
+| **Avg Resp (24h)** | Average response time over the last 24 hours |
+| **P95 Resp (24h)** | 95th percentile response time (24h) — shows worst-case latency |
+| **Uptime (30d)** | Percentage of successful checks in the last 30 days |
+| **Avg Resp (30d)** | Average response time over the last 30 days |
+| **P95 Resp (30d)** | 95th percentile response time (30d) — long-term performance indicator |
+
+<Callout type="info">
+**P95 Response Time** represents the response time that 95% of your checks complete within. This metric helps identify tail latency issues that averages might hide.
+</Callout>
+
+### Availability Overview
+
+A visual bar chart showing the status of the last 100 individual checks:
+
+- **Green bars** — Successful checks (monitor was up)
+- **Red bars** — Failed checks (monitor was down)
+- **Location Filter** — Filter by specific region or view all locations combined
+
+This visualization helps you quickly identify patterns like intermittent failures or sustained outages.
+
+### Response Time Chart
+
+An interactive line chart displaying response times over time:
+
+- **100 Data Points** — Shows the most recent 100 check results
+- **Multi-Location Lines** — Different colored lines for each monitoring region
+- **Hover Details** — View exact response time and timestamp on hover
+- **Visual Patterns** — Identify latency spikes, trends, and anomalies
+
+The chart helps you spot performance degradation before it impacts users.
+
+### Recent Check Results Table
+
+A paginated table showing detailed results for each check:
+
+| Column | Description |
+|--------|-------------|
+| **Result** | Pass (✓) or Fail (✗) indicator |
+| **Checked At** | When the check was performed (relative time) |
+| **Location** | Which region performed the check (with flag icon) |
+| **Response Time** | How long the check took |
+| **Error** | For failed checks, shows the error message or links to report |
+
+**Features:**
+- **Pagination** — Navigate through historical results (10 per page)
+- **Date Filter** — Filter results by specific date
+- **Location Filter** — View results from a specific region only
+
+## Monitor Reports
+
+For **Synthetic Monitors**, detailed reports are generated when checks fail. Access reports by clicking the report icon in the **Error** column of the Recent Check Results table.
+
+![Monitor Report](/screenshots/monitor-report.png)
+
+### Report Contents
+
+| Section | Description |
+|---------|-------------|
+| **Test Summary** | Test name, file path, browser used, and execution duration |
+| **Error Details** | Assertion failures with expected vs received values and stack trace |
+| **Test Steps** | Timeline of all actions with pass/fail status and timing |
+| **View Trace** | Opens trace viewer with video recording, screenshots, and network logs |
+
+<Callout type="info">
+Use **Copy Prompt** to copy error details for AI-assisted debugging.
 </Callout>
 
 ## Monitor Status

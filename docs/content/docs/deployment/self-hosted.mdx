@@ -4,6 +4,39 @@ description: Docker Compose deployment and configuration
 icon: Container
 ---
 
+Deploy Supercheck on your own infrastructure with Docker Compose. All data stays on your servers.
+
+```mermaid
+flowchart TB
+    Users[Users / CI/CD] --> Traefik[Traefik Proxy<br/>SSL / Load Balancer]
+    Traefik --> App[Next.js App<br/>UI + API]
+    
+    App --> DB[(PostgreSQL<br/>Primary DB)]
+    App --> Redis[(Redis + BullMQ<br/>Queue + Cache)]
+    App --> S3[(MinIO<br/>Artifacts)]
+    
+    Redis --> W1[Worker 1<br/>Playwright / k6 / Monitors]
+    Redis --> W2[Worker 2<br/>Playwright / k6 / Monitors]
+    Redis --> WN[Worker N<br/>Playwright / k6 / Monitors]
+    
+    W1 & W2 & WN --> DB
+    W1 & W2 & WN --> S3
+
+    style Users fill:#6366f1,stroke:#4338ca,color:#fff
+    style Traefik fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style App fill:#3b82f6,stroke:#1e40af,color:#fff
+    style DB fill:#f59e0b,stroke:#b45309,color:#fff
+    style Redis fill:#ef4444,stroke:#b91c1c,color:#fff
+    style S3 fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style W1 fill:#10b981,stroke:#047857,color:#fff
+    style W2 fill:#10b981,stroke:#047857,color:#fff
+    style WN fill:#10b981,stroke:#047857,color:#fff
+```
+
+<Callout type="warning">
+**OAuth Required**: At least one OAuth provider (GitHub or Google) must be configured for user authentication.
+</Callout>
+
 ## Deployment Options
 
 | Option | SSL/HTTPS | Status Pages |

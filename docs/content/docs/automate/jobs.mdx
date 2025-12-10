@@ -108,6 +108,23 @@ The parallel execution indicator appears in the top navigation bar showing **RUN
 
 Trigger jobs from your CI/CD pipeline to run tests after every deployment.
 
+```mermaid
+sequenceDiagram
+    participant CI as CI/CD
+    participant API
+    participant Worker
+    participant Alerts
+
+    CI->>API: POST /trigger
+    API->>Worker: Queue job
+    API-->>CI: 202 Accepted
+    Worker->>Worker: Execute tests
+    Worker->>API: Result
+    API->>Alerts: Notify
+    CI->>API: GET status
+    API-->>CI: Final result
+```
+
 ### Setting Up API Triggers
 
 1. Open the job you want to trigger

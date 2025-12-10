@@ -129,7 +129,7 @@ function truncateToDay(date: Date): Date {
  * @param sortedArr - Pre-sorted array of numbers (ascending)
  * @param percentile - Percentile to calculate (0-100)
  */
-function calculatePercentile(
+export function calculatePercentile(
   sortedArr: number[],
   percentile: number
 ): number | null {

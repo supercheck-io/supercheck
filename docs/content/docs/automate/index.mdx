@@ -117,13 +117,16 @@ The parallel execution indicator appears in the top navigation bar showing **RUN
 
 ## Workflow Overview
 
-```
-1. Write Test     →  Use Playground with AI Create or templates
-2. Debug & Refine →  Run, view reports, use AI Fix for issues
-3. Save Test      →  Store in your project for reuse
-4. Create Job     →  Group tests and configure schedule
-5. Set Alerts     →  Get notified on failures via Slack, email, etc.
-6. Monitor        →  View runs, track trends, investigate failures
+```mermaid
+flowchart LR
+    A[Write] --> B[Debug] --> C[Save] --> D[Schedule] --> E[Alert] --> F[Monitor]
+
+    style A fill:#6366f1,stroke:#4338ca,color:#fff
+    style B fill:#f59e0b,stroke:#b45309,color:#fff
+    style C fill:#10b981,stroke:#047857,color:#fff
+    style D fill:#3b82f6,stroke:#1e40af,color:#fff
+    style E fill:#ec4899,stroke:#be185d,color:#fff
+    style F fill:#8b5cf6,stroke:#6d28d9,color:#fff
 ```
 
 ## Next Steps
