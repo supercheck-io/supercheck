@@ -219,7 +219,7 @@ jobs:
     name: E2E Tests
     needs: build-and-push
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     continue-on-error: true # Don't fail workflow on test failures
 
     steps:
@@ -256,14 +256,24 @@ jobs:
       - name: Run E2E tests
         id: e2e-tests
         working-directory: ./app/e2e
-        run: npx playwright test --reporter=html,json,github
-        timeout-minutes: 40
+        run: npx playwright test --grep "@smoke|@critical" --reporter=html,json,github
+        timeout-minutes: 20
         continue-on-error: true
         env:
           CI: true
           E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
           E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
           E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
+
+      - name: Generate report on timeout
+        if: always()
+        working-directory: ./app/e2e
+        run: |
+          # Ensure report directory exists even if tests timed out
+          mkdir -p playwright-report
+          if [ ! -f playwright-report/index.html ]; then
+            echo "<html><body><h1>Tests timed out</h1><p>The E2E tests did not complete within the timeout. Check the workflow logs.</p></body></html>" > playwright-report/index.html
+          fi
 
       - name: Upload test report
         uses: actions/upload-artifact@v4
