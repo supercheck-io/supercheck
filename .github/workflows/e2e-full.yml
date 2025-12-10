@@ -1,0 +1,127 @@
+name: Full E2E Test Suite
+
+on:
+  # Run on schedule (e.g., nightly)
+  schedule:
+    - cron: '0 2 * * *' # 2 AM UTC daily
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      test_filter:
+        description: 'Test filter (e.g., @auth, @monitors, leave empty for all)'
+        required: false
+        type: string
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  e2e-full:
+    name: Full E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-e2e-${{ hashFiles('app/e2e/package-lock.json') }}
+          restore-keys: npm-e2e-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('app/e2e/package-lock.json') }}
+          restore-keys: playwright-
+
+      - name: Install dependencies
+        working-directory: ./app/e2e
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: ./app/e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Run full E2E test suite
+        id: e2e-tests
+        working-directory: ./app/e2e
+        run: |
+          if [ -n "${{ github.event.inputs.test_filter }}" ]; then
+            npx playwright test --grep "${{ github.event.inputs.test_filter }}"
+          else
+            npx playwright test
+          fi
+        timeout-minutes: 50
+        continue-on-error: true
+        env:
+          CI: true
+          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+          E2E_TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
+          E2E_TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-full
+          path: app/e2e/playwright-report/
+          retention-days: 30
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-full
+          path: app/e2e/test-results/
+          retention-days: 14
+
+      - name: Create test summary
+        if: always()
+        run: |
+          echo "## 🎭 Full E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -n "${{ github.event.inputs.test_filter }}" ]; then
+            echo "**Filter:** \`${{ github.event.inputs.test_filter }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -f "app/e2e/test-results/results.json" ]; then
+            PASSED=$(jq '.stats.expected // 0' app/e2e/test-results/results.json)
+            FAILED=$(jq '.stats.unexpected // 0' app/e2e/test-results/results.json)
+            SKIPPED=$(jq '.stats.skipped // 0' app/e2e/test-results/results.json)
+            DURATION=$(jq '.stats.duration // 0' app/e2e/test-results/results.json)
+            DURATION_MIN=$((DURATION / 60000))
+            
+            echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| ✅ Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
+            echo "| ❌ Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
+            echo "| ⏭️ Skipped | $SKIPPED |" >> $GITHUB_STEP_SUMMARY
+            echo "| ⏱️ Duration | ${DURATION_MIN}m |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if [ "${{ steps.e2e-tests.outcome }}" == "failure" ]; then
+              echo "> ⚠️ **Some tests failed.** Download the playwright-report-full artifact for details." >> $GITHUB_STEP_SUMMARY
+            else
+              echo "> ✅ **All tests passed!**" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⚠️ No test results found. Tests may have failed to start or timed out." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Fail if tests failed
+        if: steps.e2e-tests.outcome == 'failure'
+        run: |
+          echo "::error::E2E tests failed. Check the playwright-report-full artifact for details."
+          exit 1

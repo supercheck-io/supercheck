@@ -423,7 +423,7 @@ Key tables (see ERD for complete schema):
 ---
 
 **Last Updated**: 2025-12-01
-**Version**: v1.1.9-beta.35
+**Version**: v1.1.9-beta.50
 **Node Version**: 20.0.0+
 
 ## 📝 Notable Updates

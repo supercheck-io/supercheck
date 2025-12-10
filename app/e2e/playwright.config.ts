@@ -20,11 +20,11 @@ export default defineConfig({
   /* Fail the build on CI if you accidentally left test.only in the source code */
   forbidOnly: !!process.env.CI,
 
-  /* Retry on CI only */
-  retries: process.env.CI ? 1 : 0,
+  /* Retry on CI only - disabled to speed up CI */
+  retries: 0,
 
-  /* Workers - limit to 2 to avoid rate limiting issues */
-  workers: process.env.CI ? 2 : 2,
+  /* Workers - increase for faster CI runs */
+  workers: process.env.CI ? 4 : 2,
 
   /* Reporter to use */
   reporter: [
@@ -36,19 +36,19 @@ export default defineConfig({
   /* Shared settings for all the projects below */
   use: {
     baseURL: process.env.E2E_BASE_URL || 'http://localhost:3000',
-    trace: 'on-first-retry',
-    screenshot: 'on',
-    video: 'retain-on-failure',
-    actionTimeout: 15000,
-    navigationTimeout: 30000,
+    trace: 'off',
+    screenshot: 'only-on-failure',
+    video: 'off',
+    actionTimeout: 10000,
+    navigationTimeout: 20000,
   },
 
-  /* Per-test timeout */
-  timeout: 60000,
+  /* Per-test timeout - reduced for CI */
+  timeout: 30000,
 
   /* Expect timeout */
   expect: {
-    timeout: 10000,
+    timeout: 5000,
   },
 
   /* Configure projects - single project, no storageState */
