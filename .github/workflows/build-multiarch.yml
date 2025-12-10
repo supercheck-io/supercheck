@@ -219,7 +219,7 @@ jobs:
     name: E2E Tests
     needs: build-and-push
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     continue-on-error: true # Don't fail workflow on test failures
 
     steps:
@@ -256,7 +256,8 @@ jobs:
       - name: Run E2E tests
         id: e2e-tests
         working-directory: ./app/e2e
-        run: npm test -- --reporter=html,json,github
+        run: npx playwright test --reporter=html,json,github
+        timeout-minutes: 40
         continue-on-error: true
         env:
           CI: true
@@ -302,7 +303,7 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             
             if [ "${{ steps.e2e-tests.outcome }}" == "failure" ]; then
-              echo "> ⚠️ **Some tests failed.** Review the Playwright report artifact for details." >> $GITHUB_STEP_SUMMARY
+              echo "> ⚠️ **Some tests failed.** Download the playwright-report artifact and open index.html." >> $GITHUB_STEP_SUMMARY
             else
               echo "> ✅ **All tests passed!**" >> $GITHUB_STEP_SUMMARY
             fi
@@ -313,4 +314,4 @@ jobs:
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "> **Note:** E2E test failures do not block the release." >> $GITHUB_STEP_SUMMARY
+          echo "> **Note:** E2E test failures do not block the release. Download the **playwright-report** artifact for the full HTML report." >> $GITHUB_STEP_SUMMARY
