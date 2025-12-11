@@ -86,7 +86,8 @@ export default function TestSelector({
   maxSelectionLabel,
 }: TestSelectorProps) {
   const [isSelectTestsDialogOpen, setIsSelectTestsDialogOpen] = useState(false);
-  const [testSelections, setTestSelections] = useState<Record<string, boolean>>(
+  // Track selection order: key = testId, value = sequence number (1-based, 0 = not selected)
+  const [testSelections, setTestSelections] = useState<Record<string, number>>(
     {}
   );
   const [availableTests, setAvailableTests] = useState<Test[]>([]);
@@ -204,39 +205,55 @@ export default function TestSelector({
   const useSingleSelection =
     performanceMode || !!testTypeFilter || singleSelection;
 
-  // Handle test selection
+  // Handle test selection with order tracking
   const handleTestSelection = (testId: string, checked: boolean) => {
     if (useSingleSelection) {
       // Single test selection (radio button mode)
-      setTestSelections(checked ? { [testId]: true } : {});
+      setTestSelections(checked ? { [testId]: 1 } : {});
     } else {
-      // Multiple test selection (checkbox mode)
-      setTestSelections((prev) => ({
-        ...prev,
-        [testId]: checked,
-      }));
+      // Multiple test selection (checkbox mode) - track selection order
+      setTestSelections((prev) => {
+        if (checked) {
+          // Add with next sequence number
+          const currentMax = Math.max(0, ...Object.values(prev).filter(v => v > 0));
+          return { ...prev, [testId]: currentMax + 1 };
+        } else {
+          // Remove and resequence remaining selections
+          const removedOrder = prev[testId] || 0;
+          const newSelections: Record<string, number> = {};
+          Object.entries(prev).forEach(([id, order]) => {
+            if (id !== testId && order > 0) {
+              // Decrement order for items that were after the removed one
+              newSelections[id] = order > removedOrder ? order - 1 : order;
+            }
+          });
+          return newSelections;
+        }
+      });
     }
   };
 
-  // Handle test selection confirmation
+  // Handle test selection confirmation - preserve selection order
   const handleSelectTests = () => {
-    const selected = availableTests.filter((test) => testSelections[test.id]);
+    // Get selected tests sorted by their selection order
+    const selected = availableTests
+      .filter((test) => testSelections[test.id] > 0)
+      .sort((a, b) => testSelections[a.id] - testSelections[b.id]);
     onTestsSelected(selected);
     setIsSelectTestsDialogOpen(false);
   };
 
-  // Initialize test selections when dialog opens - with safe array
+  // Initialize test selections when dialog opens - preserve existing order
   useEffect(() => {
     if (isSelectTestsDialogOpen) {
-      const initialSelections: Record<string, boolean> = {};
-      availableTests.forEach((test) => {
-        initialSelections[test.id] = tests.some(
-          (selected) => selected.id === test.id
-        );
+      const initialSelections: Record<string, number> = {};
+      // Preserve the order from the existing tests array (index + 1 for 1-based)
+      tests.forEach((test, index) => {
+        initialSelections[test.id] = index + 1;
       });
       setTestSelections(initialSelections);
     }
-  }, [isSelectTestsDialogOpen, availableTests, tests]);
+  }, [isSelectTestsDialogOpen, tests]);
 
   // Remove a test from selection - using safe array
   const removeTest = (testId: string, testName: string) => {
@@ -291,7 +308,7 @@ export default function TestSelector({
       ? "Choose a performance test to run in this job"
       : useSingleSelection
       ? "Choose the test to include in this job"
-      : "Choose the tests to include in this job");
+      : "Select tests in the sequence you want them to execute. Tests run one after another in the order shown by the # column.");
 
   const headerNote =
     maxSelectionLabel !== undefined ? (
@@ -312,7 +329,7 @@ export default function TestSelector({
 
   const selectedTestsDescription = performanceMode
     ? "Only one performance test can be attached to k6 job."
-    : "Manage the associated test";
+    : "Tests execute sequentially in the order shown below.";
 
   const pageHeaderNote = performanceMode ? undefined : headerNote;
 
@@ -374,23 +391,47 @@ export default function TestSelector({
           <Table>
             <TableHeader>
               <TableRow>
+                {!useSingleSelection && (
+                  <TableHead className="w-[50px] sticky top-0 text-center">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="cursor-help font-medium">#</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          <p>Execution order - tests run sequentially</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </TableHead>
+                )}
                 <TableHead className="w-[120px] sticky top-0">
                   Test ID
                 </TableHead>
                 <TableHead className="w-[180px] sticky top-0">Name</TableHead>
                 <TableHead className="w-[120px] sticky top-0 ">Type</TableHead>
                 <TableHead className="w-[170px] sticky top-0">Tags</TableHead>
-                <TableHead className="w-[170px]  sticky top-0">
+                <TableHead className="w-[150px]  sticky top-0">
                   Description
                 </TableHead>
-                <TableHead className="w-[100px] sticky top-0">
+                <TableHead className="w-[80px] sticky top-0">
                   Actions
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tests.map((test) => (
+              {tests.map((test, index) => (
                 <TableRow key={test.id} className="hover:bg-transparent">
+                  {!useSingleSelection && (
+                    <TableCell className="text-center">
+                      <Badge 
+                        variant="secondary" 
+                        className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 font-mono min-w-[28px] justify-center"
+                      >
+                        {index + 1}
+                      </Badge>
+                    </TableCell>
+                  )}
                   <TableCell
                     className="font-mono text-sm truncate"
                     title={test.id}
@@ -582,19 +623,33 @@ export default function TestSelector({
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12"></TableHead>
+                      {!useSingleSelection && (
+                        <TableHead className="w-[50px] sticky top-0 text-center">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="cursor-help font-medium">#</span>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">
+                                <p>Execution order - tests run sequentially in this order</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableHead>
+                      )}
                       <TableHead className="w-[120px] sticky top-0">
                         ID
                       </TableHead>
-                      <TableHead className="w-[250px] sticky top-0">
+                      <TableHead className="w-[220px] sticky top-0">
                         Name
                       </TableHead>
-                      <TableHead className="w-[150px] sticky top-0">
+                      <TableHead className="w-[130px] sticky top-0">
                         Type
                       </TableHead>
-                      <TableHead className="w-[200px] sticky top-0">
+                      <TableHead className="w-[180px] sticky top-0">
                         Tags
                       </TableHead>
-                      <TableHead className="w-[200px] sticky top-0">
+                      <TableHead className="w-[180px] sticky top-0">
                         Description
                       </TableHead>
                     </TableRow>
@@ -624,7 +679,7 @@ export default function TestSelector({
                               <Label className="flex items-center cursor-pointer">
                                 <RadioGroupItem
                                   value={test.id}
-                                  checked={testSelections[test.id] || false}
+                                  checked={!!testSelections[test.id]}
                                   onClick={(e) => e.stopPropagation()}
                                 />
                               </Label>
@@ -632,7 +687,7 @@ export default function TestSelector({
                           ) : (
                             // Checkbox for regular mode
                             <Checkbox
-                              checked={testSelections[test.id] || false}
+                              checked={!!testSelections[test.id]}
                               onCheckedChange={(checked) =>
                                 handleTestSelection(test.id, checked as boolean)
                               }
@@ -641,6 +696,20 @@ export default function TestSelector({
                             />
                           )}
                         </TableCell>
+                        {!useSingleSelection && (
+                          <TableCell className="text-center">
+                            {testSelections[test.id] ? (
+                              <Badge 
+                                variant="secondary" 
+                                className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 font-mono min-w-[28px] justify-center"
+                              >
+                                {testSelections[test.id]}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                        )}
                         <TableCell
                           className="font-mono text-sm truncate"
                           title={test.id}
@@ -789,7 +858,7 @@ export default function TestSelector({
                   {useSingleSelection ? (
                     <span>
                       {Object.keys(testSelections).filter(
-                        (id) => testSelections[id]
+                        (id) => testSelections[id] > 0
                       ).length > 0
                         ? "1 test selected"
                         : "No test selected"}
@@ -799,7 +868,7 @@ export default function TestSelector({
                       <span className="font-bold">
                         {
                           Object.keys(testSelections).filter(
-                            (id) => testSelections[id]
+                            (id) => testSelections[id] > 0
                           ).length
                         }
                       </span>{" "}

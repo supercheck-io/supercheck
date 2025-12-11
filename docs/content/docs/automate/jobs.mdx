@@ -45,6 +45,10 @@ Choose which tests to include in the job. You can select any combination of:
 
 <Callout type="info">
 Tests run in the order you select them. Put critical tests first so failures are detected early.
+
+**Note:** While tests in a job execute sequentially one-by-one, individual Playwright tests may use internal parallelism (workers) to run faster. This doesn't affect the order of test execution within the job.
+
+The Playwright HTML report will display tests in their execution order, making it easy to trace through the test sequence.
 </Callout>
 
 ### Step 3: Configure Schedule
@@ -226,6 +230,13 @@ If a job exceeds the maximum execution time:
 - Job is automatically stopped
 - Timeout notification is sent
 - Partial results are saved
+
+<Callout type="info">
+**Execution Time Limits:**
+- **Playwright Jobs:** Maximum runtime of **60 minutes** for the entire job execution
+- **K6 Performance Jobs:** Maximum runtime of **60 minutes** per job execution
+- **Individual Tests:** Each test within a job is also subject to its own timeout (5 minutes for Playwright, 60 minutes for K6)
+</Callout>
 
 ## Best Practices
 

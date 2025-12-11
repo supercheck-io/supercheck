@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { updateJob } from "@/actions/update-job";
 import { db } from "@/utils/db";
 import { jobs, jobTests, tests as testsTable, testTags, tags } from "@/db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, asc } from "drizzle-orm";
 import { requireAuth, hasPermission } from '@/lib/rbac/middleware';
 
 export async function GET(
@@ -64,7 +64,7 @@ export async function GET(
       );
     }
     
-    // Get associated tests for this job
+    // Get associated tests for this job, ordered by execution sequence
     const testsResult = await db
       .select({
         id: testsTable.id,
@@ -75,10 +75,12 @@ export async function GET(
         script: testsTable.script,
         createdAt: testsTable.createdAt,
         updatedAt: testsTable.updatedAt,
+        orderPosition: jobTests.orderPosition,
       })
       .from(testsTable)
       .innerJoin(jobTests, eq(testsTable.id, jobTests.testId))
-      .where(eq(jobTests.jobId, jobId));
+      .where(eq(jobTests.jobId, jobId))
+      .orderBy(asc(jobTests.orderPosition));
 
     // Get tags for all tests in this job
     const testIds = testsResult.map(test => test.id);

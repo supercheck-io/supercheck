@@ -13,7 +13,7 @@ import {
   JobTrigger,
   JobType,
 } from "@/db/schema";
-import { desc, eq, inArray, and } from "drizzle-orm";
+import { desc, eq, inArray, and, asc } from "drizzle-orm";
 import { hasPermission } from "@/lib/rbac/middleware";
 import { requireProjectContext } from "@/lib/project-context";
 import { subscriptionService } from "@/lib/services/subscription-service";
@@ -173,10 +173,12 @@ export async function GET() {
         script: testsTable.script,
         createdAt: testsTable.createdAt,
         updatedAt: testsTable.updatedAt,
+        orderPosition: jobTests.orderPosition,
       })
       .from(jobTests)
       .innerJoin(testsTable, eq(testsTable.id, jobTests.testId))
-      .where(inArray(jobTests.jobId, jobIds));
+      .where(inArray(jobTests.jobId, jobIds))
+      .orderBy(asc(jobTests.orderPosition));
 
     // Query 3: Batch fetch all tags for all tests in one query
     const allTestIds = [...new Set(allJobTests.map((t) => t.testId))];
@@ -455,11 +457,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // If tests are provided, create job-test associations
+    // If tests are provided, create job-test associations with order preserved
     if (jobData.tests && jobData.tests.length > 0) {
-      const jobTestValues = jobData.tests.map((test) => ({
+      const jobTestValues = jobData.tests.map((test, index) => ({
         jobId: jobId,
         testId: test.id,
+        orderPosition: index,
       }));
 
       await db.insert(jobTests).values(jobTestValues);
