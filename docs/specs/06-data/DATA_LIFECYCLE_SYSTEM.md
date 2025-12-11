@@ -233,34 +233,102 @@ graph TB
 
 ## Cleanup Strategies
 
+### Entity Type Overview
+
+The data lifecycle system manages 7 different entity types, categorized by operation type:
+
+#### DATA RETENTION (Cleanup Operations)
+- **"monitor_results"**: Raw monitor check results (individual pings, API calls)
+- **"monitor_aggregates"**: Computed hourly/daily metrics (P95, avg, uptime)
+- **"job_runs"**: Test execution results and artifacts
+- **"playground_artifacts"**: Temporary test runs from playground
+- **"webhook_idempotency"**: Webhook deduplication keys with TTL
+
+#### DATA PROCESSING (Aggregation Operations)
+- **"monitor_aggregation_hourly"**: Computes hourly metrics from raw results
+- **"monitor_aggregation_daily"**: Computes daily metrics from raw results
+
 ### Strategy Overview
 
 ```mermaid
 graph LR
+    subgraph "Data Processing Strategies"
+        AH[Monitor Aggregation Hourly<br/>✅ Enabled by default<br/>Runs at minute 5]
+        AD[Monitor Aggregation Daily<br/>✅ Enabled by default<br/>Runs at 00:15 UTC]
+    end
+    
     subgraph "Cleanup Strategies"
         M[Monitor Results<br/>✅ Enabled by default<br/>Plan-based retention]
         MA[Monitor Aggregates<br/>✅ Enabled by default<br/>Hourly: 7d / Daily: Plan-based]
         J[Job Runs<br/>✅ Enabled by default<br/>Plan-based: 30-365 days]
         P[Playground<br/>✅ Enabled by default<br/>24 hours retention]
         W[Webhook Idempotency<br/>✅ Enabled by default<br/>TTL-based]
+        O[Orphaned S3 Objects<br/>❌ Disabled by default<br/>Manual cleanup only]
     end
 
+    AH --> AHC[Compute hourly P95, avg, uptime<br/>From raw monitor_results]
+    AD --> ADC[Compute daily P95, avg, uptime<br/>From raw monitor_results]
     M --> MD[Delete old check results<br/>Preserve status changes]
     MA --> MAD[Delete hourly > 7d<br/>Delete daily per plan]
     J --> JD[Delete run records<br/>Delete S3 artifacts<br/>Delete reports]
     P --> PD[Delete S3 artifacts<br/>Delete temp files]
     W --> WD[Delete expired webhook<br/>deduplication records]
+    O --> OD[Delete unreferenced S3 files<br/>Manual trigger only]
 
+    classDef processing fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
     classDef enabled fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
     classDef disabled fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     classDef action fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
 
+    class AH,AD processing
     class M,MA,J,W enabled
-    class P disabled
-    class MD,MAD,JD,PD,WD action
+    class P,O disabled
+    class AHC,ADC,MD,MAD,JD,PD,WD,OD action
 ```
 
-### 1. Monitor Results Cleanup
+### 1. Monitor Aggregation (Hourly)
+
+**Configuration:**
+
+- **Entity Type:** monitor_aggregation_hourly
+- **Status:** ✅ Enabled by default
+- **Schedule:** Every hour at minute 5 (5 \* \* \* \*)
+- **Lookback Window:** 24 hours (catches missed runs)
+- **Processing:** Computes P50, P95, P99, avg, uptime per monitor/location
+
+**Environment Variables:**
+
+- `MONITOR_AGGREGATION_HOURLY_ENABLED`: true
+- `MONITOR_AGGREGATION_HOURLY_CRON`: "5 \* \* \* \*"
+
+**What Gets Processed:**
+
+- ✅ Raw monitor results from the last hour
+- ✅ Creates/updates hourly aggregates in `monitor_aggregates` table
+- ✅ Idempotent - safe to re-run without data corruption
+
+### 2. Monitor Aggregation (Daily)
+
+**Configuration:**
+
+- **Entity Type:** monitor_aggregation_daily
+- **Status:** ✅ Enabled by default
+- **Schedule:** Daily at 00:15 UTC (15 0 \* \* \*)
+- **Lookback Window:** 7 days (catches missed runs)
+- **Processing:** Computes P50, P95, P99, avg, uptime per monitor/location
+
+**Environment Variables:**
+
+- `MONITOR_AGGREGATION_DAILY_ENABLED`: true
+- `MONITOR_AGGREGATION_DAILY_CRON`: "15 0 \* \* \*"
+
+**What Gets Processed:**
+
+- ✅ Raw monitor results from the last day
+- ✅ Creates/updates daily aggregates in `monitor_aggregates` table
+- ✅ Idempotent - safe to re-run without data corruption
+
+### 3. Monitor Results Cleanup
 
 **Configuration:**
 
@@ -672,12 +740,15 @@ graph TB
 
 ### Recommended Schedule
 
-| Strategy            | Schedule   | Rationale                            |
-| ------------------- | ---------- | ------------------------------------ |
-| Monitor Results     | 2 AM Daily | Off-peak hours, sufficient frequency |
-| Job Runs            | 3 AM Daily | After monitor cleanup, off-peak      |
-| Playground          | 5 AM Daily | After other cleanups, daily cycle    |
-| Webhook Idempotency | 4 AM Daily | Clean expired webhook dedup records  |
+| Strategy                    | Schedule          | Rationale                                    |
+| --------------------------- | ----------------- | -------------------------------------------- |
+| Monitor Aggregation Hourly  | Minute 5 hourly   | 5-minute buffer after hour for all checks    |
+| Monitor Aggregation Daily   | 00:15 UTC daily   | 15 minutes after midnight, after hourly run  |
+| Monitor Results Cleanup     | 2 AM Daily        | Off-peak hours, sufficient frequency         |
+| Webhook Idempotency         | 4 AM Daily        | Clean expired webhook dedup records          |
+| Job Runs                    | 3 AM Daily        | After monitor cleanup, off-peak              |
+| Monitor Aggregates Cleanup  | 2:30 AM Daily     | After monitor results cleanup, off-peak      |
+| Playground                  | 5 AM Daily        | After other cleanups, daily cycle            |
 
 ---
 

@@ -35,9 +35,11 @@ data:
   S3_STATUS_BUCKET_NAME: "supercheck-status-artifacts"
   S3_PERFORMANCE_BUCKET_NAME: "supercheck-performance-artifacts"
 
+  # Parallel Execution Capacity (self-hosted mode)
+  # Cloud mode uses plan limits: Plus=5/50, Pro=10/100
+  # For self-hosted, match to worker replicas (each worker handles 1 job)
   RUNNING_CAPACITY: "6"
   QUEUED_CAPACITY: "50"
-  # Note: MAX_CONCURRENT_EXECUTIONS is hardcoded to 1 in worker code. Scale via worker replicas instead.
   # Container limits for 2 vCPU / 4GB servers
   CONTAINER_CPU_LIMIT: "1.5"
   CONTAINER_MEMORY_LIMIT_MB: "2048"

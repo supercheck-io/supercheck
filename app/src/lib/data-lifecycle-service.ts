@@ -57,13 +57,27 @@ import { monitorAggregationService } from "./monitor-aggregation-service";
 
 /**
  * Supported cleanup entity types
+ * 
+ * Each entity type represents a different data lifecycle operation:
+ * 
+ * DATA RETENTION (Cleanup Operations):
+ * - "monitor_results": Raw monitor check results (individual pings, API calls)
+ * - "monitor_aggregates": Computed hourly/daily metrics (P95, avg, uptime)
+ * - "job_runs": Test execution results and artifacts
+ * - "playground_artifacts": Temporary test runs from playground
+ * - "webhook_idempotency": Webhook deduplication keys with TTL
+ * 
+ * DATA PROCESSING (Aggregation Operations):
+ * - "monitor_aggregation_hourly": Computes hourly metrics from raw results
+ * - "monitor_aggregation_daily": Computes daily metrics from raw results
  */
 export type CleanupEntityType =
   | "monitor_results"
   | "monitor_aggregates"
+  | "monitor_aggregation_hourly"
+  | "monitor_aggregation_daily"
   | "job_runs"
   | "playground_artifacts"
-  | "orphaned_s3_objects"
   | "webhook_idempotency";
 
 /**
@@ -890,6 +904,197 @@ export class MonitorAggregatesCleanupStrategy implements ICleanupStrategy {
     return (
       Number(hourlyCount[0]?.count || 0) + Number(dailyCount[0]?.count || 0)
     );
+  }
+}
+
+/**
+ * Monitor Aggregation Strategy (Hourly)
+ *
+ * Computes hourly aggregates from raw monitor_results data.
+ * This is NOT a cleanup strategy - it creates data, not deletes it.
+ *
+ * Schedule: Every hour at minute 5 (e.g., 1:05, 2:05, etc.)
+ * This gives 5 minutes buffer after the hour for all checks to complete.
+ */
+export class MonitorAggregationHourlyStrategy implements ICleanupStrategy {
+  entityType: CleanupEntityType = "monitor_aggregation_hourly";
+  config: CleanupStrategyConfig;
+
+  constructor(config: CleanupStrategyConfig) {
+    this.config = config;
+  }
+
+  validate(): void {
+    // No validation needed for aggregation
+  }
+
+  async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
+    // Return aggregate counts instead of "old records"
+    const [total] = await Promise.all([
+      db.select({ count: sql<number>`count(*)` }).from(monitorAggregates),
+    ]);
+
+    return {
+      totalRecords: Number(total[0]?.count || 0),
+      oldRecords: 0, // Not applicable for aggregation
+    };
+  }
+
+  async execute(dryRun = false): Promise<CleanupOperationResult> {
+    const startTime = Date.now();
+
+    const result: CleanupOperationResult = {
+      success: true,
+      entityType: this.entityType,
+      recordsDeleted: 0, // Actually records created/updated
+      duration: 0,
+      errors: [],
+      details: { dryRun, operation: "aggregation" },
+    };
+
+    try {
+      if (dryRun) {
+        // In dry-run, just report what would happen
+        const activeMonitors = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(monitors)
+          .where(eq(monitors.enabled, true));
+
+        result.details.monitorsToProcess = Number(
+          activeMonitors[0]?.count || 0
+        );
+        result.duration = Date.now() - startTime;
+        return result;
+      }
+
+      // Run hourly aggregation
+      const aggregationResult =
+        await monitorAggregationService.runHourlyAggregation();
+
+      result.success = aggregationResult.success;
+      result.recordsDeleted =
+        aggregationResult.aggregatesCreated +
+        aggregationResult.aggregatesUpdated;
+      result.errors = aggregationResult.errors;
+      result.details = {
+        ...result.details,
+        monitorsProcessed: aggregationResult.monitorsProcessed,
+        aggregatesCreated: aggregationResult.aggregatesCreated,
+        aggregatesUpdated: aggregationResult.aggregatesUpdated,
+      };
+      result.duration = Date.now() - startTime;
+
+      if (aggregationResult.aggregatesCreated > 0) {
+        console.log(
+          `[DATA_LIFECYCLE] Hourly aggregation: created ${aggregationResult.aggregatesCreated}, updated ${aggregationResult.aggregatesUpdated} for ${aggregationResult.monitorsProcessed} monitors`
+        );
+      }
+    } catch (error) {
+      result.success = false;
+      result.errors.push(
+        error instanceof Error ? error.message : String(error)
+      );
+      result.duration = Date.now() - startTime;
+      console.error(`[DATA_LIFECYCLE] Hourly aggregation failed:`, error);
+    }
+
+    return result;
+  }
+}
+
+/**
+ * Monitor Aggregation Strategy (Daily)
+ *
+ * Computes daily aggregates from raw monitor_results data.
+ * This is NOT a cleanup strategy - it creates data, not deletes it.
+ *
+ * Schedule: Daily at 00:15 UTC (15 minutes after midnight)
+ * This gives time for all hourly aggregates to complete first.
+ */
+export class MonitorAggregationDailyStrategy implements ICleanupStrategy {
+  entityType: CleanupEntityType = "monitor_aggregation_daily";
+  config: CleanupStrategyConfig;
+
+  constructor(config: CleanupStrategyConfig) {
+    this.config = config;
+  }
+
+  validate(): void {
+    // No validation needed for aggregation
+  }
+
+  async getStats(): Promise<{ totalRecords: number; oldRecords: number }> {
+    const [total] = await Promise.all([
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(monitorAggregates)
+        .where(eq(monitorAggregates.periodType, "daily")),
+    ]);
+
+    return {
+      totalRecords: Number(total[0]?.count || 0),
+      oldRecords: 0,
+    };
+  }
+
+  async execute(dryRun = false): Promise<CleanupOperationResult> {
+    const startTime = Date.now();
+
+    const result: CleanupOperationResult = {
+      success: true,
+      entityType: this.entityType,
+      recordsDeleted: 0,
+      duration: 0,
+      errors: [],
+      details: { dryRun, operation: "aggregation" },
+    };
+
+    try {
+      if (dryRun) {
+        const activeMonitors = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(monitors)
+          .where(eq(monitors.enabled, true));
+
+        result.details.monitorsToProcess = Number(
+          activeMonitors[0]?.count || 0
+        );
+        result.duration = Date.now() - startTime;
+        return result;
+      }
+
+      // Run daily aggregation
+      const aggregationResult =
+        await monitorAggregationService.runDailyAggregation();
+
+      result.success = aggregationResult.success;
+      result.recordsDeleted =
+        aggregationResult.aggregatesCreated +
+        aggregationResult.aggregatesUpdated;
+      result.errors = aggregationResult.errors;
+      result.details = {
+        ...result.details,
+        monitorsProcessed: aggregationResult.monitorsProcessed,
+        aggregatesCreated: aggregationResult.aggregatesCreated,
+        aggregatesUpdated: aggregationResult.aggregatesUpdated,
+      };
+      result.duration = Date.now() - startTime;
+
+      if (aggregationResult.aggregatesCreated > 0) {
+        console.log(
+          `[DATA_LIFECYCLE] Daily aggregation: created ${aggregationResult.aggregatesCreated}, updated ${aggregationResult.aggregatesUpdated} for ${aggregationResult.monitorsProcessed} monitors`
+        );
+      }
+    } catch (error) {
+      result.success = false;
+      result.errors.push(
+        error instanceof Error ? error.message : String(error)
+      );
+      result.duration = Date.now() - startTime;
+      console.error(`[DATA_LIFECYCLE] Daily aggregation failed:`, error);
+    }
+
+    return result;
   }
 }
 
@@ -1827,6 +2032,12 @@ export class DataLifecycleService {
         case "monitor_aggregates":
           strategy = new MonitorAggregatesCleanupStrategy(config);
           break;
+        case "monitor_aggregation_hourly":
+          strategy = new MonitorAggregationHourlyStrategy(config);
+          break;
+        case "monitor_aggregation_daily":
+          strategy = new MonitorAggregationDailyStrategy(config);
+          break;
         case "job_runs":
           strategy = new JobRunsCleanupStrategy(config);
           break;
@@ -2169,8 +2380,7 @@ export function createDataLifecycleService(): DataLifecycleService {
     },
 
     // Monitor Aggregates Cleanup
-    // Enabled by default - cleans up aggregated metrics based on plan retention
-    // Hourly aggregates: 7 days (always), Daily aggregates: per plan (30-730 days)
+    // Cleans up old aggregated metrics based on plan retention
     {
       entityType: "monitor_aggregates",
       enabled: parseBooleanEnv(
@@ -2179,9 +2389,9 @@ export function createDataLifecycleService(): DataLifecycleService {
       ),
       cronSchedule: parseCronSchedule(
         process.env.MONITOR_AGGREGATES_CLEANUP_CRON,
-        "30 2 * * *" // 2:30 AM daily (right after monitor results cleanup)
+        "30 2 * * *"
       ),
-      retentionDays: 365, // Fallback for daily aggregates if plan settings unavailable
+      retentionDays: 365,
       batchSize: parseInt(
         process.env.MONITOR_AGGREGATES_CLEANUP_BATCH_SIZE || "1000",
         10
@@ -2189,6 +2399,34 @@ export function createDataLifecycleService(): DataLifecycleService {
       maxRecordsPerRun: parseInt(
         process.env.MONITOR_AGGREGATES_CLEANUP_SAFETY_LIMIT || "500000",
         10
+      ),
+    },
+
+    // Monitor Hourly Aggregation
+    // Computes hourly P95, avg, uptime from raw monitor_results
+    {
+      entityType: "monitor_aggregation_hourly",
+      enabled: parseBooleanEnv(
+        process.env.MONITOR_AGGREGATION_HOURLY_ENABLED,
+        true
+      ),
+      cronSchedule: parseCronSchedule(
+        process.env.MONITOR_AGGREGATION_HOURLY_CRON,
+        "5 * * * *"
+      ),
+    },
+
+    // Monitor Daily Aggregation
+    // Computes daily P95, avg, uptime from raw monitor_results
+    {
+      entityType: "monitor_aggregation_daily",
+      enabled: parseBooleanEnv(
+        process.env.MONITOR_AGGREGATION_DAILY_ENABLED,
+        true
+      ),
+      cronSchedule: parseCronSchedule(
+        process.env.MONITOR_AGGREGATION_DAILY_CRON,
+        "15 0 * * *"
       ),
     },
 

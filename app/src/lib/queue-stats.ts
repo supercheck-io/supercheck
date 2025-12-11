@@ -1,7 +1,10 @@
 import { getQueues } from "@/lib/queue";
 import { checkCapacityLimits } from "@/lib/middleware/plan-enforcement";
 
-// Default capacity limits - used as fallback for self-hosted mode
+// Default capacity limits - fallback when no env vars or plan limits available
+// These match the Plus plan defaults (5 running, 50 queued)
+// Self-hosted mode: uses RUNNING_CAPACITY/QUEUED_CAPACITY env vars
+// Cloud mode: uses plan limits from database (Plus=5/50, Pro=10/100)
 export const DEFAULT_RUNNING_CAPACITY = parseInt(
   process.env.RUNNING_CAPACITY || "5"
 );

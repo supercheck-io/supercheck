@@ -215,9 +215,11 @@ export async function GET() {
         } else {
           // IMPORTANT: Trust the database - if DB says running but not in queue,
           // it's likely still running (BullMQ lookup can be unreliable after page refresh)
-          // Only exclude if the run was started more than 5 minutes ago and not in queue
+          // Only exclude if the run was started more than 60 minutes ago (platform max execution time)
+          // This threshold is aligned with /api/jobs/status/running for consistency
+          const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 60 minutes - platform max execution time
           const runAge = run.startedAt ? Date.now() - new Date(run.startedAt).getTime() : 0;
-          const isRecentRun = runAge < 5 * 60 * 1000; // Less than 5 minutes old
+          const isRecentRun = runAge < STALE_THRESHOLD_MS;
           
           if (isRecentRun || !run.startedAt) {
             // Trust DB for recent runs or runs without startedAt
@@ -227,7 +229,7 @@ export async function GET() {
               verifiedRunning.push(item);
             }
           } else {
-            console.log(`[API] Run ${run.id} not found in queue and older than 5 minutes - skipping`);
+            console.log(`[API] Run ${run.id} not found in queue and older than 60 minutes - skipping`);
           }
         }
       }),

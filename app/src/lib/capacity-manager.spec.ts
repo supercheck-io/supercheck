@@ -102,7 +102,7 @@ describe('CapacityManager', () => {
           
           const result = await capacityManager.reserveSlot(testOrgId);
           
-          expect(result).toBe(true);
+          expect(result).toBe(1); // 1 = can run immediately
           expect(mockRedisEval).toHaveBeenCalled();
         });
 
@@ -111,7 +111,7 @@ describe('CapacityManager', () => {
           
           const result = await capacityManager.reserveSlot(testOrgId);
           
-          expect(result).toBe(true);
+          expect(result).toBe(2); // 2 = must wait in queue
         });
 
         it('should use global key when no organizationId provided', async () => {
@@ -173,7 +173,7 @@ describe('CapacityManager', () => {
           
           const result = await capacityManager.reserveSlot(testOrgId);
           
-          expect(result).toBe(false);
+          expect(result).toBe(0); // 0 = at capacity/rejected
         });
 
         it('should fail closed on Redis error', async () => {
@@ -181,7 +181,7 @@ describe('CapacityManager', () => {
           
           const result = await capacityManager.reserveSlot(testOrgId);
           
-          expect(result).toBe(false);
+          expect(result).toBe(0); // 0 = rejected on error
           expect(mockQueueLogger.error).toHaveBeenCalled();
         });
 
@@ -190,7 +190,7 @@ describe('CapacityManager', () => {
           
           const result = await capacityManager.reserveSlot(testOrgId);
           
-          expect(result).toBe(false);
+          expect(result).toBe(0); // 0 = rejected on error
         });
       });
 
@@ -235,7 +235,7 @@ describe('CapacityManager', () => {
           
           const result = await capacityManager.reserveSlot(testOrgId);
           
-          expect(result).toBe(false);
+          expect(result).toBe(0); // 0 = at capacity
         });
 
         it('should handle very large capacity limits', async () => {
@@ -247,7 +247,7 @@ describe('CapacityManager', () => {
           
           const result = await capacityManager.reserveSlot(testOrgId);
           
-          expect(result).toBe(true);
+          expect(result).toBe(1); // 1 = can run immediately
         });
       });
     });
@@ -658,7 +658,7 @@ describe('CapacityManager', () => {
         
         const result = await capacityManager.reserveSlot(testOrgId);
         
-        expect(result).toBe(false);
+        expect(result).toBe(0);
       });
 
       it('should reject reservation on timeout', async () => {
@@ -666,7 +666,7 @@ describe('CapacityManager', () => {
         
         const result = await capacityManager.reserveSlot(testOrgId);
         
-        expect(result).toBe(false);
+        expect(result).toBe(0);
       });
     });
 
@@ -741,7 +741,7 @@ describe('CapacityManager', () => {
         
         const result = await capacityManager.reserveSlot(longId);
         
-        expect(result).toBe(true);
+        expect(result).toBe(1);
       });
     });
 
@@ -755,7 +755,7 @@ describe('CapacityManager', () => {
         
         const results = await Promise.all(promises);
         
-        expect(results.every(r => r === true)).toBe(true);
+        expect(results.every(r => r === 1)).toBe(true);
         expect(mockRedisEval).toHaveBeenCalledTimes(10);
       });
 
@@ -826,7 +826,7 @@ describe('CapacityManager', () => {
         // Reserve slot
         mockRedisEval.mockResolvedValue(2); // queued
         const reserved = await capacityManager.reserveSlot(testOrgId);
-        expect(reserved).toBe(true);
+        expect(reserved).toBe(2); // 2 = queued
 
         // Transition to running
         const mockPipelineInstance = {
@@ -849,7 +849,7 @@ describe('CapacityManager', () => {
         // Reserve slot
         mockRedisEval.mockResolvedValue(2); // queued
         const reserved = await capacityManager.reserveSlot(testOrgId);
-        expect(reserved).toBe(true);
+        expect(reserved).toBe(2); // 2 = queued
 
         // Job fails before becoming active - release queued slot
         mockRedisDecr.mockResolvedValue(0);
@@ -880,7 +880,7 @@ describe('CapacityManager', () => {
         
         const result = await capacityManager.reserveSlot(testOrgId);
         
-        expect(result).toBe(false);
+        expect(result).toBe(0); // 0 = at capacity
       });
     });
   });

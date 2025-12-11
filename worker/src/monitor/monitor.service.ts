@@ -674,10 +674,10 @@ export class MonitorService {
           const consecutiveFailureCount =
             latestResult?.consecutiveFailureCount || 0;
           const consecutiveSuccessCount =
-            (latestResult as any)?.consecutiveSuccessCount || 0;
+            latestResult?.consecutiveSuccessCount || 0;
           const alertsSentForFailure = latestResult?.alertsSentForFailure || 0;
           const alertsSentForRecovery =
-            (latestResult as any)?.alertsSentForRecovery || 0;
+            latestResult?.alertsSentForRecovery || 0;
 
           this.logger.debug(
             `[ALERT_DEBUG] Monitor ${resultData.monitorId} - consecutiveFailureCount: ${consecutiveFailureCount}, consecutiveSuccessCount: ${consecutiveSuccessCount}, alertsSentForFailure: ${alertsSentForFailure}, alertsSentForRecovery: ${alertsSentForRecovery}, isStatusChange: ${isStatusChange}`,
@@ -2065,9 +2065,9 @@ export class MonitorService {
         if (lastResult && lastResult.isUp) {
           // Continue success sequence
           consecutiveSuccessCount =
-            ((lastResult as any).consecutiveSuccessCount || 0) + 1;
+            (lastResult.consecutiveSuccessCount || 0) + 1;
           alertsSentForRecovery =
-            (lastResult as any).alertsSentForRecovery || 0;
+            lastResult.alertsSentForRecovery || 0;
         } else {
           // Start new success sequence (just recovered)
           consecutiveSuccessCount = 1;

@@ -271,6 +271,15 @@ Automated data cleanup and retention settings.
 | `MONITOR_PRESERVE_STATUS_CHANGES` | Preserve status change records | `true`                   |
 | `MONITOR_CLEANUP_SAFETY_LIMIT`    | Max records per cleanup        | `1000000`                |
 
+### Monitor Aggregation (Processing)
+
+| Variable                              | Description                | Default                        |
+| ------------------------------------- | -------------------------- | ------------------------------ |
+| `MONITOR_AGGREGATION_HOURLY_ENABLED`  | Enable hourly aggregation  | `true`                         |
+| `MONITOR_AGGREGATION_HOURLY_CRON`     | Hourly aggregation schedule | `5 * * * *` (minute 5 hourly)  |
+| `MONITOR_AGGREGATION_DAILY_ENABLED`   | Enable daily aggregation   | `true`                         |
+| `MONITOR_AGGREGATION_DAILY_CRON`      | Daily aggregation schedule  | `15 0 * * *` (00:15 UTC daily) |
+
 ### Monitor Aggregates Cleanup
 
 | Variable                                  | Description               | Default                      |

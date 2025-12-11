@@ -1005,7 +1005,26 @@ Analysis of leading monitoring platforms (Checkly, Better Stack) reveals industr
 
 #### **Implemented: Tiered Aggregation System**
 
-Supercheck now implements industry-aligned data management with separate raw and aggregated data retention:
+**Status:** ✅ Fully implemented in `app/src/lib/`
+
+The data lifecycle and aggregation system runs in the **Next.js app** (not worker) via BullMQ scheduled jobs:
+
+| Component | Location | Schedule |
+|-----------|----------|----------|
+| `MonitorAggregationService` | `app/src/lib/monitor-aggregation-service.ts` | - |
+| `DataLifecycleService` | `app/src/lib/data-lifecycle-service.ts` | - |
+| Hourly Aggregation | `monitor_aggregation_hourly` strategy | `5 * * * *` (minute 5 of every hour) |
+| Daily Aggregation | `monitor_aggregation_daily` strategy | `15 0 * * *` (00:15 UTC daily) |
+| Raw Data Cleanup | `monitor_results` strategy | `0 2 * * *` (02:00 UTC daily) |
+| Aggregates Cleanup | `monitor_aggregates` strategy | `30 2 * * *` (02:30 UTC daily) |
+
+**Aggregation Flow:**
+1. Raw `monitor_results` are written on every check
+2. Hourly job computes P50/P95/P99, avg, uptime per monitor/location
+3. Daily job computes same metrics at day granularity
+4. Cleanup jobs delete old data per organization's plan retention
+
+Supercheck implements industry-aligned data management with separate raw and aggregated data retention:
 
 **Architecture:**
 

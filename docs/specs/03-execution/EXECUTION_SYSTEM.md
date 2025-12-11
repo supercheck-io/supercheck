@@ -588,22 +588,28 @@ sequenceDiagram
     CM->>CM: checkCapacityLimits(organizationId)
     CM->>Redis: Execute Lua Script (Atomic)
     Redis->>Redis: Check queued < queuedCapacity?
-    Redis->>Redis: Check running < runningCapacity?
-    Redis->>Redis: INCR queued counter
-    Redis-->>CM: Return slotReserved (boolean)
-
-    alt slotReserved = false
-        CM-->>API: Throw Error (429 - Capacity Limit Reached)
-    else slotReserved = true
-        API->>Redis: Resolve variables & secrets
-        API->>Queue: Add job to appropriate queue
-        Queue-->>API: Return job ID (202 Accepted)
-        
-        Note over Queue: Job Events Handle Counter Management:
-        Queue->>CM: active event → transitionQueuedToRunning()
-        Queue->>CM: completed event → releaseRunningSlot()
-        Queue->>CM: failed event → releaseRunningSlot() or releaseQueuedSlot()
+    
+    alt queued >= queuedCapacity
+        Redis-->>CM: Return 0 (at capacity)
+        CM-->>API: Throw Error (429 - Queue Full)
+    else running < runningCapacity
+        Redis->>Redis: INCR running counter (atomic)
+        Redis-->>CM: Return 1 (can run immediately)
+        API->>Queue: Add job with _capacityStatus='immediate'
+    else running >= runningCapacity
+        Redis->>Redis: INCR queued counter
+        Redis-->>CM: Return 2 (must wait in queue)
+        API->>Queue: Add job with delay + _capacityStatus='queued'
     end
+
+    Note over API,Queue: Jobs with 'immediate' status run right away
+    Note over API,Queue: Jobs with 'queued' status wait for capacity
+    Queue-->>API: Return job ID (202 Accepted)
+    
+    Note over Queue: Job Events Handle Counter Management
+    Queue->>CM: active event → transitionQueuedToRunning() (only for 'queued' jobs)
+    Queue->>CM: completed event → releaseRunningSlot()
+    Queue->>CM: failed event → releaseRunningSlot() or releaseQueuedSlot()
 ```
 
 ### Organization-Specific Capacity Tracking
