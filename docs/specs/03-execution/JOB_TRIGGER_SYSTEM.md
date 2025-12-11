@@ -302,18 +302,19 @@ graph TB
     B --> Lua[Lua Script<br/>Atomic Check + Increment]
     Lua --> C & D & E
 
-    Lua --> F{Slot Reserved?}
-    F -->|No| G[❌ 429 Error]
-    F -->|Yes| H[✅ Add to Queue]
+    Lua --> F{Result?}
+    F -->|0: Queue Full| G[❌ 429 Error]
+    F -->|1: Can Run Now| H1[✅ INCR running<br/>Add with immediate status]
+    F -->|2: Must Wait| H2[✅ INCR queued<br/>Add with delay + queued status]
 
     subgraph "Job Event Management"
-        I[active event<br/>queued→running]
+        I[active event<br/>queued→running<br/>only for queued jobs]
         J[completed event<br/>release running]
         K[failed event<br/>release running/queued]
         L[stalled event<br/>release running]
     end
 
-    H --> I & J & K & L
+    H1 & H2 --> I & J & K & L
 
     classDef check fill:#fff3e0,stroke:#f57c00,stroke-width:2px
     classDef redis fill:#ffebee,stroke:#d32f2f,stroke-width:2px
@@ -323,7 +324,7 @@ graph TB
 
     class CM,B,F check
     class C,D,E redis
-    class H,I,J,K,L success
+    class H1,H2,I,J,K,L success
     class G reject
 ```
 
@@ -797,6 +798,7 @@ sequenceDiagram
 - Only runs older than **60 minutes** (platform max execution time) are marked as stale
 - Recent runs not found in queue are kept as valid (handles transient BullMQ connection issues)
 - Prevents legitimate running jobs from being incorrectly marked as errors during page refresh
+- **Consistency:** Both `/api/jobs/status/running` and `/api/executions/running` use the same 60-minute threshold
 
 ### Error Messages
 

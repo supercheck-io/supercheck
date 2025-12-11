@@ -23,9 +23,9 @@ export class CapacityManager {
    * Uses Redis Lua script to ensure atomicity
    * 
    * @param organizationId - Organization ID for plan-specific limits
-   * @returns Promise resolving to true if slot reserved, false if at capacity
+   * @returns Promise resolving to: 0 = at capacity (rejected), 1 = can run immediately, 2 = must wait in queue
    */
-  async reserveSlot(organizationId?: string): Promise<boolean> {
+  async reserveSlot(organizationId?: string): Promise<number> {
     try {
       // Get capacity limits for the organization
       const limits = await checkCapacityLimits(organizationId || 'global');
@@ -39,8 +39,9 @@ export class CapacityManager {
         : `capacity:queued:global`;
 
       // Lua script for atomic capacity check and increment
-      // Simplified logic: always increment queued, check if can run immediately
       // Returns: 1 = can run immediately, 2 = must wait in queue, 0 = at capacity
+      // IMPORTANT: When job can run immediately, we increment RUNNING counter here
+      // to prevent race conditions where multiple jobs all see running < capacity
       const luaScript = `
         local runningKey = KEYS[1]
         local queuedKey = KEYS[2]
@@ -58,14 +59,17 @@ export class CapacityManager {
           return 0  -- Cannot add to queue
         end
         
-        -- Always increment queued counter
-        redis.call('INCR', queuedKey)
-        redis.call('EXPIRE', queuedKey, ttl)
-        
         -- Check if job can run immediately
         if running < runningCapacity then
-          return 1  -- Can run immediately (will transition to running)
+          -- Job can run immediately - increment running counter NOW
+          -- This prevents race conditions where multiple jobs all see running < capacity
+          redis.call('INCR', runningKey)
+          redis.call('EXPIRE', runningKey, ttl)
+          return 1  -- Can run immediately
         else
+          -- Running capacity full - job must wait in queue
+          redis.call('INCR', queuedKey)
+          redis.call('EXPIRE', queuedKey, ttl)
           return 2  -- Must wait in queue
         end
       `;
@@ -81,12 +85,12 @@ export class CapacityManager {
         86400 // TTL: 24 hours for long-running jobs
       ) as number;
 
-      return result > 0;
+      return result;
     } catch (error) {
       queueLogger.error({ err: error, organizationId }, 
         "Failed to reserve capacity slot");
       // Fail closed - if we can't verify capacity, reject the request
-      return false;
+      return 0;
     }
   }
 
@@ -434,18 +438,24 @@ export async function setupCapacityManagement(queues: QueueParameters, queueEven
     if (!queueEvent) continue;
     
     // Helper to get organizationId from job or mapping fallback
+    // Checks ALL queues since we don't know which queue the job belongs to
     async function getOrgId(jobId: string): Promise<string | undefined> {
-      const queue = queues.playwrightQueues["global"] || Object.values(queues.k6Queues)[0];
-      if (!queue) return undefined;
+      // Try all queues - playwright first, then all K6 regional queues
+      const allQueues = [
+        queues.playwrightQueues["global"],
+        ...Object.values(queues.k6Queues),
+      ].filter(Boolean);
       
-      try {
-        const job = await queue.getJob(jobId);
-        if (job) {
-          const task = job.data as { organizationId?: string };
-          return task.organizationId;
+      for (const queue of allQueues) {
+        try {
+          const job = await queue.getJob(jobId);
+          if (job) {
+            const task = job.data as { organizationId?: string };
+            return task.organizationId;
+          }
+        } catch {
+          // Job may have been removed from this queue, try next
         }
-      } catch {
-        // Job may have been removed, fall back to mapping
       }
       
       // Fallback: try to get from our mapping
@@ -466,18 +476,28 @@ export async function setupCapacityManagement(queues: QueueParameters, queueEven
     
     // Job failed - handle both queued and running states
     queueEvent.on('failed', async ({ jobId }) => {
-      const queue = queues.playwrightQueues["global"] || Object.values(queues.k6Queues)[0];
+      // Try all queues to find the job
+      const allQueues = [
+        queues.playwrightQueues["global"],
+        ...Object.values(queues.k6Queues),
+      ].filter(Boolean);
       
       try {
         let organizationId: string | undefined;
         let wasProcessed = false;
         
-        if (queue) {
-          const job = await queue.getJob(jobId);
-          if (job) {
-            const task = job.data as { organizationId?: string };
-            organizationId = task.organizationId;
-            wasProcessed = job.processedOn !== undefined;
+        // Search all queues for the job
+        for (const queue of allQueues) {
+          try {
+            const job = await queue.getJob(jobId);
+            if (job) {
+              const task = job.data as { organizationId?: string };
+              organizationId = task.organizationId;
+              wasProcessed = job.processedOn !== undefined;
+              break; // Found the job, stop searching
+            }
+          } catch {
+            // Job may have been removed from this queue, try next
           }
         }
         
@@ -516,11 +536,44 @@ export async function setupCapacityManagement(queues: QueueParameters, queueEven
     // Job starts running (transition from queued to running)
     queueEvent.on('active', async ({ jobId }) => {
       try {
-        const organizationId = await getOrgId(jobId);
+        // Try all queues to find the job
+        const allQueues = [
+          queues.playwrightQueues["global"],
+          ...Object.values(queues.k6Queues),
+        ].filter(Boolean);
+        
+        let capacityStatus: string | undefined;
+        let organizationId: string | undefined;
+        
+        // Search all queues for the job
+        for (const queue of allQueues) {
+          try {
+            const job = await queue.getJob(jobId);
+            if (job) {
+              const task = job.data as { organizationId?: string; _capacityStatus?: string };
+              organizationId = task.organizationId;
+              capacityStatus = task._capacityStatus;
+              break; // Found the job, stop searching
+            }
+          } catch {
+            // Job may have been removed from this queue, try next
+          }
+        }
+        
+        // Fallback for organizationId
+        if (!organizationId) {
+          organizationId = await capacityManager.getJobOrganization(jobId);
+        }
+        
         // Track the job-org mapping for this job
         await capacityManager.trackJobOrganization(jobId, organizationId);
-        // When job becomes active, transition from queued to running
-        await capacityManager.transitionQueuedToRunning(organizationId);
+        
+        // Only transition queued->running for jobs that were actually queued
+        // Jobs with _capacityStatus='immediate' already had their running counter incremented at submission
+        if (capacityStatus === 'queued') {
+          await capacityManager.transitionQueuedToRunning(organizationId);
+        }
+        // For 'immediate' jobs, running counter was already incremented in reserveSlot
       } catch (error) {
         queueLogger.error({ err: error, jobId }, "Failed to transition job to active state");
       }

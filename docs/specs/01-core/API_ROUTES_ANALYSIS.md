@@ -91,7 +91,7 @@ This document reflects the **actual Next.js App Router handlers** that exist und
 - Password reset is handled by Better Auth inside the catch-all handler; there are no standalone `forget-password` or `reset-password` route files.
 - Real-time updates use SSE: `/api/queue-stats/sse`, `/api/job-status/events`, `/api/job-status/events/[runId]`, `/api/runs/[runId]/stream`, and `/api/test-status/events/[testId]`.
 - K6 performance runs surface through `/api/k6/runs/[runId]`; k6 execution is otherwise triggered via the standard job/test execution routes.
-- Health check exists at `/api/health`; consider expanding it to check DB, Redis, and MinIO connectivity.
+- ✅ **Health check:** `/api/health` now performs deep connectivity checks for Database (required), Redis (optional), and S3/MinIO (optional). Returns `unhealthy` (503) if DB fails, `degraded` (200) if Redis/S3 fail.
 - Notification surfaces (read-only run and monitor views) inherit org membership checks before rendering data.
 
 ## Improvement Backlog (code-aligned)

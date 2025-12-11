@@ -22,9 +22,10 @@ x-common-env: &common-env # Database Configuration
   BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://${APP_DOMAIN:-demo.supercheck.io}}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
-  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1} # 1 worker replica × 1 concurrent run (keep in sync with replicas)
-  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10} # Queue size for single worker
-  # Note: MAX_CONCURRENT_EXECUTIONS is hardcoded to 1 in worker code. Scale via WORKER_REPLICAS instead.
+  # Parallel Execution Capacity (self-hosted mode uses these env vars)
+  # Cloud mode uses plan limits: Plus=5/50, Pro=10/100
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1}   # Max concurrent executions (match WORKER_REPLICAS)
+  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10}    # Max jobs waiting in queue
   # Container limits for 2 vCPU / 4GB servers
   CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5}
   CONTAINER_MEMORY_LIMIT_MB: ${CONTAINER_MEMORY_LIMIT_MB:-2048}
