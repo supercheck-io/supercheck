@@ -1062,6 +1062,37 @@ sequenceDiagram
 - Upload report to S3
 - Update run with report path and completion time
 
+### Test Execution Order Preservation
+
+Tests within a job execute in the exact order they were selected by the user. This order is preserved throughout the entire execution pipeline:
+
+**Database Storage:**
+- `jobTests` table stores `orderPosition` (0-indexed) for each test
+- Order is set when job is created (`/api/jobs` POST) or updated (`update-job.ts`)
+- All queries fetch tests with `ORDER BY orderPosition ASC`
+
+**Execution Pipeline:**
+| Stage | File | Order Mechanism |
+|-------|------|-----------------|
+| Job Creation | `/api/jobs/route.ts` POST | `orderPosition: index` |
+| Job Update | `update-job.ts` | `orderPosition: index` |
+| Job List (UI) | `/api/jobs/route.ts` GET | `orderBy(asc(orderPosition))` |
+| Edit Job (UI) | `/api/jobs/[id]/route.ts` GET | `orderBy(asc(orderPosition))` |
+| Job Execution | `job-execution-utils.ts` | `orderBy(orderPosition)` |
+| Scheduler | `job-scheduler.ts` | Uses `prepareJobTestScripts` (ordered) |
+| Remote Trigger | `/api/jobs/[id]/trigger/route.ts` | Uses `prepareJobTestScripts` (ordered) |
+
+**Playwright Report Ordering:**
+- Spec files are named with zero-padded order prefix: `001-{testId}.spec.mjs`, `002-{testId}.spec.mjs`
+- Playwright HTML reporter sorts files alphabetically, ensuring correct display order
+- Supports up to 999 tests per job (3-digit padding)
+
+```typescript
+// Worker: execution.service.ts
+const orderPrefix = String(i + 1).padStart(3, '0');
+const fileName = `${orderPrefix}-${testId}.spec.mjs`;
+```
+
 ---
 
 ## Multi-Location Execution
@@ -1070,9 +1101,21 @@ sequenceDiagram
 
 Playwright tests and jobs are executed via a **single global queue** (`playwright-global`). This simplifies the architecture as browser-based tests are typically less sensitive to geographic latency for functional verification compared to load tests.
 
+> **ℹ️ Playwright Timeout Configuration:**
+> - **Single Test Timeout:** 5 minutes (`TEST_EXECUTION_TIMEOUT_MS=300000`)
+> - **Job Timeout:** 60 minutes (`JOB_EXECUTION_TIMEOUT_MS=3600000`)
+> 
+> These timeouts are configured in the app environment and enforced by the worker. Tests or jobs exceeding these limits are automatically terminated.
+
 ### K6 Multi-Location Execution
 
 K6 load tests can be executed from multiple geographic locations for distributed load testing:
+
+> **ℹ️ K6 Timeout Configuration:**
+> - **Single Test Timeout:** 60 minutes (`K6_TEST_EXECUTION_TIMEOUT_MS=3600000`)
+> - **Job Timeout:** 60 minutes (`K6_JOB_EXECUTION_TIMEOUT_MS=3600000`)
+> 
+> K6 tests have longer default timeouts than Playwright tests to accommodate load testing scenarios. These timeouts are configured in the app environment and enforced by the worker.
 
 **Location Configuration:**
 - US East (Primary)

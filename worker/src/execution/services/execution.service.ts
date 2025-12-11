@@ -771,7 +771,9 @@ export class ExecutionService implements OnModuleDestroy {
           const script = ensureProperTraceConfiguration(decodedScript, testId);
 
           // Prepare script for inline container execution
-          const fileName = `${testId}.spec.mjs`;
+          // Prefix with zero-padded order number for correct sorting in Playwright report
+          const orderPrefix = String(i + 1).padStart(3, '0');
+          const fileName = `${orderPrefix}-${testId}.spec.mjs`;
           preparedScripts[fileName] = script;
 
           // Use the first script as the main test file

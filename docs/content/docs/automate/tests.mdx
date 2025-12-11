@@ -194,6 +194,26 @@ Tags are project-scoped, so each project can have its own tagging system.
 - **Tags** — Color-coded organization and filtering
 - **Multi-region** — Performance tests from US, EU, APAC
 
+## Execution Limits
+
+<Callout type="info">
+**Playwright Tests:** Individual test executions have a maximum runtime of **5 minutes**. Tests exceeding this limit are automatically terminated.
+
+**K6 Performance Tests:** Individual test executions have a maximum runtime of **60 minutes** to accommodate load testing scenarios.
+</Callout>
+
+## Running Multiple Tests
+
+For running multiple tests together in a sequence, use **[Jobs](/docs/automate/jobs)**. Jobs allow you to:
+
+- Group related tests into automated workflows
+- Schedule regular execution (hourly, daily, or custom cron)
+- Trigger from CI/CD pipelines
+- Get aggregated reports and notifications
+- Set up alerts for the entire test suite
+
+Jobs are ideal for regression testing, smoke tests, and comprehensive validation of your application.
+
 ## Learn More
 
 - **[Playwright Documentation](https://playwright.dev/docs/intro)** — Browser automation framework

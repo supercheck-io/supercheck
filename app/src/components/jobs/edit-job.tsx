@@ -392,9 +392,10 @@ export default function EditJob({ jobId }: EditJobProps) {
       currentDescription !== initialFormState.description ||
       currentCronSchedule !== initialFormState.cronSchedule;
 
-    // Check tests changes by comparing IDs
-    const currentTestIds = selectedTests.map(t => t.id).sort().join(',');
-    const initialTestIds = initialFormState.tests.map(t => t.id).sort().join(',');
+    // Check tests changes by comparing IDs AND their order (not sorted)
+    // Order matters for job execution sequence
+    const currentTestIds = selectedTests.map(t => t.id).join(',');
+    const initialTestIds = initialFormState.tests.map(t => t.id).join(',');
     const testsChanged = currentTestIds !== initialTestIds;
 
     // Check alert config changes using JSON comparison
