@@ -146,7 +146,7 @@ export function useExecutions(): UseExecutionsReturn {
   }, [fetchExecutions]);
 
   // Set up SSE connection for real-time updates
-  const setupEventSource = useCallback(() => {
+  const setupEventSource = useCallback(function setupEventSourceInner() {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
@@ -182,7 +182,7 @@ export function useExecutions(): UseExecutionsReturn {
 
         reconnectTimeoutRef.current = setTimeout(() => {
           if (document.visibilityState !== "hidden" && mountedRef.current) {
-            setupEventSource();
+            setupEventSourceInner();
           }
         }, backoffTime);
       };
