@@ -53,6 +53,7 @@ import {
 } from "./location-selection-dialog";
 import { TemplateDialog } from "./template-dialog";
 import type { TestPriority, TestType } from "@/db/schema/types";
+import { notifyExecutionsChanged } from "@/hooks/use-executions";
 
 const extractCodeFromResponse = (rawText: string): string => {
   if (!rawText) {
@@ -754,6 +755,9 @@ const Playground: React.FC<PlaygroundProps> = ({
       if (res.ok && result.testId) {
         const responseTestType: string =
           (result.testType as string) || "browser";
+
+        // Notify executions hook to refresh immediately (instant UI update)
+        notifyExecutionsChanged();
 
         setExecutionTestId(result.testId);
         setExecutionTestType(responseTestType);

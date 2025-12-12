@@ -488,33 +488,16 @@ export async function cleanupJobScheduler() {
  */
 export async function initializeDataLifecycleService(): Promise<DataLifecycleService | null> {
   try {
-    console.log(
-      "[DATA_LIFECYCLE] Initializing unified data lifecycle service..."
-    );
-
     // Create the unified data lifecycle service
-    console.log("[DATA_LIFECYCLE] Creating service from environment variables...");
     const lifecycleService = createDataLifecycleService();
-    console.log("[DATA_LIFECYCLE] Service created successfully");
 
-    // Get Redis connection from existing queue system
-    console.log("[DATA_LIFECYCLE] Getting Redis connection from queue system...");
+    // Get Redis connection from existing queue system and initialize
     const { redisConnection } = await getQueues();
-    console.log("[DATA_LIFECYCLE] Redis connection obtained");
-
-    // Initialize the lifecycle service with Redis connection
-    console.log("[DATA_LIFECYCLE] Initializing service with Redis connection...");
     await lifecycleService.initialize(redisConnection);
-    console.log("[DATA_LIFECYCLE] Service initialization complete");
 
     // Set the global instance for access throughout the app
     setDataLifecycleInstance(lifecycleService);
 
-    const status = await lifecycleService.getStatus();
-    console.log("[DATA_LIFECYCLE] ✅ Initialized successfully", {
-      enabledStrategies: status.enabledStrategies,
-      queueStatus: status.queueStatus,
-    });
     return lifecycleService;
   } catch (error) {
     console.error("[DATA_LIFECYCLE] ❌ Failed to initialize:", error);

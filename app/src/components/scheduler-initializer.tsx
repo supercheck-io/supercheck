@@ -16,6 +16,13 @@ import {
 } from "@/lib/processors/email-template-processor";
 
 /**
+ * Singleton guard to ensure initialization only happens once per server process.
+ * This prevents repeated initialization on every page render in development mode.
+ */
+let initializationPromise: Promise<void> | null = null;
+let isInitialized = false;
+
+/**
  * Server component to initialize the job and monitor schedulers.
  *
  * Uses BullMQ's Job Schedulers feature (available in v5.16.0+) which is a more robust
@@ -24,6 +31,29 @@ import {
  * to survive restarts.
  */
 export async function SchedulerInitializer() {
+  // Skip if already initialized
+  if (isInitialized) {
+    return null;
+  }
+
+  // If initialization is in progress, wait for it
+  if (initializationPromise) {
+    await initializationPromise;
+    return null;
+  }
+
+  // Start initialization
+  initializationPromise = doInitialize();
+  await initializationPromise;
+  isInitialized = true;
+
+  return null;
+}
+
+/**
+ * Actual initialization logic, separated for singleton pattern
+ */
+async function doInitialize(): Promise<void> {
   console.log("🚀 SchedulerInitializer starting...");
 
   try {
@@ -34,8 +64,7 @@ export async function SchedulerInitializer() {
 
     if (jobResult.success) {
       console.log(
-        `✅ Job scheduler initialized (${jobResult.initialized} scheduled${
-          jobResult.failed ? `, ${jobResult.failed} failed` : ""
+        `✅ Job scheduler initialized (${jobResult.initialized} scheduled${jobResult.failed ? `, ${jobResult.failed} failed` : ""
         })`
       );
       if (jobResult.failed && jobResult.failed > 0) {
@@ -71,8 +100,7 @@ export async function SchedulerInitializer() {
 
     if (monitorResult.success) {
       console.log(
-        `✅ Monitor scheduler initialized (${monitorResult.scheduled} monitors${
-          monitorResult.failed ? `, ${monitorResult.failed} failed` : ""
+        `✅ Monitor scheduler initialized (${monitorResult.scheduled} monitors${monitorResult.failed ? `, ${monitorResult.failed} failed` : ""
         })`
       );
 
@@ -96,9 +124,6 @@ export async function SchedulerInitializer() {
   }
 
   console.log("✨ SchedulerInitializer completed");
-
-  // This is a server component, so it doesn't render anything
-  return null;
 }
 
 // Optional: Add a cleanup function for graceful shutdown if the app supports it

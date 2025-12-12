@@ -1,5 +1,7 @@
-import { getQueues } from "@/lib/queue";
 import { checkCapacityLimits } from "@/lib/middleware/plan-enforcement";
+import { db } from "@/utils/db";
+import { runs, projects } from "@/db/schema";
+import { eq, and, or, sql } from "drizzle-orm";
 
 // Default capacity limits - fallback when no env vars or plan limits available
 // These match the Plus plan defaults (5 running, 50 queued)
@@ -63,14 +65,6 @@ export async function getCapacityLimitsForOrg(
   }
 }
 
-const COUNT_STATUSES = [
-  "active",
-  "waiting",
-  "prioritized",
-  "paused",
-  "delayed",
-] as const;
-
 /**
  * Check if a job should be processed based on current queue stats
  * This ensures workers only process jobs that are within the running capacity
@@ -82,8 +76,13 @@ export async function shouldProcessJob(): Promise<boolean> {
 }
 
 /**
- * Fetch real queue statistics from Redis using BullMQ key patterns
- * @param organizationId - Optional organization ID to get plan-specific capacity limits
+ * Fetch real queue statistics from the database (single source of truth)
+ * @param organizationId - Optional organization ID to filter by and get plan-specific capacity limits
+ * 
+ * This function is the SINGLE SOURCE OF TRUTH for running/queued counts.
+ * It uses database run status which is maintained by:
+ * - API routes (set initial status based on capacity check)
+ * - Capacity manager (updates status when jobs are promoted/completed)
  */
 export async function fetchQueueStats(
   organizationId?: string
@@ -92,68 +91,64 @@ export async function fetchQueueStats(
     // Get capacity limits - org-specific for cloud, env defaults for self-hosted
     const capacityLimits = await getCapacityLimitsForOrg(organizationId);
 
-    const queues = await getQueues();
+    // Query database for actual running and queued counts
+    // This is the same source the executions dialog uses
+    let query;
+    
+    if (organizationId) {
+      // Organization-specific counts (for top bar/dialog)
+      query = db
+        .select({
+          status: runs.status,
+          count: sql<number>`count(*)::int`.as('count'),
+        })
+        .from(runs)
+        .innerJoin(projects, eq(runs.projectId, projects.id))
+        .where(
+          and(
+            eq(projects.organizationId, organizationId),
+            or(
+              eq(runs.status, 'running'),
+              eq(runs.status, 'queued')
+            )
+          )
+        )
+        .groupBy(runs.status);
+    } else {
+      // Global counts (for self-hosted without auth, or fallback)
+      query = db
+        .select({
+          status: runs.status,
+          count: sql<number>`count(*)::int`.as('count'),
+        })
+        .from(runs)
+        .where(
+          or(
+            eq(runs.status, 'running'),
+            eq(runs.status, 'queued')
+          )
+        )
+        .groupBy(runs.status);
+    }
 
-    // Aggregate all execution queues
-    const executionQueues = [
-      // Playwright global queue
-      {
-        name: "playwright-global",
-        queue: queues.playwrightQueues["global"],
-      },
-      // K6 Regional Queues
-      ...Object.entries(queues.k6Queues).map(([region, queue]) => ({
-        name: `k6-${region}`,
-        queue,
-      })),
-      // Monitor queues are excluded from running capacity limits as they are critical
-      // and should not be blocked by long-running tests
-    ];
-
-    const countsByQueue = await Promise.all(
-      executionQueues.map(async ({ name, queue }) => {
-        if (!queue) {
-          console.warn(
-            `[Queue Stats] Queue "${name}" is not initialized; counting as zero.`
-          );
-          return { name, counts: null };
-        }
-
-        try {
-          const counts = await queue.getJobCounts(...COUNT_STATUSES);
-          return { name, counts };
-        } catch (error) {
-          console.error(
-            `[Queue Stats] Failed to fetch counts for ${name}:`,
-            error instanceof Error ? error.message : String(error)
-          );
-          return { name, counts: null };
-        }
-      })
-    );
-
-    const totals = countsByQueue.reduce(
-      (acc, { counts }) => {
-        if (!counts) {
-          return acc;
-        }
-
-        acc.running += counts.active ?? 0;
-        acc.queued +=
-          (counts.waiting ?? 0) +
-          (counts.prioritized ?? 0) +
-          (counts.paused ?? 0) +
-          (counts.delayed ?? 0);
-
-        return acc;
-      },
-      { running: 0, queued: 0 }
-    );
+    const results = await query;
+    
+    // Extract counts from results
+    let running = 0;
+    let queued = 0;
+    
+    for (const row of results) {
+      if (row.status === 'running') {
+        running = row.count;
+      } else if (row.status === 'queued') {
+        queued = row.count;
+      }
+    }
 
     return {
-      running: Math.min(totals.running, capacityLimits.runningCapacity),
+      running: Math.min(running, capacityLimits.runningCapacity),
       runningCapacity: capacityLimits.runningCapacity,
-      queued: totals.queued,
+      queued,
       queuedCapacity: capacityLimits.queuedCapacity,
     };
   } catch (error) {
