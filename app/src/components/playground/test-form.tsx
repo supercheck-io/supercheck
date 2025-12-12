@@ -522,25 +522,20 @@ export function TestForm({
             // Map common Zod error codes to user-friendly messages
             switch (error.code) {
               case "too_big":
-                return `${
-                  field.charAt(0).toUpperCase() + field.slice(1)
-                } is too long. Maximum ${error.maximum} characters allowed.`;
+                return `${field.charAt(0).toUpperCase() + field.slice(1)
+                  } is too long. Maximum ${error.maximum} characters allowed.`;
               case "too_small":
-                return `${
-                  field.charAt(0).toUpperCase() + field.slice(1)
-                } is too short. Minimum ${error.minimum} characters required.`;
+                return `${field.charAt(0).toUpperCase() + field.slice(1)
+                  } is too short. Minimum ${error.minimum} characters required.`;
               case "invalid_type":
-                return `${
-                  field.charAt(0).toUpperCase() + field.slice(1)
-                } has an invalid format.`;
+                return `${field.charAt(0).toUpperCase() + field.slice(1)
+                  } has an invalid format.`;
               case "invalid_string":
-                return `${
-                  field.charAt(0).toUpperCase() + field.slice(1)
-                } format is invalid.`;
+                return `${field.charAt(0).toUpperCase() + field.slice(1)
+                  } format is invalid.`;
               default:
-                return `${
-                  field.charAt(0).toUpperCase() + field.slice(1)
-                }: ${message}`;
+                return `${field.charAt(0).toUpperCase() + field.slice(1)
+                  }: ${message}`;
             }
           }
         );
@@ -566,7 +561,7 @@ export function TestForm({
       const base64Script = btoa(unescape(encodeURIComponent(editorContent)));
 
       // Update the test case with base64-encoded script
-       
+
       const { location: _playgroundLocation, ...testCaseForSave } = testCase;
       const updatedTestCase = {
         ...testCaseForSave,
@@ -910,66 +905,27 @@ export function TestForm({
           <label htmlFor="type" className="block text-sm font-medium">
             Type
           </label>
-          <Select
-            value={typeSelectValue}
-            onValueChange={(value) => {
-              if (performanceMode) return;
-              setTestCase((prev) => ({
-                ...prev,
-                type: value as TestType,
-                location:
-                  value === "performance"
-                    ? (prev.location as PerformanceLocation) ||
-                      performanceLocation ||
-                      "global"
-                    : null,
-              }));
-              if (value === "performance" && onPerformanceLocationChange) {
-                onPerformanceLocationChange(
-                  (performanceLocation || "global") as PerformanceLocation
-                );
-              }
-            }}
-            disabled={isRunning || performanceMode}
+          {/* Type display - read-only since type is determined by URL scriptType parameter */}
+          <div
+            className={cn(
+              "flex h-10 w-full items-center rounded-md border border-input bg-background px-3 py-2 text-sm",
+              "cursor-default"
+            )}
           >
-            <SelectTrigger
-              className={cn(
-                "h-10",
-                isRunning || performanceMode
-                  ? "opacity-70 cursor-not-allowed"
-                  : ""
-              )}
-            >
-              <SelectValue placeholder="Select type">
-                {(() => {
-                  const selected =
-                    availableTypes.find((t) => t.value === testCase.type) ||
-                    availableTypes[0];
-                  if (!selected) return "Select type";
-                  const Icon = selected.icon;
-                  return (
-                    <span className="flex items-center gap-2">
-                      <Icon className={cn("h-4 w-4", selected.color)} />
-                      {selected.label}
-                    </span>
-                  );
-                })()}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {availableTypes.map((type) => {
-                const Icon = type.icon;
-                return (
-                  <SelectItem key={type.value} value={type.value}>
-                    <div className="flex items-center gap-2">
-                      <Icon className={cn("h-4 w-4", type.color)} />
-                      {type.label}
-                    </div>
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
+            {(() => {
+              const selected =
+                availableTypes.find((t) => t.value === testCase.type) ||
+                availableTypes[0];
+              if (!selected) return <span className="text-muted-foreground">No type</span>;
+              const Icon = selected.icon;
+              return (
+                <span className="flex items-center gap-2">
+                  <Icon className={cn("h-4 w-4", selected.color)} />
+                  {selected.label}
+                </span>
+              );
+            })()}
+          </div>
           {errors.type && (
             <p className="mt-1.5 text-xs text-red-500">{errors.type}</p>
           )}
@@ -1069,28 +1025,26 @@ export function TestForm({
                   return (
                     <div className="flex items-center justify-end gap-1.5 mt-2">
                       <div
-                        className={`w-2 h-2 rounded-full ${
-                          isValidationIssue
-                            ? "bg-blue-500"
-                            : isExecutionIssue
+                        className={`w-2 h-2 rounded-full ${isValidationIssue
+                          ? "bg-blue-500"
+                          : isExecutionIssue
                             ? "bg-red-500"
                             : "bg-gray-400"
-                        }`}
+                          }`}
                       ></div>
                       <p
-                        className={`text-xs font-medium ${
-                          isValidationIssue
-                            ? "text-muted-foreground"
-                            : isExecutionIssue
+                        className={`text-xs font-medium ${isValidationIssue
+                          ? "text-muted-foreground"
+                          : isExecutionIssue
                             ? "text-muted-foreground"
                             : "text-muted-foreground"
-                        }`}
+                          }`}
                       >
                         {isValidationIssue
                           ? "Run script to validate and save"
                           : isExecutionIssue
-                          ? "Script must pass to save the test"
-                          : saveButtonMessage}
+                            ? "Script must pass to save the test"
+                            : saveButtonMessage}
                       </p>
                     </div>
                   );
@@ -1102,7 +1056,7 @@ export function TestForm({
                   !isRunning &&
                   !isSubmitting &&
                   (isCurrentScriptReadyToSave || (testId && onlyFormFieldsChanged));
-                  
+
                 if (isReadyToSave) {
                   return (
                     <div className="flex items-center justify-end gap-1.5 mt-2">

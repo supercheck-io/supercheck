@@ -78,7 +78,13 @@ export class MonitorProcessor extends WorkerHost {
           `[PROCESSOR] Saving ${syntheticResults.length} synthetic test result(s) from ${results.length} location(s)`,
         );
       }
-      void this.monitorService.saveMonitorResults(results);
+      // Use .catch() instead of void to ensure errors are logged
+      this.monitorService.saveMonitorResults(results).catch((error) => {
+        this.logger.error(
+          `Failed to save monitor results for legacy/local mode: ${error.message}`,
+          error.stack,
+        );
+      });
     }
   }
 
@@ -94,13 +100,6 @@ export class MonitorProcessor extends WorkerHost {
     );
   }
 
-  @OnWorkerEvent('progress')
-  onProgress(
-    job: Job<MonitorJobDataDto, MonitorExecutionResult, string>,
-    progress: number | object,
-  ) {
-    // Removed log - progress updates are too verbose
-  }
 }
 
 @Processor('monitor-us-east')

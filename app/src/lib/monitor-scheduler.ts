@@ -98,11 +98,14 @@ export async function deleteScheduledMonitor(schedulerId: string): Promise<boole
 
 /**
  * Initializes monitor schedulers for all monitors with frequency
- * Called on application startup
+ * Called on application startup.
+ * Uses a distributed lock to prevent race conditions in clustered environments.
  */
 export async function initializeMonitorSchedulers(): Promise<{ success: boolean; scheduled: number; failed: number }> {
   const maxRetries = 3;
   const retryDelay = 2000; // 2 seconds
+  const LOCK_KEY = 'monitor:scheduler:init:lock';
+  const LOCK_TTL_SECONDS = 120; // 2 minutes - enough time to initialize all schedulers
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -110,6 +113,17 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
       const { monitorSchedulerQueue } = await getQueues();
       const redisClient = await monitorSchedulerQueue.client;
       await redisClient.ping();
+
+      // Acquire distributed lock to prevent multiple instances from initializing simultaneously
+      // This is critical in clustered deployments where multiple Next.js instances start together
+      const lockAcquired = await redisClient.set(LOCK_KEY, process.pid.toString(), 'EX', LOCK_TTL_SECONDS, 'NX');
+      
+      if (!lockAcquired) {
+        console.log('[MonitorScheduler] Another instance is initializing schedulers, skipping...');
+        return { success: true, scheduled: 0, failed: 0 };
+      }
+      
+      console.log('[MonitorScheduler] Lock acquired, initializing schedulers...');
 
       const activeMonitors = await db
         .select()
@@ -121,6 +135,8 @@ export async function initializeMonitorSchedulers(): Promise<{ success: boolean;
         ));
 
       if (activeMonitors.length === 0) {
+        // Release lock early if no monitors to schedule
+        await redisClient.del(LOCK_KEY);
         return { success: true, scheduled: 0, failed: 0 };
       }
 

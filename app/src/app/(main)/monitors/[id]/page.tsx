@@ -1,16 +1,16 @@
-import { Metadata } from "next"; 
+import { Metadata } from "next";
 import { MonitorDetailClient, MonitorWithResults, MonitorResultItem } from "@/components/monitors/monitor-detail-client";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { notFound } from "next/navigation";
 import { db } from "@/utils/db";
-import { 
-    monitors, 
-    monitorResults, 
-    projects,
-    MonitorStatus as DBMoniotorStatusType, 
-    MonitorType as DBMonitorType,
-    MonitorResultStatus as DBMonitorResultStatusType,
-    MonitorConfig
+import {
+  monitors,
+  monitorResults,
+  projects,
+  MonitorStatus as DBMoniotorStatusType,
+  MonitorType as DBMonitorType,
+  MonitorResultStatus as DBMonitorResultStatusType,
+  MonitorConfig
 } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 
@@ -26,42 +26,45 @@ type MonitorDetailsPageProps = {
 // Direct server-side data fetching function (replaces the old fetchMonitorWithResults that used HTTP fetch)
 async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults | null> {
   try {
-    const monitorData = await db
-      .select({
-        id: monitors.id,
-        name: monitors.name,
-        target: monitors.target,
-        type: monitors.type,
-        enabled: monitors.enabled,
-        frequencyMinutes: monitors.frequencyMinutes,
-        status: monitors.status,
-        createdAt: monitors.createdAt,
-        updatedAt: monitors.updatedAt,
-        lastCheckAt: monitors.lastCheckAt,
-        config: monitors.config,
-        alertConfig: monitors.alertConfig,
-        projectId: monitors.projectId,
-        organizationId: monitors.organizationId,
-        projectName: projects.name,
-      })
-      .from(monitors)
-      .leftJoin(projects, eq(monitors.projectId, projects.id))
-      .where(eq(monitors.id, id))
-      .limit(1);
+    // Run both queries in parallel for faster initial page load
+    const [monitorDataResult, recentResultsData] = await Promise.all([
+      db
+        .select({
+          id: monitors.id,
+          name: monitors.name,
+          target: monitors.target,
+          type: monitors.type,
+          enabled: monitors.enabled,
+          frequencyMinutes: monitors.frequencyMinutes,
+          status: monitors.status,
+          createdAt: monitors.createdAt,
+          updatedAt: monitors.updatedAt,
+          lastCheckAt: monitors.lastCheckAt,
+          config: monitors.config,
+          alertConfig: monitors.alertConfig,
+          projectId: monitors.projectId,
+          organizationId: monitors.organizationId,
+          projectName: projects.name,
+        })
+        .from(monitors)
+        .leftJoin(projects, eq(monitors.projectId, projects.id))
+        .where(eq(monitors.id, id))
+        .limit(1),
 
-    if (!monitorData || monitorData.length === 0) {
-      return null; 
+      // Only load limited results for charts and summary - table will use pagination API
+      db
+        .select()
+        .from(monitorResults)
+        .where(eq(monitorResults.monitorId, id))
+        .orderBy(desc(monitorResults.checkedAt))
+        .limit(chartResultsLimit),
+    ]);
+
+    if (!monitorDataResult || monitorDataResult.length === 0) {
+      return null;
     }
 
-    const monitor = monitorData[0];
-
-    // Only load limited results for charts and summary - table will use pagination API
-    const recentResultsData = await db
-      .select()
-      .from(monitorResults)
-      .where(eq(monitorResults.monitorId, id))
-      .orderBy(desc(monitorResults.checkedAt))
-      .limit(chartResultsLimit);
+    const monitor = monitorDataResult[0];
 
     // Map DB results to MonitorResultItem structure for charts only
     const mappedRecentResults: MonitorResultItem[] = recentResultsData.map((r) => ({
@@ -77,7 +80,7 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
       testReportS3Url: r.testReportS3Url ?? undefined,
       location: r.location ?? null,
     }));
-    
+
     const frequencyMinutes = monitor.frequencyMinutes ?? 0;
 
     const transformedMonitor: MonitorWithResults = {
@@ -94,7 +97,7 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
       updatedAt: monitor.updatedAt ? new Date(monitor.updatedAt).toISOString() : undefined,
       lastCheckedAt: monitor.lastCheckAt ? new Date(monitor.lastCheckAt).toISOString() : undefined,
       responseTime: mappedRecentResults[0]?.responseTimeMs ?? undefined,
-      uptime: undefined, 
+      uptime: undefined,
       recentResults: mappedRecentResults,
       config: monitor.config as MonitorConfig,
       alertConfig: monitor.alertConfig || undefined,
@@ -111,7 +114,7 @@ async function getMonitorDetailsDirectly(id: string): Promise<MonitorWithResults
 
 export async function generateMetadata({ params }: MonitorDetailsPageProps): Promise<Metadata> {
   const { id } = await params; // Wait for params to resolve
-  const monitor = await getMonitorDetailsDirectly(id); 
+  const monitor = await getMonitorDetailsDirectly(id);
   if (!monitor) {
     return {
       title: "Monitor Not Found | Supercheck",
@@ -131,11 +134,11 @@ export default async function MonitorDetailsPage({ params }: MonitorDetailsPageP
   if (!monitorWithData) {
     notFound();
   }
-  
+
   const breadcrumbs = [
     { label: "Home", href: "/" },
     { label: "Monitors", href: "/monitors" },
-    { label: monitorWithData.name && monitorWithData.name.length > 30 ? `${monitorWithData.name?.substring(0, 30)}...` : monitorWithData.name || id, isCurrentPage: true }, 
+    { label: monitorWithData.name && monitorWithData.name.length > 30 ? `${monitorWithData.name?.substring(0, 30)}...` : monitorWithData.name || id, isCurrentPage: true },
   ];
 
   return (

@@ -223,6 +223,29 @@ export class CapacityManager {
   }
 
   /**
+   * Remove a job from the queued set (for cancellation)
+   * This handles jobs that are waiting to be promoted but haven't started yet.
+   * Note: Queued jobs don't consume running capacity - they only consume queued capacity.
+   * @returns true if job was found and removed
+   */
+  async removeFromQueuedSet(organizationId: string, jobId: string): Promise<boolean> {
+    try {
+      const queuedKey = KEYS.queued(organizationId);
+      const removed = await this.redis.zrem(queuedKey, jobId);
+      if (removed > 0) {
+        // Clean up the job data since job is cancelled
+        await this.cleanupJobData(jobId);
+        logger.info({ jobId, organizationId }, "Removed job from queued set (cancelled before promotion)");
+        return true;
+      }
+      return false;
+    } catch (error) {
+      logger.error({ err: error, jobId, organizationId }, "Failed to remove job from queued set");
+      return false;
+    }
+  }
+
+  /**
    * Get current capacity usage for an organization
    */
   async getCurrentUsage(organizationId: string = 'global'): Promise<{
@@ -408,6 +431,12 @@ export class CapacityManager {
           const jobData = JSON.parse(jobDataStr) as QueuedJobData;
           await this.addJobToBullMQ(jobData);
           logger.info({ jobId, organizationId }, "Promoted queued job to running");
+        } else {
+          // Job data expired or missing - release the slot we just acquired
+          // This prevents capacity leak when job data TTL expires before promotion
+          logger.warn({ jobId, organizationId }, "Job data missing during promotion, releasing slot");
+          await this.releaseRunningSlot(organizationId, jobId);
+          return false;
         }
         return true;
       }
@@ -423,6 +452,10 @@ export class CapacityManager {
    * This is called when a job moves from queued to running
    */
   private async addJobToBullMQ(jobData: QueuedJobData): Promise<void> {
+    // Track if job was successfully added to prevent double capacity release
+    // If queue.add succeeds, the job will trigger completed/failed events which release the slot
+    let jobAddedToBullMQ = false;
+    
     try {
       // Dynamic import to avoid circular dependency
       const queueModule = await import('./queue');
@@ -442,6 +475,10 @@ export class CapacityManager {
           _capacityStatus: 'promoted',
         }, { jobId: jobData.runId });
       }
+      
+      // Mark job as added - any subsequent failures should NOT release slot
+      // The job will complete/fail in BullMQ and trigger event handlers
+      jobAddedToBullMQ = true;
 
       // Update database run status from 'queued' to 'running'
       try {
@@ -452,15 +489,19 @@ export class CapacityManager {
         logger.info({ runId: jobData.runId }, "Updated run status from queued to running");
       } catch (dbError) {
         logger.warn({ err: dbError, runId: jobData.runId }, "Failed to update run status in database");
-        // Continue - job is already in BullMQ
+        // Continue - job is already in BullMQ, DB status is secondary
       }
 
       // Clean up job data after adding to BullMQ
       await this.cleanupJobData(jobData.jobId);
     } catch (error) {
       logger.error({ err: error, jobId: jobData.jobId }, "Failed to add promoted job to BullMQ");
-      // Release the slot since we couldn't add it
-      await this.releaseRunningSlot(jobData.organizationId, jobData.jobId);
+      
+      // CRITICAL: Only release slot if job was NEVER added to BullMQ
+      // If job was added, it will release slot via completed/failed events
+      if (!jobAddedToBullMQ) {
+        await this.releaseRunningSlot(jobData.organizationId, jobData.jobId);
+      }
       throw error;
     }
   }
@@ -619,12 +660,13 @@ export async function setupCapacityManagement(
   ].filter(Boolean);
 
   // Helper to get org ID for a job
-  async function getOrgId(jobId: string, queues: QueueParameters): Promise<string> {
-    // Try to get from our mapping first
+  // Returns null if org cannot be determined (reconciliation will fix any drift)
+  async function getOrgId(jobId: string, queues: QueueParameters): Promise<string | null> {
+    // Try to get from our mapping first (most reliable)
     const mappedOrg = await manager.getJobOrganization(jobId);
     if (mappedOrg) return mappedOrg;
 
-    // Try to find in queues
+    // Try to find in queues (fallback for edge cases)
     const allQueues = [
       queues.playwrightQueues['global'],
       ...Object.values(queues.k6Queues),
@@ -637,11 +679,14 @@ export async function setupCapacityManagement(
           return job.data.organizationId as string;
         }
       } catch {
-        // Job not in this queue
+        // Job not in this queue, continue
       }
     }
 
-    return 'global';
+    // IMPORTANT: Do NOT fall back to 'global' - this corrupts multi-tenant isolation
+    // If we can't determine the org, let reconciliation fix it later
+    logger.warn({ jobId }, "Could not determine organization for job - reconciliation will fix any drift");
+    return null;
   }
 
   // Setup minimal event listeners for job completion
@@ -650,10 +695,15 @@ export async function setupCapacityManagement(
     queueEvent.on('completed', async ({ jobId }) => {
       try {
         const orgId = await getOrgId(jobId, queues);
-        await manager.releaseRunningSlot(orgId, jobId);
+        if (orgId) {
+          await manager.releaseRunningSlot(orgId, jobId);
+        } else {
+          // Skip release - reconciliation will detect and fix the drift
+          logger.warn({ jobId }, "Skipping slot release on completion - org unknown, reconciliation will fix");
+        }
       } catch (error) {
         logger.error({ err: error, jobId }, "Failed to release slot on completion");
-        await manager.releaseRunningSlot('global', jobId);
+        // Do NOT fallback to 'global' - let reconciliation handle it
       }
     });
 
@@ -661,30 +711,30 @@ export async function setupCapacityManagement(
     queueEvent.on('failed', async ({ jobId }) => {
       try {
         const orgId = await getOrgId(jobId, queues);
-        await manager.releaseRunningSlot(orgId, jobId);
+        if (orgId) {
+          await manager.releaseRunningSlot(orgId, jobId);
+        } else {
+          logger.warn({ jobId }, "Skipping slot release on failure - org unknown, reconciliation will fix");
+        }
       } catch (error) {
         logger.error({ err: error, jobId }, "Failed to release slot on failure");
-        await manager.releaseRunningSlot('global', jobId);
+        // Do NOT fallback to 'global' - let reconciliation handle it
       }
     });
 
-    // Release running slot on stalled (job timeout)
-    queueEvent.on('stalled', async ({ jobId }) => {
-      try {
-        const orgId = await getOrgId(jobId, queues);
-        logger.warn({ jobId, orgId }, "Job stalled, releasing capacity");
-        await manager.releaseRunningSlot(orgId, jobId);
-      } catch (error) {
-        logger.error({ err: error, jobId }, "Failed to release slot on stall");
-        await manager.releaseRunningSlot('global', jobId);
-      }
-    });
+    // Note: We DO NOT release slot on 'stalled' event because BullMQ moves stalled jobs
+    // back to the wait queue to be retried (up to maxStalledCount).
+    // If we released the slot here, the job would run again consuming capacity we just released,
+    // allowing another job to start and exceeding the limit.
+    // If the job reaches maxStalledCount, it will fail and trigger the 'failed' event above.
 
     // Track job organization when it becomes active
     queueEvent.on('active', async ({ jobId }) => {
       try {
         const orgId = await getOrgId(jobId, queues);
-        await manager.trackJobOrganization(jobId, orgId);
+        if (orgId) {
+          await manager.trackJobOrganization(jobId, orgId);
+        }
       } catch (error) {
         logger.error({ err: error, jobId }, "Failed to track job on active");
       }
@@ -733,11 +783,13 @@ export async function reconcileCapacityCounters(
       ...Object.values(queues.k6Queues),
     ].filter(Boolean);
 
-    // 1. Count actual active jobs per organization from BullMQ
+    // 1. Count actual jobs that have consumed running slots per organization from BullMQ
+    // IMPORTANT: Include both 'active' (currently executing) AND 'waiting' (reserved slot, waiting for worker)
+    // Jobs in 'waiting' state have already consumed a capacity slot via reserveSlot()
     const actualRunningByOrg: Record<string, number> = {};
     
     const allActiveJobs = await Promise.all(
-      executionQueues.map(q => q.getJobs(['active']))
+      executionQueues.map(q => q.getJobs(['active', 'waiting']))
     );
 
     for (const jobs of allActiveJobs) {
