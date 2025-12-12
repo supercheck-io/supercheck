@@ -272,6 +272,8 @@ function RunButton({ job }: { job: Job }) {
         setJobRunning(false, job.id);
         setLocalRunId(null);
         closeSSEConnection();
+        // Trigger global UI refresh immediately
+        notifyExecutionsChanged();
       } else {
         toast.error("Failed to cancel run", {
           description: data.message || "Unknown error occurred",

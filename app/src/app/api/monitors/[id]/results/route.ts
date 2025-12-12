@@ -100,22 +100,25 @@ export async function GET(
 
     const whereCondition = conditions.length > 1 ? and(...conditions) : conditions[0];
 
-    // Get total count for pagination metadata
-    const [{ count: totalCount }] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(monitorResults)
-      .where(whereCondition);
+    // Run count and results queries in parallel for better performance
+    const [countResult, results] = await Promise.all([
+      // Get total count for pagination metadata
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(monitorResults)
+        .where(whereCondition),
 
-    const total = Number(totalCount);
+      // Get the specific page of results
+      db
+        .select()
+        .from(monitorResults)
+        .where(whereCondition)
+        .orderBy(desc(monitorResults.checkedAt))
+        .limit(limit)
+        .offset(offset),
+    ]);
 
-    // Get the specific page of results
-    const results = await db
-      .select()
-      .from(monitorResults)
-      .where(whereCondition)
-      .orderBy(desc(monitorResults.checkedAt))
-      .limit(limit)
-      .offset(offset);
+    const total = Number(countResult[0]?.count || 0);
 
     // Calculate pagination metadata
     const totalPages = Math.ceil(total / limit);

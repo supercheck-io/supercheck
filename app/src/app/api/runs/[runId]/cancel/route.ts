@@ -12,6 +12,7 @@ import {
 import { requireAuth, canCancelRunInProject } from "@/lib/rbac/middleware";
 import { setCancellationSignal } from "@/lib/cancellation-service";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { getCapacityManager } from "@/lib/capacity-manager";
 
 const logger = createLogger({ module: "cancel-run-api" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -222,6 +223,7 @@ export async function POST(
 
     // Try to find and remove the job from BullMQ (only works for waiting/delayed jobs)
     // For active jobs, the worker will see the cancellation signal and stop
+    let jobWasRemoved = false; // Track if we successfully removed the job
     try {
       // Check Playwright queue
       const playwrightQueue = queues.playwrightQueues["global"];
@@ -237,6 +239,7 @@ export async function POST(
             await job.remove();
             queueToSearch = "playwright-global";
             jobType = "playwright";
+            jobWasRemoved = true; // Job was successfully removed from queue
             logger.info(
               { runId, jobId: job.id, queue: queueToSearch },
               "Removed job from BullMQ queue"
@@ -255,6 +258,7 @@ export async function POST(
               );
               queueToSearch = "playwright-global";
               jobType = "playwright";
+              // jobWasRemoved remains false - worker will handle capacity release
             } else {
               throw removeError; // Re-throw unexpected errors
             }
@@ -278,6 +282,7 @@ export async function POST(
                 await job.remove();
                 queueToSearch = `k6-${region}`;
                 jobType = "k6";
+                jobWasRemoved = true; // Job was successfully removed from queue
                 logger.info(
                   { runId, jobId: job.id, queue: queueToSearch },
                   "Removed job from BullMQ queue"
@@ -296,6 +301,7 @@ export async function POST(
                   );
                   queueToSearch = `k6-${region}`;
                   jobType = "k6";
+                  // jobWasRemoved remains false - worker will handle capacity release
                 } else {
                   throw removeError; // Re-throw unexpected errors
                 }
@@ -308,13 +314,58 @@ export async function POST(
         }
       }
 
+      // STEP 2.5: Check if job is in Redis capacity queue (not yet promoted to BullMQ)
+      // Jobs can be in the queued set waiting to be promoted when capacity becomes available
+      if (!queueToSearch && organizationIdForRbac) {
+        try {
+          const capacityManager = await getCapacityManager();
+          const removedFromQueuedSet = await capacityManager.removeFromQueuedSet(organizationIdForRbac, runId);
+          if (removedFromQueuedSet) {
+            logger.info(
+              { runId, organizationId: organizationIdForRbac },
+              "Removed job from capacity queue (was waiting for promotion to BullMQ)"
+            );
+            jobType = "queued-pending";
+            // Note: Queued jobs don't consume running capacity, only queued capacity
+            // So we don't need to release a running slot here
+          }
+        } catch (queuedSetError) {
+          logger.error(
+            { error: queuedSetError, runId },
+            "Failed to check Redis capacity queue"
+          );
+          // Continue - we'll still mark the job as cancelled in DB
+        }
+      }
+
       // Note: We don't throw error if job not found in queue
       // The run might have already started executing, so we just mark it as cancelled
-      if (!queueToSearch) {
+      if (!queueToSearch && jobType === "unknown") {
         logger.warn(
           { runId },
           "Job not found in any queue - marking as cancelled anyway"
         );
+      }
+
+      // STEP 3.5: Release capacity slot if job was removed from queue
+      // This is critical - when job.remove() succeeds, no BullMQ events fire,
+      // so we must manually release the capacity slot to prevent counter leak
+      if (jobWasRemoved && organizationIdForRbac) {
+        try {
+          const capacityManager = await getCapacityManager();
+          await capacityManager.releaseRunningSlot(organizationIdForRbac, runId);
+          logger.info(
+            { runId, organizationId: organizationIdForRbac },
+            "Released capacity slot after job removal"
+          );
+        } catch (capacityError) {
+          logger.error(
+            { error: capacityError, runId },
+            "Failed to release capacity slot - may need manual reconciliation"
+          );
+          // Continue with cancellation even if capacity release fails
+          // Reconciliation will eventually fix any drift
+        }
       }
     } catch (queueError) {
       logger.error(

@@ -177,6 +177,34 @@ sequenceDiagram
 
 ---
 
+## Test Saving Behavior
+
+The playground enforces validation before allowing tests to be saved:
+
+### Playwright Tests
+
+- Script must pass validation (syntax check)
+- Script must execute **successfully** (test passes)
+- If test fails, script cannot be saved until issues are fixed and test passes
+
+### K6 Performance Tests
+
+- Script must pass validation (syntax check)
+- Script must execute and **generate a report**
+- **Both passed and failed threshold tests can be saved** since:
+  - K6 tests can run for up to 1 hour
+  - Failed thresholds indicate the script ran correctly but performance targets weren't met
+  - Wasting resources by forcing re-runs is unacceptable
+- Only execution errors (syntax errors, timeouts, cancelled runs) block saving
+
+### Script Change Detection
+
+- Modifying the script after execution invalidates the "ready to save" state
+- User must re-run the test after any script change before saving
+- Form field changes (title, description, tags) do NOT require re-running
+
+---
+
 ## Summary
 
 ✅ **Interactive Development** - Real-time code editing and execution
@@ -185,3 +213,4 @@ sequenceDiagram
 ✅ **Multi-Location** - Test from multiple regions
 ✅ **Automatic Cleanup** - 24-hour artifact retention
 ✅ **Cancellation Support** - Stop running tests instantly
+

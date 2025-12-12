@@ -208,20 +208,50 @@ export async function GET() {
        }
     }
 
-    // Assign queue positions
+    // Assign queue positions using Redis sorted set (single source of truth for FIFO order)
+    // The capacity manager stores queued jobs with timestamp scores for correct ordering
     let queuePosition = 1;
-    // Sort queued items by creation time (FIFO) if not sorted by DB?
-    // DB query didn't specify order, but usually insertion order. 
-    // Let's assume CapacityManager's Redis Sorted Set is the REAL truth for order,
-    // but matching that is complex. 
-    // Approximation: Sort by ID (uuidv7 is time-sortable) or created_at (not selected).
-    // Let's rely on runs.id (UUIDv7) which is time-ordered
-    queuedItems.sort((a, b) => a.runId.localeCompare(b.runId));
     
-    // Assign positions
-    queuedItems.forEach(item => {
-      item.queuePosition = queuePosition++;
-    });
+    try {
+      const { getRedisConnection } = await import('@/lib/queue');
+      const redis = await getRedisConnection();
+      
+      const queuedKey = `capacity:queued:${organizationId}`;
+      
+      // Get all job IDs from sorted set in order (oldest first = lowest timestamp score)
+      const orderedJobIds = await redis.zrange(queuedKey, 0, -1);
+      
+      // Create a position map from Redis order
+      const positionMap = new Map<string, number>();
+      orderedJobIds.forEach((id, index) => {
+        positionMap.set(id, index + 1);
+      });
+      
+      // Sort queued items using Redis positions (FIFO order)
+      queuedItems.sort((a, b) => {
+        const posA = positionMap.get(a.runId) ?? Number.MAX_SAFE_INTEGER;
+        const posB = positionMap.get(b.runId) ?? Number.MAX_SAFE_INTEGER;
+        return posA - posB;
+      });
+      
+      // Assign positions from Redis, with fallback for jobs not in sorted set
+      let fallbackPosition = orderedJobIds.length + 1;
+      queuedItems.forEach(item => {
+        const redisPosition = positionMap.get(item.runId);
+        if (redisPosition !== undefined) {
+          item.queuePosition = redisPosition;
+        } else {
+          // Job not in Redis sorted set (edge case: already promoted or added via different path)
+          item.queuePosition = fallbackPosition++;
+        }
+      });
+    } catch (redisError) {
+      // Fallback if Redis unavailable: use sequential positions (order may not be accurate)
+      console.warn('[API] Failed to get Redis queue positions, using fallback:', redisError);
+      queuedItems.forEach(item => {
+        item.queuePosition = queuePosition++;
+      });
+    }
 
     return NextResponse.json({
       running: runningItems.sort((a, b) => {

@@ -558,23 +558,32 @@ QUEUED_CAPACITY=100    # Override plan-specific queued limit
 **✅ Counter Leak Prevention**
 - 24-hour TTL on all Redis counters
 - Job lifecycle events properly release counters:
-  - `active`: transitions queued→running
+  - `active`: tracks job-to-org mapping in Redis
   - `completed/failed`: releases running slots
   - `failed` (before active): releases queued slots
-  - `stalled`: releases running slots with warnings
+- **Stalled jobs do NOT release slots** - BullMQ retries them automatically (up to `maxStalledCount`)
+- Capacity only released when job transitions to permanent terminal state (`completed`/`failed`)
 
 **✅ Job-to-Organization Mapping**
-- Redis hash stores `jobId → organizationId` mapping when jobs become active
+- Redis key stores `jobId → organizationId` when jobs become active or are queued
+- Also set proactively in `queue.ts` before adding to BullMQ (prevents race conditions)
 - Enables correct capacity release even when BullMQ job data is unavailable
-- Key: `capacity:job_org_mapping`, TTL: 48 hours
-- Fallback mechanism ensures counters are always released correctly
+- Key: `capacity:org:{jobId}`, TTL: 48 hours
+- **No fallback to 'global'** - if org unknown, skip release and let reconciliation fix it
+- This prevents multi-tenant counter corruption
 
 **✅ Automatic Capacity Reconciliation**
 - Runs every 5 minutes to detect and correct counter drift
 - Uses **non-blocking `redis.scan()`** to find all capacity keys (not `redis.keys()` which blocks)
+- Counts both `active` AND `waiting` jobs (both consume running slots)
 - Compares Redis counters against actual BullMQ queue state per organization
 - Auto-corrects any drift immediately (multi-tenant aware)
 - Logs warnings for manual review when drift detected
+
+**✅ Double Release Prevention**
+- `addJobToBullMQ` tracks if job was successfully added before error handling
+- Slot only released in catch block if job was never added to BullMQ
+- If job was added, `completed`/`failed` events will handle slot release
 
 ### Simplified Architecture
 
@@ -656,7 +665,7 @@ sequenceDiagram
     Note over Queue: Job Completion Events
     Queue->>CM: completed event → releaseRunningSlot()
     Queue->>CM: failed event → releaseRunningSlot()
-    Queue->>CM: stalled event → releaseRunningSlot()
+    Note over Queue: stalled event → NO release (job will retry)
 ```
 
 ### Organization-Specific Capacity Tracking
@@ -781,6 +790,16 @@ API POST /api/jobs/run → Success → notifyExecutionsChanged()
                                           ↓
                         Both UI components update instantly
 ```
+
+**Queue Position Display:**
+
+The `/api/executions/running` endpoint displays accurate queue positions by querying the Redis sorted set directly:
+
+1. **Fetch Order**: API calls `ZRANGE capacity:queued:{orgId} 0 -1` to get job IDs ordered by timestamp score
+2. **Position Map**: Creates a map of `jobId → position` where position 1 is the oldest job
+3. **Sort & Assign**: Sorts queued items using Redis order and assigns positions accordingly
+
+This ensures the UI displays positions that match actual dequeue order - Job #1 is always picked first when capacity becomes available.
 
 **Monitor Execution Bypass:**
 - ✅ **Critical monitors bypass capacity limits entirely**

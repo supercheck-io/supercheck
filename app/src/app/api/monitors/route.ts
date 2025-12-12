@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, monitorNotificationSettings } from "@/db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { requireAuth, hasPermission } from "@/lib/rbac/middleware";
 import { requireProjectContext } from "@/lib/project-context";
 import {
@@ -57,25 +57,35 @@ export async function GET(request: Request) {
             )
           : undefined;
 
-      // Get total count
-      const countQuery = db.select({ count: monitors.id }).from(monitors);
-      const totalResults = whereCondition
-        ? await countQuery.where(whereCondition)
-        : await countQuery;
-      const total = totalResults.length;
+      // Run count and data queries in parallel for better performance
+      // Using proper SQL COUNT(*) instead of fetching all IDs and using .length
+      const [countResult, monitorsList] = await Promise.all([
+        // Proper COUNT query - much more efficient than fetching all rows
+        whereCondition
+          ? db
+              .select({ count: sql<number>`count(*)` })
+              .from(monitors)
+              .where(whereCondition)
+          : db.select({ count: sql<number>`count(*)` }).from(monitors),
 
-      // Get paginated results
-      // Using ID ordering instead of createdAt since UUIDv7 is time-ordered (PostgreSQL 18+)
-      const baseQuery = db
-        .select()
-        .from(monitors)
-        .orderBy(desc(monitors.id))
-        .limit(limit)
-        .offset(offset);
+        // Data query with pagination
+        whereCondition
+          ? db
+              .select()
+              .from(monitors)
+              .where(whereCondition)
+              .orderBy(desc(monitors.id))
+              .limit(limit)
+              .offset(offset)
+          : db
+              .select()
+              .from(monitors)
+              .orderBy(desc(monitors.id))
+              .limit(limit)
+              .offset(offset),
+      ]);
 
-      const monitorsList = whereCondition
-        ? await baseQuery.where(whereCondition)
-        : await baseQuery;
+      const total = Number(countResult[0]?.count || 0);
 
       const totalPages = Math.ceil(total / limit);
 
@@ -331,15 +341,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check monitor limit for the organization's plan
-    const currentMonitorCount = await db
-      .select({ count: monitors.id })
+    // Check monitor limit for the organization's plan using proper SQL COUNT
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
       .from(monitors)
       .where(eq(monitors.organizationId, organizationId));
 
     const limitCheck = await checkMonitorLimit(
       organizationId,
-      currentMonitorCount.length
+      Number(countResult[0]?.count || 0)
     );
     if (!limitCheck.allowed) {
       console.warn(
