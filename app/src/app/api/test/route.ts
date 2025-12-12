@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
             id: crypto.randomUUID(),
             jobId: null,
             projectId: project.id,
-            status: "running",
+            status: "queued", // Start as queued, updated after capacity reservation
             trigger: "manual",
             location: resolvedLocation,
             metadata: {
@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
             id: crypto.randomUUID(),
             jobId: null,
             projectId: project.id,
-            status: "running",
+            status: "queued", // Start as queued, updated after capacity reservation
             trigger: "manual",
             location: null,
             metadata: {
@@ -227,9 +227,9 @@ export async function POST(request: NextRequest) {
         const queueResult = await addK6TestToQueue(performanceTask, 'k6-playground-execution');
         
         // Update run status based on actual queue result
-        if (runIdForQueue && queueResult.status === 'queued') {
+        if (runIdForQueue) {
           await db.update(runs)
-            .set({ status: 'queued' })
+            .set({ status: queueResult.status })
             .where(eq(runs.id, runIdForQueue));
         }
       } else {
@@ -247,9 +247,9 @@ export async function POST(request: NextRequest) {
         const queueResult = await addTestToQueue(task);
         
         // Update run status based on actual queue result
-        if (runIdForQueue && queueResult.status === 'queued') {
+        if (runIdForQueue) {
           await db.update(runs)
-            .set({ status: 'queued' })
+            .set({ status: queueResult.status })
             .where(eq(runs.id, runIdForQueue));
         }
       }
