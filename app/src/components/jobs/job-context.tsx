@@ -330,7 +330,7 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
 
     const fetchRunningJobs = async () => {
       try {
-        const response = await fetch("/api/jobs/status/running", {
+        const response = await fetch("/api/executions/running", {
           cache: "no-store",
         });
 
@@ -340,17 +340,28 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
         }
 
         const data = await response.json();
-        const runningJobsData: Array<{
-          jobId: string;
-          runId: string;
-          name?: string;
-        }> = Array.isArray(data.runningJobs) ? data.runningJobs : [];
+
+        // Map new response format to expected structure
+        // New format: { running: [...], queued: [...] }
+        // Old format: { runningJobs: [...] }
+        const runningItems = Array.isArray(data.running) ? data.running : [];
+
+        // Filter to only job executions (not playground) and map to expected format
+        const runningJobsData = runningItems
+          .filter((item: { source?: string; jobId?: string }) =>
+            item.source === 'job' && item.jobId
+          )
+          .map((item: { jobId: string; runId: string; jobName: string }) => ({
+            jobId: item.jobId,
+            runId: item.runId,
+            name: item.jobName,
+          }));
 
         if (!isMounted) {
           return;
         }
 
-        runningJobsData.forEach((job) => {
+        runningJobsData.forEach((job: { jobId: string; runId: string; name?: string }) => {
           if (!job?.jobId || !job?.runId) {
             return;
           }

@@ -1,153 +1,43 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useState } from "react";
 import { Skeleton } from "./ui/skeleton";
 import { ExecutionsDialog } from "./executions/executions-dialog";
+import { useExecutions } from "@/hooks/use-executions";
 
-// Define our queue stats interface here for reference
-interface QueueStats {
-  running: number;
-  runningCapacity: number;
-  queued: number;
-  queuedCapacity: number;
-}
-
+/**
+ * ParallelThreads component - Top bar indicator for running/queued executions
+ * 
+ * Uses the shared useExecutions hook (SINGLE SOURCE OF TRUTH)
+ * Same data source as the ExecutionsDialog for consistency.
+ */
 export function ParallelThreads() {
-  const [stats, setStats] = useState<QueueStats>({
-    running: 0,
-    runningCapacity: 2, // Default value, will be updated from SSE
-    queued: 0,
-    queuedCapacity: 10, // Default value, will be updated from SSE
-  });
-  const [loading, setLoading] = useState(true);
-  const [connectionStatus, setConnectionStatus] = useState<
-    "connected" | "connecting" | "disconnected"
-  >("connecting");
+  const {
+    runningCount,
+    queuedCount,
+    runningCapacity,
+    queuedCapacity,
+    loading,
+  } = useExecutions();
+
   const [activeDialogTab, setActiveDialogTab] = useState<
     "running" | "queued" | null
   >(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-  const eventSourceRef = useRef<EventSource | null>(null);
-  // Use ref to store setup function for recursive calls
-  const setupEventSourceRef = useRef<(() => EventSource | null) | null>(null);
-
-  // Function to create and set up the SSE connection
-  const setupEventSource = useCallback((): EventSource | null => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
-
-    try {
-      const source = new EventSource("/api/queue-stats/sse");
-      eventSourceRef.current = source;
-
-      source.onopen = () => {
-        setConnectionStatus("connected");
-        reconnectAttemptsRef.current = 0;
-      };
-
-      source.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          setStats(data);
-          setLoading(false);
-          setConnectionStatus("connected");
-        } catch (err) {
-          console.error("Error parsing SSE data:", err);
-        }
-      };
-
-      source.onerror = () => {
-        // Only change connection status if we're not already trying to reconnect
-        setConnectionStatus("connecting");
-
-        // Close the current connection
-        source.close();
-        eventSourceRef.current = null;
-
-        // Implement exponential backoff for reconnection
-        const backoffTime = Math.min(
-          1000 * Math.pow(1.5, reconnectAttemptsRef.current),
-          10000
-        );
-        reconnectAttemptsRef.current++;
-
-        // Clear any existing timeout
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-        }
-
-        // Schedule reconnection using ref to avoid stale closure
-        reconnectTimeoutRef.current = setTimeout(() => {
-          if (
-            document.visibilityState !== "hidden" &&
-            setupEventSourceRef.current
-          ) {
-            setupEventSourceRef.current();
-          }
-        }, backoffTime);
-      };
-
-      return source;
-    } catch (err) {
-      console.error("Failed to initialize SSE:", err);
-      setConnectionStatus("disconnected");
-      return null;
-    }
-  }, []);
-
-  // Keep ref updated with latest function
-  useEffect(() => {
-    setupEventSourceRef.current = setupEventSource;
-  }, [setupEventSource]);
-
-  useEffect(() => {
-    // Set up visibility change listener to reconnect when tab becomes visible
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && !eventSourceRef.current) {
-        setupEventSource();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    // Initial setup - defer to next tick to avoid synchronous setState in effect
-    const timeoutId = setTimeout(() => {
-      setupEventSource();
-    }, 0);
-
-    // Cleanup function
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-
-      clearTimeout(timeoutId);
-
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-    };
-  }, [setupEventSource]);
 
   // Calculate progress percentages
   const runningProgress = Math.min(
     100,
-    (stats.running / stats.runningCapacity) * 100
+    (runningCount / runningCapacity) * 100
   );
   const queuedProgress = Math.min(
     100,
-    (stats.queued / stats.queuedCapacity) * 100
+    (queuedCount / queuedCapacity) * 100
   );
 
   if (loading) {
     return <LoadingSkeleton />;
   }
 
-  // Just show the data even if we're reconnecting - the user doesn't need to know about temporary connectivity issues
   return (
     <>
       <div
@@ -164,16 +54,15 @@ export function ParallelThreads() {
           <div className="flex flex-col mr-4">
             <div className="flex items-center justify-between mb-1">
               <span
-                className={`font-medium text-[11px] ${
-                  stats.running > 0
+                className={`font-medium text-[11px] ${runningCount > 0
                     ? "text-blue-600 dark:text-blue-500"
                     : "text-muted-foreground"
-                }`}
+                  }`}
               >
                 RUNNING
               </span>
               <span className="text-muted-foreground ml-2 text-[11px]">
-                {stats.running}/{stats.runningCapacity}
+                {runningCount}/{runningCapacity}
               </span>
             </div>
             <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
@@ -187,16 +76,15 @@ export function ParallelThreads() {
           <div className="flex flex-col">
             <div className="flex items-center justify-between mb-1">
               <span
-                className={`font-medium text-[11px] ${
-                  stats.queued > 0
+                className={`font-medium text-[11px] ${queuedCount > 0
                     ? "text-amber-600 dark:text-amber-500"
                     : "text-muted-foreground"
-                }`}
+                  }`}
               >
                 QUEUED
               </span>
               <span className="text-muted-foreground ml-2 text-[11px]">
-                {stats.queued}/{stats.queuedCapacity}
+                {queuedCount}/{queuedCapacity}
               </span>
             </div>
             <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
@@ -255,3 +143,5 @@ function LoadingSkeleton() {
     </div>
   );
 }
+
+

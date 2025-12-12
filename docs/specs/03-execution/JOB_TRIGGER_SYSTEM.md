@@ -740,65 +740,53 @@ Cancelled runs display as "Cancelled" (not "Error") in the UI:
 
 To prevent jobs from getting "stuck" in a `running` state due to worker crashes or unexpected terminations, the system implements **active queue verification** that synchronizes database status with the actual BullMQ queue state.
 
-### Synchronization Mechanism
+### Synchronization Mechanisms
 
-```mermaid
-sequenceDiagram
-    participant UI as Jobs UI
-    participant API as Status API
-    participant DB as PostgreSQL
-    participant Queue as BullMQ/Redis
+#### 1. UI-Level Verification (`/api/executions/running`)
 
-    UI->>API: GET /api/jobs/status/running
-    API->>DB: Query runs with status='running'
+When the UI fetches running executions, the API automatically verifies the status of each job against BullMQ:
 
-    loop For Each Running Job
-        API->>Queue: getJob(runId)
-        Queue-->>API: Job state or null
+- **Check**: For every job marked as 'queued' in DB, check if it's actually 'active' in BullMQ (handles propagation delays).
+- **Result**: If BullMQ says 'active', the API returns it as 'running' immediately, ensuring the UI feels responsive even if DB updates are lagging.
 
-        alt Job Running in Queue
-            API->>API: Mark as valid
-        else Job Not in Queue
-            API->>DB: UPDATE status='error'
-            API->>API: Mark as stale
-        end
-    end
+#### 2. Capacity Reconciliation (`reconcileCapacityCounters`)
 
-    API-->>UI: Return only valid running jobs
+A background process runs every 5 minutes to ensure capacity counters match actual usage:
+
+- **Scope**: Scans all execution queues (Playwright & K6) and all capacity counters using non-blocking SCAN.
+- **Multi-Tenant**: Aggregates active jobs by `organizationId` to ensure isolation.
+- **Drift Correction**: If Redis counters assume usage that doesn't exist (e.g., crashed worker didn't release slot), the counters are auto-corrected to match the actual queue state.
+- **Production Safety**: Uses Redis SCAN instead of KEYS to avoid blocking the Redis server.
+
+### Synchronization Flow
+
 ```
-
-### When It Runs
-
-- **On Page Load**: `/api/jobs/status/running` is called by `JobContext`
-- **On Refresh**: Ensures UI always shows accurate state
-- **Automatic**: No manual intervention required
-
-### How It Works
-
-**Implementation:** `app/src/app/api/jobs/status/running/route.ts`
-
-1. **Query Database**: Get all runs with `status: 'running'`
-2. **Verify with Queue**: For each run, check if job exists in BullMQ queues:
-   - Check Playwright global queue
-   - Check K6 regional queues
-   - Use `queue.getJob(runId)` and `job.getState()`
-3. **Detect Inconsistencies**: If queue says job is completed/failed/missing but DB says "running"
-4. **Sync Database**: Immediately update stale runs to `error` status
-5. **Return Valid Jobs**: Only return jobs that are truly running
-
-### Performance Optimization
-
-- **Parallel Batch Queries**: Checks all runs concurrently using `Promise.all()`
-- **Early Exit**: Uses `Promise.race()` to return as soon as job is found in any queue
-- **Timeout Protection**: 2000ms timeout per run (increased for connection stability)
-- **Complexity**: O(N) instead of O(N×M) where N=runs, M=queues
-
-### Stale Threshold
-
-- Only runs older than **60 minutes** (platform max execution time) are marked as stale
-- Recent runs not found in queue are kept as valid (handles transient BullMQ connection issues)
-- Prevents legitimate running jobs from being incorrectly marked as errors during page refresh
-- **Consistency:** Both `/api/jobs/status/running` and `/api/executions/running` use the same 60-minute threshold
+┌─────────────────────────────────────────────────────────────┐
+│                     STATUS VERIFICATION                      │
+└─────────────────────────────────────────────────────────────┘
+                              │
+          ┌───────────────────┼───────────────────┐
+          ▼                   ▼                   ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│ UI Request      │  │ Background      │  │ Job Completion  │
+│ /api/executions │  │ Reconciliation  │  │ BullMQ Events   │
+│ /running        │  │ (every 5 min)   │  │                 │
+└────────┬────────┘  └────────┬────────┘  └────────┬────────┘
+         │                    │                    │
+         ▼                    ▼                    ▼
+   ┌───────────┐        ┌───────────┐        ┌───────────┐
+   │ Check DB  │        │ SCAN all  │        │ Release   │
+   │ vs BullMQ │        │ capacity  │        │ capacity  │
+   │ per job   │        │ keys      │        │ counter   │
+   └─────┬─────┘        └─────┬─────┘        └───────────┘
+         │                    │
+         ▼                    ▼
+   ┌───────────┐        ┌───────────┐
+   │ Override  │        │ Auto-fix  │
+   │ DB status │        │ drift per │
+   │ for UI    │        │ org       │
+   └───────────┘        └───────────┘
+```
 
 ### Error Messages
 

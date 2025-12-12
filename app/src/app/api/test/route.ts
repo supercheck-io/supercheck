@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
+import { eq } from "drizzle-orm";
 import {
   addK6TestToQueue,
   addTestToQueue,
@@ -223,7 +224,14 @@ export async function POST(request: NextRequest) {
           location: resolvedLocation ?? "global",
         };
 
-        await addK6TestToQueue(performanceTask, 'k6-playground-execution');
+        const queueResult = await addK6TestToQueue(performanceTask, 'k6-playground-execution');
+        
+        // Update run status based on actual queue result
+        if (runIdForQueue && queueResult.status === 'queued') {
+          await db.update(runs)
+            .set({ status: 'queued' })
+            .where(eq(runs.id, runIdForQueue));
+        }
       } else {
         // Route to Playwright test-execution queue
         const task: TestExecutionTask = {
@@ -236,7 +244,14 @@ export async function POST(request: NextRequest) {
           projectId: project.id,
         };
 
-        await addTestToQueue(task);
+        const queueResult = await addTestToQueue(task);
+        
+        // Update run status based on actual queue result
+        if (runIdForQueue && queueResult.status === 'queued') {
+          await db.update(runs)
+            .set({ status: 'queued' })
+            .where(eq(runs.id, runIdForQueue));
+        }
       }
       
       // Log the audit event for playground test execution

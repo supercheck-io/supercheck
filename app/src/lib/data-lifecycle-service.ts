@@ -2086,10 +2086,6 @@ export class DataLifecycleService {
       this.cleanupWorker = new Worker<CleanupJobData, CleanupOperationResult>(
         "data-lifecycle-cleanup",
         async (job) => {
-          console.log(
-            `[DATA_LIFECYCLE] Processing cleanup job: ${job.id} for ${job.data.entityType}`
-          );
-
           const strategy = this.strategies.get(job.data.entityType);
           if (!strategy) {
             throw new Error(
@@ -2134,12 +2130,6 @@ export class DataLifecycleService {
           // Continue with other strategies even if one fails
         }
       }
-
-      console.log(
-        `[DATA_LIFECYCLE] Initialized with ${this.strategies.size} cleanup ${
-          this.strategies.size === 1 ? "strategy" : "strategies"
-        }`
-      );
     } catch (error) {
       console.error("[DATA_LIFECYCLE] Failed to initialize:", error);
       throw error;
@@ -2152,10 +2142,6 @@ export class DataLifecycleService {
     }
 
     try {
-      console.log(
-        `[DATA_LIFECYCLE] Scheduling cleanup for ${config.entityType} with cron: "${config.cronSchedule}"`
-      );
-
       // Remove existing job if any
       const existingJobs = await this.cleanupQueue.getRepeatableJobs();
       const existingJob = existingJobs.find(
@@ -2163,16 +2149,10 @@ export class DataLifecycleService {
       );
 
       if (existingJob) {
-        console.log(
-          `[DATA_LIFECYCLE] Removing existing job for ${config.entityType}`
-        );
         await this.cleanupQueue.removeRepeatableByKey(existingJob.key);
       }
 
       // Schedule new job
-      console.log(
-        `[DATA_LIFECYCLE] Adding new repeatable job for ${config.entityType}`
-      );
       await this.cleanupQueue.add(
         `${config.entityType}-cleanup`,
         {
@@ -2189,18 +2169,12 @@ export class DataLifecycleService {
           },
         }
       );
-      console.log(
-        `[DATA_LIFECYCLE] Successfully scheduled cleanup for ${config.entityType}`
-      );
     } catch (error) {
       console.error(
         `[DATA_LIFECYCLE] Failed to schedule ${config.entityType}:`,
         error
       );
-      // Don't throw error - continue with other strategies but log the failure
-      console.warn(
-        `[DATA_LIFECYCLE] Continuing initialization despite ${config.entityType} scheduling failure`
-      );
+      // Don't throw error - continue with other strategies
     }
   }
 
@@ -2485,14 +2459,8 @@ export function createDataLifecycleService(): DataLifecycleService {
     },
   ];
 
-  // Validate and log all configured strategies
-  console.log(
-    `[DATA_LIFECYCLE] Configuring cleanup strategies (${strategies.length} total)`
-  );
+  // Validate all configured strategies
   for (const config of strategies) {
-    console.log(
-      `[DATA_LIFECYCLE] ${config.entityType}: enabled=${config.enabled}, cron="${config.cronSchedule}"`
-    );
 
     if (config.enabled) {
       // Validate cron schedule

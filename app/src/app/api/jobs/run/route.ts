@@ -118,7 +118,7 @@ export async function POST(request: Request) {
       id: runId,
       jobId,
       projectId: jobRecord?.projectId ?? null,
-      status: "running",
+      status: "running", // Will be updated to 'queued' if capacity is full
       startedAt: startTime,
       trigger, // Include trigger value
       location: resolvedLocation as K6Location,
@@ -291,7 +291,14 @@ export async function POST(request: Request) {
           jobType,
         };
 
-        await addK6JobToQueue(k6Task, "k6-job-execution");
+        const queueResult = await addK6JobToQueue(k6Task, "k6-job-execution");
+        
+        // Update run status based on actual queue result
+        await db.update(runs)
+          .set({ status: queueResult.status })
+          .where(eq(runs.id, runId));
+          
+        console.log(`[${jobId}/${runId}] K6 job ${queueResult.status} (position: ${queueResult.position ?? 'N/A'})`);
       } else {
         const task: JobExecutionTask = {
           jobId: jobId,
@@ -306,7 +313,14 @@ export async function POST(request: Request) {
           jobType,
         };
 
-        await addJobToQueue(task);
+        const queueResult = await addJobToQueue(task);
+        
+        // Update run status based on actual queue result
+        await db.update(runs)
+          .set({ status: queueResult.status })
+          .where(eq(runs.id, runId));
+          
+        console.log(`[${jobId}/${runId}] Playwright job ${queueResult.status} (position: ${queueResult.position ?? 'N/A'})`);
       }
       
       // Log the audit event for job execution trigger

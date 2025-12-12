@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -44,18 +44,7 @@ import { K6Logo } from "@/components/logo/k6-logo";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canCancelRuns } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
-
-interface ExecutionItem {
-  runId: string;
-  jobId: string | null;
-  jobName: string;
-  jobType: "playwright" | "k6";
-  status: "running" | "queued";
-  startedAt: Date | null;
-  queuePosition?: number;
-  source?: "job" | "playground";
-  projectName?: string;
-}
+import { useExecutions, ExecutionItem } from "@/hooks/use-executions";
 
 interface ExecutionsDialogProps {
   open: boolean;
@@ -65,14 +54,20 @@ interface ExecutionsDialogProps {
 
 const ITEMS_PER_PAGE = 5;
 
+/**
+ * ExecutionsDialog component - Dialog for viewing and managing parallel executions
+ * 
+ * Uses the shared useExecutions hook (SINGLE SOURCE OF TRUTH)
+ * Same data source as the ParallelThreads component for consistency.
+ */
 export function ExecutionsDialog({
   open,
   onOpenChange,
   defaultTab = "running",
 }: ExecutionsDialogProps) {
-  const [running, setRunning] = useState<ExecutionItem[]>([]);
-  const [queued, setQueued] = useState<ExecutionItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Use shared hook for data fetching (SINGLE SOURCE OF TRUTH)
+  const { running, queued, loading, refresh } = useExecutions();
+
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [runIdToCancel, setRunIdToCancel] = useState<string | null>(null);
   const runIdToCancelRef = useRef<string | null>(null);
@@ -83,13 +78,6 @@ export function ExecutionsDialog({
   const { currentProject } = useProjectContext();
   const normalizedRole = normalizeRole(currentProject?.userRole);
   const canCancel = canCancelRuns(normalizedRole);
-
-  // SSE connection management refs
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-  // Debounce ref for sync events
-  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Update active tab when dialog opens or defaultTab changes
   useEffect(() => {
@@ -104,229 +92,10 @@ export function ExecutionsDialog({
     setCurrentPage(1);
   }, [activeTab]);
 
-  // Keep ref in sync with state for SSE handler closure
+  // Keep ref in sync with state for cancellation handler
   useEffect(() => {
     runIdToCancelRef.current = runIdToCancel;
   }, [runIdToCancel]);
-
-  // Fetch executions data with error handling
-  const fetchExecutions = useCallback(async (showLoadingToast = false) => {
-    try {
-      const res = await fetch("/api/executions/running", {
-        cache: "no-store",
-        headers: {
-          "Cache-Control": "no-cache",
-        },
-      });
-      if (!res.ok) throw new Error("Failed to fetch executions");
-
-      const data = await res.json();
-      setRunning(
-        (data.running as ExecutionItem[]).map((item) => ({
-          ...item,
-          startedAt: item.startedAt ? new Date(item.startedAt) : null,
-        }))
-      );
-      setQueued(
-        (data.queued as ExecutionItem[]).map((item) => ({
-          ...item,
-          startedAt: item.startedAt ? new Date(item.startedAt) : null,
-        }))
-      );
-    } catch (error) {
-      console.error("Error fetching executions:", error);
-      if (showLoadingToast) {
-        toast.error("Failed to load executions");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Helper to debounce sync requests
-  const triggerSync = useCallback(() => {
-    if (syncTimeoutRef.current) {
-      clearTimeout(syncTimeoutRef.current);
-    }
-    // Debounce for 500ms to batch rapid updates
-    syncTimeoutRef.current = setTimeout(() => {
-      fetchExecutions();
-    }, 500);
-  }, [fetchExecutions]);
-
-  // Set up SSE connection with reconnection logic
-  const setupEventSource = useCallback(() => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
-
-    try {
-      // Use organization-scoped SSE endpoint for cross-project visibility
-      const source = new EventSource("/api/executions/events");
-      eventSourceRef.current = source;
-
-      source.onopen = () => {
-        reconnectAttemptsRef.current = 0;
-      };
-
-      source.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-
-          // Update running jobs
-          if (data.status === "running" && data.runId) {
-            setRunning((prev) => {
-              const exists = prev.find((item) => item.runId === data.runId);
-              if (!exists && data.jobName && data.jobType) {
-                return [
-                  ...prev,
-                  {
-                    runId: data.runId,
-                    jobId: data.jobId,
-                    jobName: data.jobName,
-                    jobType: data.jobType as "playwright" | "k6",
-                    status: "running",
-                    startedAt: data.startedAt
-                      ? new Date(data.startedAt)
-                      : new Date(),
-                    source: data.source,
-                    projectName: data.projectName,
-                  },
-                ];
-              }
-              return prev;
-            });
-
-            // Remove from queued if it was there
-            setQueued((prev) =>
-              prev.filter((item) => item.runId !== data.runId)
-            );
-          }
-
-          // Remove completed/failed/cancelled jobs
-          if (
-            ["completed", "passed", "failed", "cancelled", "error"].includes(
-              data.status
-            ) ||
-            data.event === "completed"
-          ) {
-            setRunning((prev) =>
-              prev.filter((item) => item.runId !== data.runId)
-            );
-            setQueued((prev) =>
-              prev.filter((item) => item.runId !== data.runId)
-            );
-
-            // Close confirmation dialog if this run was being cancelled
-            if (data.runId === runIdToCancelRef.current) {
-              setRunIdToCancel(null);
-              setCancellingId(null);
-              toast.info(
-                "Execution completed before cancellation could be processed"
-              );
-            }
-
-            // Also trigger a sync to ensure lists are consistent
-            triggerSync();
-          }
-        } catch (error) {
-          console.error("Error processing SSE event:", error);
-        }
-      };
-
-      source.onerror = () => {
-        source.close();
-        eventSourceRef.current = null;
-
-        // Exponential backoff for reconnection
-        const backoffTime = Math.min(
-          1000 * Math.pow(1.5, reconnectAttemptsRef.current),
-          10000
-        );
-        reconnectAttemptsRef.current++;
-
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-        }
-
-        reconnectTimeoutRef.current = setTimeout(() => {
-          if (document.visibilityState !== "hidden") {
-            setupEventSource();
-          }
-        }, backoffTime);
-      };
-
-      return source;
-    } catch (err) {
-      console.error("Failed to initialize SSE:", err);
-      return null;
-    }
-  }, [triggerSync]);
-
-  // Fetch initial data when dialog opens
-  useEffect(() => {
-    if (!open) {
-      setLoading(true);
-      return;
-    }
-
-    // Fetch immediately when dialog opens, show toast on error
-    fetchExecutions(true);
-  }, [open, fetchExecutions]);
-
-  // SSE connection management
-  useEffect(() => {
-    if (!open) {
-      // Cleanup when dialog closes
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-      if (syncTimeoutRef.current) {
-        clearTimeout(syncTimeoutRef.current);
-        syncTimeoutRef.current = null;
-      }
-      return;
-    }
-
-    // Handle visibility changes to reconnect when tab becomes visible
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && open) {
-        // Re-fetch data when tab becomes visible
-        fetchExecutions();
-        // Reconnect SSE if not connected
-        if (!eventSourceRef.current) {
-          setupEventSource();
-        }
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    // Initial SSE setup
-    const source = setupEventSource();
-
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-
-      if (syncTimeoutRef.current) {
-        clearTimeout(syncTimeoutRef.current);
-      }
-
-      if (source) {
-        source.close();
-      }
-      eventSourceRef.current = null;
-    };
-  }, [open, setupEventSource, fetchExecutions]);
 
   const handleCancelClick = (runId: string) => {
     setRunIdToCancel(runId);
@@ -336,7 +105,6 @@ export function ExecutionsDialog({
     if (!runIdToCancel) return;
 
     // Pre-check: verify run still exists in running/queued lists
-    // This handles the case where SSE updated faster than React state
     const stillExists =
       running.some((item) => item.runId === runIdToCancel) ||
       queued.some((item) => item.runId === runIdToCancel);
@@ -353,29 +121,17 @@ export function ExecutionsDialog({
       });
 
       if (!res.ok) {
-        // If the error is 400, it likely means the run is already in a terminal state (passed/failed)
-        // In this case, we should remove it from the list to update the UI
+        // If the error is 400, it likely means the run is already in a terminal state
         if (res.status === 400) {
           toast.info("Execution already completed");
-          setRunning((prev) =>
-            prev.filter((item) => item.runId !== runIdToCancel)
-          );
-          setQueued((prev) =>
-            prev.filter((item) => item.runId !== runIdToCancel)
-          );
         } else {
           throw new Error("Failed to cancel execution");
         }
       } else {
         toast.success("Execution cancelled successfully");
-        // Remove from lists immediately
-        setRunning((prev) =>
-          prev.filter((item) => item.runId !== runIdToCancel)
-        );
-        setQueued((prev) =>
-          prev.filter((item) => item.runId !== runIdToCancel)
-        );
       }
+      // Refresh to get updated lists from server (hook will update state)
+      await refresh();
     } catch (error) {
       console.error("Error cancelling execution:", error);
       toast.error("Failed to cancel execution");
@@ -474,11 +230,6 @@ export function ExecutionsDialog({
                   >
                     {item.jobName}
                   </div>
-                  {item.queuePosition && (
-                    <Badge variant="secondary" className="text-[10px] mt-1">
-                      Position #{item.queuePosition}
-                    </Badge>
-                  )}
                 </TableCell>
                 <TableCell>
                   <div
@@ -491,7 +242,9 @@ export function ExecutionsDialog({
                 <TableCell className="text-xs text-muted-foreground">
                   {item.startedAt
                     ? formatDistanceToNow(item.startedAt, { addSuffix: true })
-                    : "Pending..."}
+                    : item.queuePosition
+                      ? `#${item.queuePosition}`
+                      : "Queued"}
                 </TableCell>
                 <TableCell className="text-right">
                   <Button

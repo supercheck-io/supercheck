@@ -571,18 +571,59 @@ QUEUED_CAPACITY=100    # Override plan-specific queued limit
 
 **✅ Automatic Capacity Reconciliation**
 - Runs every 5 minutes to detect and correct counter drift
-- Compares Redis counters against actual BullMQ queue state
-- Auto-corrects drift exceeding threshold (±2)
+- Uses **non-blocking `redis.scan()`** to find all capacity keys (not `redis.keys()` which blocks)
+- Compares Redis counters against actual BullMQ queue state per organization
+- Auto-corrects any drift immediately (multi-tenant aware)
 - Logs warnings for manual review when drift detected
 
+### Simplified Architecture
+
+```
+┌─────────────────┐
+│  Run Button     │
+│  Clicked        │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐      ┌───────────────────┐
+│ reserveSlot()   │─0───▶│ Return 429 Error  │
+│ Lua script      │      │ (Queue Full)      │
+└────────┬────────┘      └───────────────────┘
+         │1 or 2
+         ▼
+   ┌─────┴─────┐
+   │1          │2
+   ▼           ▼
+┌──────────┐  ┌──────────────────┐
+│ BullMQ   │  │ Redis Sorted Set │
+│ Queue    │  │ (queued jobs)    │
+└──────────┘  └────────┬─────────┘
+                       │
+                       ▼
+              ┌────────────────────┐
+              │ Background         │
+              │ Processor          │
+              │ (every 5 seconds)  │
+              └────────┬───────────┘
+                       │ capacity available
+                       ▼
+              ┌────────────────────┐
+              │ Promote to BullMQ  │
+              │ Release from queue │
+              └────────────────────┘
+```
+
 ### Atomic Capacity Check Flow
+
+The capacity management system is handled entirely on the **app side** with a background processor that moves queued jobs to running when capacity becomes available:
 
 ```mermaid
 sequenceDiagram
     participant API as API Layer
     participant CM as Capacity Manager
     participant Redis as Redis (Lua Script)
-    participant Queue as Queue
+    participant Queue as BullMQ Queue
+    participant Proc as Background Processor
 
     API->>CM: reserveSlot(organizationId)
     CM->>CM: checkCapacityLimits(organizationId)
@@ -595,21 +636,27 @@ sequenceDiagram
     else running < runningCapacity
         Redis->>Redis: INCR running counter (atomic)
         Redis-->>CM: Return 1 (can run immediately)
-        API->>Queue: Add job with _capacityStatus='immediate'
+        API->>Queue: Add job to BullMQ (immediate)
     else running >= runningCapacity
-        Redis->>Redis: INCR queued counter
-        Redis-->>CM: Return 2 (must wait in queue)
-        API->>Queue: Add job with delay + _capacityStatus='queued'
+        Redis-->>CM: Return 2 (must queue)
+        API->>Redis: Store job in sorted set with timestamp
+        API-->>API: Return 202 with queue position
     end
 
-    Note over API,Queue: Jobs with 'immediate' status run right away
-    Note over API,Queue: Jobs with 'queued' status wait for capacity
-    Queue-->>API: Return job ID (202 Accepted)
+    Note over Proc: Background Processor (every 5 seconds)
+    loop Every 5 seconds
+        Proc->>Redis: Check for queued jobs
+        Proc->>Redis: Check running < capacity?
+        alt Capacity available
+            Redis->>Redis: Move job from queued to running
+            Proc->>Queue: Add job to BullMQ
+        end
+    end
     
-    Note over Queue: Job Events Handle Counter Management
-    Queue->>CM: active event → transitionQueuedToRunning() (only for 'queued' jobs)
+    Note over Queue: Job Completion Events
     Queue->>CM: completed event → releaseRunningSlot()
-    Queue->>CM: failed event → releaseRunningSlot() or releaseQueuedSlot()
+    Queue->>CM: failed event → releaseRunningSlot()
+    Queue->>CM: stalled event → releaseRunningSlot()
 ```
 
 ### Organization-Specific Capacity Tracking
@@ -665,6 +712,21 @@ graph TB
     class E1,E2,E3,E4 event
 ```
 
+### Background Queue Processor
+
+The app-side queue processor runs every **5 seconds** and handles:
+
+1. **Job Promotion**: Moves queued jobs to running when capacity becomes available
+2. **FIFO Ordering**: Uses Redis sorted set with timestamp scores for fair ordering
+3. **Atomic Operations**: Uses Lua scripts to prevent race conditions during promotion
+4. **Multi-Organization Support**: Processes each organization's queue independently
+
+**Redis Key Structure:**
+- `capacity:running:{orgId}` - Counter of running jobs
+- `capacity:queued:{orgId}` - Sorted set of queued job IDs (timestamp scores)
+- `capacity:job:{jobId}` - Hash storing job data for queued jobs
+- `capacity:org:{jobId}` - Mapping of jobId to organizationId
+
 ### Queue Statistics
 
 Queue statistics track:
@@ -677,11 +739,48 @@ Execution queues counted in statistics:
 - playwright-global
 - k6-{region} (us-east, eu-central, asia-pacific, global)
 
-**Real-time Updates (QueueEventHub):**
-To ensure instant UI feedback without polling, the system uses the centralized QueueEventHub:
-1. **Event Detection**: QueueEventHub listens to BullMQ queue events (waiting, active, completed, failed, stalled).
-2. **SSE Subscription**: The SSE endpoints (`/api/queue-stats/sse` and `/api/executions/events`) subscribe to QueueEventHub.
-3. **Immediate Refresh**: On any job lifecycle event, connected clients receive updated stats immediately.
+**Real-time Updates - Unified UI Architecture:**
+
+The system provides real-time execution status updates through a unified React hook architecture:
+
+**UI Components:**
+- Top bar (`parallel-threads.tsx`) - Shows running/queued counts
+- Executions dialog (`executions-dialog.tsx`) - Shows detailed execution list
+
+**Single Source of Truth (`useExecutions` hook):**
+Both UI components share the `useExecutions` hook (`hooks/use-executions.ts`) ensuring consistent data:
+
+```typescript
+// Shared hook provides all execution data
+const { 
+  running,         // Full list of running executions
+  queued,          // Full list of queued executions
+  runningCount,    // Count for top bar
+  queuedCount,     // Count for top bar
+  runningCapacity, // From env or defaults (1)
+  queuedCapacity,  // From env or defaults (5)
+  loading,
+  refresh,         // Manual refresh function
+} = useExecutions();
+```
+
+**Update Mechanisms (3 triggers):**
+1. **SSE Events** - QueueEventHub broadcasts BullMQ lifecycle events (active, completed, failed)
+2. **Browser Events** - `notifyExecutionsChanged()` triggers instant refresh on job submission
+3. **Visibility Change** - Refresh data when tab becomes visible
+
+**Data Flow:**
+```
+API POST /api/jobs/run → Success → notifyExecutionsChanged()
+                                          ↓
+                        Browser CustomEvent dispatched
+                                          ↓
+                        useExecutions hook catches event
+                                          ↓
+                        debouncedRefresh() → GET /api/executions/running
+                                          ↓
+                        Both UI components update instantly
+```
 
 **Monitor Execution Bypass:**
 - ✅ **Critical monitors bypass capacity limits entirely**
@@ -690,6 +789,7 @@ To ensure instant UI feedback without polling, the system uses the centralized Q
 - ✅ Ensures uninterrupted health monitoring regardless of test capacity
 
 ---
+
 
 ## Container Execution & Security
 

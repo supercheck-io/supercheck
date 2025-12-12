@@ -32,6 +32,7 @@ import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
+import { notifyExecutionsChanged } from "@/hooks/use-executions";
 
 // Type definition for the extended meta object used in this table
 interface JobsTableMeta {
@@ -188,6 +189,8 @@ function RunButton({ job }: { job: Job }) {
         setLocalRunId(data.runId);
         // Use the global job context to manage toast notifications and SSE
         startJobRun(data.runId, job.id, job.name);
+        // Notify executions hook to refresh immediately (instant UI update)
+        notifyExecutionsChanged();
       } else {
         // No runId received, something is wrong
         toast.error("Error running job", {
@@ -469,14 +472,12 @@ export const columns: ColumnDef<Job>[] = [
       return (
         <div className="flex items-center max-w-[120px]">
           <TimerIcon
-            className={`${
-              cronSchedule ? "text-sky-500" : "text-muted-foreground"
-            } mr-2 h-4 w-4 flex-shrink-0`}
+            className={`${cronSchedule ? "text-sky-500" : "text-muted-foreground"
+              } mr-2 h-4 w-4 flex-shrink-0`}
           />
           <span
-            className={`${
-              cronSchedule ? "text-foreground" : "text-muted-foreground"
-            } truncate`}
+            className={`${cronSchedule ? "text-foreground" : "text-muted-foreground"
+              } truncate`}
           >
             {cronSchedule || "None"}
           </span>
