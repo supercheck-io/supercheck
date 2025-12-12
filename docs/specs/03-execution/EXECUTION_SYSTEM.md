@@ -215,7 +215,7 @@ graph TB
 
     subgraph "Queue Configuration"
         C1[Max Concurrency: 2/worker]
-        C2[Job Timeout: 15 min]
+        C2[Job Timeout: 60 min\u003cbr/\u003eTest: 5 min]
         C3[Retry: 3 attempts]
         C4[Exponential Backoff]
         C5[Remove on Complete: 500]
@@ -897,6 +897,35 @@ graph TB
     class SAFE result
 ```
 
+### Resource Limit Validation
+
+The `ContainerExecutorService` validates all resource limits before container creation to prevent dangerous or invalid configurations.
+
+**Validation Bounds (Production-Safe):**
+
+| Resource | Minimum | Maximum | Default | Rationale |
+|----------|---------|---------|---------|-----------|
+| **Memory** | 128 MB | 8192 MB (8GB) | 2048 MB | Minimum viable for browsers, max prevents resource exhaustion |
+| **CPU** | 0.1 cores | 4.0 cores | 1.5 cores | Prevents starvation, caps at reasonable multi-core usage |
+| **Timeout** | 5,000 ms | 3,600,000 ms (1 hour) | 300,000 ms | Prevents instant failures, matches job execution timeout |
+
+**Implementation:** [`validateResourceLimits()`](file:///Users/krishna/Code/supercheck/worker/src/common/security/container-executor.service.ts)
+
+```typescript
+// Resource limit bounds (production-safe values)
+const MIN_MEMORY_MB = 128;    // Minimum viable for most tasks
+const MAX_MEMORY_MB = 8192;   // 8GB - reasonable upper bound
+const MIN_CPU = 0.1;          // 10% of a CPU core
+const MAX_CPU = 4.0;          // 4 CPU cores
+const MIN_TIMEOUT_MS = 5000;  // 5 seconds
+const MAX_TIMEOUT_MS = 3600000; // 1 hour - matches JOB_EXECUTION_DEFAULT_MS
+```
+
+**Error Handling:**
+- Returns `{ valid: false, error: "..." }` with descriptive message if any limit is out of bounds
+- Prevents container creation until valid limits are provided
+- Logs validation failures for debugging
+
 ### Container Lifecycle Management
 
 ```mermaid
@@ -1211,7 +1240,7 @@ Playwright tests and jobs are executed via a **single global queue** (`playwrigh
 > - **Single Test Timeout:** 5 minutes (`TEST_EXECUTION_TIMEOUT_MS=300000`)
 > - **Job Timeout:** 60 minutes (`JOB_EXECUTION_TIMEOUT_MS=3600000`)
 > 
-> These timeouts are configured in the app environment and enforced by the worker. Tests or jobs exceeding these limits are automatically terminated.
+> These timeouts are configured in the **worker environment** and enforced by the container executor. Tests or jobs exceeding these limits are automatically terminated.
 
 ### K6 Multi-Location Execution
 
@@ -1221,7 +1250,7 @@ K6 load tests can be executed from multiple geographic locations for distributed
 > - **Single Test Timeout:** 60 minutes (`K6_TEST_EXECUTION_TIMEOUT_MS=3600000`)
 > - **Job Timeout:** 60 minutes (`K6_JOB_EXECUTION_TIMEOUT_MS=3600000`)
 > 
-> K6 tests have longer default timeouts than Playwright tests to accommodate load testing scenarios. These timeouts are configured in the app environment and enforced by the worker.
+> K6 tests have longer default timeouts than Playwright tests to accommodate load testing scenarios. These timeouts are configured in the **worker environment** and enforced by the container executor.
 
 **Location Configuration:**
 - US East (Primary)
@@ -1986,8 +2015,11 @@ graph TB
 - TTL: 24 hours for all capacity keys
 
 **Timeout Configuration:**
-- `TEST_EXECUTION_TIMEOUT_MS` - Single test timeout (default: 300000 = 5 min)
-- `JOB_EXECUTION_TIMEOUT_MS` - Job timeout (default: 3600000 = 60 min)
+- `TEST_EXECUTION_TIMEOUT_MS` - Single Playwright test timeout (default: 300000 = 5 min)
+- `JOB_EXECUTION_TIMEOUT_MS` - Playwright job timeout (default: 3600000 = 60 min)
+- `K6_TEST_EXECUTION_TIMEOUT_MS` - Single K6 test timeout (default: 3600000 = 60 min)
+- `K6_JOB_EXECUTION_TIMEOUT_MS` - K6 job timeout (default: 3600000 = 60 min)
+- **Maximum enforced**: 3,600,000 ms (1 hour) by container executor validation
 
 **Playwright Configuration:**
 - `PLAYWRIGHT_HEADLESS` - Run headless (default: true)

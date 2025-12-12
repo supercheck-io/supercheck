@@ -180,6 +180,9 @@ class UsageNotificationService {
 
   /**
    * Check spending threshold and send notification if needed
+   * 
+   * PROACTIVE WARNINGS: When hard-stop is enabled, we send additional warnings
+   * at 90% threshold to give users advance notice before their executions are blocked.
    */
   private async checkSpendingThreshold(
     organizationId: string,
@@ -193,11 +196,16 @@ class UsageNotificationService {
     const percentage = Math.round((currentSpendingCents / limitCents) * 100);
 
     let notificationType: NotificationType | null = null;
-    let thresholdKey: "spending_warning" | "spending_limit" | null = null;
+    let thresholdKey: "spending_warning" | "spending_limit" | "spending_90" | null = null;
 
     if (percentage >= 100) {
       notificationType = "spending_limit_reached";
       thresholdKey = "spending_limit";
+    } else if (percentage >= 90 && settings.hardStopOnLimit) {
+      // PROACTIVE WARNING: Alert at 90% when hard-stop is enabled
+      // This gives users advance notice before their executions get blocked
+      notificationType = "spending_limit_warning";
+      thresholdKey = "spending_90";
     } else if (percentage >= 80) {
       notificationType = "spending_limit_warning";
       thresholdKey = "spending_warning";

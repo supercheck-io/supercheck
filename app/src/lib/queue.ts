@@ -1126,8 +1126,13 @@ export async function addMonitorExecutionJobToQueue(
           },
           {
             jobId: `${task.monitorId}:${executionGroupId}:${location}`,
-            // Use default retention policy; only override priority
             priority: 1,
+            // Retry configuration for transient failures (network blips, container startup)
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 5000 },
+            // Cleanup completed/failed jobs to prevent Redis memory bloat
+            removeOnComplete: { age: 3600 },  // 1 hour
+            removeOnFail: { age: 86400 },     // 24 hours
           }
         );
       })

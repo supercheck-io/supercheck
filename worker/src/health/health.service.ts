@@ -133,10 +133,11 @@ export class HealthService {
 
     try {
       // Basic queue health check - verify we can get queue info
+      // Use actual queue names from the system (not legacy names)
       const queueNames = [
-        'job-execution',
-        'test-execution',
-        'monitor-execution',
+        'playwright-global', // Main playwright execution queue
+        'k6-global', // K6 load testing queue
+        'monitor-global', // Monitor global fallback queue
       ];
       const results = await Promise.allSettled(
         queueNames.map((name) => this.redisService.getQueueHealth(name)),

@@ -27,7 +27,7 @@ export function DemoBadge() {
           <div className="p-2">
             <div className="font-semibold text-sm mb-1">Demo Mode</div>
             <div className="text-sm text-muted-foreground">
-You’re in Demo Mode — showcasing app features only. No data is stored, the app runs on limited hardware, and data resets periodically. Email invites and email notifications may not arrive if the daily quota is exhausted.
+You’re in Demo Mode — showcasing app features only. No data is stored, the app runs on limited hardware, and data resets periodically.
             </div>
           </div>
         </TooltipContent>

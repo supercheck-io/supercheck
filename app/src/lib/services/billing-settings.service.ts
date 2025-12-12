@@ -188,7 +188,7 @@ class BillingSettingsService {
    */
   async markNotificationSent(
     organizationId: string,
-    threshold: "50" | "80" | "90" | "100" | "spending_warning" | "spending_limit"
+    threshold: "50" | "80" | "90" | "100" | "spending_warning" | "spending_limit" | "spending_90"
   ): Promise<void> {
     const settings = await db.query.billingSettings.findFirst({
       where: eq(billingSettings.organizationId, organizationId),
@@ -216,16 +216,32 @@ class BillingSettingsService {
 
   /**
    * Check if a notification has already been sent this period
+   * 
+   * RATE LIMITING: Also checks if enough time has passed since the last notification
+   * to prevent spam during rapid usage changes (minimum 1 hour between notifications)
    */
   async hasNotificationBeenSent(
     organizationId: string,
-    threshold: "50" | "80" | "90" | "100" | "spending_warning" | "spending_limit"
+    threshold: "50" | "80" | "90" | "100" | "spending_warning" | "spending_limit" | "spending_90"
   ): Promise<boolean> {
+    const MIN_NOTIFICATION_INTERVAL_MS = 60 * 60 * 1000; // 1 hour minimum between any notifications
+
     const settings = await db.query.billingSettings.findFirst({
       where: eq(billingSettings.organizationId, organizationId),
     });
 
-    if (!settings?.notificationsSentThisPeriod) return false;
+    if (!settings) return false;
+
+    // Time-based rate limit: prevent notification spam during rapid usage changes
+    if (settings.lastNotificationSentAt) {
+      const timeSinceLastNotification = Date.now() - settings.lastNotificationSentAt.getTime();
+      if (timeSinceLastNotification < MIN_NOTIFICATION_INTERVAL_MS) {
+        // Rate limited - treat as if notification was already sent
+        return true;
+      }
+    }
+
+    if (!settings.notificationsSentThisPeriod) return false;
 
     const sentThisPeriod: string[] = JSON.parse(settings.notificationsSentThisPeriod);
     return sentThisPeriod.includes(threshold);

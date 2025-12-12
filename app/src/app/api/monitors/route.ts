@@ -123,6 +123,30 @@ export async function POST(req: NextRequest) {
   try {
     const { userId, project, organizationId } = await requireProjectContext();
 
+    // SECURITY: Rate limiting to prevent API abuse
+    const { checkMonitorApiRateLimit } = await import(
+      "@/lib/session-security"
+    );
+    const rateLimitResult = await checkMonitorApiRateLimit(
+      userId,
+      organizationId,
+      "create"
+    );
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        {
+          error: "Too many requests",
+          retryAfter: rateLimitResult.retryAfter,
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(rateLimitResult.retryAfter || 60),
+          },
+        }
+      );
+    }
+
     // SECURITY: Validate subscription before allowing monitor creation
     await subscriptionService.blockUntilSubscribed(organizationId);
     await subscriptionService.requireValidPolarCustomer(organizationId);

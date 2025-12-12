@@ -5,6 +5,9 @@ import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { hasPermission, requireAuth } from "@/lib/rbac/middleware";
+import { createLogger } from "@/lib/logger/pino-config";
+
+const logger = createLogger({ module: 'api-keys' });
 
 // Validation schemas
 const createApiKeySchema = z.object({
@@ -92,7 +95,7 @@ export async function GET(
       })),
     });
   } catch (error) {
-    console.error("Error fetching job API keys:", error);
+    logger.error({ err: error }, 'Error fetching job API keys');
     return NextResponse.json(
       { 
         success: false,
@@ -132,10 +135,8 @@ export async function POST(
     }
 
     // Validate input data
-    console.log("API Key Creation - Request body:", JSON.stringify(requestBody, null, 2));
     const validation = createApiKeySchema.safeParse(requestBody);
     if (!validation.success) {
-      console.log("API Key Creation - Validation failed:", validation.error.issues);
       return NextResponse.json(
         { 
           error: "Validation failed", 
@@ -270,7 +271,7 @@ export async function POST(
       success: true
     });
 
-    console.log(`API key created: ${apiKey.name} (${apiKey.id}) for job ${jobId} by user ${userId}`);
+    logger.info({ jobId, apiKeyId: apiKey.id }, 'API key created for job');
 
     return NextResponse.json({
       success: true,
@@ -286,7 +287,7 @@ export async function POST(
       },
     });
   } catch (error) {
-    console.error("Error creating API key:", error);
+    logger.error({ err: error }, 'Error creating API key');
     
     // Enhanced error handling
     const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";

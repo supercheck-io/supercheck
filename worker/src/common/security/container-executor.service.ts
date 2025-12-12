@@ -263,6 +263,30 @@ export class ContainerExecutorService {
       };
     }
 
+    // Validate resource limits to prevent dangerous or invalid configurations
+    const validatedLimits = this.validateResourceLimits({
+      memoryLimitMb,
+      cpuLimit,
+      timeoutMs,
+    });
+
+    if (!validatedLimits.valid) {
+      return {
+        success: false,
+        exitCode: 1,
+        stdout: '',
+        stderr: validatedLimits.error || 'Invalid resource limits',
+        duration: 0,
+        timedOut: false,
+        error: validatedLimits.error,
+      };
+    }
+
+    // Use validated limits
+    const validMemoryLimit = validatedLimits.memoryLimitMb;
+    const validCpuLimit = validatedLimits.cpuLimit;
+    const validTimeoutMs = validatedLimits.timeoutMs;
+
     const containerName = `supercheck-exec-${randomUUID()}`;
 
     try {
@@ -306,9 +330,9 @@ export class ContainerExecutorService {
         // Resource limits
         // Memory limits: Set both memory and memory-swap to same value to disable swap
         // This ensures containers are bounded to actual physical memory only
-        `--memory=${memoryLimitMb}m`,
-        `--memory-swap=${memoryLimitMb}m`, // Equal to --memory disables swap usage
-        `--cpus=${cpuLimit}`,
+        `--memory=${validMemoryLimit}m`,
+        `--memory-swap=${validMemoryLimit}m`, // Equal to --memory disables swap usage
+        `--cpus=${validCpuLimit}`,
         '--pids-limit=256', // Increased for parallel browser instances (Chromium, Firefox, WebKit)
         // Out-of-memory behavior
         '--oom-kill-disable=false', // Kill container if it exceeds memory limit instead of kernel panic
@@ -449,21 +473,16 @@ export class ContainerExecutorService {
       // Execute via shell
       dockerArgs.push('-c', shellScript);
 
-      // Ensure timeout is a number (handle string values from config)
-      const timeout =
-        typeof timeoutMs === 'string' ? parseInt(timeoutMs, 10) : timeoutMs;
-      const validTimeout =
-        typeof timeout === 'number' && !isNaN(timeout) && timeout > 0
-          ? timeout
-          : undefined;
+      // Use validated timeout (validation already ensures it's a valid positive number)
+      const timeout = validTimeoutMs > 0 ? validTimeoutMs : undefined;
 
       this.logger.log(
-        `Executing in container: ${containerName} with timeout ${validTimeout || 'none'}ms, memory limit ${memoryLimitMb}MB (no swap), CPU limit ${cpuLimit}`,
+        `Executing in container: ${containerName} with timeout ${timeout || 'none'}ms, memory limit ${validMemoryLimit}MB (no swap), CPU limit ${validCpuLimit}`,
       );
 
       // Execute with timeout
       const child = execa('docker', dockerArgs, {
-        timeout: validTimeout,
+        timeout,
         reject: false, // Don't throw on non-zero exit
         all: true, // Combine stdout and stderr
       });
@@ -795,5 +814,80 @@ export class ContainerExecutorService {
     }
 
     return cleaned;
+  }
+
+  /**
+   * Validates resource limits to prevent dangerous or invalid configurations
+   * Returns validated limits or an error if limits are outside acceptable bounds
+   */
+  private validateResourceLimits(limits: {
+    memoryLimitMb: number;
+    cpuLimit: number;
+    timeoutMs: number;
+  }): {
+    valid: boolean;
+    error?: string;
+    memoryLimitMb: number;
+    cpuLimit: number;
+    timeoutMs: number;
+  } {
+    // Resource limit bounds (production-safe values)
+    const MIN_MEMORY_MB = 128; // Minimum viable for most tasks
+    const MAX_MEMORY_MB = 8192; // 8GB - reasonable upper bound
+    const MIN_CPU = 0.1; // 10% of a CPU core
+    const MAX_CPU = 4.0; // 4 CPU cores
+    const MIN_TIMEOUT_MS = 5000; // 5 seconds
+    const MAX_TIMEOUT_MS = 3600000; // 1 hour - matches JOB_EXECUTION_DEFAULT_MS in timeouts.constants.ts
+
+    const errors: string[] = [];
+
+    // Validate memory
+    if (limits.memoryLimitMb < MIN_MEMORY_MB) {
+      errors.push(
+        `memoryLimitMb (${limits.memoryLimitMb}) is below minimum ${MIN_MEMORY_MB}MB`,
+      );
+    }
+    if (limits.memoryLimitMb > MAX_MEMORY_MB) {
+      errors.push(
+        `memoryLimitMb (${limits.memoryLimitMb}) exceeds maximum ${MAX_MEMORY_MB}MB`,
+      );
+    }
+
+    // Validate CPU
+    if (limits.cpuLimit < MIN_CPU) {
+      errors.push(`cpuLimit (${limits.cpuLimit}) is below minimum ${MIN_CPU}`);
+    }
+    if (limits.cpuLimit > MAX_CPU) {
+      errors.push(`cpuLimit (${limits.cpuLimit}) exceeds maximum ${MAX_CPU}`);
+    }
+
+    // Validate timeout
+    if (limits.timeoutMs < MIN_TIMEOUT_MS) {
+      errors.push(
+        `timeoutMs (${limits.timeoutMs}) is below minimum ${MIN_TIMEOUT_MS}ms`,
+      );
+    }
+    if (limits.timeoutMs > MAX_TIMEOUT_MS) {
+      errors.push(
+        `timeoutMs (${limits.timeoutMs}) exceeds maximum ${MAX_TIMEOUT_MS}ms`,
+      );
+    }
+
+    if (errors.length > 0) {
+      return {
+        valid: false,
+        error: `Invalid resource limits: ${errors.join('; ')}`,
+        memoryLimitMb: limits.memoryLimitMb,
+        cpuLimit: limits.cpuLimit,
+        timeoutMs: limits.timeoutMs,
+      };
+    }
+
+    return {
+      valid: true,
+      memoryLimitMb: limits.memoryLimitMb,
+      cpuLimit: limits.cpuLimit,
+      timeoutMs: limits.timeoutMs,
+    };
   }
 }
