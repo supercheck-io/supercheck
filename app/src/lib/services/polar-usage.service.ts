@@ -502,10 +502,26 @@ class PolarUsageService {
 
     try {
       // Find events that haven't been synced yet
+      // Uses exponential backoff: only retry after appropriate delay based on attempt count
+      // Delays: 1s, 5s, 30s, 120s, 300s (for attempts 1-5)
       const pendingEvents = await db.query.usageEvents.findMany({
         where: and(
           eq(usageEvents.syncedToPolar, false),
-          sql`${usageEvents.syncAttempts} < 5` // Don't retry more than 5 times
+          sql`${usageEvents.syncAttempts} < 5`, // Max 5 retry attempts
+          // Exponential backoff: only retry after appropriate delay
+          sql`(
+            ${usageEvents.lastSyncAttempt} IS NULL 
+            OR ${usageEvents.lastSyncAttempt} < NOW() - INTERVAL '1 second' * (
+              CASE ${usageEvents.syncAttempts}
+                WHEN 0 THEN 0
+                WHEN 1 THEN 1
+                WHEN 2 THEN 5
+                WHEN 3 THEN 30
+                WHEN 4 THEN 120
+                ELSE 300
+              END
+            )
+          )`
         ),
         limit: batchSize,
         orderBy: (events, { asc }) => [asc(events.createdAt)],

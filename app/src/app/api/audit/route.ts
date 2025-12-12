@@ -5,19 +5,19 @@ import { desc, eq, and, ilike, count, SQL } from "drizzle-orm";
 import { requireAuth, getUserOrgRole } from '@/lib/rbac/middleware';
 import { getActiveOrganization } from '@/lib/session';
 import { Role } from '@/lib/rbac/permissions';
+import { createLogger } from '@/lib/logger/pino-config';
+
+const logger = createLogger({ module: 'audit-api' });
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('Audit API: Starting request');
     const { userId } = await requireAuth();
-    console.log('Audit API: User authenticated:', userId);
     
     // Get current organization context
     const activeOrg = await getActiveOrganization();
-    console.log('Audit API: Active organization:', activeOrg);
     
     if (!activeOrg) {
-      console.log('Audit API: No active organization found');
+      logger.warn('No active organization found for audit request');
       return NextResponse.json(
         { success: false, error: "No active organization found" },
         { status: 404 }
@@ -25,16 +25,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if a user has permission to view audit logs (org admin or higher)
-    console.log('Audit API: Checking permissions');
     const userRole = await getUserOrgRole(userId, activeOrg.id);
-    console.log('Audit API: User role:', userRole);
-    
     // Only org admins, owners, and super admins can view audit logs
     const canViewAuditLogs = userRole === Role.ORG_ADMIN || userRole === Role.ORG_OWNER || userRole === Role.SUPER_ADMIN;
-    console.log('Audit API: Can view audit logs:', canViewAuditLogs);
     
     if (!canViewAuditLogs) {
-      console.warn(`User ${userId} attempted to access audit logs without permission`);
+      logger.warn('Unauthorized audit log access attempt');
       return NextResponse.json(
         { success: false, error: "Insufficient permissions to view audit logs" },
         { status: 403 }
@@ -71,14 +67,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Get total count for pagination
-    console.log('Audit API: Getting total count with where clause');
     const [totalCountResult] = await db
       .select({ count: count() })
       .from(auditLogs)
       .where(whereClause);
 
     const totalCount = totalCountResult?.count || 0;
-    console.log('Audit API: Total count:', totalCount);
 
     // Build order by clause
     const orderBy = sortOrder === 'desc' 
@@ -86,7 +80,6 @@ export async function GET(request: NextRequest) {
       : auditLogs.createdAt;
 
     // Fetch audit logs with user information
-    console.log('Audit API: Fetching audit data with limit:', limit, 'offset:', offset);
     const auditData = await db
       .select({
         id: auditLogs.id,
@@ -103,8 +96,6 @@ export async function GET(request: NextRequest) {
       .orderBy(orderBy)
       .limit(limit)
       .offset(offset);
-    
-    console.log('Audit API: Found', auditData.length, 'audit records');
 
     // Get unique actions for filter dropdown
     const uniqueActions = await db
@@ -143,12 +134,10 @@ export async function GET(request: NextRequest) {
       }
     };
 
-    console.log('Audit API: Returning response with', response.data.logs.length, 'logs');
     return NextResponse.json(response);
 
   } catch (error) {
-    console.error('Audit API: Error occurred:', error);
-    console.error('Audit API: Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    logger.error({ err: error }, 'Audit API error');
     return NextResponse.json(
       { 
         success: false, 

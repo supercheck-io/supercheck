@@ -768,6 +768,27 @@ graph TB
   - Integrated into K6 execution processor
   - Unconditional tracking (tracks usage for both cloud and self-hosted)
   - Error handling without breaking execution
+  - **Redis-based usage reservation** for race condition prevention
+
+**Usage Reservation System (Race Condition Prevention):**
+
+To prevent race conditions where multiple parallel executions could all pass the spending limit check before any of them record actual usage, the service implements a Redis-based pessimistic locking mechanism:
+
+- `reserveUsage(organizationId, estimatedMinutes, executionType)` - Atomically reserves capacity before execution starts
+- `releaseReservation(reservationId)` - Releases reservation on cancellation or failure  
+- `checkSpendingLimitWithReservations()` - Includes reserved usage in limit calculations
+
+**How it works:**
+
+1. Before execution starts, reserve estimated usage in Redis (`INCRBY` atomic operation)
+2. Check if reservation + current usage exceeds spending limit
+3. If exceeded, release reservation and block execution
+4. After execution, release reservation (actual usage is recorded separately)
+5. Reservations auto-expire after 5 minutes (TTL) as safety net
+
+**Redis Keys:**
+- `usage:reservation:{organizationId}:{executionType}` - Total reserved minutes
+- `usage:reservation:detail:{reservationId}` - Individual reservation details for release
 
 **Execution Points Where Usage is Tracked:**
 
@@ -1035,6 +1056,7 @@ Body:
   - Notification preference management
   - Notification threshold tracking
   - Prevents duplicate notifications in billing period
+  - **Time-based rate limiting (1-hour minimum between notifications)**
 
 #### 8. **Usage Notification Service**
 
@@ -1045,6 +1067,38 @@ Body:
   - Email delivery with retry
   - Duplicate prevention using notification history
   - Support for multiple recipient emails
+  - **Proactive 90% warning when hard-stop is enabled** - Alerts users before executions get blocked
+
+**Notification Thresholds:**
+
+| Threshold | Description | When Sent |
+|-----------|-------------|-----------|
+| 50% | Early warning | When usage crosses 50% of included quota |
+| 80% | Standard warning | When usage crosses 80% of included quota |
+| 90% | Hard-stop warning | When hard-stop enabled AND usage crosses 90% of spending limit |
+| 100% | Limit reached | When usage reaches 100% of quota |
+
+**Rate Limiting:**
+
+To prevent notification spam during rapid usage changes, a minimum 1-hour interval is enforced between any notifications to the same organization. The `hasNotificationBeenSent()` method checks:
+1. Time since last notification (`lastNotificationSentAt`)
+2. Whether threshold already sent this billing period
+
+#### 9. **Audit Logging**
+
+- Location: `app/src/lib/audit-log.ts`
+- Purpose: Record audit trail of billing-related changes
+- Features:
+  - Generic `createAuditLog()` for any auditable action
+  - `auditBillingSettingsChange()` for billing-specific changes
+  - Non-blocking execution (errors logged but don't fail requests)
+  - Per-field change tracking (before/after diff)
+
+**Audited Actions:**
+
+| Action | Service | Details Captured |
+|--------|---------|------------------|
+| `billing_settings_updated` | `PATCH /api/billing/settings` | Before/after values for each changed field |
 
 ### Data Flow
 

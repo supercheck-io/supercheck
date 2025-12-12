@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     const { userId, project, organizationId } = await requireProjectContext();
 
     // Check permission to run tests
-    const canRunTests = await hasPermission('test', 'create', {
+    const canRunTests = await hasPermission('test', 'run', {
       organizationId,
       projectId: project.id
     });
