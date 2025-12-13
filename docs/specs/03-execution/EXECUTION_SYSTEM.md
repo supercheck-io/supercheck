@@ -585,6 +585,12 @@ QUEUED_CAPACITY=100    # Override plan-specific queued limit
 - Slot only released in catch block if job was never added to BullMQ
 - If job was added, `completed`/`failed` events will handle slot release
 
+**✅ Idempotent Slot Release (Atomic Lua Script)**
+- Uses `capacity:released:{jobId}` flag to track already-released jobs
+- Lua script atomically checks and sets flag before decrementing
+- Prevents double-decrement when both cancel API and worker event handlers try to release
+- Enables immediate slot release on cancel (even for running jobs) without race conditions
+
 ### Simplified Architecture
 
 ```

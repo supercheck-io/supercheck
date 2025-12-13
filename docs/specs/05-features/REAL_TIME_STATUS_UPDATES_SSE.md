@@ -306,11 +306,16 @@ stateDiagram-v2
 
 ## API Endpoints
 
+> [!IMPORTANT]
+> All SSE endpoints require authentication via `requireProjectContext()`. Unauthenticated requests return 401 Unauthorized.
+
 ### Job Status Events (All Projects)
 
 **Endpoint:** `GET /api/job-status/events`
 
 **Purpose:** Stream events for all jobs in user's accessible projects
+
+**Authentication:** Required (project context)
 
 **Query Parameters:**
 - None (project filtering automatic based on user permissions)
@@ -331,6 +336,8 @@ stateDiagram-v2
 
 **Purpose:** Stream events for a specific job run
 
+**Authentication:** Required (project context + run ownership)
+
 **Path Parameters:**
 - `runId` - UUID of the job run
 
@@ -346,22 +353,27 @@ stateDiagram-v2
 
 ### Test Status Events
 
-**Endpoint:** `GET /api/test-status/:runId/sse`
+**Endpoint:** `GET /api/test-status/events/:testId`
 
 **Purpose:** Stream events for individual test execution
 
+**Authentication:** Required (project context + test ownership)
+
 **Path Parameters:**
-- `runId` - UUID of the test run
+- `testId` - UUID of the test
 
 **Response:**
 - SSE stream for test-specific events
 - Includes test-level granularity (if available)
+- Verifies test belongs to user's organization/project before streaming
 
 ### Queue Statistics
 
 **Endpoint:** `GET /api/queue-stats/sse`
 
 **Purpose:** Stream real-time queue metrics
+
+**Authentication:** Required (project context)
 
 **Response:**
 - Waiting jobs count

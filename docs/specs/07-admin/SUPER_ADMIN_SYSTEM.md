@@ -186,15 +186,20 @@ Located at `/app/src/components/shared/tab-loading-spinner.tsx`, this component 
 
 ## API Endpoints
 
-| Endpoint                      | Purpose           | Permission  |
-| ----------------------------- | ----------------- | ----------- |
-| `/api/admin/stats`            | System statistics | super_admin |
-| `/api/admin/users`            | User CRUD         | super_admin |
-| `/api/admin/organizations`    | Org management    | super_admin |
-| `/api/admin/scheduler/init`   | Init schedulers   | super_admin |
-| `/api/admin/scheduler/status` | Scheduler status  | super_admin |
-| `/api/admin/queues`           | Queue dashboard   | super_admin |
-| `/api/admin/check`            | Health check      | super_admin |
+| Endpoint                          | Purpose           | Permission  | Notes                                       |
+| --------------------------------- | ----------------- | ----------- | ------------------------------------------- |
+| `/api/admin/stats`                | System statistics | super_admin | Uses `requireAdmin()` helper                |
+| `/api/admin/users`                | User CRUD         | super_admin | Ban action invalidates all user sessions    |
+| `/api/admin/organizations`        | Org management    | super_admin | Uses `requireAdmin()` helper                |
+| `/api/admin/scheduler/init`       | Init schedulers   | super_admin | Uses `requireAdmin()` helper                |
+| `/api/admin/scheduler/status`     | Scheduler status  | super_admin | Uses `requireAdmin()` helper                |
+| `/api/admin/queues`               | Queue dashboard   | super_admin | Uses `requireAdmin()` helper                |
+| `/api/admin/check`                | Health check      | super_admin | Uses `requireAdmin()` helper                |
+| `/api/admin/playground-cleanup`   | Cleanup artifacts | super_admin | Uses `requireAdmin()` helper                |
+| `/api/admin/sync-usage-events`    | Polar usage sync  | super_admin | Allows cron secret OR admin session         |
+
+> [!IMPORTANT]
+> All admin endpoints require super_admin privileges. The `requireAdmin()` helper from `@/lib/admin` automatically validates authentication and super admin status, throwing "Admin privileges required" if unauthorized.
 
 ---
 
@@ -209,12 +214,14 @@ sequenceDiagram
 
     Admin->>API: POST /api/admin/users/ban<br/>{userId, reason, expires}
     API->>DB: Update user (banned: true)
-    DB-->>API: User updated
+    API->>DB: Invalidate all user sessions
+    API->>DB: Log audit event
+    DB-->>API: User banned, sessions expired
     API-->>Admin: Ban successful
 
-    User->>API: Attempt login
-    API->>DB: Check banned status
-    DB-->>API: User banned
+    User->>API: Attempt request with old session
+    API->>DB: Check session (expired)
+    DB-->>API: Session invalid
     API-->>User: 403 Account suspended
 ```
 
@@ -235,6 +242,7 @@ sequenceDiagram
 
     Admin->>System: Stop impersonation
     System->>System: Restore admin session
+    System->>System: Restore admin's org context
     System-->>Admin: Back to admin view
 ```
 

@@ -421,10 +421,12 @@ export class AuthService {
 **Security Layers:**
 
 1. **NFKC Unicode Normalization** - Prevents homoglyph attacks
-2. **Control Character Removal** - Strips dangerous control chars (preserves newlines/tabs)
-3. **Prompt Injection Detection** - Targeted patterns for injection attempts without blocking legitimate code
-4. **Dangerous Code Removal** - eval, Function constructor, dynamic imports, etc.
-5. **Obfuscation Detection** - Detects and removes heavily obfuscated code (>5 patterns triggers aggressive cleanup)
+2. **Zero-Width Character Removal** - Strips invisible characters (U+200B-U+200D, BOM, directional marks) that can bypass pattern detection
+3. **Control Character Removal** - Strips dangerous control chars (preserves newlines/tabs)
+4. **Prompt Injection Detection** - Targeted patterns for injection attempts without blocking legitimate code
+5. **Dangerous Code Removal** - eval, Function constructor, dynamic imports, etc.
+6. **Obfuscation Detection** - Detects and removes heavily obfuscated code (>5 patterns triggers aggressive cleanup)
+7. **Stream Chunk Validation** - Real-time security validation during AI streaming
 
 #### Code Validation (`/app/src/lib/ai/ai-code-validator.ts`)
 
@@ -490,12 +492,15 @@ Strict hostname matching to prevent SSRF attacks:
 
 - **Input Validation** - Type checking, size limits (50KB script), test type validation
 - **Input Sanitization** - Targeted prompt injection detection without blocking legitimate code
+- **Zero-Width Removal** - Strips invisible Unicode characters used to bypass detection
 - **Output Validation** - AST-based scanning for dangerous patterns
+- **Stream Validation** - Real-time chunk validation during AI streaming
 - **URL Validation** - Trusted S3/MinIO endpoints only (including localhost for development)
 - **Content Size Limits** - 50KB script, 100KB markdown maximum
 - **AWS SDK Integration** - Secure S3 fetching with proper credentials
-- **Authentication** - Better Auth integration with session validation
-- **Rate Limiting** - Redis-based per-user/org/IP limits with sliding window
+- **Authentication** - Better Auth integration with session validation (mandatory for AI Create)
+- **Rate Limiting** - Redis-based per-user/org/IP limits with fail-closed fallback mode
+- **Idempotency Keys** - Optional X-Idempotency-Key header to prevent duplicate requests
 - **Token Tracking** - Per-organization token cost limits
 - **Error Sanitization** - API key redaction in error messages
 

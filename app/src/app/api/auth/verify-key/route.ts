@@ -4,6 +4,7 @@ import { apikey } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getRedisConnection } from "@/lib/queue";
 import { createLogger } from "@/lib/logger/index";
+import { verifyApiKey } from "@/lib/security/api-key-hash";
 
 const logger = createLogger({ module: "verify-key" }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -159,10 +160,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify the API key
-    const keyResult = await db
+    // SECURITY: Verify the API key using hash-based comparison
+    // Fetch all API keys and compare using constant-time comparison to prevent timing attacks
+    const allKeys = await db
       .select({
         id: apikey.id,
+        key: apikey.key, // This is now the hash
         enabled: apikey.enabled,
         expiresAt: apikey.expiresAt,
         jobId: apikey.jobId,
@@ -170,10 +173,18 @@ export async function POST(request: NextRequest) {
         name: apikey.name,
       })
       .from(apikey)
-      .where(eq(apikey.key, apiKey.trim()))
-      .limit(1);
+      .where(eq(apikey.enabled, true));
 
-    if (keyResult.length === 0) {
+    // Find matching key using secure hash comparison
+    let matchedKey: typeof allKeys[0] | null = null;
+    for (const k of allKeys) {
+      if (verifyApiKey(apiKey.trim(), k.key)) {
+        matchedKey = k;
+        break;
+      }
+    }
+
+    if (!matchedKey) {
       logger.warn(
         { keyPrefix: apiKey.substring(0, 8), ip: clientIp },
         "Invalid API key attempted"
@@ -187,9 +198,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const key = keyResult[0];
+    const key = matchedKey;
 
-    // Check if API key is enabled
+    // Check if API key is enabled (defense in depth - we already filter for enabled=true)
     if (!key.enabled) {
       logger.warn(
         { keyName: key.name, keyId: key.id, ip: clientIp },

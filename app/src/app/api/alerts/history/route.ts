@@ -157,6 +157,32 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    // Require authentication and project context
+    let projectContext;
+    try {
+      projectContext = await requireProjectContext();
+    } catch {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const { project, organizationId } = projectContext;
+
+    // Check permission to manage monitors/jobs (alert creation requires manage permission)
+    const canManage = await hasPermission('monitor', 'manage', {
+      organizationId,
+      projectId: project.id,
+    });
+
+    if (!canManage) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions to create alert history' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const dbInstance = db;
     

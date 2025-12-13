@@ -91,10 +91,13 @@ erDiagram
 ## API Endpoints
 
 ### GET /api/alerts/history
-Retrieve last 50 alerts, sorted by timestamp
+Retrieve last 50 alerts, sorted by timestamp. Requires authentication and project context.
 
 ### POST /api/alerts/history
-Create new alert history entry
+Create new alert history entry. **Requires authentication, project context, and `monitor:manage` permission.**
+
+> [!NOTE]
+> The POST endpoint is primarily used by internal alerting services. External access requires appropriate RBAC permissions.
 
 ```mermaid
 sequenceDiagram

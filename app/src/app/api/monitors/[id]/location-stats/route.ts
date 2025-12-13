@@ -90,22 +90,16 @@ export async function GET(
         );
       }
 
-      try {
-        const canView = await hasPermission("monitor", "view", {
-          organizationId: monitor.organizationId,
-          projectId: monitor.projectId,
-        });
+      // Check permission (fail closed - no try-catch)
+      const canView = await hasPermission("monitor", "view", {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId,
+      });
 
-        if (!canView) {
-          return NextResponse.json(
-            { error: "Insufficient permissions to view this monitor" },
-            { status: 403 }
-          );
-        }
-      } catch (permissionError) {
-        console.log(
-          "Permission check failed, but user is org member:",
-          permissionError
+      if (!canView) {
+        return NextResponse.json(
+          { error: "Insufficient permissions to view this monitor" },
+          { status: 403 }
         );
       }
     }

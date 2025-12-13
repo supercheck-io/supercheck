@@ -320,7 +320,7 @@ class UsageNotificationService {
         usagePercentage,
         currentSpendingCents: currentSpendingDollars ? Math.round(currentSpendingDollars * 100) : null,
         spendingLimitCents: spendingLimitDollars ? Math.round(spendingLimitDollars * 100) : null,
-        sentTo: JSON.stringify(recipients),
+        sentTo: recipients,
         deliveryStatus: successCount > 0 ? "sent" : "failed",
         deliveryError: failedEmails.length > 0 ? `Failed for: ${failedEmails.join(", ")}` : null,
         billingPeriodStart: periodStart || new Date(),

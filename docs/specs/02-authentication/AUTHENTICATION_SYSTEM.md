@@ -736,12 +736,25 @@ graph LR
   - `path: '/'` (application-wide)
 
 **Security Features:**
-
 - IP address tracking (optional verification)
 - User agent tracking
 - Last activity timestamp
 - Automatic token rotation on update
 - Secure session invalidation on sign out
+
+### Session Invalidation
+
+Supercheck provides a mechanism for users to invalidate all their active sessions, useful for security actions like password changes or suspected account compromise.
+
+**Endpoint:** `POST /api/auth/invalidate-sessions`
+
+**Modes:**
+- **Invalidate Others:** Revokes all sessions *except* the current one (default).
+- **Invalidate All:** Revokes *all* sessions including the current one (force logout everywhere).
+
+**Implementation:**
+- Sets `expiresAt` to the epoch (1970-01-01) for target sessions in the database.
+- Logs the action in the audit log.
 
 ## Security Features
 
@@ -825,6 +838,30 @@ graph TB
 - Secure error messages (no information leakage)
 - Token invalidation after successful reset
 - Automatic session cleanup on suspicious activity
+
+### Login Lockout Mechanism
+
+to protect against brute force attacks, a progressive lockout mechanism is implemented using Redis.
+
+**Features:**
+- **Progressive Delays:** Lockout duration increases with failed attempts.
+- **Distributed Tracking:** Uses Redis to share state across instances.
+- **Dual Tracking:** Tracks failures by both Email and IP address.
+- **Fail-Open:** Allows login if Redis is unavailable (prioritizes availability).
+
+**Lockout Thresholds:**
+
+| Failed Attempts | Lockout Duration |
+|-----------------|------------------|
+| 5               | 30 seconds       |
+| 10              | 5 minutes        |
+| 15              | 15 minutes       |
+| 20+             | 1 hour           |
+
+**Flow:**
+1. **Pre-Check:** Frontend calls `/api/auth/sign-in/check` before sign-in to check status.
+2. **Recording:** Failed attempts are recorded via the check endpoint.
+3. **Clearance:** Successful sign-in clears the failure counter.
 
 ### CAPTCHA Protection (Cloudflare Turnstile)
 

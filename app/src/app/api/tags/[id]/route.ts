@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { tags, testTags } from '@/db/schema';
-import { auth } from '@/utils/auth';
-import { eq, count } from 'drizzle-orm';
-import { headers } from 'next/headers';
+import { eq, count, and } from 'drizzle-orm';
 import { hasPermission } from '@/lib/rbac/middleware';
 import { requireProjectContext } from '@/lib/project-context';
 
@@ -82,12 +80,19 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
+    const { project, organizationId } = await requireProjectContext();
+
+    // Check permission to view tags
+    const canView = await hasPermission('tag', 'view', {
+      organizationId,
+      projectId: project.id
     });
 
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!canView) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      );
     }
 
     const resolvedParams = await params;
@@ -97,11 +102,15 @@ export async function GET(
       return NextResponse.json({ error: 'Tag ID is required' }, { status: 400 });
     }
 
-    // Get the tag
+    // Get the tag - SCOPED BY ORG/PROJECT to prevent IDOR
     const tag = await db
       .select()
       .from(tags)
-      .where(eq(tags.id, tagId))
+      .where(and(
+        eq(tags.id, tagId),
+        eq(tags.organizationId, organizationId),
+        eq(tags.projectId, project.id)
+      ))
       .limit(1);
 
     if (tag.length === 0) {
@@ -120,12 +129,19 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
+    const { project, organizationId } = await requireProjectContext();
+
+    // Check permission to manage tags
+    const canManage = await hasPermission('tag', 'manage', {
+      organizationId,
+      projectId: project.id
     });
 
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!canManage) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions to update tags' },
+        { status: 403 }
+      );
     }
 
     const resolvedParams = await params;
@@ -140,22 +156,30 @@ export async function PUT(
       return NextResponse.json({ error: 'Tag name is required' }, { status: 400 });
     }
 
-    // Check if the tag exists
+    // Check if the tag exists AND belongs to current org/project
     const existingTag = await db
       .select()
       .from(tags)
-      .where(eq(tags.id, tagId))
+      .where(and(
+        eq(tags.id, tagId),
+        eq(tags.organizationId, organizationId),
+        eq(tags.projectId, project.id)
+      ))
       .limit(1);
 
     if (existingTag.length === 0) {
       return NextResponse.json({ error: 'Tag not found' }, { status: 404 });
     }
 
-    // Check if another tag with the same name exists
+    // Check if another tag with the same name exists in the same project
     const duplicateTag = await db
       .select()
       .from(tags)
-      .where(eq(tags.name, name.trim()))
+      .where(and(
+        eq(tags.name, name.trim()),
+        eq(tags.organizationId, organizationId),
+        eq(tags.projectId, project.id)
+      ))
       .limit(1);
 
     if (duplicateTag.length > 0 && duplicateTag[0].id !== tagId) {

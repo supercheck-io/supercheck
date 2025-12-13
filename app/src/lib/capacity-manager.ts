@@ -11,12 +11,14 @@ import { checkCapacityLimits } from "./middleware/plan-enforcement";
  * - capacity:queued:{orgId} - Sorted set of queued job IDs (score = timestamp)
  * - capacity:job:{jobId} - Hash storing job data for queued jobs
  * - capacity:org:{jobId} - String mapping jobId to organizationId
+ * - capacity:released:{jobId} - Flag indicating slot was already released (prevents double-decrement)
  */
 const KEYS = {
   running: (orgId: string) => `capacity:running:${orgId}`,
   queued: (orgId: string) => `capacity:queued:${orgId}`,
   jobData: (jobId: string) => `capacity:job:${jobId}`,
   jobOrg: (jobId: string) => `capacity:org:${jobId}`,
+  released: (jobId: string) => `capacity:released:${jobId}`,
 } as const;
 
 // TTL for Redis keys (24 hours)
@@ -203,20 +205,68 @@ export class CapacityManager {
 
   /**
    * Release a running slot when job completes/fails
+   * Uses atomic Lua script to prevent double-release:
+   * - Checks if jobId already has a 'released' flag
+   * - If not, sets the flag and decrements the counter
+   * - If already released, does nothing (idempotent)
    */
   async releaseRunningSlot(organizationId: string = 'global', jobId?: string): Promise<void> {
     try {
       const runningKey = KEYS.running(organizationId);
       
-      const result = await this.redis.decr(runningKey);
-      if (result <= 0) {
-        await this.redis.del(runningKey);
+      // If no jobId provided, just decrement (legacy behavior for edge cases)
+      if (!jobId) {
+        const result = await this.redis.decr(runningKey);
+        if (result <= 0) {
+          await this.redis.del(runningKey);
+        }
+        return;
+      }
+      
+      const releasedKey = KEYS.released(jobId);
+      
+      // Lua script for atomic idempotent release:
+      // 1. Check if job was already released (SETNX returns 0 if key exists)
+      // 2. If not released (SETNX returns 1), decrement running counter
+      // 3. Return 1 if released now, 0 if already released
+      const luaScript = `
+        local releasedKey = KEYS[1]
+        local runningKey = KEYS[2]
+        local ttl = tonumber(ARGV[1])
+        
+        -- Try to set the released flag (returns 0 if already exists)
+        local wasSet = redis.call('SETNX', releasedKey, '1')
+        
+        if wasSet == 1 then
+          -- Flag was set, this is the first release call
+          redis.call('EXPIRE', releasedKey, ttl)
+          local result = redis.call('DECR', runningKey)
+          if result <= 0 then
+            redis.call('DEL', runningKey)
+          end
+          return 1
+        else
+          -- Already released, skip decrement
+          return 0
+        end
+      `;
+      
+      const result = await this.redis.eval(
+        luaScript,
+        2,
+        releasedKey,
+        runningKey,
+        KEY_TTL
+      ) as number;
+      
+      if (result === 1) {
+        logger.debug({ jobId, organizationId }, "Released running slot (first release)");
+      } else {
+        logger.debug({ jobId, organizationId }, "Slot already released, skipping decrement");
       }
 
-      // Clean up job data if provided
-      if (jobId) {
-        await this.cleanupJobData(jobId);
-      }
+      // Clean up job data regardless of whether we released
+      await this.cleanupJobData(jobId);
     } catch (error) {
       logger.error({ err: error, organizationId, jobId }, "Failed to release running slot");
     }

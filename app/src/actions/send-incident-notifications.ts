@@ -7,7 +7,7 @@ import {
   statusPageSubscribers,
   incidentComponents,
 } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { EmailService } from "@/lib/email-service";
 import { renderIncidentNotificationEmail } from "@/lib/email-renderer";
 import { format } from "date-fns";
@@ -87,11 +87,13 @@ export async function sendIncidentNotifications(
       (ic) => ic.component?.name || "Unknown Component"
     );
 
-    // Get all verified subscribers for this status page
+    // Get all verified, active subscribers for this status page
+    // SECURITY: Filter out unsubscribed users (purgeAt != null)
     const subscribers = await db.query.statusPageSubscribers.findMany({
       where: and(
         eq(statusPageSubscribers.statusPageId, statusPageId),
-        eq(statusPageSubscribers.mode, "email")
+        eq(statusPageSubscribers.mode, "email"),
+        isNull(statusPageSubscribers.purgeAt) // Don't send to unsubscribed users
       ),
     });
 

@@ -1,24 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { tests, testTags, tags } from '@/db/schema';
-import { auth } from '@/utils/auth';
 import { and, eq } from 'drizzle-orm';
-import { headers } from 'next/headers';
+import { hasPermission } from '@/lib/rbac/middleware';
+import { requireProjectContext } from '@/lib/project-context';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
+    const { project, organizationId } = await requireProjectContext();
+
+    // Check permission to view tests
+    const canView = await hasPermission('test', 'view', {
+      organizationId,
+      projectId: project.id
     });
 
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!canView) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      );
     }
 
     const { id: testId } = await params;
+
+    // Verify test exists and belongs to current org/project
+    const test = await db
+      .select({ id: tests.id })
+      .from(tests)
+      .where(and(
+        eq(tests.id, testId),
+        eq(tests.organizationId, organizationId),
+        eq(tests.projectId, project.id)
+      ))
+      .limit(1);
+
+    if (test.length === 0) {
+      return NextResponse.json({ error: 'Test not found' }, { status: 404 });
+    }
 
     // Get tags for the test
     const testTagsResult = await db
@@ -44,12 +66,19 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
+    const { project, organizationId } = await requireProjectContext();
+
+    // Check permission to update tests
+    const canUpdate = await hasPermission('test', 'update', {
+      organizationId,
+      projectId: project.id
     });
 
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!canUpdate) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions to update test tags' },
+        { status: 403 }
+      );
     }
 
     const { id: testId } = await params;
@@ -64,11 +93,15 @@ export async function POST(
       return NextResponse.json({ error: 'Maximum of 10 tags allowed per test' }, { status: 400 });
     }
 
-    // Verify test exists and user has access
+    // Verify test exists AND belongs to current org/project to prevent IDOR
     const test = await db
-      .select()
+      .select({ id: tests.id })
       .from(tests)
-      .where(eq(tests.id, testId))
+      .where(and(
+        eq(tests.id, testId),
+        eq(tests.organizationId, organizationId),
+        eq(tests.projectId, project.id)
+      ))
       .limit(1);
 
     if (test.length === 0) {
@@ -112,12 +145,19 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
+    const { project, organizationId } = await requireProjectContext();
+
+    // Check permission to update tests
+    const canUpdate = await hasPermission('test', 'update', {
+      organizationId,
+      projectId: project.id
     });
 
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!canUpdate) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions to update test tags' },
+        { status: 403 }
+      );
     }
 
     const { id: testId } = await params;
@@ -125,6 +165,21 @@ export async function DELETE(
 
     if (!tagId) {
       return NextResponse.json({ error: 'Tag ID is required' }, { status: 400 });
+    }
+
+    // Verify test exists AND belongs to current org/project to prevent IDOR
+    const test = await db
+      .select({ id: tests.id })
+      .from(tests)
+      .where(and(
+        eq(tests.id, testId),
+        eq(tests.organizationId, organizationId),
+        eq(tests.projectId, project.id)
+      ))
+      .limit(1);
+
+    if (test.length === 0) {
+      return NextResponse.json({ error: 'Test not found' }, { status: 404 });
     }
 
     // Remove specific tag from test

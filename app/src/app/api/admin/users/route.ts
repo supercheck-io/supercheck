@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAllUsers, requireAdmin } from '@/lib/admin';
 import { createUserAsAdmin } from '@/utils/auth-client';
 import { db } from '@/utils/db';
-import { user } from '@/db/schema';
+import { user, session } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/session';
+import { logAdminEvent } from '@/lib/audit-logger';
 
 export async function GET(request: NextRequest) {
   try {
@@ -104,7 +105,13 @@ export async function PATCH(request: NextRequest) {
         
         // Prevent super admins from banning themselves
         const currentUser = await getCurrentUser();
-        if (currentUser?.id === userId) {
+        if (!currentUser) {
+          return NextResponse.json(
+            { success: false, error: 'Not authenticated' },
+            { status: 401 }
+          );
+        }
+        if (currentUser.id === userId) {
           return NextResponse.json(
             { success: false, error: 'You cannot ban yourself' },
             { status: 400 }
@@ -125,7 +132,24 @@ export async function PATCH(request: NextRequest) {
           })
           .where(eq(user.id, userId));
 
-        result = { success: true, userId, action: 'banned', banReason: reason };
+        // Invalidate all user sessions immediately (security fix)
+        // This prevents banned users from continuing to use the app with existing sessions
+        await db
+          .update(session)
+          .set({ expiresAt: new Date(0) })
+          .where(eq(session.userId, userId));
+
+        // Audit log the ban action
+        await logAdminEvent(
+          currentUser.id,
+          'user_banned',
+          userId,
+          'user',
+          userId,
+          { reason, duration, banExpires }
+        );
+
+        result = { success: true, userId, action: 'banned', banReason: reason, sessionsInvalidated: true };
         break;
       
       case 'unban':

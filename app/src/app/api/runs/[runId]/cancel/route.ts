@@ -347,16 +347,18 @@ export async function POST(
         );
       }
 
-      // STEP 3.5: Release capacity slot if job was removed from queue
-      // This is critical - when job.remove() succeeds, no BullMQ events fire,
-      // so we must manually release the capacity slot to prevent counter leak
-      if (jobWasRemoved && organizationIdForRbac) {
+      // STEP 3.5: Release capacity slot if job was found in ANY queue
+      // CRITICAL FIX: Release for BOTH removed jobs AND locked (running) jobs
+      // For locked jobs, the worker will also try to release when it detects cancellation,
+      // but releaseRunningSlot is now idempotent (uses atomic Lua script with released flag)
+      // This prevents the race condition where user starts new job before worker stops
+      if (queueToSearch && organizationIdForRbac) {
         try {
           const capacityManager = await getCapacityManager();
           await capacityManager.releaseRunningSlot(organizationIdForRbac, runId);
           logger.info(
-            { runId, organizationId: organizationIdForRbac },
-            "Released capacity slot after job removal"
+            { runId, organizationId: organizationIdForRbac, jobType, wasRemoved: jobWasRemoved },
+            "Released capacity slot (idempotent - safe if worker also releases)"
           );
         } catch (capacityError) {
           logger.error(

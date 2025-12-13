@@ -1,6 +1,12 @@
 import { openai } from "@ai-sdk/openai";
 import { streamText } from "ai";
 import { aiRateLimiter } from "./ai-rate-limiter";
+import { aiCodeValidator } from "./ai-code-validator";
+import { getRedisConnection } from "@/lib/queue";
+
+// Idempotency key configuration
+const IDEMPOTENCY_KEY_PREFIX = "supercheck:ai:idempotency";
+const IDEMPOTENCY_TTL_SECONDS = 3600; // 1 hour
 
 interface AIStreamRequest {
   prompt: string;
@@ -11,11 +17,14 @@ interface AIStreamRequest {
   userId?: string;
   orgId?: string;
   tier?: string;
+  // Idempotency key to prevent duplicate requests
+  idempotencyKey?: string;
 }
 
 interface AIStreamResponse {
   stream: ReadableStream;
   model: string;
+  cached?: boolean; // True if returned from idempotency cache
 }
 
 interface AIUsageLog {
@@ -146,10 +155,42 @@ export class AIStreamingService {
     userId,
     orgId,
     tier,
+    idempotencyKey,
   }: AIStreamRequest): Promise<AIStreamResponse> {
     const startTime = Date.now();
 
     try {
+      // Step 0: Check idempotency key if provided
+      if (idempotencyKey) {
+        try {
+          const redis = await getRedisConnection();
+          const cacheKey = `${IDEMPOTENCY_KEY_PREFIX}:${idempotencyKey}`;
+          const cached = await redis.get(cacheKey);
+          
+          if (cached) {
+            console.log(`[AI Streaming Service] Returning cached result for idempotency key: ${idempotencyKey.slice(0, 8)}...`);
+            // Create a stream from cached content
+            const cachedStream = new ReadableStream({
+              start(controller) {
+                const data = JSON.stringify({ type: "content", content: cached });
+                controller.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
+                const doneData = JSON.stringify({ type: "done", cached: true });
+                controller.enqueue(new TextEncoder().encode(`data: ${doneData}\n\n`));
+                controller.close();
+              },
+            });
+            return {
+              stream: cachedStream,
+              model: process.env.AI_MODEL || "gpt-4o-mini",
+              cached: true,
+            };
+          }
+        } catch (redisError) {
+          // Redis failure should not block the request
+          console.warn("[AI Streaming Service] Idempotency check failed, proceeding with request:", redisError);
+        }
+      }
+
       // Step 1: Validate configuration (API key, etc.)
       this.validateConfiguration();
 
@@ -168,6 +209,7 @@ export class AIStreamingService {
       console.log(
         `[AI Streaming Service] Config: maxTokens=${maxTokens}, temperature=${temperature || config.temperature}, timeout=${config.timeout}ms`
       );
+
 
       // Step 4: Create streaming response
       const result = await streamText({
@@ -195,6 +237,17 @@ export class AIStreamingService {
             for await (const chunk of result.textStream) {
               chunkCount++;
               totalContentLength += chunk.length;
+
+              // Security: Validate chunk for critical security patterns
+              const validation = aiCodeValidator.quickValidate(chunk);
+              if (validation.hasIssues) {
+                console.warn(
+                  "[AI Streaming Service] Security concern in chunk:",
+                  validation.issues
+                );
+                // Log but don't block - full validation happens on final code acceptance
+                // Critical issues will be caught in sanitizeCodeOutput before user accepts
+              }
 
               const data = JSON.stringify({
                 type: "content",

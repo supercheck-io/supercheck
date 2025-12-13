@@ -36,13 +36,16 @@ export async function verifySubscriber(token: string) {
       };
     }
 
-    // Check if token is expired (24 hours)
-    const createdAt = new Date(subscriber.createdAt || Date.now());
+    // FIX: Check if token is expired (24 hours from token generation)
+    // Use updatedAt if available (token was regenerated via resend), otherwise createdAt
+    const tokenGeneratedAt = subscriber.updatedAt
+      ? new Date(subscriber.updatedAt)
+      : new Date(subscriber.createdAt || Date.now());
     const now = new Date();
-    const hoursSinceCreation =
-      (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+    const hoursSinceTokenGeneration =
+      (now.getTime() - tokenGeneratedAt.getTime()) / (1000 * 60 * 60);
 
-    if (hoursSinceCreation > 24) {
+    if (hoursSinceTokenGeneration > 24) {
       return {
         success: false,
         message: "Verification link has expired. Please subscribe again.",
