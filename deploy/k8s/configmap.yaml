@@ -9,10 +9,10 @@ metadata:
 data:
   NODE_ENV: "production"
   LOG_LEVEL: "info"
-  NEXT_PUBLIC_APP_URL: "https://app.supercheck.example.com"
-  APP_URL: "https://app.supercheck.example.com"
-  BETTER_AUTH_URL: "https://app.supercheck.example.com"
-  STATUS_PAGE_DOMAIN: "status.supercheck.example.com"
+  NEXT_PUBLIC_APP_URL: "https://app.supercheck.io"
+  APP_URL: "https://app.supercheck.io"
+  BETTER_AUTH_URL: "https://app.supercheck.io"
+  STATUS_PAGE_DOMAIN: "status.supercheck.io"
   # Demo mode - shows demo badge in UI (runtime configurable)
   DEMO_MODE: "false"
 

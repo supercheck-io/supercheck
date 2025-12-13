@@ -304,7 +304,7 @@ export default function StatusPagesList() {
       {statusPages.length === 0 ? (
         <div className="text-center py-16 border-2 border-dashed rounded-xl bg-muted/20" data-testid="empty-state">
           <div className="flex items-center justify-center h-16 w-16 rounded-2xl bg-primary/10 mx-auto mb-4">
-            <Tally4 className="h-8 w-8 text-primary" />
+            <Tally4 className="h-8 w-8 text-green-500" />
           </div>
           <h3 className="text-lg font-semibold mb-2">No status pages yet</h3>
           <p className="text-sm text-muted-foreground mb-6 max-w-sm mx-auto">
@@ -337,7 +337,7 @@ export default function StatusPagesList() {
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-primary/10 flex-shrink-0">
-                        <Tally4 className="h-5 w-5 text-primary" />
+                        <Tally4 className="h-5 w-5 text-green-500" />
                       </div>
                       <div className="min-w-0 flex-1">
                         <h3 className="font-semibold text-base truncate group-hover:text-primary transition-colors">
@@ -431,7 +431,7 @@ export default function StatusPagesList() {
                   <div className="flex gap-2">
                     <Button
                       asChild
-                      variant="default"
+                      variant="outline"
                       size="sm"
                       className="flex-1 h-9"
                     >
