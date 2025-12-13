@@ -6,7 +6,6 @@ import { getRedisConnection } from "@/lib/queue";
 
 // Idempotency key configuration
 const IDEMPOTENCY_KEY_PREFIX = "supercheck:ai:idempotency";
-const IDEMPOTENCY_TTL_SECONDS = 3600; // 1 hour
 
 interface AIStreamRequest {
   prompt: string;

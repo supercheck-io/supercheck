@@ -2,7 +2,7 @@
 
 import { db } from "@/utils/db";
 import { incidents, statusPages } from "@/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 
 // UUID validation schema
