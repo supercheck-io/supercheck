@@ -24,6 +24,27 @@ locals {
           net.bridge.bridge-nf-call-ip6tables = 1
           fs.inotify.max_user_watches = 524288
           fs.inotify.max_user_instances = 512
+      
+      # Traefik configuration for automatic TLS with Let's Encrypt
+      - path: /var/lib/rancher/k3s/server/manifests/traefik-config.yaml
+        content: |
+          apiVersion: helm.cattle.io/v1
+          kind: HelmChartConfig
+          metadata:
+            name: traefik
+            namespace: kube-system
+          spec:
+            valuesContent: |-
+              additionalArguments:
+                - "--certificatesresolvers.letsencrypt.acme.email=admin@supercheck.io"
+                - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"
+                - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+              persistence:
+                enabled: true
+              ports:
+                websecure:
+                  tls:
+                    enabled: true
         
     runcmd:
       # Load bridge module
@@ -38,12 +59,10 @@ locals {
       # Wait for network
       - sleep 10
       
-      # Install K3s server
+      # Install K3s server (with Traefik + built-in ACME)
       - |
         curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${var.k3s_version}" sh -s - server \
           --cluster-init \
-          --disable traefik \
-          --disable servicelb \
           --tls-san ${hcloud_server.master[0].ipv4_address} \
           --node-ip $(ip -4 addr show eth0 | grep -oP '(?<=inet\s)10\.\d+\.\d+\.\d+') \
           --flannel-iface eth0 \
@@ -52,13 +71,7 @@ locals {
       # Wait for K3s to be ready
       - sleep 30
       
-      # Install NGINX Ingress
-      - kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.0/deploy/static/provider/baremetal/deploy.yaml
-      
-      # Install cert-manager
-      - kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
-      
-      # Install KEDA
+      # Install KEDA for worker autoscaling
       - kubectl apply --server-side -f https://github.com/kedacore/keda/releases/download/v2.13.0/keda-2.13.0.yaml
       
       # Save join token to file
