@@ -97,7 +97,8 @@ export async function GET(
 
     // Build RSS feed XML
     const rssItems = recentIncidents.map((incident) => {
-      const incidentUrl = `${statusPageUrl}#incident-${incident.id}`;
+      // FIX: Use actual incident detail route instead of anchor
+      const incidentUrl = `${statusPageUrl}/incidents/${incident.id}`;
       const affectedComponents = incident.affectedComponents
         .map((ic) => ic.component?.name || "Unknown")
         .join(", ");

@@ -16,26 +16,51 @@ import { inviteMemberSchema } from "@/lib/validations/member";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { renderOrganizationInvitationEmail } from "@/lib/email-renderer";
 import { checkTeamMemberLimit } from "@/lib/middleware/plan-enforcement";
+import { getRedisConnection } from "@/lib/queue";
 
-// Simple rate limiting - max 10 invites per hour per user
-const inviteRateLimit = new Map<string, { count: number; resetTime: number }>();
+// Redis-based rate limiting for distributed/serverless environments
+const INVITE_RATE_LIMIT_KEY_PREFIX = "supercheck:invite:ratelimit";
+const INVITE_RATE_LIMIT_MAX = 10;
+const INVITE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
-function checkRateLimit(userId: string): boolean {
-  const now = Date.now();
-  const hourInMs = 60 * 60 * 1000;
+async function checkInviteRateLimit(userId: string): Promise<{ allowed: boolean; retryAfter?: number }> {
+  try {
+    const redis = await getRedisConnection();
+    if (!redis) {
+      // If Redis is unavailable, fail open but log a warning
+      console.warn('[INVITE_RATE_LIMIT] Redis unavailable, allowing request');
+      return { allowed: true };
+    }
 
-  const userLimit = inviteRateLimit.get(userId);
-  if (!userLimit || now > userLimit.resetTime) {
-    inviteRateLimit.set(userId, { count: 1, resetTime: now + hourInMs });
-    return true;
+    const key = `${INVITE_RATE_LIMIT_KEY_PREFIX}:${userId}`;
+    const now = Date.now();
+    const windowStart = now - INVITE_RATE_LIMIT_WINDOW_MS;
+
+    // Clean up old entries and count remaining
+    await redis.zremrangebyscore(key, 0, windowStart);
+    const count = await redis.zcard(key);
+
+    if (count >= INVITE_RATE_LIMIT_MAX) {
+      // Get the oldest entry to calculate retry-after
+      const oldest = await redis.zrange(key, 0, 0, 'WITHSCORES');
+      if (oldest.length >= 2) {
+        const oldestScore = Number(oldest[1]);
+        const retryAfter = Math.ceil((oldestScore + INVITE_RATE_LIMIT_WINDOW_MS - now) / 1000);
+        return { allowed: false, retryAfter };
+      }
+      return { allowed: false, retryAfter: 3600 };
+    }
+
+    // Add current request
+    await redis.zadd(key, now, `${now}`);
+    await redis.expire(key, Math.ceil(INVITE_RATE_LIMIT_WINDOW_MS / 1000));
+
+    return { allowed: true };
+  } catch (error) {
+    console.error('[INVITE_RATE_LIMIT] Error checking rate limit:', error);
+    // Fail open on error but log
+    return { allowed: true };
   }
-
-  if (userLimit.count >= 10) {
-    return false;
-  }
-
-  userLimit.count++;
-  return true;
 }
 
 export async function POST(request: NextRequest) {
@@ -51,11 +76,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check rate limit
-    if (!checkRateLimit(currentUser.id)) {
+    // Check rate limit using Redis
+    const rateLimitResult = await checkInviteRateLimit(currentUser.id);
+    if (!rateLimitResult.allowed) {
       return NextResponse.json(
         { error: "Rate limit exceeded. Maximum 10 invitations per hour." },
-        { status: 429 }
+        { 
+          status: 429,
+          headers: rateLimitResult.retryAfter 
+            ? { 'Retry-After': String(rateLimitResult.retryAfter) }
+            : undefined
+        }
       );
     }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { polarUsageService } from "@/lib/services/polar-usage.service";
 import { isPolarEnabled } from "@/lib/feature-flags";
+import { requireAdmin } from "@/lib/admin";
 
 /**
  * Sync pending usage events to Polar
@@ -20,14 +21,12 @@ export async function POST(request: NextRequest) {
     const cronSecret = request.headers.get("x-cron-secret");
     const expectedSecret = process.env.CRON_SECRET;
     
-    // Allow access if:
-    // 1. Cron secret matches, OR
-    // 2. No cron secret is set (for testing)
-    if (expectedSecret && cronSecret !== expectedSecret) {
-      return NextResponse.json(
-        { success: false, error: "Unauthorized" },
-        { status: 401 }
-      );
+    // Check if this is a valid cron request
+    const isCronJob = expectedSecret && cronSecret === expectedSecret;
+    
+    // If not a cron job, require admin privileges (security fix)
+    if (!isCronJob) {
+      await requireAdmin();
     }
 
     if (!isPolarEnabled()) {

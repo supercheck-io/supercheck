@@ -19,12 +19,24 @@ import { subscriptionService } from "@/lib/services/subscription-service";
 
 export async function GET(request: Request) {
   try {
-    await requireAuth();
+    // Require authentication and project context
+    const { project, organizationId } = await requireProjectContext();
 
-    // Get URL parameters for optional filtering and pagination
+    // Check permission to view monitors
+    const canView = await hasPermission('monitor', 'view', {
+      organizationId,
+      projectId: project.id
+    });
+
+    if (!canView) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      );
+    }
+
+    // Get URL parameters for pagination only (org/project comes from session)
     const url = new URL(request.url);
-    const projectId = url.searchParams.get("projectId");
-    const organizationId = url.searchParams.get("organizationId");
     const page = parseInt(url.searchParams.get("page") || "1", 10);
     const limit = Math.min(
       parseInt(url.searchParams.get("limit") || "50", 10),
@@ -34,6 +46,12 @@ export async function GET(request: Request) {
     // For backward compatibility, if no pagination params are provided, return all
     const usePagination =
       url.searchParams.has("page") || url.searchParams.has("limit");
+
+    // SECURITY: Always filter by org/project from session, never trust client params
+    const whereCondition = and(
+      eq(monitors.projectId, project.id),
+      eq(monitors.organizationId, organizationId)
+    );
 
     if (usePagination) {
       // Validate pagination parameters
@@ -48,41 +66,19 @@ export async function GET(request: Request) {
 
       const offset = (page - 1) * limit;
 
-      // Build where condition
-      const whereCondition =
-        projectId && organizationId
-          ? and(
-              eq(monitors.projectId, projectId),
-              eq(monitors.organizationId, organizationId)
-            )
-          : undefined;
-
       // Run count and data queries in parallel for better performance
-      // Using proper SQL COUNT(*) instead of fetching all IDs and using .length
       const [countResult, monitorsList] = await Promise.all([
-        // Proper COUNT query - much more efficient than fetching all rows
-        whereCondition
-          ? db
-              .select({ count: sql<number>`count(*)` })
-              .from(monitors)
-              .where(whereCondition)
-          : db.select({ count: sql<number>`count(*)` }).from(monitors),
-
-        // Data query with pagination
-        whereCondition
-          ? db
-              .select()
-              .from(monitors)
-              .where(whereCondition)
-              .orderBy(desc(monitors.id))
-              .limit(limit)
-              .offset(offset)
-          : db
-              .select()
-              .from(monitors)
-              .orderBy(desc(monitors.id))
-              .limit(limit)
-              .offset(offset),
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(monitors)
+          .where(whereCondition),
+        db
+          .select()
+          .from(monitors)
+          .where(whereCondition)
+          .orderBy(desc(monitors.id))
+          .limit(limit)
+          .offset(offset),
       ]);
 
       const total = Number(countResult[0]?.count || 0);
@@ -101,22 +97,12 @@ export async function GET(request: Request) {
         },
       });
     } else {
-      // Original behavior for backward compatibility
-      const baseQuery = db.select().from(monitors);
-
-      let monitorsList;
-      if (projectId && organizationId) {
-        monitorsList = await baseQuery
-          .where(
-            and(
-              eq(monitors.projectId, projectId),
-              eq(monitors.organizationId, organizationId)
-            )
-          )
-          .orderBy(desc(monitors.id)); // UUIDv7 is time-ordered (PostgreSQL 18+)
-      } else {
-        monitorsList = await baseQuery.orderBy(desc(monitors.id)); // UUIDv7 is time-ordered (PostgreSQL 18+)
-      }
+      // Original behavior for backward compatibility - still scoped by org/project
+      const monitorsList = await db
+        .select()
+        .from(monitors)
+        .where(whereCondition)
+        .orderBy(desc(monitors.id));
 
       return NextResponse.json(monitorsList);
     }
@@ -221,6 +207,24 @@ export async function POST(req: NextRequest) {
         },
         { status: 400 }
       );
+    }
+
+    // Validate frequency bounds (1 minute minimum, 1440 minutes = 24 hours maximum)
+    // This prevents resource exhaustion from too-frequent checks and ensures reasonable monitoring intervals
+    const MIN_FREQUENCY_MINUTES = 1;
+    const MAX_FREQUENCY_MINUTES = 1440; // 24 hours
+    
+    if (rawData.frequencyMinutes !== undefined) {
+      const freq = Number(rawData.frequencyMinutes);
+      if (isNaN(freq) || freq < MIN_FREQUENCY_MINUTES || freq > MAX_FREQUENCY_MINUTES) {
+        return NextResponse.json(
+          {
+            error: "Invalid frequency",
+            details: `frequencyMinutes must be between ${MIN_FREQUENCY_MINUTES} and ${MAX_FREQUENCY_MINUTES} minutes`,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Validate target - all monitor types require a target except heartbeat and synthetic_test
@@ -553,6 +557,23 @@ export async function PUT(req: NextRequest) {
         { error: "Insufficient permissions to update monitors" },
         { status: 403 }
       );
+    }
+
+    // Validate frequency bounds (1 minute minimum, 1440 minutes = 24 hours maximum)
+    const MIN_FREQUENCY_MINUTES = 1;
+    const MAX_FREQUENCY_MINUTES = 1440; // 24 hours
+    
+    if (rawData.frequencyMinutes !== undefined) {
+      const freq = Number(rawData.frequencyMinutes);
+      if (isNaN(freq) || freq < MIN_FREQUENCY_MINUTES || freq > MAX_FREQUENCY_MINUTES) {
+        return NextResponse.json(
+          {
+            error: "Invalid frequency",
+            details: `frequencyMinutes must be between ${MIN_FREQUENCY_MINUTES} and ${MAX_FREQUENCY_MINUTES} minutes`,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Validate synthetic test monitor updates

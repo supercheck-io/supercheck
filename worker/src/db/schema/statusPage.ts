@@ -310,7 +310,18 @@ export const statusPageSubscribers = pgTable("status_page_subscribers", {
   webhookLastError: text("webhook_last_error"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+},
+(table) => ({
+  // Prevent duplicate email subscribers per status page
+  uniqueEmailPerPage: uniqueIndex("status_page_subscribers_email_idx")
+    .on(table.statusPageId, table.email)
+    .where(sql`email IS NOT NULL`),
+  // Prevent duplicate webhook subscribers per status page
+  uniqueEndpointPerPage: uniqueIndex("status_page_subscribers_endpoint_idx")
+    .on(table.statusPageId, table.endpoint)
+    .where(sql`endpoint IS NOT NULL`),
+})
+);
 
 /**
  * Component-specific subscriptions
@@ -328,7 +339,12 @@ export const statusPageComponentSubscriptions = pgTable(
       .notNull()
       .references(() => statusPageComponents.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at").defaultNow(),
-  }
+  },
+  (table) => ({
+    // Prevent duplicate component subscriptions per subscriber
+    uniqueSubscriberComponent: uniqueIndex("status_page_component_subs_unique_idx")
+      .on(table.subscriberId, table.componentId),
+  })
 );
 
 /**
@@ -347,7 +363,12 @@ export const statusPageIncidentSubscriptions = pgTable(
       .notNull()
       .references(() => statusPageSubscribers.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at").defaultNow(),
-  }
+  },
+  (table) => ({
+    // Prevent duplicate incident subscriptions per subscriber
+    uniqueSubscriberIncident: uniqueIndex("status_page_incident_subs_unique_idx")
+      .on(table.subscriberId, table.incidentId),
+  })
 );
 
 /**

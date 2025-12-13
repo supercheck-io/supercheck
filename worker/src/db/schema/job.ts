@@ -96,10 +96,10 @@ export const jobTests = pgTable(
   {
     jobId: uuid("job_id")
       .notNull()
-      .references(() => jobs.id),
+      .references(() => jobs.id, { onDelete: "cascade" }),
     testId: uuid("test_case_id")
       .notNull()
-      .references(() => tests.id),
+      .references(() => tests.id, { onDelete: "cascade" }),
     orderPosition: integer("order_position"),
   },
   (table) => ({

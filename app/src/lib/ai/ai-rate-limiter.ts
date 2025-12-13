@@ -21,6 +21,60 @@ const logger = createLogger({ module: "ai-rate-limiter" }) as {
   error: (data: unknown, msg?: string) => void;
 };
 
+// Security: Fail-closed mode when Redis is unavailable
+// Set to "false" to fail-open (NOT recommended for production)
+const RATE_LIMIT_FAIL_CLOSED = process.env.RATE_LIMIT_FAIL_CLOSED !== "false";
+
+// In-memory fallback rate limiter for Redis failure scenarios
+// This provides basic protection when Redis is temporarily unavailable
+const inMemoryFallback = new Map<string, { count: number; resetAt: number }>();
+const FALLBACK_CLEANUP_INTERVAL = 60000; // 1 minute
+
+// Cleanup expired entries periodically
+if (typeof setInterval !== "undefined") {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, value] of inMemoryFallback.entries()) {
+      if (value.resetAt < now) {
+        inMemoryFallback.delete(key);
+      }
+    }
+  }, FALLBACK_CLEANUP_INTERVAL);
+}
+
+/**
+ * Handle rate limiting via in-memory fallback when Redis is unavailable
+ */
+function handleInMemoryFallback(
+  key: string,
+  limit: number,
+  windowSeconds: number
+): { allowed: boolean; count: number; resetAt: Date } {
+  const now = Date.now();
+  const resetAt = now + windowSeconds * 1000;
+  
+  const existing = inMemoryFallback.get(key);
+  
+  if (existing && existing.resetAt > now) {
+    // Within window - increment count
+    existing.count++;
+    const allowed = existing.count < limit;
+    return {
+      allowed,
+      count: existing.count,
+      resetAt: new Date(existing.resetAt),
+    };
+  }
+  
+  // Start new window
+  inMemoryFallback.set(key, { count: 1, resetAt });
+  return {
+    allowed: true,
+    count: 1,
+    resetAt: new Date(resetAt),
+  };
+}
+
 // Rate limit configuration with generous production limits
 // These limits are higher than the security assessment recommendations
 // to balance security with user experience
@@ -195,8 +249,13 @@ export class AIRateLimiter {
       const results = await pipeline.exec();
 
       if (!results) {
-        // Redis error - fail open but log
-        logger.warn({ key }, "Redis pipeline returned null, allowing request");
+        // Redis error - use fail-closed or fallback behavior
+        logger.error({ key }, "Redis pipeline returned null, using fallback behavior");
+        if (RATE_LIMIT_FAIL_CLOSED) {
+          // When explicitly configured fail-closed, use in-memory fallback
+          return handleInMemoryFallback(key, limit, windowSeconds);
+        }
+        // Fail-open only when explicitly configured (not recommended)
         return {
           allowed: true,
           count: 0,
@@ -213,8 +272,13 @@ export class AIRateLimiter {
 
       return { allowed, count: currentCount, resetAt };
     } catch (error) {
-      // Redis error - fail open with warning
-      logger.error({ error, key }, "Rate limit check failed, allowing request");
+      // Redis error - use fail-closed or fallback behavior
+      logger.error({ error, key }, "Rate limit check failed, using fallback behavior");
+      if (RATE_LIMIT_FAIL_CLOSED) {
+        // When fail-closed, use in-memory fallback
+        return handleInMemoryFallback(key, limit, windowSeconds);
+      }
+      // Fail-open only when explicitly configured (not recommended)
       return { allowed: true, count: 0, resetAt: new Date() };
     }
   }

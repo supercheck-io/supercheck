@@ -6,6 +6,7 @@ import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { hasPermission, requireAuth } from "@/lib/rbac/middleware";
 import { createLogger } from "@/lib/logger/pino-config";
+import { hashApiKey, generateApiKey, getApiKeyPrefix } from "@/lib/security/api-key-hash";
 
 const logger = createLogger({ module: 'api-keys' });
 
@@ -206,10 +207,11 @@ export async function POST(
       );
     }
 
-    // Generate secure API key
+    // Generate secure API key using cryptographic utility
     const apiKeyId = crypto.randomUUID();
-    const apiKeyValue = `job_${crypto.randomUUID().replace(/-/g, '')}`;
-    const apiKeyStart = apiKeyValue.substring(0, 8);
+    const apiKeyValue = generateApiKey(); // Uses crypto.randomBytes for secure generation
+    const apiKeyStart = getApiKeyPrefix(apiKeyValue);
+    const apiKeyHash = hashApiKey(apiKeyValue); // Hash the key for storage
     
     const now = new Date();
     let expiresAt = null;
@@ -226,24 +228,21 @@ export async function POST(
       }
     }
     
-    // Create API key with proper error handling
+    // Create API key with hashed key for secure storage
+    // SECURITY: Only the hash is stored, the plain key is returned once to the user
     const newApiKey = await db.insert(apikey).values({
       id: apiKeyId,
       name: name.trim(),
       start: apiKeyStart,
       prefix: "job",
-      key: apiKeyValue,
+      key: apiKeyHash, // Store hash instead of plain text
       userId,
       jobId: jobId,
       enabled: true,
       expiresAt: expiresAt,
       createdAt: now,
       updatedAt: now,
-      permissions: JSON.stringify({
-        jobs: [`trigger:${jobId}`],
-        scope: "job-specific",
-        createdBy: userId
-      }),
+      permissions: [`trigger:${jobId}`],
     }).returning();
 
     if (!newApiKey || newApiKey.length === 0) {
@@ -278,7 +277,7 @@ export async function POST(
       apiKey: {
         id: apiKey.id,
         name: apiKey.name || "Unnamed Key",
-        key: apiKey.key, // Only returned on creation
+        key: apiKeyValue, // Return plain key (shown only once) - NOT the stored hash
         start: apiKey.start || "unknown",
         enabled: Boolean(apiKey.enabled),
         expiresAt: apiKey.expiresAt?.toISOString() || null,

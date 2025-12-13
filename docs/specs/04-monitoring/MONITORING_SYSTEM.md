@@ -704,6 +704,13 @@ graph TB
 - **URL Validation**: Protocol validation (HTTP/HTTPS only), hostname verification, and suspicious pattern detection
 - **Configuration Validation**: Validates all monitor parameters including timeouts, status codes, and headers
 - **Safe Authentication**: Special handling for credentials with control character removal
+- **Frequency Validation**: Monitor check frequency enforced between 1-1440 minutes (1 minute to 24 hours) to prevent resource exhaustion
+
+#### **Audit Logging**
+
+- **Comprehensive Change Tracking**: All monitor updates logged with detailed metadata
+- **Alert Configuration Auditing**: Changes to alert settings (enabled, thresholds, notification types) tracked in audit logs
+- **Security-Relevant Changes**: Status changes, frequency modifications, and alert config changes captured with old/new values
 
 #### **Credential Security**
 

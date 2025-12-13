@@ -15,11 +15,14 @@ This document reflects the **actual Next.js App Router handlers** that exist und
 | --- | --- |
 | `/api/auth/[...all]`, `/api/auth` | Better Auth handlers (sign-in, sign-up, reset-password, session) |
 | `/api/auth/sign-in/email`, `/api/auth/sign-up/email` | Email/password helpers used by the auth pages |
+| `/api/auth/sign-in/check` | Login lockout pre-check, record failed/success attempts |
 | `/api/auth/user`, `/api/auth/impersonation-status` | Session details and admin impersonation status |
+| `/api/auth/invalidate-sessions` | Invalidate all user sessions (security action) |
 | `/api/auth/setup-defaults` | Initial org/project/bootstrap |
-| `/api/auth/verify-key` | Verify API key validity (job-scoped keys) |
+| `/api/auth/verify-key` | Verify API key validity (job-scoped keys, hash-based) |
 | `/api/auth/error` | Better Auth error surface |
 | `/api/invite/[token]` | Accept org invitations |
+
 
 ### Administration & Platform Ops
 | Route | Purpose |
@@ -55,7 +58,6 @@ This document reflects the **actual Next.js App Router handlers** that exist und
 | `/api/jobs`, `/api/jobs/[id]` | Job CRUD |
 | `/api/jobs/[id]/trigger` | Trigger a job run |
 | `/api/jobs/run` | Execute a job with provided payload |
-| `/api/jobs/status/running` | List currently running jobs |
 | `/api/jobs/[id]/api-keys`, `/api/jobs/[id]/api-keys/[keyId]` | Job-scoped API keys |
 | `/api/runs`, `/api/runs/[runId]` | Run metadata |
 | `/api/runs/[runId]/status`, `/api/runs/[runId]/permissions`, `/api/runs/[runId]/stream` | Status/permissions/console streaming |
@@ -92,10 +94,13 @@ This document reflects the **actual Next.js App Router handlers** that exist und
 - Real-time updates use SSE: `/api/queue-stats/sse`, `/api/job-status/events`, `/api/job-status/events/[runId]`, `/api/runs/[runId]/stream`, and `/api/test-status/events/[testId]`.
 - K6 performance runs surface through `/api/k6/runs/[runId]`; k6 execution is otherwise triggered via the standard job/test execution routes.
 - ✅ **Health check:** `/api/health` now performs deep connectivity checks for Database (required), Redis (optional), and S3/MinIO (optional). Returns `unhealthy` (503) if DB fails, `degraded` (200) if Redis/S3 fail.
-- Notification surfaces (read-only run and monitor views) inherit org membership checks before rendering data.
+- ✅ **SSE endpoints:** All SSE endpoints (`/api/queue-stats/sse`, `/api/test-status/events/[testId]`) now require authentication and project context.
+- ✅ **Multi-tenant isolation:** Monitors, runs, tags, and test-tags endpoints enforce org/project scoping server-side.
+- ✅ **Admin endpoints:** All admin endpoints (scheduler, playground-cleanup) require super-admin privileges.
 
 ## Improvement Backlog (code-aligned)
 - ✅ **AuthZ coverage:** Job API key routes and report proxy now enforce org/project RBAC before returning data.
 - ✅ **Streaming safeguards:** `/api/job-status/events/[runId]` now requires active project context and org match before streaming.
+- ✅ **SSRF protection:** Webhook test endpoint validates URLs against private networks and enforces HTTPS.
 - **Caching:** Dashboard endpoint is compute-heavy; add short-lived caching keyed by project/org to reduce DB load.
 - **Monitoring queries:** Monitor list still does multiple queries per monitor for status in `app/src/app/api/monitors/[id]/status/route.ts`; push aggregation into a single query to avoid N+1 patterns.

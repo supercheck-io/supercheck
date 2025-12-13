@@ -2,13 +2,13 @@
 
 ## Entity Relationship Diagram
 
-This diagram represents the complete database schema for the Supercheck application, based on the main app schema.
+This diagram represents the complete database schema for the Supercheck application, based on the actual Drizzle schema definitions.
 
 > This schema includes 60+ strategic indexes for optimal query performance, foreign key indexes on all relationship columns, and composite indexes for common query patterns.
 
 ```mermaid
 erDiagram
-    USER {
+    user {
         uuid id PK
         text name
         text email
@@ -22,24 +22,27 @@ erDiagram
         timestamp banExpires
     }
 
-    ORGANIZATION {
+    organization {
         uuid id PK
         text name
         text slug
         text logo
         timestamp createdAt
-        text metadata
+        jsonb metadata
         text polarCustomerId
         text subscriptionPlan
         text subscriptionStatus
         text subscriptionId
+        timestamp subscriptionStartedAt
+        timestamp subscriptionEndsAt
         integer playwrightMinutesUsed
         integer k6VuMinutesUsed
+        integer aiCreditsUsed
         timestamp usagePeriodStart
         timestamp usagePeriodEnd
     }
 
-    MEMBER {
+    member {
         uuid id PK
         uuid organizationId FK
         uuid userId FK
@@ -47,7 +50,7 @@ erDiagram
         timestamp createdAt
     }
 
-    INVITATION {
+    invitation {
         uuid id PK
         uuid organizationId FK
         text email
@@ -55,10 +58,10 @@ erDiagram
         text status
         timestamp expiresAt
         uuid inviterId FK
-        text selectedProjects
+        jsonb selectedProjects
     }
 
-    PROJECTS {
+    projects {
         uuid id PK
         uuid organizationId FK
         varchar name
@@ -78,7 +81,20 @@ erDiagram
         timestamp createdAt
     }
 
-    TESTS {
+    project_variables {
+        uuid id PK
+        uuid projectId FK
+        varchar key
+        text value
+        text encryptedValue
+        boolean isSecret
+        text description
+        uuid createdByUserId FK
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    tests {
         uuid id PK
         uuid organizationId FK
         uuid projectId FK
@@ -92,13 +108,14 @@ erDiagram
         timestamp updatedAt
     }
 
-    JOBS {
+    jobs {
         uuid id PK
         uuid organizationId FK
         uuid projectId FK
         uuid createdByUserId FK
         varchar name
         text description
+        varchar jobType
         varchar cronSchedule
         varchar status
         jsonb alertConfig
@@ -109,29 +126,65 @@ erDiagram
         timestamp updatedAt
     }
 
-    jobTests {
+    job_tests {
         uuid jobId FK
         uuid testId FK
         integer orderPosition
     }
 
-    RUNS {
+    runs {
         uuid id PK
         uuid jobId FK
         uuid projectId FK
         varchar status
         varchar duration
+        integer durationMs
         timestamp startedAt
         timestamp completedAt
+        text reportS3Url
+        text logsS3Url
+        text videoS3Url
+        text screenshotsS3Path
         jsonb artifactPaths
         text logs
+        varchar location
+        jsonb metadata
         text errorDetails
         varchar trigger
         timestamp createdAt
         timestamp updatedAt
     }
 
-    MONITORS {
+    k6_performance_runs {
+        uuid id PK
+        uuid testId FK
+        uuid jobId FK
+        uuid runId FK
+        uuid organizationId FK
+        uuid projectId FK
+        varchar location
+        varchar status
+        timestamp startedAt
+        timestamp completedAt
+        integer durationMs
+        jsonb summaryJson
+        boolean thresholdsPassed
+        integer totalRequests
+        integer failedRequests
+        integer requestRate
+        integer avgResponseTimeMs
+        integer p95ResponseTimeMs
+        integer p99ResponseTimeMs
+        text reportS3Url
+        text summaryS3Url
+        text consoleS3Url
+        text errorDetails
+        text consoleOutput
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    monitors {
         uuid id PK
         uuid organizationId FK
         uuid projectId FK
@@ -157,16 +210,43 @@ erDiagram
         uuid id PK
         uuid monitorId FK
         timestamp checkedAt
+        varchar location
         varchar status
         integer responseTimeMs
         jsonb details
         boolean isUp
         boolean isStatusChange
         integer consecutiveFailureCount
+        integer consecutiveSuccessCount
         integer alertsSentForFailure
+        integer alertsSentForRecovery
+        text testExecutionId
+        text testReportS3Url
     }
 
-    TAGS {
+    monitor_aggregates {
+        uuid id PK
+        uuid monitorId FK
+        text periodType
+        timestamp periodStart
+        text location
+        integer totalChecks
+        integer successfulChecks
+        integer failedChecks
+        numeric uptimePercentage
+        integer avgResponseMs
+        integer minResponseMs
+        integer maxResponseMs
+        integer p50ResponseMs
+        integer p95ResponseMs
+        integer p99ResponseMs
+        integer totalResponseMs
+        integer statusChangeCount
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    tags {
         uuid id PK
         uuid organizationId FK
         uuid projectId FK
@@ -177,13 +257,13 @@ erDiagram
         timestamp updatedAt
     }
 
-    monitorTags {
+    monitor_tags {
         uuid monitorId FK
         uuid tagId FK
         timestamp assignedAt
     }
 
-    testTags {
+    test_tags {
         uuid testId FK
         uuid tagId FK
         timestamp assignedAt
@@ -214,20 +294,7 @@ erDiagram
         timestamp createdAt
     }
 
-    REPORTS {
-        uuid id PK
-        uuid organizationId FK
-        uuid createdByUserId FK
-        varchar entityType
-        text entityId
-        varchar reportPath
-        varchar status
-        varchar s3Url
-        timestamp createdAt
-        timestamp updatedAt
-    }
-
-    ALERTS {
+    alerts {
         uuid id PK
         uuid organizationId FK
         uuid monitorId FK
@@ -259,6 +326,68 @@ erDiagram
         text errorMessage
     }
 
+    notifications {
+        uuid id PK
+        uuid userId FK
+        varchar type
+        jsonb content
+        varchar status
+        timestamp sentAt
+        timestamp createdAt
+    }
+
+    reports {
+        uuid id PK
+        uuid organizationId FK
+        uuid createdByUserId FK
+        varchar entityType
+        text entityId
+        varchar reportPath
+        varchar status
+        varchar s3Url
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    session {
+        uuid id PK
+        timestamp expiresAt
+        text token
+        timestamp createdAt
+        timestamp updatedAt
+        text ipAddress
+        text userAgent
+        uuid userId FK
+        uuid activeOrganizationId FK
+        uuid activeProjectId FK
+        text impersonatedBy
+    }
+
+    account {
+        uuid id PK
+        text accountId
+        text providerId
+        uuid userId FK
+        text accessToken
+        text refreshToken
+        text idToken
+        timestamp accessTokenExpiresAt
+        timestamp refreshTokenExpiresAt
+        text scope
+        text password
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    verification {
+        uuid id PK
+        text identifier
+        text value
+        timestamp expiresAt
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
     apikey {
         uuid id PK
         text name
@@ -281,79 +410,17 @@ erDiagram
         timestamp expiresAt
         timestamp createdAt
         timestamp updatedAt
-        text permissions
-        text metadata
+        jsonb permissions
+        jsonb metadata
     }
 
-    SESSION {
-        uuid id PK
-        timestamp expiresAt
-        text token
-        timestamp createdAt
-        timestamp updatedAt
-        text ipAddress
-        text userAgent
-        uuid userId FK
-        uuid activeOrganizationId FK
-        uuid activeProjectId FK
-        text impersonatedBy
-    }
-
-    ACCOUNT {
-        uuid id PK
-        text accountId
-        text providerId
-        uuid userId FK
-        text accessToken
-        text refreshToken
-        text idToken
-        timestamp accessTokenExpiresAt
-        timestamp refreshTokenExpiresAt
-        text scope
-        text password
-        timestamp createdAt
-        timestamp updatedAt
-    }
-
-    VERIFICATION {
-        uuid id PK
-        text identifier
-        text value
-        timestamp expiresAt
-        timestamp createdAt
-        timestamp updatedAt
-    }
-
-    auditLogs {
+    audit_logs {
         uuid id PK
         uuid userId FK
         uuid organizationId FK
         varchar action
         jsonb details
         timestamp createdAt
-    }
-
-    NOTIFICATIONS {
-        uuid id PK
-        uuid userId FK
-        varchar type
-        jsonb content
-        varchar status
-        timestamp sentAt
-        timestamp createdAt
-    }
-
-    project_variables {
-        uuid id PK
-        uuid projectId FK
-        varchar key
-        text value
-        text encryptedValue
-        boolean isSecret
-        text description
-        uuid createdByUserId FK
-        timestamp createdAt
-        timestamp updatedAt
     }
 
     %% Status Page Tables
@@ -402,21 +469,9 @@ erDiagram
         timestamp updatedAt
     }
 
-    status_page_component_groups {
-        uuid id PK
-        uuid statusPageId FK
-        varchar name
-        text description
-        integer position
-        timestamp createdAt
-        timestamp updatedAt
-    }
-
     status_page_components {
         uuid id PK
         uuid statusPageId FK
-        uuid componentGroupId FK
-        uuid monitorId FK
         varchar name
         text description
         varchar status
@@ -425,8 +480,17 @@ erDiagram
         varchar automationEmail
         timestamp startDate
         integer position
+        varchar aggregationMethod
+        integer failureThreshold
         timestamp createdAt
         timestamp updatedAt
+    }
+
+    status_page_component_monitors {
+        uuid componentId FK
+        uuid monitorId FK
+        integer weight
+        timestamp createdAt
     }
 
     incidents {
@@ -487,7 +551,6 @@ erDiagram
         varchar name
         varchar title
         text body
-        uuid componentGroupId FK
         varchar updateStatus
         boolean shouldSendNotifications
         timestamp createdAt
@@ -560,22 +623,7 @@ erDiagram
         timestamp updatedAt
     }
 
-    %% Core Relationships
-    USER ||--o{ MEMBER : "belongs to"
-    USER ||--o{ INVITATION : "invites"
-    USER ||--o{ project_members : "member of"
-    USER ||--o{ SESSION : "has"
-    USER ||--o{ ACCOUNT : "linked to"
-    USER ||--o{ apikey : "owns"
-    USER ||--o{ NOTIFICATIONS : "receives"
-    USER ||--o{ audit_logs : "performs"
-    USER ||--o{ project_variables : "creates"
-    USER ||--o{ status_pages : "creates"
-    USER ||--o{ incidents : "manages"
-    USER ||--o{ incident_updates : "adds"
-    USER ||--o{ incident_templates : "creates"
-    USER ||--o{ postmortems : "writes"
-
+    %% Billing & Usage Tables
     plan_limits {
         uuid id PK
         text plan
@@ -587,8 +635,8 @@ erDiagram
         integer runningCapacity
         integer queuedCapacity
         integer maxTeamMembers
-        integer maxProjects
         integer maxOrganizations
+        integer maxProjects
         integer maxStatusPages
         boolean customDomains
         boolean ssoEnabled
@@ -597,17 +645,6 @@ erDiagram
         integer jobDataRetentionDays
         timestamp createdAt
         timestamp updatedAt
-    }
-
-    %% Billing & Usage Tables
-    webhook_idempotency {
-        uuid id PK
-        text webhookId
-        text eventType
-        timestamp processedAt
-        text resultStatus
-        text resultMessage
-        timestamp expiresAt
     }
 
     billing_settings {
@@ -620,9 +657,9 @@ erDiagram
         boolean notifyAt80Percent
         boolean notifyAt90Percent
         boolean notifyAt100Percent
-        text notificationEmails
+        jsonb notificationEmails
         timestamp lastNotificationSentAt
-        text notificationsSentThisPeriod
+        jsonb notificationsSentThisPeriod
         timestamp createdAt
         timestamp updatedAt
     }
@@ -634,7 +671,7 @@ erDiagram
         text eventName
         numeric units
         text unitType
-        text metadata
+        jsonb metadata
         boolean syncedToPolar
         text polarEventId
         text syncError
@@ -655,7 +692,7 @@ erDiagram
         integer usagePercentage
         integer currentSpendingCents
         integer spendingLimitCents
-        text sentTo
+        jsonb sentTo
         text deliveryStatus
         text deliveryError
         timestamp billingPeriodStart
@@ -674,69 +711,94 @@ erDiagram
         timestamp updatedAt
     }
 
-    ORGANIZATION ||--o{ MEMBER : "has members"
-    ORGANIZATION ||--o{ INVITATION : "has invitations"
-    ORGANIZATION ||--o{ PROJECTS : "contains"
-    ORGANIZATION ||--o{ TESTS : "owns"
-    ORGANIZATION ||--o{ JOBS : "owns"
-    ORGANIZATION ||--o{ MONITORS : "owns"
-    ORGANIZATION ||--o{ TAGS : "owns"
-    ORGANIZATION ||--o{ notification_providers : "configures"
-    ORGANIZATION ||--o{ REPORTS : "generates"
-    ORGANIZATION ||--o{ ALERTS : "manages"
-    ORGANIZATION ||--o{ audit_logs : "tracks"
-    ORGANIZATION ||--o{ status_pages : "manages"
-    ORGANIZATION ||--o{ billing_settings : "configures"
-    ORGANIZATION ||--o{ usage_events : "generates"
-    ORGANIZATION ||--o{ usage_notifications : "receives"
+    webhook_idempotency {
+        uuid id PK
+        text webhookId
+        text eventType
+        timestamp processedAt
+        text resultStatus
+        text resultMessage
+        timestamp expiresAt
+    }
 
-    PROJECTS ||--o{ project_members : "has members"
-    PROJECTS ||--o{ TESTS : "contains"
-    PROJECTS ||--o{ JOBS : "contains"
-    PROJECTS ||--o{ MONITORS : "contains"
-    PROJECTS ||--o{ TAGS : "organizes"
-    PROJECTS ||--o{ notification_providers : "uses"
-    PROJECTS ||--o{ RUNS : "executes"
-    PROJECTS ||--o{ apikey : "accesses"
-    PROJECTS ||--o{ project_variables : "contains"
-    PROJECTS ||--o{ status_pages : "hosts"
+    %% Core Relationships
+    user ||--o{ member : "belongs to"
+    user ||--o{ invitation : "invites"
+    user ||--o{ project_members : "member of"
+    user ||--o{ session : "has"
+    user ||--o{ account : "linked to"
+    user ||--o{ apikey : "owns"
+    user ||--o{ notifications : "receives"
+    user ||--o{ audit_logs : "performs"
+    user ||--o{ project_variables : "creates"
+    user ||--o{ status_pages : "creates"
+    user ||--o{ incidents : "manages"
+    user ||--o{ incident_updates : "adds"
+    user ||--o{ incident_templates : "creates"
+    user ||--o{ postmortems : "writes"
+
+    organization ||--o{ member : "has members"
+    organization ||--o{ invitation : "has invitations"
+    organization ||--o{ projects : "contains"
+    organization ||--o{ tests : "owns"
+    organization ||--o{ jobs : "owns"
+    organization ||--o{ monitors : "owns"
+    organization ||--o{ tags : "owns"
+    organization ||--o{ notification_providers : "configures"
+    organization ||--o{ reports : "generates"
+    organization ||--o{ alerts : "manages"
+    organization ||--o{ audit_logs : "tracks"
+    organization ||--o{ status_pages : "manages"
+    organization ||--o{ billing_settings : "configures"
+    organization ||--o{ usage_events : "generates"
+    organization ||--o{ usage_notifications : "receives"
+
+    projects ||--o{ project_members : "has members"
+    projects ||--o{ tests : "contains"
+    projects ||--o{ jobs : "contains"
+    projects ||--o{ monitors : "contains"
+    projects ||--o{ tags : "organizes"
+    projects ||--o{ notification_providers : "uses"
+    projects ||--o{ runs : "executes"
+    projects ||--o{ apikey : "accesses"
+    projects ||--o{ project_variables : "contains"
+    projects ||--o{ status_pages : "hosts"
 
     %% Test & Job Relationships
-    JOBS ||--o{ jobTests : "includes"
-    TESTS ||--o{ jobTests : "used in"
-    JOBS ||--o{ RUNS : "executes"
-    JOBS ||--o{ alert_history : "triggers"
-    JOBS ||--o{ job_notification_settings : "notifies via"
-    JOBS ||--o{ apikey : "accessed by"
+    jobs ||--o{ job_tests : "includes"
+    tests ||--o{ job_tests : "used in"
+    jobs ||--o{ runs : "executes"
+    jobs ||--o{ alert_history : "triggers"
+    jobs ||--o{ job_notification_settings : "notifies via"
+    jobs ||--o{ apikey : "accessed by"
+    runs ||--o{ k6_performance_runs : "has metrics"
 
     %% Monitor Relationships
-    MONITORS ||--o{ monitor_results : "produces"
-    MONITORS ||--o{ ALERTS : "configured for"
-    MONITORS ||--o{ alert_history : "triggers"
-    MONITORS ||--o{ monitor_notification_settings : "notifies via"
-    MONITORS ||--o{ monitorTags : "tagged with"
+    monitors ||--o{ monitor_results : "produces"
+    monitors ||--o{ alerts : "configured for"
+    monitors ||--o{ alert_history : "triggers"
+    monitors ||--o{ monitor_notification_settings : "notifies via"
+    monitors ||--o{ monitor_tags : "tagged with"
+    monitors ||--o{ monitor_aggregates : "aggregated into"
 
     %% Tag Relationships
-    TAGS ||--o{ monitorTags : "applied to monitors"
-    TAGS ||--o{ testTags : "applied to tests"
-    TESTS ||--o{ testTags : "tagged with"
+    tags ||--o{ monitor_tags : "applied to monitors"
+    tags ||--o{ test_tags : "applied to tests"
+    tests ||--o{ test_tags : "tagged with"
 
     %% Status Page Relationships
-    status_pages ||--o{ status_page_component_groups : "contains"
     status_pages ||--o{ status_page_components : "has"
     status_pages ||--o{ incidents : "tracks"
     status_pages ||--o{ incident_templates : "manages"
     status_pages ||--o{ status_page_subscribers : "notifies"
     status_pages ||--o{ status_page_metrics : "tracks"
 
-    status_page_component_groups ||--o{ status_page_components : "organizes"
-    status_page_component_groups ||--o{ incident_templates : "used in"
-
+    status_page_components ||--o{ status_page_component_monitors : "linked through"
     status_page_components ||--o{ incident_components : "affected by"
     status_page_components ||--o{ incident_template_components : "used in templates"
     status_page_components ||--o{ status_page_component_subscriptions : "subscribed to"
     status_page_components ||--o{ status_page_metrics : "measured for"
-    status_page_components ||--o{ MONITORS : "linked to"
+    monitors ||--o{ status_page_component_monitors : "monitored by"
 
     incidents ||--o{ incident_updates : "has"
     incidents ||--o{ incident_components : "affects"
@@ -753,8 +815,8 @@ erDiagram
     notification_providers ||--o{ job_notification_settings : "used by jobs"
 
     %% Session & Auth Relationships
-    SESSION ||--o{ ORGANIZATION : "active org"
-    SESSION ||--o{ PROJECTS : "active project"
+    session ||--o{ organization : "active org"
+    session ||--o{ projects : "active project"
 ```
 
 ## Schema Notes

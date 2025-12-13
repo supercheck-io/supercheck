@@ -193,7 +193,8 @@ export async function POST(
     // Assign user to selected projects
     if (invite.selectedProjects) {
       try {
-        const selectedProjectIds = JSON.parse(invite.selectedProjects);
+        // selectedProjects is now a jsonb array
+        const selectedProjectIds = invite.selectedProjects as string[] | null;
         
         if (Array.isArray(selectedProjectIds) && selectedProjectIds.length > 0) {
           // Get the selected projects

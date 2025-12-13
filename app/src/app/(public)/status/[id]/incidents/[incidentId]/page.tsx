@@ -18,13 +18,12 @@ type PublicIncidentDetailPageProps = {
  * 2. Fallback to ID lookup (for direct access or backward compatibility)
  */
 async function getStatusPageData(idOrSubdomain: string) {
-  // Check if this looks like a UUID
+  // FIX: Only treat as UUID if it matches the full UUID pattern
+  // Previous logic incorrectly treated any string with hyphen as UUID
   const looksLikeUUID =
-    idOrSubdomain.includes("-") ||
-    (idOrSubdomain.length === 36 &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        idOrSubdomain
-      ));
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      idOrSubdomain
+    );
 
   // Try subdomain lookup first
   if (!looksLikeUUID) {

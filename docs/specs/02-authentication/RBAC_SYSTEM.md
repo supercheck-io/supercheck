@@ -1152,3 +1152,118 @@ The system successfully bridges Better Auth's built-in features with custom busi
 | Cancel operations require proper role    | ✅     | PROJECT_EDITOR or higher            |
 | Server-side validation matches client    | ✅     | Consistent permission checks        |
 | Audit logging on sensitive operations    | ✅     | Cancellations are logged            |
+
+---
+
+## Cross-Tenant IDOR Protection (December 2025)
+
+### Organization Membership Enforcement
+
+The `hasPermission` function now includes a critical security check that prevents cross-tenant IDOR (Insecure Direct Object Reference) attacks.
+
+**Implementation (`middleware.ts`):**
+
+```typescript
+// SECURITY: Enforce organization membership for all org-scoped requests
+if (context?.organizationId) {
+  const isSA = await isSuperAdmin(effectiveUserId);
+  if (!isSA) {
+    const orgRole = await getUserOrgRole(effectiveUserId, context.organizationId);
+    if (!orgRole) {
+      // User is not a member of this organization - deny access
+      return false;
+    }
+  }
+}
+```
+
+**Protection Provided:**
+
+| Attack Vector | Before | After |
+|--------------|--------|-------|
+| User A accessing User B's resources | ❌ Possible | ✅ Blocked |
+| Authenticated user guessing org IDs | ❌ Possible | ✅ Blocked |
+| Cross-tenant data enumeration | ❌ Possible | ✅ Blocked |
+
+### Impersonation-Aware Permission Checks
+
+All permission checks now properly handle super admin impersonation by resolving the "effective user ID" before making permission decisions.
+
+**How It Works:**
+
+```typescript
+async function getEffectiveUserId(authSession): Promise<string> {
+  // Query session table for impersonation state
+  const [dbSession] = await db
+    .select({ userId, impersonatedBy })
+    .from(session)
+    .where(eq(session.token, authSession.session.token));
+
+  // If impersonating, return the impersonated user's ID
+  if (dbSession?.impersonatedBy) {
+    return dbSession.userId;
+  }
+  return authSession.user.id;
+}
+```
+
+**Functions Updated:**
+
+| Function | Impact |
+|----------|--------|
+| `hasPermission()` | Uses effective user ID for all permission checks |
+| `requireAuth()` | Returns effective user ID for downstream code |
+
+**Impersonation Flow:**
+
+```mermaid
+sequenceDiagram
+    participant Admin as Super Admin
+    participant API as API Route
+    participant Middleware as RBAC Middleware
+    participant DB as Database
+
+    Admin->>API: Request with session
+    API->>Middleware: hasPermission(resource, action, context)
+    Middleware->>DB: Query session table
+    DB-->>Middleware: {userId: impersonatedUser, impersonatedBy: adminId}
+    Middleware->>Middleware: effectiveUserId = impersonatedUser
+    Middleware->>DB: Check org membership for impersonatedUser
+    DB-->>Middleware: User's org role
+    Middleware-->>API: Permission result (based on impersonated user)
+```
+
+### API Routes Protected
+
+All API routes that use `hasPermission()` or `requireAuth()` now automatically benefit from:
+
+1. **IDOR Protection** - Organization membership enforced server-side
+2. **Impersonation Support** - Super admins can test as target users
+3. **Consistent Security** - No need for route-specific org checks
+
+**Protected Routes Include:**
+
+- `/api/monitors/*` - Monitors scoped by org/project
+- `/api/runs/*` - Runs scoped by org/project
+- `/api/tests/*/tags/*` - Tags scoped by org/project
+- `/api/tags/*` - Tags scoped by org/project
+- `/api/notification-providers/*` - Notification providers scoped by org/project
+- `/api/queue-stats/sse` - Requires authentication and project context
+
+### Security Test Coverage
+
+The RBAC middleware includes tests for cross-tenant denial:
+
+```typescript
+describe('Cross-Organization Access Denial', () => {
+  it('should deny access when user is not a member of the organization');
+  it('should allow access when user IS a member');
+  it('should allow super admin to access any organization');
+  it('should prevent authenticated user from viewing another org\'s tests');
+  it('should prevent authenticated user from viewing another org\'s jobs');
+  it('should prevent authenticated user from viewing another org\'s projects');
+  it('should prevent authenticated user from viewing another org\'s members');
+});
+```
+
+All 70 RBAC middleware tests pass ✅

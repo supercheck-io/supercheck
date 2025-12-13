@@ -67,11 +67,12 @@ export async function GET(
     }
 
     // Get all notification providers linked to this monitor
+    // SECURITY: Do NOT return provider config (contains encrypted secrets)
     const linkedProviders = await db
       .select({
         providerId: monitorNotificationSettings.notificationProviderId,
         providerType: notificationProviders.type,
-        providerConfig: notificationProviders.config,
+        providerName: notificationProviders.name,
         createdAt: monitorNotificationSettings.createdAt,
       })
       .from(monitorNotificationSettings)

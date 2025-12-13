@@ -70,27 +70,70 @@ export default function SignInPage() {
     const email = formData.get("email") as string;
     const password = formData.get("password") as string;
 
-    // Include CAPTCHA token in request headers if available
-    // Better Auth captcha plugin validates via x-captcha-response header
-    const { error } = await signIn.email({
-      email,
-      password,
-      fetchOptions: {
-        headers: captchaToken ? { "x-captcha-response": captchaToken } : {},
-      },
-    });
+    try {
+      // Step 1: Check for lockout before attempting sign-in
+      const lockoutCheck = await fetch("/api/auth/sign-in/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pre-check", email }),
+      });
+      const lockoutData = await lockoutCheck.json();
 
-    if (error) {
-      setError(error.message || "An error occurred");
-    } else {
-      // If user signed in with an invite token, redirect to accept invitation
-      if (inviteToken) {
-        router.push(`/invite/${inviteToken}`);
-      } else {
-        router.push("/");
+      if (lockoutData.isLocked) {
+        setError(lockoutData.message || "Account temporarily locked. Please try again later.");
+        setIsLoading(false);
+        return;
       }
+
+      // Step 2: Attempt sign-in via Better Auth
+      // Include CAPTCHA token in request headers if available
+      // Better Auth captcha plugin validates via x-captcha-response header
+      const { error } = await signIn.email({
+        email,
+        password,
+        fetchOptions: {
+          headers: captchaToken ? { "x-captcha-response": captchaToken } : {},
+        },
+      });
+
+      if (error) {
+        // Step 3a: Record failed attempt
+        const failedResult = await fetch("/api/auth/sign-in/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "failed", email }),
+        });
+        const failedData = await failedResult.json();
+
+        // Show lockout message if locked, otherwise show error with warning
+        if (failedData.isLocked) {
+          setError(failedData.message || "Too many failed attempts. Account temporarily locked.");
+        } else if (failedData.message) {
+          setError(`${error.message || "An error occurred"}. ${failedData.message}`);
+        } else {
+          setError(error.message || "An error occurred");
+        }
+      } else {
+        // Step 3b: Clear lockout on successful sign-in
+        await fetch("/api/auth/sign-in/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "success", email }),
+        }).catch(() => { /* ignore errors on cleanup */ });
+
+        // If user signed in with an invite token, redirect to accept invitation
+        if (inviteToken) {
+          router.push(`/invite/${inviteToken}`);
+        } else {
+          router.push("/");
+        }
+      }
+    } catch (err) {
+      console.error("Sign-in error:", err);
+      setError("An unexpected error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   return (

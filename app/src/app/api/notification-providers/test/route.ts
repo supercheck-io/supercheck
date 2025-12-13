@@ -192,6 +192,12 @@ async function testWebhookConnection(config: NotificationProviderConfig) {
       throw new Error("URL is required");
     }
 
+    const { validateWebhookUrlString } = await import("@/lib/url-validator");
+    const urlValidation = validateWebhookUrlString(typedConfig.url as string);
+    if (!urlValidation.valid) {
+      throw new Error(urlValidation.error || "Invalid webhook URL");
+    }
+
     const method = (typedConfig.method as string) || "POST";
     const headers = {
       "Content-Type": "application/json",
@@ -208,20 +214,35 @@ async function testWebhookConnection(config: NotificationProviderConfig) {
           message: "Connection test from Supercheck",
         });
 
-    const response = await fetch(typedConfig.url as string, {
-      method,
-      headers,
-      body: method !== "GET" ? body : undefined,
-    });
+    // Add timeout to prevent hanging connections
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    try {
+      const response = await fetch(typedConfig.url as string, {
+        method,
+        headers,
+        body: method !== "GET" ? body : undefined,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: "Webhook connection successful",
+      });
+    } catch (fetchError) {
+      clearTimeout(timeout);
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        throw new Error("Request timed out after 10 seconds");
+      }
+      throw fetchError;
     }
-
-    return NextResponse.json({
-      success: true,
-      message: "Webhook connection successful",
-    });
   } catch (error) {
     return NextResponse.json(
       {

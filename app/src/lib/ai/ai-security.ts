@@ -104,6 +104,11 @@ export class AISecurityService {
     // Layer 1: Normalize encoding (NFKC) to prevent unicode evasion
     let sanitized = code.normalize("NFKC");
 
+    // Layer 1.5: Remove zero-width and invisible Unicode characters
+    // These can be used to bypass text pattern detection (e.g., "ig​nore" with zero-width space)
+    // Includes: Zero-width space, joiner, non-joiner, BOM, directional marks, invisible separators
+    sanitized = sanitized.replace(/[\u200B-\u200D\uFEFF\u200E\u200F\u2060-\u2064\u2066-\u206F]/g, "");
+
     // Layer 2: Remove control characters (except newlines, tabs, spaces)
     sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
 

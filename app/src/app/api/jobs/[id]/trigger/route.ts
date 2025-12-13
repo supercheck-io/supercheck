@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { jobs, apikey, runs, JobTrigger } from "@/db/schema";
 import type { JobType, K6Location } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 import crypto from "crypto";
 import {
   addJobToQueue,
@@ -18,6 +18,7 @@ import {
   parseRateLimitConfig,
   createRateLimitHeaders,
 } from "@/lib/api-key-rate-limiter";
+import { verifyApiKey } from "@/lib/security/api-key-hash";
 
 const DEFAULT_K6_LOCATION: K6Location = "global";
 
@@ -90,11 +91,13 @@ export async function POST(
 
     apiKeyUsed = trimmedApiKey.substring(0, 8); // For logging purposes
 
-    // Verify the API key exists and get associated information (including rate limit fields)
-    const apiKeyResult = await db
+    // SECURITY: Fetch all enabled API keys for this job and verify using hash comparison
+    // This prevents timing attacks by using constant-time comparison
+    const apiKeysForJob = await db
       .select({
         id: apikey.id,
         name: apikey.name,
+        key: apikey.key, // This is now the hash
         enabled: apikey.enabled,
         expiresAt: apikey.expiresAt,
         jobId: apikey.jobId,
@@ -106,10 +109,21 @@ export async function POST(
         rateLimitMax: apikey.rateLimitMax,
       })
       .from(apikey)
-      .where(eq(apikey.key, trimmedApiKey))
-      .limit(1);
+      .where(and(
+        eq(apikey.jobId, jobId),
+        eq(apikey.enabled, true)
+      ));
 
-    if (apiKeyResult.length === 0) {
+    // Find the matching API key using secure hash comparison
+    let matchedKey: typeof apiKeysForJob[0] | null = null;
+    for (const key of apiKeysForJob) {
+      if (verifyApiKey(trimmedApiKey, key.key)) {
+        matchedKey = key;
+        break;
+      }
+    }
+
+    if (!matchedKey) {
       console.warn(
         `Invalid API key attempted: ${apiKeyUsed}... for job ${jobId}`
       );
@@ -121,6 +135,8 @@ export async function POST(
         { status: 401 }
       );
     }
+    
+    const apiKeyResult = [matchedKey]; // Keep existing variable name for minimal changes below
 
     const key = apiKeyResult[0];
 

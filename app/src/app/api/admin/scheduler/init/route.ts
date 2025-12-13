@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from '@/lib/rbac/middleware';
+import { requireAdmin } from '@/lib/admin';
 import { initializeJobSchedulers, cleanupJobScheduler } from '@/lib/job-scheduler';
 import { initializeMonitorSchedulers, cleanupMonitorScheduler } from '@/lib/monitor-scheduler';
 
 export async function POST(request: Request) {
   try {
-    // Require authentication for scheduler management
-    await requireAuth();
+    // Require super admin privileges for scheduler management (security fix)
+    await requireAdmin();
 
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type'); // 'jobs', 'monitors', or 'all'

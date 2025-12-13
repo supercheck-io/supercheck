@@ -109,7 +109,7 @@ class BillingSettingsService {
     }
 
     if (updates.notificationEmails !== undefined) {
-      updateData.notificationEmails = JSON.stringify(updates.notificationEmails);
+      updateData.notificationEmails = updates.notificationEmails;
     }
 
     const [updated] = await db
@@ -196,18 +196,23 @@ class BillingSettingsService {
 
     if (!settings) return;
 
-    const sentThisPeriod: string[] = settings.notificationsSentThisPeriod
-      ? JSON.parse(settings.notificationsSentThisPeriod)
-      : [];
+    // notificationsSentThisPeriod is now a jsonb array
+    const sentThisPeriod: number[] = settings.notificationsSentThisPeriod ?? [];
 
-    if (!sentThisPeriod.includes(threshold)) {
-      sentThisPeriod.push(threshold);
+    // Convert threshold to number for consistency
+    const thresholdNum = threshold === 'spending_warning' ? -1 
+      : threshold === 'spending_limit' ? -2 
+      : threshold === 'spending_90' ? -3 
+      : parseInt(threshold, 10);
+
+    if (!sentThisPeriod.includes(thresholdNum)) {
+      sentThisPeriod.push(thresholdNum);
     }
 
     await db
       .update(billingSettings)
       .set({
-        notificationsSentThisPeriod: JSON.stringify(sentThisPeriod),
+        notificationsSentThisPeriod: sentThisPeriod,
         lastNotificationSentAt: new Date(),
         updatedAt: new Date(),
       })
@@ -243,8 +248,13 @@ class BillingSettingsService {
 
     if (!settings.notificationsSentThisPeriod) return false;
 
-    const sentThisPeriod: string[] = JSON.parse(settings.notificationsSentThisPeriod);
-    return sentThisPeriod.includes(threshold);
+    // notificationsSentThisPeriod is now a jsonb array of numbers
+    const sentThisPeriod: number[] = settings.notificationsSentThisPeriod;
+    const thresholdNum = threshold === 'spending_warning' ? -1 
+      : threshold === 'spending_limit' ? -2 
+      : threshold === 'spending_90' ? -3 
+      : parseInt(threshold, 10);
+    return sentThisPeriod.includes(thresholdNum);
   }
 
   /**
@@ -264,9 +274,7 @@ class BillingSettingsService {
       notifyAt80Percent: settings.notifyAt80Percent,
       notifyAt90Percent: settings.notifyAt90Percent,
       notifyAt100Percent: settings.notifyAt100Percent,
-      notificationEmails: settings.notificationEmails
-        ? JSON.parse(settings.notificationEmails)
-        : [],
+      notificationEmails: settings.notificationEmails ?? [],
       createdAt: settings.createdAt,
       updatedAt: settings.updatedAt,
     };

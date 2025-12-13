@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getDataLifecycleService } from '@/lib/data-lifecycle-service';
+import { requireAdmin } from '@/lib/admin';
 
 /**
  * GET /api/admin/playground-cleanup - Get playground cleanup status
  */
 export async function GET() {
   try {
+    // Require super admin privileges (security fix - was previously unprotected)
+    await requireAdmin();
+    
     const lifecycleService = getDataLifecycleService();
 
     if (!lifecycleService) {
@@ -47,6 +51,9 @@ export async function GET() {
  */
 export async function POST() {
   try {
+    // Require super admin privileges (security fix - was previously unprotected)
+    await requireAdmin();
+    
     const lifecycleService = getDataLifecycleService();
 
     if (!lifecycleService) {

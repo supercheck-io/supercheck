@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { db } from "@/utils/db";
-import { member, projectMembers, projects } from "@/db/schema";
+import { member, projectMembers, projects, session } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { auth } from "@/utils/auth";
 import {
@@ -31,7 +31,48 @@ import { logAuditEvent } from "@/lib/audit-logger";
 // ============================================================================
 
 /**
+ * Get the effective user ID, handling impersonation.
+ * When a super admin impersonates a user, the session table's userId field
+ * contains the impersonated user, while impersonatedBy contains the admin.
+ * 
+ * @param authSession - The auth session from Better Auth
+ * @returns The effective user ID (impersonated user if active, otherwise session user)
+ */
+async function getEffectiveUserId(
+  authSession: { user: { id: string }; session: { token: string } }
+): Promise<string> {
+  try {
+    // Query the session table to check for impersonation
+    const [dbSession] = await db
+      .select({
+        userId: session.userId,
+        impersonatedBy: session.impersonatedBy,
+      })
+      .from(session)
+      .where(eq(session.token, authSession.session.token))
+      .limit(1);
+
+    // If impersonation is active, use the impersonated user's ID
+    // The session.userId contains the impersonated user when impersonatedBy is set
+    if (dbSession?.impersonatedBy) {
+      return dbSession.userId;
+    }
+
+    // No impersonation - use the auth session's user ID
+    return authSession.user.id;
+  } catch (error) {
+    console.error("Error checking impersonation state:", error);
+    // On error, fall back to auth session user ID (safer default)
+    return authSession.user.id;
+  }
+}
+
+/**
  * Check if a user has a specific permission
+ * 
+ * SECURITY: This function properly handles impersonation by using the effective
+ * user ID (the impersonated user) for all permission checks, not the admin who
+ * initiated the impersonation.
  */
 export async function hasPermission(
   resource: keyof typeof statement,
@@ -39,12 +80,30 @@ export async function hasPermission(
   context?: Partial<PermissionContext>
 ): Promise<boolean> {
   try {
-    const session = await auth.api.getSession({
+    const authSession = await auth.api.getSession({
       headers: await headers(),
     });
 
-    if (!session) {
+    if (!authSession) {
       return false;
+    }
+
+    // Get the effective user ID (handles impersonation)
+    // This ensures permission checks use the impersonated user, not the admin
+    const effectiveUserId = await getEffectiveUserId(authSession);
+
+    // SECURITY: Enforce organization membership for all org-scoped requests
+    // This prevents cross-tenant IDOR attacks where authenticated users
+    // could access resources from organizations they don't belong to
+    if (context?.organizationId) {
+      const isSA = await isSuperAdmin(effectiveUserId);
+      if (!isSA) {
+        const orgRole = await getUserOrgRole(effectiveUserId, context.organizationId);
+        if (!orgRole) {
+          // User is not a member of this organization - deny access
+          return false;
+        }
+      }
     }
 
     // Use custom RBAC permission system
@@ -52,15 +111,15 @@ export async function hasPermission(
     // but permission checks are handled by our custom RBAC implementation
     // which provides fine-grained control over resources and actions
     const userRole = await getUserRole(
-      session.user.id,
+      effectiveUserId,
       context?.organizationId
     );
     const assignedProjects =
       context?.assignedProjectIds ||
-      (await getUserAssignedProjects(session.user.id));
+      (await getUserAssignedProjects(effectiveUserId));
 
     const permissionContext: PermissionContext = {
-      userId: session.user.id,
+      userId: effectiveUserId,
       role: userRole,
       organizationId: context?.organizationId,
       projectId: context?.projectId,
@@ -557,22 +616,31 @@ export async function requirePermissions(
 
 /**
  * Require authentication
+ * 
+ * SECURITY: This function properly handles impersonation by returning the
+ * effective user ID (the impersonated user) when a super admin is impersonating.
  */
 export async function requireAuth(): Promise<{
   userId: string;
   user: SessionUser;
 }> {
-  const session = await auth.api.getSession({
+  const authSession = await auth.api.getSession({
     headers: await headers(),
   });
 
-  if (!session) {
+  if (!authSession) {
     throw new Error("Authentication required");
   }
 
+  // Get the effective user ID (handles impersonation)
+  const effectiveUserId = await getEffectiveUserId(authSession);
+
+  // Return the effective user ID and the session user data
+  // Note: The user object still contains the original session data for display purposes,
+  // but the userId is the effective (potentially impersonated) user
   return {
-    userId: session.user.id,
-    user: session.user,
+    userId: effectiveUserId,
+    user: authSession.user,
   };
 }
 
