@@ -1,8 +1,8 @@
 "use server";
 
 import { db } from "@/utils/db";
-import { incidents, incidentUpdates, statusPages } from "@/db/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { incidents, incidentUpdates } from "@/db/schema";
+import { eq, desc } from "drizzle-orm";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { z } from "zod";
