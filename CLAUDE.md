@@ -96,9 +96,8 @@ SELF_HOSTED=true
   /07-admin/         # Super admin system
   /08-operations/    # Scaling, memory management, billing
 
-/deploy/              # Deployment configurations
+/deploy/              # Deployment configurations (Docker Compose for self-hosted)
   /docker/           # Docker compose files
-  /k8s/              # Kubernetes manifests
 ```
 
 ## 🎯 Development Guidelines
