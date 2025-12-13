@@ -14,6 +14,8 @@ import {
   integer,
   unique,
   index,
+  jsonb,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema, createUpdateSchema } from "drizzle-zod";
@@ -30,7 +32,7 @@ export const organization = pgTable("organization", {
   slug: text("slug").unique(),
   logo: text("logo"),
   createdAt: timestamp("created_at").notNull(),
-  metadata: text("metadata"),
+  metadata: jsonb("metadata"),
   
   // Polar subscription fields
   polarCustomerId: text("polar_customer_id"), // External customer ID in Polar
@@ -82,6 +84,8 @@ export const member = pgTable(
   },
   (table) => ({
     uniqueUserOrg: unique().on(table.userId, table.organizationId),
+    // Index for efficient "list members by org" queries
+    organizationIdIdx: index("member_organization_id_idx").on(table.organizationId),
   })
 );
 
@@ -104,7 +108,7 @@ export const invitation = pgTable(
     inviterId: uuid("inviter_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    selectedProjects: text("selected_projects"), // JSON array of project IDs
+    selectedProjects: jsonb("selected_projects"), // JSON array of project IDs
   },
   (table) => ({
     // Index on organization_id for listing invitations
@@ -158,6 +162,10 @@ export const projects = pgTable(
     ),
     // Index on is_default for finding default projects
     isDefaultIdx: index("projects_is_default_idx").on(table.isDefault),
+    // Ensure only one default project per organization
+    uniqueDefaultPerOrg: uniqueIndex("projects_unique_default_per_org_idx")
+      .on(table.organizationId)
+      .where(sql`is_default = true`),
   })
 );
 
@@ -181,6 +189,8 @@ export const projectMembers = pgTable(
   },
   (table) => ({
     uniqueUserProject: unique().on(table.userId, table.projectId),
+    // Index for efficient "list members by project" queries
+    projectIdIdx: index("project_members_project_id_idx").on(table.projectId),
   })
 );
 

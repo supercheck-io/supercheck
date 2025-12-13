@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
-import { reports } from "@/db/schema";
+import { reports, tests, runs } from "@/db/schema";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
+import { requireProjectContext } from "@/lib/project-context";
 
 const encoder = new TextEncoder();
 
@@ -58,6 +59,41 @@ export async function GET(request: Request) {
 
   if (!testId) {
     return NextResponse.json({ error: "Missing testId" }, { status: 400 });
+  }
+
+  // Require authentication and project context
+  let projectContext;
+  try {
+    projectContext = await requireProjectContext();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Check if this is a saved test OR a playground run
+  // Saved tests exist in the tests table
+  const test = await db.query.tests.findFirst({
+    where: and(
+      eq(tests.id, testId),
+      eq(tests.organizationId, projectContext.organizationId),
+      eq(tests.projectId, projectContext.project.id)
+    ),
+    columns: { id: true }
+  });
+
+  // If not a saved test, check if it's a playground run
+  // Playground runs store testId in metadata.testId
+  if (!test) {
+    const playgroundRun = await db.query.runs.findFirst({
+      where: and(
+        eq(runs.projectId, projectContext.project.id),
+        sql`${runs.metadata}->>'testId' = ${testId}`
+      ),
+      columns: { id: true }
+    });
+
+    if (!playgroundRun) {
+      return NextResponse.json({ error: "Test not found or access denied" }, { status: 404 });
+    }
   }
 
   const headers = {

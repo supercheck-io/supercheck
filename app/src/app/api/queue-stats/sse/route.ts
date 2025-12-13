@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getQueueStats } from "@/lib/queue-stats";
-import { getActiveOrganization } from "@/lib/session";
+import { requireProjectContext } from "@/lib/project-context";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
 
 // SSE Configuration
@@ -24,13 +24,14 @@ function createSSEComment(comment: string) {
 }
 
 export async function GET(request: NextRequest) {
-  // Get the active organization for plan-specific capacity limits
-  let organizationId: string | undefined;
+  // SECURITY: Require authentication for queue stats
+  let organizationId: string;
   try {
-    const activeOrg = await getActiveOrganization();
-    organizationId = activeOrg?.id;
+    const projectContext = await requireProjectContext();
+    organizationId = projectContext.organizationId;
   } catch {
-    // Ignore auth errors - will use default capacity limits
+    // Return 401 for unauthenticated requests
+    return new Response('Unauthorized', { status: 401 });
   }
 
   // Set up response headers for SSE

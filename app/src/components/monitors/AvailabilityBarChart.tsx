@@ -82,14 +82,16 @@ export function AvailabilityBarChart({
     if (!data || data.length === 0) return;
 
     let currentBar = 0;
+    // Speed up animation: 10ms interval, increment by 4 bars at a time
+    // This makes 100 bars load in ~250ms instead of 2000ms
     const interval = setInterval(() => {
-      currentBar++;
-      setVisibleBars(currentBar);
+      currentBar += 4;
+      setVisibleBars(Math.min(currentBar, data.length));
 
       if (currentBar >= data.length) {
         clearInterval(interval);
       }
-    }, 20); // 20ms delay between each bar
+    }, 10);
 
     return () => clearInterval(interval);
   }, [data]);
@@ -109,8 +111,20 @@ export function AvailabilityBarChart({
       return;
     }
 
-    const left = activeCoordinate.x ?? state?.chartX ?? 0;
-    const top = (activeCoordinate.y ?? state?.chartY ?? 0) + 12;
+    let left = activeCoordinate.x ?? state?.chartX ?? 0;
+    let top = (activeCoordinate.y ?? state?.chartY ?? 0) + 12;
+
+    // Clamp tooltip position to chart boundaries
+    if (chartRef.current) {
+      const chartWidth = chartRef.current.clientWidth;
+      const chartHeight = chartRef.current.clientHeight;
+
+      // Keep tooltip within horizontal bounds (padding 20px)
+      left = Math.min(Math.max(left, 20), chartWidth - 20);
+
+      // Keep tooltip within vertical bounds (padding 12px)
+      top = Math.min(Math.max(top, 12), chartHeight - 12);
+    }
 
     setTooltipState({
       left,
@@ -222,11 +236,8 @@ export function AvailabilityBarChart({
                   left: 5,
                   bottom: 5,
                 }}
-                barSize={Math.max(
-                  8,
-                  Math.min(20, Math.floor(800 / data.length))
-                )}
-                barCategoryGap="2%"
+                maxBarSize={24}
+                barCategoryGap="10%" // Percentage gap ensures constant relative spacing
                 onMouseMove={handleMouseMove}
                 onMouseLeave={() => setTooltipState(null)}
               >
@@ -260,14 +271,8 @@ export function AvailabilityBarChart({
             <div
               className="pointer-events-none absolute z-20 -translate-x-1/2"
               style={{
-                left: Math.min(
-                  Math.max(tooltipState.left, 20),
-                  (chartRef.current?.clientWidth ?? 0) - 20
-                ),
-                top: Math.min(
-                  Math.max(tooltipState.top, 12),
-                  (chartRef.current?.clientHeight ?? 0) - 12
-                ),
+                left: tooltipState.left,
+                top: tooltipState.top,
               }}
             >
               <div className="min-w-[200px] max-w-[260px] rounded-lg border border-border bg-background/95 p-3 text-sm shadow-xl backdrop-blur">
@@ -281,34 +286,32 @@ export function AvailabilityBarChart({
                 <div className="space-y-1">
                   {(tooltipState.payload.locationName ||
                     tooltipState.payload.locationCode) && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Location:</span>
-                      <span className="ml-3 font-medium text-right text-foreground">
-                        {tooltipState.payload.locationFlag
-                          ? `${tooltipState.payload.locationFlag} `
-                          : ""}
-                        {tooltipState.payload.locationName ||
-                          tooltipState.payload.locationCode ||
-                          "Check"}
-                      </span>
-                    </div>
-                  )}
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Location:</span>
+                        <span className="ml-3 font-medium text-right text-foreground">
+                          {tooltipState.payload.locationFlag
+                            ? `${tooltipState.payload.locationFlag} `
+                            : ""}
+                          {tooltipState.payload.locationName ||
+                            tooltipState.payload.locationCode ||
+                            "Check"}
+                        </span>
+                      </div>
+                    )}
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Status:</span>
                     <div className="ml-3 flex items-center">
                       <span
-                        className={`mr-2 inline-flex h-2 w-2 rounded-full ${
-                          tooltipState.payload.status === "up"
-                            ? "bg-green-500"
-                            : "bg-red-500"
-                        }`}
+                        className={`mr-2 inline-flex h-2 w-2 rounded-full ${tooltipState.payload.status === "up"
+                          ? "bg-green-500"
+                          : "bg-red-500"
+                          }`}
                       />
                       <span
-                        className={`font-medium ${
-                          tooltipState.payload.status === "up"
-                            ? "text-green-500"
-                            : "text-red-500"
-                        }`}
+                        className={`font-medium ${tooltipState.payload.status === "up"
+                          ? "text-green-500"
+                          : "text-red-500"
+                          }`}
                       >
                         {tooltipState.payload.status === "up" ? "Up" : "Down"}
                       </span>

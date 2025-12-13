@@ -243,13 +243,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         }
       );
 
-      // Restore original user session and clear project context
-      // This forces the admin to get their own project context back
+      // Query admin's original organization context from their most recent non-impersonated session
+      // This allows us to restore the admin to their original context (security fix)
+      const [adminSession] = await db
+        .select({ activeOrganizationId: session.activeOrganizationId })
+        .from(session)
+        .where(eq(session.userId, currentSession.impersonatedBy))
+        .limit(1);
+
+      // Restore original user session with admin's org context
+      // This ensures the admin returns to their correct organization context
       await db
         .update(session)
         .set({
           userId: currentSession.impersonatedBy,
           impersonatedBy: null,
+          activeOrganizationId: adminSession?.activeOrganizationId || null, // Restore admin's org context
           activeProjectId: null, // Clear project context to force admin's default project
           updatedAt: new Date()
         })

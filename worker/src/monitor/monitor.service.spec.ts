@@ -41,6 +41,7 @@ import { CredentialSecurityService } from '../common/security/credential-securit
 import { StandardizedErrorHandler } from '../common/errors/standardized-error-handler';
 import { ResourceManagerService } from '../common/resources/resource-manager.service';
 import { LocationService } from '../common/location/location.service';
+import { RedisService } from '../execution/services/redis.service';
 
 describe('MonitorService', () => {
   let service: MonitorService;
@@ -85,6 +86,7 @@ describe('MonitorService', () => {
   const mockAlertService = {
     checkAndSendAlerts: jest.fn().mockResolvedValue(undefined),
     processMonitorResult: jest.fn().mockResolvedValue(undefined),
+    sendNotification: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockExecutionService = {
@@ -128,6 +130,19 @@ describe('MonitorService', () => {
       .mockReturnValue(MONITORING_LOCATIONS.EU_CENTRAL),
     getLocationName: jest.fn().mockReturnValue('EU Central'),
     getLocationDisplayName: jest.fn().mockReturnValue('EU Central'),
+    getEffectiveLocations: jest
+      .fn()
+      .mockReturnValue([MONITORING_LOCATIONS.EU_CENTRAL]),
+    calculateAggregatedStatus: jest.fn().mockReturnValue('up'),
+  };
+
+  const mockRedisService = {
+    getClient: jest.fn().mockReturnValue({
+      sadd: jest.fn().mockResolvedValue(1),
+      expire: jest.fn().mockResolvedValue(1),
+      scard: jest.fn().mockResolvedValue(1),
+      del: jest.fn().mockResolvedValue(1),
+    }),
   };
 
   // Test fixtures
@@ -193,6 +208,7 @@ describe('MonitorService', () => {
         { provide: StandardizedErrorHandler, useValue: mockErrorHandler },
         { provide: ResourceManagerService, useValue: mockResourceManager },
         { provide: LocationService, useValue: mockLocationService },
+        { provide: RedisService, useValue: mockRedisService },
       ],
     }).compile();
 

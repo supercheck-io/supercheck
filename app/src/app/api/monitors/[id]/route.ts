@@ -64,24 +64,16 @@ export async function GET(
         );
       }
 
-      // Then check if they have permission to view monitors
-      try {
-        const canView = await hasPermission("monitor", "view", {
-          organizationId: monitor.organizationId,
-          projectId: monitor.projectId,
-        });
+      // Check if user has permission to view monitors
+      const canView = await hasPermission("monitor", "view", {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId,
+      });
 
-        if (!canView) {
-          return NextResponse.json(
-            { error: "Insufficient permissions to view this monitor" },
-            { status: 403 }
-          );
-        }
-      } catch (permissionError) {
-        // If permission check fails but user is org member, allow view access
-        console.log(
-          "Permission check failed, but user is org member:",
-          permissionError
+      if (!canView) {
+        return NextResponse.json(
+          { error: "Insufficient permissions to view this monitor" },
+          { status: 403 }
         );
       }
     }
@@ -176,6 +168,23 @@ export async function PUT(
         return NextResponse.json(
           { error: "Insufficient permissions" },
           { status: 403 }
+        );
+      }
+    }
+
+    // Validate frequency bounds (1 minute minimum, 1440 minutes = 24 hours maximum)
+    const MIN_FREQUENCY_MINUTES = 1;
+    const MAX_FREQUENCY_MINUTES = 1440; // 24 hours
+    
+    if (rawData.frequencyMinutes !== undefined) {
+      const freq = Number(rawData.frequencyMinutes);
+      if (isNaN(freq) || freq < MIN_FREQUENCY_MINUTES || freq > MAX_FREQUENCY_MINUTES) {
+        return NextResponse.json(
+          {
+            error: "Invalid frequency",
+            details: `frequencyMinutes must be between ${MIN_FREQUENCY_MINUTES} and ${MAX_FREQUENCY_MINUTES} minutes`,
+          },
+          { status: 400 }
         );
       }
     }
@@ -387,6 +396,13 @@ export async function PUT(
       JSON.stringify(updatedMonitor.config);
     const targetChanged = currentMonitor.target !== updatedMonitor.target;
     const typeChanged = currentMonitor.type !== updatedMonitor.type;
+    
+    // Track alert config changes for audit logging
+    const alertConfigChanged =
+      JSON.stringify(currentMonitor.alertConfig) !==
+      JSON.stringify(updatedMonitor.alertConfig);
+    const oldAlertConfig = currentMonitor.alertConfig as Record<string, unknown> | null;
+    const newAlertConfig = updatedMonitor.alertConfig as Record<string, unknown> | null;
 
     if (
       (oldFrequency !== newFrequency ||
@@ -445,6 +461,36 @@ export async function PUT(
         oldStatus,
         newStatus,
         frequencyChanged: oldFrequency !== newFrequency,
+        // Alert configuration change tracking for security audit
+        alertConfigChanged,
+        ...(alertConfigChanged && {
+          alertConfigChanges: {
+            alertsEnabled: {
+              old: oldAlertConfig?.enabled,
+              new: newAlertConfig?.enabled,
+            },
+            alertOnFailure: {
+              old: oldAlertConfig?.alertOnFailure,
+              new: newAlertConfig?.alertOnFailure,
+            },
+            alertOnRecovery: {
+              old: oldAlertConfig?.alertOnRecovery,
+              new: newAlertConfig?.alertOnRecovery,
+            },
+            alertOnSslExpiration: {
+              old: oldAlertConfig?.alertOnSslExpiration,
+              new: newAlertConfig?.alertOnSslExpiration,
+            },
+            failureThreshold: {
+              old: oldAlertConfig?.failureThreshold,
+              new: newAlertConfig?.failureThreshold,
+            },
+            recoveryThreshold: {
+              old: oldAlertConfig?.recoveryThreshold,
+              new: newAlertConfig?.recoveryThreshold,
+            },
+          },
+        }),
       },
       success: true,
     });

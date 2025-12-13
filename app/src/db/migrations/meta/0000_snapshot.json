@@ -1,5 +1,5 @@
 {
-  "id": "b049abfd-e5bf-43b6-80c3-56e7caa9774b",
+  "id": "e3cddd06-c369-423d-b2b2-34754cbea4e6",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -359,13 +359,13 @@
         },
         "permissions": {
           "name": "permissions",
-          "type": "text",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
         "metadata": {
           "name": "metadata",
-          "type": "text",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         }
@@ -505,7 +505,15 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "apikey_key_unique": {
+          "name": "apikey_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "key"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -921,7 +929,7 @@
         },
         "notification_emails": {
           "name": "notification_emails",
-          "type": "text",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -933,7 +941,7 @@
         },
         "notifications_sent_this_period": {
           "name": "notifications_sent_this_period",
-          "type": "text",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -1106,7 +1114,7 @@
         },
         "metadata": {
           "name": "metadata",
-          "type": "text",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -1326,7 +1334,7 @@
         },
         "sent_to": {
           "name": "sent_to",
-          "type": "text",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
         },
@@ -1585,7 +1593,7 @@
         },
         "selected_projects": {
           "name": "selected_projects",
-          "type": "text",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         }
@@ -1728,7 +1736,23 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "member_organization_id_idx": {
+          "name": "member_organization_id_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "member_organization_id_organization_id_fk": {
           "name": "member_organization_id_organization_id_fk",
@@ -1808,7 +1832,7 @@
         },
         "metadata": {
           "name": "metadata",
-          "type": "text",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -1936,7 +1960,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "project_members_project_id_idx": {
+          "name": "project_members_project_id_idx",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "project_members_user_id_user_id_fk": {
           "name": "project_members_user_id_user_id_fk",
@@ -2203,6 +2243,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "projects_unique_default_per_org_idx": {
+          "name": "projects_unique_default_per_org_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "is_default = true",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -2477,7 +2533,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         },
         "job_tests_test_case_id_tests_id_fk": {
@@ -2490,7 +2546,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -5548,7 +5604,29 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "status_page_component_subs_unique_idx": {
+          "name": "status_page_component_subs_unique_idx",
+          "columns": [
+            {
+              "expression": "subscriber_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "component_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "status_page_component_subscriptions_subscriber_id_status_page_subscribers_id_fk": {
           "name": "status_page_component_subscriptions_subscriber_id_status_page_subscribers_id_fk",
@@ -5732,7 +5810,29 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "status_page_incident_subs_unique_idx": {
+          "name": "status_page_incident_subs_unique_idx",
+          "columns": [
+            {
+              "expression": "subscriber_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "incident_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "status_page_incident_subscriptions_incident_id_incidents_id_fk": {
           "name": "status_page_incident_subscriptions_incident_id_incidents_id_fk",
@@ -6017,7 +6117,52 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "status_page_subscribers_email_idx": {
+          "name": "status_page_subscribers_email_idx",
+          "columns": [
+            {
+              "expression": "status_page_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "email IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "status_page_subscribers_endpoint_idx": {
+          "name": "status_page_subscribers_endpoint_idx",
+          "columns": [
+            {
+              "expression": "status_page_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "endpoint",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "endpoint IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "status_page_subscribers_status_page_id_status_pages_id_fk": {
           "name": "status_page_subscribers_status_page_id_status_pages_id_fk",

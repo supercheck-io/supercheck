@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/rbac/middleware";
 import { getActiveOrganization } from "@/lib/session";
 import { billingSettingsService } from "@/lib/services/billing-settings.service";
+import { auditBillingSettingsChange } from "@/lib/audit-log";
 import { z } from "zod";
 
 /**
@@ -50,7 +51,7 @@ const updateSettingsSchema = z.object({
  */
 export async function PATCH(request: Request) {
   try {
-    await requireAuth();
+    const session = await requireAuth();
     const activeOrg = await getActiveOrganization();
 
     if (!activeOrg) {
@@ -71,6 +72,9 @@ export async function PATCH(request: Request) {
     }
 
     const data = validation.data;
+
+    // Get current settings for audit logging
+    const previousSettings = await billingSettingsService.getSettings(activeOrg.id);
 
     // Convert dollars to cents if provided
     const updates: Parameters<typeof billingSettingsService.updateSettings>[1] = {};
@@ -110,6 +114,14 @@ export async function PATCH(request: Request) {
     }
 
     const settings = await billingSettingsService.updateSettings(activeOrg.id, updates);
+
+    // Audit log the billing settings change (non-blocking)
+    auditBillingSettingsChange(
+      activeOrg.id,
+      session.user?.id,
+      previousSettings as unknown as Record<string, unknown>,
+      settings as unknown as Record<string, unknown>,
+    ).catch((err) => console.error("[Audit] Failed to log billing settings change:", err));
 
     return NextResponse.json(settings);
   } catch (error) {

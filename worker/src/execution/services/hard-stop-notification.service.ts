@@ -101,20 +101,10 @@ export class HardStopNotificationService {
       });
 
       if (settings?.notificationEmails) {
-        // notificationEmails is stored as a JSON string
-        try {
-          const emails = JSON.parse(settings.notificationEmails) as string[];
-          if (Array.isArray(emails)) {
-            emails.forEach((email) => recipients.add(email));
-          }
-        } catch {
-          // If it's not valid JSON, treat it as a single email
-          if (
-            typeof settings.notificationEmails === 'string' &&
-            settings.notificationEmails.includes('@')
-          ) {
-            recipients.add(settings.notificationEmails);
-          }
+        // notificationEmails is now a jsonb array
+        const emails = settings.notificationEmails;
+        if (Array.isArray(emails)) {
+          emails.forEach((email) => recipients.add(email));
         }
       }
 

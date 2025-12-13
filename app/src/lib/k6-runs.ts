@@ -45,11 +45,13 @@ export const toDisplayStatus = (
   if (normalized === "failed") {
     return "failed";
   }
-  if (normalized === "error") {
+  // Cancelled runs and errors don't generate complete reports
+  if (normalized === "error" || normalized === "cancelled") {
     return "error";
   }
   return "running";
 };
+
 
 export async function fetchK6RunDetails(
   runId: string,

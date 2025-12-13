@@ -1,18 +1,26 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 import { eq, sql, and, gte, lte } from 'drizzle-orm';
 import * as schema from '../../db/schema';
 import { DB_PROVIDER_TOKEN } from './db.service';
+import { RedisService } from './redis.service';
 
 // Check if Polar is enabled (cloud mode)
 function isPolarEnabled(): boolean {
   return process.env.SELF_HOSTED !== 'true' && !!process.env.POLAR_ACCESS_TOKEN;
 }
 
+// Constants for usage reservation
+const RESERVATION_TTL_SECONDS = 300; // 5 minutes max - enough for test execution
+const RESERVATION_KEY_PREFIX = 'usage:reservation:';
+
 /**
  * Usage Tracker Service for Worker
  * Tracks Playwright and K6 usage and updates organization usage counters
  * Also records usage events for Polar billing integration
+ * 
+ * IMPORTANT: Uses Redis-based pessimistic reservations to prevent race conditions
+ * where multiple parallel executions could all pass the spending limit check
  */
 @Injectable()
 export class UsageTrackerService {
@@ -21,6 +29,8 @@ export class UsageTrackerService {
   constructor(
     @Inject(DB_PROVIDER_TOKEN)
     private readonly db: PostgresJsDatabase<typeof schema>,
+    @Optional()
+    private readonly redisService?: RedisService,
   ) {}
 
   /**
@@ -473,6 +483,10 @@ export class UsageTrackerService {
   /**
    * Check if execution should be blocked before starting
    * Call this before starting a new execution
+   * 
+   * IMPORTANT: This method now includes reserved usage in the limit calculation
+   * to prevent race conditions where parallel executions could all pass the check.
+   * Use reserveUsage() before calling this to pessimistically lock capacity.
    */
   async shouldBlockExecution(
     organizationId: string,
@@ -482,5 +496,298 @@ export class UsageTrackerService {
     }
 
     return this.checkSpendingLimit(organizationId);
+  }
+
+  /**
+   * Reserve estimated usage before execution starts (pessimistic locking)
+   * 
+   * This prevents race conditions where multiple parallel executions could
+   * all pass the spending limit check before any of them record actual usage.
+   * 
+   * @param organizationId - Organization to reserve for
+   * @param estimatedMinutes - Estimated execution time in minutes
+   * @param executionType - Type of execution (playwright, k6, monitor)
+   * @returns reservationId if successful, or blocked status if limit would be exceeded
+   */
+  async reserveUsage(
+    organizationId: string,
+    estimatedMinutes: number,
+    executionType: 'playwright' | 'k6' | 'monitor' = 'playwright',
+  ): Promise<{
+    reservationId: string | null;
+    blocked: boolean;
+    reason?: string;
+    reservedTotal?: number;
+  }> {
+    if (!isPolarEnabled()) {
+      // Self-hosted mode - no reservations needed
+      return { reservationId: null, blocked: false };
+    }
+
+    if (!this.redisService) {
+      // No Redis available - fall back to non-reserving behavior
+      this.logger.debug('[Usage] Redis not available, skipping reservation');
+      return { reservationId: null, blocked: false };
+    }
+
+    const redis = this.redisService.getClient();
+    const reservationKey = `${RESERVATION_KEY_PREFIX}${organizationId}:${executionType}`;
+    const reservationId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+    try {
+      // Atomically increment reserved usage
+      const newReserved = await redis.incrby(reservationKey, estimatedMinutes);
+      
+      // Ensure TTL is set (handles first reservation and refreshes existing)
+      await redis.expire(reservationKey, RESERVATION_TTL_SECONDS);
+
+      // Store individual reservation for later release
+      const individualKey = `${RESERVATION_KEY_PREFIX}detail:${reservationId}`;
+      await redis.setex(
+        individualKey, 
+        RESERVATION_TTL_SECONDS, 
+        JSON.stringify({
+          organizationId,
+          executionType,
+          minutes: estimatedMinutes,
+          createdAt: Date.now(),
+        }),
+      );
+
+      // Check if this reservation would push us over the spending limit
+      const blockCheck = await this.checkSpendingLimitWithReservations(
+        organizationId,
+        executionType,
+      );
+
+      if (blockCheck.blocked) {
+        // Release this reservation immediately since we're blocked
+        await this.releaseReservation(reservationId);
+        return { 
+          reservationId: null, 
+          blocked: true, 
+          reason: blockCheck.reason,
+        };
+      }
+
+      this.logger.debug(
+        `[Usage] Reserved ${estimatedMinutes} ${executionType} minutes for org ${organizationId.slice(0, 8)}... (total reserved: ${newReserved})`,
+      );
+
+      return { 
+        reservationId, 
+        blocked: false, 
+        reservedTotal: newReserved,
+      };
+    } catch (error) {
+      // On error, fail open - don't block execution
+      this.logger.warn(
+        `[Usage] Failed to reserve usage: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { reservationId: null, blocked: false };
+    }
+  }
+
+  /**
+   * Release a usage reservation (on cancellation, failure, or before recording actual usage)
+   * 
+   * @param reservationId - The reservation ID returned from reserveUsage
+   */
+  async releaseReservation(reservationId: string): Promise<void> {
+    if (!this.redisService || !reservationId) {
+      return;
+    }
+
+    const redis = this.redisService.getClient();
+    const detailKey = `${RESERVATION_KEY_PREFIX}detail:${reservationId}`;
+
+    try {
+      // Get the reservation details
+      const detailJson = await redis.get(detailKey);
+      if (!detailJson) {
+        // Already expired or released
+        return;
+      }
+
+      const detail = JSON.parse(detailJson) as {
+        organizationId: string;
+        executionType: 'playwright' | 'k6' | 'monitor';
+        minutes: number;
+      };
+
+      const reservationKey = `${RESERVATION_KEY_PREFIX}${detail.organizationId}:${detail.executionType}`;
+
+      // Atomically decrement the reserved total
+      await redis.decrby(reservationKey, detail.minutes);
+      
+      // Delete the individual reservation record
+      await redis.del(detailKey);
+
+      this.logger.debug(
+        `[Usage] Released reservation ${reservationId.slice(0, 8)}... (${detail.minutes} minutes)`,
+      );
+    } catch (error) {
+      // Non-critical - reservation will auto-expire via TTL
+      this.logger.warn(
+        `[Usage] Failed to release reservation: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Get total reserved usage for an organization and execution type
+   */
+  async getReservedUsage(
+    organizationId: string,
+    executionType: 'playwright' | 'k6' | 'monitor' = 'playwright',
+  ): Promise<number> {
+    if (!this.redisService) {
+      return 0;
+    }
+
+    const redis = this.redisService.getClient();
+    const reservationKey = `${RESERVATION_KEY_PREFIX}${organizationId}:${executionType}`;
+
+    try {
+      const reserved = await redis.get(reservationKey);
+      return reserved ? parseInt(reserved, 10) : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Check spending limit including reserved usage
+   * This is used internally by reserveUsage to check if a new reservation
+   * would push the organization over its spending limit.
+   */
+  private async checkSpendingLimitWithReservations(
+    organizationId: string,
+    executionType: 'playwright' | 'k6' | 'monitor',
+  ): Promise<{ blocked: boolean; reason?: string }> {
+    try {
+      // Get billing settings
+      const settings = await this.db.execute<{
+        enable_spending_limit: boolean;
+        hard_stop_on_limit: boolean;
+        monthly_spending_limit_cents: number | null;
+      }>(sql`
+        SELECT 
+          enable_spending_limit,
+          hard_stop_on_limit,
+          monthly_spending_limit_cents
+        FROM billing_settings
+        WHERE organization_id = ${organizationId}
+      `);
+
+      const settingsArray = settings as unknown as Array<{
+        enable_spending_limit: boolean;
+        hard_stop_on_limit: boolean;
+        monthly_spending_limit_cents: number | null;
+      }>;
+
+      if (!settingsArray?.length) {
+        return { blocked: false };
+      }
+
+      const row = settingsArray[0];
+      if (!row.enable_spending_limit || !row.hard_stop_on_limit || !row.monthly_spending_limit_cents) {
+        return { blocked: false };
+      }
+
+      // Get organization and plan limits
+      const org = await this.db.query.organization.findFirst({
+        where: eq(schema.organization.id, organizationId),
+      });
+
+      if (!org) {
+        return { blocked: false };
+      }
+
+      const planLimitsResult = await this.db.execute<{
+        playwright_minutes_included: number;
+        k6_vu_minutes_included: number;
+      }>(sql`
+        SELECT
+          playwright_minutes_included,
+          k6_vu_minutes_included
+        FROM plan_limits
+        WHERE plan = ${org.subscriptionPlan || 'plus'}
+      `);
+
+      const planLimitsArray = planLimitsResult as unknown as Array<{
+        playwright_minutes_included: number;
+        k6_vu_minutes_included: number;
+      }>;
+
+      if (!planLimitsArray?.length) {
+        return { blocked: false };
+      }
+
+      const limits = planLimitsArray[0];
+
+      // Get overage pricing
+      const pricingResult = await this.db.execute<{
+        playwright_minute_price_cents: number;
+        k6_vu_minute_price_cents: number;
+      }>(sql`
+        SELECT
+          playwright_minute_price_cents,
+          k6_vu_minute_price_cents
+        FROM overage_pricing
+        WHERE plan = ${org.subscriptionPlan || 'plus'}
+      `);
+
+      const pricingArray = pricingResult as unknown as Array<{
+        playwright_minute_price_cents: number;
+        k6_vu_minute_price_cents: number;
+      }>;
+
+      if (!pricingArray?.length) {
+        return { blocked: false };
+      }
+
+      const prices = pricingArray[0];
+
+      // Get reserved usage from Redis
+      const playwrightReserved = await this.getReservedUsage(organizationId, 'playwright');
+      const monitorReserved = await this.getReservedUsage(organizationId, 'monitor');
+      const k6Reserved = await this.getReservedUsage(organizationId, 'k6');
+
+      // Calculate current + reserved usage
+      const totalPlaywrightUsage = 
+        (org.playwrightMinutesUsed || 0) + playwrightReserved + monitorReserved;
+      const totalK6Usage = (org.k6VuMinutesUsed || 0) + k6Reserved;
+
+      // Calculate overage including reserved usage
+      const playwrightOverage = Math.max(
+        0,
+        totalPlaywrightUsage - limits.playwright_minutes_included,
+      );
+      const k6Overage = Math.max(
+        0,
+        totalK6Usage - limits.k6_vu_minutes_included,
+      );
+
+      const totalOverageCents =
+        playwrightOverage * prices.playwright_minute_price_cents +
+        k6Overage * prices.k6_vu_minute_price_cents;
+
+      if (totalOverageCents >= row.monthly_spending_limit_cents) {
+        return {
+          blocked: true,
+          reason:
+            `Monthly spending limit of $${(row.monthly_spending_limit_cents / 100).toFixed(2)} would be exceeded. ` +
+            `Projected spending: $${(totalOverageCents / 100).toFixed(2)} (includes ${playwrightReserved + monitorReserved} reserved Playwright minutes, ${k6Reserved} reserved K6 VU minutes).`,
+        };
+      }
+
+      return { blocked: false };
+    } catch (error) {
+      this.logger.warn(
+        `[Usage] Failed to check spending limit with reservations: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { blocked: false }; // Fail open
+    }
   }
 }

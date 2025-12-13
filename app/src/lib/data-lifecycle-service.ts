@@ -1292,24 +1292,33 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
         } else {
           const runIds = oldRuns.map((r) => r.id);
 
-          // Get associated reports
+          // Get associated reports for all entity types
+          // This fixes the data lifecycle gap where only 'job' type was cleaned
           const associatedReports = await db
             .select()
             .from(reports)
             .where(
               and(
-                eq(reports.entityType, "job"),
+                inArray(reports.entityType, ["job", "test", "monitor", "k6_performance"]),
                 inArray(reports.entityId, runIds)
               )
             );
 
           // Delete S3 artifacts
           if (associatedReports.length > 0) {
+            // Map entity types to S3 bucket types
+            // k6_performance maps to 'job' bucket since k6 reports are stored in job artifacts
+            const mapEntityType = (type: string): "job" | "test" | "monitor" => {
+              if (type === "test") return "test";
+              if (type === "monitor") return "monitor";
+              return "job"; // job and k6_performance both use job bucket
+            };
+
             const s3DeletionInputs = associatedReports.map((report) => ({
               reportPath: report.reportPath,
               s3Url: report.s3Url || undefined,
               entityId: report.entityId,
-              entityType: "job" as const,
+              entityType: mapEntityType(report.entityType),
             }));
 
             const s3Result =
@@ -1430,23 +1439,31 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
       if (!dryRun) {
         const runIds = oldRuns.map((r) => r.id);
 
-        // Get and delete associated reports
+        // Get and delete associated reports for all entity types
+        // This fixes the data lifecycle gap where only 'job' type was cleaned
         const associatedReports = await db
           .select()
           .from(reports)
           .where(
             and(
-              eq(reports.entityType, "job"),
+              inArray(reports.entityType, ["job", "test", "monitor", "k6_performance"]),
               inArray(reports.entityId, runIds)
             )
           );
 
         if (associatedReports.length > 0) {
+          // Map entity types to S3 bucket types
+          const mapEntityType = (type: string): "job" | "test" | "monitor" => {
+            if (type === "test") return "test";
+            if (type === "monitor") return "monitor";
+            return "job"; // job and k6_performance both use job bucket
+          };
+
           const s3DeletionInputs = associatedReports.map((report) => ({
             reportPath: report.reportPath,
             s3Url: report.s3Url || undefined,
             entityId: report.entityId,
-            entityType: "job" as const,
+            entityType: mapEntityType(report.entityType),
           }));
 
           const s3Result = await this.s3Service.deleteReports(s3DeletionInputs);

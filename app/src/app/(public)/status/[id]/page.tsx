@@ -22,13 +22,12 @@ type PublicStatusPagePageProps = {
  * - https://app.supercheck.io/status/uuid → Direct ID access
  */
 async function getStatusPageData(idOrSubdomain: string) {
-  // Check if this looks like a UUID (contains hyphens or is 36 chars)
+  // FIX: Only treat as UUID if it matches the full UUID pattern
+  // Previous logic incorrectly treated any string with hyphen as UUID
   const looksLikeUUID =
-    idOrSubdomain.includes("-") ||
-    (idOrSubdomain.length === 36 &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        idOrSubdomain
-      ));
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      idOrSubdomain
+    );
 
   // Try subdomain lookup first (most common case from middleware)
   if (!looksLikeUUID) {
@@ -64,25 +63,25 @@ export async function generateMetadata({
 
   const icons = statusPage.faviconLogo
     ? {
-        icon: [
-          {
-            url: `${statusPage.faviconLogo}?v=${cacheBuster}`,
-            type: "image/png",
-          },
-        ],
-        shortcut: [
-          {
-            url: `${statusPage.faviconLogo}?v=${cacheBuster}`,
-            type: "image/png",
-          },
-        ],
-        apple: [
-          {
-            url: `${statusPage.faviconLogo}?v=${cacheBuster}`,
-            type: "image/png",
-          },
-        ],
-      }
+      icon: [
+        {
+          url: `${statusPage.faviconLogo}?v=${cacheBuster}`,
+          type: "image/png",
+        },
+      ],
+      shortcut: [
+        {
+          url: `${statusPage.faviconLogo}?v=${cacheBuster}`,
+          type: "image/png",
+        },
+      ],
+      apple: [
+        {
+          url: `${statusPage.faviconLogo}?v=${cacheBuster}`,
+          type: "image/png",
+        },
+      ],
+    }
     : undefined;
 
   return {

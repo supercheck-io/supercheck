@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from '@/lib/rbac/middleware';
+import { requireAdmin } from '@/lib/admin';
 import { getQueues } from '@/lib/queue';
 import { db } from "@/utils/db";
 import { jobs, monitors } from "@/db/schema";
@@ -7,8 +7,8 @@ import { isNotNull } from "drizzle-orm";
 
 export async function GET() {
   try {
-    // Require authentication for scheduler status
-    await requireAuth();
+    // Require super admin privileges for scheduler status (security fix)
+    await requireAdmin();
 
     // Get scheduler queue status
     const { jobSchedulerQueue, monitorSchedulerQueue } = await getQueues();

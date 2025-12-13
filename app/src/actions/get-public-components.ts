@@ -3,14 +3,22 @@
 import { db } from "@/utils/db";
 import {
   statusPageComponents,
-  statusPageComponentMonitors,
   statusPages,
 } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { z } from "zod";
+
+// UUID validation schema
+const uuidSchema = z.string().uuid("Invalid status page ID format");
 
 /**
  * Public action to get components for a status page without authentication
  * Only returns components for published status pages
+ *
+ * SECURITY NOTES:
+ * - Only returns published page components
+ * - Validates UUID format to prevent injection
+ * - Only returns public-safe fields (no internal URLs, targets, or metadata)
  */
 export async function getPublicComponents(statusPageId: string) {
   try {
@@ -23,12 +31,23 @@ export async function getPublicComponents(statusPageId: string) {
       };
     }
 
+    // Validate UUID format
+    const validationResult = uuidSchema.safeParse(statusPageId);
+    if (!validationResult.success) {
+      return {
+        success: false,
+        message: "Invalid status page ID",
+        components: [],
+      };
+    }
+
     // First verify that the status page exists and is published
     const statusPage = await db.query.statusPages.findFirst({
       where: and(
         eq(statusPages.id, statusPageId),
         eq(statusPages.status, "published")
       ),
+      columns: { id: true }, // Only need to verify existence
     });
 
     if (!statusPage) {
@@ -39,61 +58,61 @@ export async function getPublicComponents(statusPageId: string) {
       };
     }
 
-    // Get all components for the status page, including linked monitor data
+    // PERFORMANCE FIX: Use Drizzle eager loading instead of N+1 queries
+    // Previously: fetched monitors individually per component in a loop
     const components = await db.query.statusPageComponents.findMany({
       where: eq(statusPageComponents.statusPageId, statusPageId),
+      columns: {
+        id: true,
+        name: true,
+        description: true,
+        status: true,
+        showcase: true,
+        onlyShowIfDegraded: true,
+        position: true,
+        startDate: true,
+        createdAt: true,
+        updatedAt: true,
+        // EXCLUDED: statusPageId (redundant), automationEmail (internal)
+      },
       orderBy: (components, { asc }) => [
         asc(components.position),
         asc(components.createdAt),
       ],
+      with: {
+        // Eager load monitor associations with nested monitor data
+        monitors: {
+          with: {
+            monitor: {
+              columns: {
+                id: true,
+                name: true,
+                status: true,
+                // EXCLUDED: target (leaks internal URLs/IPs), type (internal detail)
+              },
+            },
+          },
+        },
+      },
     });
 
-    // Fetch monitor associations for all components
-    const componentsWithMonitors = await Promise.all(
-      components.map(async (component) => {
-        try {
-          // Get monitors through the join table
-          const monitorAssociations =
-            await db.query.statusPageComponentMonitors.findMany({
-              where: eq(statusPageComponentMonitors.componentId, component.id),
-              with: {
-                monitor: {
-                  columns: {
-                    id: true,
-                    name: true,
-                    type: true,
-                    status: true,
-                    target: true,
-                  },
-                },
-              },
-            });
+    // Transform the data to the expected format
+    const componentsWithMonitors = components.map((component) => {
+      const linkedMonitors = component.monitors
+        .filter((assoc) => assoc.monitor)
+        .map((assoc) => ({
+          id: assoc.monitor.id,
+          name: assoc.monitor.name,
+          status: assoc.monitor.status,
+          weight: assoc.weight,
+        }));
 
-          // Extract monitor data with weights
-          const linkedMonitors = monitorAssociations.map((assoc) => ({
-            ...assoc.monitor,
-            weight: assoc.weight,
-          }));
-
-          return {
-            ...component,
-            monitors: linkedMonitors,
-            monitorIds: linkedMonitors.map((m) => m.id),
-          };
-        } catch (monitorError) {
-          console.error(
-            `Error fetching monitors for component ${component.id}:`,
-            monitorError
-          );
-          // Return component without monitors if there's an error
-          return {
-            ...component,
-            monitors: [],
-            monitorIds: [],
-          };
-        }
-      })
-    );
+      return {
+        ...component,
+        monitors: linkedMonitors,
+        monitorIds: linkedMonitors.map((m) => m.id),
+      };
+    });
 
     return {
       success: true,
@@ -101,20 +120,9 @@ export async function getPublicComponents(statusPageId: string) {
     };
   } catch (error) {
     console.error("Error fetching public components:", error);
-
-    // Provide more detailed error information
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-    const errorStack = error instanceof Error ? error.stack : undefined;
-
     return {
       success: false,
-      message: `Failed to fetch components: ${errorMessage}`,
-      error: {
-        message: errorMessage,
-        stack: errorStack,
-        originalError: error,
-      },
+      message: "Failed to fetch components",
       components: [],
     };
   }

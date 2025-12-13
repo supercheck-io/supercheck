@@ -146,6 +146,32 @@ export async function checkAdminRateLimit(
 }
 
 /**
+ * Rate limiting for monitor API operations
+ * Prevents abuse of monitor creation/update endpoints
+ */
+export async function checkMonitorApiRateLimit(
+  userId: string,
+  organizationId: string,
+  operation: "create" | "update" | "delete",
+  maxOperations = 20,
+  windowMs = 60 * 1000 // 1 minute
+): Promise<{ allowed: boolean; resetTime?: number; retryAfter?: number }> {
+  // Use organization-scoped rate limiting to prevent cross-org abuse
+  const result = await checkRateLimit(
+    `monitor:${organizationId}:${userId}:${operation}`,
+    maxOperations,
+    windowMs
+  );
+
+  if (!result.allowed && result.resetTime) {
+    const retryAfter = Math.ceil((result.resetTime - Date.now()) / 1000);
+    return { ...result, retryAfter: Math.max(1, retryAfter) };
+  }
+
+  return result;
+}
+
+/**
  * Rate limiting for password reset requests
  * More restrictive than admin operations for security
  */

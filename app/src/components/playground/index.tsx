@@ -291,9 +291,9 @@ const Playground: React.FC<PlaygroundProps> = ({
     hasValidated && isValid && editorContent === lastValidatedScript;
   const isCurrentScriptExecutedSuccessfully =
     testExecutionStatus === "passed" && editorContent === lastExecutedScript;
+  const isPerformanceMode = testCase.type === "performance";
   const isCurrentScriptReadyToSave =
     isCurrentScriptValidated && isCurrentScriptExecutedSuccessfully;
-  const isPerformanceMode = testCase.type === "performance";
   const aiFixVisible =
     testExecutionStatus === "failed" &&
     !isRunning &&
@@ -517,6 +517,9 @@ const Playground: React.FC<PlaygroundProps> = ({
         resetTestExecutionState();
       }
 
+      // Track if type is actually changing (used by loadScriptForType)
+      const isTypeChanging = typeToSet !== testCase.type;
+
       setTestCase((prev) => ({
         ...prev,
         type: typeToSet,
@@ -530,8 +533,16 @@ const Playground: React.FC<PlaygroundProps> = ({
         setPerformanceLocation("global");
       }
 
+      // Load sample script when:
+      // 1. Type is CHANGING (user switched from browser to performance, etc.)
+      // 2. OR the editor is empty (new playground session)
+      // Do NOT load when only performanceLocation changes (during k6 runs)
       const loadScriptForType = async () => {
-        if (typeToSet) {
+        const currentContent = lastEditorContentRef.current;
+        const hasExistingContent = currentContent && currentContent.trim().length > 0;
+        const shouldLoadScript = isTypeChanging || !hasExistingContent;
+
+        if (typeToSet && shouldLoadScript) {
           try {
             const { getSampleScript } = await import("@/lib/script-service");
             const scriptContent = getSampleScript(typeToSet as ScriptType);
@@ -778,6 +789,7 @@ const Playground: React.FC<PlaygroundProps> = ({
           }));
           setIsReportLoading(false);
           setTestExecutionStatus("none");
+
           return;
         }
 
@@ -1080,6 +1092,8 @@ const Playground: React.FC<PlaygroundProps> = ({
 
         // Update report URL to trigger refresh with cancellation info
         // The ReportViewer will detect the cancellation from the API response
+        // Update report URL to trigger refresh with cancellation info
+        // The ReportViewer will detect the cancellation from the API response
         if (currentRunId) {
           const apiUrl = `/api/test-results/${currentRunId}/report/index.html?t=${Date.now()}&forceIframe=true`;
           setReportUrl(apiUrl);
@@ -1087,6 +1101,8 @@ const Playground: React.FC<PlaygroundProps> = ({
         }
 
         setCurrentRunId(null);
+        // Trigger global UI refresh immediately
+        notifyExecutionsChanged();
       } else {
         toast.error("Failed to cancel run", {
           description: data.message || "Unknown error occurred",
@@ -1476,20 +1492,30 @@ const Playground: React.FC<PlaygroundProps> = ({
                               setIsRunning(false);
                               // For K6 performance tests:
                               // - "passed" = script ran && thresholds passed && checks passed
-                              // - "failed" = script ran but thresholds/checks failed
+                              // - "failed" = script ran but thresholds/checks failed (report generated)
                               // - "error" = script failed to execute (syntax error, timeout, etc.)
                               // 
                               // For SAVING purposes, we consider both "passed" and "failed" as 
-                              // successful execution because the script RAN to completion.
+                              // successful execution because the script RAN to completion and
+                              // generated a report. K6 tests can run for up to an hour, so we
+                              // must allow saving even if thresholds failed to avoid wasting
+                              // user resources.
                               // Only "error" should block saving (indicates script didn't execute).
+
+                              // Use ref to get the latest editor content, avoiding stale closure
+                              // issues during long-running k6 tests
+                              const currentScript = lastEditorContentRef.current;
+
                               if (status === "passed" || status === "failed") {
-                                // Script executed successfully - allow saving
+                                // Script executed and generated report - allow saving
                                 setTestExecutionStatus("passed");
-                                setLastExecutedScript(editorContent);
+                                setLastExecutedScript(currentScript);
                               } else if (status === "error") {
                                 // Script failed to execute - don't allow saving
                                 setTestExecutionStatus("failed");
                               }
+                              // Note: "cancelled" status returns "running" from toDisplayStatus,
+                              // so it won't reach here. Cancelled runs don't generate reports.
                             }
                           }}
                         />

@@ -11,12 +11,14 @@ import { checkCapacityLimits } from "./middleware/plan-enforcement";
  * - capacity:queued:{orgId} - Sorted set of queued job IDs (score = timestamp)
  * - capacity:job:{jobId} - Hash storing job data for queued jobs
  * - capacity:org:{jobId} - String mapping jobId to organizationId
+ * - capacity:released:{jobId} - Flag indicating slot was already released (prevents double-decrement)
  */
 const KEYS = {
   running: (orgId: string) => `capacity:running:${orgId}`,
   queued: (orgId: string) => `capacity:queued:${orgId}`,
   jobData: (jobId: string) => `capacity:job:${jobId}`,
   jobOrg: (jobId: string) => `capacity:org:${jobId}`,
+  released: (jobId: string) => `capacity:released:${jobId}`,
 } as const;
 
 // TTL for Redis keys (24 hours)
@@ -203,22 +205,93 @@ export class CapacityManager {
 
   /**
    * Release a running slot when job completes/fails
+   * Uses atomic Lua script to prevent double-release:
+   * - Checks if jobId already has a 'released' flag
+   * - If not, sets the flag and decrements the counter
+   * - If already released, does nothing (idempotent)
    */
   async releaseRunningSlot(organizationId: string = 'global', jobId?: string): Promise<void> {
     try {
       const runningKey = KEYS.running(organizationId);
       
-      const result = await this.redis.decr(runningKey);
-      if (result <= 0) {
-        await this.redis.del(runningKey);
+      // If no jobId provided, just decrement (legacy behavior for edge cases)
+      if (!jobId) {
+        const result = await this.redis.decr(runningKey);
+        if (result <= 0) {
+          await this.redis.del(runningKey);
+        }
+        return;
+      }
+      
+      const releasedKey = KEYS.released(jobId);
+      
+      // Lua script for atomic idempotent release:
+      // 1. Check if job was already released (SETNX returns 0 if key exists)
+      // 2. If not released (SETNX returns 1), decrement running counter
+      // 3. Return 1 if released now, 0 if already released
+      const luaScript = `
+        local releasedKey = KEYS[1]
+        local runningKey = KEYS[2]
+        local ttl = tonumber(ARGV[1])
+        
+        -- Try to set the released flag (returns 0 if already exists)
+        local wasSet = redis.call('SETNX', releasedKey, '1')
+        
+        if wasSet == 1 then
+          -- Flag was set, this is the first release call
+          redis.call('EXPIRE', releasedKey, ttl)
+          local result = redis.call('DECR', runningKey)
+          if result <= 0 then
+            redis.call('DEL', runningKey)
+          end
+          return 1
+        else
+          -- Already released, skip decrement
+          return 0
+        end
+      `;
+      
+      const result = await this.redis.eval(
+        luaScript,
+        2,
+        releasedKey,
+        runningKey,
+        KEY_TTL
+      ) as number;
+      
+      if (result === 1) {
+        logger.debug({ jobId, organizationId }, "Released running slot (first release)");
+      } else {
+        logger.debug({ jobId, organizationId }, "Slot already released, skipping decrement");
       }
 
-      // Clean up job data if provided
-      if (jobId) {
-        await this.cleanupJobData(jobId);
-      }
+      // Clean up job data regardless of whether we released
+      await this.cleanupJobData(jobId);
     } catch (error) {
       logger.error({ err: error, organizationId, jobId }, "Failed to release running slot");
+    }
+  }
+
+  /**
+   * Remove a job from the queued set (for cancellation)
+   * This handles jobs that are waiting to be promoted but haven't started yet.
+   * Note: Queued jobs don't consume running capacity - they only consume queued capacity.
+   * @returns true if job was found and removed
+   */
+  async removeFromQueuedSet(organizationId: string, jobId: string): Promise<boolean> {
+    try {
+      const queuedKey = KEYS.queued(organizationId);
+      const removed = await this.redis.zrem(queuedKey, jobId);
+      if (removed > 0) {
+        // Clean up the job data since job is cancelled
+        await this.cleanupJobData(jobId);
+        logger.info({ jobId, organizationId }, "Removed job from queued set (cancelled before promotion)");
+        return true;
+      }
+      return false;
+    } catch (error) {
+      logger.error({ err: error, jobId, organizationId }, "Failed to remove job from queued set");
+      return false;
     }
   }
 
@@ -408,6 +481,12 @@ export class CapacityManager {
           const jobData = JSON.parse(jobDataStr) as QueuedJobData;
           await this.addJobToBullMQ(jobData);
           logger.info({ jobId, organizationId }, "Promoted queued job to running");
+        } else {
+          // Job data expired or missing - release the slot we just acquired
+          // This prevents capacity leak when job data TTL expires before promotion
+          logger.warn({ jobId, organizationId }, "Job data missing during promotion, releasing slot");
+          await this.releaseRunningSlot(organizationId, jobId);
+          return false;
         }
         return true;
       }
@@ -423,6 +502,10 @@ export class CapacityManager {
    * This is called when a job moves from queued to running
    */
   private async addJobToBullMQ(jobData: QueuedJobData): Promise<void> {
+    // Track if job was successfully added to prevent double capacity release
+    // If queue.add succeeds, the job will trigger completed/failed events which release the slot
+    let jobAddedToBullMQ = false;
+    
     try {
       // Dynamic import to avoid circular dependency
       const queueModule = await import('./queue');
@@ -442,6 +525,10 @@ export class CapacityManager {
           _capacityStatus: 'promoted',
         }, { jobId: jobData.runId });
       }
+      
+      // Mark job as added - any subsequent failures should NOT release slot
+      // The job will complete/fail in BullMQ and trigger event handlers
+      jobAddedToBullMQ = true;
 
       // Update database run status from 'queued' to 'running'
       try {
@@ -452,15 +539,19 @@ export class CapacityManager {
         logger.info({ runId: jobData.runId }, "Updated run status from queued to running");
       } catch (dbError) {
         logger.warn({ err: dbError, runId: jobData.runId }, "Failed to update run status in database");
-        // Continue - job is already in BullMQ
+        // Continue - job is already in BullMQ, DB status is secondary
       }
 
       // Clean up job data after adding to BullMQ
       await this.cleanupJobData(jobData.jobId);
     } catch (error) {
       logger.error({ err: error, jobId: jobData.jobId }, "Failed to add promoted job to BullMQ");
-      // Release the slot since we couldn't add it
-      await this.releaseRunningSlot(jobData.organizationId, jobData.jobId);
+      
+      // CRITICAL: Only release slot if job was NEVER added to BullMQ
+      // If job was added, it will release slot via completed/failed events
+      if (!jobAddedToBullMQ) {
+        await this.releaseRunningSlot(jobData.organizationId, jobData.jobId);
+      }
       throw error;
     }
   }
@@ -619,12 +710,13 @@ export async function setupCapacityManagement(
   ].filter(Boolean);
 
   // Helper to get org ID for a job
-  async function getOrgId(jobId: string, queues: QueueParameters): Promise<string> {
-    // Try to get from our mapping first
+  // Returns null if org cannot be determined (reconciliation will fix any drift)
+  async function getOrgId(jobId: string, queues: QueueParameters): Promise<string | null> {
+    // Try to get from our mapping first (most reliable)
     const mappedOrg = await manager.getJobOrganization(jobId);
     if (mappedOrg) return mappedOrg;
 
-    // Try to find in queues
+    // Try to find in queues (fallback for edge cases)
     const allQueues = [
       queues.playwrightQueues['global'],
       ...Object.values(queues.k6Queues),
@@ -637,11 +729,14 @@ export async function setupCapacityManagement(
           return job.data.organizationId as string;
         }
       } catch {
-        // Job not in this queue
+        // Job not in this queue, continue
       }
     }
 
-    return 'global';
+    // IMPORTANT: Do NOT fall back to 'global' - this corrupts multi-tenant isolation
+    // If we can't determine the org, let reconciliation fix it later
+    logger.warn({ jobId }, "Could not determine organization for job - reconciliation will fix any drift");
+    return null;
   }
 
   // Setup minimal event listeners for job completion
@@ -650,10 +745,15 @@ export async function setupCapacityManagement(
     queueEvent.on('completed', async ({ jobId }) => {
       try {
         const orgId = await getOrgId(jobId, queues);
-        await manager.releaseRunningSlot(orgId, jobId);
+        if (orgId) {
+          await manager.releaseRunningSlot(orgId, jobId);
+        } else {
+          // Skip release - reconciliation will detect and fix the drift
+          logger.warn({ jobId }, "Skipping slot release on completion - org unknown, reconciliation will fix");
+        }
       } catch (error) {
         logger.error({ err: error, jobId }, "Failed to release slot on completion");
-        await manager.releaseRunningSlot('global', jobId);
+        // Do NOT fallback to 'global' - let reconciliation handle it
       }
     });
 
@@ -661,30 +761,30 @@ export async function setupCapacityManagement(
     queueEvent.on('failed', async ({ jobId }) => {
       try {
         const orgId = await getOrgId(jobId, queues);
-        await manager.releaseRunningSlot(orgId, jobId);
+        if (orgId) {
+          await manager.releaseRunningSlot(orgId, jobId);
+        } else {
+          logger.warn({ jobId }, "Skipping slot release on failure - org unknown, reconciliation will fix");
+        }
       } catch (error) {
         logger.error({ err: error, jobId }, "Failed to release slot on failure");
-        await manager.releaseRunningSlot('global', jobId);
+        // Do NOT fallback to 'global' - let reconciliation handle it
       }
     });
 
-    // Release running slot on stalled (job timeout)
-    queueEvent.on('stalled', async ({ jobId }) => {
-      try {
-        const orgId = await getOrgId(jobId, queues);
-        logger.warn({ jobId, orgId }, "Job stalled, releasing capacity");
-        await manager.releaseRunningSlot(orgId, jobId);
-      } catch (error) {
-        logger.error({ err: error, jobId }, "Failed to release slot on stall");
-        await manager.releaseRunningSlot('global', jobId);
-      }
-    });
+    // Note: We DO NOT release slot on 'stalled' event because BullMQ moves stalled jobs
+    // back to the wait queue to be retried (up to maxStalledCount).
+    // If we released the slot here, the job would run again consuming capacity we just released,
+    // allowing another job to start and exceeding the limit.
+    // If the job reaches maxStalledCount, it will fail and trigger the 'failed' event above.
 
     // Track job organization when it becomes active
     queueEvent.on('active', async ({ jobId }) => {
       try {
         const orgId = await getOrgId(jobId, queues);
-        await manager.trackJobOrganization(jobId, orgId);
+        if (orgId) {
+          await manager.trackJobOrganization(jobId, orgId);
+        }
       } catch (error) {
         logger.error({ err: error, jobId }, "Failed to track job on active");
       }
@@ -733,11 +833,13 @@ export async function reconcileCapacityCounters(
       ...Object.values(queues.k6Queues),
     ].filter(Boolean);
 
-    // 1. Count actual active jobs per organization from BullMQ
+    // 1. Count actual jobs that have consumed running slots per organization from BullMQ
+    // IMPORTANT: Include both 'active' (currently executing) AND 'waiting' (reserved slot, waiting for worker)
+    // Jobs in 'waiting' state have already consumed a capacity slot via reserveSlot()
     const actualRunningByOrg: Record<string, number> = {};
     
     const allActiveJobs = await Promise.all(
-      executionQueues.map(q => q.getJobs(['active']))
+      executionQueues.map(q => q.getJobs(['active', 'waiting']))
     );
 
     for (const jobs of allActiveJobs) {

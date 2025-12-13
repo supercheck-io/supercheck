@@ -99,6 +99,7 @@ import {
   canDeleteVariableInProject,
   canViewSecretVariableInProject,
   getProjectIdFromUrl,
+  hasPermission,
 } from "./middleware";
 
 // Cast mocks - use explicit jest.Mock for deeply nested mocks
@@ -131,6 +132,9 @@ describe("RBAC Middleware", () => {
       emailVerified: true,
       createdAt: new Date(),
       updatedAt: new Date(),
+    },
+    session: {
+      token: "mock-session-token",
     },
   };
 
@@ -1110,6 +1114,175 @@ describe("RBAC Middleware", () => {
           testUserId,
           testProjectId
         );
+
+        expect(result).toBe(false);
+      });
+    });
+  });
+
+  // ==========================================================================
+  // CROSS-ORG ACCESS DENIAL TESTS (IDOR Prevention)
+  // ==========================================================================
+
+  describe("Cross-Organization Access Denial", () => {
+    const userOrgId = "org-user-belongs-to";
+    const otherOrgId = "org-user-does-not-belong-to";
+
+    describe("hasPermission with organizationId context", () => {
+      it("should deny access when user is not a member of the organization", async () => {
+        // User is authenticated but NOT a member of otherOrgId
+        mockIsSuperAdmin.mockResolvedValue(false);
+        const mockSelectChain = {
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockResolvedValue([]), // No membership record
+        };
+        mockDbSelect.mockReturnValue(mockSelectChain as unknown);
+
+        const result = await hasPermission("test", "view", {
+          organizationId: otherOrgId,
+        });
+
+        expect(result).toBe(false);
+      });
+
+      it("should allow access when user IS a member of the organization", async () => {
+        // User is authenticated AND a member of userOrgId
+        mockIsSuperAdmin.mockResolvedValue(false);
+        mockNormalizeRole.mockReturnValue(Role.ORG_ADMIN);
+        // Mock needs to handle both getUserOrgRole (uses .limit()) and getUserAssignedProjects (no .limit())
+        // getUserOrgRole: select().from().where().limit() - limit() returns promise
+        // getUserAssignedProjects: select().from().where() - where() returns promise (array)
+        const mockSelectChain = {
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnValue({
+            limit: jest.fn().mockResolvedValue([{ role: "admin" }]),
+            // Also support being awaited directly for getUserAssignedProjects
+            then: (resolve: (value: unknown[]) => void) => resolve([]),
+          }),
+        };
+        mockDbSelect.mockReturnValue(mockSelectChain as unknown);
+
+        const result = await hasPermission("test", "view", {
+          organizationId: userOrgId,
+        });
+
+        expect(result).toBe(true);
+      });
+
+      it("should allow super admin to access any organization", async () => {
+        // Super admin can access any org
+        mockIsSuperAdmin.mockResolvedValue(true);
+        // Mock for getUserAssignedProjects
+        const mockWhereResult = Object.assign([], {
+          limit: jest.fn().mockResolvedValue([]),
+          map: jest.fn().mockReturnValue([]),
+        });
+        const mockSelectChain = {
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockResolvedValue(mockWhereResult),
+        };
+        mockDbSelect.mockReturnValue(mockSelectChain as unknown);
+
+        const result = await hasPermission("test", "view", {
+          organizationId: otherOrgId,
+        });
+
+        expect(result).toBe(true);
+      });
+
+      it("should allow access when no organizationId is provided", async () => {
+        // No org context means no org-level check needed
+        mockIsSuperAdmin.mockResolvedValue(false);
+        mockNormalizeRole.mockReturnValue(Role.PROJECT_VIEWER);
+        // Mock for getUserAssignedProjects
+        const mockWhereResult = Object.assign([], {
+          limit: jest.fn().mockResolvedValue([]),
+          map: jest.fn().mockReturnValue([]),
+        });
+        const mockSelectChain = {
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockResolvedValue(mockWhereResult),
+        };
+        mockDbSelect.mockReturnValue(mockSelectChain as unknown);
+
+        const result = await hasPermission("test", "view", {});
+
+        expect(result).toBe(true);
+      });
+
+      it("should deny unauthenticated users", async () => {
+        mockAuthGetSession.mockResolvedValue(null);
+
+        const result = await hasPermission("test", "view", {
+          organizationId: userOrgId,
+        });
+
+        expect(result).toBe(false);
+      });
+    });
+
+    describe("Cross-tenant IDOR attack scenarios", () => {
+      it("should prevent authenticated user from viewing another org's tests", async () => {
+        mockIsSuperAdmin.mockResolvedValue(false);
+        const mockSelectChain = {
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockResolvedValue([]), // Not a member
+        };
+        mockDbSelect.mockReturnValue(mockSelectChain as unknown);
+
+        const result = await hasPermission("test", "view", {
+          organizationId: otherOrgId,
+        });
+
+        expect(result).toBe(false);
+      });
+
+      it("should prevent authenticated user from viewing another org's jobs", async () => {
+        mockIsSuperAdmin.mockResolvedValue(false);
+        const mockSelectChain = {
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockResolvedValue([]), // Not a member
+        };
+        mockDbSelect.mockReturnValue(mockSelectChain as unknown);
+
+        const result = await hasPermission("job", "view", {
+          organizationId: otherOrgId,
+        });
+
+        expect(result).toBe(false);
+      });
+
+      it("should prevent authenticated user from viewing another org's projects", async () => {
+        mockIsSuperAdmin.mockResolvedValue(false);
+        const mockSelectChain = {
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockResolvedValue([]), // Not a member
+        };
+        mockDbSelect.mockReturnValue(mockSelectChain as unknown);
+
+        const result = await hasPermission("project", "view", {
+          organizationId: otherOrgId,
+        });
+
+        expect(result).toBe(false);
+      });
+
+      it("should prevent authenticated user from viewing another org's members", async () => {
+        mockIsSuperAdmin.mockResolvedValue(false);
+        const mockSelectChain = {
+          from: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockResolvedValue([]), // Not a member
+        };
+        mockDbSelect.mockReturnValue(mockSelectChain as unknown);
+
+        const result = await hasPermission("organization", "view", {
+          organizationId: otherOrgId,
+        });
 
         expect(result).toBe(false);
       });
