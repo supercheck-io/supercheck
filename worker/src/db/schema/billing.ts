@@ -14,6 +14,7 @@ import {
   numeric,
   index,
   uniqueIndex,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -87,11 +88,11 @@ export const billingSettings = pgTable(
       .notNull(),
 
     // Notification recipients (JSON array of emails, null = org admins only)
-    notificationEmails: text("notification_emails"), // JSON array
+    notificationEmails: jsonb("notification_emails").$type<string[]>(),
 
     // Track which notifications have been sent this period
     lastNotificationSentAt: timestamp("last_notification_sent_at"),
-    notificationsSentThisPeriod: text("notifications_sent_this_period"), // JSON array of thresholds
+    notificationsSentThisPeriod: jsonb("notifications_sent_this_period").$type<number[]>(),
 
     // Metadata
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -134,7 +135,7 @@ export const usageEvents = pgTable(
     unitType: text("unit_type").notNull(), // "minutes", "vu_minutes", "credits"
 
     // Metadata for the event
-    metadata: text("metadata"), // JSON - runId, jobId, testId, etc.
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
 
     // Polar sync status
     syncedToPolar: boolean("synced_to_polar").default(false).notNull(),
@@ -206,7 +207,7 @@ export const usageNotifications = pgTable(
     spendingLimitCents: integer("spending_limit_cents"),
 
     // Recipients
-    sentTo: text("sent_to").notNull(), // JSON array of emails
+    sentTo: jsonb("sent_to").$type<string[]>().notNull(),
 
     // Delivery status
     deliveryStatus: text("delivery_status")

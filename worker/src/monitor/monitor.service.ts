@@ -56,6 +56,7 @@ import {
   maskCredentials,
   getErrorMessage,
 } from '../common/validation';
+import { RedisService } from '../execution/services/redis.service';
 
 // Use the Monitor type from schema
 type Monitor = z.infer<typeof monitorsSelectSchema>;
@@ -63,11 +64,15 @@ type Monitor = z.infer<typeof monitorsSelectSchema>;
 // Use the MonitorResult type from schema
 type MonitorResult = z.infer<typeof monitorResultsSelectSchema>;
 
+// Redis key constants for aggregation coordination
+const REDIS_AGGREGATION_KEY_PREFIX = 'monitor:aggr:';
+const REDIS_AGGREGATION_TTL_SECONDS = 120; // 2 minutes - enough time for all locations to report
+
 @Injectable()
 export class MonitorService {
   private readonly logger = new Logger(MonitorService.name);
   private static readonly AGGREGATION_MAX_RETRIES = 3;
-  private static readonly AGGREGATION_RETRY_DELAY_MS = 500;
+  private static readonly AGGREGATION_RETRY_DELAY_MS = 200; // Reduced from 500ms since Redis is fast
 
   constructor(
     private readonly dbService: DbService,
@@ -81,6 +86,7 @@ export class MonitorService {
     private readonly executionService: ExecutionService,
     private readonly locationService: LocationService,
     private readonly usageTrackerService: UsageTrackerService,
+    private readonly redisService: RedisService, // Added for aggregation coordination
   ) {}
 
   async executeMonitor(
@@ -516,7 +522,34 @@ export class MonitorService {
         ? expectedLocations
         : this.locationService.getEffectiveLocations(locationConfig);
 
-    // Retry logic to handle race conditions where other workers haven't committed yet
+    // Use Redis for aggregation coordination instead of polling the database
+    // This is much more efficient: O(1) Redis ops vs expensive JSON field queries
+    const redisKey = `${REDIS_AGGREGATION_KEY_PREFIX}${executionGroupId}`;
+    const redis = this.redisService.getClient();
+
+    // Add current location to the Redis set for this execution group
+    await redis.sadd(redisKey, result.location);
+    await redis.expire(redisKey, REDIS_AGGREGATION_TTL_SECONDS);
+
+    // Check if all locations have reported using Redis (O(1) operation)
+    const reportedCount = await redis.scard(redisKey);
+
+    if (reportedCount < expected.length) {
+      // Not all locations have reported yet - let the last worker handle aggregation
+      this.logger.debug(
+        `Location ${result.location} reported for monitor ${result.monitorId}. ` +
+          `Waiting for others: ${reportedCount}/${expected.length}. ` +
+          `ExecutionGroupId: ${executionGroupId}`,
+      );
+      return;
+    }
+
+    // All locations reported! This worker will aggregate.
+    // Brief pause to ensure all DB writes have committed before querying
+    await new Promise((resolve) =>
+      setTimeout(resolve, MonitorService.AGGREGATION_RETRY_DELAY_MS),
+    );
+
     // Define the type for the rows we're selecting
     type MonitorResultRow = {
       monitorId: string;
@@ -530,59 +563,43 @@ export class MonitorService {
       testReportS3Url: string | null;
     };
 
-    let latestByLocation = new Map<MonitoringLocation, MonitorResultRow>();
+    // Now fetch results from DB (single query, not in a loop)
+    const groupRows = await this.dbService.db
+      .select({
+        monitorId: schema.monitorResults.monitorId,
+        location: schema.monitorResults.location,
+        status: schema.monitorResults.status,
+        checkedAt: schema.monitorResults.checkedAt,
+        responseTimeMs: schema.monitorResults.responseTimeMs,
+        details: schema.monitorResults.details,
+        isUp: schema.monitorResults.isUp,
+        testExecutionId: schema.monitorResults.testExecutionId,
+        testReportS3Url: schema.monitorResults.testReportS3Url,
+      })
+      .from(schema.monitorResults)
+      .where(
+        and(
+          eq(schema.monitorResults.monitorId, result.monitorId),
+          sql`(${schema.monitorResults.details} ->>'executionGroupId') = ${executionGroupId}`,
+        ),
+      )
+      .orderBy(desc(schema.monitorResults.checkedAt));
 
-    for (
-      let attempt = 1;
-      attempt <= MonitorService.AGGREGATION_MAX_RETRIES;
-      attempt++
-    ) {
-      const groupRows = await this.dbService.db
-        .select({
-          monitorId: schema.monitorResults.monitorId,
-          location: schema.monitorResults.location,
-          status: schema.monitorResults.status,
-          checkedAt: schema.monitorResults.checkedAt,
-          responseTimeMs: schema.monitorResults.responseTimeMs,
-          details: schema.monitorResults.details,
-          isUp: schema.monitorResults.isUp,
-          testExecutionId: schema.monitorResults.testExecutionId,
-          testReportS3Url: schema.monitorResults.testReportS3Url,
-        })
-        .from(schema.monitorResults)
-        .where(
-          and(
-            eq(schema.monitorResults.monitorId, result.monitorId),
-            sql`(${schema.monitorResults.details} ->> 'executionGroupId') = ${executionGroupId}`,
-          ),
-        )
-        .orderBy(desc(schema.monitorResults.checkedAt));
-
-      latestByLocation = new Map();
-      for (const row of groupRows) {
-        const rowLocation = row.location as MonitoringLocation;
-        if (!latestByLocation.has(rowLocation)) {
-          latestByLocation.set(rowLocation, row as MonitorResultRow);
-        }
-      }
-
-      if (latestByLocation.size >= expected.length) {
-        break;
-      }
-
-      if (attempt < MonitorService.AGGREGATION_MAX_RETRIES) {
-        this.logger.debug(
-          `Attempt ${attempt}/${MonitorService.AGGREGATION_MAX_RETRIES}: Waiting for all locations. Got ${latestByLocation.size}/${expected.length}. Retrying in ${MonitorService.AGGREGATION_RETRY_DELAY_MS}ms...`,
-        );
-        await new Promise((resolve) =>
-          setTimeout(resolve, MonitorService.AGGREGATION_RETRY_DELAY_MS),
-        );
+    // Build map of latest results by location
+    const latestByLocation = new Map<MonitoringLocation, MonitorResultRow>();
+    for (const row of groupRows) {
+      const rowLocation = row.location as MonitoringLocation;
+      if (!latestByLocation.has(rowLocation)) {
+        latestByLocation.set(rowLocation, row as MonitorResultRow);
       }
     }
 
+    // Clean up Redis key now that we've aggregated
+    await redis.del(redisKey);
+
     if (latestByLocation.size < expected.length) {
       this.logger.warn(
-        `Not all locations reported for monitor ${result.monitorId}. ` +
+        `Redis reported all locations but DB query found fewer. ` +
           `Expected: ${expected.join(', ')}. ` +
           `Got: ${Array.from(latestByLocation.keys()).join(', ')}. ` +
           `ExecutionGroupId: ${executionGroupId}`,

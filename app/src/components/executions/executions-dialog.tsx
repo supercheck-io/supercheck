@@ -44,7 +44,7 @@ import { K6Logo } from "@/components/logo/k6-logo";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canCancelRuns } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
-import { useExecutions, ExecutionItem } from "@/hooks/use-executions";
+import { useExecutions, ExecutionItem, notifyExecutionsChanged } from "@/hooks/use-executions";
 
 interface ExecutionsDialogProps {
   open: boolean;
@@ -130,7 +130,9 @@ export function ExecutionsDialog({
       } else {
         toast.success("Execution cancelled successfully");
       }
-      // Refresh to get updated lists from server (hook will update state)
+      // Trigger global refresh to update all UI components (top bar + dialog)
+      notifyExecutionsChanged();
+      // Also trigger local hook refresh for good measure
       await refresh();
     } catch (error) {
       console.error("Error cancelling execution:", error);

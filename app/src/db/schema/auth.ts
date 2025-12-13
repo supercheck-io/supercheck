@@ -12,6 +12,7 @@ import {
   uuid,
   boolean,
   index,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -145,7 +146,7 @@ export const apikey = pgTable(
     name: text("name"),
     start: text("start"),
     prefix: text("prefix"),
-    key: text("key").notNull(),
+    key: text("key").notNull().unique(),
     userId: uuid("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "no action" }),
@@ -166,8 +167,8 @@ export const apikey = pgTable(
     expiresAt: timestamp("expires_at"),
     createdAt: timestamp("created_at").notNull(),
     updatedAt: timestamp("updated_at").notNull(),
-    permissions: text("permissions"),
-    metadata: text("metadata"),
+    permissions: jsonb("permissions").$type<string[]>(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   },
   (table) => ({
     // Index on key for API key authentication

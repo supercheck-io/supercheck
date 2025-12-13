@@ -33,7 +33,7 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
     const testId = params.id;
 
     // Check permission
-    const canExecute = await hasPermission("test", "execute", {
+    const canExecute = await hasPermission("test", "run", {
       organizationId,
       projectId: project.id,
     });

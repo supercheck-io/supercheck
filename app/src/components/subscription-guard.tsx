@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 
 // Routes that don't require subscription
 const ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION = [
@@ -44,7 +43,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
         if (modeResponse.ok) {
           const modeData = await modeResponse.json();
           setIsSelfHosted(modeData.selfHosted);
-          
+
           // Self-hosted mode: skip subscription check
           if (modeData.selfHosted) {
             setHasSubscription(true);
@@ -114,12 +113,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   if (isChecking && !isSelfHosted) {
     return (
       <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
-        <Card className="w-full max-w-lg shadow-sm">
-          <CardContent className="flex flex-col items-center gap-3 py-12">
-            <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-            <p className="text-lg text-muted-foreground">Please wait, loading...</p>
-          </CardContent>
-        </Card>
+        <SuperCheckLoading size="lg" message="Please wait, loading..." />
       </div>
     );
   }

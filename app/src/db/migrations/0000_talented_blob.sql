@@ -45,8 +45,9 @@ CREATE TABLE "apikey" (
 	"expires_at" timestamp,
 	"created_at" timestamp NOT NULL,
 	"updated_at" timestamp NOT NULL,
-	"permissions" text,
-	"metadata" text
+	"permissions" jsonb,
+	"metadata" jsonb,
+	CONSTRAINT "apikey_key_unique" UNIQUE("key")
 );
 --> statement-breakpoint
 CREATE TABLE "session" (
@@ -98,9 +99,9 @@ CREATE TABLE "billing_settings" (
 	"notify_at_80_percent" boolean DEFAULT true NOT NULL,
 	"notify_at_90_percent" boolean DEFAULT true NOT NULL,
 	"notify_at_100_percent" boolean DEFAULT true NOT NULL,
-	"notification_emails" text,
+	"notification_emails" jsonb,
 	"last_notification_sent_at" timestamp,
-	"notifications_sent_this_period" text,
+	"notifications_sent_this_period" jsonb,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "billing_settings_organization_id_unique" UNIQUE("organization_id")
@@ -124,7 +125,7 @@ CREATE TABLE "usage_events" (
 	"event_name" text NOT NULL,
 	"units" numeric(10, 4) NOT NULL,
 	"unit_type" text NOT NULL,
-	"metadata" text,
+	"metadata" jsonb,
 	"synced_to_polar" boolean DEFAULT false NOT NULL,
 	"polar_event_id" text,
 	"sync_error" text,
@@ -145,7 +146,7 @@ CREATE TABLE "usage_notifications" (
 	"usage_percentage" integer NOT NULL,
 	"current_spending_cents" integer,
 	"spending_limit_cents" integer,
-	"sent_to" text NOT NULL,
+	"sent_to" jsonb NOT NULL,
 	"delivery_status" text DEFAULT 'pending' NOT NULL,
 	"delivery_error" text,
 	"billing_period_start" timestamp NOT NULL,
@@ -172,7 +173,7 @@ CREATE TABLE "invitation" (
 	"status" text DEFAULT 'pending' NOT NULL,
 	"expires_at" timestamp NOT NULL,
 	"inviter_id" uuid NOT NULL,
-	"selected_projects" text
+	"selected_projects" jsonb
 );
 --> statement-breakpoint
 CREATE TABLE "member" (
@@ -190,7 +191,7 @@ CREATE TABLE "organization" (
 	"slug" text,
 	"logo" text,
 	"created_at" timestamp NOT NULL,
-	"metadata" text,
+	"metadata" jsonb,
 	"polar_customer_id" text,
 	"subscription_plan" text,
 	"subscription_status" text DEFAULT 'none',
@@ -750,8 +751,8 @@ ALTER TABLE "projects" ADD CONSTRAINT "projects_organization_id_organization_id_
 ALTER TABLE "tests" ADD CONSTRAINT "tests_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "tests" ADD CONSTRAINT "tests_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "tests" ADD CONSTRAINT "tests_created_by_user_id_user_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "job_tests" ADD CONSTRAINT "job_tests_job_id_jobs_id_fk" FOREIGN KEY ("job_id") REFERENCES "public"."jobs"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "job_tests" ADD CONSTRAINT "job_tests_test_case_id_tests_id_fk" FOREIGN KEY ("test_case_id") REFERENCES "public"."tests"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "job_tests" ADD CONSTRAINT "job_tests_job_id_jobs_id_fk" FOREIGN KEY ("job_id") REFERENCES "public"."jobs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "job_tests" ADD CONSTRAINT "job_tests_test_case_id_tests_id_fk" FOREIGN KEY ("test_case_id") REFERENCES "public"."tests"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "jobs" ADD CONSTRAINT "jobs_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "jobs" ADD CONSTRAINT "jobs_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "jobs" ADD CONSTRAINT "jobs_created_by_user_id_user_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -840,9 +841,12 @@ CREATE INDEX "invitation_organization_id_idx" ON "invitation" USING btree ("orga
 CREATE INDEX "invitation_email_idx" ON "invitation" USING btree ("email");--> statement-breakpoint
 CREATE INDEX "invitation_email_status_idx" ON "invitation" USING btree ("email","status");--> statement-breakpoint
 CREATE INDEX "invitation_expires_at_idx" ON "invitation" USING btree ("expires_at");--> statement-breakpoint
+CREATE INDEX "member_organization_id_idx" ON "member" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX "project_members_project_id_idx" ON "project_members" USING btree ("project_id");--> statement-breakpoint
 CREATE INDEX "projects_organization_id_idx" ON "projects" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "projects_org_status_idx" ON "projects" USING btree ("organization_id","status");--> statement-breakpoint
 CREATE INDEX "projects_is_default_idx" ON "projects" USING btree ("is_default");--> statement-breakpoint
+CREATE UNIQUE INDEX "projects_unique_default_per_org_idx" ON "projects" USING btree ("organization_id") WHERE is_default = true;--> statement-breakpoint
 CREATE INDEX "tests_organization_id_idx" ON "tests" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "tests_project_id_idx" ON "tests" USING btree ("project_id");--> statement-breakpoint
 CREATE INDEX "tests_project_type_idx" ON "tests" USING btree ("project_id","type");--> statement-breakpoint
@@ -868,4 +872,8 @@ CREATE INDEX "monitor_aggregates_cleanup_idx" ON "monitor_aggregates" USING btre
 CREATE UNIQUE INDEX "tags_project_name_idx" ON "tags" USING btree ("project_id","name");--> statement-breakpoint
 CREATE UNIQUE INDEX "reports_entity_type_id_idx" ON "reports" USING btree ("entity_type","entity_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "postmortems_incident_idx" ON "postmortems" USING btree ("incident_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "status_page_metrics_date_component_idx" ON "status_page_metrics" USING btree ("status_page_id","component_id","date");
+CREATE UNIQUE INDEX "status_page_component_subs_unique_idx" ON "status_page_component_subscriptions" USING btree ("subscriber_id","component_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "status_page_incident_subs_unique_idx" ON "status_page_incident_subscriptions" USING btree ("subscriber_id","incident_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "status_page_metrics_date_component_idx" ON "status_page_metrics" USING btree ("status_page_id","component_id","date");--> statement-breakpoint
+CREATE UNIQUE INDEX "status_page_subscribers_email_idx" ON "status_page_subscribers" USING btree ("status_page_id","email") WHERE email IS NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "status_page_subscribers_endpoint_idx" ON "status_page_subscribers" USING btree ("status_page_id","endpoint") WHERE endpoint IS NOT NULL;

@@ -166,14 +166,12 @@ export class ExecutionService implements OnModuleDestroy {
     private cancellationService: CancellationService,
   ) {
     // Set timeouts: configurable via env vars with sensible defaults
-    this.testExecutionTimeoutMs = this.configService.get<number>(
-      'TEST_EXECUTION_TIMEOUT_MS',
-      5 * 60 * 1000, // 5 minutes default
-    );
-    this.jobExecutionTimeoutMs = this.configService.get<number>(
-      'JOB_EXECUTION_TIMEOUT_MS',
-      60 * 60 * 1000, // 1 hour default
-    );
+    // Note: Environment variables are always strings, so we must parse them as numbers
+    const testTimeoutEnv = this.configService.get<string>('TEST_EXECUTION_TIMEOUT_MS');
+    this.testExecutionTimeoutMs = testTimeoutEnv ? parseInt(testTimeoutEnv, 10) : 5 * 60 * 1000; // 5 minutes default
+    
+    const jobTimeoutEnv = this.configService.get<string>('JOB_EXECUTION_TIMEOUT_MS');
+    this.jobExecutionTimeoutMs = jobTimeoutEnv ? parseInt(jobTimeoutEnv, 10) : 60 * 60 * 1000; // 1 hour default
 
     // Container resource limits (configurable for different deployment environments)
     // Defaults for 2 vCPU / 4GB servers:

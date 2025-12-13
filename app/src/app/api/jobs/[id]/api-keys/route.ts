@@ -5,6 +5,10 @@ import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { hasPermission, requireAuth } from "@/lib/rbac/middleware";
+import { createLogger } from "@/lib/logger/pino-config";
+import { hashApiKey, generateApiKey, getApiKeyPrefix } from "@/lib/security/api-key-hash";
+
+const logger = createLogger({ module: 'api-keys' });
 
 // Validation schemas
 const createApiKeySchema = z.object({
@@ -92,7 +96,7 @@ export async function GET(
       })),
     });
   } catch (error) {
-    console.error("Error fetching job API keys:", error);
+    logger.error({ err: error }, 'Error fetching job API keys');
     return NextResponse.json(
       { 
         success: false,
@@ -132,10 +136,8 @@ export async function POST(
     }
 
     // Validate input data
-    console.log("API Key Creation - Request body:", JSON.stringify(requestBody, null, 2));
     const validation = createApiKeySchema.safeParse(requestBody);
     if (!validation.success) {
-      console.log("API Key Creation - Validation failed:", validation.error.issues);
       return NextResponse.json(
         { 
           error: "Validation failed", 
@@ -205,10 +207,11 @@ export async function POST(
       );
     }
 
-    // Generate secure API key
+    // Generate secure API key using cryptographic utility
     const apiKeyId = crypto.randomUUID();
-    const apiKeyValue = `job_${crypto.randomUUID().replace(/-/g, '')}`;
-    const apiKeyStart = apiKeyValue.substring(0, 8);
+    const apiKeyValue = generateApiKey(); // Uses crypto.randomBytes for secure generation
+    const apiKeyStart = getApiKeyPrefix(apiKeyValue);
+    const apiKeyHash = hashApiKey(apiKeyValue); // Hash the key for storage
     
     const now = new Date();
     let expiresAt = null;
@@ -225,24 +228,21 @@ export async function POST(
       }
     }
     
-    // Create API key with proper error handling
+    // Create API key with hashed key for secure storage
+    // SECURITY: Only the hash is stored, the plain key is returned once to the user
     const newApiKey = await db.insert(apikey).values({
       id: apiKeyId,
       name: name.trim(),
       start: apiKeyStart,
       prefix: "job",
-      key: apiKeyValue,
+      key: apiKeyHash, // Store hash instead of plain text
       userId,
       jobId: jobId,
       enabled: true,
       expiresAt: expiresAt,
       createdAt: now,
       updatedAt: now,
-      permissions: JSON.stringify({
-        jobs: [`trigger:${jobId}`],
-        scope: "job-specific",
-        createdBy: userId
-      }),
+      permissions: [`trigger:${jobId}`],
     }).returning();
 
     if (!newApiKey || newApiKey.length === 0) {
@@ -270,14 +270,14 @@ export async function POST(
       success: true
     });
 
-    console.log(`API key created: ${apiKey.name} (${apiKey.id}) for job ${jobId} by user ${userId}`);
+    logger.info({ jobId, apiKeyId: apiKey.id }, 'API key created for job');
 
     return NextResponse.json({
       success: true,
       apiKey: {
         id: apiKey.id,
         name: apiKey.name || "Unnamed Key",
-        key: apiKey.key, // Only returned on creation
+        key: apiKeyValue, // Return plain key (shown only once) - NOT the stored hash
         start: apiKey.start || "unknown",
         enabled: Boolean(apiKey.enabled),
         expiresAt: apiKey.expiresAt?.toISOString() || null,
@@ -286,7 +286,7 @@ export async function POST(
       },
     });
   } catch (error) {
-    console.error("Error creating API key:", error);
+    logger.error({ err: error }, 'Error creating API key');
     
     // Enhanced error handling
     const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";

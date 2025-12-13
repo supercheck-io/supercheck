@@ -768,15 +768,24 @@ export async function addTestToQueue(task: TestExecutionTask): Promise<{
 
     if (result === 1) {
       // Can run immediately - add to BullMQ
-      const queues = await getQueues();
-      const queue = getQueue(queues, 'playwright', task.location);
-      
-      await queue.add(jobId, {
-        ...task,
-        _capacityStatus: 'immediate',
-      }, { jobId });
+      try {
+        // Track organization immediately to avoid race conditions (Bug 5)
+        await capacityManager.trackJobOrganization(jobId, orgId);
 
-      return { runId: jobId, status: 'running' };
+        const queues = await getQueues();
+        const queue = getQueue(queues, 'playwright', task.location);
+        
+        await queue.add(jobId, {
+          ...task,
+          _capacityStatus: 'immediate',
+        }, { jobId });
+
+        return { runId: jobId, status: 'running' };
+      } catch (error) {
+        // Release slot if adding to queue fails (Bug 4)
+        await capacityManager.releaseRunningSlot(orgId, jobId);
+        throw error;
+      }
     }
 
     // result === 2: Must queue - store in Redis for background processor
@@ -830,15 +839,24 @@ export async function addJobToQueue(task: JobExecutionTask): Promise<{
     }
 
     if (result === 1) {
-      const queues = await getQueues();
-      const queue = getQueue(queues, 'playwright', task.location);
-      
-      await queue.add(runId, {
-        ...task,
-        _capacityStatus: 'immediate',
-      }, { jobId: runId });
+      try {
+        // Track organization immediately to avoid race conditions (Bug 5)
+        await capacityManager.trackJobOrganization(runId, orgId);
 
-      return { runId, status: 'running' };
+        const queues = await getQueues();
+        const queue = getQueue(queues, 'playwright', task.location);
+        
+        await queue.add(runId, {
+          ...task,
+          _capacityStatus: 'immediate',
+        }, { jobId: runId });
+
+        return { runId, status: 'running' };
+      } catch (error) {
+        // Release slot if adding to queue fails (Bug 4)
+        await capacityManager.releaseRunningSlot(orgId, runId);
+        throw error;
+      }
     }
 
     // Must queue
@@ -895,15 +913,24 @@ export async function addK6TestToQueue(
     }
 
     if (result === 1) {
-      const queues = await getQueues();
-      const queue = getQueue(queues, 'k6', task.location);
-      
-      await queue.add(jobName, {
-        ...task,
-        _capacityStatus: 'immediate',
-      }, { jobId: runId });
+      try {
+        // Track organization immediately to avoid race conditions (Bug 5)
+        await capacityManager.trackJobOrganization(runId, orgId);
 
-      return { runId, status: 'running' };
+        const queues = await getQueues();
+        const queue = getQueue(queues, 'k6', task.location);
+        
+        await queue.add(jobName, {
+          ...task,
+          _capacityStatus: 'immediate',
+        }, { jobId: runId });
+
+        return { runId, status: 'running' };
+      } catch (error) {
+        // Release slot if adding to queue fails (Bug 4)
+        await capacityManager.releaseRunningSlot(orgId, runId);
+        throw error;
+      }
     }
 
     // Must queue
@@ -960,15 +987,24 @@ export async function addK6JobToQueue(
     }
 
     if (result === 1) {
-      const queues = await getQueues();
-      const queue = getQueue(queues, 'k6', task.location);
-      
-      await queue.add(jobName, {
-        ...task,
-        _capacityStatus: 'immediate',
-      }, { jobId: runId });
+      try {
+        // Track organization immediately to avoid race conditions (Bug 5)
+        await capacityManager.trackJobOrganization(runId, orgId);
 
-      return { runId, status: 'running' };
+        const queues = await getQueues();
+        const queue = getQueue(queues, 'k6', task.location);
+        
+        await queue.add(jobName, {
+          ...task,
+          _capacityStatus: 'immediate',
+        }, { jobId: runId });
+
+        return { runId, status: 'running' };
+      } catch (error) {
+        // Release slot if adding to queue fails (Bug 4)
+        await capacityManager.releaseRunningSlot(orgId, runId);
+        throw error;
+      }
     }
 
     // Must queue
@@ -1126,8 +1162,13 @@ export async function addMonitorExecutionJobToQueue(
           },
           {
             jobId: `${task.monitorId}:${executionGroupId}:${location}`,
-            // Use default retention policy; only override priority
             priority: 1,
+            // Retry configuration for transient failures (network blips, container startup)
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 5000 },
+            // Cleanup completed/failed jobs to prevent Redis memory bloat
+            removeOnComplete: { age: 3600 },  // 1 hour
+            removeOnFail: { age: 86400 },     // 24 hours
           }
         );
       })

@@ -90,22 +90,16 @@ export async function GET(
         );
       }
 
-      try {
-        const canView = await hasPermission("monitor", "view", {
-          organizationId: monitor.organizationId,
-          projectId: monitor.projectId,
-        });
+      // Check permission (fail closed - no try-catch)
+      const canView = await hasPermission("monitor", "view", {
+        organizationId: monitor.organizationId,
+        projectId: monitor.projectId,
+      });
 
-        if (!canView) {
-          return NextResponse.json(
-            { error: "Insufficient permissions to view this monitor" },
-            { status: 403 }
-          );
-        }
-      } catch (permissionError) {
-        console.log(
-          "Permission check failed, but user is org member:",
-          permissionError
+      if (!canView) {
+        return NextResponse.json(
+          { error: "Insufficient permissions to view this monitor" },
+          { status: 403 }
         );
       }
     }
@@ -114,24 +108,41 @@ export async function GET(
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    // Get location-specific statistics
-    const locationStats = await db
-      .select({
-        location: monitorResults.location,
-        totalChecks: sql<number>`count(*)`,
-        upChecks: sql<number>`sum(case when ${monitorResults.isUp} then 1 else 0 end)`,
-        avgResponseTime: sql<number>`avg(${monitorResults.responseTimeMs})`,
-        minResponseTime: sql<number>`min(${monitorResults.responseTimeMs})`,
-        maxResponseTime: sql<number>`max(${monitorResults.responseTimeMs})`,
-      })
-      .from(monitorResults)
-      .where(
-        and(
-          eq(monitorResults.monitorId, id),
-          gte(monitorResults.checkedAt, startDate)
+    // Run both queries in parallel for better performance
+    const [locationStats, latestResults] = await Promise.all([
+      // Get location-specific statistics
+      db
+        .select({
+          location: monitorResults.location,
+          totalChecks: sql<number>`count(*)`,
+          upChecks: sql<number>`sum(case when ${monitorResults.isUp} then 1 else 0 end)`,
+          avgResponseTime: sql<number>`avg(${monitorResults.responseTimeMs})`,
+          minResponseTime: sql<number>`min(${monitorResults.responseTimeMs})`,
+          maxResponseTime: sql<number>`max(${monitorResults.responseTimeMs})`,
+        })
+        .from(monitorResults)
+        .where(
+          and(
+            eq(monitorResults.monitorId, id),
+            gte(monitorResults.checkedAt, startDate)
+          )
         )
-      )
-      .groupBy(monitorResults.location);
+        .groupBy(monitorResults.location),
+
+      // Get latest result per location
+      db
+        .select({
+          location: monitorResults.location,
+          checkedAt: monitorResults.checkedAt,
+          status: monitorResults.status,
+          isUp: monitorResults.isUp,
+          responseTimeMs: monitorResults.responseTimeMs,
+        })
+        .from(monitorResults)
+        .where(eq(monitorResults.monitorId, id))
+        .orderBy(desc(monitorResults.checkedAt))
+        .limit(100), // Get enough to cover all locations
+    ]);
 
     // Calculate uptime percentage for each location
     const stats: LocationSummary[] = locationStats.map((stat) => ({
@@ -146,20 +157,6 @@ export async function GET(
       minResponseTime: stat.minResponseTime ? Number(stat.minResponseTime) : null,
       maxResponseTime: stat.maxResponseTime ? Number(stat.maxResponseTime) : null,
     }));
-
-    // Get latest result per location
-    const latestResults = await db
-      .select({
-        location: monitorResults.location,
-        checkedAt: monitorResults.checkedAt,
-        status: monitorResults.status,
-        isUp: monitorResults.isUp,
-        responseTimeMs: monitorResults.responseTimeMs,
-      })
-      .from(monitorResults)
-      .where(eq(monitorResults.monitorId, id))
-      .orderBy(desc(monitorResults.checkedAt))
-      .limit(100); // Get enough to cover all locations
 
     // Group by location to get the latest for each
     const latestByLocation = new Map<MonitoringLocation, LatestMonitorResult>();

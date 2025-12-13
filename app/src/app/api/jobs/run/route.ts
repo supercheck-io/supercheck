@@ -118,7 +118,7 @@ export async function POST(request: Request) {
       id: runId,
       jobId,
       projectId: jobRecord?.projectId ?? null,
-      status: "running", // Will be updated to 'queued' if capacity is full
+      status: "queued", // Start as queued, will be updated after capacity reservation
       startedAt: startTime,
       trigger, // Include trigger value
       location: resolvedLocation as K6Location,
@@ -136,7 +136,7 @@ export async function POST(request: Request) {
       },
     });
 
-    console.log(`[${jobId}/${runId}] Created running test run record: ${runId}`);
+    console.log(`[${jobId}/${runId}] Created queued run record: ${runId}`);
 
     // Notify listeners that this job is running
 

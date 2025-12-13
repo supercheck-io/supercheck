@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { runs, reports, ReportType } from "@/db/schema";
+import { runs, reports, jobs, ReportType } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { requireProjectContext } from "@/lib/project-context";
 
 export async function GET(
   request: Request, 
@@ -15,12 +16,35 @@ export async function GET(
   }
 
   try {
-    const runResult = await db.query.runs.findFirst({
-      where: eq(runs.id, runId),
-    });
+    // Require authentication and project context
+    const { organizationId } = await requireProjectContext();
 
-    if (!runResult) {
+    // Fetch run with its associated job to verify organization access
+    const runResult = await db
+      .select({
+        id: runs.id,
+        jobId: runs.jobId,
+        status: runs.status,
+        startedAt: runs.startedAt,
+        completedAt: runs.completedAt,
+        duration: runs.duration,
+        errorDetails: runs.errorDetails,
+        jobOrganizationId: jobs.organizationId,
+      })
+      .from(runs)
+      .innerJoin(jobs, eq(runs.jobId, jobs.id))
+      .where(eq(runs.id, runId))
+      .limit(1);
+
+    if (runResult.length === 0) {
       return NextResponse.json({ error: "Run not found" }, { status: 404 });
+    }
+
+    const run = runResult[0];
+
+    // Verify the run belongs to the user's organization
+    if (run.jobOrganizationId !== organizationId) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     // Fetch report details for this run
@@ -36,13 +60,13 @@ export async function GET(
 
     // Return the relevant fields including the report URL
     return NextResponse.json({
-      runId: runResult.id,
-      jobId: runResult.jobId,
-      status: runResult.status,
-      startedAt: runResult.startedAt,
-      completedAt: runResult.completedAt,
-      duration: runResult.duration,
-      errorDetails: runResult.errorDetails,
+      runId: run.id,
+      jobId: run.jobId,
+      status: run.status,
+      startedAt: run.startedAt,
+      completedAt: run.completedAt,
+      duration: run.duration,
+      errorDetails: run.errorDetails,
       // Use s3Url from reportResult if found, otherwise null
       reportUrl: reportResult?.s3Url || null,
     });

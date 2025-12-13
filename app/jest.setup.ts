@@ -92,6 +92,7 @@ beforeAll(() => {
       'Error cleaning up Redis',
       'No test cases found',
       '[AI Security]',
+      'Error checking impersonation state',
     ];
     if (suppressedPatterns.some(pattern => message.includes(pattern))) {
       return;

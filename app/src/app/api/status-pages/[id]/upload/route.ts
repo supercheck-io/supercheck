@@ -3,7 +3,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { generateProxyUrl } from "@/lib/asset-proxy";
 import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { requireProjectContext } from "@/lib/project-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { v4 as uuidv4 } from "uuid";
@@ -101,14 +101,20 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    // Check if status page exists
+    // Check if status page exists and belongs to user's org/project
+    // SECURITY: Verify ownership to prevent cross-org asset uploads
     const statusPage = await db.query.statusPages.findFirst({
-      where: eq(statusPages.id, statusPageId),
+      where: and(
+        eq(statusPages.id, statusPageId),
+        eq(statusPages.organizationId, organizationId),
+        eq(statusPages.projectId, project.id)
+      ),
+      columns: { id: true },
     });
 
     if (!statusPage) {
       return NextResponse.json(
-        { success: false, message: "Status page not found" },
+        { success: false, message: "Status page not found or access denied" },
         { status: 404 }
       );
     }

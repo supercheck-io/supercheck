@@ -114,14 +114,12 @@ export class K6ExecutionService {
     this.logger.log(`K6 binary path: ${this.k6BinaryPath}`);
     this.logger.log(`K6 Docker image: ${this.k6DockerImage}`);
     this.logger.log(`Max concurrent k6 runs: ${this.maxConcurrentK6Runs} (hardcoded for horizontal scaling)`);
-    this.testExecutionTimeoutMs = this.configService.get<number>(
-      'K6_TEST_EXECUTION_TIMEOUT_MS',
-      60 * 60 * 1000,
-    );
-    this.jobExecutionTimeoutMs = this.configService.get<number>(
-      'K6_JOB_EXECUTION_TIMEOUT_MS',
-      60 * 60 * 1000,
-    );
+    // Note: Environment variables are always strings, so we must parse them as numbers
+    const testTimeoutEnv = this.configService.get<string>('K6_TEST_EXECUTION_TIMEOUT_MS');
+    this.testExecutionTimeoutMs = testTimeoutEnv ? parseInt(testTimeoutEnv, 10) : 60 * 60 * 1000;
+    
+    const jobTimeoutEnv = this.configService.get<string>('K6_JOB_EXECUTION_TIMEOUT_MS');
+    this.jobExecutionTimeoutMs = jobTimeoutEnv ? parseInt(jobTimeoutEnv, 10) : 60 * 60 * 1000;
     this.logger.log(
       `k6 test execution timeout: ${this.testExecutionTimeoutMs}ms (${Math.round(this.testExecutionTimeoutMs / 60000)}m)`,
     );

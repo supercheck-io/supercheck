@@ -1,27 +1,70 @@
 "use server";
 
 import { db } from "@/utils/db";
-import { incidents } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { incidents, statusPages } from "@/db/schema";
+import { eq, desc, and } from "drizzle-orm";
 import { requireProjectContext } from "@/lib/project-context";
+import { requirePermissions } from "@/lib/rbac/middleware";
+import { z } from "zod";
 
+// UUID validation schema
+const uuidSchema = z.string().uuid("Invalid status page ID format");
+
+/**
+ * Get incidents for a status page (authenticated, for internal management)
+ *
+ * SECURITY:
+ * - Requires authentication via requireProjectContext
+ * - Requires read permission on status_page resource
+ * - Verifies ownership (status page belongs to user's org AND project)
+ */
 export async function getIncidents(statusPageId: string) {
   try {
-    // Get current project context (includes auth verification)
-    await requireProjectContext();
+    // Validate UUID format
+    const validationResult = uuidSchema.safeParse(statusPageId);
+    if (!validationResult.success) {
+      return {
+        success: false,
+        message: "Invalid status page ID",
+        incidents: [],
+      };
+    }
 
-    // Get all incidents for the status page with related data
+    // Get current project context (includes auth verification)
+    const { organizationId, project } = await requireProjectContext();
+
+    // Check RBAC permissions
+    await requirePermissions(
+      { status_page: ["view"] },
+      { organizationId, projectId: project.id }
+    );
+
+    // SECURITY: Verify status page ownership
+    const statusPage = await db.query.statusPages.findFirst({
+      where: and(
+        eq(statusPages.id, statusPageId),
+        eq(statusPages.organizationId, organizationId),
+        eq(statusPages.projectId, project.id)
+      ),
+      columns: { id: true },
+    });
+
+    if (!statusPage) {
+      return {
+        success: false,
+        message: "Status page not found or access denied",
+        incidents: [],
+      };
+    }
+
+    // PERFORMANCE FIX: Use Drizzle eager loading instead of N+1 queries
+    // Previously: fetched components and updates individually per incident in a loop
     const incidentsList = await db.query.incidents.findMany({
       where: eq(incidents.statusPageId, statusPageId),
       orderBy: [desc(incidents.createdAt)],
-    });
-
-    // For each incident, get affected components and latest update
-    const incidentsWithDetails = await Promise.all(
-      incidentsList.map(async (incident) => {
-        // Get affected components
-        const affectedComponents = await db.query.incidentComponents.findMany({
-          where: (incidentComponents, { eq }) => eq(incidentComponents.incidentId, incident.id),
+      with: {
+        // Eager load affected components
+        affectedComponents: {
           with: {
             component: {
               columns: {
@@ -30,22 +73,22 @@ export async function getIncidents(statusPageId: string) {
               },
             },
           },
-        });
+        },
+        // Eager load updates (we'll pick the latest one)
+        updates: {
+          orderBy: (updates, { desc }) => [desc(updates.createdAt)],
+          limit: 1, // Only need the latest update
+        },
+      },
+    });
 
-        // Get latest update
-        const latestUpdate = await db.query.incidentUpdates.findFirst({
-          where: (incidentUpdates, { eq }) => eq(incidentUpdates.incidentId, incident.id),
-          orderBy: (incidentUpdates, { desc }) => [desc(incidentUpdates.createdAt)],
-        });
-
-        return {
-          ...incident,
-          affectedComponentsCount: affectedComponents.length,
-          affectedComponents: affectedComponents.map(ic => ic.component),
-          latestUpdate: latestUpdate || null,
-        };
-      })
-    );
+    // Transform to expected format
+    const incidentsWithDetails = incidentsList.map((incident) => ({
+      ...incident,
+      affectedComponentsCount: incident.affectedComponents.length,
+      affectedComponents: incident.affectedComponents.map((ic) => ic.component),
+      latestUpdate: incident.updates[0] || null,
+    }));
 
     return {
       success: true,
@@ -56,7 +99,6 @@ export async function getIncidents(statusPageId: string) {
     return {
       success: false,
       message: "Failed to fetch incidents",
-      error,
       incidents: [],
     };
   }

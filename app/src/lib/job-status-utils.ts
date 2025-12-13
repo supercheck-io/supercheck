@@ -3,8 +3,9 @@
  * Centralized to ensure consistent status calculation across the application
  */
 
-export type RunStatus = "pending" | "running" | "passed" | "failed" | "error";
-export type JobStatus = "pending" | "running" | "passed" | "failed" | "error";
+import type { JobStatus, TestRunStatus } from "@/db/schema";
+
+export type RunStatus = TestRunStatus;
 
 /**
  * Calculate job status based on the statuses of all its runs
@@ -19,7 +20,7 @@ export type JobStatus = "pending" | "running" | "passed" | "failed" | "error";
  * @param runStatuses - Array of run status strings
  * @returns Calculated job status
  */
-export function calculateJobStatus(runStatuses: RunStatus[]): JobStatus {
+export function calculateJobStatus(runStatuses: TestRunStatus[]): JobStatus {
   if (runStatuses.length === 0) {
     return "pending";
   }
@@ -32,7 +33,7 @@ export function calculateJobStatus(runStatuses: RunStatus[]): JobStatus {
     return "failed";
   }
 
-  if (runStatuses.some((s) => s === "running" || s === "pending")) {
+  if (runStatuses.some((s) => s === "running" || s === "queued")) {
     return "running";
   }
 
@@ -51,5 +52,5 @@ export function calculateJobStatus(runStatuses: RunStatus[]): JobStatus {
  * @returns True if run can be cancelled
  */
 export function canCancelRun(status: RunStatus): boolean {
-  return ["running", "pending"].includes(status);
+  return ["running", "queued"].includes(status);
 }

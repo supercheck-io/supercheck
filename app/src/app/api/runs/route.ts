@@ -2,17 +2,30 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, jobs, reports, TestRunStatus } from "@/db/schema";
 import { desc, eq, and, sql } from "drizzle-orm";
-import { requireAuth } from '@/lib/rbac/middleware';
+import { hasPermission } from '@/lib/rbac/middleware';
+import { requireProjectContext } from '@/lib/project-context';
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth();
+    // Require authentication and project context
+    const { project, organizationId } = await requireProjectContext();
+
+    // Check permission to view runs
+    const canView = await hasPermission('job', 'view', {
+      organizationId,
+      projectId: project.id
+    });
+
+    if (!canView) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      );
+    }
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '10', 10);
-    const projectId = searchParams.get('projectId');
-    const organizationId = searchParams.get('organizationId');
     const jobId = searchParams.get('jobId');
     const status = searchParams.get('status');
 
@@ -26,10 +39,13 @@ export async function GET(request: NextRequest) {
 
     const offset = (page - 1) * limit;
 
-    // Build filters
-    const filters = [];
-    if (projectId) filters.push(eq(runs.projectId, projectId));
-    if (organizationId) filters.push(eq(jobs.organizationId, organizationId));
+    // SECURITY: Always filter by org/project from session, never trust client params
+    const filters = [
+      eq(runs.projectId, project.id),
+      eq(jobs.organizationId, organizationId)
+    ];
+    
+    // Optional additional filters
     if (jobId) filters.push(eq(runs.jobId, jobId));
     if (status) {
       // Validate status is a valid TestRunStatus
@@ -39,22 +55,21 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const whereCondition = filters.length > 0 ? and(...filters) : undefined;
+    const whereCondition = and(...filters);
 
     // Get total count
     const countQuery = db
       .select({ count: sql<number>`count(*)` })
       .from(runs)
-      .leftJoin(jobs, eq(runs.jobId, jobs.id));
+      .leftJoin(jobs, eq(runs.jobId, jobs.id))
+      .where(whereCondition);
 
-    const [{ count: totalCount }] = whereCondition
-      ? await countQuery.where(whereCondition)
-      : await countQuery;
+    const [{ count: totalCount }] = await countQuery;
 
     const total = Number(totalCount);
 
     // Get paginated results with all details
-    let dataQuery = db
+    const result = await db
       .select({
         id: runs.id,
         jobId: runs.jobId,
@@ -79,15 +94,10 @@ export async function GET(request: NextRequest) {
           eq(reports.entityType, 'job')
         )
       )
+      .where(whereCondition)
       .orderBy(desc(runs.startedAt))
       .limit(limit)
       .offset(offset);
-
-    if (whereCondition) {
-      dataQuery = dataQuery.where(whereCondition) as typeof dataQuery;
-    }
-
-    const result = await dataQuery;
 
     // Convert dates to ISO strings
     const formattedRuns = result.map(run => {

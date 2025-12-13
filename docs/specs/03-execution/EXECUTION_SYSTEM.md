@@ -215,7 +215,7 @@ graph TB
 
     subgraph "Queue Configuration"
         C1[Max Concurrency: 2/worker]
-        C2[Job Timeout: 15 min]
+        C2[Job Timeout: 60 min\u003cbr/\u003eTest: 5 min]
         C3[Retry: 3 attempts]
         C4[Exponential Backoff]
         C5[Remove on Complete: 500]
@@ -558,23 +558,38 @@ QUEUED_CAPACITY=100    # Override plan-specific queued limit
 **✅ Counter Leak Prevention**
 - 24-hour TTL on all Redis counters
 - Job lifecycle events properly release counters:
-  - `active`: transitions queued→running
+  - `active`: tracks job-to-org mapping in Redis
   - `completed/failed`: releases running slots
   - `failed` (before active): releases queued slots
-  - `stalled`: releases running slots with warnings
+- **Stalled jobs do NOT release slots** - BullMQ retries them automatically (up to `maxStalledCount`)
+- Capacity only released when job transitions to permanent terminal state (`completed`/`failed`)
 
 **✅ Job-to-Organization Mapping**
-- Redis hash stores `jobId → organizationId` mapping when jobs become active
+- Redis key stores `jobId → organizationId` when jobs become active or are queued
+- Also set proactively in `queue.ts` before adding to BullMQ (prevents race conditions)
 - Enables correct capacity release even when BullMQ job data is unavailable
-- Key: `capacity:job_org_mapping`, TTL: 48 hours
-- Fallback mechanism ensures counters are always released correctly
+- Key: `capacity:org:{jobId}`, TTL: 48 hours
+- **No fallback to 'global'** - if org unknown, skip release and let reconciliation fix it
+- This prevents multi-tenant counter corruption
 
 **✅ Automatic Capacity Reconciliation**
 - Runs every 5 minutes to detect and correct counter drift
 - Uses **non-blocking `redis.scan()`** to find all capacity keys (not `redis.keys()` which blocks)
+- Counts both `active` AND `waiting` jobs (both consume running slots)
 - Compares Redis counters against actual BullMQ queue state per organization
 - Auto-corrects any drift immediately (multi-tenant aware)
 - Logs warnings for manual review when drift detected
+
+**✅ Double Release Prevention**
+- `addJobToBullMQ` tracks if job was successfully added before error handling
+- Slot only released in catch block if job was never added to BullMQ
+- If job was added, `completed`/`failed` events will handle slot release
+
+**✅ Idempotent Slot Release (Atomic Lua Script)**
+- Uses `capacity:released:{jobId}` flag to track already-released jobs
+- Lua script atomically checks and sets flag before decrementing
+- Prevents double-decrement when both cancel API and worker event handlers try to release
+- Enables immediate slot release on cancel (even for running jobs) without race conditions
 
 ### Simplified Architecture
 
@@ -656,7 +671,7 @@ sequenceDiagram
     Note over Queue: Job Completion Events
     Queue->>CM: completed event → releaseRunningSlot()
     Queue->>CM: failed event → releaseRunningSlot()
-    Queue->>CM: stalled event → releaseRunningSlot()
+    Note over Queue: stalled event → NO release (job will retry)
 ```
 
 ### Organization-Specific Capacity Tracking
@@ -782,6 +797,16 @@ API POST /api/jobs/run → Success → notifyExecutionsChanged()
                         Both UI components update instantly
 ```
 
+**Queue Position Display:**
+
+The `/api/executions/running` endpoint displays accurate queue positions by querying the Redis sorted set directly:
+
+1. **Fetch Order**: API calls `ZRANGE capacity:queued:{orgId} 0 -1` to get job IDs ordered by timestamp score
+2. **Position Map**: Creates a map of `jobId → position` where position 1 is the oldest job
+3. **Sort & Assign**: Sorts queued items using Redis order and assigns positions accordingly
+
+This ensures the UI displays positions that match actual dequeue order - Job #1 is always picked first when capacity becomes available.
+
 **Monitor Execution Bypass:**
 - ✅ **Critical monitors bypass capacity limits entirely**
 - ✅ Monitor queues are excluded from capacity calculations
@@ -896,6 +921,35 @@ graph TB
     class S3,S4,S5,S6,S7,S8,RES,NET,TEMP resource
     class SAFE result
 ```
+
+### Resource Limit Validation
+
+The `ContainerExecutorService` validates all resource limits before container creation to prevent dangerous or invalid configurations.
+
+**Validation Bounds (Production-Safe):**
+
+| Resource | Minimum | Maximum | Default | Rationale |
+|----------|---------|---------|---------|-----------|
+| **Memory** | 128 MB | 8192 MB (8GB) | 2048 MB | Minimum viable for browsers, max prevents resource exhaustion |
+| **CPU** | 0.1 cores | 4.0 cores | 1.5 cores | Prevents starvation, caps at reasonable multi-core usage |
+| **Timeout** | 5,000 ms | 3,600,000 ms (1 hour) | 300,000 ms | Prevents instant failures, matches job execution timeout |
+
+**Implementation:** [`validateResourceLimits()`](file:///Users/krishna/Code/supercheck/worker/src/common/security/container-executor.service.ts)
+
+```typescript
+// Resource limit bounds (production-safe values)
+const MIN_MEMORY_MB = 128;    // Minimum viable for most tasks
+const MAX_MEMORY_MB = 8192;   // 8GB - reasonable upper bound
+const MIN_CPU = 0.1;          // 10% of a CPU core
+const MAX_CPU = 4.0;          // 4 CPU cores
+const MIN_TIMEOUT_MS = 5000;  // 5 seconds
+const MAX_TIMEOUT_MS = 3600000; // 1 hour - matches JOB_EXECUTION_DEFAULT_MS
+```
+
+**Error Handling:**
+- Returns `{ valid: false, error: "..." }` with descriptive message if any limit is out of bounds
+- Prevents container creation until valid limits are provided
+- Logs validation failures for debugging
 
 ### Container Lifecycle Management
 
@@ -1211,7 +1265,7 @@ Playwright tests and jobs are executed via a **single global queue** (`playwrigh
 > - **Single Test Timeout:** 5 minutes (`TEST_EXECUTION_TIMEOUT_MS=300000`)
 > - **Job Timeout:** 60 minutes (`JOB_EXECUTION_TIMEOUT_MS=3600000`)
 > 
-> These timeouts are configured in the app environment and enforced by the worker. Tests or jobs exceeding these limits are automatically terminated.
+> These timeouts are configured in the **worker environment** and enforced by the container executor. Tests or jobs exceeding these limits are automatically terminated.
 
 ### K6 Multi-Location Execution
 
@@ -1221,7 +1275,7 @@ K6 load tests can be executed from multiple geographic locations for distributed
 > - **Single Test Timeout:** 60 minutes (`K6_TEST_EXECUTION_TIMEOUT_MS=3600000`)
 > - **Job Timeout:** 60 minutes (`K6_JOB_EXECUTION_TIMEOUT_MS=3600000`)
 > 
-> K6 tests have longer default timeouts than Playwright tests to accommodate load testing scenarios. These timeouts are configured in the app environment and enforced by the worker.
+> K6 tests have longer default timeouts than Playwright tests to accommodate load testing scenarios. These timeouts are configured in the **worker environment** and enforced by the container executor.
 
 **Location Configuration:**
 - US East (Primary)
@@ -1986,8 +2040,11 @@ graph TB
 - TTL: 24 hours for all capacity keys
 
 **Timeout Configuration:**
-- `TEST_EXECUTION_TIMEOUT_MS` - Single test timeout (default: 300000 = 5 min)
-- `JOB_EXECUTION_TIMEOUT_MS` - Job timeout (default: 3600000 = 60 min)
+- `TEST_EXECUTION_TIMEOUT_MS` - Single Playwright test timeout (default: 300000 = 5 min)
+- `JOB_EXECUTION_TIMEOUT_MS` - Playwright job timeout (default: 3600000 = 60 min)
+- `K6_TEST_EXECUTION_TIMEOUT_MS` - Single K6 test timeout (default: 3600000 = 60 min)
+- `K6_JOB_EXECUTION_TIMEOUT_MS` - K6 job timeout (default: 3600000 = 60 min)
+- **Maximum enforced**: 3,600,000 ms (1 hour) by container executor validation
 
 **Playwright Configuration:**
 - `PLAYWRIGHT_HEADLESS` - Run headless (default: true)

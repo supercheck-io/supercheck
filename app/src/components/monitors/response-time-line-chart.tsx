@@ -80,14 +80,12 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
             <span className="text-muted-foreground">Status:</span>
             <div className="flex items-center">
               <div
-                className={`w-2 h-2 rounded-full mr-2 ${
-                  !isFailed ? "bg-green-500" : "bg-red-500"
-                }`}
+                className={`w-2 h-2 rounded-full mr-2 ${!isFailed ? "bg-green-500" : "bg-red-500"
+                  }`}
               ></div>
               <span
-                className={`font-medium ${
-                  !isFailed ? "text-green-600" : "text-red-600"
-                }`}
+                className={`font-medium ${!isFailed ? "text-green-600" : "text-red-600"
+                  }`}
               >
                 {!isFailed ? "Up" : "Down"}
               </span>
@@ -162,14 +160,16 @@ export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
     if (!data || data.length === 0) return;
 
     let currentPoint = 0;
+    // Speed up animation: 10ms interval, increment by 5 points at a time
+    // This makes 100 points draw in ~200ms instead of 1000ms
     const interval = setInterval(() => {
-      currentPoint++;
-      setVisiblePoints(currentPoint);
+      currentPoint += 5;
+      setVisiblePoints(Math.min(currentPoint, data.length));
 
       if (currentPoint >= data.length) {
         clearInterval(interval);
       }
-    }, 10); // 10ms delay between each point for smooth line drawing
+    }, 10);
 
     return () => clearInterval(interval);
   }, [data]);
@@ -419,9 +419,8 @@ export function ResponseTimeBarChart({ data }: ResponseTimeBarChartProps) {
                   const color = payload?.isFailed ? "#ef4444" : "#1e90ff";
                   return (
                     <circle
-                      key={`active-dot-${payload?.name || "unknown"}-${
-                        index || 0
-                      }`}
+                      key={`active-dot-${payload?.name || "unknown"}-${index || 0
+                        }`}
                       cx={cx}
                       cy={cy}
                       r={5}

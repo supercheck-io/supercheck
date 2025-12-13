@@ -165,6 +165,7 @@ sequenceDiagram
     participant W_US as Worker (US East)
     participant W_EU as Worker (EU Central)
     participant W_APAC as Worker (Asia Pacific)
+    participant Redis as Redis
     participant DB as PostgreSQL
 
     App->>MQ_US: enqueue monitor job (us-east) + groupId
@@ -176,12 +177,42 @@ sequenceDiagram
     MQ_APAC->>W_APAC: deliver job (asia-pacific)
 
     W_US->>DB: insert us-east result (includes groupId)
+    W_US->>Redis: SADD groupId us-east
     W_EU->>DB: insert eu-central result (includes groupId)
+    W_EU->>Redis: SADD groupId eu-central
     W_APAC->>DB: insert asia-pacific result (includes groupId)
+    W_APAC->>Redis: SADD groupId asia-pacific
 
-    W_US->>W_US: aggregate when all expected locations reported
-    W_US-->>DB: update monitor status + alerts
+    Note over W_APAC,Redis: Last worker checks SCARD == expected
+    W_APAC->>Redis: SCARD groupId == 3? Yes!
+    W_APAC->>DB: aggregate results + update status
+    W_APAC->>Redis: DEL groupId (cleanup)
 ```
+
+#### Redis-Based Aggregation Coordination
+
+**Implementation:** `worker/src/monitor/monitor.service.ts` (`saveDistributedMonitorResult`)
+
+Multi-location monitors use Redis Sets for efficient coordination instead of database polling:
+
+```typescript
+// Each worker adds its location to the Redis set
+await redis.sadd(`monitor:aggr:${groupId}`, location);
+await redis.expire(`monitor:aggr:${groupId}`, 120); // 2-minute TTL
+
+// Check if all locations have reported (O(1) operation)
+const reportedCount = await redis.scard(`monitor:aggr:${groupId}`);
+if (reportedCount >= expectedLocations.length) {
+  // This worker aggregates - single DB query, then cleanup
+  await redis.del(`monitor:aggr:${groupId}`);
+}
+```
+
+**Benefits:**
+
+- **Performance**: O(1) Redis operations vs expensive JSONB queries per location
+- **Scalability**: Reduces DB load from ~9000 queries/min to ~1500 queries/min (1000 monitors × 3 locations)
+- **Reliability**: 120-second TTL ensures cleanup even if aggregation fails
 
 #### Queue Interactions
 
@@ -673,6 +704,13 @@ graph TB
 - **URL Validation**: Protocol validation (HTTP/HTTPS only), hostname verification, and suspicious pattern detection
 - **Configuration Validation**: Validates all monitor parameters including timeouts, status codes, and headers
 - **Safe Authentication**: Special handling for credentials with control character removal
+- **Frequency Validation**: Monitor check frequency enforced between 1-1440 minutes (1 minute to 24 hours) to prevent resource exhaustion
+
+#### **Audit Logging**
+
+- **Comprehensive Change Tracking**: All monitor updates logged with detailed metadata
+- **Alert Configuration Auditing**: Changes to alert settings (enabled, thresholds, notification types) tracked in audit logs
+- **Security-Relevant Changes**: Status changes, frequency modifications, and alert config changes captured with old/new values
 
 #### **Credential Security**
 
@@ -766,6 +804,31 @@ sequenceDiagram
 - Retry logic with exponential backoff for failed executions
 - Dead letter queues for permanent failure analysis
 - Resource-aware scheduling to prevent system overload
+
+#### **Distributed Lock for Scheduler Initialization**
+
+**Implementation:** `app/src/lib/monitor-scheduler.ts` (`initializeMonitorSchedulers`)
+
+In clustered deployments, multiple Next.js instances could race to register/unregister BullMQ repeatable jobs simultaneously. This is prevented using a Redis distributed lock:
+
+```typescript
+const LOCK_KEY = 'monitor-scheduler:init-lock';
+const LOCK_TTL_SECONDS = 120; // 2 minutes max for initialization
+
+const lockAcquired = await redisClient.set(
+  LOCK_KEY, process.pid.toString(), 'EX', LOCK_TTL_SECONDS, 'NX'
+);
+if (!lockAcquired) {
+  // Another instance is initializing - skip to prevent duplicate registrations
+  return { success: true, scheduled: 0, failed: 0 };
+}
+```
+
+**Benefits:**
+
+- Prevents duplicate job registrations in multi-instance deployments
+- Ensures only one scheduler initialization runs at a time
+- Lock auto-expires after 120s if process crashes
 
 #### **Performance Optimization**
 

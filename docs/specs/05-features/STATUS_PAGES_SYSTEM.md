@@ -89,6 +89,8 @@ graph TB
 - `GET /status/[subdomain]` - View status page by subdomain
 - `GET /status/[uuid]` - View status page by ID (fallback)
 - `GET /status/[id]/incidents/[incidentId]` - View incident details
+- `GET /status/_custom/[hostname]` - View status page by custom domain (via proxy rewrite)
+- `GET /status/_custom/[hostname]/incidents/[incidentId]` - Custom domain incident detail
 - `GET /api/status-pages/[id]/rss` - RSS feed for incidents
 - `POST /api/status-pages/check` - Check subdomain availability
 - `POST /api/status-pages/[id]/upload` - Upload branding assets
@@ -498,6 +500,9 @@ All mutations are logged via `logAuditEvent()` with:
 - **Rate Limiting**: API endpoints rate-limited per organization
 - **CORS**: Public pages accessible cross-origin, API restricted to same origin
 - **Field Selection**: Public endpoints return only necessary fields (no internal IDs or metadata leaked)
+- **UUID Validation**: All ID inputs validated with Zod UUID schema before database queries
+- **SSRF Protection**: Webhook URLs validated to block private IPs (10.x, 172.16-31.x, 192.168.x, 127.x, 169.254.x) and require HTTPS in production
+- **Custom Domain Verification**: Custom domains require `customDomainVerified=true` before serving content
 
 ---
 
@@ -666,17 +671,18 @@ INCIDENT_UPDATE_LIMIT=100
 
 ## Implemented Features
 
-✅ **Custom Domains** - Full support with verification flag (customDomain, customDomainVerified)
-✅ **Webhook Notifications** - Multi-mode subscribers (email, webhook, slack)
-✅ **RSS Feed** - Configurable RSS feed support (allowRssFeed)
+✅ **Custom Domains** - Full support with verification flag (customDomain, customDomainVerified) and routing via `/status/_custom/[hostname]`
+✅ **Webhook Notifications** - Multi-mode subscribers (email, webhook, slack) with SSRF protection
+✅ **RSS Feed** - Configurable RSS feed support (allowRssFeed) with proper incident detail links
 ✅ **Advanced Incident Management** - Scheduled maintenance, auto-transitions, templated responses
-✅ **Component Aggregation** - Link multiple monitors to components with weighted status
+✅ **Component Aggregation** - Link multiple monitors to components with weighted status (N+1 optimized with Drizzle eager loading)
 ✅ **Detailed Analytics** - Uptime tracking, response times, check statistics per component
 ✅ **Postmortems** - Post-incident analysis and notifications
 ✅ **Customizable Theming** - Full CSS color customization and branding
-✅ **Subscriber Management Enhancements** - CSV export, search/filtering, pagination, deletion confirmation
-✅ **Email Verification** - Verification tokens and resend functionality with confirmation dialogs
+✅ **Subscriber Management Enhancements** - CSV export, search/filtering, pagination, deletion confirmation with ownership verification
+✅ **Email Verification** - Verification tokens (correct URL: `/status/verify/[token]`) with expiry based on token generation time
 ✅ **Subscriber Statistics** - Live statistics display (total, verified, pending counts)
+✅ **Security Hardening** - Public endpoint field whitelisting, RBAC with ownership checks, SSRF protection, proper resubscribe handling
 
 ## Future Enhancements
 

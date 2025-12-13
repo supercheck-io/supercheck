@@ -83,11 +83,12 @@ Validates incoming API keys for job trigger requests.
 
 **Validation Steps:**
 1. Extract Bearer token from Authorization header
-2. Look up API key in database
-3. Verify key is enabled
-4. Check expiration timestamp
-5. Verify job association matches request
-6. Validate rate limit thresholds
+2. Look up valid API keys for the job
+3. Verify key matches stored hash (SHA-256 constant-time comparison)
+4. Verify key is enabled
+5. Check expiration timestamp
+6. Verify job association matches request
+7. Validate rate limit thresholds
 
 **Location:** `app/src/app/api/jobs/[id]/trigger/route.ts`
 
@@ -126,9 +127,10 @@ sequenceDiagram
     API->>API: Validate session
     API->>API: Generate UUID
     API->>API: Generate key: job_[32-char-hex]
-    API->>DB: Insert API key record
-    DB-->>API: Return created key
-    API-->>Frontend: Return key (shown once)
+    API->>API: Hash key (SHA-256)
+    API->>DB: Insert API key record (store hash)
+    DB-->>API: Return created record
+    API-->>Frontend: Return plain key (shown once)
     Frontend-->>User: Display key with warning
 
     Note over User,DB: API Key Usage
@@ -140,8 +142,10 @@ sequenceDiagram
 
     User->>API: POST /api/jobs/:id/trigger<br/>Authorization: Bearer [key]
     API->>API: Extract Bearer token
-    API->>DB: Lookup API key
-    DB-->>API: Return key record
+    API->>DB: Fetch all keys for job
+    DB-->>API: Return key records (hashes)
+    API->>API: Constant-time hash comparison
+    API->>API: Find matching valid key
     API->>API: Validate enabled status
     API->>API: Check expiration
     API->>API: Verify job association
@@ -163,9 +167,10 @@ graph LR
     C -->|No| D[401 Unauthorized]
     C -->|Yes| E[Generate UUID]
     E --> F[Generate Key Value]
-    F --> G[Set Expiration]
-    G --> H[Insert to Database]
-    H --> I[Return Key Once]
+    F --> G[Hash Key (SHA-256)]
+    G --> H[Set Expiration]
+    H --> I[Insert Hash to Database]
+    I --> J[Return Plain Key Once]
 
     classDef success fill:#e8f5e8,stroke:#388e3c,stroke-width:2px
     classDef error fill:#ffebee,stroke:#d32f2f,stroke-width:2px
@@ -183,8 +188,8 @@ graph TB
     A[External Request] --> B{Authorization Header?}
     B -->|Missing| C[401 Missing Token]
     B -->|Present| D[Extract Bearer Token]
-    D --> E[Query Database]
-    E --> F{Key Exists?}
+    D --> E[Query DB for Job Keys]
+    E --> F{Hash Match?}
     F -->|No| G[401 Invalid Key]
     F -->|Yes| H{Key Enabled?}
     H -->|No| I[403 Key Disabled]
@@ -267,7 +272,7 @@ END IF
 | `name` | VARCHAR(255) | Display name for identification |
 | `prefix` | VARCHAR(50) | Key prefix (e.g., "job") |
 | `start` | VARCHAR(20) | First 8 characters for display |
-| `key` | VARCHAR(255) | Full key value (indexed, unique) |
+| `key` | VARCHAR(255) | Key Hash (SHA-256) (indexed, unique) |
 | `userId` | UUID | Creator user ID (FK to users) |
 | `jobId` | UUID | Associated job ID (FK to jobs) |
 | `projectId` | UUID | Project context (FK to projects) |
@@ -509,7 +514,9 @@ graph TB
 ### Storage
 
 **Database:**
-- Keys stored as plain text (required for verification)
+- Keys stored as SHA-256 HASHES (secure storage)
+- Plain text keys are NEVER stored
+- Hash verification uses constant-time comparison
 - Protected by database access controls
 - Never logged in application logs
 - Masked in UI (only first 8 characters shown)
@@ -544,8 +551,8 @@ graph TB
 
 **Authorization Model:**
 - Direct `jobId` foreign key relationship
-- Simple equality check for authorization
-- Efficient database queries with indexed lookups
+- Constant-time hash verification
+- Efficient database queries for job-scoped keys
 
 **Permissions Field:**
 - Exists in schema as JSONB

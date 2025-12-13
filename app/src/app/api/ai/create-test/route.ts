@@ -78,45 +78,38 @@ export async function POST(request: NextRequest) {
       headersList.get("x-real-ip") ||
       "unknown";
 
-    // Get auth context for rate limiting
-    let tier: string | undefined;
-    let userId: string | undefined;
-    let orgId: string | undefined;
+    // Security: Authentication is MANDATORY for AI Create
+    // This prevents unauthenticated users from consuming AI resources
+    const { requireAuth } = await import("@/lib/rbac/middleware");
+    const authResult = await requireAuth();
+    const userId = authResult.user.id;
 
-    try {
-      const { requireAuth } = await import("@/lib/rbac/middleware");
-      const authResult = await requireAuth();
-      userId = authResult.user.id;
+    const activeOrg = await getActiveOrganization();
+    const orgId = activeOrg?.id;
+    const tier = (activeOrg as unknown as Record<string, unknown> | undefined)
+      ?.tier as string | undefined;
 
-      const activeOrg = await getActiveOrganization();
-      orgId = activeOrg?.id;
-      tier = (activeOrg as unknown as Record<string, unknown> | undefined)
-        ?.tier as string | undefined;
-
-      // CRITICAL: Check subscription in cloud mode (billing enforcement)
-      // This must happen BEFORE any AI calls to prevent unpaid usage
-      if (activeOrg) {
-        try {
-          await subscriptionService.blockUntilSubscribed(activeOrg.id);
-          await subscriptionService.requireValidPolarCustomer(activeOrg.id);
-        } catch (error) {
-          return NextResponse.json(
-            {
-              success: false,
-              reason: "subscription_required",
-              message:
-                error instanceof Error
-                  ? error.message
-                  : "Subscription required to use AI features",
-              guidance:
-                "Please subscribe to a plan at /billing to use AI Create",
-            },
-            { status: 402 }
-          );
-        }
+    // CRITICAL: Check subscription in cloud mode (billing enforcement)
+    // This must happen BEFORE any AI calls to prevent unpaid usage
+    if (activeOrg) {
+      try {
+        await subscriptionService.blockUntilSubscribed(activeOrg.id);
+        await subscriptionService.requireValidPolarCustomer(activeOrg.id);
+      } catch (error) {
+        return NextResponse.json(
+          {
+            success: false,
+            reason: "subscription_required",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Subscription required to use AI features",
+            guidance:
+              "Please subscribe to a plan at /billing to use AI Create",
+          },
+          { status: 402 }
+        );
       }
-    } catch {
-      // Auth is optional for create - will use IP-based rate limiting
     }
 
     await AuthService.checkRateLimit({
