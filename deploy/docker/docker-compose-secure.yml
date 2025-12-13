@@ -24,8 +24,8 @@ x-common-env: &common-env # Database Configuration
   NODE_ENV: ${NODE_ENV:-production}
   # Parallel Execution Capacity (self-hosted mode uses these env vars)
   # Cloud mode uses plan limits: Plus=5/50, Pro=10/100
-  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1}   # Max concurrent executions (match WORKER_REPLICAS)
-  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10}    # Max jobs waiting in queue
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1} # Max concurrent executions (match WORKER_REPLICAS)
+  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10} # Max jobs waiting in queue
   # Container limits for 2 vCPU / 4GB servers
   CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5}
   CONTAINER_MEMORY_LIMIT_MB: ${CONTAINER_MEMORY_LIMIT_MB:-2048}
@@ -199,7 +199,7 @@ services:
 
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.1.9-beta.39
+    image: ghcr.io/supercheck-io/supercheck/app:1.2.0
     expose:
       - "3000"
     environment:
@@ -274,7 +274,7 @@ services:
   # Tests run in isolated Docker containers (Playwright/K6), not inside worker
   # Playwright Docker best practices: https://playwright.dev/docs/docker
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.1.9-beta.39
+    image: ghcr.io/supercheck-io/supercheck/worker:1.2.0
     # init: Use tini as PID 1 to avoid zombie processes (Playwright recommendation)
     init: true
     environment:
