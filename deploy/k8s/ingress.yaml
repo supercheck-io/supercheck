@@ -8,13 +8,12 @@ metadata:
     app.kubernetes.io/component: ingress
   annotations:
     kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
 spec:
-  tls:
-    - hosts:
-        - app.supercheck.example.com
-      secretName: supercheck-tls
   rules:
-    - host: app.supercheck.example.com
+    - host: app.supercheck.io
       http:
         paths:
           - path: /
