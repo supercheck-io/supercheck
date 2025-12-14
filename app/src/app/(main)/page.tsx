@@ -317,7 +317,7 @@ const formatExecutionTime = (
 
   // 1000+ hours: show in k notation
   const kHours = hours / 1000;
-  return `${kHours.toFixed(1)}k h`;
+  return `${kHours.toFixed(1)}kh`;
 };
 
 /**
