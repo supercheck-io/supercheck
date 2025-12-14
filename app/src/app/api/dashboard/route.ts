@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { monitors, monitorResults, jobs, runs, tests, auditLogs, reports } from "@/db/schema";
-import { eq, desc, gte, and, count, sql } from "drizzle-orm";
+import { monitors, monitorResults, jobs, runs, tests, auditLogs, reports, k6PerformanceRuns } from "@/db/schema";
+import { eq, desc, gte, and, count, sql, sum } from "drizzle-orm";
 import { subDays, subHours } from "date-fns";
 import { getQueueStats } from "@/lib/queue-stats";
 import { hasPermission } from '@/lib/rbac/middleware';
@@ -189,7 +189,8 @@ export async function GET() {
     const [
       totalTests,
       testsByType,
-      playgroundExecutions30d
+      playgroundExecutions30d,
+      k6Stats
     ] = await Promise.all([
       // Total tests
       dbInstance.select({ count: count() }).from(tests)
@@ -211,6 +212,20 @@ export async function GET() {
           eq(auditLogs.organizationId, organizationId),
           gte(auditLogs.createdAt, last30Days),
           sql`${auditLogs.details}->'metadata'->>'projectId' = ${targetProjectId}`
+        )),
+      
+      // K6 Performance Test Statistics (last 30 days)
+      dbInstance.select({
+        totalRuns: count(),
+        totalDurationMs: sum(k6PerformanceRuns.durationMs),
+        totalRequests: sum(k6PerformanceRuns.totalRequests),
+        avgResponseTimeMs: sql<number>`AVG(${k6PerformanceRuns.avgResponseTimeMs})`
+      }).from(k6PerformanceRuns)
+        .where(and(
+          gte(k6PerformanceRuns.startedAt, last30Days),
+          eq(k6PerformanceRuns.projectId, targetProjectId),
+          eq(k6PerformanceRuns.organizationId, organizationId),
+          sql`${k6PerformanceRuns.completedAt} IS NOT NULL`
         ))
     ]);
 
@@ -606,6 +621,16 @@ export async function GET() {
         byType: testsByType,
         playgroundExecutions30d: playgroundExecutions30d[0].count,
         playgroundExecutionsTrend: playgroundExecutionsTrend
+      },
+
+      // K6 Performance Test Statistics
+      k6: {
+        totalRuns: k6Stats[0]?.totalRuns || 0,
+        totalDurationMs: Number(k6Stats[0]?.totalDurationMs) || 0,
+        totalDurationMinutes: Math.round((Number(k6Stats[0]?.totalDurationMs) || 0) / 60000 * 100) / 100,
+        totalRequests: Number(k6Stats[0]?.totalRequests) || 0,
+        avgResponseTimeMs: Math.round(Number(k6Stats[0]?.avgResponseTimeMs) || 0),
+        period: 'last 30 days'
       },
 
       // System Health
