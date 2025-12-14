@@ -1141,7 +1141,7 @@ export default function Home() {
                         Playwright Time
                         <MetricInfoButton
                           title="How we calculate Playwright time"
-                          description="Execution time aggregates every Playwright-powered run in the past 30 days."
+                          description="Aggregates execution time from all Playwright test runs in the past 30 days."
                           bullets={[
                             "Covers the last 30 days of execution",
                             "Includes job runs, synthetic monitor checks, and playground tests",
