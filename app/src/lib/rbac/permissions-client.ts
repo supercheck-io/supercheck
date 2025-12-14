@@ -142,7 +142,7 @@ export const rolePermissions = {
     apiKey: ["create", "update", "view"],
     notification: ["create", "update", "view"],
     tag: ["view", "create", "update"],
-    variable: ["view"],
+    variable: ["create", "update", "view", "view_secrets"],
   },
   [Role.PROJECT_VIEWER]: {
     system: [],

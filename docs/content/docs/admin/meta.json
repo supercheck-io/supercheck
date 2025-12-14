@@ -3,6 +3,7 @@
     "description": "Organization and system administration",
     "icon": "UserCog",
     "pages": [
+        "roles-and-permissions",
         "organization",
         "super-admin"
     ]

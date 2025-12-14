@@ -9,7 +9,7 @@ import {
   DocsPage,
   DocsTitle,
 } from 'fumadocs-ui/page';
-import { Edit } from 'lucide-react';
+import { GitHubIcon } from '@/lib/layout.shared';
 import Link from 'next/link';
 
 export const revalidate = false;
@@ -20,7 +20,9 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   if (!page) notFound();
 
   const MDX = page.data.body;
-  const path = params.slug?.join('/') || 'index';
+  // Get the actual file path from the page source
+  // This correctly handles both standalone files (monitors.mdx) and index files (deployment/index.mdx)
+  const filePath = page.file.path;
 
   return (
     <DocsPage
@@ -33,12 +35,12 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
       <DocsDescription className="flex items-center justify-between gap-4">
         <span>{page.data.description}</span>
         <Link
-          href={`https://github.com/supercheck-io/supercheck/blob/main/docs/content/docs/${path}.mdx`}
+          href={`https://github.com/supercheck-io/supercheck/blob/main/docs/content/docs/${filePath}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs text-fd-muted-foreground hover:text-fd-foreground transition-colors border rounded-md px-2 py-1 shrink-0"
+          className="inline-flex items-center gap-2 text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors border rounded-md px-3 py-1.5 shrink-0 hover:bg-fd-accent"
         >
-          <Edit className="size-3" />
+          <GitHubIcon />
           Edit
         </Link>
       </DocsDescription>
