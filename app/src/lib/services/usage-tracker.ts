@@ -40,7 +40,8 @@ export class UsageTracker {
 
   /**
    * Track K6 load testing execution
-   * Calculates VU hours from virtual users and duration
+   * Calculates VU minutes from virtual users and duration
+   * Formula: ceil(VUs × duration in minutes) - consistent with worker tracker
    */
   async trackK6Execution(
     organizationId: string,
@@ -48,18 +49,19 @@ export class UsageTracker {
     durationMs: number,
     metadata?: Record<string, unknown>
   ) {
-    // Calculate VU hours: (VUs * duration in hours)
-    const hours = (virtualUsers * durationMs) / 1000 / 60 / 60;
-    const vuHours = parseFloat(hours.toFixed(4)); // Round to 4 decimal places
+    // Calculate VU minutes: ceil(VUs * duration in minutes)
+    // Rounds UP for consistent billing with Playwright minutes
+    const durationMinutes = durationMs / 1000 / 60;
+    const vuMinutes = Math.ceil(virtualUsers * durationMinutes);
 
     // Update local database
-    await subscriptionService.trackK6Usage(organizationId, vuHours);
+    await subscriptionService.trackK6Usage(organizationId, vuMinutes);
 
     // Send event to Polar if enabled
     if (isPolarEnabled()) {
       try {
         console.log(
-          `[Usage] Tracked K6 usage: ${vuHours} VU hours for org ${organizationId}`,
+          `[Usage] Tracked K6 usage: ${vuMinutes} VU minutes for org ${organizationId}`,
           metadata
         );
       } catch (error) {

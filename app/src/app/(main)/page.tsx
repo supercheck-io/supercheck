@@ -272,15 +272,13 @@ const CustomTooltip: React.FC<TooltipProps> = ({ active, payload, label }) => {
 const LOOKBACK_DAYS = 30;
 
 /**
- * Formats execution time in minutes with appropriate notation for readability
- * - Shows seconds if less than 1 minute (e.g., "45s")
- * - Shows minutes with 2 decimals if 1-999.99 minutes (e.g., "29.23m")
- * - Shows 'k' notation with 2 decimals for 1,000+ minutes (e.g., "3.00k m")
- * - Shows 'M' notation with 2 decimals for 1,000,000+ minutes (e.g., "1.50M m")
+ * Formats execution time for display in dashboard metric cards.
+ * Shows just the number without unit suffix since units are displayed in card titles.
+ * Handles edge cases and provides compact notation for large values.
  *
  * @param totalMinutes - Total execution time in minutes
  * @param totalSeconds - Total execution time in seconds (fallback for <1 minute)
- * @returns Formatted time string with appropriate unit
+ * @returns Formatted time string (number only, no unit suffix)
  */
 const formatExecutionTime = (
   totalMinutes: number,
@@ -288,34 +286,33 @@ const formatExecutionTime = (
 ): string => {
   // Validate inputs
   if (!Number.isFinite(totalMinutes) || !Number.isFinite(totalSeconds)) {
-    return "0s";
+    return "0";
   }
 
   // Handle negative values
   if (totalMinutes < 0 || totalSeconds < 0) {
-    return "0s";
+    return "0";
   }
 
-  // Less than 1 minute: show seconds
+  // Less than 1 minute: round to nearest minute (shows as 0 or 1)
   if (totalMinutes < 1) {
-    const seconds = Math.round(totalSeconds);
-    return `${seconds}s`;
+    return Math.round(totalMinutes).toString();
   }
 
-  // 1 to 999.99 minutes: show minutes with 2 decimal places
+  // 1 to 999 minutes: show rounded minutes
   if (totalMinutes < 1000) {
-    return `${totalMinutes.toFixed(2)}m`;
+    return Math.round(totalMinutes).toString();
   }
 
-  // 1,000 to 999,999.99 minutes: show in k notation with 2 decimal places
+  // 1,000 to 999,999 minutes: show in k notation with 1 decimal place
   if (totalMinutes < 1000000) {
     const kMinutes = totalMinutes / 1000;
-    return `${kMinutes.toFixed(2)}k m`;
+    return `${kMinutes.toFixed(1)}k`;
   }
 
-  // 1,000,000+ minutes: show in M notation with 2 decimal places
+  // 1,000,000+ minutes: show in M notation with 1 decimal place
   const mMinutes = totalMinutes / 1000000;
-  return `${mMinutes.toFixed(2)}M m`;
+  return `${mMinutes.toFixed(1)}M`;
 };
 
 /**
@@ -1140,9 +1137,9 @@ export default function Home() {
                   <div className="flex items-start justify-between">
                     <div className="space-y-2 min-w-0 flex-1">
                       <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                        Playwright Time
+                        Playwright Mins
                         <MetricInfoButton
-                          title="How we calculate Playwright time"
+                          title="How we calculate Playwright Mins"
                           description="Aggregates execution time from all Playwright test runs in the past 30 days."
                           bullets={[
                             "Covers the last 30 days of execution",
@@ -1150,7 +1147,7 @@ export default function Home() {
                             "Each monitor location is counted separately",
                             "Running executions are added once they finish",
                           ]}
-                          ariaLabel="Learn what Execution Time includes"
+                          ariaLabel="Learn what Playwright Mins includes"
                           align="end"
                         />
                       </p>
@@ -1191,9 +1188,9 @@ export default function Home() {
                   <div className="flex items-start justify-between">
                     <div className="space-y-2 min-w-0 flex-1">
                       <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                        k6 VU Time
+                        k6 VU x Mins
                         <MetricInfoButton
-                          title="How we calculate k6 VU time"
+                          title="How we calculate k6 VU Mins"
                           description="Execution time aggregates every k6-powered run in the past 30 days."
                           bullets={[
                             "Covers the last 30 days of execution",
