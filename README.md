@@ -13,6 +13,7 @@ Empowering development and SRE teams with a scalable, distributed, and robust pl
 [![Testing](https://img.shields.io/badge/Testing-Playwright-45ba4b?logo=googlechrome&logoColor=white)](https://playwright.dev)
 [![Load Testing](https://img.shields.io/badge/Load%20Testing-Grafana%20k6-7D64FF?logo=k6)](https://k6.io)
 [![AI](https://img.shields.io/badge/AI-Enabled-blueviolet?logo=openai&logoColor=white)](https://supercheck.io)
+[![Google CodeWiki](https://img.shields.io/badge/Google-CodeWiki-4285F4?logo=google&logoColor=white)](https://codewiki.google/github.com/supercheck-io/supercheck)
 
 ## Features
 
@@ -60,8 +61,8 @@ Empowering development and SRE teams with a scalable, distributed, and robust pl
           └───────────────────┘ └─────────────────┘ └───────────────────┘
 ```
 
-**Stack**: [Next.js 16](https://nextjs.org) · [React 19](https://react.dev) · [NestJS](https://nestjs.com) · [Playwright](https://playwright.dev) · [Grafana k6](https://k6.io) · [PostgreSQL](https://www.postgresql.org) · [Redis](https://redis.io) · [MinIO](https://github.com/minio/minio)
-
+**Stack**: [Next.js 16](https://github.com/vercel/next.js) · [React 19](https://github.com/facebook/react) · [NestJS](https://github.com/nestjs/nest) · [Playwright](https://github.com/microsoft/playwright) · [Grafana k6](https://github.com/grafana/k6) · [PostgreSQL](https://github.com/postgres/postgres) · [Redis](https://github.com/redis/redis) · [MinIO](https://github.com/minio/minio) · [BullMQ](https://github.com/taskforcesh/bullmq)
+ 
 ## Documentation
 
 Full documentation available at **[supercheck.io/docs](https://supercheck.io/docs)**
