@@ -16,12 +16,13 @@ export enum ScriptType {
 }
 
 // Map ScriptType to Template ID in template-data.ts
+// Default templates should be simple, quick-start examples
 const scriptTypeToTemplateId: Record<ScriptType, string> = {
-  [ScriptType.Browser]: "pw-browser-comprehensive",
-  [ScriptType.API]: "pw-api-comprehensive",
-  [ScriptType.Database]: "pw-db-discovery",
-  [ScriptType.Custom]: "pw-custom-github",
-  [ScriptType.Performance]: "k6-basic",
+  [ScriptType.Browser]: "pw-browser-smoke",
+  [ScriptType.API]: "pw-api-health",
+  [ScriptType.Database]: "pw-db-read",
+  [ScriptType.Custom]: "pw-custom-e2e",
+  [ScriptType.Performance]: "k6-smoke-check",
 };
 
 /**

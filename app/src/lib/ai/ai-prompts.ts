@@ -81,16 +81,13 @@ ${escapedMarkdown}
 </FIXING_GUIDELINES>
 
 <JSDOC_HEADER_EXAMPLE>
-If adding a JSDoc header, follow this format for ${testFramework} tests:
+If adding a JSDoc header, follow this concise format for ${testFramework} tests:
 /**
- * ${testFramework} test for [describe what is being tested].
+ * ${testFramework} Test - [Brief one-line description].
  *
- * Purpose:
- * - [Main objective of this test]
- * - Fixed: [Specific issues that were fixed]
- *
- * Configuration:
- * - [Key settings like ${isPerformanceTest ? "VUs, duration, thresholds" : "timeout, navigation, assertions"}]
+ * @description [What the test does]
+ * @configuration [Key settings]
+ * @requires ${isPerformanceTest ? "k6 binary" : "@playwright/test"}
  */
 </JSDOC_HEADER_EXAMPLE>
 
@@ -177,16 +174,13 @@ Since detailed error reports aren't available, please:
 </ANALYSIS_GUIDELINES>
 
 <JSDOC_HEADER_EXAMPLE>
-If adding a JSDoc header, follow this format for ${testFramework} tests:
+If adding a JSDoc header, follow this concise format for ${testFramework} tests:
 /**
- * ${testFramework} test for [describe what is being tested].
+ * ${testFramework} Test - [Brief one-line description].
  *
- * Purpose:
- * - [Main objective of this test]
- * - Improvements: [Key reliability enhancements made]
- *
- * Configuration:
- * - [Key settings like ${isPerformanceTest ? "VUs, duration, thresholds" : "timeout, navigation, assertions"}]
+ * @description [What the test does]
+ * @configuration [Key settings]
+ * @requires ${isPerformanceTest ? "k6 binary" : "@playwright/test"}
  */
 </JSDOC_HEADER_EXAMPLE>
 
@@ -312,16 +306,13 @@ ${escapedSummaryJSON ? `<TEST_SUMMARY>\n${escapedSummaryJSON}\n</TEST_SUMMARY>` 
 </FIXING_GUIDELINES>
 
 <JSDOC_HEADER_EXAMPLE>
-If adding a JSDoc header, follow this format:
+If adding a JSDoc header, follow this concise format:
 /**
- * K6 performance test for [describe what is being tested].
+ * K6 Test - [Brief one-line description].
  *
- * Purpose:
- * - [Main objective of this test]
- * - Fixed: [Specific issues that were fixed]
- *
- * Configuration:
- * - [Key settings like VUs, duration, thresholds, etc.]
+ * @description [What the test does]
+ * @configuration [VUs, duration, thresholds]
+ * @requires k6 binary
  */
 </JSDOC_HEADER_EXAMPLE>
 
@@ -404,19 +395,13 @@ ${contextSection}
 </CREATION_GUIDELINES>
 
 <JSDOC_HEADER_EXAMPLE>
-For ${testType === "performance" ? "K6" : "Playwright"} tests, ALWAYS include a JSDoc header like this:
+For ${testType === "performance" ? "K6" : "Playwright"} tests, ALWAYS include a concise JSDoc header like this:
 /**
- * ${testType === "performance" ? "K6 performance test" : "Playwright test"} for [describe what is being tested].
- * 
- * Purpose:
- * - [Main objective of this test]
- * - [Secondary objectives if any]
- * 
- * Configuration:
- * - [Key configuration details like VUs, duration, timeouts, etc.]
- * - [Thresholds or assertions]
- * 
- * @requires ${testType === "performance" ? "k6 binary" : "playwright"}
+ * ${testType === "performance" ? "K6" : "Playwright"} Test - [Brief one-line description].
+ *
+ * @description [What the test does]
+ * @configuration [Key settings]
+ * @requires ${testType === "performance" ? "k6 binary" : "@playwright/test"}
  */
 </JSDOC_HEADER_EXAMPLE>
 
