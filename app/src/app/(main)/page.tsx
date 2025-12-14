@@ -119,6 +119,7 @@ interface K6Summary {
   totalRuns: number;
   totalDurationMs: number;
   totalDurationMinutes: number;
+  totalVuMinutes: number;
   totalRequests: number;
   avgResponseTimeMs: number;
   period: string;
@@ -268,15 +269,14 @@ const CustomTooltip: React.FC<TooltipProps> = ({ active, payload, label }) => {
     </div>
   );
 };
-
 const LOOKBACK_DAYS = 30;
 
 /**
- * Formats execution time with unit notation for readability
+ * Formats execution time in minutes with appropriate notation for readability
  * - Shows seconds if less than 1 minute (e.g., "45s")
- * - Shows minutes with 2 decimals if 1-59 minutes (e.g., "29.23m")
- * - Shows hours with 2 decimals if 60+ minutes (e.g., "2.50h")
- * - Shows 'k' notation for 1000+ hours (e.g., "1.2k h")
+ * - Shows minutes with 2 decimals if 1-999.99 minutes (e.g., "29.23m")
+ * - Shows 'k' notation with 2 decimals for 1,000+ minutes (e.g., "3.00k m")
+ * - Shows 'M' notation with 2 decimals for 1,000,000+ minutes (e.g., "1.50M m")
  *
  * @param totalMinutes - Total execution time in minutes
  * @param totalSeconds - Total execution time in seconds (fallback for <1 minute)
@@ -302,22 +302,20 @@ const formatExecutionTime = (
     return `${seconds}s`;
   }
 
-  // 1 to 59 minutes: show minutes with 2 decimal places
-  if (totalMinutes < 60) {
+  // 1 to 999.99 minutes: show minutes with 2 decimal places
+  if (totalMinutes < 1000) {
     return `${totalMinutes.toFixed(2)}m`;
   }
 
-  // 60+ minutes: convert to hours
-  const hours = totalMinutes / 60;
-
-  // Less than 1000 hours: show hours with 2 decimal places
-  if (hours < 1000) {
-    return `${hours.toFixed(2)}h`;
+  // 1,000 to 999,999.99 minutes: show in k notation with 2 decimal places
+  if (totalMinutes < 1000000) {
+    const kMinutes = totalMinutes / 1000;
+    return `${kMinutes.toFixed(2)}k m`;
   }
 
-  // 1000+ hours: show in k notation
-  const kHours = hours / 1000;
-  return `${kHours.toFixed(1)}kh`;
+  // 1,000,000+ minutes: show in M notation with 2 decimal places
+  const mMinutes = totalMinutes / 1000000;
+  return `${mMinutes.toFixed(2)}M m`;
 };
 
 /**
@@ -525,6 +523,10 @@ export default function Home() {
           totalDurationMinutes: Math.max(
             0,
             Number(data.k6?.totalDurationMinutes) || 0
+          ),
+          totalVuMinutes: Math.max(
+            0,
+            Number(data.k6?.totalVuMinutes) || 0
           ),
           totalRequests: Math.max(0, Number(data.k6?.totalRequests) || 0),
           avgResponseTimeMs: Math.max(
@@ -1207,7 +1209,7 @@ export default function Home() {
                         <>
                           <div className="text-2xl font-bold tracking-tight truncate">
                             {formatExecutionTime(
-                              dashboardData.k6.totalDurationMinutes,
+                              dashboardData.k6.totalVuMinutes,
                               Math.floor(dashboardData.k6.totalDurationMs / 1000)
                             )}
                           </div>

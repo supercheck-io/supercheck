@@ -215,9 +215,22 @@ export async function GET() {
         )),
       
       // K6 Performance Test Statistics (last 30 days)
+      // VU-minutes = sum of (vus_max * duration_minutes) for each run
       dbInstance.select({
         totalRuns: count(),
         totalDurationMs: sum(k6PerformanceRuns.durationMs),
+        totalVuMinutes: sql<number>`SUM(
+          COALESCE(
+            (${k6PerformanceRuns.summaryJson}->'metrics'->'vus_max'->>'max')::numeric,
+            COALESCE(
+              (${k6PerformanceRuns.summaryJson}->'metrics'->'vus_max'->>'value')::numeric,
+              COALESCE(
+                (${k6PerformanceRuns.summaryJson}->'metrics'->'vus'->>'max')::numeric,
+                1
+              )
+            )
+          ) * COALESCE(${k6PerformanceRuns.durationMs}, 0) / 60000.0
+        )`,
         totalRequests: sum(k6PerformanceRuns.totalRequests),
         avgResponseTimeMs: sql<number>`AVG(${k6PerformanceRuns.avgResponseTimeMs})`
       }).from(k6PerformanceRuns)
@@ -623,11 +636,12 @@ export async function GET() {
         playgroundExecutionsTrend: playgroundExecutionsTrend
       },
 
-      // K6 Performance Test Statistics
+      // K6 Performance Test Statistics (VU-minutes = VUs * duration)
       k6: {
         totalRuns: k6Stats[0]?.totalRuns || 0,
         totalDurationMs: Number(k6Stats[0]?.totalDurationMs) || 0,
         totalDurationMinutes: Math.round((Number(k6Stats[0]?.totalDurationMs) || 0) / 60000 * 100) / 100,
+        totalVuMinutes: Math.round((Number(k6Stats[0]?.totalVuMinutes) || 0) * 100) / 100,
         totalRequests: Number(k6Stats[0]?.totalRequests) || 0,
         avgResponseTimeMs: Math.round(Number(k6Stats[0]?.avgResponseTimeMs) || 0),
         period: 'last 30 days'
