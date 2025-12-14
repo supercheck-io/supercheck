@@ -67,6 +67,7 @@ export const k6PerformanceRuns = pgTable("k6_performance_runs", {
   avgResponseTimeMs: integer("avg_response_time_ms"),
   p95ResponseTimeMs: integer("p95_response_time_ms"),
   p99ResponseTimeMs: integer("p99_response_time_ms"),
+  vusMax: integer("vus_max"), // Maximum concurrent VUs (denormalized from summaryJson for fast queries)
 
   // Artifacts (S3 URLs)
   reportS3Url: text("report_s3_url"),

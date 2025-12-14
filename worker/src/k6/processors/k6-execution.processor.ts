@@ -247,6 +247,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         avgResponseTimeMs: avgDurationMs,
         p95ResponseTimeMs: p95DurationMs,
         p99ResponseTimeMs: p99DurationMs,
+        vusMax: metrics.maxVUs, // Denormalized for fast dashboard queries
         reportS3Url: result.reportUrl,
         summaryS3Url: result.summaryUrl ?? null,
         consoleS3Url: result.consoleUrl ?? null,
