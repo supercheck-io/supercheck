@@ -20,9 +20,9 @@ import {
   Activity,
   TrendingUp,
   Home as HomeIcon,
-  Clock,
   Info,
   Globe,
+  RefreshCw,
 } from "lucide-react";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -49,6 +49,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { PlaywrightLogo } from "@/components/logo/playwright-logo";
+import { K6Logo } from "@/components/logo/k6-logo";
 
 interface ProjectStats {
   tests: number;
@@ -113,6 +115,15 @@ interface TestSummary {
   playgroundExecutionsTrend: Array<{ date: string; count: number }>;
 }
 
+interface K6Summary {
+  totalRuns: number;
+  totalDurationMs: number;
+  totalDurationMinutes: number;
+  totalRequests: number;
+  avgResponseTimeMs: number;
+  period: string;
+}
+
 interface AlertHistoryItem {
   id: string;
   targetType: string;
@@ -139,6 +150,7 @@ interface DashboardData {
   monitors: MonitorSummary;
   jobs: JobSummary;
   tests: TestSummary;
+  k6: K6Summary;
   alerts: AlertHistoryItem[];
   system: SystemHealth;
 }
@@ -189,7 +201,7 @@ const MetricInfoButton: React.FC<MetricInfoButtonProps> = ({
     </PopoverTrigger>
     <PopoverContent
       className="w-72 p-4 space-y-2"
-      side="top"
+      side="bottom"
       align={align}
       sideOffset={12}
     >
@@ -261,10 +273,10 @@ const LOOKBACK_DAYS = 30;
 
 /**
  * Formats execution time with unit notation for readability
- * - Shows seconds if less than 1 minute (e.g., "45 sec")
- * - Shows minutes with 2 decimals if 1-999 minutes (e.g., "56.72 min")
- * - Shows 'k' notation for 1,000-999,999 minutes (e.g., "5.30k min")
- * - Shows 'M' notation for 1,000,000+ minutes (e.g., "1.20M min")
+ * - Shows seconds if less than 1 minute (e.g., "45s")
+ * - Shows minutes with 2 decimals if 1-59 minutes (e.g., "29.23m")
+ * - Shows hours with 2 decimals if 60+ minutes (e.g., "2.50h")
+ * - Shows 'k' notation for 1000+ hours (e.g., "1.2k h")
  *
  * @param totalMinutes - Total execution time in minutes
  * @param totalSeconds - Total execution time in seconds (fallback for <1 minute)
@@ -276,34 +288,63 @@ const formatExecutionTime = (
 ): string => {
   // Validate inputs
   if (!Number.isFinite(totalMinutes) || !Number.isFinite(totalSeconds)) {
-    return "0 sec";
+    return "0s";
   }
 
   // Handle negative values
   if (totalMinutes < 0 || totalSeconds < 0) {
-    return "0 sec";
+    return "0s";
   }
 
   // Less than 1 minute: show seconds
   if (totalMinutes < 1) {
     const seconds = Math.round(totalSeconds);
-    return `${seconds} sec`;
+    return `${seconds}s`;
   }
 
-  // 1 to 999 minutes: show minutes with 2 decimal places
-  if (totalMinutes < 1000) {
-    return `${totalMinutes.toFixed(2)} min`;
+  // 1 to 59 minutes: show minutes with 2 decimal places
+  if (totalMinutes < 60) {
+    return `${totalMinutes.toFixed(2)}m`;
   }
 
-  // 1,000 to 999,999 minutes: show in thousands (k notation)
-  if (totalMinutes < 1000000) {
-    const kiloMinutes = totalMinutes / 1000;
-    return `${kiloMinutes.toFixed(2)}k min`;
+  // 60+ minutes: convert to hours
+  const hours = totalMinutes / 60;
+
+  // Less than 1000 hours: show hours with 2 decimal places
+  if (hours < 1000) {
+    return `${hours.toFixed(2)}h`;
   }
 
-  // 1,000,000+ minutes: show in millions (M notation)
-  const megaMinutes = totalMinutes / 1000000;
-  return `${megaMinutes.toFixed(2)}M min`;
+  // 1000+ hours: show in k notation
+  const kHours = hours / 1000;
+  return `${kHours.toFixed(1)}k h`;
+};
+
+/**
+ * Formats a number with compact notation for better readability
+ * - Shows as-is if less than 1000 (e.g., "184")
+ * - Shows 'k' notation for 1,000-999,999 (e.g., "1.2k")
+ * - Shows 'M' notation for 1,000,000+ (e.g., "1.5M")
+ *
+ * @param value - Number to format
+ * @returns Formatted string with appropriate unit
+ */
+const formatCompactNumber = (value: number): string => {
+  if (!Number.isFinite(value) || value < 0) {
+    return "0";
+  }
+
+  if (value < 1000) {
+    return Math.round(value).toString();
+  }
+
+  if (value < 1000000) {
+    const k = value / 1000;
+    return k >= 100 ? `${Math.round(k)}k` : `${k.toFixed(1)}k`;
+  }
+
+  const m = value / 1000000;
+  return m >= 100 ? `${Math.round(m)}M` : `${m.toFixed(1)}M`;
 };
 
 export default function Home() {
@@ -360,9 +401,8 @@ export default function Home() {
       if (monitorsDown > 0) {
         systemIssues.push({
           type: "monitor" as const,
-          message: `${monitorsDown} monitor${monitorsDown === 1 ? "" : "s"} ${
-            monitorsDown === 1 ? "is" : "are"
-          } down`,
+          message: `${monitorsDown} monitor${monitorsDown === 1 ? "" : "s"} ${monitorsDown === 1 ? "is" : "are"
+            } down`,
           severity:
             monitorsDown > 2 ? ("critical" as const) : ("high" as const),
         });
@@ -372,9 +412,8 @@ export default function Home() {
       if (failedJobs > 0) {
         systemIssues.push({
           type: "job" as const,
-          message: `${failedJobs} job${
-            failedJobs === 1 ? "" : "s"
-          } failed in the last 24 hours`,
+          message: `${failedJobs} job${failedJobs === 1 ? "" : "s"
+            } failed in the last 24 hours`,
           severity: failedJobs > 5 ? ("high" as const) : ("medium" as const),
         });
       }
@@ -480,6 +519,20 @@ export default function Home() {
             ? data.tests.playgroundExecutionsTrend.slice(0, LOOKBACK_DAYS)
             : [],
         },
+        k6: {
+          totalRuns: Math.max(0, Number(data.k6?.totalRuns) || 0),
+          totalDurationMs: Math.max(0, Number(data.k6?.totalDurationMs) || 0),
+          totalDurationMinutes: Math.max(
+            0,
+            Number(data.k6?.totalDurationMinutes) || 0
+          ),
+          totalRequests: Math.max(0, Number(data.k6?.totalRequests) || 0),
+          avgResponseTimeMs: Math.max(
+            0,
+            Number(data.k6?.avgResponseTimeMs) || 0
+          ),
+          period: data.k6?.period || "last 30 days",
+        },
         alerts: Array.isArray(alertsData) ? alertsData.slice(0, 10) : [],
         system: {
           timestamp:
@@ -547,27 +600,27 @@ export default function Home() {
 
     const jobRunsWindowData =
       dashboardData.jobs.recentRuns &&
-      Array.isArray(dashboardData.jobs.recentRuns)
+        Array.isArray(dashboardData.jobs.recentRuns)
         ? dashboardData.jobs.recentRuns
-            .filter((run) => {
-              if (!run?.startedAt || typeof run.startedAt !== "string")
-                return false;
-              try {
-                const runDate = new Date(run.startedAt);
-                if (isNaN(runDate.getTime())) return false;
-                return runDate >= lookbackThreshold;
-              } catch {
-                return false;
-              }
-            })
-            .reduce(
-              (acc: { success: number; failed: number }, run) => {
-                if (run?.status === "passed") acc.success++;
-                else if (run?.status === "failed") acc.failed++;
-                return acc;
-              },
-              { success: 0, failed: 0 }
-            )
+          .filter((run) => {
+            if (!run?.startedAt || typeof run.startedAt !== "string")
+              return false;
+            try {
+              const runDate = new Date(run.startedAt);
+              if (isNaN(runDate.getTime())) return false;
+              return runDate >= lookbackThreshold;
+            } catch {
+              return false;
+            }
+          })
+          .reduce(
+            (acc: { success: number; failed: number }, run) => {
+              if (run?.status === "passed") acc.success++;
+              else if (run?.status === "failed") acc.failed++;
+              return acc;
+            },
+            { success: 0, failed: 0 }
+          )
         : { success: 0, failed: 0 };
 
     const jobRunsData = [
@@ -762,68 +815,65 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Key Metrics Grid - 5 cards per row */}
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 mb-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Card key={i}>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <Skeleton className="h-4 w-20" />
-                    <Skeleton className="h-4 w-4" />
-                  </CardHeader>
-                  <CardContent>
-                    <Skeleton className="h-8 w-12 mb-1" />
-                    <Skeleton className="h-3 w-24" />
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {/* Top Row Charts - 3 charts per row */}
-            <div className="grid gap-4 lg:grid-cols-3 mb-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="h-full p-4">
-                  <CardHeader className="pb-1 px-3 pt-1">
-                    <Skeleton className="h-4 w-20 mb-1" />
-                    <Skeleton className="h-3 w-48" />
-                  </CardHeader>
-                  <CardContent className="p-2 pt-6">
-                    <Skeleton className="h-40 w-full" />
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-
-            {/* Bottom Row Charts - 3 charts per row */}
-            <div className="grid gap-4 lg:grid-cols-3 mb-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Card key={i} className="h-full p-4">
-                  <CardHeader className="pb-1 px-3 pt-1">
-                    {i === 0 ? (
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <Skeleton className="h-4 w-24 mb-1" />
-                          <Skeleton className="h-3 w-52" />
+            {/* Overview Content - matches main UI structure */}
+            <div className="space-y-4 mt-4">
+              {/* Key Metrics Grid - 6 cards per row */}
+              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-4">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Card key={i} className="relative overflow-hidden">
+                    <CardContent className="p-5">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-2 min-w-0 flex-1">
+                          <Skeleton className="h-4 w-20" />
+                          <Skeleton className="h-7 w-16" />
+                          <Skeleton className="h-3 w-24" />
                         </div>
+                        <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
                       </div>
-                    ) : i === 2 ? (
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <Skeleton className="h-4 w-28 mb-1" />
-                          <Skeleton className="h-3 w-56" />
-                        </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Top Row Charts - 3 charts per row */}
+              <div className="grid gap-4 lg:grid-cols-3 mb-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Card key={i} className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+                    <CardHeader className="pb-2 px-4 pt-4">
+                      <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                        <Skeleton className="h-7 w-7 rounded-md" />
+                        <Skeleton className="h-4 w-20" />
+                      </CardTitle>
+                      <div className="text-xs text-muted-foreground/80">
+                        <Skeleton className="h-3 w-48" />
                       </div>
-                    ) : (
-                      <>
-                        <Skeleton className="h-4 w-24 mb-1" />
-                        <Skeleton className="h-3 w-60" />
-                      </>
-                    )}
-                  </CardHeader>
-                  <CardContent className="p-2 pt-6">
-                    <Skeleton className="h-40 w-full" />
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardHeader>
+                    <CardContent className="p-4 pt-4">
+                      <Skeleton className="h-[202px] w-full" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Bottom Row Charts - 3 charts per row */}
+              <div className="grid gap-4 lg:grid-cols-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Card key={i} className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+                    <CardHeader className="pb-2 px-4 pt-4">
+                      <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                        <Skeleton className="h-7 w-7 rounded-md" />
+                        <Skeleton className="h-4 w-24" />
+                      </CardTitle>
+                      <div className="text-xs text-muted-foreground/80">
+                        <Skeleton className="h-3 w-52" />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-4 pt-4">
+                      <Skeleton className="h-[202px] w-full" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -849,7 +899,7 @@ export default function Home() {
                 onClick={() => window.location.reload()}
                 className="flex-1 flex items-center gap-2"
               >
-                <ClipboardList className="h-4 w-4" />
+                <RefreshCw className="h-4 w-4" />
                 Try Again
               </Button>
               <Link href="/" className="flex-1">
@@ -953,20 +1003,20 @@ export default function Home() {
           </div>
 
           {/* Overview Content */}
-          <div className="space-y-4">
-            {/* Key Metrics Grid - 5 cards per row */}
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 mb-4">
+          <div className="space-y-4 mt-4">
+            {/* Key Metrics Grid - 6 cards per row */}
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-4">
               <Card className="relative overflow-hidden">
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between">
-                    <div className="space-y-2">
+                    <div className="space-y-2 min-w-0 flex-1">
                       <p className="text-sm font-medium text-muted-foreground">
                         Total Tests
                       </p>
                       {dashboardData.stats.tests > 0 ? (
                         <>
-                          <div className="text-3xl font-bold tracking-tight">
-                            {dashboardData.stats.tests}
+                          <div className="text-2xl font-bold tracking-tight truncate">
+                            {formatCompactNumber(dashboardData.stats.tests)}
                           </div>
                           <p className="text-xs text-muted-foreground">
                             Available test cases
@@ -978,7 +1028,7 @@ export default function Home() {
                         </p>
                       )}
                     </div>
-                    <div className="rounded-lg bg-blue-500/10 p-2">
+                    <div className="rounded-lg bg-blue-500/10 p-2 shrink-0">
                       <Code className="h-4 w-4 text-blue-500" />
                     </div>
                   </div>
@@ -988,14 +1038,14 @@ export default function Home() {
               <Card className="relative overflow-hidden">
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between">
-                    <div className="space-y-2">
+                    <div className="space-y-2 min-w-0 flex-1">
                       <p className="text-sm font-medium text-muted-foreground">
                         Active Jobs
                       </p>
                       {dashboardData.stats.jobs > 0 ? (
                         <>
-                          <div className="text-3xl font-bold tracking-tight">
-                            {dashboardData.stats.jobs}
+                          <div className="text-2xl font-bold tracking-tight truncate">
+                            {formatCompactNumber(dashboardData.stats.jobs)}
                           </div>
                           <p className="text-xs text-muted-foreground">
                             Scheduled jobs
@@ -1007,7 +1057,7 @@ export default function Home() {
                         </p>
                       )}
                     </div>
-                    <div className="rounded-lg bg-amber-500/10 p-2">
+                    <div className="rounded-lg bg-amber-500/10 p-2 shrink-0">
                       <CalendarClock className="h-4 w-4 text-amber-500" />
                     </div>
                   </div>
@@ -1017,17 +1067,17 @@ export default function Home() {
               <Card className="relative overflow-hidden">
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between">
-                    <div className="space-y-2">
+                    <div className="space-y-2 min-w-0 flex-1">
                       <p className="text-sm font-medium text-muted-foreground">
                         Active Monitors
                       </p>
                       {dashboardData.monitors.total > 0 ? (
                         <>
-                          <div className="text-3xl font-bold tracking-tight">
-                            {dashboardData.monitors.active}
+                          <div className="text-2xl font-bold tracking-tight truncate">
+                            {formatCompactNumber(dashboardData.monitors.active)}
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            of {dashboardData.monitors.total} total
+                            of {formatCompactNumber(dashboardData.monitors.total)} total
                           </p>
                         </>
                       ) : (
@@ -1036,7 +1086,7 @@ export default function Home() {
                         </p>
                       )}
                     </div>
-                    <div className="rounded-lg bg-green-500/10 p-2">
+                    <div className="rounded-lg bg-green-500/10 p-2 shrink-0">
                       <Globe className="h-4 w-4 text-green-500" />
                     </div>
                   </div>
@@ -1046,7 +1096,7 @@ export default function Home() {
               <Card className="relative overflow-hidden">
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between">
-                    <div className="space-y-2">
+                    <div className="space-y-2 min-w-0 flex-1">
                       <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
                         Job Runs
                         <MetricInfoButton
@@ -1063,8 +1113,8 @@ export default function Home() {
                       </p>
                       {dashboardData.stats.runs > 0 ? (
                         <>
-                          <div className="text-3xl font-bold tracking-tight">
-                            {dashboardData.stats.runs}
+                          <div className="text-2xl font-bold tracking-tight truncate">
+                            {formatCompactNumber(dashboardData.stats.runs)}
                           </div>
                           <p className="text-xs text-muted-foreground">
                             Last 30 days
@@ -1076,7 +1126,7 @@ export default function Home() {
                         </p>
                       )}
                     </div>
-                    <div className="rounded-lg bg-purple-500/10 p-2">
+                    <div className="rounded-lg bg-purple-500/10 p-2 shrink-0">
                       <ClipboardList className="h-4 w-4 text-purple-500" />
                     </div>
                   </div>
@@ -1086,11 +1136,11 @@ export default function Home() {
               <Card className="relative overflow-hidden">
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between">
-                    <div className="space-y-2">
+                    <div className="space-y-2 min-w-0 flex-1">
                       <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                        Execution Time
+                        Playwright Time
                         <MetricInfoButton
-                          title="How we total execution time"
+                          title="How we calculate Playwright time"
                           description="Execution time aggregates every Playwright-powered run in the past 30 days."
                           bullets={[
                             "Covers the last 30 days of execution",
@@ -1104,14 +1154,14 @@ export default function Home() {
                       </p>
                       {dashboardData.jobs.executionTime.totalMinutes > 0 ? (
                         <>
-                          <div className="text-3xl font-bold tracking-tight">
+                          <div className="text-2xl font-bold tracking-tight truncate">
                             {formatExecutionTime(
                               dashboardData.jobs.executionTime.totalMinutes,
                               dashboardData.jobs.executionTime.totalSeconds
                             )}
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            {dashboardData.jobs.executionTime.processedRuns}{" "}
+                          <p className="text-xs text-muted-foreground truncate">
+                            {formatCompactNumber(dashboardData.jobs.executionTime.processedRuns)}{" "}
                             runs • Last 30 days
                           </p>
                           {dashboardData.jobs.executionTime.errors > 0 && (
@@ -1127,8 +1177,52 @@ export default function Home() {
                         </p>
                       )}
                     </div>
-                    <div className="rounded-lg bg-cyan-500/10 p-2">
-                      <Clock className="h-4 w-4 text-cyan-500" />
+                    <div className="rounded-lg bg-cyan-500/10 p-2 shrink-0">
+                      <PlaywrightLogo width={16} height={16} />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="relative overflow-hidden">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2 min-w-0 flex-1">
+                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                        k6 VU Time
+                        <MetricInfoButton
+                          title="How we calculate k6 VU time"
+                          description="Execution time aggregates every k6-powered run in the past 30 days."
+                          bullets={[
+                            "Covers the last 30 days of execution",
+                            "Includes k6 job runs and playground tests",
+                            "Calculated from completed k6 test runs only",
+                            "Running executions are added once they finish",
+                          ]}
+                          ariaLabel="Learn what k6 VU Minutes includes"
+                          align="end"
+                        />
+                      </p>
+                      {dashboardData.k6.totalRuns > 0 ? (
+                        <>
+                          <div className="text-2xl font-bold tracking-tight truncate">
+                            {formatExecutionTime(
+                              dashboardData.k6.totalDurationMinutes,
+                              Math.floor(dashboardData.k6.totalDurationMs / 1000)
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {formatCompactNumber(dashboardData.k6.totalRuns)} runs • Last 30 days
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-2">
+                          No k6 tests run
+                        </p>
+                      )}
+                    </div>
+                    <div className="rounded-lg bg-violet-500/10 p-2 shrink-0">
+                      <K6Logo width={16} height={16} />
                     </div>
                   </div>
                 </CardContent>
@@ -1136,30 +1230,32 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Top Row Charts - 3 charts per row (formerly bottom row) */}
+          {/* Top Row Charts - 3 charts per row */}
           <div className="grid gap-4 lg:grid-cols-3 mb-4">
             {/* Job Success Rate Chart */}
-            <Card className="h-full p-4">
-              <CardHeader className="pb-1 px-3 pt-1">
-                <CardTitle className="flex items-center gap-1 text-sm">
-                  <CalendarClock className="h-4 w-4" />
+            <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+              <CardHeader className="pb-2 px-4 pt-4">
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                  <div className="rounded-md bg-amber-500/10 p-1.5">
+                    <CalendarClock className="h-4 w-4 text-amber-500" />
+                  </div>
                   Job Status
                 </CardTitle>
-                <CardDescription className="text-sm">
+                <CardDescription className="text-xs text-muted-foreground/80">
                   Job execution success vs failure last 30 days
                 </CardDescription>
               </CardHeader>
-              <CardContent className="p-2 pt-6">
+              <CardContent className="p-4 pt-4">
                 {chartData.jobRunsWindowData.success +
                   chartData.jobRunsWindowData.failed >
-                0 ? (
-                  <ChartContainer config={chartConfig} className="h-40 w-90">
+                  0 ? (
+                  <ChartContainer config={chartConfig} className="h-48 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={chartData.jobRunsData}>
                         <XAxis dataKey="name" fontSize={11} />
                         <YAxis fontSize={11} />
                         <ChartTooltip content={<ChartTooltipContent />} />
-                        <Bar dataKey="count" radius={[2, 2, 0, 0]}>
+                        <Bar dataKey="count" radius={[6, 6, 0, 0]}>
                           {chartData.jobRunsData.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.fill} />
                           ))}
@@ -1168,7 +1264,7 @@ export default function Home() {
                     </ResponsiveContainer>
                   </ChartContainer>
                 ) : (
-                  <div className="h-40 flex items-center justify-center">
+                  <div className="h-44 flex items-center justify-center">
                     <div className="text-center">
                       <CalendarClock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">
@@ -1181,25 +1277,27 @@ export default function Home() {
             </Card>
 
             {/* Monitor Status Chart */}
-            <Card className="h-full p-4">
-              <CardHeader className="pb-1 px-3 pt-1">
-                <CardTitle className="flex items-center gap-1 text-sm">
-                  <Globe className="h-4 w-4" />
+            <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+              <CardHeader className="pb-2 px-4 pt-4">
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                  <div className="rounded-md bg-green-500/10 p-1.5">
+                    <Globe className="h-4 w-4 text-green-500" />
+                  </div>
                   Monitor Status
                 </CardTitle>
-                <CardDescription className="text-sm">
+                <CardDescription className="text-xs text-muted-foreground/80">
                   Current monitor health distribution
                 </CardDescription>
               </CardHeader>
-              <CardContent className="p-2 pt-6">
+              <CardContent className="p-4 pt-4">
                 {dashboardData.monitors.total > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-40 w-90">
+                  <ChartContainer config={chartConfig} className="h-48 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={chartData.monitorStatusData}>
                         <XAxis dataKey="name" fontSize={11} />
                         <YAxis fontSize={11} />
                         <ChartTooltip content={<ChartTooltipContent />} />
-                        <Bar dataKey="count" radius={[2, 2, 0, 0]}>
+                        <Bar dataKey="count" radius={[6, 6, 0, 0]}>
                           {chartData.monitorStatusData.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.fill} />
                           ))}
@@ -1208,7 +1306,7 @@ export default function Home() {
                     </ResponsiveContainer>
                   </ChartContainer>
                 ) : (
-                  <div className="h-40 flex items-center justify-center">
+                  <div className="h-44 flex items-center justify-center">
                     <div className="text-center">
                       <Globe className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">
@@ -1221,20 +1319,22 @@ export default function Home() {
             </Card>
 
             {/* Test Types Distribution Chart */}
-            <Card className="h-full p-4">
-              <CardHeader className="pb-1 px-3 pt-1">
-                <CardTitle className="flex items-center gap-1 text-sm">
-                  <Code className="h-4 w-4" />
+            <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+              <CardHeader className="pb-2 px-4 pt-4">
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                  <div className="rounded-md bg-blue-500/10 p-1.5">
+                    <Code className="h-4 w-4 text-blue-500" />
+                  </div>
                   Test Types
                 </CardTitle>
-                <CardDescription className="text-sm">
+                <CardDescription className="text-xs text-muted-foreground/80">
                   Distribution of test types
                 </CardDescription>
               </CardHeader>
-              <CardContent className="p-2 pt-6">
+              <CardContent className="p-4 pt-4">
                 {dashboardData.tests.byType &&
-                dashboardData.tests.byType.length > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-40 w-90">
+                  dashboardData.tests.byType.length > 0 ? (
+                  <ChartContainer config={chartConfig} className="h-48 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
@@ -1255,8 +1355,8 @@ export default function Home() {
                           })}
                           cx="50%"
                           cy="50%"
-                          innerRadius={20}
-                          outerRadius={60}
+                          innerRadius={25}
+                          outerRadius={70}
                           dataKey="value"
                           strokeWidth={0}
                         ></Pie>
@@ -1265,7 +1365,7 @@ export default function Home() {
                     </ResponsiveContainer>
                   </ChartContainer>
                 ) : (
-                  <div className="h-40 flex items-center justify-center">
+                  <div className="h-44 flex items-center justify-center">
                     <div className="text-center">
                       <Code className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">
@@ -1278,26 +1378,24 @@ export default function Home() {
             </Card>
           </div>
 
-          {/* Bottom Row Charts - 3 charts per row (formerly top row) */}
-          <div className="grid gap-4 lg:grid-cols-3 mb-4">
+          {/* Bottom Row Charts - 3 charts per row */}
+          <div className="grid gap-4 lg:grid-cols-3">
             {/* Test Activity Trend Chart */}
-            <Card className="h-full p-4">
-              <CardHeader className="pb-1 px-3 pt-1">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-1 text-sm">
-                      <Activity className="h-4 w-4" />
-                      Test Activity
-                    </CardTitle>
-                    <CardDescription className="text-sm">
-                      Playground test executions last 30 days
-                    </CardDescription>
+            <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+              <CardHeader className="pb-2 px-4 pt-4">
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                  <div className="rounded-md bg-blue-500/10 p-1.5">
+                    <Activity className="h-4 w-4 text-blue-500" />
                   </div>
-                </div>
+                  Test Activity
+                </CardTitle>
+                <CardDescription className="text-xs text-muted-foreground/80">
+                  Playground test executions last 30 days
+                </CardDescription>
               </CardHeader>
-              <CardContent className="p-2 pt-6">
+              <CardContent className="p-4 pt-4">
                 {dashboardData.tests.playgroundExecutions30d > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-40 w-90">
+                  <ChartContainer config={chartConfig} className="h-48 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={chartData.testActivityData}>
                         <XAxis dataKey="day" fontSize={11} />
@@ -1315,7 +1413,7 @@ export default function Home() {
                     </ResponsiveContainer>
                   </ChartContainer>
                 ) : (
-                  <div className="h-40 flex items-center justify-center">
+                  <div className="h-44 flex items-center justify-center">
                     <div className="text-center">
                       <Activity className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">
@@ -1328,19 +1426,21 @@ export default function Home() {
             </Card>
 
             {/* Job Activity Trend Chart */}
-            <Card className="h-full p-4">
-              <CardHeader className="pb-1 px-3 pt-1">
-                <CardTitle className="flex items-center gap-1 text-sm">
-                  <Activity className="h-4 w-4" />
+            <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+              <CardHeader className="pb-2 px-4 pt-4">
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                  <div className="rounded-md bg-purple-500/10 p-1.5">
+                    <Activity className="h-4 w-4 text-purple-500" />
+                  </div>
                   Job Activity
                 </CardTitle>
-                <CardDescription className="text-sm">
+                <CardDescription className="text-xs text-muted-foreground/80">
                   Job execution by trigger types last 30 days
                 </CardDescription>
               </CardHeader>
-              <CardContent className="p-2 pt-6">
+              <CardContent className="p-4 pt-4">
                 {dashboardData.jobs.total > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-40 w-90">
+                  <ChartContainer config={chartConfig} className="h-48 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={chartData.jobActivityData}>
                         <XAxis dataKey="day" fontSize={11} />
@@ -1377,7 +1477,7 @@ export default function Home() {
                     </ResponsiveContainer>
                   </ChartContainer>
                 ) : (
-                  <div className="h-40 flex items-center justify-center">
+                  <div className="h-44 flex items-center justify-center">
                     <div className="text-center">
                       <CalendarClock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">
@@ -1390,23 +1490,21 @@ export default function Home() {
             </Card>
 
             {/* Monitor Uptime Trend Chart */}
-            <Card className="h-full p-4">
-              <CardHeader className="pb-1 px-3 pt-1">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-1 text-sm">
-                      <TrendingUp className="h-4 w-4" />
-                      Uptime Trend
-                    </CardTitle>
-                    <CardDescription className="text-sm">
-                      Monitor uptime percentage last 30 days
-                    </CardDescription>
+            <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+              <CardHeader className="pb-2 px-4 pt-4">
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                  <div className="rounded-md bg-emerald-500/10 p-1.5">
+                    <TrendingUp className="h-4 w-4 text-emerald-500" />
                   </div>
-                </div>
+                  Uptime Trend
+                </CardTitle>
+                <CardDescription className="text-xs text-muted-foreground/80">
+                  Monitor uptime percentage last 30 days
+                </CardDescription>
               </CardHeader>
-              <CardContent className="p-2 pt-6">
+              <CardContent className="p-4 pt-4">
                 {dashboardData.monitors.total > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-40 w-90">
+                  <ChartContainer config={chartConfig} className="h-48 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartData.uptimeTrendData}>
                         <XAxis dataKey="day" fontSize={11} />
@@ -1423,7 +1521,7 @@ export default function Home() {
                     </ResponsiveContainer>
                   </ChartContainer>
                 ) : (
-                  <div className="h-40 flex items-center justify-center">
+                  <div className="h-44 flex items-center justify-center">
                     <div className="text-center">
                       <TrendingUp className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">
