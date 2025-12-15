@@ -65,11 +65,11 @@ interface OrgMember {
   name: string;
   email: string;
   role:
-    | "org_owner"
-    | "org_admin"
-    | "project_admin"
-    | "project_editor"
-    | "project_viewer";
+  | "org_owner"
+  | "org_admin"
+  | "project_admin"
+  | "project_editor"
+  | "project_viewer";
   joinedAt: string;
 }
 
@@ -497,7 +497,7 @@ export default function OrgAdminDashboard() {
                   <h2 className="text-2xl font-bold tracking-tight">
                     Organization Admin
                   </h2>
-                  <p className="text-muted-foreground">
+                  <p className="text-muted-foreground text-sm">
                     Manage your organization&apos;s projects, members, and view
                     audit logs.
                   </p>

@@ -955,7 +955,7 @@ export default function Home() {
                 Project Dashboard
               </h1>
               <p className="text-muted-foreground text-sm">
-                Overview of project&apos;s health, and performance.
+                Overview of project&apos;s health, and key insights.
               </p>
             </div>
             <Popover>
