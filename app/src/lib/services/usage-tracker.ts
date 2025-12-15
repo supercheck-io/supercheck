@@ -87,11 +87,11 @@ export class UsageTracker {
 
   /**
    * Track AI credit usage
-   * Each AI fix or AI create action consumes 1 credit
+   * Each AI fix, AI create, or AI analyze action consumes 1 credit
    */
   async trackAIUsage(
     organizationId: string,
-    actionType: "ai_fix" | "ai_create",
+    actionType: "ai_fix" | "ai_create" | "ai_analyze",
     metadata?: Record<string, unknown>
   ) {
     const credits = 1; // Each AI action costs 1 credit

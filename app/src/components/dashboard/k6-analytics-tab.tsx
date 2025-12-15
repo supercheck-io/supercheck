@@ -63,6 +63,7 @@ import { cn } from "@/lib/utils";
 import { K6Logo } from "@/components/logo/k6-logo";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { ReportViewer } from "@/components/shared/report-viewer";
+import { AIK6AnalyzeButton, K6RunData } from "@/components/dashboard/ai-k6-analyze-button";
 
 // Types
 interface K6Job {
@@ -644,24 +645,47 @@ export function K6AnalyticsTab({
                             </div>
                             {/* View k6 Report / Back to Metrics button */}
                             {compLeft && compRight && compLeft.reportS3Url && compRight.reportS3Url && (
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setShowReportsView(!showReportsView)}
-                                    className="flex items-center gap-2 shrink-0 mr-10 mt-5"
-                                >
-                                    {showReportsView ? (
-                                        <>
-                                            <ArrowLeft className="h-4 w-4" />
-                                            Back to Metrics
-                                        </>
-                                    ) : (
-                                        <>
-                                            <K6Logo className="h-4 w-4" />
-                                            View k6 Reports
-                                        </>
-                                    )}
-                                </Button>
+                                <div className="flex items-center gap-2 mr-10 mt-5">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setShowReportsView(!showReportsView)}
+                                        className="flex items-center gap-2 shrink-0"
+                                    >
+                                        {showReportsView ? (
+                                            <>
+                                                <ArrowLeft className="h-4 w-4" />
+                                                Back to Metrics
+                                            </>
+                                        ) : (
+                                            <>
+                                                <K6Logo className="h-4 w-4" />
+                                                View k6 Reports
+                                            </>
+                                        )}
+                                    </Button>
+                                    <AIK6AnalyzeButton
+                                        baselineRun={{
+                                            runId: compLeft.runId,
+                                            status: compLeft.status,
+                                            startedAt: compLeft.startedAt,
+                                            durationMs: compLeft.durationMs,
+                                            requestRate: compLeft.requestRate,
+                                            metrics: compLeft.metrics,
+                                            reportS3Url: compLeft.reportS3Url,
+                                        } as K6RunData}
+                                        compareRun={{
+                                            runId: compRight.runId,
+                                            status: compRight.status,
+                                            startedAt: compRight.startedAt,
+                                            durationMs: compRight.durationMs,
+                                            requestRate: compRight.requestRate,
+                                            metrics: compRight.metrics,
+                                            reportS3Url: compRight.reportS3Url,
+                                        } as K6RunData}
+                                        jobName={compLeft.jobName ?? undefined}
+                                    />
+                                </div>
                             )}
                         </DialogHeader>
                         <div className="space-y-4">
