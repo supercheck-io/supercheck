@@ -1101,7 +1101,7 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
 
         {/* Inline Filters - only show for K6/Playwright tabs */}
         {activeTab === "k6" && k6Jobs.length > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             {k6SelectedJob && (
               <Button
                 variant="outline"
@@ -1113,50 +1113,62 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
                 Compare Runs
               </Button>
             )}
-            <Select value={k6SelectedJob ?? ""} onValueChange={setK6SelectedJob}>
-              <SelectTrigger className="w-56 h-9">
-                <SelectValue placeholder="Select a job" />
-              </SelectTrigger>
-              <SelectContent>
-                {k6Jobs.map((job) => (
-                  <SelectItem key={job.id} value={job.id}>{job.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={k6Period.toString()} onValueChange={(v) => setK6Period(parseInt(v))}>
-              <SelectTrigger className="w-28 h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="30">30 days</SelectItem>
-                <SelectItem value="60">60 days</SelectItem>
-                <SelectItem value="90">90 days</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm text-muted-foreground">Job:</span>
+              <Select value={k6SelectedJob ?? ""} onValueChange={setK6SelectedJob}>
+                <SelectTrigger className="w-56 h-9">
+                  <SelectValue placeholder="Select a job" />
+                </SelectTrigger>
+                <SelectContent>
+                  {k6Jobs.map((job) => (
+                    <SelectItem key={job.id} value={job.id}>{job.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm text-muted-foreground">Period:</span>
+              <Select value={k6Period.toString()} onValueChange={(v) => setK6Period(parseInt(v))}>
+                <SelectTrigger className="w-28 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30">30 days</SelectItem>
+                  <SelectItem value="60">60 days</SelectItem>
+                  <SelectItem value="90">90 days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         )}
         {activeTab === "playwright" && pwJobs.length > 0 && (
-          <div className="flex items-center gap-2">
-            <Select value={pwSelectedJob ?? ""} onValueChange={setPwSelectedJob}>
-              <SelectTrigger className="w-56 h-9">
-                <SelectValue placeholder="Select a job" />
-              </SelectTrigger>
-              <SelectContent>
-                {pwJobs.map((job) => (
-                  <SelectItem key={job.id} value={job.id}>{job.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={pwPeriod.toString()} onValueChange={(v) => setPwPeriod(parseInt(v))}>
-              <SelectTrigger className="w-28 h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="30">30 days</SelectItem>
-                <SelectItem value="60">60 days</SelectItem>
-                <SelectItem value="90">90 days</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm text-muted-foreground">Job:</span>
+              <Select value={pwSelectedJob ?? ""} onValueChange={setPwSelectedJob}>
+                <SelectTrigger className="w-56 h-9">
+                  <SelectValue placeholder="Select a job" />
+                </SelectTrigger>
+                <SelectContent>
+                  {pwJobs.map((job) => (
+                    <SelectItem key={job.id} value={job.id}>{job.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm text-muted-foreground">Period:</span>
+              <Select value={pwPeriod.toString()} onValueChange={(v) => setPwPeriod(parseInt(v))}>
+                <SelectTrigger className="w-28 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="30">30 days</SelectItem>
+                  <SelectItem value="60">60 days</SelectItem>
+                  <SelectItem value="90">90 days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         )}
       </div>

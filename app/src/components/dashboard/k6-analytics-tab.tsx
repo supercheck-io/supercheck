@@ -53,12 +53,16 @@ import {
     CheckCircle,
     XCircle,
     BarChart3,
+    FileText,
+    ArrowLeft,
+    ArrowRightLeft,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { K6Logo } from "@/components/logo/k6-logo";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { ReportViewer } from "@/components/shared/report-viewer";
 
 // Types
 interface K6Job {
@@ -126,6 +130,7 @@ interface ComparisonRun {
     durationMs: number | null;
     thresholdsPassed: boolean | null;
     requestRate: number | null;
+    reportS3Url: string | null;
     metrics: K6RunMetrics;
 }
 
@@ -235,6 +240,7 @@ export function K6AnalyticsTab({
     const [leftRunId, setLeftRunId] = useState<string | null>(null);
     const [rightRunId, setRightRunId] = useState<string | null>(null);
     const [isMounted, setIsMounted] = useState(false);
+    const [showReportsView, setShowReportsView] = useState(false);
 
     // Ensure charts only render after mount AND after browser paint to avoid ResponsiveContainer sizing issues
     useEffect(() => {
@@ -319,6 +325,7 @@ export function K6AnalyticsTab({
     useEffect(() => {
         setLeftRunId(null);
         setRightRunId(null);
+        setShowReportsView(false);
         // Keep isComparing true - user wants it open by default
     }, [selectedJob]);
 
@@ -505,12 +512,12 @@ export function K6AnalyticsTab({
                     <CardContent className="p-4">
                         <div className="flex items-start justify-between">
                             <div className="space-y-2 min-w-0 flex-1">
-                                <p className="text-sm font-medium text-muted-foreground">Total Requests</p>
-                                <div className="text-2xl font-bold tracking-tight truncate">{data.stats.totalRequests.toLocaleString()}</div>
-                                <p className="text-xs text-muted-foreground">HTTP requests made</p>
+                                <p className="text-sm font-medium text-muted-foreground">Avg Response Time</p>
+                                <div className="text-2xl font-bold tracking-tight truncate">{data.stats.avgResponseTime ?? 0}ms</div>
+                                <p className="text-xs text-muted-foreground">Mean latency</p>
                             </div>
                             <div className="rounded-lg bg-orange-500/10 p-2 shrink-0">
-                                <BarChart3 className="h-4 w-4 text-orange-500" />
+                                <Zap className="h-4 w-4 text-orange-500" />
                             </div>
                         </div>
                     </CardContent>
@@ -544,13 +551,11 @@ export function K6AnalyticsTab({
                                             dataKey="date"
                                             tickFormatter={(val) => val ? format(parseISO(val), "MMM d") : ""}
                                             tick={{ fontSize: 11, fill: '#888' }}
-                                            tickLine={false}
-                                            axisLine={false}
+                                            fontSize={11}
                                         />
                                         <YAxis
                                             tick={{ fontSize: 11, fill: '#888' }}
-                                            tickLine={false}
-                                            axisLine={false}
+                                            fontSize={11}
                                             tickFormatter={(val) => `${val}ms`}
                                         />
                                         <ChartTooltip content={<ChartTooltipContent />} />
@@ -598,13 +603,11 @@ export function K6AnalyticsTab({
                                             dataKey="date"
                                             tickFormatter={(val) => val ? format(parseISO(val), "MMM d") : ""}
                                             tick={{ fontSize: 11, fill: '#888' }}
-                                            tickLine={false}
-                                            axisLine={false}
+                                            fontSize={11}
                                         />
                                         <YAxis
                                             tick={{ fontSize: 11, fill: '#888' }}
-                                            tickLine={false}
-                                            axisLine={false}
+                                            fontSize={11}
                                             tickFormatter={(val) => `${val}/s`}
                                         />
                                         <ChartTooltip content={<ChartTooltipContent />} />
@@ -628,17 +631,41 @@ export function K6AnalyticsTab({
             {/* Run Comparison - Dialog controlled by parent */}
             {canCompare && (
                 <Dialog open={isComparing} onOpenChange={setIsComparing}>
-                    <DialogContent className="max-w-7xl min-w-5xl">
-                        <DialogHeader>
-                            <DialogTitle className="flex items-center gap-2">
-                                <div className="rounded-md bg-purple-500/10 p-1.5">
-                                    <K6Logo className="h-4 w-4" />
-                                </div>
-                                Run Comparison
-                            </DialogTitle>
-                            <DialogDescription>Compare metrics between two runs</DialogDescription>
+                    <DialogContent className="min-w-7xl">
+                        <DialogHeader className="flex flex-row items-start justify-between gap-4">
+                            <div>
+                                <DialogTitle className="flex items-center gap-2">
+                                    <div className="rounded-md bg-blue-500/10 p-1.5">
+                                        <ArrowRightLeft className="h-4 w-4 text-blue-500" />
+                                    </div>
+                                    Run Comparison
+                                </DialogTitle>
+                                <DialogDescription>Compare metrics between two runs</DialogDescription>
+                            </div>
+                            {/* View k6 Report / Back to Metrics button */}
+                            {compLeft && compRight && compLeft.reportS3Url && compRight.reportS3Url && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setShowReportsView(!showReportsView)}
+                                    className="flex items-center gap-2 shrink-0 mr-10 mt-5"
+                                >
+                                    {showReportsView ? (
+                                        <>
+                                            <ArrowLeft className="h-4 w-4" />
+                                            Back to Metrics
+                                        </>
+                                    ) : (
+                                        <>
+                                            <K6Logo className="h-4 w-4" />
+                                            View k6 Reports
+                                        </>
+                                    )}
+                                </Button>
+                            )}
                         </DialogHeader>
                         <div className="space-y-4">
+                            {/* Run selectors */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-medium text-muted-foreground">Baseline (Left)</label>
@@ -653,6 +680,7 @@ export function K6AnalyticsTab({
                                                         {run.status === "passed" ? <CheckCircle className="h-3 w-3 text-green-500" /> : <XCircle className="h-3 w-3 text-red-500" />}
                                                         {run.startedAt ? format(parseISO(run.startedAt), "MMM d, HH:mm") : "Unknown"}
                                                         <span className="text-muted-foreground text-xs">p95: {run.metrics.p95ResponseTimeMs ?? "-"}ms</span>
+                                                        <span className="text-muted-foreground text-xs">Run ID: {run.runId}</span>
                                                     </span>
                                                 </SelectItem>
                                             ))}
@@ -672,6 +700,7 @@ export function K6AnalyticsTab({
                                                         {run.status === "passed" ? <CheckCircle className="h-3 w-3 text-green-500" /> : <XCircle className="h-3 w-3 text-red-500" />}
                                                         {run.startedAt ? format(parseISO(run.startedAt), "MMM d, HH:mm") : "Unknown"}
                                                         <span className="text-muted-foreground text-xs">p95: {run.metrics.p95ResponseTimeMs ?? "-"}ms</span>
+                                                        <span className="text-muted-foreground text-xs">Run ID: {run.runId}</span>
                                                     </span>
                                                 </SelectItem>
                                             ))}
@@ -679,29 +708,69 @@ export function K6AnalyticsTab({
                                     </Select>
                                 </div>
                             </div>
+
+                            {/* Toggle between metrics view and reports view */}
                             {compLeft && compRight && compDeltas && compLeft.metrics && compRight.metrics && (
-                                <div className="border rounded-md">
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead>Metric</TableHead>
-                                                <TableHead className="text-center">Baseline</TableHead>
-                                                <TableHead className="text-center">Compare</TableHead>
-                                                <TableHead className="text-center">Delta</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            <ComparisonRow label="P95 Response Time" leftValue={compLeft.metrics.p95ResponseTimeMs} rightValue={compRight.metrics.p95ResponseTimeMs} delta={compDeltas.p95ResponseTimeMs} deltaPercent={compDeltas.p95ResponseTimePercent} unit="ms" lowerIsBetter />
-                                            <ComparisonRow label="P99 Response Time" leftValue={compLeft.metrics.p99ResponseTimeMs} rightValue={compRight.metrics.p99ResponseTimeMs} delta={compDeltas.p99ResponseTimeMs} deltaPercent={compDeltas.p99ResponseTimePercent} unit="ms" lowerIsBetter />
-                                            <ComparisonRow label="Avg Response Time" leftValue={compLeft.metrics.avgResponseTimeMs} rightValue={compRight.metrics.avgResponseTimeMs} delta={compDeltas.avgResponseTimeMs} deltaPercent={compDeltas.avgResponseTimePercent} unit="ms" lowerIsBetter />
-                                            <ComparisonRow label="Total Requests" leftValue={compLeft.metrics.totalRequests} rightValue={compRight.metrics.totalRequests} delta={compDeltas.totalRequests} deltaPercent={compDeltas.totalRequestsPercent} />
-                                            <ComparisonRow label="Failed Requests" leftValue={compLeft.metrics.failedRequests} rightValue={compRight.metrics.failedRequests} delta={compDeltas.failedRequests} deltaPercent={null} lowerIsBetter />
-                                            <ComparisonRow label="Request Rate" leftValue={compLeft.requestRate?.toFixed(1) ?? null} rightValue={compRight.requestRate?.toFixed(1) ?? null} delta={compDeltas.requestRate} deltaPercent={compDeltas.requestRatePercent} unit="/s" />
-                                            <ComparisonRow label="Peak VUs" leftValue={compLeft.metrics.vusMax} rightValue={compRight.metrics.vusMax} delta={compDeltas.vusMax} deltaPercent={null} />
-                                            <ComparisonRow label="Duration" leftValue={compLeft.durationMs ? Math.round(compLeft.durationMs / 1000) : null} rightValue={compRight.durationMs ? Math.round(compRight.durationMs / 1000) : null} delta={compDeltas.durationMs ? Math.round(compDeltas.durationMs / 1000) : null} deltaPercent={compDeltas.durationPercent} unit="s" />
-                                        </TableBody>
-                                    </Table>
-                                </div>
+                                <>
+
+                                    {/* Metrics comparison table */}
+                                    {!showReportsView && (
+                                        <div className="border rounded-md">
+                                            <Table>
+                                                <TableHeader>
+                                                    <TableRow>
+                                                        <TableHead>Metric</TableHead>
+                                                        <TableHead className="text-center">Baseline</TableHead>
+                                                        <TableHead className="text-center">Compare</TableHead>
+                                                        <TableHead className="text-center">Delta</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    <ComparisonRow label="P95 Response Time" leftValue={compLeft.metrics.p95ResponseTimeMs} rightValue={compRight.metrics.p95ResponseTimeMs} delta={compDeltas.p95ResponseTimeMs} deltaPercent={compDeltas.p95ResponseTimePercent} unit="ms" lowerIsBetter />
+                                                    <ComparisonRow label="P99 Response Time" leftValue={compLeft.metrics.p99ResponseTimeMs} rightValue={compRight.metrics.p99ResponseTimeMs} delta={compDeltas.p99ResponseTimeMs} deltaPercent={compDeltas.p99ResponseTimePercent} unit="ms" lowerIsBetter />
+                                                    <ComparisonRow label="Avg Response Time" leftValue={compLeft.metrics.avgResponseTimeMs} rightValue={compRight.metrics.avgResponseTimeMs} delta={compDeltas.avgResponseTimeMs} deltaPercent={compDeltas.avgResponseTimePercent} unit="ms" lowerIsBetter />
+                                                    <ComparisonRow label="Total Requests" leftValue={compLeft.metrics.totalRequests} rightValue={compRight.metrics.totalRequests} delta={compDeltas.totalRequests} deltaPercent={compDeltas.totalRequestsPercent} />
+                                                    <ComparisonRow label="Failed Requests" leftValue={compLeft.metrics.failedRequests} rightValue={compRight.metrics.failedRequests} delta={compDeltas.failedRequests} deltaPercent={null} lowerIsBetter />
+                                                    <ComparisonRow label="Request Rate" leftValue={compLeft.requestRate?.toFixed(1) ?? null} rightValue={compRight.requestRate?.toFixed(1) ?? null} delta={compDeltas.requestRate} deltaPercent={compDeltas.requestRatePercent} unit="/s" />
+                                                    <ComparisonRow label="Peak VUs" leftValue={compLeft.metrics.vusMax} rightValue={compRight.metrics.vusMax} delta={compDeltas.vusMax} deltaPercent={null} />
+                                                    <ComparisonRow label="Duration" leftValue={compLeft.durationMs ? Math.round(compLeft.durationMs / 1000) : null} rightValue={compRight.durationMs ? Math.round(compRight.durationMs / 1000) : null} delta={compDeltas.durationMs ? Math.round(compDeltas.durationMs / 1000) : null} deltaPercent={compDeltas.durationPercent} unit="s" />
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    )}
+
+                                    {/* Side-by-side reports view */}
+                                    {showReportsView && compLeft.reportS3Url && compRight.reportS3Url && (
+                                        <div className="grid grid-cols-2 gap-4 h-[600px]">
+                                            {/* Left report */}
+                                            <div className="flex flex-col border rounded-md overflow-hidden">
+                                                <div className="flex-1 min-h-0">
+                                                    <ReportViewer
+                                                        reportUrl={`/api/test-results/${encodeURIComponent(compLeft.runId)}/report.html`}
+                                                        isK6Report={true}
+                                                        hideFullscreenButton={true}
+                                                        hideEmptyMessage={true}
+                                                        containerClassName="w-full h-full"
+                                                        iframeClassName="w-full h-full"
+                                                    />
+                                                </div>
+                                            </div>
+                                            {/* Right report */}
+                                            <div className="flex flex-col border rounded-md overflow-hidden">
+                                                <div className="flex-1 min-h-0">
+                                                    <ReportViewer
+                                                        reportUrl={`/api/test-results/${encodeURIComponent(compRight.runId)}/report.html`}
+                                                        isK6Report={true}
+                                                        hideFullscreenButton={true}
+                                                        hideEmptyMessage={true}
+                                                        containerClassName="w-full h-full"
+                                                        iframeClassName="w-full h-full"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                     </DialogContent>

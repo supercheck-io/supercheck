@@ -390,10 +390,9 @@ export function PlaywrightAnalyticsTab({
                                                 dataKey="date"
                                                 tickFormatter={(val) => format(parseISO(val), "MMM d")}
                                                 tick={{ fontSize: 11, fill: '#888' }}
-                                                tickLine={false}
-                                                axisLine={false}
+                                                fontSize={11}
                                             />
-                                            <YAxis tick={{ fontSize: 11, fill: '#888' }} tickLine={false} axisLine={false} />
+                                            <YAxis tick={{ fontSize: 11, fill: '#888' }} fontSize={11} />
                                             <ChartTooltip content={<ChartTooltipContent />} />
                                             <Bar dataKey="passed" stackId="a" fill="#22c55e" radius={[0, 0, 0, 0]} />
                                             <Bar dataKey="failed" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
@@ -436,13 +435,11 @@ export function PlaywrightAnalyticsTab({
                                                     dataKey="date"
                                                     tickFormatter={(val) => val ? format(parseISO(val), "MMM d") : ""}
                                                     tick={{ fontSize: 11, fill: '#888' }}
-                                                    tickLine={false}
-                                                    axisLine={false}
+                                                    fontSize={11}
                                                 />
                                                 <YAxis
                                                     tick={{ fontSize: 11, fill: '#888' }}
-                                                    tickLine={false}
-                                                    axisLine={false}
+                                                    fontSize={11}
                                                     tickFormatter={(val) => `${Math.round(val / 1000)}s`}
                                                 />
                                                 <ChartTooltip content={<ChartTooltipContent />} />

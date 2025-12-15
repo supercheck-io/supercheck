@@ -147,6 +147,7 @@ export async function GET(request: NextRequest) {
             p95ResponseTimeMs: k6PerformanceRuns.p95ResponseTimeMs,
             p99ResponseTimeMs: k6PerformanceRuns.p99ResponseTimeMs,
             vusMax: k6PerformanceRuns.vusMax,
+            reportS3Url: k6PerformanceRuns.reportS3Url,
             jobName: jobs.name,
           })
           .from(k6PerformanceRuns)
@@ -176,6 +177,7 @@ export async function GET(request: NextRequest) {
             p95ResponseTimeMs: k6PerformanceRuns.p95ResponseTimeMs,
             p99ResponseTimeMs: k6PerformanceRuns.p99ResponseTimeMs,
             vusMax: k6PerformanceRuns.vusMax,
+            reportS3Url: k6PerformanceRuns.reportS3Url,
             jobName: jobs.name,
           })
           .from(k6PerformanceRuns)
@@ -217,6 +219,7 @@ export async function GET(request: NextRequest) {
             durationMs: left.durationMs,
             thresholdsPassed: left.thresholdsPassed,
             requestRate: left.requestRate ? left.requestRate / 100 : null,
+            reportS3Url: left.reportS3Url,
             metrics: {
               totalRequests: left.totalRequests,
               failedRequests: left.failedRequests,
@@ -238,6 +241,7 @@ export async function GET(request: NextRequest) {
             durationMs: right.durationMs,
             thresholdsPassed: right.thresholdsPassed,
             requestRate: right.requestRate ? right.requestRate / 100 : null,
+            reportS3Url: right.reportS3Url,
             metrics: {
               totalRequests: right.totalRequests,
               failedRequests: right.failedRequests,
