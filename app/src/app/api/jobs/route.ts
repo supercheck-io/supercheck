@@ -205,7 +205,7 @@ export async function GET() {
         status: runs.status,
         startedAt: runs.startedAt,
         completedAt: runs.completedAt,
-        duration: runs.duration,
+        durationMs: runs.durationMs,
         errorDetails: runs.errorDetails,
       })
       .from(runs)
@@ -272,7 +272,7 @@ export async function GET() {
               id: lastRun.id,
               status: lastRun.status,
               errorDetails: lastRun.errorDetails,
-              duration: lastRun.duration,
+              durationMs: lastRun.durationMs,
               startedAt: lastRun.startedAt
                 ? lastRun.startedAt.toISOString()
                 : null,
@@ -791,7 +791,7 @@ async function runJob(request: Request) {
         status: hasFailedTests
           ? ("failed" as TestRunStatus)
           : ("passed" as TestRunStatus),
-        duration: durationFormatted,
+        durationMs: durationMs,
         completedAt: new Date(),
         logs: logs || "",
         errorDetails: errorDetails || "",

@@ -15,6 +15,13 @@
       "when": 1765715431549,
       "tag": "0001_messy_junta",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1765751090999,
+      "tag": "0002_milky_proteus",
+      "breakpoints": true
     }
   ]
 }

@@ -283,7 +283,6 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         status: runStatus,
         completedAt: new Date(),
         durationMs: result.durationMs,
-        duration: durationString,
         reportS3Url: result.reportUrl,
         logsS3Url: result.logsUrl ?? null,
       };
@@ -457,7 +456,6 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
             status: isCancellation ? 'error' : 'failed',
             completedAt: new Date(),
             durationMs: Date.now() - processStartTime,
-            duration: durationString,
             errorDetails: isCancellation
               ? 'Cancellation requested by user'
               : message,

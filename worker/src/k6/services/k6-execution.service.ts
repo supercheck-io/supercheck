@@ -271,6 +271,9 @@ export class K6ExecutionService {
         'run',
         '--summary-export',
         `/tmp/${summaryFileName}`,
+        // Include p(99) in summary.json - K6 defaults only include p(90) and p(95)
+        '--summary-trend-stats',
+        'avg,min,med,max,p(90),p(95),p(99)',
         '--out',
         'web-dashboard',
         '--out',

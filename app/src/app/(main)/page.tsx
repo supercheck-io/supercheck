@@ -9,10 +9,23 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@/components/ui/tabs";
 import {
   ClipboardList,
   Code,
@@ -23,6 +36,10 @@ import {
   Info,
   Globe,
   RefreshCw,
+  LayoutDashboard,
+  Zap,
+  TestTube,
+  ArrowRightLeft,
 } from "lucide-react";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
@@ -51,6 +68,8 @@ import {
 } from "@/components/ui/popover";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
+import { K6AnalyticsTab } from "@/components/dashboard/k6-analytics-tab";
+import { PlaywrightAnalyticsTab } from "@/components/dashboard/playwright-analytics-tab";
 
 interface ProjectStats {
   tests: number;
@@ -1001,232 +1020,371 @@ export default function Home() {
             </Popover>
           </div>
 
-          {/* Overview Content */}
-          <div className="space-y-4 mt-4">
-            {/* Key Metrics Grid - 6 cards per row */}
-            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-4">
-              <Card className="relative overflow-hidden">
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 min-w-0 flex-1">
-                      <p className="text-sm font-medium text-muted-foreground">
-                        Total Tests
-                      </p>
-                      {dashboardData.stats.tests > 0 ? (
-                        <>
-                          <div className="text-2xl font-bold tracking-tight truncate">
-                            {formatCompactNumber(dashboardData.stats.tests)}
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Available test cases
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-muted-foreground py-2">
-                          No tests available
-                        </p>
-                      )}
-                    </div>
-                    <div className="rounded-lg bg-blue-500/10 p-2 shrink-0">
-                      <Code className="h-4 w-4 text-blue-500" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+          {/* Dashboard Tabs */}
+          <DashboardTabs dashboardData={dashboardData} chartData={chartData} chartConfig={chartConfig} />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
-              <Card className="relative overflow-hidden">
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 min-w-0 flex-1">
-                      <p className="text-sm font-medium text-muted-foreground">
-                        Active Jobs
-                      </p>
-                      {dashboardData.stats.jobs > 0 ? (
-                        <>
-                          <div className="text-2xl font-bold tracking-tight truncate">
-                            {formatCompactNumber(dashboardData.stats.jobs)}
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Scheduled jobs
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-muted-foreground py-2">
-                          No jobs configured
-                        </p>
-                      )}
-                    </div>
-                    <div className="rounded-lg bg-amber-500/10 p-2 shrink-0">
-                      <CalendarClock className="h-4 w-4 text-amber-500" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+// Separate component for dashboard tabs to manage filter state
+interface DashboardTabsProps {
+  dashboardData: DashboardData;
+  chartData: any;
+  chartConfig: Record<string, { label: string; color?: string }>;
+}
 
-              <Card className="relative overflow-hidden">
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 min-w-0 flex-1">
-                      <p className="text-sm font-medium text-muted-foreground">
-                        Active Monitors
-                      </p>
-                      {dashboardData.monitors.total > 0 ? (
-                        <>
-                          <div className="text-2xl font-bold tracking-tight truncate">
-                            {formatCompactNumber(dashboardData.monitors.active)}
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            of {formatCompactNumber(dashboardData.monitors.total)} total
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-muted-foreground py-2">
-                          No monitors setup
-                        </p>
-                      )}
-                    </div>
-                    <div className="rounded-lg bg-green-500/10 p-2 shrink-0">
-                      <Globe className="h-4 w-4 text-green-500" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsProps) {
+  const [activeTab, setActiveTab] = useState("overview");
+  const [k6SelectedJob, setK6SelectedJob] = useState<string | null>(null);
+  const [k6Period, setK6Period] = useState(30);
+  const [k6CompareOpen, setK6CompareOpen] = useState(false);
+  const [pwSelectedJob, setPwSelectedJob] = useState<string | null>(null);
+  const [pwPeriod, setPwPeriod] = useState(30);
+  const [k6Jobs, setK6Jobs] = useState<Array<{ id: string; name: string }>>([]);
+  const [pwJobs, setPwJobs] = useState<Array<{ id: string; name: string }>>([]);
 
-              <Card className="relative overflow-hidden">
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 min-w-0 flex-1">
-                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                        Job Runs
-                        <MetricInfoButton
-                          title="What counts as a run?"
-                          description="This number shows completed job executions within the selected project over the last 30 days."
-                          bullets={[
-                            "Covers the last 30 days of activity",
-                            "Includes scheduled and manual job runs only",
-                            "Synthetic monitor checks are excluded",
-                            "Playground executions are excluded",
-                          ]}
-                          ariaLabel="Learn what Total Job Runs includes"
-                        />
-                      </p>
-                      {dashboardData.stats.runs > 0 ? (
-                        <>
-                          <div className="text-2xl font-bold tracking-tight truncate">
-                            {formatCompactNumber(dashboardData.stats.runs)}
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Last 30 days
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-muted-foreground py-2">
-                          No runs available
-                        </p>
-                      )}
-                    </div>
-                    <div className="rounded-lg bg-purple-500/10 p-2 shrink-0">
-                      <ClipboardList className="h-4 w-4 text-purple-500" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+  // Fetch K6 jobs for filter dropdown
+  useEffect(() => {
+    if (activeTab === "k6") {
+      fetch("/api/analytics/k6?period=30")
+        .then(res => res.json())
+        .then(data => {
+          const jobs = data.jobs || [];
+          setK6Jobs(jobs);
+          // Auto-select first job if not already selected
+          if (!k6SelectedJob && jobs.length > 0) {
+            setK6SelectedJob(jobs[0].id);
+          }
+        })
+        .catch(() => { });
+    }
+  }, [activeTab, k6SelectedJob]);
 
-              <Card className="relative overflow-hidden">
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 min-w-0 flex-1">
-                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                        Playwright Mins
-                        <MetricInfoButton
-                          title="How we calculate Playwright Mins"
-                          description="Aggregates execution time from all Playwright test runs in the past 30 days."
-                          bullets={[
-                            "Covers the last 30 days of execution",
-                            "Includes job runs, synthetic monitor checks, and playground tests",
-                            "Each monitor location is counted separately",
-                            "Running executions are added once they finish",
-                          ]}
-                          ariaLabel="Learn what Playwright Mins includes"
-                          align="end"
-                        />
+  // Fetch Playwright jobs for filter dropdown
+  useEffect(() => {
+    if (activeTab === "playwright") {
+      fetch("/api/analytics/playwright?period=30")
+        .then(res => res.json())
+        .then(data => {
+          const jobs = data.jobs || [];
+          setPwJobs(jobs);
+          // Auto-select first job if not already selected
+          if (!pwSelectedJob && jobs.length > 0) {
+            setPwSelectedJob(jobs[0].id);
+          }
+        })
+        .catch(() => { });
+    }
+  }, [activeTab, pwSelectedJob]);
+
+  return (
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <TabsList>
+          <TabsTrigger value="overview" className="gap-2">
+            <LayoutDashboard className="h-4 w-4" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="k6" className="gap-2">
+            <K6Logo className="h-4 w-4" />
+            K6 Job Analytics
+          </TabsTrigger>
+          <TabsTrigger value="playwright" className="gap-2">
+            <PlaywrightLogo className="h-4 w-4" />
+            Playwright Job Analytics
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Inline Filters - only show for K6/Playwright tabs */}
+        {activeTab === "k6" && k6Jobs.length > 0 && (
+          <div className="flex items-center gap-2">
+            {k6SelectedJob && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 gap-2"
+                onClick={() => setK6CompareOpen(true)}
+              >
+                <ArrowRightLeft className="h-4 w-4 text-blue-500" />
+                Compare Runs
+              </Button>
+            )}
+            <Select value={k6SelectedJob ?? ""} onValueChange={setK6SelectedJob}>
+              <SelectTrigger className="w-56 h-9">
+                <SelectValue placeholder="Select a job" />
+              </SelectTrigger>
+              <SelectContent>
+                {k6Jobs.map((job) => (
+                  <SelectItem key={job.id} value={job.id}>{job.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={k6Period.toString()} onValueChange={(v) => setK6Period(parseInt(v))}>
+              <SelectTrigger className="w-28 h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30">30 days</SelectItem>
+                <SelectItem value="60">60 days</SelectItem>
+                <SelectItem value="90">90 days</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {activeTab === "playwright" && pwJobs.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Select value={pwSelectedJob ?? ""} onValueChange={setPwSelectedJob}>
+              <SelectTrigger className="w-56 h-9">
+                <SelectValue placeholder="Select a job" />
+              </SelectTrigger>
+              <SelectContent>
+                {pwJobs.map((job) => (
+                  <SelectItem key={job.id} value={job.id}>{job.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={pwPeriod.toString()} onValueChange={(v) => setPwPeriod(parseInt(v))}>
+              <SelectTrigger className="w-28 h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30">30 days</SelectItem>
+                <SelectItem value="60">60 days</SelectItem>
+                <SelectItem value="90">90 days</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+
+      <TabsContent value="overview">
+        {/* Overview Content */}
+        <div className="space-y-4">
+          {/* Key Metrics Grid - 6 cards per row */}
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-4">
+            <Card className="relative overflow-hidden">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2 min-w-0 flex-1">
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Total Tests
+                    </p>
+                    {dashboardData.stats.tests > 0 ? (
+                      <>
+                        <div className="text-2xl font-bold tracking-tight truncate">
+                          {formatCompactNumber(dashboardData.stats.tests)}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Available test cases
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-2">
+                        No tests available
                       </p>
-                      {dashboardData.jobs.executionTime.totalMinutes > 0 ? (
-                        <>
-                          <div className="text-2xl font-bold tracking-tight truncate">
-                            {formatExecutionTime(
-                              dashboardData.jobs.executionTime.totalMinutes,
-                              dashboardData.jobs.executionTime.totalSeconds
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {formatCompactNumber(dashboardData.jobs.executionTime.processedRuns)}{" "}
-                            runs • Last 30 days
-                          </p>
-                          {dashboardData.jobs.executionTime.errors > 0 && (
-                            <p className="text-xs text-yellow-600">
-                              {dashboardData.jobs.executionTime.errors} parsing
-                              errors
-                            </p>
+                    )}
+                  </div>
+                  <div className="rounded-lg bg-blue-500/10 p-2 shrink-0">
+                    <Code className="h-4 w-4 text-blue-500" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2 min-w-0 flex-1">
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Active Jobs
+                    </p>
+                    {dashboardData.stats.jobs > 0 ? (
+                      <>
+                        <div className="text-2xl font-bold tracking-tight truncate">
+                          {formatCompactNumber(dashboardData.stats.jobs)}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Scheduled jobs
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-2">
+                        No jobs configured
+                      </p>
+                    )}
+                  </div>
+                  <div className="rounded-lg bg-amber-500/10 p-2 shrink-0">
+                    <CalendarClock className="h-4 w-4 text-amber-500" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2 min-w-0 flex-1">
+                    <p className="text-sm font-medium text-muted-foreground">
+                      Active Monitors
+                    </p>
+                    {dashboardData.monitors.total > 0 ? (
+                      <>
+                        <div className="text-2xl font-bold tracking-tight truncate">
+                          {formatCompactNumber(dashboardData.monitors.active)}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          of {formatCompactNumber(dashboardData.monitors.total)} total
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-2">
+                        No monitors setup
+                      </p>
+                    )}
+                  </div>
+                  <div className="rounded-lg bg-green-500/10 p-2 shrink-0">
+                    <Globe className="h-4 w-4 text-green-500" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2 min-w-0 flex-1">
+                    <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                      Job Runs
+                      <MetricInfoButton
+                        title="What counts as a run?"
+                        description="This number shows completed job executions within the selected project over the last 30 days."
+                        bullets={[
+                          "Covers the last 30 days of activity",
+                          "Includes scheduled and manual job runs only",
+                          "Synthetic monitor checks are excluded",
+                          "Playground executions are excluded",
+                        ]}
+                        ariaLabel="Learn what Total Job Runs includes"
+                      />
+                    </p>
+                    {dashboardData.stats.runs > 0 ? (
+                      <>
+                        <div className="text-2xl font-bold tracking-tight truncate">
+                          {formatCompactNumber(dashboardData.stats.runs)}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Last 30 days
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-2">
+                        No runs available
+                      </p>
+                    )}
+                  </div>
+                  <div className="rounded-lg bg-purple-500/10 p-2 shrink-0">
+                    <ClipboardList className="h-4 w-4 text-purple-500" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2 min-w-0 flex-1">
+                    <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                      Playwright Mins
+                      <MetricInfoButton
+                        title="How we calculate Playwright Mins"
+                        description="Aggregates execution time from all Playwright test runs in the past 30 days."
+                        bullets={[
+                          "Covers the last 30 days of execution",
+                          "Includes job runs, synthetic monitor checks, and playground tests",
+                          "Each monitor location is counted separately",
+                          "Running executions are added once they finish",
+                        ]}
+                        ariaLabel="Learn what Playwright Mins includes"
+                        align="end"
+                      />
+                    </p>
+                    {dashboardData.jobs.executionTime.totalMinutes > 0 ? (
+                      <>
+                        <div className="text-2xl font-bold tracking-tight truncate">
+                          {formatExecutionTime(
+                            dashboardData.jobs.executionTime.totalMinutes,
+                            dashboardData.jobs.executionTime.totalSeconds
                           )}
-                        </>
-                      ) : (
-                        <p className="text-sm text-muted-foreground py-2">
-                          No execution time
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {formatCompactNumber(dashboardData.jobs.executionTime.processedRuns)}{" "}
+                          runs • Last 30 days
                         </p>
-                      )}
-                    </div>
-                    <div className="rounded-lg bg-cyan-500/10 p-2 shrink-0">
-                      <PlaywrightLogo width={16} height={16} />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="relative overflow-hidden">
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 min-w-0 flex-1">
-                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                        k6 VU x Mins
-                        <MetricInfoButton
-                          title="How we calculate k6 VU Mins"
-                          description="Execution time aggregates every k6-powered run in the past 30 days."
-                          bullets={[
-                            "Covers the last 30 days of execution",
-                            "Includes k6 job runs and playground tests",
-                            "Calculated from completed k6 test runs only",
-                            "Running executions are added once they finish",
-                          ]}
-                          ariaLabel="Learn what k6 VU Minutes includes"
-                          align="end"
-                        />
-                      </p>
-                      {dashboardData.k6.totalRuns > 0 ? (
-                        <>
-                          <div className="text-2xl font-bold tracking-tight truncate">
-                            {formatExecutionTime(
-                              dashboardData.k6.totalVuMinutes,
-                              Math.floor(dashboardData.k6.totalDurationMs / 1000)
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {formatCompactNumber(dashboardData.k6.totalRuns)} runs • Last 30 days
+                        {dashboardData.jobs.executionTime.errors > 0 && (
+                          <p className="text-xs text-yellow-600">
+                            {dashboardData.jobs.executionTime.errors} parsing
+                            errors
                           </p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-muted-foreground py-2">
-                          No k6 tests run
-                        </p>
-                      )}
-                    </div>
-                    <div className="rounded-lg bg-violet-500/10 p-2 shrink-0">
-                      <K6Logo width={16} height={16} />
-                    </div>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-2">
+                        No execution time
+                      </p>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
-            </div>
+                  <div className="rounded-lg bg-cyan-500/10 p-2 shrink-0">
+                    <PlaywrightLogo width={16} height={16} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="relative overflow-hidden">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-2 min-w-0 flex-1">
+                    <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                      k6 VU x Mins
+                      <MetricInfoButton
+                        title="How we calculate k6 VU Mins"
+                        description="Execution time aggregates every k6-powered run in the past 30 days."
+                        bullets={[
+                          "Covers the last 30 days of execution",
+                          "Includes k6 job runs and playground tests",
+                          "Calculated from completed k6 test runs only",
+                          "Running executions are added once they finish",
+                        ]}
+                        ariaLabel="Learn what k6 VU Minutes includes"
+                        align="end"
+                      />
+                    </p>
+                    {dashboardData.k6.totalRuns > 0 ? (
+                      <>
+                        <div className="text-2xl font-bold tracking-tight truncate">
+                          {formatExecutionTime(
+                            dashboardData.k6.totalVuMinutes,
+                            Math.floor(dashboardData.k6.totalDurationMs / 1000)
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {formatCompactNumber(dashboardData.k6.totalRuns)} runs • Last 30 days
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-2">
+                        No k6 tests run
+                      </p>
+                    )}
+                  </div>
+                  <div className="rounded-lg bg-violet-500/10 p-2 shrink-0">
+                    <K6Logo width={16} height={16} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Top Row Charts - 3 charts per row */}
@@ -1248,14 +1406,14 @@ export default function Home() {
                 {chartData.jobRunsWindowData.success +
                   chartData.jobRunsWindowData.failed >
                   0 ? (
-                  <ChartContainer config={chartConfig} className="h-48 w-full">
+                  <ChartContainer config={chartConfig} className="h-43 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={chartData.jobRunsData}>
                         <XAxis dataKey="name" fontSize={11} />
                         <YAxis fontSize={11} />
                         <ChartTooltip content={<ChartTooltipContent />} />
                         <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                          {chartData.jobRunsData.map((entry, index) => (
+                          {chartData.jobRunsData.map((entry: { name: string; count: number; fill: string }, index: number) => (
                             <Cell key={`cell-${index}`} fill={entry.fill} />
                           ))}
                         </Bar>
@@ -1263,7 +1421,7 @@ export default function Home() {
                     </ResponsiveContainer>
                   </ChartContainer>
                 ) : (
-                  <div className="h-44 flex items-center justify-center">
+                  <div className="h-43 flex items-center justify-center">
                     <div className="text-center">
                       <CalendarClock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">
@@ -1290,14 +1448,14 @@ export default function Home() {
               </CardHeader>
               <CardContent className="p-4 pt-4">
                 {dashboardData.monitors.total > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-48 w-full">
+                  <ChartContainer config={chartConfig} className="h-40 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={chartData.monitorStatusData}>
                         <XAxis dataKey="name" fontSize={11} />
                         <YAxis fontSize={11} />
                         <ChartTooltip content={<ChartTooltipContent />} />
                         <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                          {chartData.monitorStatusData.map((entry, index) => (
+                          {chartData.monitorStatusData.map((entry: { name: string; count: number; fill: string }, index: number) => (
                             <Cell key={`cell-${index}`} fill={entry.fill} />
                           ))}
                         </Bar>
@@ -1305,7 +1463,7 @@ export default function Home() {
                     </ResponsiveContainer>
                   </ChartContainer>
                 ) : (
-                  <div className="h-44 flex items-center justify-center">
+                  <div className="h-43 flex items-center justify-center">
                     <div className="text-center">
                       <Globe className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">
@@ -1333,7 +1491,7 @@ export default function Home() {
               <CardContent className="p-4 pt-4">
                 {dashboardData.tests.byType &&
                   dashboardData.tests.byType.length > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-48 w-full">
+                  <ChartContainer config={chartConfig} className="h-43 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
@@ -1364,7 +1522,7 @@ export default function Home() {
                     </ResponsiveContainer>
                   </ChartContainer>
                 ) : (
-                  <div className="h-44 flex items-center justify-center">
+                  <div className="h-43 flex items-center justify-center">
                     <div className="text-center">
                       <Code className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">
@@ -1394,7 +1552,7 @@ export default function Home() {
               </CardHeader>
               <CardContent className="p-4 pt-4">
                 {dashboardData.tests.playgroundExecutions30d > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-48 w-full">
+                  <ChartContainer config={chartConfig} className="h-43 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={chartData.testActivityData}>
                         <XAxis dataKey="day" fontSize={11} />
@@ -1412,7 +1570,7 @@ export default function Home() {
                     </ResponsiveContainer>
                   </ChartContainer>
                 ) : (
-                  <div className="h-44 flex items-center justify-center">
+                  <div className="h-43 flex items-center justify-center">
                     <div className="text-center">
                       <Activity className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">
@@ -1439,7 +1597,7 @@ export default function Home() {
               </CardHeader>
               <CardContent className="p-4 pt-4">
                 {dashboardData.jobs.total > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-48 w-full">
+                  <ChartContainer config={chartConfig} className="h-43 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={chartData.jobActivityData}>
                         <XAxis dataKey="day" fontSize={11} />
@@ -1476,7 +1634,7 @@ export default function Home() {
                     </ResponsiveContainer>
                   </ChartContainer>
                 ) : (
-                  <div className="h-44 flex items-center justify-center">
+                  <div className="h-43 flex items-center justify-center">
                     <div className="text-center">
                       <CalendarClock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">
@@ -1503,7 +1661,7 @@ export default function Home() {
               </CardHeader>
               <CardContent className="p-4 pt-4">
                 {dashboardData.monitors.total > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-48 w-full">
+                  <ChartContainer config={chartConfig} className="h-43 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartData.uptimeTrendData}>
                         <XAxis dataKey="day" fontSize={11} />
@@ -1532,8 +1690,28 @@ export default function Home() {
               </CardContent>
             </Card>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="k6">
+        <K6AnalyticsTab
+          selectedJob={k6SelectedJob ?? ""}
+          onJobChange={setK6SelectedJob}
+          period={k6Period}
+          onPeriodChange={setK6Period}
+          isComparingOpen={k6CompareOpen}
+          onCompareOpenChange={setK6CompareOpen}
+        />
+      </TabsContent>
+
+      <TabsContent value="playwright">
+        <PlaywrightAnalyticsTab
+          selectedJob={pwSelectedJob ?? ""}
+          onJobChange={setPwSelectedJob}
+          period={pwPeriod}
+          onPeriodChange={setPwPeriod}
+        />
+      </TabsContent>
+    </Tabs>
   );
 }
