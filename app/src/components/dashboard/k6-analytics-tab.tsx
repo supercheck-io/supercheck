@@ -55,8 +55,10 @@ import {
     BarChart3,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { K6Logo } from "@/components/logo/k6-logo";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 
 // Types
 interface K6Job {
@@ -400,17 +402,16 @@ export function K6AnalyticsTab({
 
     if (!data || data.runs.length === 0) {
         return (
-            <Card className="border-border/50">
-                <CardContent className="pt-6">
-                    <div className="text-center py-16">
-                        <K6Logo className="h-16 w-16 mx-auto mb-4 opacity-30" />
-                        <h3 className="text-lg font-medium mb-2 text-muted-foreground">No K6 performance data</h3>
-                        <p className="text-sm text-muted-foreground/70">
-                            Run some K6 performance tests to see analytics here.
-                        </p>
-                    </div>
-                </CardContent>
-            </Card>
+            <DashboardEmptyState
+                title="No K6 Data"
+                description="Create a K6 test first, then run the job to compare results or see the analytics."
+                icon={<K6Logo className="h-12 w-12" />}
+                action={
+                    <Button asChild>
+                        <Link href="/tests/create">Create Test</Link>
+                    </Button>
+                }
+            />
         );
     }
 

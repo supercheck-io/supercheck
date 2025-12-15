@@ -45,8 +45,10 @@ import {
     BarChart3,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 
 // Trigger type icons - same as runs/data.tsx
 const triggerTypes: Record<string, { icon: React.ElementType; label: string; color: string }> = {
@@ -252,15 +254,16 @@ export function PlaywrightAnalyticsTab({
 
     if (!data || data.runs.length === 0) {
         return (
-            <Card className="border-border/50">
-                <CardContent className="pt-6">
-                    <div className="text-center py-16">
-                        <PlaywrightLogo className="h-16 w-16 mx-auto mb-4 opacity-30" />
-                        <h3 className="text-lg font-medium mb-2 text-muted-foreground">No Playwright data</h3>
-                        <p className="text-sm text-muted-foreground/70">Run some Playwright tests to see analytics here.</p>
-                    </div>
-                </CardContent>
-            </Card>
+            <DashboardEmptyState
+                title="No Playwright Data"
+                description="Create a Playwright test first, then run the job to compare results or see the analytics."
+                icon={<PlaywrightLogo className="h-12 w-12" />}
+                action={
+                    <Button asChild>
+                        <Link href="/tests/create">Create Test</Link>
+                    </Button>
+                }
+            />
         );
     }
 

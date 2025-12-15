@@ -70,6 +70,8 @@ import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
 import { K6AnalyticsTab } from "@/components/dashboard/k6-analytics-tab";
 import { PlaywrightAnalyticsTab } from "@/components/dashboard/playwright-analytics-tab";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { CheckIcon } from "@/components/logo/supercheck-logo";
 
 interface ProjectStats {
   tests: number;
@@ -1160,537 +1162,549 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
       </div>
 
       <TabsContent value="overview">
-        {/* Overview Content */}
-        <div className="space-y-4">
-          {/* Key Metrics Grid - 6 cards per row */}
-          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-4">
-            <Card className="relative overflow-hidden">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-2 min-w-0 flex-1">
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Total Tests
-                    </p>
-                    {dashboardData.stats.tests > 0 ? (
-                      <>
-                        <div className="text-2xl font-bold tracking-tight truncate">
-                          {formatCompactNumber(dashboardData.stats.tests)}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Available test cases
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted-foreground py-2">
-                        No tests available
+        {dashboardData.stats.runs === 0 && dashboardData.stats.monitors === 0 ? (
+          <DashboardEmptyState
+            title="No Project Activity"
+            description="Your project dashboard is currently empty. Head over to the Quick Create section to set up your project resources."
+            icon={<CheckIcon className="h-16 w-16" />}
+            action={
+              <Button asChild>
+                <Link href="/create">Quick Create</Link>
+              </Button>
+            }
+          />
+        ) : (
+          <div className="space-y-4">
+            {/* Key Metrics Grid - 6 cards per row */}
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-4">
+              <Card className="relative overflow-hidden">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2 min-w-0 flex-1">
+                      <p className="text-sm font-medium text-muted-foreground">
+                        Total Tests
                       </p>
-                    )}
-                  </div>
-                  <div className="rounded-lg bg-blue-500/10 p-2 shrink-0">
-                    <Code className="h-4 w-4 text-blue-500" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="relative overflow-hidden">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-2 min-w-0 flex-1">
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Active Jobs
-                    </p>
-                    {dashboardData.stats.jobs > 0 ? (
-                      <>
-                        <div className="text-2xl font-bold tracking-tight truncate">
-                          {formatCompactNumber(dashboardData.stats.jobs)}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Scheduled jobs
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted-foreground py-2">
-                        No jobs configured
-                      </p>
-                    )}
-                  </div>
-                  <div className="rounded-lg bg-amber-500/10 p-2 shrink-0">
-                    <CalendarClock className="h-4 w-4 text-amber-500" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="relative overflow-hidden">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-2 min-w-0 flex-1">
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Active Monitors
-                    </p>
-                    {dashboardData.monitors.total > 0 ? (
-                      <>
-                        <div className="text-2xl font-bold tracking-tight truncate">
-                          {formatCompactNumber(dashboardData.monitors.active)}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          of {formatCompactNumber(dashboardData.monitors.total)} total
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted-foreground py-2">
-                        No monitors setup
-                      </p>
-                    )}
-                  </div>
-                  <div className="rounded-lg bg-green-500/10 p-2 shrink-0">
-                    <Globe className="h-4 w-4 text-green-500" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="relative overflow-hidden">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-2 min-w-0 flex-1">
-                    <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                      Job Runs
-                      <MetricInfoButton
-                        title="What counts as a run?"
-                        description="This number shows completed job executions within the selected project over the last 30 days."
-                        bullets={[
-                          "Covers the last 30 days of activity",
-                          "Includes scheduled and manual job runs only",
-                          "Synthetic monitor checks are excluded",
-                          "Playground executions are excluded",
-                        ]}
-                        ariaLabel="Learn what Total Job Runs includes"
-                      />
-                    </p>
-                    {dashboardData.stats.runs > 0 ? (
-                      <>
-                        <div className="text-2xl font-bold tracking-tight truncate">
-                          {formatCompactNumber(dashboardData.stats.runs)}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Last 30 days
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted-foreground py-2">
-                        No runs available
-                      </p>
-                    )}
-                  </div>
-                  <div className="rounded-lg bg-purple-500/10 p-2 shrink-0">
-                    <ClipboardList className="h-4 w-4 text-purple-500" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="relative overflow-hidden">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-2 min-w-0 flex-1">
-                    <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                      Playwright Mins
-                      <MetricInfoButton
-                        title="How we calculate Playwright Mins"
-                        description="Aggregates execution time from all Playwright test runs in the past 30 days."
-                        bullets={[
-                          "Covers the last 30 days of execution",
-                          "Includes job runs, synthetic monitor checks, and playground tests",
-                          "Each monitor location is counted separately",
-                          "Running executions are added once they finish",
-                        ]}
-                        ariaLabel="Learn what Playwright Mins includes"
-                        align="end"
-                      />
-                    </p>
-                    {dashboardData.jobs.executionTime.totalMinutes > 0 ? (
-                      <>
-                        <div className="text-2xl font-bold tracking-tight truncate">
-                          {formatExecutionTime(
-                            dashboardData.jobs.executionTime.totalMinutes,
-                            dashboardData.jobs.executionTime.totalSeconds
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {formatCompactNumber(dashboardData.jobs.executionTime.processedRuns)}{" "}
-                          runs • Last 30 days
-                        </p>
-                        {dashboardData.jobs.executionTime.errors > 0 && (
-                          <p className="text-xs text-yellow-600">
-                            {dashboardData.jobs.executionTime.errors} parsing
-                            errors
+                      {dashboardData.stats.tests > 0 ? (
+                        <>
+                          <div className="text-2xl font-bold tracking-tight truncate">
+                            {formatCompactNumber(dashboardData.stats.tests)}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Available test cases
                           </p>
-                        )}
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted-foreground py-2">
-                        No execution time
-                      </p>
-                    )}
-                  </div>
-                  <div className="rounded-lg bg-cyan-500/10 p-2 shrink-0">
-                    <PlaywrightLogo width={16} height={16} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="relative overflow-hidden">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-2 min-w-0 flex-1">
-                    <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                      k6 VU x Mins
-                      <MetricInfoButton
-                        title="How we calculate k6 VU Mins"
-                        description="Execution time aggregates every k6-powered run in the past 30 days."
-                        bullets={[
-                          "Covers the last 30 days of execution",
-                          "Includes k6 job runs and playground tests",
-                          "Calculated from completed k6 test runs only",
-                          "Running executions are added once they finish",
-                        ]}
-                        ariaLabel="Learn what k6 VU Minutes includes"
-                        align="end"
-                      />
-                    </p>
-                    {dashboardData.k6.totalRuns > 0 ? (
-                      <>
-                        <div className="text-2xl font-bold tracking-tight truncate">
-                          {formatExecutionTime(
-                            dashboardData.k6.totalVuMinutes,
-                            Math.floor(dashboardData.k6.totalDurationMs / 1000)
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {formatCompactNumber(dashboardData.k6.totalRuns)} runs • Last 30 days
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-2">
+                          No tests available
                         </p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted-foreground py-2">
-                        No k6 tests run
+                      )}
+                    </div>
+                    <div className="rounded-lg bg-blue-500/10 p-2 shrink-0">
+                      <Code className="h-4 w-4 text-blue-500" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="relative overflow-hidden">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2 min-w-0 flex-1">
+                      <p className="text-sm font-medium text-muted-foreground">
+                        Active Jobs
                       </p>
-                    )}
+                      {dashboardData.stats.jobs > 0 ? (
+                        <>
+                          <div className="text-2xl font-bold tracking-tight truncate">
+                            {formatCompactNumber(dashboardData.stats.jobs)}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Scheduled jobs
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-2">
+                          No jobs configured
+                        </p>
+                      )}
+                    </div>
+                    <div className="rounded-lg bg-amber-500/10 p-2 shrink-0">
+                      <CalendarClock className="h-4 w-4 text-amber-500" />
+                    </div>
                   </div>
-                  <div className="rounded-lg bg-violet-500/10 p-2 shrink-0">
-                    <K6Logo width={16} height={16} />
+                </CardContent>
+              </Card>
+
+              <Card className="relative overflow-hidden">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2 min-w-0 flex-1">
+                      <p className="text-sm font-medium text-muted-foreground">
+                        Active Monitors
+                      </p>
+                      {dashboardData.monitors.total > 0 ? (
+                        <>
+                          <div className="text-2xl font-bold tracking-tight truncate">
+                            {formatCompactNumber(dashboardData.monitors.active)}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            of {formatCompactNumber(dashboardData.monitors.total)} total
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-2">
+                          No monitors setup
+                        </p>
+                      )}
+                    </div>
+                    <div className="rounded-lg bg-green-500/10 p-2 shrink-0">
+                      <Globe className="h-4 w-4 text-green-500" />
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              <Card className="relative overflow-hidden">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2 min-w-0 flex-1">
+                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                        Job Runs
+                        <MetricInfoButton
+                          title="What counts as a run?"
+                          description="This number shows completed job executions within the selected project over the last 30 days."
+                          bullets={[
+                            "Covers the last 30 days of activity",
+                            "Includes scheduled and manual job runs only",
+                            "Synthetic monitor checks are excluded",
+                            "Playground executions are excluded",
+                          ]}
+                          ariaLabel="Learn what Total Job Runs includes"
+                        />
+                      </p>
+                      {dashboardData.stats.runs > 0 ? (
+                        <>
+                          <div className="text-2xl font-bold tracking-tight truncate">
+                            {formatCompactNumber(dashboardData.stats.runs)}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Last 30 days
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-2">
+                          No runs available
+                        </p>
+                      )}
+                    </div>
+                    <div className="rounded-lg bg-purple-500/10 p-2 shrink-0">
+                      <ClipboardList className="h-4 w-4 text-purple-500" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="relative overflow-hidden">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2 min-w-0 flex-1">
+                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                        Playwright Mins
+                        <MetricInfoButton
+                          title="How we calculate Playwright Mins"
+                          description="Aggregates execution time from all Playwright test runs in the past 30 days."
+                          bullets={[
+                            "Covers the last 30 days of execution",
+                            "Includes job runs, synthetic monitor checks, and playground tests",
+                            "Each monitor location is counted separately",
+                            "Running executions are added once they finish",
+                          ]}
+                          ariaLabel="Learn what Playwright Mins includes"
+                          align="end"
+                        />
+                      </p>
+                      {dashboardData.jobs.executionTime.totalMinutes > 0 ? (
+                        <>
+                          <div className="text-2xl font-bold tracking-tight truncate">
+                            {formatExecutionTime(
+                              dashboardData.jobs.executionTime.totalMinutes,
+                              dashboardData.jobs.executionTime.totalSeconds
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {formatCompactNumber(dashboardData.jobs.executionTime.processedRuns)}{" "}
+                            runs • Last 30 days
+                          </p>
+                          {dashboardData.jobs.executionTime.errors > 0 && (
+                            <p className="text-xs text-yellow-600">
+                              {dashboardData.jobs.executionTime.errors} parsing
+                              errors
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-2">
+                          No execution time
+                        </p>
+                      )}
+                    </div>
+                    <div className="rounded-lg bg-cyan-500/10 p-2 shrink-0">
+                      <PlaywrightLogo width={16} height={16} />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="relative overflow-hidden">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2 min-w-0 flex-1">
+                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                        k6 VU x Mins
+                        <MetricInfoButton
+                          title="How we calculate k6 VU Mins"
+                          description="Execution time aggregates every k6-powered run in the past 30 days."
+                          bullets={[
+                            "Covers the last 30 days of execution",
+                            "Includes k6 job runs and playground tests",
+                            "Calculated from completed k6 test runs only",
+                            "Running executions are added once they finish",
+                          ]}
+                          ariaLabel="Learn what k6 VU Minutes includes"
+                          align="end"
+                        />
+                      </p>
+                      {dashboardData.k6.totalRuns > 0 ? (
+                        <>
+                          <div className="text-2xl font-bold tracking-tight truncate">
+                            {formatExecutionTime(
+                              dashboardData.k6.totalVuMinutes,
+                              Math.floor(dashboardData.k6.totalDurationMs / 1000)
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {formatCompactNumber(dashboardData.k6.totalRuns)} runs • Last 30 days
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-2">
+                          No k6 tests run
+                        </p>
+                      )}
+                    </div>
+                    <div className="rounded-lg bg-violet-500/10 p-2 shrink-0">
+                      <K6Logo width={16} height={16} />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Top Row Charts - 3 charts per row */}
+            <div className="grid gap-4 lg:grid-cols-3 mb-4">
+              {/* Job Success Rate Chart */}
+              <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+                <CardHeader className="pb-2 px-4 pt-4">
+                  <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                    <div className="rounded-md bg-amber-500/10 p-1.5">
+                      <CalendarClock className="h-4 w-4 text-amber-500" />
+                    </div>
+                    Job Status
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground/80">
+                    Job execution success vs failure last 30 days
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 pt-4">
+                  {chartData.jobRunsWindowData.success +
+                    chartData.jobRunsWindowData.failed >
+                    0 ? (
+                    <ChartContainer config={chartConfig} className="h-43 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData.jobRunsData}>
+                          <XAxis dataKey="name" fontSize={11} />
+                          <YAxis fontSize={11} />
+                          <ChartTooltip content={<ChartTooltipContent />} />
+                          <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                            {chartData.jobRunsData.map((entry: { name: string; count: number; fill: string }, index: number) => (
+                              <Cell key={`cell-${index}`} fill={entry.fill} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </ChartContainer>
+                  ) : (
+                    <div className="h-43 flex items-center justify-center">
+                      <div className="text-center">
+                        <CalendarClock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                          No job runs
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Monitor Status Chart */}
+              <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+                <CardHeader className="pb-2 px-4 pt-4">
+                  <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                    <div className="rounded-md bg-green-500/10 p-1.5">
+                      <Globe className="h-4 w-4 text-green-500" />
+                    </div>
+                    Monitor Status
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground/80">
+                    Current monitor health distribution
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 pt-4">
+                  {dashboardData.monitors.total > 0 ? (
+                    <ChartContainer config={chartConfig} className="h-40 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData.monitorStatusData}>
+                          <XAxis dataKey="name" fontSize={11} />
+                          <YAxis fontSize={11} />
+                          <ChartTooltip content={<ChartTooltipContent />} />
+                          <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                            {chartData.monitorStatusData.map((entry: { name: string; count: number; fill: string }, index: number) => (
+                              <Cell key={`cell-${index}`} fill={entry.fill} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </ChartContainer>
+                  ) : (
+                    <div className="h-43 flex items-center justify-center">
+                      <div className="text-center">
+                        <Globe className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                          No monitors configured
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Test Types Distribution Chart */}
+              <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+                <CardHeader className="pb-2 px-4 pt-4">
+                  <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                    <div className="rounded-md bg-blue-500/10 p-1.5">
+                      <Code className="h-4 w-4 text-blue-500" />
+                    </div>
+                    Test Types
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground/80">
+                    Distribution of test types
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 pt-4">
+                  {dashboardData.tests.byType &&
+                    dashboardData.tests.byType.length > 0 ? (
+                    <ChartContainer config={chartConfig} className="h-43 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={dashboardData.tests.byType.map((item) => {
+                              const typeColorMap: Record<string, string> = {
+                                browser: "#0ea5e9",
+                                api: "#0d9488",
+                                database: "#0891b2",
+                                custom: "#2563eb",
+                              };
+                              return {
+                                name: item.type,
+                                value: item.count,
+                                fill:
+                                  typeColorMap[item.type.toLowerCase()] ||
+                                  "#6b7280",
+                              };
+                            })}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={25}
+                            outerRadius={70}
+                            dataKey="value"
+                            strokeWidth={0}
+                          ></Pie>
+                          <ChartTooltip content={<ChartTooltipContent />} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </ChartContainer>
+                  ) : (
+                    <div className="h-43 flex items-center justify-center">
+                      <div className="text-center">
+                        <Code className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                          No test types data
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Bottom Row Charts - 3 charts per row */}
+            <div className="grid gap-4 lg:grid-cols-3">
+              {/* Test Activity Trend Chart */}
+              <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+                <CardHeader className="pb-2 px-4 pt-4">
+                  <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                    <div className="rounded-md bg-blue-500/10 p-1.5">
+                      <Activity className="h-4 w-4 text-blue-500" />
+                    </div>
+                    Test Activity
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground/80">
+                    Playground test executions last 30 days
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 pt-4">
+                  {dashboardData.tests.playgroundExecutions30d > 0 ? (
+                    <ChartContainer config={chartConfig} className="h-43 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={chartData.testActivityData}>
+                          <XAxis dataKey="day" fontSize={11} />
+                          <YAxis fontSize={11} />
+                          <ChartTooltip content={<CustomTooltip />} />
+                          <Area
+                            type="monotone"
+                            dataKey="executions"
+                            stroke="#3b82f6"
+                            fill="#3b82f6"
+                            fillOpacity={0.2}
+                            strokeWidth={2}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </ChartContainer>
+                  ) : (
+                    <div className="h-43 flex items-center justify-center">
+                      <div className="text-center">
+                        <Activity className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                          No playground executions
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Job Activity Trend Chart */}
+              <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+                <CardHeader className="pb-2 px-4 pt-4">
+                  <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                    <div className="rounded-md bg-purple-500/10 p-1.5">
+                      <Activity className="h-4 w-4 text-purple-500" />
+                    </div>
+                    Job Activity
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground/80">
+                    Job execution by trigger types last 30 days
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 pt-4">
+                  {dashboardData.jobs.total > 0 ? (
+                    <ChartContainer config={chartConfig} className="h-43 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={chartData.jobActivityData}>
+                          <XAxis dataKey="day" fontSize={11} />
+                          <YAxis fontSize={11} />
+                          <ChartTooltip content={<CustomTooltip />} />
+                          <Area
+                            type="monotone"
+                            dataKey="scheduled"
+                            stackId="1"
+                            stroke="#3b82f6"
+                            fill="#3b82f6"
+                            fillOpacity={0.6}
+                            name="Scheduled"
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="manual"
+                            stackId="1"
+                            stroke="#10b981"
+                            fill="#10b981"
+                            fillOpacity={0.6}
+                            name="Manual"
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="remote"
+                            stackId="1"
+                            stroke="#f59e0b"
+                            fill="#f59e0b"
+                            fillOpacity={0.6}
+                            name="Remote"
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </ChartContainer>
+                  ) : (
+                    <div className="h-43 flex items-center justify-center">
+                      <div className="text-center">
+                        <CalendarClock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                          No job activity
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Monitor Uptime Trend Chart */}
+              <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
+                <CardHeader className="pb-2 px-4 pt-4">
+                  <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                    <div className="rounded-md bg-emerald-500/10 p-1.5">
+                      <TrendingUp className="h-4 w-4 text-emerald-500" />
+                    </div>
+                    Uptime Trend
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground/80">
+                    Monitor uptime percentage last 30 days
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 pt-4">
+                  {dashboardData.monitors.total > 0 ? (
+                    <ChartContainer config={chartConfig} className="h-43 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={chartData.uptimeTrendData}>
+                          <XAxis dataKey="day" fontSize={11} />
+                          <YAxis domain={[80, 100]} fontSize={10} />
+                          <ChartTooltip content={<CustomTooltip />} />
+                          <Line
+                            type="monotone"
+                            dataKey="uptime"
+                            stroke="#3b82f6"
+                            strokeWidth={2}
+                            dot={{ fill: "#3b82f6", strokeWidth: 0, r: 3 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </ChartContainer>
+                  ) : (
+                    <div className="h-44 flex items-center justify-center">
+                      <div className="text-center">
+                        <TrendingUp className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                          No uptime data
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </div>
-
-          {/* Top Row Charts - 3 charts per row */}
-          <div className="grid gap-4 lg:grid-cols-3 mb-4">
-            {/* Job Success Rate Chart */}
-            <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="pb-2 px-4 pt-4">
-                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                  <div className="rounded-md bg-amber-500/10 p-1.5">
-                    <CalendarClock className="h-4 w-4 text-amber-500" />
-                  </div>
-                  Job Status
-                </CardTitle>
-                <CardDescription className="text-xs text-muted-foreground/80">
-                  Job execution success vs failure last 30 days
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-4 pt-4">
-                {chartData.jobRunsWindowData.success +
-                  chartData.jobRunsWindowData.failed >
-                  0 ? (
-                  <ChartContainer config={chartConfig} className="h-43 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={chartData.jobRunsData}>
-                        <XAxis dataKey="name" fontSize={11} />
-                        <YAxis fontSize={11} />
-                        <ChartTooltip content={<ChartTooltipContent />} />
-                        <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                          {chartData.jobRunsData.map((entry: { name: string; count: number; fill: string }, index: number) => (
-                            <Cell key={`cell-${index}`} fill={entry.fill} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="h-43 flex items-center justify-center">
-                    <div className="text-center">
-                      <CalendarClock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-sm text-muted-foreground">
-                        No job runs
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Monitor Status Chart */}
-            <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="pb-2 px-4 pt-4">
-                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                  <div className="rounded-md bg-green-500/10 p-1.5">
-                    <Globe className="h-4 w-4 text-green-500" />
-                  </div>
-                  Monitor Status
-                </CardTitle>
-                <CardDescription className="text-xs text-muted-foreground/80">
-                  Current monitor health distribution
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-4 pt-4">
-                {dashboardData.monitors.total > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-40 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={chartData.monitorStatusData}>
-                        <XAxis dataKey="name" fontSize={11} />
-                        <YAxis fontSize={11} />
-                        <ChartTooltip content={<ChartTooltipContent />} />
-                        <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                          {chartData.monitorStatusData.map((entry: { name: string; count: number; fill: string }, index: number) => (
-                            <Cell key={`cell-${index}`} fill={entry.fill} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="h-43 flex items-center justify-center">
-                    <div className="text-center">
-                      <Globe className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-sm text-muted-foreground">
-                        No monitors configured
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Test Types Distribution Chart */}
-            <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="pb-2 px-4 pt-4">
-                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                  <div className="rounded-md bg-blue-500/10 p-1.5">
-                    <Code className="h-4 w-4 text-blue-500" />
-                  </div>
-                  Test Types
-                </CardTitle>
-                <CardDescription className="text-xs text-muted-foreground/80">
-                  Distribution of test types
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-4 pt-4">
-                {dashboardData.tests.byType &&
-                  dashboardData.tests.byType.length > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-43 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={dashboardData.tests.byType.map((item) => {
-                            const typeColorMap: Record<string, string> = {
-                              browser: "#0ea5e9",
-                              api: "#0d9488",
-                              database: "#0891b2",
-                              custom: "#2563eb",
-                            };
-                            return {
-                              name: item.type,
-                              value: item.count,
-                              fill:
-                                typeColorMap[item.type.toLowerCase()] ||
-                                "#6b7280",
-                            };
-                          })}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={25}
-                          outerRadius={70}
-                          dataKey="value"
-                          strokeWidth={0}
-                        ></Pie>
-                        <ChartTooltip content={<ChartTooltipContent />} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="h-43 flex items-center justify-center">
-                    <div className="text-center">
-                      <Code className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-sm text-muted-foreground">
-                        No test types data
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Bottom Row Charts - 3 charts per row */}
-          <div className="grid gap-4 lg:grid-cols-3">
-            {/* Test Activity Trend Chart */}
-            <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="pb-2 px-4 pt-4">
-                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                  <div className="rounded-md bg-blue-500/10 p-1.5">
-                    <Activity className="h-4 w-4 text-blue-500" />
-                  </div>
-                  Test Activity
-                </CardTitle>
-                <CardDescription className="text-xs text-muted-foreground/80">
-                  Playground test executions last 30 days
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-4 pt-4">
-                {dashboardData.tests.playgroundExecutions30d > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-43 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData.testActivityData}>
-                        <XAxis dataKey="day" fontSize={11} />
-                        <YAxis fontSize={11} />
-                        <ChartTooltip content={<CustomTooltip />} />
-                        <Area
-                          type="monotone"
-                          dataKey="executions"
-                          stroke="#3b82f6"
-                          fill="#3b82f6"
-                          fillOpacity={0.2}
-                          strokeWidth={2}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="h-43 flex items-center justify-center">
-                    <div className="text-center">
-                      <Activity className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-sm text-muted-foreground">
-                        No playground executions
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Job Activity Trend Chart */}
-            <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="pb-2 px-4 pt-4">
-                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                  <div className="rounded-md bg-purple-500/10 p-1.5">
-                    <Activity className="h-4 w-4 text-purple-500" />
-                  </div>
-                  Job Activity
-                </CardTitle>
-                <CardDescription className="text-xs text-muted-foreground/80">
-                  Job execution by trigger types last 30 days
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-4 pt-4">
-                {dashboardData.jobs.total > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-43 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData.jobActivityData}>
-                        <XAxis dataKey="day" fontSize={11} />
-                        <YAxis fontSize={11} />
-                        <ChartTooltip content={<CustomTooltip />} />
-                        <Area
-                          type="monotone"
-                          dataKey="scheduled"
-                          stackId="1"
-                          stroke="#3b82f6"
-                          fill="#3b82f6"
-                          fillOpacity={0.6}
-                          name="Scheduled"
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="manual"
-                          stackId="1"
-                          stroke="#10b981"
-                          fill="#10b981"
-                          fillOpacity={0.6}
-                          name="Manual"
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="remote"
-                          stackId="1"
-                          stroke="#f59e0b"
-                          fill="#f59e0b"
-                          fillOpacity={0.6}
-                          name="Remote"
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="h-43 flex items-center justify-center">
-                    <div className="text-center">
-                      <CalendarClock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-sm text-muted-foreground">
-                        No job activity
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Monitor Uptime Trend Chart */}
-            <Card className="h-full border-border/50 hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="pb-2 px-4 pt-4">
-                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                  <div className="rounded-md bg-emerald-500/10 p-1.5">
-                    <TrendingUp className="h-4 w-4 text-emerald-500" />
-                  </div>
-                  Uptime Trend
-                </CardTitle>
-                <CardDescription className="text-xs text-muted-foreground/80">
-                  Monitor uptime percentage last 30 days
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="p-4 pt-4">
-                {dashboardData.monitors.total > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-43 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData.uptimeTrendData}>
-                        <XAxis dataKey="day" fontSize={11} />
-                        <YAxis domain={[80, 100]} fontSize={10} />
-                        <ChartTooltip content={<CustomTooltip />} />
-                        <Line
-                          type="monotone"
-                          dataKey="uptime"
-                          stroke="#3b82f6"
-                          strokeWidth={2}
-                          dot={{ fill: "#3b82f6", strokeWidth: 0, r: 3 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="h-44 flex items-center justify-center">
-                    <div className="text-center">
-                      <TrendingUp className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-sm text-muted-foreground">
-                        No uptime data
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+        )}
       </TabsContent>
 
       <TabsContent value="k6">

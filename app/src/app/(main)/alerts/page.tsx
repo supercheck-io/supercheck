@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { NotificationProviderForm } from "@/components/alerts/notification-provider-form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Bell } from "lucide-react";
+import { Plus, BellRing, Mail } from "lucide-react";
 import { DataTable } from "@/components/alerts/data-table";
 import { columns, type AlertHistory } from "@/components/alerts/columns";
 
@@ -45,6 +45,7 @@ import {
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canCreateNotifications } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 
 type NotificationProvider = {
   id: string;
@@ -340,194 +341,198 @@ function AlertsPage() {
   return (
     <div className="">
       <PageBreadcrumbs items={breadcrumbs} />
-      <div className="mx-auto p-4">
-        <div className="">
-          <Card>
-            <Tabs defaultValue="history" className="w-full">
-              <CardHeader>
+      <div className="">
+        <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
+          <CardContent className="p-6">
+            <Tabs defaultValue="history" className="space-y-4">
+              <TabsList>
+                <TabsTrigger value="providers">
+                  <Mail className="h-4 w-4 mr-2" />
+                  Notification Channels
+                </TabsTrigger>
+                <TabsTrigger value="history">
+                  <BellRing className="h-4 w-4 mr-2" />
+                  Alert History
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="providers" className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <TabsList className="grid w-full max-w-md grid-cols-2">
-                    <TabsTrigger value="providers">
+                  <div>
+                    <CardTitle className="text-2xl font-semibold">
                       Notification Channels
-                    </TabsTrigger>
-                    <TabsTrigger value="history">Alert History</TabsTrigger>
-                  </TabsList>
-                  <div className="flex items-center space-x-2">
-                    <Dialog
-                      open={isCreateDialogOpen}
-                      onOpenChange={setIsCreateDialogOpen}
-                    >
-                      <DialogTrigger asChild>
-                        <Button disabled={!canCreate}>
+                    </CardTitle>
+                    <CardDescription>
+                      Configure how you want to receive alerts
+                    </CardDescription>
+                  </div>
+                  <Button
+                    onClick={() => setIsCreateDialogOpen(true)}
+                    disabled={!canCreate}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Channel
+                  </Button>
+                </div>
+
+                {providers.length === 0 ? (
+                  <DashboardEmptyState
+                    className="min-h-[60vh]"
+                    title="No notification channels"
+                    description="Add your first notification channel to start receiving alerts"
+                    icon={<BellRing className="h-12 w-12" />}
+                    action={
+                      <Button
+                        onClick={() => setIsCreateDialogOpen(true)}
+                        disabled={!canCreate}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Channel
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <NotificationChannelsComponent
+                    onEditChannel={handleEditChannel}
+                    onDeleteChannel={handleDeleteChannel}
+                    providersData={providers.map((p) => ({
+                      id: p.id,
+                      name: p.name,
+                      type: p.type,
+                      config: p.config,
+                      isEnabled: p.isEnabled,
+                      createdAt: p.createdAt,
+                      updatedAt: p.updatedAt || p.createdAt,
+                      lastUsed: p.lastUsed,
+                    }))}
+                    refreshTrigger={refreshTrigger}
+                  />
+                )}
+              </TabsContent>
+
+              <TabsContent value="history" className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-2xl font-semibold">
+                      Alert History
+                    </CardTitle>
+                    <CardDescription>View the history of alerts</CardDescription>
+                  </div>
+                  <Button
+                    onClick={() => setIsCreateDialogOpen(true)}
+                    disabled={!canCreate}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Channel
+                  </Button>
+                </div>
+                <div className="h-full flex-1 flex-col md:flex">
+                  {alertHistory.length === 0 && !loading ? (
+                    <DashboardEmptyState
+                      className="min-h-[60vh]"
+                      title="No alerts found"
+                      description="Alerts will appear here when your monitors or jobs trigger notifications"
+                      icon={<BellRing className="h-12 w-12" />}
+                      action={
+                        <Button
+                          onClick={() => setIsCreateDialogOpen(true)}
+                          disabled={!canCreate}
+                        >
                           <Plus className="h-4 w-4 mr-2" />
                           Add Channel
                         </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                        <DialogHeader>
-                          <DialogTitle>Create Notification Channel</DialogTitle>
-                          <DialogDescription>
-                            Add a new way to receive alert notifications
-                          </DialogDescription>
-                        </DialogHeader>
-                        <NotificationProviderForm
-                          onSuccess={handleCreateProvider}
-                          onCancel={() => setIsCreateDialogOpen(false)}
-                          defaultType={preselectedType}
-                        />
-                      </DialogContent>
-                    </Dialog>
-
-                    <Dialog
-                      open={isEditDialogOpen}
-                      onOpenChange={setIsEditDialogOpen}
-                    >
-                      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                        <DialogHeader>
-                          <DialogTitle>Edit Notification Channel</DialogTitle>
-                          <DialogDescription>
-                            Update your notification channel settings
-                          </DialogDescription>
-                        </DialogHeader>
-                        {editingProvider && (
-                          <NotificationProviderForm
-                            initialData={editingProvider}
-                            onSuccess={handleUpdateProvider}
-                            onCancel={() => {
-                              setIsEditDialogOpen(false);
-                              setEditingProvider(null);
-                            }}
-                          />
-                        )}
-                      </DialogContent>
-                    </Dialog>
-
-                    <AlertDialog
-                      open={isDeleteDialogOpen}
-                      onOpenChange={setIsDeleteDialogOpen}
-                    >
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>
-                            Delete Notification Channel
-                          </AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to delete &quot;
-                            {((
-                              deletingProvider?.config as Record<
-                                string,
-                                unknown
-                              >
-                            )?.name as string) || deletingProvider?.type}
-                            &quot;?
-                            <br />
-                            <br />
-                            <strong>Note: </strong> This action cannot be
-                            undone. Make sure this channel is not being used by
-                            any monitors or jobs.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel
-                            onClick={() => {
-                              setIsDeleteDialogOpen(false);
-                              setDeletingProvider(null);
-                            }}
-                          >
-                            Cancel
-                          </AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={confirmDeleteProvider}
-                            className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
-                          >
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
+                      }
+                    />
+                  ) : (
+                    <DataTable
+                      columns={columns}
+                      data={alertHistory}
+                      isLoading={loading}
+                    />
+                  )}
                 </div>
-              </CardHeader>
-
-              <CardContent className="pt-0">
-                <TabsContent value="providers">
-                  <div className="space-y-4">
-                    <div>
-                      <CardTitle className="text-2xl font-semibold">
-                        Notification Channels
-                      </CardTitle>
-                      <CardDescription>
-                        Configure how you want to receive alerts
-                      </CardDescription>
-                    </div>
-
-                    {providers.length === 0 ? (
-                      <div className="text-center py-8">
-                        <Bell className="h-10 w-10 text-muted-foreground mx-auto" />
-                        <h3 className="text-lg font-medium">
-                          No notification channels
-                        </h3>
-                        <p className="text-muted-foreground text-sm mb-4">
-                          Add your first notification channel to start receiving
-                          alerts
-                        </p>
-                      </div>
-                    ) : (
-                      <NotificationChannelsComponent
-                        onEditChannel={handleEditChannel}
-                        onDeleteChannel={handleDeleteChannel}
-                        providersData={providers.map((p) => ({
-                          id: p.id,
-                          name: p.name,
-                          type: p.type,
-                          config: p.config,
-                          isEnabled: p.isEnabled,
-                          createdAt: p.createdAt,
-                          updatedAt: p.updatedAt || p.createdAt,
-                          lastUsed: p.lastUsed,
-                        }))}
-                        refreshTrigger={refreshTrigger}
-                      />
-                    )}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="history" className="mt-2">
-                  <div className="h-full flex-1 flex-col md:flex">
-                    {alertHistory.length === 0 && !loading ? (
-                      <>
-                        <div>
-                          <CardTitle className="text-2xl font-semibold">
-                            Alert History
-                          </CardTitle>
-                          <CardDescription>
-                            View the history of alerts
-                          </CardDescription>
-                        </div>
-                        <div className="text-center py-12">
-                          <Bell className="h-10 w-10 text-muted-foreground mx-auto" />
-                          <h3 className="text-lg font-medium">
-                            No alerts found
-                          </h3>
-                          <p className="text-muted-foreground text-sm">
-                            Alerts will appear here when your monitors or jobs
-                            trigger notifications
-                          </p>
-                        </div>
-                      </>
-                    ) : (
-                      <DataTable
-                        columns={columns}
-                        data={alertHistory}
-                        isLoading={loading}
-                      />
-                    )}
-                  </div>
-                </TabsContent>
-              </CardContent>
+              </TabsContent>
             </Tabs>
-          </Card>
-        </div>
+
+            <Dialog
+              open={isCreateDialogOpen}
+              onOpenChange={setIsCreateDialogOpen}
+            >
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Create Notification Channel</DialogTitle>
+                  <DialogDescription>
+                    Add a new way to receive alert notifications
+                  </DialogDescription>
+                </DialogHeader>
+                <NotificationProviderForm
+                  onSuccess={handleCreateProvider}
+                  onCancel={() => setIsCreateDialogOpen(false)}
+                  defaultType={preselectedType}
+                />
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Edit Notification Channel</DialogTitle>
+                  <DialogDescription>
+                    Update your notification channel settings
+                  </DialogDescription>
+                </DialogHeader>
+                {editingProvider && (
+                  <NotificationProviderForm
+                    initialData={editingProvider}
+                    onSuccess={handleUpdateProvider}
+                    onCancel={() => {
+                      setIsEditDialogOpen(false);
+                      setEditingProvider(null);
+                    }}
+                  />
+                )}
+              </DialogContent>
+            </Dialog>
+
+            <AlertDialog
+              open={isDeleteDialogOpen}
+              onOpenChange={setIsDeleteDialogOpen}
+            >
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Notification Channel</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete &quot;
+                    {((
+                      deletingProvider?.config as Record<string, unknown>
+                    )?.name as string) || deletingProvider?.type}
+                    &quot;?
+                    <br />
+                    <br />
+                    <strong>Note: </strong> This action cannot be undone. Make
+                    sure this channel is not being used by any monitors or jobs.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel
+                    onClick={() => {
+                      setIsDeleteDialogOpen(false);
+                      setDeletingProvider(null);
+                    }}
+                  >
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={confirmDeleteProvider}
+                    className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
