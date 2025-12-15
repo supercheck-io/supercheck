@@ -1,1 +1,0 @@
-ALTER TABLE "k6_performance_runs" ADD COLUMN "vus_max" integer;
