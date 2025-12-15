@@ -22,7 +22,7 @@ interface CreatePromptContext {
 }
 
 // K6 run metrics interface for analyze prompt
-interface K6RunMetrics {
+export interface K6RunMetrics {
   p95ResponseTimeMs?: number | null;
   p99ResponseTimeMs?: number | null;
   avgResponseTimeMs?: number | null;
@@ -31,7 +31,7 @@ interface K6RunMetrics {
   vusMax?: number | null;
 }
 
-interface K6RunData {
+export interface K6RunData {
   runId: string;
   status?: string;
   startedAt?: string;
@@ -43,11 +43,12 @@ interface K6RunData {
   scriptName?: string;
 }
 
-interface K6AnalyzePromptContext {
+export interface K6AnalyzePromptContext {
   baselineRun: K6RunData;
   compareRun: K6RunData;
   baselineReportHtml?: string;
   compareReportHtml?: string;
+  jobName?: string;
 }
 
 
@@ -379,13 +380,14 @@ CONFIDENCE:
     compareRun,
     baselineReportHtml,
     compareReportHtml,
+    jobName: providedJobName,
   }: K6AnalyzePromptContext): string {
     // Format metrics for prompt
     const formatMetric = (val: number | null | undefined, unit: string = "") =>
       val != null ? `${val}${unit}` : "N/A";
     
-    // Get job name (both runs should have the same job)
-    const jobName = baselineRun.jobName || compareRun.jobName || "N/A";
+    // Get job name (prioritize provided name, then run data)
+    const jobName = providedJobName || baselineRun.jobName || compareRun.jobName || "N/A";
     
     const baselineMetrics = `
 - Job Name: ${jobName}

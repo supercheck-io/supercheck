@@ -11,8 +11,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Sparkles, Copy, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import Editor, { Monaco } from "@monaco-editor/react";
+import Editor, { Monaco, useMonaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
+import { useTheme } from "next-themes";
 
 interface AIK6AnalyzeViewerProps {
     open: boolean;
@@ -35,6 +36,17 @@ export function AIK6AnalyzeViewer({
 }: AIK6AnalyzeViewerProps) {
     const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
     const monacoRef = useRef<Monaco | null>(null);
+    const monaco = useMonaco();
+    const { resolvedTheme } = useTheme();
+    const isDarkTheme = resolvedTheme !== "light";
+    const editorTheme = isDarkTheme ? "vs-dark" : "warm-light";
+
+    // Update editor theme when system theme changes
+    useEffect(() => {
+        if (monaco && editorRef.current) {
+            monaco.editor.setTheme(editorTheme);
+        }
+    }, [monaco, editorTheme]);
 
     // Scroll to bottom when streaming new content
     useEffect(() => {
@@ -50,6 +62,19 @@ export function AIK6AnalyzeViewer({
     ) => {
         editorRef.current = editor;
         monacoRef.current = monaco;
+
+        // Define warm-light theme for light mode
+        monaco.editor.defineTheme("warm-light", {
+            base: "vs",
+            inherit: true,
+            rules: [],
+            colors: {
+                "editor.background": "#FAF7F3",
+            },
+        });
+
+        // Apply the correct theme based on current system preference
+        monaco.editor.setTheme(isDarkTheme ? "vs-dark" : "warm-light");
 
         // Configure markdown language
         monaco.languages.setLanguageConfiguration("markdown", {
@@ -134,7 +159,7 @@ export function AIK6AnalyzeViewer({
                         <Editor
                             height="100%"
                             language="markdown"
-                            theme="vs-dark"
+                            theme={editorTheme}
                             value={content}
                             onMount={handleEditorMount}
                             options={{
