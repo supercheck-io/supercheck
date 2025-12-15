@@ -20,7 +20,7 @@ export enum ScriptType {
 const scriptTypeToTemplateId: Record<ScriptType, string> = {
   [ScriptType.Browser]: "pw-browser-smoke",
   [ScriptType.API]: "pw-api-health",
-  [ScriptType.Database]: "pw-db-read",
+  [ScriptType.Database]: "pw-db-discovery",
   [ScriptType.Custom]: "pw-custom-e2e",
   [ScriptType.Performance]: "k6-smoke-check",
 };

@@ -45,7 +45,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
 
     this.workerLocation = this.configService.get<string>(
       'WORKER_LOCATION',
-      'us-east',
+      'eu-central',
     );
 
     const enableLocationFiltering = this.configService.get<string>(
@@ -73,7 +73,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     job: Job<K6Task>,
   ): Promise<{ success: boolean; timedOut?: boolean; error?: string }> {
     const processStartTime = Date.now();
-    const requestedLocation = job.data.location || 'us-east';
+    const requestedLocation = job.data.location || 'eu-central';
     const normalizedJobLocation = requestedLocation.toLowerCase();
     const normalizedWorkerLocation = this.workerLocation.toLowerCase();
     const jobLocationIsWildcard = this.isWildcardLocation(
@@ -234,7 +234,7 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         jobId: taskData.jobId ?? null,
         organizationId: taskData.organizationId,
         projectId: taskData.projectId,
-        location: this.workerLocation as any, // Actual execution location
+        location: effectiveJobLocation as any, // Use the task's requested/resolved location
         status: k6PerformanceStatus,
         startedAt: new Date(Date.now() - result.durationMs),
         completedAt: new Date(),

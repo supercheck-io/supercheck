@@ -20,7 +20,7 @@ import {
 } from "@/lib/api-key-rate-limiter";
 import { verifyApiKey } from "@/lib/security/api-key-hash";
 
-const DEFAULT_K6_LOCATION: K6Location = "global";
+const DEFAULT_K6_LOCATION: K6Location = "eu-central";
 
 const normalizeK6Location = (value?: string): K6Location => {
   const lower = value?.toLowerCase();

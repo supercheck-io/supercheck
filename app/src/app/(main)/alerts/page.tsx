@@ -411,21 +411,6 @@ function AlertsPage() {
               </TabsContent>
 
               <TabsContent value="history" className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-2xl font-semibold">
-                      Alert History
-                    </CardTitle>
-                    <CardDescription>View the history of alerts</CardDescription>
-                  </div>
-                  <Button
-                    onClick={() => setIsCreateDialogOpen(true)}
-                    disabled={!canCreate}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Channel
-                  </Button>
-                </div>
                 <div className="h-full flex-1 flex-col md:flex">
                   {alertHistory.length === 0 && !loading ? (
                     <DashboardEmptyState

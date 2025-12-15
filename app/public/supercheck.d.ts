@@ -266,6 +266,8 @@ declare module "@playwright/test" {
     newContext(options?: { baseURL?: string; extraHTTPHeaders?: { [key: string]: string }; httpCredentials?: { username: string; password: string }; ignoreHTTPSErrors?: boolean; proxy?: { server: string; bypass?: string; username?: string; password?: string }; timeout?: number; userAgent?: string; storageState?: string | { cookies: any[]; origins: any[] } }): Promise<APIRequestContext>;
     /** Disposes the APIRequestContext. */
     dispose(): Promise<void>;
+    /** Sends HTTP(S) request and returns its response. This is a general-purpose fetch method that supports any HTTP method. */
+    fetch(urlOrRequest: string | Request, options?: { data?: any; form?: { [key: string]: string | number | boolean }; headers?: { [key: string]: string }; ignoreHTTPSErrors?: boolean; maxRedirects?: number; method?: string; multipart?: { [key: string]: string | number | boolean | ReadStream | { name: string; mimeType: string; buffer: Buffer } }; params?: { [key: string]: string | number | boolean }; timeout?: number; failOnStatusCode?: boolean }): Promise<Response>;
     /** Performs a DELETE request. */
     delete(url: string, options?: { data?: any; form?: { [key: string]: string | number | boolean }; headers?: { [key: string]: string }; ignoreHTTPSErrors?: boolean; maxRedirects?: number; multipart?: { [key: string]: string | number | boolean | ReadStream | { name: string; mimeType: string; buffer: Buffer } }; params?: { [key: string]: string | number | boolean }; timeout?: number; failOnStatusCode?: boolean }): Promise<Response>;
     /** Performs a GET request. */
@@ -535,6 +537,658 @@ declare module "@playwright/test" {
   export const expect: Expect;
 }
 
+// === Complete k6 Performance Testing Type Definitions ===
+
+/**
+ * k6 Core Module - Performance testing functions
+ * https://grafana.com/docs/k6/latest/javascript-api/k6/
+ */
+declare module "k6" {
+  /**
+   * Check procedure for validating values.
+   * @template VT - The type of value being checked
+   */
+  export interface Checker<VT> {
+    /** Check procedure that returns true if check passed. */
+    (val: VT): boolean;
+  }
+
+  /**
+   * Named check procedures mapped by description.
+   * @template VT - The type of value being checked
+   */
+  export interface Checkers<VT> {
+    [description: string]: Checker<VT>;
+  }
+
+  /**
+   * Run checks on a value.
+   * https://grafana.com/docs/k6/latest/javascript-api/k6/check/
+   * @template VT - Value type
+   * @param val - Value to test
+   * @param sets - Tests (checks) to run on the value
+   * @param tags - Extra tags to attach to metrics emitted
+   * @returns `true` if all checks have succeeded, otherwise `false`
+   * @example
+   * ```javascript
+   * check(res, {
+   *   "response code was 200": (res) => res.status === 200,
+   *   "body size was correct": (res) => res.body.length === 1234,
+   * });
+   * ```
+   */
+  export function check<VT>(val: VT, sets: Checkers<VT>, tags?: object): boolean;
+
+  /**
+   * Immediately throw an error, aborting the current script iteration.
+   * https://grafana.com/docs/k6/latest/javascript-api/k6/fail/
+   * @param err - Error message that gets printed to stderr
+   * @example
+   * ```javascript
+   * fail("abort current iteration");
+   * ```
+   */
+  export function fail(err?: string): never;
+
+  /**
+   * Run code inside a group for organizing test logic.
+   * https://grafana.com/docs/k6/latest/javascript-api/k6/group/
+   * @template RT - Return type
+   * @param name - Name of the group
+   * @param fn - Group body. Code to be executed in the group context
+   * @returns The return value of `fn`
+   * @example
+   * ```javascript
+   * group("user login flow", function() {
+   *   // login logic here
+   * });
+   * ```
+   */
+  export function group<RT>(name: string, fn: () => RT): RT;
+
+  /**
+   * Set seed to get a reproducible pseudo-random number using Math.random.
+   * https://grafana.com/docs/k6/latest/javascript-api/k6/randomseed/
+   * @param int - The seed value
+   * @example
+   * ```javascript
+   * randomSeed(123456789);
+   * ```
+   */
+  export function randomSeed(int: number): void;
+
+  /**
+   * Suspend VU execution for the specified duration.
+   * https://grafana.com/docs/k6/latest/javascript-api/k6/sleep/
+   * @param t - Duration in seconds (can be fractional)
+   * @example
+   * ```javascript
+   * sleep(1);      // Sleep for 1 second
+   * sleep(0.5);    // Sleep for 500ms
+   * sleep(Math.random() * 3); // Random sleep 0-3 seconds
+   * ```
+   */
+  export function sleep(t: number): void;
+}
+
+/**
+ * k6 HTTP Module - HTTP client for load testing
+ * https://grafana.com/docs/k6/latest/javascript-api/k6-http/
+ */
+declare module "k6/http" {
+  /**
+   * HTTP request timing information
+   */
+  export interface ResponseTimings {
+    /** Time waiting for first byte of response */
+    waiting: number;
+    /** Time receiving data */
+    receiving: number;
+    /** Time establishing TCP connection */
+    connecting: number;
+    /** Time for TLS handshake */
+    tls_handshaking: number;
+    /** Time sending request data */
+    sending: number;
+    /** Time blocked before initiating the request */
+    blocked: number;
+    /** Time resolving DNS */
+    looking_up: number;
+    /** Total request duration */
+    duration: number;
+  }
+
+  /**
+   * Cookie object received in response
+   */
+  export interface ResponseCookie {
+    /** Cookie name */
+    name: string;
+    /** Cookie value */
+    value: string;
+    /** Cookie domain */
+    domain: string;
+    /** Cookie path */
+    path: string;
+    /** Expiration time (Unix timestamp) */
+    expires: number;
+    /** Max age in seconds */
+    max_age: number;
+    /** HTTP only flag */
+    httpOnly: boolean;
+    /** Secure flag */
+    secure: boolean;
+    /** SameSite attribute */
+    sameSite: "Strict" | "Lax" | "None";
+  }
+
+  /**
+   * HTTP Response object returned by all request methods
+   */
+  export interface Response {
+    /** Response body as a string. Use json() to parse JSON. */
+    body: string | null;
+    /** HTTP response headers */
+    headers: { [key: string]: string };
+    /** HTTP status code (e.g., 200, 404, 500) */
+    status: number;
+    /** HTTP status text (e.g., "OK", "Not Found") */
+    status_text: string;
+    /** Final URL after any redirects */
+    url: string;
+    /** Error message if request failed */
+    error: string;
+    /** Error code for failed requests */
+    error_code: number;
+    /** Request timing information */
+    timings: ResponseTimings;
+    /** Cookies set by the server */
+    cookies: { [name: string]: ResponseCookie[] };
+    /** The request that generated this response */
+    request: {
+      method: string;
+      url: string;
+      headers: { [key: string]: string };
+      body: string;
+      cookies: { [key: string]: { value: string; replace: boolean }[] };
+    };
+    /** Parse response body as JSON */
+    json(selector?: string): any;
+    /** Parse response body as HTML for jQuery-like selection */
+    html(selector?: string): any;
+    /** Submit a form from the response */
+    submitForm(options?: { formSelector?: string; fields?: object; submitSelector?: string; params?: Params }): Response;
+    /** Click a link in the response */
+    clickLink(options?: { selector?: string; params?: Params }): Response;
+  }
+
+  /**
+   * HTTP request parameters
+   */
+  export interface Params {
+    /** Request-specific cookies */
+    cookies?: { [name: string]: string | { value: string; replace?: boolean } };
+    /** Request headers */
+    headers?: { [key: string]: string };
+    /** Cookie jar to use for the request */
+    jar?: CookieJar;
+    /** Maximum number of redirects to follow (default: 10) */
+    redirects?: number;
+    /** Tags to attach to metrics */
+    tags?: { [key: string]: string };
+    /** Request timeout (default: 60s). Number in ms or string like "30s" */
+    timeout?: string | number;
+    /** Compression algorithm: "gzip", "deflate", "br", "zstd" */
+    compression?: string;
+    /** Response type: "text" (default), "binary", or "none" */
+    responseType?: "text" | "binary" | "none";
+    /** Authentication method: "basic", "digest", "ntlm" */
+    auth?: "basic" | "digest" | "ntlm";
+  }
+
+  /**
+   * Cookie jar for managing cookies
+   */
+  export interface CookieJar {
+    /** Set a cookie in the jar */
+    set(url: string, name: string, value: string, options?: { domain?: string; path?: string; expires?: string; max_age?: number; secure?: boolean; http_only?: boolean }): void;
+    /** Get cookies for a URL */
+    cookiesForURL(url: string): { [name: string]: string[] };
+    /** Clear all cookies from the jar */
+    clear(url: string): void;
+    /** Delete a specific cookie */
+    delete(url: string, name: string): void;
+  }
+
+  /**
+   * Batch request definition - array format
+   */
+  export type BatchRequest = [method: string, url: string, body?: string | object | null, params?: Params];
+
+  /**
+   * Batch request definition - object format
+   */
+  export interface BatchRequestObject {
+    method: string;
+    url: string;
+    body?: string | object | null;
+    params?: Params;
+  }
+
+  /**
+   * Perform an HTTP GET request.
+   * https://grafana.com/docs/k6/latest/javascript-api/k6-http/get/
+   * @param url - Request URL
+   * @param params - Optional request parameters
+   * @returns HTTP Response object
+   * @example
+   * ```javascript
+   * const res = http.get("https://test-api.k6.io/public/crocodiles/1/");
+   * console.log(res.status); // 200
+   * ```
+   */
+  export function get(url: string, params?: Params): Response;
+
+  /**
+   * Perform an HTTP POST request.
+   * https://grafana.com/docs/k6/latest/javascript-api/k6-http/post/
+   * @param url - Request URL
+   * @param body - Request body (string, object, or null)
+   * @param params - Optional request parameters
+   * @returns HTTP Response object
+   * @example
+   * ```javascript
+   * const payload = JSON.stringify({ username: "test", password: "secret" });
+   * const res = http.post("https://api.example.com/login", payload, {
+   *   headers: { "Content-Type": "application/json" }
+   * });
+   * ```
+   */
+  export function post(url: string, body?: string | object | null, params?: Params): Response;
+
+  /**
+   * Perform an HTTP PUT request.
+   * @param url - Request URL
+   * @param body - Request body
+   * @param params - Optional request parameters
+   * @returns HTTP Response object
+   */
+  export function put(url: string, body?: string | object | null, params?: Params): Response;
+
+  /**
+   * Perform an HTTP DELETE request.
+   * @param url - Request URL
+   * @param body - Request body
+   * @param params - Optional request parameters
+   * @returns HTTP Response object
+   */
+  export function del(url: string, body?: string | object | null, params?: Params): Response;
+
+  /**
+   * Perform an HTTP PATCH request.
+   * @param url - Request URL
+   * @param body - Request body
+   * @param params - Optional request parameters
+   * @returns HTTP Response object
+   */
+  export function patch(url: string, body?: string | object | null, params?: Params): Response;
+
+  /**
+   * Perform an HTTP HEAD request.
+   * @param url - Request URL
+   * @param params - Optional request parameters
+   * @returns HTTP Response object
+   */
+  export function head(url: string, params?: Params): Response;
+
+  /**
+   * Perform an HTTP OPTIONS request.
+   * @param url - Request URL
+   * @param body - Request body
+   * @param params - Optional request parameters
+   * @returns HTTP Response object
+   */
+  export function options(url: string, body?: string | object | null, params?: Params): Response;
+
+  /**
+   * Perform a generic HTTP request.
+   * @param method - HTTP method (GET, POST, PUT, DELETE, etc.)
+   * @param url - Request URL
+   * @param body - Request body
+   * @param params - Optional request parameters
+   * @returns HTTP Response object
+   */
+  export function request(method: string, url: string, body?: string | object | null, params?: Params): Response;
+
+  /**
+   * Perform multiple HTTP requests in parallel.
+   * https://grafana.com/docs/k6/latest/javascript-api/k6-http/batch/
+   * @param requests - Array or object of request definitions
+   * @returns Array or object of Response objects
+   * @example
+   * ```javascript
+   * const responses = http.batch([
+   *   ["GET", "https://api.example.com/users"],
+   *   ["GET", "https://api.example.com/posts"],
+   * ]);
+   * ```
+   */
+  export function batch(requests: (BatchRequest | BatchRequestObject)[]): Response[];
+  export function batch(requests: { [key: string]: BatchRequest | BatchRequestObject }): { [key: string]: Response };
+
+  /**
+   * Create a new cookie jar.
+   * @returns A new CookieJar instance
+   */
+  export function cookieJar(): CookieJar;
+
+  /**
+   * Encode an object as multipart/form-data.
+   * @param data - Object containing form fields and file data
+   * @param boundary - Optional boundary string
+   * @returns Encoded string suitable for request body
+   */
+  export function file(data: ArrayBuffer | string, filename?: string, contentType?: string): object;
+
+  /**
+   * Set the default response callback for all HTTP requests.
+   * @param callback - Callback function to process responses
+   */
+  export function setResponseCallback(callback: ((response: Response) => void) | null): void;
+
+  /**
+   * Expected HTTP statuses for response validation.
+   * @param statuses - Expected status codes
+   * @returns Callback for setResponseCallback
+   */
+  export function expectedStatuses(...statuses: (number | { min: number; max: number })[]): (response: Response) => void;
+
+  /** Default HTTP module export */
+  const http: {
+    get: typeof get;
+    post: typeof post;
+    put: typeof put;
+    del: typeof del;
+    patch: typeof patch;
+    head: typeof head;
+    options: typeof options;
+    request: typeof request;
+    batch: typeof batch;
+    cookieJar: typeof cookieJar;
+    file: typeof file;
+    setResponseCallback: typeof setResponseCallback;
+    expectedStatuses: typeof expectedStatuses;
+  };
+  export default http;
+}
+
+/**
+ * k6 Metrics Module - Custom metrics for performance analysis
+ * https://grafana.com/docs/k6/latest/javascript-api/k6-metrics/
+ */
+declare module "k6/metrics" {
+  /**
+   * Counter metric - cumulative count that can only increase
+   * @example
+   * ```javascript
+   * const myCounter = new Counter("my_requests");
+   * myCounter.add(1);
+   * myCounter.add(5, { tag: "value" });
+   * ```
+   */
+  export class Counter {
+    /** Create a new Counter metric */
+    constructor(name: string, isTime?: boolean);
+    /** Add a value to the counter */
+    add(value: number, tags?: { [key: string]: string }): void;
+    /** Metric name */
+    readonly name: string;
+  }
+
+  /**
+   * Gauge metric - stores the last value added
+   * @example
+   * ```javascript
+   * const myGauge = new Gauge("current_connections");
+   * myGauge.add(10);
+   * myGauge.add(5); // Now value is 5
+   * ```
+   */
+  export class Gauge {
+    /** Create a new Gauge metric */
+    constructor(name: string, isTime?: boolean);
+    /** Set the gauge value */
+    add(value: number, tags?: { [key: string]: string }): void;
+    /** Metric name */
+    readonly name: string;
+  }
+
+  /**
+   * Rate metric - tracks the percentage of added values that are non-zero
+   * @example
+   * ```javascript
+   * const errorRate = new Rate("errors");
+   * errorRate.add(false); // success
+   * errorRate.add(true);  // failure - rate increases
+   * ```
+   */
+  export class Rate {
+    /** Create a new Rate metric */
+    constructor(name: string);
+    /** Add a value (true/1 = failure, false/0 = success) */
+    add(value: boolean | number, tags?: { [key: string]: string }): void;
+    /** Metric name */
+    readonly name: string;
+  }
+
+  /**
+   * Trend metric - calculates statistics (min, max, avg, percentiles)
+   * @example
+   * ```javascript
+   * const responseTime = new Trend("response_time");
+   * responseTime.add(245);
+   * responseTime.add(150);
+   * // Access via thresholds: 'response_time': ['avg<300', 'p(95)<500']
+   * ```
+   */
+  export class Trend {
+    /** Create a new Trend metric */
+    constructor(name: string, isTime?: boolean);
+    /** Add a value to calculate statistics from */
+    add(value: number, tags?: { [key: string]: string }): void;
+    /** Metric name */
+    readonly name: string;
+  }
+}
+
+/**
+ * k6 WebSocket Module - WebSocket client for real-time testing
+ * https://grafana.com/docs/k6/latest/javascript-api/k6-ws/
+ */
+declare module "k6/ws" {
+  /**
+   * WebSocket connection parameters
+   */
+  export interface WSParams {
+    /** Request headers */
+    headers?: { [key: string]: string };
+    /** Tags for metrics */
+    tags?: { [key: string]: string };
+    /** Compression mode */
+    compression?: string;
+  }
+
+  /**
+   * WebSocket socket instance
+   */
+  export interface Socket {
+    /** Close the WebSocket connection */
+    close(code?: number): void;
+    /** Register a handler for events */
+    on(event: "open" | "message" | "ping" | "pong" | "close" | "error", callback: (data?: any) => void): void;
+    /** Send data through the WebSocket */
+    send(data: string): void;
+    /** Send binary data */
+    sendBinary(data: ArrayBuffer): void;
+    /** Send a ping */
+    ping(): void;
+    /** Set a timeout callback */
+    setTimeout(callback: () => void, timeout: number): void;
+    /** Set an interval callback */
+    setInterval(callback: () => void, interval: number): void;
+  }
+
+  /**
+   * WebSocket connection response
+   */
+  export interface WSResponse {
+    /** HTTP status code of the upgrade response */
+    status: number;
+    /** Response headers */
+    headers: { [key: string]: string };
+    /** Body from the upgrade response */
+    body: string;
+    /** Error message if connection failed */
+    error: string;
+    /** URL of the connection */
+    url: string;
+  }
+
+  /**
+   * Connect to a WebSocket server.
+   * @param url - WebSocket URL (ws:// or wss://)
+   * @param params - Connection parameters
+   * @param callback - Callback function receiving the socket
+   * @returns WebSocket response object
+   * @example
+   * ```javascript
+   * const res = ws.connect("wss://echo.websocket.org", {}, function(socket) {
+   *   socket.on("open", () => socket.send("Hello!"));
+   *   socket.on("message", (msg) => console.log(msg));
+   *   socket.on("close", () => console.log("Disconnected"));
+   * });
+   * ```
+   */
+  export function connect(url: string, params: WSParams, callback: (socket: Socket) => void): WSResponse;
+  export function connect(url: string, callback: (socket: Socket) => void): WSResponse;
+
+  /** Default WebSocket module export */
+  const ws: {
+    connect: typeof connect;
+  };
+  export default ws;
+}
+
+/**
+ * k6 gRPC Module - gRPC client for performance testing
+ * https://grafana.com/docs/k6/latest/javascript-api/k6-net-grpc/
+ */
+declare module "k6/net/grpc" {
+  /**
+   * gRPC connection parameters
+   */
+  export interface GRPCParams {
+    /** Metadata to send with requests */
+    metadata?: { [key: string]: string };
+    /** Tags for metrics */
+    tags?: { [key: string]: string };
+    /** Request timeout */
+    timeout?: string | number;
+  }
+
+  /**
+   * gRPC response object
+   */
+  export interface GRPCResponse {
+    /** Response status code */
+    status: number;
+    /** Response message (parsed) */
+    message: any;
+    /** Response headers */
+    headers: { [key: string]: string };
+    /** Response trailers */
+    trailers: { [key: string]: string };
+    /** Error if request failed */
+    error: any;
+  }
+
+  /**
+   * gRPC stream object for streaming calls
+   */
+  export interface Stream {
+    /** Register event handlers */
+    on(event: "data" | "error" | "end", callback: (data?: any) => void): void;
+    /** Write data to the stream (client streaming) */
+    write(message: object): void;
+    /** Signal end of client stream */
+    end(): void;
+  }
+
+  /**
+   * gRPC client for making RPC calls
+   */
+  export class Client {
+    /** Create a new gRPC client */
+    constructor();
+    /** Load protobuf definitions */
+    load(importPaths: string[], protoFiles: string | string[]): void;
+    /** Load protobuf definitions from binary */
+    loadProtoset(protosetPath: string): void;
+    /** Connect to a gRPC server */
+    connect(address: string, options?: { plaintext?: boolean; reflect?: boolean; timeout?: string | number; maxReceiveSize?: number; maxSendSize?: number; tls?: { cert?: string; key?: string; cacerts?: string; insecure?: boolean } }): void;
+    /** Invoke a unary RPC method */
+    invoke(method: string, request: object, params?: GRPCParams): GRPCResponse;
+    /** Invoke an async unary RPC method (k6 v0.49.0+) */
+    asyncInvoke(method: string, request: object, params?: GRPCParams): Promise<GRPCResponse>;
+    /** Close the client connection */
+    close(): void;
+  }
+
+  /**
+   * gRPC status codes
+   */
+  export const StatusOK: number;
+  export const StatusCancelled: number;
+  export const StatusUnknown: number;
+  export const StatusInvalidArgument: number;
+  export const StatusDeadlineExceeded: number;
+  export const StatusNotFound: number;
+  export const StatusAlreadyExists: number;
+  export const StatusPermissionDenied: number;
+  export const StatusResourceExhausted: number;
+  export const StatusFailedPrecondition: number;
+  export const StatusAborted: number;
+  export const StatusOutOfRange: number;
+  export const StatusUnimplemented: number;
+  export const StatusInternal: number;
+  export const StatusUnavailable: number;
+  export const StatusDataLoss: number;
+  export const StatusUnauthenticated: number;
+
+  /** Default gRPC module export */
+  const grpc: {
+    Client: typeof Client;
+    StatusOK: typeof StatusOK;
+    StatusCancelled: typeof StatusCancelled;
+    StatusUnknown: typeof StatusUnknown;
+    StatusInvalidArgument: typeof StatusInvalidArgument;
+    StatusDeadlineExceeded: typeof StatusDeadlineExceeded;
+    StatusNotFound: typeof StatusNotFound;
+    StatusAlreadyExists: typeof StatusAlreadyExists;
+    StatusPermissionDenied: typeof StatusPermissionDenied;
+    StatusResourceExhausted: typeof StatusResourceExhausted;
+    StatusFailedPrecondition: typeof StatusFailedPrecondition;
+    StatusAborted: typeof StatusAborted;
+    StatusOutOfRange: typeof StatusOutOfRange;
+    StatusUnimplemented: typeof StatusUnimplemented;
+    StatusInternal: typeof StatusInternal;
+    StatusUnavailable: typeof StatusUnavailable;
+    StatusDataLoss: typeof StatusDataLoss;
+    StatusUnauthenticated: typeof StatusUnauthenticated;
+  };
+  export default grpc;
+}
+
 // Buffer type for screenshots and file handling
 declare type Buffer = any;
 declare type ReadStream = any;
@@ -571,7 +1225,7 @@ interface ProtectedSecret {
   /** Symbol.toPrimitive implementation for safe type coercion */
   [Symbol.toPrimitive](hint: 'string' | 'number' | 'default'): string | number;
   /** Prevents Node.js util.inspect from showing the actual value */
-  [Symbol.for('nodejs.util.inspect.custom')](): string;
+  readonly [Symbol.toStringTag]: string;
 }
 
 /**
@@ -728,116 +1382,6 @@ declare function getSecret<T = ProtectedSecret>(
   : T extends 'boolean' ? boolean 
   : ProtectedSecret;
 
-// === Enhanced JavaScript Built-ins ===
-
-/**
- * Enhanced console object with proper typing
- */
-declare const console: {
-  /** Outputs a message to the console */
-  log(...data: any[]): void;
-  /** Outputs an error message to the console */
-  error(...data: any[]): void;
-  /** Outputs a warning message to the console */
-  warn(...data: any[]): void;
-  /** Outputs an informational message to the console */
-  info(...data: any[]): void;
-  /** Outputs a debug message to the console */
-  debug(...data: any[]): void;
-  /** Creates a new inline group in the console */
-  group(label?: string): void;
-  /** Creates a new collapsed inline group in the console */
-  groupCollapsed(label?: string): void;
-  /** Exits the current inline group in the console */
-  groupEnd(): void;
-  /** Starts a timer with a name */
-  time(label?: string): void;
-  /** Stops a timer and outputs the elapsed time */
-  timeEnd(label?: string): void;
-  /** Displays data as a table */
-  table(data: any, columns?: string[]): void;
-  /** Clears the console */
-  clear(): void;
-  /** Outputs the number of times count() has been called */
-  count(label?: string): void;
-  /** Resets the count for a specific label */
-  countReset(label?: string): void;
-};
-
-/**
- * Enhanced JSON object with better typing
- */
-declare const JSON: {
-  /** Parses a JSON string and returns the parsed value */
-  parse<T = any>(text: string, reviver?: (key: string, value: any) => any): T;
-  /** Converts a value to a JSON string */
-  stringify(
-    value: any,
-    replacer?: (key: string, value: any) => any | (string | number)[] | null,
-    space?: string | number
-  ): string;
-};
-
-/**
- * Enhanced Math object for calculations in tests
- */
-declare const Math: {
-  /** Euler's constant and the base of natural logarithms */
-  readonly E: number;
-  /** Natural logarithm of 10 */
-  readonly LN10: number;
-  /** Natural logarithm of 2 */
-  readonly LN2: number;
-  /** Base 2 logarithm of E */
-  readonly LOG2E: number;
-  /** Base 10 logarithm of E */
-  readonly LOG10E: number;
-  /** Ratio of the circumference of a circle to its diameter */
-  readonly PI: number;
-  /** Square root of 1/2 */
-  readonly SQRT1_2: number;
-  /** Square root of 2 */
-  readonly SQRT2: number;
-  /** Returns the absolute value of a number */
-  abs(x: number): number;
-  /** Returns the arc cosine (in radians) of a number */
-  acos(x: number): number;
-  /** Returns the arc sine (in radians) of a number */
-  asin(x: number): number;
-  /** Returns the arc tangent (in radians) of a number */
-  atan(x: number): number;
-  /** Returns the arc tangent of the quotient of its arguments */
-  atan2(y: number, x: number): number;
-  /** Returns the smallest integer greater than or equal to a number */
-  ceil(x: number): number;
-  /** Returns the cosine of a number */
-  cos(x: number): number;
-  /** Returns e^x */
-  exp(x: number): number;
-  /** Returns the largest integer less than or equal to a number */
-  floor(x: number): number;
-  /** Returns the natural logarithm of a number */
-  log(x: number): number;
-  /** Returns the largest of zero or more numbers */
-  max(...values: number[]): number;
-  /** Returns the smallest of zero or more numbers */
-  min(...values: number[]): number;
-  /** Returns the value of a number raised to the power of another number */
-  pow(x: number, y: number): number;
-  /** Returns a pseudorandom number between 0 and 1 */
-  random(): number;
-  /** Returns the value of a number rounded to the nearest integer */
-  round(x: number): number;
-  /** Returns the sine of a number */
-  sin(x: number): number;
-  /** Returns the square root of a number */
-  sqrt(x: number): number;
-  /** Returns the tangent of a number */
-  tan(x: number): number;
-  /** Truncates the decimal part of a number */
-  trunc(x: number): number;
-};
-
 // === Async Utilities ===
 
 /**
@@ -867,307 +1411,6 @@ declare function clearTimeout(id: number): void;
  * @param id Timer ID returned by setInterval
  */
 declare function clearInterval(id: number): void;
-
-// === Enhanced Date Object ===
-
-/**
- * Enhanced Date constructor and static methods
- */
-declare const Date: {
-  new(): Date;
-  new(value: number | string): Date;
-  new(year: number, month: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): Date;
-  /** Returns the current time in milliseconds since January 1, 1970 UTC */
-  now(): number;
-  /** Parses a date string and returns the number of milliseconds since January 1, 1970 UTC */
-  parse(s: string): number;
-  /** Returns the number of milliseconds since January 1, 1970 UTC for the specified date */
-  UTC(year: number, month: number, date?: number, hours?: number, minutes?: number, seconds?: number, ms?: number): number;
-  prototype: Date;
-};
-
-/**
- * Date instance methods
- */
-interface Date {
-  /** Returns a string representation of a date */
-  toString(): string;
-  /** Returns the date portion as a string */
-  toDateString(): string;
-  /** Returns the time portion as a string */
-  toTimeString(): string;
-  /** Returns a locale-specific string representation */
-  toLocaleString(): string;
-  /** Returns a locale-specific date string */
-  toLocaleDateString(): string;
-  /** Returns a locale-specific time string */
-  toLocaleTimeString(): string;
-  /** Returns the primitive value as a number */
-  valueOf(): number;
-  /** Returns the time value in milliseconds */
-  getTime(): number;
-  /** Returns the year (4 digits) */
-  getFullYear(): number;
-  /** Returns the UTC year (4 digits) */
-  getUTCFullYear(): number;
-  /** Returns the month (0-11) */
-  getMonth(): number;
-  /** Returns the UTC month (0-11) */
-  getUTCMonth(): number;
-  /** Returns the day of the month (1-31) */
-  getDate(): number;
-  /** Returns the UTC day of the month (1-31) */
-  getUTCDate(): number;
-  /** Returns the day of the week (0-6) */
-  getDay(): number;
-  /** Returns the UTC day of the week (0-6) */
-  getUTCDay(): number;
-  /** Returns the hours (0-23) */
-  getHours(): number;
-  /** Returns the UTC hours (0-23) */
-  getUTCHours(): number;
-  /** Returns the minutes (0-59) */
-  getMinutes(): number;
-  /** Returns the UTC minutes (0-59) */
-  getUTCMinutes(): number;
-  /** Returns the seconds (0-59) */
-  getSeconds(): number;
-  /** Returns the UTC seconds (0-59) */
-  getUTCSeconds(): number;
-  /** Returns the milliseconds (0-999) */
-  getMilliseconds(): number;
-  /** Returns the UTC milliseconds (0-999) */
-  getUTCMilliseconds(): number;
-  /** Returns the time-zone offset in minutes */
-  getTimezoneOffset(): number;
-  /** Sets the year */
-  setFullYear(year: number, month?: number, date?: number): number;
-  /** Sets the UTC year */
-  setUTCFullYear(year: number, month?: number, date?: number): number;
-  /** Sets the month */
-  setMonth(month: number, date?: number): number;
-  /** Sets the UTC month */
-  setUTCMonth(month: number, date?: number): number;
-  /** Sets the day of the month */
-  setDate(date: number): number;
-  /** Sets the UTC day of the month */
-  setUTCDate(date: number): number;
-  /** Sets the hours */
-  setHours(hours: number, min?: number, sec?: number, ms?: number): number;
-  /** Sets the UTC hours */
-  setUTCHours(hours: number, min?: number, sec?: number, ms?: number): number;
-  /** Sets the minutes */
-  setMinutes(minutes: number, sec?: number, ms?: number): number;
-  /** Sets the UTC minutes */
-  setUTCMinutes(minutes: number, sec?: number, ms?: number): number;
-  /** Sets the seconds */
-  setSeconds(seconds: number, ms?: number): number;
-  /** Sets the UTC seconds */
-  setUTCSeconds(seconds: number, ms?: number): number;
-  /** Sets the milliseconds */
-  setMilliseconds(ms: number): number;
-  /** Sets the UTC milliseconds */
-  setUTCMilliseconds(ms: number): number;
-  /** Sets the time value in milliseconds */
-  setTime(time: number): number;
-  /** Returns the ISO 8601 string representation */
-  toISOString(): string;
-  /** Returns the JSON representation */
-  toJSON(): string;
-}
-
-// === Regular Expression Support ===
-
-/**
- * Regular Expression constructor and static methods
- */
-declare const RegExp: {
-  new(pattern: string, flags?: string): RegExp;
-  new(pattern: RegExp): RegExp;
-  (pattern: string, flags?: string): RegExp;
-  (pattern: RegExp): RegExp;
-  prototype: RegExp;
-};
-
-/**
- * Regular Expression instance methods
- */
-interface RegExp {
-  /** Executes a search for a match in a string */
-  exec(string: string): RegExpExecArray | null;
-  /** Tests for a match in a string */
-  test(string: string): boolean;
-  /** Returns the source text of the RegExp object */
-  readonly source: string;
-  /** Returns a Boolean value indicating the global flag (g) */
-  readonly global: boolean;
-  /** Returns a Boolean value indicating the ignoreCase flag (i) */
-  readonly ignoreCase: boolean;
-  /** Returns a Boolean value indicating the multiline flag (m) */
-  readonly multiline: boolean;
-  /** Returns the index at which to start the next match */
-  lastIndex: number;
-}
-
-/**
- * Result of RegExp.exec()
- */
-interface RegExpExecArray extends Array<string> {
-  /** The index of the start of the match */
-  index: number;
-  /** The original input string */
-  input: string;
-  /** Named capture groups */
-  groups?: { [key: string]: string };
-}
-
-// === URL Support ===
-
-/**
- * URL constructor for parsing and constructing URLs
- */
-declare const URL: {
-  new(url: string, base?: string | URL): URL;
-  /** Creates an object URL for the given object */
-  createObjectURL(object: any): string;
-  /** Releases an object URL */
-  revokeObjectURL(url: string): void;
-};
-
-/**
- * URL instance properties and methods
- */
-interface URL {
-  /** The entire URL */
-  href: string;
-  /** The origin of the URL */
-  readonly origin: string;
-  /** The protocol scheme of the URL */
-  protocol: string;
-  /** The username of the URL */
-  username: string;
-  /** The password of the URL */
-  password: string;
-  /** The host of the URL */
-  host: string;
-  /** The hostname of the URL */
-  hostname: string;
-  /** The port number of the URL */
-  port: string;
-  /** The path of the URL */
-  pathname: string;
-  /** The query string of the URL */
-  search: string;
-  /** The fragment identifier of the URL */
-  hash: string;
-  /** The search parameters of the URL */
-  readonly searchParams: URLSearchParams;
-  /** Returns the entire URL as a string */
-  toString(): string;
-  /** Returns the entire URL as a string */
-  toJSON(): string;
-}
-
-/**
- * URLSearchParams for working with URL query parameters
- */
-declare const URLSearchParams: {
-  new(init?: string | string[][] | Record<string, string> | URLSearchParams): URLSearchParams;
-};
-
-interface URLSearchParams {
-  /** Appends a new name/value pair */
-  append(name: string, value: string): void;
-  /** Deletes all name/value pairs with the given name */
-  delete(name: string): void;
-  /** Returns all values associated with the given name */
-  getAll(name: string): string[];
-  /** Returns the first value associated with the given name */
-  get(name: string): string | null;
-  /** Returns true if the given name exists */
-  has(name: string): boolean;
-  /** Sets the value associated with the given name */
-  set(name: string, value: string): void;
-  /** Sorts all name/value pairs by name */
-  sort(): void;
-  /** Returns a string representation */
-  toString(): string;
-  /** Returns an iterator for all names */
-  keys(): IterableIterator<string>;
-  /** Returns an iterator for all values */
-  values(): IterableIterator<string>;
-  /** Returns an iterator for all name/value pairs */
-  entries(): IterableIterator<[string, string]>;
-  /** Iterator interface */
-  [Symbol.iterator](): IterableIterator<[string, string]>;
-  /** Executes a callback for each name/value pair */
-  forEach(callback: (value: string, name: string, parent: URLSearchParams) => void, thisArg?: any): void;
-}
-
-// === Promise and Async Support ===
-
-/**
- * Promise constructor with enhanced typing
- */
-declare const Promise: {
-  new <T>(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void): Promise<T>;
-  /** Creates a resolved promise */
-  resolve<T>(value: T | PromiseLike<T>): Promise<T>;
-  /** Creates a resolved promise with no value */
-  resolve(): Promise<void>;
-  /** Creates a rejected promise */
-  reject<T = never>(reason?: any): Promise<T>;
-  /** Returns a promise that resolves when all input promises resolve */
-  all<T>(values: readonly (T | PromiseLike<T>)[]): Promise<T[]>;
-  /** Returns a promise that resolves when the first input promise resolves */
-  race<T>(values: readonly (T | PromiseLike<T>)[]): Promise<T>;
-  /** Returns a promise that resolves when all input promises settle */
-  allSettled<T>(values: readonly (T | PromiseLike<T>)[]): Promise<PromiseSettledResult<T>[]>;
-  /** Returns a promise that resolves with the first fulfilled promise or rejects if all reject */
-  any<T>(values: readonly (T | PromiseLike<T>)[]): Promise<T>;
-};
-
-/**
- * Result of Promise.allSettled()
- */
-type PromiseSettledResult<T> = PromiseFulfilledResult<T> | PromiseRejectedResult;
-
-interface PromiseFulfilledResult<T> {
-  status: 'fulfilled';
-  value: T;
-}
-
-interface PromiseRejectedResult {
-  status: 'rejected';
-  reason: any;
-}
-
-/**
- * Promise instance methods
- */
-interface Promise<T> {
-  /** Attaches callbacks for the resolution and/or rejection of the Promise */
-  then<TResult1 = T, TResult2 = never>(
-    onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null,
-    onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | undefined | null
-  ): Promise<TResult1 | TResult2>;
-  /** Attaches a callback for only the rejection of the Promise */
-  catch<TResult = never>(
-    onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | undefined | null
-  ): Promise<T | TResult>;
-  /** Attaches a callback that is invoked when the Promise is settled */
-  finally(onfinally?: (() => void) | undefined | null): Promise<T>;
-}
-
-// === Security Utilities ===
-
-/**
- * Generates a random UUID v4 string
- * Useful for creating unique test identifiers
- */
-declare function crypto(): {
-  randomUUID(): string;
-};
 
 // === Type Guards and Utilities ===
 

@@ -1,4 +1,11 @@
-import { parseExpression } from 'cron-parser';
+/**
+ * Cron Utilities
+ *
+ * Helper functions for working with cron expressions.
+ * Uses cron-parser v5.x API (CronExpressionParser class).
+ */
+
+import CronExpressionParser from 'cron-parser';
 
 /**
  * Calculates the next run date for a given cron expression.
@@ -11,7 +18,7 @@ export function getNextRunDate(
   fromDate: Date = new Date(),
 ): Date | null {
   try {
-    const interval = parseExpression(cronExpression, {
+    const interval = CronExpressionParser.parse(cronExpression, {
       currentDate: fromDate,
     });
     return interval.next().toDate();
