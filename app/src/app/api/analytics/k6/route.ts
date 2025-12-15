@@ -47,11 +47,14 @@ export async function GET(request: NextRequest) {
     const dbInstance = db;
 
     // Build base conditions
+    // Filter by jobId IS NOT NULL to exclude playground executions from analytics
+    // Analytics should only include job-triggered runs for proper comparison
     const baseConditions = [
       gte(k6PerformanceRuns.startedAt, startDate),
       eq(k6PerformanceRuns.projectId, targetProjectId),
       eq(k6PerformanceRuns.organizationId, organizationId),
-      sql`${k6PerformanceRuns.completedAt} IS NOT NULL`
+      sql`${k6PerformanceRuns.completedAt} IS NOT NULL`,
+      sql`${k6PerformanceRuns.jobId} IS NOT NULL`
     ];
 
     if (jobId) {
