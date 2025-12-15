@@ -22,7 +22,7 @@ async function fetchRunDetails(runId: string) {
   return {
     runId: run.id,
     status: run.status,
-    duration: run.duration,
+    duration: run.durationMs,
     startedAt: run.startedAt,
     completedAt: run.completedAt,
     errorDetails: run.errorDetails,
