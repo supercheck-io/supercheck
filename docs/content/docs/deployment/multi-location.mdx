@@ -1,0 +1,161 @@
+---
+title: Multi-Location Workers
+description: Deploy workers in multiple geographic regions for true global coverage
+icon: MapPin
+---
+
+Enable true multi-location monitoring and performance testing by deploying workers in different geographic regions.
+
+```mermaid
+flowchart TB
+    Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
+    T --> App[Next.js App<br/>UI + API]
+    
+    App --> DB[(PostgreSQL<br/>Primary DB)]
+    App --> Redis[(Redis + BullMQ<br/>Queue + Cache)]
+    App --> S3[(MinIO<br/>Artifacts)]
+    
+    Redis --> W1[Worker EU<br/>eu-central]
+    Redis -.->|Internet| W2[Worker US<br/>us-east]
+    Redis -.->|Internet| W3[Worker APAC<br/>asia-pacific]
+    
+    W1 & W2 & W3 --> DB
+    W1 & W2 & W3 --> S3
+
+    style Users fill:#6366f1,stroke:#4338ca,color:#fff
+    style T fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style App fill:#3b82f6,stroke:#1e40af,color:#fff
+    style DB fill:#f59e0b,stroke:#b45309,color:#fff
+    style Redis fill:#ef4444,stroke:#b91c1c,color:#fff
+    style S3 fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style W1 fill:#10b981,stroke:#047857,color:#fff
+    style W2 fill:#10b981,stroke:#047857,color:#fff
+    style W3 fill:#10b981,stroke:#047857,color:#fff
+```
+
+<Callout type="info">
+**Single-Location Mode**: When using `WORKER_LOCATION=local` (default), workers process ALL regional queues from a single location. For true geographic distribution, deploy workers in multiple regions as shown below.
+</Callout>
+
+---
+
+## Prerequisites
+
+- Main Supercheck instance running and accessible
+- VPS in each target region with Docker installed
+- Network connectivity from remote workers to main server (ports 5432, 6379, 9000)
+
+---
+
+## Step 1: Expose Services on Main Server
+
+Update your Docker Compose file to expose database services:
+
+```yaml
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+  
+  redis:
+    ports:
+      - "6379:6379"
+  
+  minio:
+    ports:
+      - "9000:9000"
+```
+
+<Callout type="warning">
+Use firewall rules to restrict access to your worker server IPs only.
+</Callout>
+
+---
+
+## Step 2: Deploy Remote Worker
+
+On each remote VPS:
+
+### 1. Install Docker
+
+```bash
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+```
+
+### 2. Download Worker Compose File
+
+```bash
+mkdir -p ~/supercheck-worker && cd ~/supercheck-worker
+curl -o docker-compose.yml https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/docker-compose-worker.yml
+```
+
+### 3. Create Environment File
+
+```bash
+# .env file
+DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@MAIN_SERVER_IP:5432/supercheck
+REDIS_URL=redis://:YOUR_REDIS_PASSWORD@MAIN_SERVER_IP:6379
+S3_ENDPOINT=http://MAIN_SERVER_IP:9000
+AWS_ACCESS_KEY_ID=minioadmin
+AWS_SECRET_ACCESS_KEY=minioadmin
+
+# Set this worker's location: us-east | eu-central | asia-pacific
+WORKER_LOCATION=us-east
+```
+
+### 4. Start Worker
+
+```bash
+docker compose up -d
+docker compose logs -f  # Verify connection
+```
+
+---
+
+## Step 3: Enable Multi-Location Monitors
+
+1. Go to your Supercheck instance
+2. Create or edit a monitor
+3. Enable **Multi-Location Monitoring**
+4. Select the regions where you have workers deployed
+
+---
+
+## Location Reference
+
+| WORKER_LOCATION | Queues Processed |
+|-----------------|-----------------|
+| `us-east` | `monitor-us-east`, `k6-us-east` |
+| `eu-central` | `monitor-eu-central`, `k6-eu-central` |
+| `asia-pacific` | `monitor-asia-pacific`, `k6-asia-pacific` |
+| `local` | All queues (default for single-location) |
+
+---
+
+## Scaling Workers
+
+```bash
+# Scale to 2 workers per location
+WORKER_REPLICAS=2 docker compose up -d
+```
+
+---
+
+## Troubleshooting
+
+**Worker can't connect to database:**
+```bash
+docker run --rm -it postgres:15 psql "$DATABASE_URL" -c "SELECT 1"
+```
+
+**Worker can't connect to Redis:**
+```bash
+docker run --rm -it redis:7 redis-cli -u "$REDIS_URL" ping
+```
+
+**Worker not processing jobs:**
+```bash
+docker compose logs worker
+docker compose exec worker env | grep WORKER_LOCATION
+```

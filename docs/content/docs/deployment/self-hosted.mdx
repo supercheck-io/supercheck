@@ -1,6 +1,6 @@
 ---
-title: Self-Hosted Setup
-description: Docker Compose deployment and configuration
+title: Single Location
+description: Docker Compose deployment on a single server
 icon: Container
 ---
 
@@ -8,8 +8,8 @@ Deploy Supercheck on your own infrastructure with Docker Compose. All data stays
 
 ```mermaid
 flowchart TB
-    Users[Users / CI/CD] --> Traefik[Traefik Proxy<br/>SSL / Load Balancer]
-    Traefik --> App[Next.js App<br/>UI + API]
+    Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
+    T --> App[Next.js App<br/>UI + API]
     
     App --> DB[(PostgreSQL<br/>Primary DB)]
     App --> Redis[(Redis + BullMQ<br/>Queue + Cache)]
@@ -23,7 +23,7 @@ flowchart TB
     W1 & W2 & WN --> S3
 
     style Users fill:#6366f1,stroke:#4338ca,color:#fff
-    style Traefik fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style T fill:#0ea5e9,stroke:#0369a1,color:#fff
     style App fill:#3b82f6,stroke:#1e40af,color:#fff
     style DB fill:#f59e0b,stroke:#b45309,color:#fff
     style Redis fill:#ef4444,stroke:#b91c1c,color:#fff
@@ -33,18 +33,14 @@ flowchart TB
     style WN fill:#10b981,stroke:#047857,color:#fff
 ```
 
-<Callout type="warning">
-**OAuth Required**: At least one OAuth provider (GitHub or Google) must be configured for user authentication.
-</Callout>
-
 <Callout type="info">
-**Location Behavior**: Self-hosted deployments execute all tests and monitors from your local infrastructure using `WORKER_LOCATION=local`. The multi-region selector in the UI is available for configuration consistency, but all checks run sequentially from your single worker location. For true geographic distribution, deploy multiple workers in different regions.
+For true multi-location monitoring, see [Multi-Location Workers](/docs/deployment/multi-location).
 </Callout>
 
 ## Deployment Options
 
 | Option | SSL/HTTPS | Status Pages |
-|--------|-----------|--------------| 
+|--------|-----------|--------------|
 | **Without Domain** | ❌ HTTP only | ❌ No |
 | **With Domain** | ✅ Automatic | ✅ Yes |
 
@@ -52,265 +48,172 @@ flowchart TB
 
 ## Option 1: Without Domain
 
-Best for testing or internal networks. **No configuration required** — all secrets are auto-generated.
+Best for testing or internal networks.
 
 ### 1. Install Docker
 
-<Callout type="info">
-**Skip this step** if you already have Docker or Docker Desktop installed.
-</Callout>
-
-**Option A: Docker Engine (Linux/Server)**
 ```bash
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 ```
 
-**Option B: Docker Desktop (Mac/Windows/Linux)**
-
-Download from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
-
-### 2. Clone Repository
+### 2. Clone and Configure
 
 ```bash
 git clone https://github.com/supercheck-io/supercheck.git
 cd supercheck/deploy/docker
+
+# Auto-generate secure secrets
+./init-secrets.sh
 ```
 
-### 3. Configure OAuth
-
-At least one OAuth provider is required. Create a `.env` file:
+Edit `.env` and add your OAuth credentials:
 
 ```bash
-# GitHub OAuth (get from https://github.com/settings/developers)
 GITHUB_CLIENT_ID=your-github-client-id
 GITHUB_CLIENT_SECRET=your-github-client-secret
 ```
 
-See [OAuth Setup](#oauth-required) for detailed instructions.
-
-### 4. Deploy
+### 3. Deploy
 
 ```bash
 docker compose up -d
 ```
 
-### 5. Create Super Admin
+### 4. Create Admin
 
-After deployment, create your first super admin account:
+1. Sign up at `http://localhost:3000` using GitHub or Google OAuth
+2. Promote your account to super admin:
 
 ```bash
 docker compose exec app npm run setup:admin your-email@example.com
 ```
-
-This creates an admin account with the provided email. Sign in using GitHub/Google OAuth with the same email address to gain super admin access.
-
-<Callout type="info">
-The super admin has full platform access including user management, organization oversight, and system configuration. See [Admin Documentation](https://supercheck.io/docs/admin) for details.
-</Callout>
-
-Access at `http://localhost:3000`.
-
-<Callout type="info">
-Security secrets (`BETTER_AUTH_SECRET`, `SECRET_ENCRYPTION_KEY`, database passwords) are auto-generated with secure defaults. Override in `.env` only if needed.
-</Callout>
 
 ---
 
 ## Option 2: With Domain
 
-For deployments with HTTPS and status pages.
+For production with HTTPS and status pages.
 
 ### 1. Install Docker
 
-<Callout type="info">
-**Skip this step** if you already have Docker or Docker Desktop installed.
-</Callout>
-
-**Option A: Docker Engine (Linux/Server)**
 ```bash
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 ```
 
-**Option B: Docker Desktop (Mac/Windows/Linux)**
-
-Download from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
-
 ### 2. Configure DNS
 
-1. Go to your DNS provider (Cloudflare, Route53, etc.)
-2. Create an **A Record**: `app.yourdomain.com` → Your server IP
-3. For status pages: `*.yourdomain.com` → Your server IP
+Create A records pointing to your server:
+- `app.yourdomain.com` → Server IP
+- `*.yourdomain.com` → Server IP (for status pages)
 
-<Callout type="info">
-DNS changes take 5-30 minutes. Verify with `dig app.yourdomain.com`.
-</Callout>
-
-### 3. Clone Repository
+### 3. Clone and Configure
 
 ```bash
 git clone https://github.com/supercheck-io/supercheck.git
 cd supercheck/deploy/docker
+
+# Auto-generate secure secrets
+./init-secrets.sh
 ```
 
-### 4. Configure Environment
-
-Create `.env` file with your domain:
+Edit `.env` and add your domain and OAuth credentials:
 
 ```bash
-# Your domain (required) - all URLs are derived from this
 APP_DOMAIN=app.yourdomain.com
 ACME_EMAIL=admin@yourdomain.com
 
-# OAuth (at least one provider required)
 GITHUB_CLIENT_ID=your-github-client-id
 GITHUB_CLIENT_SECRET=your-github-client-secret
 ```
 
-<Callout type="info">
-Security secrets are auto-generated. Only your domain is required.
-</Callout>
-
-### 5. Deploy
+### 4. Deploy
 
 ```bash
 docker compose -f docker-compose-secure.yml up -d
 ```
 
-### 6. Create Super Admin
+### 5. Create Admin
 
-After deployment, create your first super admin account:
+1. Sign up at `https://app.yourdomain.com` using GitHub or Google OAuth
+2. Promote your account to super admin:
 
 ```bash
 docker compose exec app npm run setup:admin your-email@example.com
 ```
 
-This creates an admin account with the provided email. Sign in using GitHub/Google OAuth with the same email address to gain super admin access.
-
-<Callout type="info">
-The super admin has full platform access including user management, organization oversight, and system configuration. See [Admin Documentation](https://supercheck.io/docs/admin) for details.
-</Callout>
-
-Access at `https://app.yourdomain.com`.
-
 ---
 
-## OAuth (Required)
+## OAuth Setup
 
-At least one OAuth provider is required for authentication. You can configure GitHub, Google, or both.
+<Callout type="warning">
+At least one OAuth provider (GitHub or Google) is required for authentication.
+</Callout>
 
 ### GitHub OAuth
 
-**Step 1: Create OAuth App**
-
-1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
-2. Click **OAuth Apps** in the left sidebar
-3. Click **New OAuth App**
-
-**Step 2: Configure the App**
-
-| Field | Value |
-|-------|-------|
-| **Application name** | Supercheck (or your preferred name) |
-| **Homepage URL** | `https://app.yourdomain.com` (or `http://localhost:3000` for local) |
-| **Authorization callback URL** | `https://app.yourdomain.com/api/auth/callback/github` |
-
-<Callout type="warning">
-For local development without a domain, use:
-- Homepage URL: `http://localhost:3000`
-- Callback URL: `http://localhost:3000/api/auth/callback/github`
-</Callout>
-
-**Step 3: Get Credentials**
-
-1. Click **Register application**
-2. Copy the **Client ID**
-3. Click **Generate a new client secret**
-4. Copy the **Client Secret** (shown only once)
-
-**Step 4: Add to Environment**
-
-```bash
-GITHUB_CLIENT_ID=your-github-client-id
-GITHUB_CLIENT_SECRET=your-github-client-secret
-```
+<Steps>
+  <Step>
+    Go to [GitHub Developer Settings](https://github.com/settings/developers)
+  </Step>
+  <Step>
+    Click **OAuth Apps** → **New OAuth App**
+  </Step>
+  <Step>
+    Configure the app:
+    - Homepage URL: `https://app.yourdomain.com`
+    - Callback URL: `https://app.yourdomain.com/api/auth/callback/github`
+  </Step>
+  <Step>
+    Copy Client ID and generate Client Secret, add to `.env`:
+    
+    ```bash
+    GITHUB_CLIENT_ID=your-client-id
+    GITHUB_CLIENT_SECRET=your-client-secret
+    ```
+  </Step>
+</Steps>
 
 ### Google OAuth
 
-**Step 1: Create Project**
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Go to **APIs & Services → Credentials**
-
-**Step 2: Configure OAuth Consent Screen**
-
-1. Click **OAuth consent screen** in the left sidebar
-2. Select **External** (or Internal for Google Workspace)
-3. Fill in the required fields:
-   - **App name**: Supercheck
-   - **User support email**: Your email
-   - **Developer contact**: Your email
-4. Click **Save and Continue**
-5. Skip **Scopes** (defaults are sufficient)
-6. Add test users if needed, then **Save and Continue**
-
-**Step 3: Create OAuth Credentials**
-
-1. Go to **Credentials** in the left sidebar
-2. Click **Create Credentials → OAuth client ID**
-3. Select **Web application**
-4. Configure:
-
-| Field | Value |
-|-------|-------|
-| **Name** | Supercheck Web Client |
-| **Authorized JavaScript origins** | `https://app.yourdomain.com` |
-| **Authorized redirect URIs** | `https://app.yourdomain.com/api/auth/callback/google` |
-
-<Callout type="warning">
-For local development without a domain, use:
-- JavaScript origins: `http://localhost:3000`
-- Redirect URI: `http://localhost:3000/api/auth/callback/google`
-</Callout>
-
-**Step 4: Get Credentials**
-
-1. Click **Create**
-2. Copy the **Client ID** and **Client Secret**
-
-**Step 5: Add to Environment**
-
-```bash
-GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-```
-
-### Verifying OAuth Setup
-
-After deployment, test your OAuth configuration:
-
-1. Go to your Supercheck instance
-2. Click **Sign in with GitHub** or **Sign in with Google**
-3. Complete the OAuth flow
-4. Verify you're redirected back and logged in
+<Steps>
+  <Step>
+    Go to [Google Cloud Console](https://console.cloud.google.com/) and create a project
+  </Step>
+  <Step>
+    Navigate to **APIs & Services** → **Credentials**
+  </Step>
+  <Step>
+    Configure OAuth consent screen (select External)
+  </Step>
+  <Step>
+    Create **OAuth client ID** (Web application) with redirect URI:
+    `https://app.yourdomain.com/api/auth/callback/google`
+  </Step>
+  <Step>
+    Copy credentials and add to `.env`:
+    
+    ```bash
+    GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+    GOOGLE_CLIENT_SECRET=your-client-secret
+    ```
+  </Step>
+</Steps>
 
 <Callout type="info">
-If you encounter errors, check:
-- Callback URLs match exactly (including trailing slashes)
-- Client ID and Secret are correct
-- For Google: OAuth consent screen is configured
+For local development, use `http://localhost:3000` for all URLs.
 </Callout>
 
 ---
 
-## Optional: Email (SMTP)
+## Optional Features
 
-Required for alerts, password resets, and invitations.
+### Email (SMTP)
+
+Required for alerts and invitations.
 
 ```bash
-# Your SMTP server (Gmail, SendGrid, Mailgun, AWS SES, etc.)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-email@gmail.com
@@ -318,17 +221,12 @@ SMTP_PASSWORD=your-app-password
 SMTP_FROM_EMAIL=notifications@yourdomain.com
 ```
 
----
+### AI Features
 
-## Optional: AI Features
-
-Enables AI-powered test fix suggestions.
+AI Create and AI Fix for Playwright and k6 tests, plus AI Analyze for k6 performance run insights.
 
 ```bash
-# OpenAI API key from https://platform.openai.com
 OPENAI_API_KEY=sk-your-api-key
-
-# Model options: gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo
 AI_MODEL=gpt-4o-mini
 ```
 
@@ -336,14 +234,10 @@ AI_MODEL=gpt-4o-mini
 
 ## Scaling Workers
 
-By default, Supercheck runs with **1 worker** for single-server deployments. Scale for more concurrent tests:
-
 ```bash
-# Scale to 2 workers (requires RUNNING_CAPACITY adjustment)
+# Scale to 2 workers
 WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
 ```
-
-### Capacity Planning
 
 | Workers | Concurrent Tests | Server Size |
 |---------|------------------|-------------|
@@ -351,36 +245,35 @@ WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
 | 2 | 2 | 4 vCPU / 8GB |
 | 4 | 4 | 8 vCPU / 16GB |
 
-<Callout type="info">
-Each worker runs one Playwright test at a time with **1 browser worker** inside the container (default for 2GB container memory). For larger servers, set `PLAYWRIGHT_WORKERS=2`.
-</Callout>
+---
+
+## Maintenance
+
+**Update:**
+```bash
+docker compose pull && docker compose up -d
+```
+
+**Backup:**
+```bash
+docker exec supercheck-postgres pg_dump -U postgres supercheck > backup.sql
+```
+
+**Troubleshoot:**
+```bash
+docker compose logs app
+docker compose ps
+```
 
 ---
 
-## Updates
+## Next Steps
 
-```bash
-# Pull latest images
-docker compose pull
-docker compose up -d
-```
-
-## Backup
-
-```bash
-# Export database
-docker exec supercheck-postgres pg_dump -U postgres supercheck > backup.sql
-
-# Restore
-cat backup.sql | docker exec -i supercheck-postgres psql -U postgres supercheck
-```
-
-## Troubleshooting
-
-**Container won't start**: `docker compose logs app`
-
-**Database errors**: `docker compose ps`
-
-**SSL issues**: Ensure ports 80/443 are open
-
-**DNS not resolving**: Wait for propagation or check with `dig yourdomain.com`
+<Cards>
+  <Card
+    icon={<MapPin className="text-emerald-500" />}
+    title="Multi-Location Workers"
+    description="Deploy workers in multiple regions for true global coverage"
+    href="/docs/deployment/multi-location"
+  />
+</Cards>

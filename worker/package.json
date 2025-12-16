@@ -70,7 +70,7 @@
     "mssql": "^11.0.1",
     "mysql2": "^3.14.2",
     "nestjs-pino": "^4.4.1",
-    "nodemailer": "^7.0.3",
+    "nodemailer": "^7.0.11",
     "oracledb": "^6.9.0",
     "pg": "^8.16.3",
     "pino": "^9.6.0",

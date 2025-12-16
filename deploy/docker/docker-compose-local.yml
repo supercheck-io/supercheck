@@ -1,3 +1,23 @@
+# Supercheck - Local Development (Build from Source)
+#
+# Use this for active development. Builds images from local source code
+# with hot-reload support for faster iteration.
+#
+# Quick Start:
+#   1. Clone the repository
+#   2. Run: docker compose -f docker-compose-local.yml up -d --build
+#   3. Access: http://localhost:3000
+#
+# Features:
+#   - Builds app and worker from local source (../../app, ../../worker)
+#   - Source code mounted for hot-reload
+#   - All services included: PostgreSQL, Redis, MinIO
+#
+# For production deployment, use docker-compose-secure.yml instead.
+#
+# Documentation: https://supercheck.io/docs/deployment/self-hosted
+# ============================================================================
+
 # YAML anchors for shared configuration
 x-common-env: &common-env # Database Configuration
   DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/supercheck}

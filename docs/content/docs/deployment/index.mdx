@@ -3,6 +3,7 @@ title: Deployment
 description: Self-host Supercheck with Docker Compose
 icon: Server
 ---
+
 Deploy Supercheck on your own infrastructure with Docker Compose. Self-hosted mode includes unlimited features.
 
 ## Quick Deploy
@@ -21,14 +22,20 @@ Access at `https://your-domain.com` after DNS is configured.
 - 4GB RAM minimum (8GB recommended)
 - Domain with DNS pointing to your server
 
-## Guides
+## Self-Hosted Setup
 
 <Cards>
   <Card
     icon={<Container className="text-sky-500" />}
-    title="Self-Hosted Setup"
-    description="Complete step-by-step deployment guide"
+    title="Single Location"
+    description="All services on one server - simple and quick"
     href="./deployment/self-hosted"
+  />
+  <Card
+    icon={<MapPin className="text-emerald-500" />}
+    title="Multi-Location"
+    description="Workers in multiple regions for global coverage"
+    href="./deployment/multi-location"
   />
 </Cards>
 
@@ -42,11 +49,3 @@ Access at `https://your-domain.com` after DNS is configured.
 | **redis** | Job queues |
 | **minio** | Artifact storage (S3-compatible) |
 | **traefik** | HTTPS reverse proxy |
-
-## Self-Hosted Mode
-
-When `SELF_HOSTED=true` (default):
-- All features unlocked
-- No usage limits
-- No billing required
-- Data stays on your infrastructure

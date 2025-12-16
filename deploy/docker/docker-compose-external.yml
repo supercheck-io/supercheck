@@ -1,7 +1,22 @@
-# Docker Compose for Supercheck with External Services
-# Use this configuration when using external PostgreSQL, Redis, and S3/MinIO services
-# Based on docker-compose-secure.yml with Traefik for HTTPS
-
+# Supercheck - Production with External Managed Services
+#
+# Use this when connecting to external managed databases and storage:
+#   - External PostgreSQL (e.g., Neon, Supabase, AWS RDS)
+#   - External Redis (e.g., Upstash, Redis Cloud, AWS ElastiCache)
+#   - External S3 (e.g., AWS S3, Cloudflare R2, MinIO)
+#
+# This configuration runs only App, Worker, and Traefik (no database containers).
+#
+# Quick Start:
+#   1. Set up external PostgreSQL, Redis, and S3
+#   2. Create .env with connection strings:
+#      DATABASE_URL=postgresql://user:pass@host:5432/supercheck
+#      REDIS_URL=redis://:password@host:6379
+#      S3_ENDPOINT=https://your-bucket.s3.amazonaws.com
+#   3. Run: docker compose -f docker-compose-external.yml up -d
+#
+# Documentation: https://supercheck.io/docs/deployment/self-hosted
+# ============================================================================
 # YAML anchors for shared configuration
 x-common-env: &common-env # Database Configuration - External PostgreSQL
   DATABASE_URL: ${DATABASE_URL}
