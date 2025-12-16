@@ -449,10 +449,13 @@ export async function getQueues(): Promise<{
           }
         );
 
-        // Initialize scheduler workers to process scheduled job triggers
-        // This runs in the app so scheduled jobs go through capacity management
-        const { initializeSchedulerWorkers } = await import("./scheduler");
-        await initializeSchedulerWorkers();
+        // Initialize scheduler workers asynchronously (non-blocking)
+        // This prevents slow/failing Redis from blocking app startup
+        // Schedulers will start in background - app remains responsive for health checks
+        import("./scheduler")
+          .then(({ initializeSchedulerWorkers }) => initializeSchedulerWorkers())
+          .then(() => queueLogger.info({}, "Scheduler workers initialized successfully"))
+          .catch((err) => queueLogger.error({ err }, "Scheduler worker initialization failed (non-fatal)"));
 
         // BullMQ Queues initialized
       } catch (error) {

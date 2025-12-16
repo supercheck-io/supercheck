@@ -25,8 +25,8 @@ x-common-env: &common-env # Database Configuration
   # Cloud mode uses plan limits: Plus=5/50, Pro=10/100
   # For self-hosted, match RUNNING_CAPACITY to WORKER_REPLICAS (each worker handles 1 job)
   # Example: WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker-compose up -d
-  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1}   # Max concurrent executions
-  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10}    # Max jobs waiting in queue
+  RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1} # Max concurrent executions
+  QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10} # Max jobs waiting in queue
   # Container limits for 2 vCPU / 4GB servers
   CONTAINER_CPU_LIMIT: ${CONTAINER_CPU_LIMIT:-1.5}
   CONTAINER_MEMORY_LIMIT_MB: ${CONTAINER_MEMORY_LIMIT_MB:-2048}
@@ -183,13 +183,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "const http = require('http'); const req = http.request({hostname: 'localhost', port: 3000, path: '/api/health', timeout: 5000}, (res) => process.exit(res.statusCode < 400 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();",
-        ]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -239,13 +233,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "const http = require('http'); const req = http.request({hostname: 'localhost', port: 8000, path: '/health', timeout: 5000}, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();",
-        ]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3

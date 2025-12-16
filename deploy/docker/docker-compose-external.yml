@@ -206,13 +206,7 @@ services:
       - ./app/public/supercheck.d.ts:/app/public/supercheck.d.ts:ro
     restart: unless-stopped
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "const http = require('http'); const req = http.request({hostname: 'localhost', port: 3000, path: '/', timeout: 5000}, (res) => process.exit(res.statusCode < 400 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();",
-        ]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -258,13 +252,7 @@ services:
         condition: service_healthy # Wait for app to complete migrations
     restart: unless-stopped
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "const http = require('http'); const req = http.request({hostname: 'localhost', port: 8000, path: '/health', timeout: 5000}, (res) => process.exit(res.statusCode === 200 ? 0 : 1)); req.on('error', () => process.exit(1)); req.end();",
-        ]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
