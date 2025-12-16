@@ -28,7 +28,6 @@ function getErrorMessage(error: unknown): string {
 abstract class BaseK6ExecutionProcessor extends WorkerHost {
   protected readonly logger: Logger;
   protected readonly workerLocation: string;
-  protected readonly enableLocationFiltering: boolean;
 
   protected constructor(
     processorName: string,
@@ -43,30 +42,16 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     super();
     this.logger = new Logger(processorName);
 
+    // Worker location is used for logging and reporting
+    // Queue routing is handled at module level by conditional queue registration
     this.workerLocation = this.configService.get<string>(
       'WORKER_LOCATION',
-      'eu-central',
+      'local',
     );
 
-    const enableLocationFiltering = this.configService.get<string>(
-      'ENABLE_LOCATION_FILTERING',
-      'false',
+    this.logger.log(
+      `K6 processor initialized for location: ${this.workerLocation}`,
     );
-
-    this.enableLocationFiltering =
-      typeof enableLocationFiltering === 'string'
-        ? enableLocationFiltering.toLowerCase() === 'true'
-        : Boolean(enableLocationFiltering);
-
-    if (this.enableLocationFiltering) {
-      this.logger.log(
-        `Worker location filtering ENABLED: ${this.workerLocation} (only processing jobs for this location)`,
-      );
-    } else {
-      this.logger.log(
-        `Worker location filtering DISABLED: Processing all jobs (location still recorded for reporting)`,
-      );
-    }
   }
 
   async handleProcess(
@@ -75,11 +60,9 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     const processStartTime = Date.now();
     const requestedLocation = job.data.location || 'eu-central';
     const normalizedJobLocation = requestedLocation.toLowerCase();
-    const normalizedWorkerLocation = this.workerLocation.toLowerCase();
-    const jobLocationIsWildcard = this.isWildcardLocation(
-      normalizedJobLocation,
-    );
-    const workerIsWildcard = this.isWildcardLocation(normalizedWorkerLocation);
+    const jobLocationIsWildcard = this.isWildcardLocation(normalizedJobLocation);
+    
+    // If job location is wildcard (*, any), use worker's actual location for reporting
     const effectiveJobLocation = jobLocationIsWildcard
       ? this.workerLocation
       : requestedLocation;
@@ -95,22 +78,6 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     if (!testId) {
       this.logger.warn(
         `k6 task ${job.id} missing testId; proceeding without linking to a saved test`,
-      );
-    }
-
-    // Location filtering (multi-region mode)
-    // With attempts: 1, we can't rely on retries for location routing
-    // Instead, just log and process anyway - the job was already assigned to this queue
-    const shouldFilter =
-      this.enableLocationFiltering &&
-      !workerIsWildcard &&
-      !jobLocationIsWildcard &&
-      normalizedJobLocation !== normalizedWorkerLocation;
-
-    if (shouldFilter) {
-      // Log warning but still process - with attempts: 1, we can't retry
-      this.logger.warn(
-        `[Job ${job.id}] Location mismatch: job requested ${requestedLocation} but worker is ${this.workerLocation}. Processing anyway to avoid permanent failure.`,
       );
     }
 

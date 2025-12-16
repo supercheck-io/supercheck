@@ -92,7 +92,7 @@ export interface K6ExecutionTask {
 }
 
 // Constants for queue names and Redis keys
-export const MONITOR_EXECUTION_QUEUE = "monitor-execution";
+// Note: Monitor queues are created dynamically from MONITOR_REGIONS (monitor-{region})
 
 // Scheduler-related queues
 export const JOB_SCHEDULER_QUEUE = "job-scheduler";
@@ -1130,7 +1130,8 @@ export async function setQueueCapacityLimit(limit: number): Promise<void> {
 }
 
 /**
- * Add a monitor execution task to the MONITOR_EXECUTION_QUEUE.
+ * Add a monitor execution task to regional queues.
+ * Monitors are distributed to their specified locations for accurate latency measurement.
  */
 export async function addMonitorExecutionJobToQueue(
   task: MonitorJobData

@@ -6,50 +6,92 @@ icon: MapPin
 
 Enable true multi-location monitoring and performance testing by deploying workers in different geographic regions.
 
+## How It Works
+
 ```mermaid
 flowchart TB
-    Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
-    T --> App[Next.js App<br/>UI + API]
-    
-    App --> DB[(PostgreSQL<br/>Primary DB)]
-    App --> Redis[(Redis + BullMQ<br/>Queue + Cache)]
-    App --> S3[(MinIO<br/>Artifacts)]
-    
-    Redis --> W1[Worker EU<br/>eu-central]
-    Redis -.->|Internet| W2[Worker US<br/>us-east]
-    Redis -.->|Internet| W3[Worker APAC<br/>asia-pacific]
-    
-    W1 & W2 & W3 --> DB
-    W1 & W2 & W3 --> S3
+    subgraph Main["Main Server (EU)"]
+        App[App + Worker<br/>WORKER_LOCATION=eu-central]
+        DB[(PostgreSQL)]
+        Redis[(Redis)]
+        S3[(MinIO)]
+    end
 
-    style Users fill:#6366f1,stroke:#4338ca,color:#fff
-    style T fill:#0ea5e9,stroke:#0369a1,color:#fff
-    style App fill:#3b82f6,stroke:#1e40af,color:#fff
-    style DB fill:#f59e0b,stroke:#b45309,color:#fff
-    style Redis fill:#ef4444,stroke:#b91c1c,color:#fff
-    style S3 fill:#8b5cf6,stroke:#6d28d9,color:#fff
-    style W1 fill:#10b981,stroke:#047857,color:#fff
-    style W2 fill:#10b981,stroke:#047857,color:#fff
-    style W3 fill:#10b981,stroke:#047857,color:#fff
+    subgraph US["US VPS"]
+        W_US[Worker<br/>WORKER_LOCATION=us-east]
+    end
+
+    subgraph APAC["Asia Pacific VPS"]
+        W_APAC[Worker<br/>WORKER_LOCATION=asia-pacific]
+    end
+
+    App --> DB
+    App --> Redis
+    App --> S3
+
+    W_US -.->|Internet| Redis
+    W_US -.->|Internet| DB
+    W_US -.->|Internet| S3
+
+    W_APAC -.->|Internet| Redis
+    W_APAC -.->|Internet| DB
+    W_APAC -.->|Internet| S3
+
+    style Main fill:#3b82f6,stroke:#1e40af,color:#fff
+    style US fill:#10b981,stroke:#047857,color:#fff
+    style APAC fill:#10b981,stroke:#047857,color:#fff
 ```
 
 <Callout type="info">
-**Single-Location Mode**: When using `WORKER_LOCATION=local` (default), workers process ALL regional queues from a single location. For true geographic distribution, deploy workers in multiple regions as shown below.
+**Key Insight**: Each worker only processes jobs for its designated region. A US worker only handles `us-east` jobs, an EU worker only handles `eu-central` jobs.
 </Callout>
 
 ---
 
-## Prerequisites
+## Architecture Overview
 
-- Main Supercheck instance running and accessible
-- VPS in each target region with Docker installed
-- Network connectivity from remote workers to main server (ports 5432, 6379, 9000)
+| `WORKER_LOCATION` | Queues Processed | Use Case |
+|-------------------|-----------------|----------|
+| `local` | **All queues** (regional + global) | Local development, single-server |
+| `us-east` | `k6-us-east`, `k6-global`, `monitor-us-east`, `monitor-global` | US East regional worker |
+| `eu-central` | `k6-eu-central`, `k6-global`, `monitor-eu-central`, `monitor-global` | EU Central regional worker |
+| `asia-pacific` | `k6-asia-pacific`, `k6-global`, `monitor-asia-pacific`, `monitor-global` | Asia Pacific regional worker |
+
+> **Note:** Each regional worker also processes global queues for load balancing. This ensures jobs without specific location requirements are distributed across all available workers.
 
 ---
 
-## Step 1: Expose Services on Main Server
+## Setup Options
 
-Update your Docker Compose file to expose database services:
+### Option A: Single Location (Default)
+
+For most self-hosted deployments, a single location is sufficient. The main docker-compose uses `WORKER_LOCATION=local` which processes all regional queues from one server.
+
+**No changes needed** - just deploy using the standard guide.
+
+---
+
+### Option B: Multi-Location (3 Regions)
+
+For true geographic distribution, deploy workers in each region.
+
+#### Step 1: Configure Main Server Location
+
+Update your main server's `.env` to set a specific region:
+
+```bash
+# Set to your main server's actual location
+WORKER_LOCATION=eu-central
+```
+
+Restart:
+```bash
+docker compose down && docker compose up -d
+```
+
+#### Step 2: Expose Services
+
+Update your Docker Compose to expose database services for remote workers:
 
 ```yaml
 services:
@@ -70,42 +112,35 @@ services:
 Use firewall rules to restrict access to your worker server IPs only.
 </Callout>
 
----
-
-## Step 2: Deploy Remote Worker
+#### Step 3: Deploy Remote Workers
 
 On each remote VPS:
 
-### 1. Install Docker
-
+**1. Install Docker:**
 ```bash
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 ```
 
-### 2. Download Worker Compose File
-
+**2. Download Worker Compose:**
 ```bash
 mkdir -p ~/supercheck-worker && cd ~/supercheck-worker
 curl -o docker-compose.yml https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/docker-compose-worker.yml
 ```
 
-### 3. Create Environment File
-
+**3. Create `.env`:**
 ```bash
-# .env file
 DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@MAIN_SERVER_IP:5432/supercheck
 REDIS_URL=redis://:YOUR_REDIS_PASSWORD@MAIN_SERVER_IP:6379
 S3_ENDPOINT=http://MAIN_SERVER_IP:9000
 AWS_ACCESS_KEY_ID=minioadmin
 AWS_SECRET_ACCESS_KEY=minioadmin
 
-# Set this worker's location: us-east | eu-central | asia-pacific
+# Set this worker's location
 WORKER_LOCATION=us-east
 ```
 
-### 4. Start Worker
-
+**4. Start Worker:**
 ```bash
 docker compose up -d
 docker compose logs -f  # Verify connection
@@ -113,23 +148,43 @@ docker compose logs -f  # Verify connection
 
 ---
 
-## Step 3: Enable Multi-Location Monitors
+## Complete 3-Region Example
+
+| Server | Location | `WORKER_LOCATION` | Queues Processed |
+|--------|----------|-------------------|------------------|
+| Main (Germany) | Hetzner NBG1 | `eu-central` | EU Central only |
+| Remote (US) | Hetzner ASH | `us-east` | US East only |
+| Remote (Singapore) | Hetzner SIN | `asia-pacific` | Asia Pacific only |
+
+### Main Server `.env`:
+```bash
+WORKER_LOCATION=eu-central
+```
+
+### US VPS `.env`:
+```bash
+WORKER_LOCATION=us-east
+DATABASE_URL=postgresql://postgres:password@main.example.com:5432/supercheck
+REDIS_URL=redis://:password@main.example.com:6379
+S3_ENDPOINT=http://main.example.com:9000
+```
+
+### APAC VPS `.env`:
+```bash
+WORKER_LOCATION=asia-pacific
+DATABASE_URL=postgresql://postgres:password@main.example.com:5432/supercheck
+REDIS_URL=redis://:password@main.example.com:6379
+S3_ENDPOINT=http://main.example.com:9000
+```
+
+---
+
+## Enable Multi-Location in UI
 
 1. Go to your Supercheck instance
 2. Create or edit a monitor
 3. Enable **Multi-Location Monitoring**
 4. Select the regions where you have workers deployed
-
----
-
-## Location Reference
-
-| WORKER_LOCATION | Queues Processed |
-|-----------------|-----------------|
-| `us-east` | `monitor-us-east`, `k6-us-east` |
-| `eu-central` | `monitor-eu-central`, `k6-eu-central` |
-| `asia-pacific` | `monitor-asia-pacific`, `k6-asia-pacific` |
-| `local` | All queues (default for single-location) |
 
 ---
 
@@ -154,8 +209,7 @@ docker run --rm -it postgres:15 psql "$DATABASE_URL" -c "SELECT 1"
 docker run --rm -it redis:7 redis-cli -u "$REDIS_URL" ping
 ```
 
-**Worker not processing jobs:**
+**Verify worker location:**
 ```bash
-docker compose logs worker
-docker compose exec worker env | grep WORKER_LOCATION
+docker compose logs worker | grep "WORKER_LOCATION"
 ```

@@ -133,17 +133,25 @@ async function enqueueMonitorExecutionJobs(
 }
 
 /**
- * Get the appropriate queue for a monitor location
+ * Get the appropriate queue for a monitor location.
+ * Monitors MUST run in their specified location - no fallback.
+ * Location accuracy is critical for meaningful monitoring data.
  */
 function getQueueForLocation(
   monitorQueues: Record<MonitorRegion, import('bullmq').Queue>,
   location: MonitoringLocation
 ): import('bullmq').Queue {
-  if (location === 'us-east' || location === 'eu-central' || location === 'asia-pacific') {
-    return monitorQueues[location];
+  const queue = monitorQueues[location as MonitorRegion];
+  
+  if (!queue) {
+    // No fallback - monitors must run in their specified location
+    throw new Error(
+      `Invalid monitor location: "${location}". ` +
+      `Valid locations are: us-east, eu-central, asia-pacific. ` +
+      `Monitors cannot fall back to a different location as this would produce inaccurate results.`
+    );
   }
-
-  // Default to us-east for unknown locations
-  logger.warn({ location }, 'Unknown location, defaulting to us-east queue');
-  return monitorQueues['us-east'];
+  
+  return queue;
 }
+
