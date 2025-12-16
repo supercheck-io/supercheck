@@ -33,8 +33,6 @@ import {
     XCircle,
     Calendar,
     Timer,
-    MousePointerClick,
-    Workflow,
     BarChart3,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
@@ -117,19 +115,7 @@ function formatDuration(ms: number | null | undefined): string {
     return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
 }
 
-function formatTotalDuration(ms: number | null | undefined): string {
-    if (ms === null || ms === undefined) return "0m";
-    if (ms === 0) return "0m";
-    const minutes = Math.round(ms / 60000);
-    if (minutes === 0) return "<1m";
-    if (minutes < 60) return `${minutes}m`;
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    if (hours < 24) return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
-    const days = Math.floor(hours / 24);
-    const remainingHours = hours % 24;
-    return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
-}
+
 
 interface PlaywrightAnalyticsTabProps {
     selectedJob: string;
