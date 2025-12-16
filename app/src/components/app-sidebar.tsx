@@ -209,7 +209,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs",
       icon: BookOpenText,
-      badge: "v1.2.0",
+      badge: "v1.2.1",
     },
   ],
   documents: [
