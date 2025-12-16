@@ -18,7 +18,7 @@ x-common-env: &common-env # Database Configuration
   APP_DOMAIN: ${APP_DOMAIN:-demo.supercheck.io}
   NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://${APP_DOMAIN:-demo.supercheck.io}}
   APP_URL: ${APP_URL:-https://${APP_DOMAIN:-demo.supercheck.io}}
-  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-${APP_DOMAIN:-demo.supercheck.io}}
+  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-supercheck.io}
   BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://${APP_DOMAIN:-demo.supercheck.io}}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}

@@ -313,14 +313,14 @@ export function K6AnalyticsTab({
         }
     }, [leftRunId, rightRunId, fetchComparison]);
 
-    // Auto-select comparison runs when data loads with 2+ runs
+    // Auto-select comparison runs when data loads with 2+ runs or when dialog opens
     useEffect(() => {
         if (data && data.runs.length >= 2 && !leftRunId && !rightRunId) {
             // Auto-select the two most recent runs for comparison
             setLeftRunId(data.runs[1]?.runId ?? null);
             setRightRunId(data.runs[0]?.runId ?? null);
         }
-    }, [data, leftRunId, rightRunId]);
+    }, [data, leftRunId, rightRunId, isComparing]);
 
     // Reset comparison when job changes
     useEffect(() => {
@@ -632,7 +632,7 @@ export function K6AnalyticsTab({
             {/* Run Comparison - Dialog controlled by parent */}
             {canCompare && (
                 <Dialog open={isComparing} onOpenChange={setIsComparing}>
-                    <DialogContent className="min-w-7xl">
+                    <DialogContent className="min-w-7xl overflow-hidden">
                         <DialogHeader className="flex flex-row items-start justify-between gap-4">
                             <div>
                                 <DialogTitle className="flex items-center gap-2">
@@ -732,6 +732,32 @@ export function K6AnalyticsTab({
                                     </Select>
                                 </div>
                             </div>
+
+                            {/* Loading skeleton when comparison data is being fetched */}
+                            {(!compLeft || !compRight || !compDeltas) && leftRunId && rightRunId && (
+                                <div className="border rounded-md animate-pulse">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Metric</TableHead>
+                                                <TableHead className="text-center">Baseline</TableHead>
+                                                <TableHead className="text-center">Compare</TableHead>
+                                                <TableHead className="text-center">Delta</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {[...Array(8)].map((_, i) => (
+                                                <TableRow key={i}>
+                                                    <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                                                    <TableCell className="text-center"><Skeleton className="h-4 w-16 mx-auto" /></TableCell>
+                                                    <TableCell className="text-center"><Skeleton className="h-4 w-16 mx-auto" /></TableCell>
+                                                    <TableCell className="text-center"><Skeleton className="h-4 w-20 mx-auto" /></TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            )}
 
                             {/* Toggle between metrics view and reports view */}
                             {compLeft && compRight && compDeltas && compLeft.metrics && compRight.metrics && (
