@@ -7,6 +7,7 @@ icon: Container
 Deploy Supercheck on your own infrastructure with Docker Compose. All data stays on your servers.
 
 ```mermaid
+%%{init: {'themeVariables': { 'fontSize': '13px'}}}%%
 flowchart TB
     Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
     T --> App[Next.js App<br/>UI + API]
