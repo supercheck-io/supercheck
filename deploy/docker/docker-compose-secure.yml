@@ -1,3 +1,25 @@
+# Supercheck - Production with HTTPS (Recommended)
+#
+# Production-ready deployment with automatic SSL/TLS via Traefik and Let's Encrypt.
+# Includes all services: Traefik, PostgreSQL, Redis, MinIO (S3), App, and Worker.
+#
+# Quick Start:
+#   1. Clone the repository
+#   2. Configure DNS: app.yourdomain.com → Server IP
+#   3. Run ./init-secrets.sh to generate secure secrets
+#   4. Edit .env with your domain and OAuth credentials
+#   5. Run: docker compose -f docker-compose-secure.yml up -d
+#   6. Access: https://app.yourdomain.com
+#
+# Required .env variables:
+#   APP_DOMAIN       - Your domain (e.g., app.yourdomain.com)
+#   ACME_EMAIL       - Email for Let's Encrypt notifications
+#   GITHUB_CLIENT_ID - GitHub OAuth App Client ID
+#   GITHUB_CLIENT_SECRET - GitHub OAuth App Client Secret
+#
+# Documentation: https://supercheck.io/docs/deployment/self-hosted
+# ============================================================================
+
 # YAML anchors for shared configuration
 x-common-env: &common-env # Database Configuration
   DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/supercheck}
@@ -124,9 +146,6 @@ x-common-env: &common-env # Database Configuration
 
   # ACME/Let's Encrypt email for SSL certificates
   ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
-
-  # Demo mode - shows demo badge in UI (runtime configurable)
-  DEMO_MODE: ${DEMO_MODE:-true}
 
   # Self-Hosted Mode (set to 'true' for unlimited features without Polar billing)
   # Client-side code fetches this from /api/config/hosting-mode at runtime

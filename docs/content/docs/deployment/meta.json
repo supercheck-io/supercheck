@@ -4,6 +4,6 @@
     "icon": "Server",
     "pages": [
         "self-hosted",
-        "configuration"
+        "multi-location"
     ]
 }

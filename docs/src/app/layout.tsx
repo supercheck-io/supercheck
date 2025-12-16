@@ -44,7 +44,13 @@ export default function Layout({ children }: LayoutProps<'/'>) {
   return (
     <html lang="en" className={inter.className} suppressHydrationWarning>
       <body className="flex flex-col min-h-screen">
-        <RootProvider search={{ SearchDialog: SearchDialogWrapper }}>{children}</RootProvider>
+        <RootProvider
+          search={{ SearchDialog: SearchDialogWrapper }}
+          theme={{
+            defaultTheme: 'system',
+            enableSystem: true,
+          }}
+        >{children}</RootProvider>
       </body>
     </html>
   );

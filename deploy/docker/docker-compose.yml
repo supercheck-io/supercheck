@@ -1,3 +1,19 @@
+# Supercheck - Development with Pre-built Images
+#
+# Use this for local testing with pre-built Docker images from GitHub Container Registry.
+# Includes all services: PostgreSQL, Redis, MinIO (S3), App, and Worker.
+#
+# Quick Start:
+#   1. Clone the repository
+#   2. Create .env with OAuth credentials (see docs)
+#   3. Run: docker compose up -d
+#   4. Access: http://localhost:3000
+#
+# For production with HTTPS, use docker-compose-secure.yml instead.
+#
+# Documentation: https://supercheck.io/docs/deployment/self-hosted
+# ============================================================================
+
 # YAML anchors for shared configuration
 x-common-env: &common-env # Database Configuration
   DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/supercheck}

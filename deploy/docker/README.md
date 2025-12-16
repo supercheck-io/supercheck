@@ -67,7 +67,42 @@ export APP_DOMAIN=supercheck.yourdomain.com
 docker compose -f docker-compose-secure.yml up -d
 ```
 
+### `docker-compose-worker.yml` (Multi-Location Workers)
+
+Deploy workers in remote geographic regions connecting to your main Supercheck instance:
+- Connects to central PostgreSQL, Redis, and MinIO
+- Set `WORKER_LOCATION` to target region (us-east, eu-central, asia-pacific)
+- True multi-location monitoring and performance testing
+- Minimal resource requirements (~2 vCPU / 4GB RAM)
+
+```bash
+# On remote VPS in US East
+export DATABASE_URL=postgresql://user:pass@main-server:5432/supercheck
+export REDIS_URL=redis://:password@main-server:6379
+export S3_ENDPOINT=http://main-server:9000
+export WORKER_LOCATION=us-east
+
+docker compose -f docker-compose-worker.yml up -d
+```
+
+See [Multi-Location Workers Guide](https://supercheck.io/docs/deployment/multi-location) for complete setup instructions.
+
 ---
+
+## Quick Setup Script
+
+Use `init-secrets.sh` to auto-generate secure secrets for your deployment:
+
+```bash
+# Generate .env with secure secrets
+./init-secrets.sh
+
+# Edit to add OAuth credentials
+nano .env
+
+# Start services
+docker compose up -d
+```
 
 ## Environment Variables
 
