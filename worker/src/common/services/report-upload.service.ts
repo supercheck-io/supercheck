@@ -204,10 +204,9 @@ export class ReportUploadService {
 
       let htmlContent = await fs.readFile(indexPath, 'utf-8');
 
-      // Fix trace file references to work with S3
-      // Replace relative paths with absolute S3 paths
-      htmlContent = htmlContent.replace(/href="\.\/data\//g, `href="./data/`);
-      htmlContent = htmlContent.replace(/src="\.\/data\//g, `src="./data/`);
+      // NOTE: Previously had no-op replacements here (replacing ./data/ with ./data/)
+      // The report files are already using relative paths which work correctly with S3
+      // If S3 path fixing is needed in the future, implement actual path transformation
 
       await fs.writeFile(indexPath, htmlContent, 'utf-8');
     } catch (error) {

@@ -18,6 +18,24 @@ const DANGEROUS_TAGS = [
   'svg', 'math', 'link', 'style', 'base', 'meta', 'applet'
 ];
 
+/**
+ * Iteratively remove a pattern until no more matches are found.
+ * This handles nested/overlapping patterns like `<<script>script>`.
+ */
+function removePatternIteratively(input: string, pattern: RegExp): string {
+  let prev = '';
+  let current = input;
+  // Safety limit to prevent infinite loops
+  let iterations = 0;
+  const maxIterations = 100;
+  while (prev !== current && iterations < maxIterations) {
+    prev = current;
+    current = current.replace(pattern, '');
+    iterations++;
+  }
+  return current;
+}
+
 // Event handler patterns (covers all on* attributes)
 const EVENT_HANDLER_PATTERN = /\s*on\w+\s*=\s*(?:["'][^"']*["']|[^\s>]+)/gi;
 
@@ -84,8 +102,9 @@ export function sanitizeString(input: string | null | undefined): string {
   // Remove dangerous HTML tags
   sanitized = removeDangerousTags(sanitized);
 
-  // Remove event handlers (covers all on* attributes like onclick, onerror, onload)
-  sanitized = sanitized.replace(EVENT_HANDLER_PATTERN, '');
+  // Remove event handlers iteratively (covers all on* attributes like onclick, onerror, onload)
+  // Using iterative removal to handle nested patterns
+  sanitized = removePatternIteratively(sanitized, EVENT_HANDLER_PATTERN);
 
   // Remove dangerous protocols
   sanitized = removeDangerousProtocols(sanitized);
@@ -171,9 +190,9 @@ export function sanitizeCredential(credential: string | null | undefined): strin
   // Remove null bytes and control characters except common ones (tab, newline)
   let sanitized = credential.replace(/[\0\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
 
-  // Remove HTML tags and event handlers
-  sanitized = sanitized.replace(/<[^>]*>/g, '');
-  sanitized = sanitized.replace(/on\w+\s*=\s*["'][^"']*["']/gi, '');
+  // Remove HTML tags and event handlers iteratively to handle nested patterns
+  sanitized = removePatternIteratively(sanitized, /<[^>]*>/g);
+  sanitized = removePatternIteratively(sanitized, /on\w+\s*=\s*["'][^"']*["']/gi);
 
   // Remove javascript: and similar protocols
   sanitized = sanitized.replace(/javascript:/gi, '');

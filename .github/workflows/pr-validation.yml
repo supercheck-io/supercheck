@@ -2,7 +2,7 @@ name: PR Validation
 
 on:
   pull_request:
-    branches: ['**']
+    branches: ["**"]
   push:
     branches: [main]
   workflow_dispatch:
@@ -12,7 +12,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: "20"
+
+# Explicit permissions following least-privilege principle
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   app-quality-checks:
@@ -28,7 +33,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: app/package-lock.json
 
       - name: Install dependencies
@@ -83,7 +88,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: worker/package-lock.json
 
       - name: Install dependencies

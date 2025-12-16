@@ -55,8 +55,17 @@ const slackSchema = z.object({
     .string()
     .url("Please enter a valid URL")
     .refine(
-      (url) => url.includes(".slack.com"),
-      "URL must be from a slack.com domain"
+      (url) => {
+        try {
+          const parsed = new URL(url);
+          // Only hooks.slack.com is the valid Slack webhook endpoint
+          // Using exact match to prevent bypass via evil-hooks.slack.com
+          return parsed.hostname === 'hooks.slack.com';
+        } catch {
+          return false;
+        }
+      },
+      "URL must be a valid Slack webhook URL (hooks.slack.com)"
     ),
 });
 

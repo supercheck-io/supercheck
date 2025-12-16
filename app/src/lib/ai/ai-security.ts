@@ -197,8 +197,17 @@ export class AISecurityService {
       return "";
     }
 
-    // Remove any HTML/script tags from explanations
-    let sanitized = text.replace(/<[^>]*>/g, "");
+    // Remove any HTML/script tags from explanations iteratively to handle nested patterns
+    // e.g., "<<script>script>" becomes "<script>" after first pass, then "" after second
+    let sanitized = text;
+    let prev = '';
+    let iterations = 0;
+    const maxIterations = 100; // Safety limit
+    while (prev !== sanitized && iterations < maxIterations) {
+      prev = sanitized;
+      sanitized = sanitized.replace(/<[^>]*>/g, "");
+      iterations++;
+    }
 
     // Remove prompt injection patterns from explanations too
     for (const pattern of PROMPT_INJECTION_PATTERNS) {

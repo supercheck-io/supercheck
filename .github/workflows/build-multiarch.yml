@@ -19,6 +19,11 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: supercheck-io/supercheck
 
+# Explicit permissions following least-privilege principle
+# Individual jobs may override with elevated permissions (e.g., packages: write)
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Run Tests
