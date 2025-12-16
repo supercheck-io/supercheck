@@ -173,7 +173,9 @@ async function testSlackConnection(config: NotificationProviderConfig) {
     // Validate that the URL is a Slack webhook URL
     try {
       const parsedUrl = new URL(webhookUrl);
-      if (!parsedUrl.hostname.endsWith('.slack.com') && !parsedUrl.hostname.endsWith('hooks.slack.com')) {
+      // Only hooks.slack.com is the valid Slack webhook endpoint
+      // Using exact match to prevent bypass via evil-hooks.slack.com
+      if (parsedUrl.hostname !== 'hooks.slack.com') {
         throw new Error("URL must be a valid Slack webhook URL (hooks.slack.com)");
       }
     } catch (parseError) {
@@ -351,7 +353,15 @@ async function testDiscordConnection(config: NotificationProviderConfig) {
     // Validate that the URL is a Discord webhook URL
     try {
       const parsedUrl = new URL(webhookUrl);
-      if (!parsedUrl.hostname.endsWith('discord.com') && !parsedUrl.hostname.endsWith('discordapp.com')) {
+      const hostname = parsedUrl.hostname.toLowerCase();
+      // Allowed Discord webhook hosts - exact match or legitimate subdomains
+      const allowedDiscordHosts = [
+        'discord.com',
+        'discordapp.com',
+        'canary.discord.com',
+        'ptb.discord.com',
+      ];
+      if (!allowedDiscordHosts.includes(hostname)) {
         throw new Error("URL must be a valid Discord webhook URL (discord.com or discordapp.com)");
       }
       // Ensure it's specifically a webhook endpoint
