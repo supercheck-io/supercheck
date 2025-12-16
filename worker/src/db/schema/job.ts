@@ -127,7 +127,6 @@ export const runs = pgTable(
       .$type<TestRunStatus>()
       .notNull()
       .default("running"),
-    duration: varchar("duration", { length: 100 }),
     durationMs: integer("duration_ms"),
     startedAt: timestamp("started_at"),
     completedAt: timestamp("completed_at"),

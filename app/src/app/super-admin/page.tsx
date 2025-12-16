@@ -376,7 +376,7 @@ export default function AdminDashboard() {
                   <h2 className="text-2xl font-bold tracking-tight">
                     Super Admin
                   </h2>
-                  <p className="text-muted-foreground">
+                  <p className="text-muted-foreground text-sm">
                     Manage system users, organizations, and view platform
                     statistics.
                   </p>

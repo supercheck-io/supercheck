@@ -178,7 +178,7 @@ export class DbService implements OnModuleInit {
       const now = new Date();
       const updateData: {
         status: TestRunStatus;
-        duration?: string;
+        durationMs?: number;
         completedAt?: Date;
         startedAt?: Date;
         errorDetails?: string;
@@ -187,9 +187,8 @@ export class DbService implements OnModuleInit {
         status,
       };
 
-      // Add duration if provided - convert string duration to seconds (integer)
+      // Add duration if provided - convert string duration to milliseconds
       if (duration) {
-        // Extract just the seconds as integer
         let durationSeconds = 0;
 
         if (duration.includes('m')) {
@@ -205,13 +204,31 @@ export class DbService implements OnModuleInit {
           durationSeconds = secondsMatch ? parseInt(secondsMatch[1], 10) : 0;
         }
 
-        // Store the duration as a string
-        updateData.duration = durationSeconds.toString();
+        // Store duration in milliseconds only
+        updateData.durationMs = durationSeconds * 1000;
       }
 
       // Add completedAt timestamp for terminal statuses
       if (['failed', 'passed', 'error'].includes(status)) {
         updateData.completedAt = now;
+        
+        // If no duration provided, calculate from startedAt
+        if (!duration) {
+          try {
+            const existingRun = await this.dbInstance
+              .select({ startedAt: runs.startedAt })
+              .from(runs)
+              .where(eq(runs.id, runId))
+              .limit(1);
+              
+            if (existingRun.length > 0 && existingRun[0].startedAt) {
+              const durationMs = now.getTime() - existingRun[0].startedAt.getTime();
+              updateData.durationMs = durationMs;
+            }
+          } catch (e) {
+            this.logger.warn(`Could not calculate duration for run ${runId}: ${e}`);
+          }
+        }
       }
 
       // Add error details if provided

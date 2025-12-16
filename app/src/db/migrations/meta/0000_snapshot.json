@@ -1,5 +1,5 @@
 {
-  "id": "e3cddd06-c369-423d-b2b2-34754cbea4e6",
+  "id": "2cec8569-7f89-4121-9a59-20ac55b98988",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -2836,12 +2836,6 @@
           "notNull": true,
           "default": "'running'"
         },
-        "duration": {
-          "name": "duration",
-          "type": "varchar(100)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "duration_ms": {
           "name": "duration_ms",
           "type": "integer",
@@ -3206,6 +3200,12 @@
         },
         "p99_response_time_ms": {
           "name": "p99_response_time_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "vus_max": {
+          "name": "vus_max",
           "type": "integer",
           "primaryKey": false,
           "notNull": false

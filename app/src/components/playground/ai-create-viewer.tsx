@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { X, Check, Wand2 } from "lucide-react";
+import { X, Check, Sparkles, Loader2 } from "lucide-react";
 import { Editor, useMonaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 import { useTheme } from "next-themes";
@@ -171,13 +171,13 @@ export function AICreateViewer({
         <div className={`flex-shrink-0 px-4 py-3 ${headerClasses}`}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <Wand2 className="h-5 w-5 text-purple-500" />
+              <div className="rounded-md bg-gradient-to-r from-purple-500/20 to-pink-500/20 p-1.5">
+                <Sparkles className="h-4 w-4 text-purple-500" />
+              </div>
               <h2 className="text-base font-semibold flex items-center gap-2">
-                AI Generated Script
+                Supercheck AI - Generated Script
                 {isStreaming && (
-                  <span className="text-xs text-purple-500 font-normal animate-pulse">
-                    AI is generating...
-                  </span>
+                  <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
                 )}
               </h2>
             </div>
@@ -185,11 +185,10 @@ export function AICreateViewer({
               variant="ghost"
               size="sm"
               onClick={onClose}
-              className={`h-7 w-7 p-0 ${
-                isDarkTheme
+              className={`h-7 w-7 p-0 ${isDarkTheme
                   ? "text-gray-400 hover:text-white hover:bg-gray-800"
                   : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
-              }`}
+                }`}
               disabled={isStreaming}
               aria-label="Close"
             >

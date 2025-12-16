@@ -7,7 +7,7 @@ import { ExecutionModule } from './execution.module';
 import { K6Module } from './k6/k6.module';
 import { MonitorModule } from './monitor/monitor.module';
 import { NotificationModule } from './notification/notification.module';
-import { SchedulerModule } from './scheduler/scheduler.module';
+// SchedulerModule removed - scheduler now runs in the App for capacity management
 import { HealthModule } from './health/health.module';
 import { EmailTemplateModule } from './email-template/email-template.module';
 import { LoggerModule } from './logger/logger.module';
@@ -56,7 +56,7 @@ import { QueueAlertingModule } from './queue-alerting/queue-alerting.module';
     K6Module,
     MonitorModule,
     NotificationModule,
-    SchedulerModule,
+    // SchedulerModule removed - now part of App
     HealthModule,
     EmailTemplateModule,
     QueueAlertingModule,

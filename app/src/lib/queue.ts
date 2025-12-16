@@ -449,6 +449,14 @@ export async function getQueues(): Promise<{
           }
         );
 
+        // Initialize scheduler workers asynchronously (non-blocking)
+        // This prevents slow/failing Redis from blocking app startup
+        // Schedulers will start in background - app remains responsive for health checks
+        import("./scheduler")
+          .then(({ initializeSchedulerWorkers }) => initializeSchedulerWorkers())
+          .then(() => queueLogger.info({}, "Scheduler workers initialized successfully"))
+          .catch((err) => queueLogger.error({ err }, "Scheduler worker initialization failed (non-fatal)"));
+
         // BullMQ Queues initialized
       } catch (error) {
         queueLogger.error(
@@ -959,6 +967,9 @@ export async function addK6TestToQueue(
 /**
  * Add a k6 performance job execution task to the dedicated queue.
  * 
+ * K6 jobs always execute from EU Central for consistent performance comparison.
+ * This ensures that the K6 Job Analytics comparison feature shows meaningful deltas.
+ * 
  * @returns Promise resolving to { runId, status } where status is 'running' or 'queued'
  */
 export async function addK6JobToQueue(
@@ -971,6 +982,9 @@ export async function addK6JobToQueue(
 }> {
   const runId = task.runId;
   const orgId = task.organizationId || 'global';
+  
+  // K6 jobs always execute from EU Central for consistent performance comparison
+  const K6_JOB_LOCATION = 'eu-central' as const;
 
   try {
     const { getCapacityManager } = await import('./capacity-manager');
@@ -992,10 +1006,11 @@ export async function addK6JobToQueue(
         await capacityManager.trackJobOrganization(runId, orgId);
 
         const queues = await getQueues();
-        const queue = getQueue(queues, 'k6', task.location);
+        const queue = getQueue(queues, 'k6', K6_JOB_LOCATION);
         
         await queue.add(jobName, {
           ...task,
+          location: K6_JOB_LOCATION,
           _capacityStatus: 'immediate',
         }, { jobId: runId });
 
@@ -1014,7 +1029,7 @@ export async function addK6JobToQueue(
       runId,
       organizationId: orgId,
       projectId: task.projectId || '',
-      taskData: { ...task, _jobName: jobName } as unknown as Record<string, unknown>,
+      taskData: { ...task, _jobName: jobName, location: K6_JOB_LOCATION } as unknown as Record<string, unknown>,
       queuedAt: Date.now(),
     };
 

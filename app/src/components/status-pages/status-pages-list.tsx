@@ -60,6 +60,7 @@ import {
   canDeleteStatusPages,
 } from "@/lib/rbac/client-permissions";
 import { getStatusPageUrl, getBaseDomain } from "@/lib/domain-utils";
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 
 type StatusPage = {
   id: string;
@@ -302,24 +303,21 @@ export default function StatusPagesList() {
       </CardHeader>
 
       {statusPages.length === 0 ? (
-        <div className="text-center py-16 border-2 border-dashed rounded-xl bg-muted/20" data-testid="empty-state">
-          <div className="flex items-center justify-center h-16 w-16 rounded-2xl bg-primary/10 mx-auto mb-4">
-            <Tally4 className="h-8 w-8 text-green-500" />
-          </div>
-          <h3 className="text-lg font-semibold mb-2">No status pages yet</h3>
-          <p className="text-sm text-muted-foreground mb-6 max-w-sm mx-auto">
-            Create your first status page to communicate service status with
-            your users
-          </p>
-          <Button
-            onClick={() => setIsCreateDialogOpen(true)}
-            disabled={!canCreate}
-            size="lg"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Create Your First Status Page
-          </Button>
-        </div>
+        <DashboardEmptyState
+          title="No status pages yet"
+          description="Create your first status page to communicate service status with your users"
+          icon={<Tally4 className="h-12 w-12 text-green-500" />}
+          action={
+            <Button
+              onClick={() => setIsCreateDialogOpen(true)}
+              disabled={!canCreate}
+              size="lg"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create Your First Status Page
+            </Button>
+          }
+        />
       ) : (
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3 mt-6">
           {statusPages.map((page) => {

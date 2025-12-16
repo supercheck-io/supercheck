@@ -27,7 +27,7 @@ export async function GET(
         status: runs.status,
         startedAt: runs.startedAt,
         completedAt: runs.completedAt,
-        duration: runs.duration,
+        durationMs: runs.durationMs,
         errorDetails: runs.errorDetails,
         jobOrganizationId: jobs.organizationId,
       })
@@ -65,7 +65,7 @@ export async function GET(
       status: run.status,
       startedAt: run.startedAt,
       completedAt: run.completedAt,
-      duration: run.duration,
+      durationMs: run.durationMs,
       errorDetails: run.errorDetails,
       // Use s3Url from reportResult if found, otherwise null
       reportUrl: reportResult?.s3Url || null,

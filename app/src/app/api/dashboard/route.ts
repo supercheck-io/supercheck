@@ -155,7 +155,7 @@ export async function GET() {
         jobName: jobs.name,
         status: runs.status,
         startedAt: runs.startedAt,
-        duration: runs.duration,
+        durationMs: runs.durationMs,
         trigger: runs.trigger
       }).from(runs)
         .leftJoin(jobs, eq(runs.jobId, jobs.id))
@@ -168,7 +168,6 @@ export async function GET() {
       
       // Total execution time (last 30 days) 
       dbInstance.select({
-        duration: runs.duration,
         durationMs: runs.durationMs,
         status: runs.status,
         startedAt: runs.startedAt,
@@ -352,7 +351,7 @@ export async function GET() {
         try {
           let durationMs: number | null = null;
 
-          // Prefer explicit millisecond duration when available
+          // Use durationMs field when available
           if (run.durationMs !== null && run.durationMs !== undefined) {
             const numericDuration = Number(run.durationMs);
             if (!Number.isFinite(numericDuration)) {
@@ -361,24 +360,8 @@ export async function GET() {
               continue;
             }
             durationMs = numericDuration;
-          } else if (run.duration) {
-            // Parse duration string - handle different formats robustly
-            const durationStr = run.duration.toString().trim();
-
-            if (durationStr.endsWith("ms")) {
-              durationMs = parseInt(durationStr.replace("ms", ""), 10);
-            } else if (durationStr.endsWith("s")) {
-              const seconds = parseInt(durationStr.replace("s", ""), 10);
-              durationMs = Number.isNaN(seconds) ? null : seconds * 1000;
-            } else if (/^\d+$/.test(durationStr)) {
-              const seconds = parseInt(durationStr, 10);
-              durationMs = Number.isNaN(seconds) ? null : seconds * 1000;
-            } else {
-              const parsed = parseInt(durationStr, 10);
-              durationMs = Number.isNaN(parsed) ? null : parsed;
-            }
           } else if (run.startedAt && run.completedAt) {
-            // Fallback to timestamps when provided
+            // Fallback to calculating from timestamps
             const startedAt =
               run.startedAt instanceof Date ? run.startedAt : new Date(run.startedAt);
             const completedAt =
@@ -603,7 +586,7 @@ export async function GET() {
           jobName: run.jobName,
           status: run.status,
           startedAt: run.startedAt?.toISOString(),
-          duration: run.duration,
+          durationMs: run.durationMs,
           trigger: run.trigger
         })),
         // Execution time data

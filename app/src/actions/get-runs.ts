@@ -50,7 +50,7 @@ export async function getRun(
         jobName: jobs.name,
         projectName: projects.name,
         status: runs.status,
-        duration: runs.duration,
+        durationMs: runs.durationMs,
         startedAt: runs.startedAt,
         completedAt: runs.completedAt,
         logs: runs.logs,
@@ -104,9 +104,20 @@ export async function getRun(
     }
 
     const computeDuration = () => {
-      if (run.duration && run.duration.trim() !== "") {
-        return run.duration;
+      // Use durationMs if available
+      if (run.durationMs !== null && run.durationMs !== undefined && run.durationMs > 0) {
+        const seconds = Math.round(run.durationMs / 1000);
+        if (seconds >= 60) {
+          const minutes = Math.floor(seconds / 60);
+          const remainder = seconds % 60;
+          return `${minutes}m${remainder ? ` ${remainder}s` : ""}`.trim();
+        }
+        if (seconds === 0) {
+          return "<1s";
+        }
+        return `${seconds}s`;
       }
+      // Fallback to calculating from timestamps
       if (run.startedAt && run.completedAt) {
         const start = run.startedAt.getTime();
         const end = run.completedAt.getTime();
@@ -125,7 +136,7 @@ export async function getRun(
           }
         }
       }
-      return run.duration ?? null;
+      return null;
     };
 
     const response: RunResponse = {

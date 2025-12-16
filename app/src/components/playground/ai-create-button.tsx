@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Wand2, Loader2, Sparkles, Info } from "lucide-react";
+import { Loader2, Sparkles, Info } from "lucide-react";
 import { toast } from "sonner";
 
 interface AICreateButtonProps {
@@ -186,7 +186,7 @@ export function AICreateButton({
           default:
             throw new Error(
               result.message ||
-                `Failed to generate test code (${response.status})`
+              `Failed to generate test code (${response.status})`
             );
         }
       }
@@ -311,7 +311,7 @@ export function AICreateButton({
         disabled={disabled || isProcessing}
         className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg transition-all duration-200"
       >
-        <Wand2 className="h-4 w-4" />
+        <Sparkles className="h-4 w-4" />
         AI Create
       </Button>
 
@@ -320,9 +320,9 @@ export function AICreateButton({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500/20 to-pink-500/20">
-                <Wand2 className="h-4 w-4 text-purple-500" />
+                <Sparkles className="h-4 w-4 text-purple-500" />
               </div>
-              <span>AI Create Test</span>
+              <span>Supercheck AI - Create Test</span>
             </DialogTitle>
             <DialogDescription className="pt-1">
               Create new test scripts or enhance existing ones with AI
@@ -401,7 +401,7 @@ export function AICreateButton({
                 </>
               ) : (
                 <>
-                  <Wand2 className="h-4 w-4 mr-2" />
+                  <Sparkles className="h-4 w-4 mr-2" />
                   Generate
                 </>
               )}

@@ -16,7 +16,7 @@ import { logAuditEvent } from '@/lib/audit-logger';
 import { applyVariablesToTestScripts, decodeTestScript } from "@/lib/job-execution-utils";
 import { validateK6Script } from "@/lib/k6-validator";
 
-const DEFAULT_K6_LOCATION: K6Location = "global";
+const DEFAULT_K6_LOCATION: K6Location = "eu-central";
 
 const normalizeK6Location = (value?: string): K6Location => {
   const lower = value?.toLowerCase();

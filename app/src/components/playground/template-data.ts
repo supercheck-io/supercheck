@@ -30,7 +30,7 @@ export const codeTemplates: CodeTemplate[] = [
  * - Ensure the system is ready for heavier load tests
  * 
  * Configuration:
- * - VUs: 3 virtual users running concurrently
+ * - VUs: 5 virtual users running concurrently
  * - Duration: 30 seconds test run
  * - Thresholds: 
  *   - Error rate must be < 1%
@@ -43,7 +43,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 export const options = {
-  vus: 3,           // 3 concurrent users
+  vus: 5,           // 5 concurrent users
   duration: '30s',  // Run for 30 seconds
   thresholds: {
     http_req_failed: ['rate<0.01'],      // Error rate < 1%
@@ -82,10 +82,9 @@ export default function () {
  * 
  * Configuration:
  * - Stages:
- *   1. Ramp up to 10 VUs over 2 minutes
- *   2. Ramp up to 50 VUs over next 5 minutes
- *   3. Ramp up to 80 VUs over next 3 minutes
- *   4. Ramp down to 0 VUs over 2 minutes
+ *   1. Ramp up to 5 VUs over 10 seconds
+ *   2. Hold at 10 VUs for 10 seconds
+ *   3. Ramp down to 0 VUs over 10 seconds
  * - Thresholds: Strict latency and error limits
  * 
  * @requires k6 binary
@@ -96,10 +95,9 @@ import { check } from 'k6';
 
 export const options = {
   stages: [
-    { duration: '2m', target: 10 },   // Ramp-up to 10 VUs
-    { duration: '5m', target: 50 },   // Increase to 50 VUs
-    { duration: '3m', target: 80 },   // Peak load at 80 VUs
-    { duration: '2m', target: 0 },    // Ramp-down
+    { duration: '10s', target: 5 },   // Ramp-up to 5 VUs
+    { duration: '10s', target: 10 },  // Hold at 10 VUs
+    { duration: '10s', target: 0 },   // Ramp-down
   ],
   thresholds: {
     http_req_failed: ['rate<0.02'],              // Error rate < 2%
@@ -152,9 +150,9 @@ export const options = {
       preAllocatedVUs: 50,
       maxVUs: 200,
       stages: [
-        { duration: '30s', target: 20 },    // Baseline: 20 req/s
-        { duration: '30s', target: 200 },   // Spike: 200 req/s
-        { duration: '1m', target: 20 },     // Recovery: back to 20 req/s
+        { duration: '10s', target: 5 },     // Baseline: 5 req/s
+        { duration: '10s', target: 20 },    // Spike: 20 req/s
+        { duration: '10s', target: 5 },     // Recovery: back to 5 req/s
       ],
     },
   },
@@ -192,8 +190,11 @@ export default function () {
  * - Monitor performance degradation over time
  * 
  * Configuration:
- * - Duration: 20 minutes (shortened for demo, usually hours)
- * - VUs: Constant load of 20 users
+ * - VUs: 5 virtual users with steady load
+ * - Duration: 40 seconds (warm-up → hold → cool-down)
+ * - Thresholds:
+ *   - Error rate must be < 1%
+ *   - 95th percentile response time < 700ms
  * 
  * @requires k6 binary
  */
@@ -203,9 +204,9 @@ import { check, sleep } from 'k6';
 
 export const options = {
   stages: [
-    { duration: '5m', target: 20 },    // Warm-up
-    { duration: '20m', target: 20 },   // Hold steady load (find memory leaks, performance degradation)
-    { duration: '5m', target: 0 },     // Cool-down
+    { duration: '10s', target: 5 },    // Warm-up to 5 VUs
+    { duration: '20s', target: 5 },    // Hold steady load
+    { duration: '10s', target: 0 },    // Cool-down
   ],
   thresholds: {
     http_req_failed: ['rate<0.01'],    // Must maintain <1% error rate
@@ -252,8 +253,8 @@ import http from 'k6/http';
 import { check, group, sleep } from 'k6';
 
 export const options = {
-  vus: 20,
-  duration: '2m',
+  vus: 5,
+  duration: '30s',
   thresholds: {
     http_req_failed: ['rate<0.02'],      // Error rate < 2%
     http_req_duration: ['p(95)<450'],    // 95% of requests < 450ms
@@ -329,7 +330,7 @@ const errorRate = new Rate('custom_error_rate');
 const customDuration = new Trend('custom_duration');
 
 export const options = {
-  vus: 10,
+  vus: 5,
   duration: '30s',
   thresholds: {
     'http_req_failed': ['rate<0.01'],
@@ -383,7 +384,8 @@ export default function () {
  * - Track success rates and latency percentiles
  * 
  * Configuration:
- * - Stages: Ramp up -> Hold -> Ramp down
+ * - VUs: 5→10 virtual users (ramp-up → hold → ramp-down)
+ * - Duration: 30 seconds total
  * - Thresholds: 
  *   - Global latency limits
  *   - Specific limits for 'read' and 'write' operations
@@ -402,9 +404,9 @@ const apiLatency = new Trend('api_latency');
 
 export const options = {
   stages: [
-    { duration: '30s', target: 20 },
-    { duration: '1m', target: 50 },
-    { duration: '30s', target: 0 },
+    { duration: '10s', target: 5 },   // Ramp-up to 5 VUs
+    { duration: '10s', target: 10 },  // Hold at 10 VUs
+    { duration: '10s', target: 0 },   // Ramp-down
   ],
   thresholds: {
     'http_req_failed': ['rate<0.01'],
@@ -464,7 +466,8 @@ export default function () {
  * - Verify system recovery after stress
  * 
  * Configuration:
- * - Stages: Step-wise increase in load (100 -> 200 -> 300 VUs)
+ * - VUs: 5→10 virtual users (step-wise increase)
+ * - Duration: 50 seconds total
  * - Thresholds: Relaxed latency limits (5s) to allow for degradation under stress
  * 
  * @requires k6 binary
@@ -479,16 +482,13 @@ const errorRate = new Rate('errors');
 export const options = {
   stages: [
     // Level 1: Light load
-    { duration: '2m', target: 100 },
-    { duration: '5m', target: 100 },
+    { duration: '10s', target: 5 },
+    { duration: '10s', target: 5 },
     // Level 2: Moderate load
-    { duration: '2m', target: 200 },
-    { duration: '5m', target: 200 },
-    // Level 3: Heavy stress
-    { duration: '2m', target: 300 },
-    { duration: '5m', target: 300 },
+    { duration: '10s', target: 10 },
+    { duration: '10s', target: 10 },
     // Recovery
-    { duration: '5m', target: 0 },
+    { duration: '10s', target: 0 },
   ],
   thresholds: {
     'http_req_failed': ['rate<0.1'],      // Allow 10% errors under stress
@@ -534,8 +534,8 @@ export default function () {
  * - Determine the "knee" of the curve where latency spikes
  * 
  * Configuration:
- * - Executor: ramping-arrival-rate (constant throughput increase)
- * - Stages: Aggressive ramp up to 1000 iterations/s
+ * - VUs: 10-20 virtual users (using ramping-arrival-rate executor)
+ * - Duration: 30 seconds total
  * - Thresholds: Abort test immediately if failure rate or latency gets too high
  * 
  * @requires k6 binary
@@ -546,14 +546,14 @@ import { check } from 'k6';
 
 export const options = {
   executor: 'ramping-arrival-rate', // Throughput-based (requests/sec)
-  startRate: 50,
+  startRate: 5,
   timeUnit: '1s',
-  preAllocatedVUs: 500,
-  maxVUs: 1000,
+  preAllocatedVUs: 10,
+  maxVUs: 20,
   stages: [
-    { target: 200, duration: '10m' },  // 200 req/s
-    { target: 500, duration: '10m' },  // 500 req/s
-    { target: 1000, duration: '10m' }, // 1000 req/s (breaking point)
+    { target: 10, duration: '10s' },   // 10 req/s
+    { target: 20, duration: '10s' },   // 20 req/s
+    { target: 30, duration: '10s' },   // 30 req/s (sample limit)
   ],
   thresholds: {
     'http_req_failed': [{ threshold: 'rate<0.05', abortOnFail: true }],
@@ -567,6 +567,119 @@ export default function () {
     'status 200': (r) => r.status === 200,
     'latency acceptable': (r) => r.timings.duration < 2000,
   });
+}
+`,
+  },
+  {
+    id: "k6-websocket",
+    name: "WebSocket + API Load Test",
+    description: "Combined WebSocket and REST API load testing",
+    category: "Protocols",
+    testType: "performance",
+    tags: ["k6", "websocket", "api", "realtime"],
+    code: `/**
+ * Combined WebSocket + REST API Load Test.
+ * 
+ * Purpose:
+ * - Test WebSocket connections alongside HTTP API calls
+ * - Generates HTTP metrics for report chart visibility
+ * 
+ * Configuration:
+ * - VUs: 5, Duration: 30s
+ * - Thresholds: p95 latency < 500ms, error rate < 5%
+ * 
+ * @requires k6 binary with WebSocket support
+ */
+
+import { check, sleep, group } from 'k6';
+import http from 'k6/http';
+import ws from 'k6/ws';
+
+export const options = {
+  vus: 5,
+  duration: '30s',
+  thresholds: {
+    http_req_duration: ['p(95)<500'],
+    http_req_failed: ['rate<0.05'],
+  },
+};
+
+export default function () {
+  // REST API calls for report metrics
+  group('REST API', () => {
+    check(http.get('https://test-api.k6.io/public/crocodiles/'), { 'list ok': (r) => r.status === 200 });
+    check(http.get('https://test-api.k6.io/public/crocodiles/1/'), { 'item ok': (r) => r.status === 200 });
+    check(http.get('https://test-api.k6.io/public/crocodiles/2/'), { 'item2 ok': (r) => r.status === 200 });
+  });
+
+  // WebSocket echo test
+  group('WebSocket', () => {
+    ws.connect('wss://echo.websocket.org', {}, (socket) => {
+      socket.on('open', () => socket.send('Hello from k6!'));
+      socket.on('message', () => socket.close());
+      socket.setTimeout(() => socket.close(), 3000);
+    });
+  });
+
+  sleep(0.5);
+}
+`,
+  },
+  {
+    id: "k6-grpc",
+    name: "gRPC + API Load Test",
+    description: "Combined gRPC and REST API load testing",
+    category: "Protocols",
+    testType: "performance",
+    tags: ["k6", "grpc", "api", "protobuf"],
+    code: `/**
+ * Combined gRPC + REST API Load Test.
+ * 
+ * Purpose:
+ * - Test gRPC service calls alongside HTTP API calls
+ * - Uses gRPC reflection (no .proto file needed)
+ * - Generates HTTP metrics for report chart visibility
+ * 
+ * Configuration:
+ * - VUs: 5, Duration: 30s
+ * - Thresholds: p95 latency < 500ms, 90%+ checks pass
+ * 
+ * @requires k6 binary with gRPC support
+ */
+
+import http from 'k6/http';
+import grpc from 'k6/net/grpc';
+import { check, sleep, group } from 'k6';
+
+const client = new grpc.Client();
+
+export const options = {
+  vus: 5,
+  duration: '30s',
+  thresholds: {
+    http_req_duration: ['p(95)<500'],
+    http_req_failed: ['rate<0.05'],
+    checks: ['rate>0.9'],
+  },
+};
+
+export default function () {
+  // REST API calls for report metrics
+  group('REST API', () => {
+    check(http.get('https://test-api.k6.io/public/crocodiles/'), { 'list ok': (r) => r.status === 200 });
+    check(http.get('https://test-api.k6.io/public/crocodiles/1/'), { 'item ok': (r) => r.status === 200 });
+    check(http.get('https://test-api.k6.io/public/crocodiles/2/'), { 'item2 ok': (r) => r.status === 200 });
+  });
+
+  // gRPC unary call using reflection
+  group('gRPC', () => {
+    client.connect('grpcbin.test.k6.io:9001', { reflect: true });
+    const res = client.invoke('grpcbin.GRPCBin/DummyUnary', { f_string: 'test', f_int32: 42 });
+    check(res, { 'gRPC ok': (r) => r && r.status === grpc.StatusOK });
+    client.close();
+  });
+
+  sleep(0.5);
 }
 `,
   },
@@ -1937,7 +2050,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 export const options = {
-  vus: 10,                    // 10 virtual users
+  vus: 5,                     // 5 virtual users
   duration: '30s',            // Run for 30 seconds
   thresholds: {
     http_req_duration: ['p(95)<500'],  // 95% of requests < 500ms

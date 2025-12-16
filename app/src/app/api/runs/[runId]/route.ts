@@ -28,7 +28,7 @@ export async function GET(
         jobId: runs.jobId,
         jobName: jobs.name,
         status: runs.status,
-        duration: runs.duration,
+        durationMs: runs.durationMs,
         startedAt: runs.startedAt,
         completedAt: runs.completedAt,
         logs: runs.logs,
