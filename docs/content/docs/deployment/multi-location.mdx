@@ -10,36 +10,47 @@ Enable true multi-location monitoring and performance testing by deploying worke
 
 ```mermaid
 flowchart TB
-    subgraph Main["Main Server (EU)"]
-        App[App + Worker<br/>WORKER_LOCATION=eu-central]
-        DB[(PostgreSQL)]
-        Redis[(Redis)]
-        S3[(MinIO)]
-    end
-
+    Users[Users / CI/CD] --> T[Traefik Proxy<br/>SSL / Load Balancer]
+    T --> App[Next.js App<br/>UI + API]
+    
+    App --> DB[(PostgreSQL<br/>Primary DB)]
+    App --> Redis[(Redis + BullMQ<br/>Queue + Cache)]
+    App --> S3[(MinIO<br/>Artifacts)]
+    
+    Redis --> W_EU[Worker EU<br/>WORKER_LOCATION=eu-central]
+    
     subgraph US["US VPS"]
-        W_US[Worker<br/>WORKER_LOCATION=us-east]
+        W_US[Worker US<br/>WORKER_LOCATION=us-east]
     end
-
+    
     subgraph APAC["Asia Pacific VPS"]
-        W_APAC[Worker<br/>WORKER_LOCATION=asia-pacific]
+        W_APAC[Worker APAC<br/>WORKER_LOCATION=asia-pacific]
     end
-
-    App --> DB
-    App --> Redis
-    App --> S3
-
-    W_US -.->|Internet| Redis
+    
+    Redis -.->|Internet| W_US
+    Redis -.->|Internet| W_APAC
+    
+    W_EU --> DB
+    W_EU --> S3
+    
     W_US -.->|Internet| DB
     W_US -.->|Internet| S3
-
-    W_APAC -.->|Internet| Redis
+    
     W_APAC -.->|Internet| DB
     W_APAC -.->|Internet| S3
 
-    style Main fill:#3b82f6,stroke:#1e40af,color:#fff
-    style US fill:#10b981,stroke:#047857,color:#fff
-    style APAC fill:#10b981,stroke:#047857,color:#fff
+    style Users fill:#6366f1,stroke:#4338ca,color:#fff
+    style T fill:#0ea5e9,stroke:#0369a1,color:#fff
+    style App fill:#3b82f6,stroke:#1e40af,color:#fff
+    style DB fill:#f59e0b,stroke:#b45309,color:#fff
+    style Redis fill:#ef4444,stroke:#b91c1c,color:#fff
+    style S3 fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style W_EU fill:#10b981,stroke:#047857,color:#fff
+    style W_US fill:#10b981,stroke:#047857,color:#fff
+    style W_APAC fill:#10b981,stroke:#047857,color:#fff
+    
+    style US fill:none,stroke:#64748b,stroke-width:2px,stroke-dasharray: 5 5
+    style APAC fill:none,stroke:#64748b,stroke-width:2px,stroke-dasharray: 5 5
 ```
 
 <Callout type="info">
@@ -53,11 +64,9 @@ flowchart TB
 | `WORKER_LOCATION` | Queues Processed | Use Case |
 |-------------------|-----------------|----------|
 | `local` | **All queues** (regional + global) | Local development, single-server |
-| `us-east` | `k6-us-east`, `k6-global`, `monitor-us-east`, `monitor-global` | US East regional worker |
-| `eu-central` | `k6-eu-central`, `k6-global`, `monitor-eu-central`, `monitor-global` | EU Central regional worker |
-| `asia-pacific` | `k6-asia-pacific`, `k6-global`, `monitor-asia-pacific`, `monitor-global` | Asia Pacific regional worker |
-
-> **Note:** Each regional worker also processes global queues for load balancing. This ensures jobs without specific location requirements are distributed across all available workers.
+| `us-east` | `playwright-global`, `k6-us-east`, `k6-global`, `monitor-us-east` | US East regional worker |
+| `eu-central` | `playwright-global`, `k6-eu-central`, `k6-global`, `monitor-eu-central` | EU Central regional worker |
+| `asia-pacific` | `playwright-global`, `k6-asia-pacific`, `k6-global`, `monitor-asia-pacific` | Asia Pacific regional worker |
 
 ---
 
@@ -75,76 +84,84 @@ For most self-hosted deployments, a single location is sufficient. The main dock
 
 For true geographic distribution, deploy workers in each region.
 
-#### Step 1: Configure Main Server Location
+<Steps>
+  <Step>
+    ### Configure Main Server Location
 
-Update your main server's `.env` to set a specific region:
+    Update your main server's `.env` to set a specific region:
 
-```bash
-# Set to your main server's actual location
-WORKER_LOCATION=eu-central
-```
+    ```bash
+    # Set to your main server's actual location
+    WORKER_LOCATION=eu-central
+    ```
 
-Restart:
-```bash
-docker compose down && docker compose up -d
-```
+    Restart:
+    ```bash
+    docker compose down && docker compose up -d
+    ```
+  </Step>
 
-#### Step 2: Expose Services
+  <Step>
+    ### Expose Services
 
-Update your Docker Compose to expose database services for remote workers:
+    Update your Docker Compose to expose database services for remote workers:
 
-```yaml
-services:
-  postgres:
-    ports:
-      - "5432:5432"
-  
-  redis:
-    ports:
-      - "6379:6379"
-  
-  minio:
-    ports:
-      - "9000:9000"
-```
+    ```yaml
+    services:
+      postgres:
+        ports:
+          - "5432:5432"
+      
+      redis:
+        ports:
+          - "6379:6379"
+      
+      minio:
+        ports:
+          - "9000:9000"
+    ```
 
-<Callout type="warning">
-Use firewall rules to restrict access to your worker server IPs only.
-</Callout>
+    <Callout type="warning">
+    Use firewall rules to restrict access to your worker server IPs only.
+    </Callout>
+  </Step>
 
-#### Step 3: Deploy Remote Workers
+  <Step>
+    ### Deploy Remote Workers
 
-On each remote VPS:
+    On each remote VPS:
 
-**1. Install Docker:**
-```bash
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-```
+    **1. Install Docker:**
+    ```bash
+    curl -fsSL https://get.docker.com | sh
+    sudo usermod -aG docker $USER
+    ```
 
-**2. Download Worker Compose:**
-```bash
-mkdir -p ~/supercheck-worker && cd ~/supercheck-worker
-curl -o docker-compose.yml https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/docker-compose-worker.yml
-```
+    **2. Download Worker Compose:**
+    ```bash
+    mkdir -p ~/supercheck-worker && cd ~/supercheck-worker
+    curl -o docker-compose.yml https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/docker/docker-compose-worker.yml
+    ```
 
-**3. Create `.env`:**
-```bash
-DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@MAIN_SERVER_IP:5432/supercheck
-REDIS_URL=redis://:YOUR_REDIS_PASSWORD@MAIN_SERVER_IP:6379
-S3_ENDPOINT=http://MAIN_SERVER_IP:9000
-AWS_ACCESS_KEY_ID=minioadmin
-AWS_SECRET_ACCESS_KEY=minioadmin
+    **3. Create `.env`:**
+    ```bash
+    DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@MAIN_SERVER_IP:5432/supercheck
+    REDIS_URL=redis://:YOUR_REDIS_PASSWORD@MAIN_SERVER_IP:6379
+    S3_ENDPOINT=http://MAIN_SERVER_IP:9000
+    AWS_ACCESS_KEY_ID=minioadmin
+    AWS_SECRET_ACCESS_KEY=minioadmin
 
-# Set this worker's location
-WORKER_LOCATION=us-east
-```
+    # Set this worker's location
+    WORKER_LOCATION=us-east
+    ```
 
-**4. Start Worker:**
-```bash
-docker compose up -d
-docker compose logs -f  # Verify connection
-```
+    **4. Start Worker:**
+    ```bash
+    docker compose up -d
+    docker compose logs -f  # Verify connection
+    ```
+  </Step>
+</Steps>
 
 ---
 
