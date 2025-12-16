@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { k6PerformanceRuns, jobs, runs } from "@/db/schema";
+import { k6PerformanceRuns, jobs } from "@/db/schema";
 import { eq, and, desc, gte, count, sql, avg } from "drizzle-orm";
 import { subDays } from "date-fns";
 import { hasPermission } from '@/lib/rbac/middleware';

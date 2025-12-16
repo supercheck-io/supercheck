@@ -16,7 +16,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import {
     Table,
@@ -32,7 +32,7 @@ import {
     DialogDescription,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
+
 } from "@/components/ui/dialog";
 import {
     ChartContainer,
@@ -53,7 +53,7 @@ import {
     CheckCircle,
     XCircle,
     BarChart3,
-    FileText,
+
     ArrowLeft,
     ArrowRightLeft,
 } from "lucide-react";
@@ -329,20 +329,6 @@ export function K6AnalyticsTab({
         setShowReportsView(false);
         // Keep isComparing true - user wants it open by default
     }, [selectedJob]);
-
-    const handleStartComparison = () => {
-        if (data && data.runs.length >= 2) {
-            setLeftRunId(data.runs[1]?.runId ?? null);
-            setRightRunId(data.runs[0]?.runId ?? null);
-            setIsComparing(true);
-        }
-    };
-
-    const handleCancelComparison = () => {
-        setLeftRunId(null);
-        setRightRunId(null);
-        setIsComparing(false);
-    };
 
     if (loading) {
         return (

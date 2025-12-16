@@ -1513,39 +1513,71 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
                     Distribution of test types
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="p-4 pt-4">
+                <CardContent className="p-4 pt-0">
                   {dashboardData.tests.byType &&
                     dashboardData.tests.byType.length > 0 ? (
-                    <ChartContainer config={chartConfig} className="h-43 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={dashboardData.tests.byType.map((item) => {
-                              const typeColorMap: Record<string, string> = {
-                                browser: "#0ea5e9",
-                                api: "#0d9488",
-                                database: "#0891b2",
-                                custom: "#2563eb",
-                              };
-                              return {
-                                name: item.type,
-                                value: item.count,
-                                fill:
-                                  typeColorMap[item.type.toLowerCase()] ||
-                                  "#6b7280",
-                              };
-                            })}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={25}
-                            outerRadius={70}
-                            dataKey="value"
-                            strokeWidth={0}
-                          ></Pie>
-                          <ChartTooltip content={<ChartTooltipContent />} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </ChartContainer>
+                    <div className="flex flex-col items-center">
+                      {/* Centered Chart */}
+                      <ChartContainer config={chartConfig} className="h-28 w-28">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={dashboardData.tests.byType.map((item) => {
+                                const typeColorMap: Record<string, string> = {
+                                  browser: "#0ea5e9",
+                                  api: "#0d9488",
+                                  database: "#0891b2",
+                                  custom: "#2563eb",
+                                };
+                                return {
+                                  name: item.type,
+                                  value: item.count,
+                                  fill:
+                                    typeColorMap[item.type.toLowerCase()] ||
+                                    "#6b7280",
+                                };
+                              })}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={22}
+                              outerRadius={48}
+                              dataKey="value"
+                              strokeWidth={0}
+                            ></Pie>
+                            <ChartTooltip content={<ChartTooltipContent />} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </ChartContainer>
+                      {/* Legend as compact pills grid */}
+                      <div className="flex flex-wrap justify-center gap-1.5 mt-2">
+                        {dashboardData.tests.byType.map((item) => {
+                          const typeColorMap: Record<string, string> = {
+                            browser: "#0ea5e9",
+                            api: "#0d9488",
+                            database: "#0891b2",
+                            custom: "#2563eb",
+                          };
+                          const color = typeColorMap[item.type.toLowerCase()] || "#6b7280";
+                          return (
+                            <div
+                              key={item.type}
+                              className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-muted/50"
+                            >
+                              <div
+                                className="h-2.5 w-2.5 rounded-full shrink-0"
+                                style={{ backgroundColor: color }}
+                              />
+                              <span className="text-xs text-muted-foreground capitalize">
+                                {item.type}
+                              </span>
+                              <span className="text-xs font-semibold tabular-nums">
+                                {item.count}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   ) : (
                     <div className="h-43 flex items-center justify-center">
                       <div className="text-center">

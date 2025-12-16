@@ -9,16 +9,9 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
+
 import {
     ChartContainer,
     ChartTooltip,
@@ -46,16 +39,11 @@ import {
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import Link from "next/link";
-import { cn } from "@/lib/utils";
+
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 
-// Trigger type icons - same as runs/data.tsx
-const triggerTypes: Record<string, { icon: React.ElementType; label: string; color: string }> = {
-    manual: { icon: MousePointerClick, label: "Manual", color: "text-blue-500" },
-    remote: { icon: Workflow, label: "Remote", color: "text-cyan-500" },
-    schedule: { icon: Timer, label: "Schedule", color: "text-sky-500" },
-};
+
 
 // Types
 interface PlaywrightJob {

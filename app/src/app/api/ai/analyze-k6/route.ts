@@ -131,7 +131,7 @@ async function getS3FileContent(
 
     return null;
   } catch (error) {
-    console.error(`Error fetching S3 file ${key}:`, error);
+    console.error("Error fetching S3 file %s:", key, error);
     return null;
   }
 }
@@ -144,7 +144,7 @@ async function getK6ReportContent(runId: string): Promise<string | null> {
     const reportPath = `${runId}/report/index.html`;
     return await getS3FileContent(testBucketName, reportPath);
   } catch (error) {
-    console.error(`[AI Analyze k6] Error fetching report for run ${runId}:`, error);
+    console.error("[AI Analyze k6] Error fetching report for run %s:", runId, error);
     return null;
   }
 }
