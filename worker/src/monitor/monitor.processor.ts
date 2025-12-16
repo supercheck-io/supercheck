@@ -3,14 +3,15 @@ import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { MonitorService } from './monitor.service';
 import { MonitorJobDataDto } from './dto/monitor-job.dto';
-import {
-  MONITOR_EXECUTION_QUEUE,
-  EXECUTE_MONITOR_JOB_NAME,
-} from './monitor.constants';
+import { EXECUTE_MONITOR_JOB_NAME } from './monitor.constants';
 import { MonitorExecutionResult } from './types/monitor-result.type';
 
-@Processor(MONITOR_EXECUTION_QUEUE)
-export class MonitorProcessor extends WorkerHost {
+/**
+ * Base class for monitor processors.
+ * Regional processors extend this and add their own @Processor decorator.
+ * This class has no decorator - it's not registered directly with BullMQ.
+ */
+export abstract class MonitorProcessor extends WorkerHost {
   protected readonly logger: Logger;
 
   constructor(protected readonly monitorService: MonitorService) {
@@ -104,6 +105,10 @@ export class MonitorProcessor extends WorkerHost {
 
 @Processor('monitor-us-east')
 export class MonitorProcessorUSEast extends MonitorProcessor {
+  constructor(monitorService: MonitorService) {
+    super(monitorService);
+  }
+
   protected override getLoggerName(): string {
     return MonitorProcessorUSEast.name;
   }
@@ -111,6 +116,10 @@ export class MonitorProcessorUSEast extends MonitorProcessor {
 
 @Processor('monitor-eu-central')
 export class MonitorProcessorEUCentral extends MonitorProcessor {
+  constructor(monitorService: MonitorService) {
+    super(monitorService);
+  }
+
   protected override getLoggerName(): string {
     return MonitorProcessorEUCentral.name;
   }
@@ -118,6 +127,10 @@ export class MonitorProcessorEUCentral extends MonitorProcessor {
 
 @Processor('monitor-asia-pacific')
 export class MonitorProcessorAsiaPacific extends MonitorProcessor {
+  constructor(monitorService: MonitorService) {
+    super(monitorService);
+  }
+
   protected override getLoggerName(): string {
     return MonitorProcessorAsiaPacific.name;
   }

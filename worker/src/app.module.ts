@@ -53,8 +53,8 @@ import { QueueAlertingModule } from './queue-alerting/queue-alerting.module';
       inject: [ConfigService],
     }),
     ExecutionModule,
-    K6Module,
-    MonitorModule,
+    K6Module.forRoot(), // Location-aware K6 queue registration
+    MonitorModule.forRoot(), // Location-aware Monitor queue registration
     NotificationModule,
     // SchedulerModule removed - now part of App
     HealthModule,
@@ -65,3 +65,4 @@ import { QueueAlertingModule } from './queue-alerting/queue-alerting.module';
   providers: [AppService],
 })
 export class AppModule {}
+

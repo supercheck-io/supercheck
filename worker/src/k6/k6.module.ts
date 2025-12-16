@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, DynamicModule, Logger } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { K6ExecutionService } from './services/k6-execution.service';
 import {
@@ -33,36 +33,127 @@ const queueSettings = {
   maxStalledCount: 2, // Move job back to waiting max 2 times before failing
 };
 
-@Module({
-  imports: [
-    ExecutionModule, // Import ExecutionModule to get S3Service and RedisService
-    SecurityModule, // Import SecurityModule for container execution
-    BullModule.registerQueue(
-      {
-        name: K6_QUEUE,
-        ...queueSettings,
-      },
-      {
-        name: K6_QUEUES.US_EAST,
-        ...queueSettings,
-      },
-      {
-        name: K6_QUEUES.EU_CENTRAL,
-        ...queueSettings,
-      },
-      {
-        name: K6_QUEUES.ASIA_PACIFIC,
-        ...queueSettings,
-      },
-    ),
-  ],
-  providers: [
-    K6ExecutionService,
-    K6ExecutionProcessor,
-    K6ExecutionProcessorUS,
-    K6ExecutionProcessorEU,
-    K6ExecutionProcessorAPAC,
-  ],
-  exports: [K6ExecutionService],
-})
-export class K6Module {}
+/**
+ * Valid WORKER_LOCATION values:
+ * - 'local': Development mode - processes ALL queues on a single worker
+ * - 'us-east': US East regional worker - processes us-east + global queues
+ * - 'eu-central': EU Central regional worker - processes eu-central + global queues
+ * - 'asia-pacific': Asia Pacific regional worker - processes asia-pacific + global queues
+ */
+const VALID_LOCATIONS = ['local', 'us-east', 'eu-central', 'asia-pacific'] as const;
+type WorkerLocation = (typeof VALID_LOCATIONS)[number];
+
+function isValidLocation(location: string): location is WorkerLocation {
+  return VALID_LOCATIONS.includes(location as WorkerLocation);
+}
+
+/**
+ * K6Module with location-aware processor registration
+ *
+ * Architecture:
+ * - Each regional worker processes its regional queue + global queue for load balancing
+ * - Global queue (k6-global) is for jobs without specific location requirements
+ * - All regional workers help process global queue jobs (distributed processing)
+ *
+ * Queue distribution per worker:
+ * - local: k6-global + k6-us-east + k6-eu-central + k6-asia-pacific (all queues)
+ * - us-east: k6-us-east + k6-global
+ * - eu-central: k6-eu-central + k6-global
+ * - asia-pacific: k6-asia-pacific + k6-global
+ */
+@Module({})
+export class K6Module {
+  private static readonly logger = new Logger('K6Module');
+
+  static forRoot(): DynamicModule {
+    const workerLocation = process.env.WORKER_LOCATION || 'local';
+    const nodeEnv = process.env.NODE_ENV || 'development';
+
+    // Validate WORKER_LOCATION - fail fast in production to prevent misconfiguration
+    if (!isValidLocation(workerLocation)) {
+      const errorMessage =
+        `Invalid WORKER_LOCATION="${workerLocation}". ` +
+        `Valid values: ${VALID_LOCATIONS.join(', ')}`;
+
+      if (nodeEnv === 'production') {
+        throw new Error(`${errorMessage}. This error is fatal in production to prevent queue misrouting.`);
+      }
+      K6Module.logger.warn(`${errorMessage}. Defaulting to 'local' mode in development.`);
+    }
+
+    const effectiveLocation = isValidLocation(workerLocation) ? workerLocation : 'local';
+    const { queues, processors } = K6Module.getQueuesAndProcessors(effectiveLocation);
+
+    K6Module.logger.log(
+      `K6Module initialized [${effectiveLocation}]: ${queues.map((q) => q.name).join(', ')}`,
+    );
+
+    return {
+      module: K6Module,
+      imports: [
+        ExecutionModule,
+        SecurityModule,
+        BullModule.registerQueue(
+          ...queues.map((q) => ({ ...q, ...queueSettings })),
+        ),
+      ],
+      providers: [K6ExecutionService, ...processors],
+      exports: [K6ExecutionService],
+    };
+  }
+
+  /**
+   * Get queues and processors based on worker location.
+   * Regional workers process their regional queue + global queue for load balancing.
+   */
+  private static getQueuesAndProcessors(location: WorkerLocation): {
+    queues: { name: string }[];
+    processors: any[];
+  } {
+    switch (location) {
+      case 'local':
+        // Development: register ALL queues for single-worker testing
+        return {
+          queues: [
+            { name: K6_QUEUE },
+            { name: K6_QUEUES.US_EAST },
+            { name: K6_QUEUES.EU_CENTRAL },
+            { name: K6_QUEUES.ASIA_PACIFIC },
+          ],
+          processors: [
+            K6ExecutionProcessor,
+            K6ExecutionProcessorUS,
+            K6ExecutionProcessorEU,
+            K6ExecutionProcessorAPAC,
+          ],
+        };
+
+      case 'us-east':
+        return {
+          queues: [
+            { name: K6_QUEUES.US_EAST },
+            { name: K6_QUEUE }, // Global queue for load balancing
+          ],
+          processors: [K6ExecutionProcessorUS, K6ExecutionProcessor],
+        };
+
+      case 'eu-central':
+        return {
+          queues: [
+            { name: K6_QUEUES.EU_CENTRAL },
+            { name: K6_QUEUE }, // Global queue for load balancing
+          ],
+          processors: [K6ExecutionProcessorEU, K6ExecutionProcessor],
+        };
+
+      case 'asia-pacific':
+        return {
+          queues: [
+            { name: K6_QUEUES.ASIA_PACIFIC },
+            { name: K6_QUEUE }, // Global queue for load balancing
+          ],
+          processors: [K6ExecutionProcessorAPAC, K6ExecutionProcessor],
+        };
+    }
+  }
+}
