@@ -37,6 +37,17 @@ export function validateK6Script(
 ): K6ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
+
+  // Limit input length to prevent ReDoS attacks on regex patterns
+  const MAX_SCRIPT_LENGTH = 500000; // 500KB limit
+  if (script.length > MAX_SCRIPT_LENGTH) {
+    return {
+      valid: false,
+      errors: ['Script exceeds maximum length (500KB)'],
+      warnings: [],
+    };
+  }
+
   const normalizedType = options.selectedTestType?.toLowerCase();
   const scriptLooksLikeK6 = isK6Script(script);
   const isPerformanceType =

@@ -71,14 +71,19 @@ async function testEmailConnection(config: NotificationProviderConfig) {
       throw new Error("At least one email address is required");
     }
 
-    // Validate email format
+    // Validate email format with length limit to prevent ReDoS
     const emailList = (typedConfig.emails as string)
       .split(",")
       .map((email) => email.trim())
       .filter((email) => email);
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    // Safer email regex without nested quantifiers - uses explicit character classes
+    const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
     for (const email of emailList) {
+      // RFC 5321 max email length is 254 characters
+      if (email.length > 254) {
+        throw new Error(`Email address too long: ${email.substring(0, 20)}...`);
+      }
       if (!emailRegex.test(email)) {
         throw new Error(`Invalid email format: ${email}`);
       }
@@ -155,7 +160,30 @@ async function testSlackConnection(config: NotificationProviderConfig) {
       throw new Error("Webhook URL is required");
     }
 
-    const response = await fetch(typedConfig.webhookUrl as string, {
+    // Validate URL to prevent SSRF attacks
+    const { validateWebhookUrlString } = await import("@/lib/url-validator");
+    const webhookUrl = typedConfig.webhookUrl as string;
+    
+    // Validate URL format and ensure it's not targeting internal networks
+    const urlValidation = validateWebhookUrlString(webhookUrl);
+    if (!urlValidation.valid) {
+      throw new Error(urlValidation.error || "Invalid webhook URL");
+    }
+
+    // Validate that the URL is a Slack webhook URL
+    try {
+      const parsedUrl = new URL(webhookUrl);
+      if (!parsedUrl.hostname.endsWith('.slack.com') && !parsedUrl.hostname.endsWith('hooks.slack.com')) {
+        throw new Error("URL must be a valid Slack webhook URL (hooks.slack.com)");
+      }
+    } catch (parseError) {
+      if (parseError instanceof Error && parseError.message.includes('Slack')) {
+        throw parseError;
+      }
+      throw new Error("Invalid URL format");
+    }
+
+    const response = await fetch(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -261,7 +289,17 @@ async function testTelegramConnection(config: NotificationProviderConfig) {
       throw new Error("Bot token and chat ID are required");
     }
 
-    const url = `https://api.telegram.org/bot${typedConfig.botToken}/sendMessage`;
+    // Sanitize bot token to prevent path traversal and SSRF
+    const botToken = String(typedConfig.botToken).trim();
+    
+    // Validate bot token format (should be like 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11)
+    const botTokenRegex = /^[0-9]+:[A-Za-z0-9_-]+$/;
+    if (!botTokenRegex.test(botToken)) {
+      throw new Error("Invalid bot token format");
+    }
+
+    // Construct URL with validated token - only allow official Telegram API
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -300,7 +338,34 @@ async function testDiscordConnection(config: NotificationProviderConfig) {
       throw new Error("Discord webhook URL is required");
     }
 
-    const response = await fetch(typedConfig.discordWebhookUrl as string, {
+    // Validate URL to prevent SSRF attacks
+    const { validateWebhookUrlString } = await import("@/lib/url-validator");
+    const webhookUrl = typedConfig.discordWebhookUrl as string;
+    
+    // Validate URL format and ensure it's not targeting internal networks
+    const urlValidation = validateWebhookUrlString(webhookUrl);
+    if (!urlValidation.valid) {
+      throw new Error(urlValidation.error || "Invalid webhook URL");
+    }
+
+    // Validate that the URL is a Discord webhook URL
+    try {
+      const parsedUrl = new URL(webhookUrl);
+      if (!parsedUrl.hostname.endsWith('discord.com') && !parsedUrl.hostname.endsWith('discordapp.com')) {
+        throw new Error("URL must be a valid Discord webhook URL (discord.com or discordapp.com)");
+      }
+      // Ensure it's specifically a webhook endpoint
+      if (!parsedUrl.pathname.startsWith('/api/webhooks/')) {
+        throw new Error("URL must be a Discord webhook endpoint (/api/webhooks/...)");
+      }
+    } catch (parseError) {
+      if (parseError instanceof Error && parseError.message.includes('Discord')) {
+        throw parseError;
+      }
+      throw new Error("Invalid URL format");
+    }
+
+    const response = await fetch(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

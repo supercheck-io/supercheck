@@ -3,17 +3,22 @@ name: Full E2E Test Suite
 on:
   # Run on schedule (e.g., nightly)
   schedule:
-    - cron: '0 2 * * *' # 2 AM UTC daily
+    - cron: "0 2 * * *" # 2 AM UTC daily
   # Manual trigger
   workflow_dispatch:
     inputs:
       test_filter:
-        description: 'Test filter (e.g., @auth, @monitors, leave empty for all)'
+        description: "Test filter (e.g., @auth, @monitors, leave empty for all)"
         required: false
         type: string
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: "20"
+
+# Explicit permissions following least-privilege principle
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   e2e-full:
@@ -90,7 +95,7 @@ jobs:
         run: |
           echo "## 🎭 Full E2E Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           if [ -n "${{ github.event.inputs.test_filter }}" ]; then
             echo "**Filter:** \`${{ github.event.inputs.test_filter }}\`" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY

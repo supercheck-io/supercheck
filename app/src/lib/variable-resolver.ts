@@ -118,18 +118,27 @@ export function generateVariableFunctions(
   variables: Record<string, string>,
   secrets: Record<string, string>
 ): string {
-  // Use a more reliable approach for embedding JSON in JavaScript
+  // Use JSON.stringify for both keys and values to prevent injection attacks
+  // JSON.stringify properly escapes backslashes, quotes, and control characters
   const variableEntries = Object.entries(variables)
     .map(
-      ([key, value]) =>
-        `"${key.replace(/"/g, '\\"')}": ${JSON.stringify(value)}`
+      ([key, value]) => {
+        // Use JSON.stringify for the full key-value pair construction
+        // This properly handles all special characters including backslashes
+        const safeKey = JSON.stringify(key);
+        const safeValue = JSON.stringify(value);
+        return `${safeKey}: ${safeValue}`;
+      }
     )
     .join(", ");
 
   const secretEntries = Object.entries(secrets)
     .map(
-      ([key, value]) =>
-        `"${key.replace(/"/g, '\\"')}": ${JSON.stringify(value)}`
+      ([key, value]) => {
+        const safeKey = JSON.stringify(key);
+        const safeValue = JSON.stringify(value);
+        return `${safeKey}: ${safeValue}`;
+      }
     )
     .join(", ");
 
