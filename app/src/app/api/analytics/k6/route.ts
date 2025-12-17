@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
         avgRequestRate: avg(k6PerformanceRuns.requestRate),
         totalRequests: sql<number>`SUM(${k6PerformanceRuns.totalRequests})`,
         passedRuns: sql<number>`SUM(CASE WHEN ${k6PerformanceRuns.status} = 'passed' THEN 1 ELSE 0 END)`,
-        failedRuns: sql<number>`SUM(CASE WHEN ${k6PerformanceRuns.status} = 'failed' OR ${k6PerformanceRuns.status} = 'error' THEN 1 ELSE 0 END)`,
+        failedRuns: sql<number>`SUM(CASE WHEN ${k6PerformanceRuns.status} = 'failed' THEN 1 ELSE 0 END)`,
       })
       .from(k6PerformanceRuns)
       .leftJoin(jobs, eq(k6PerformanceRuns.jobId, jobs.id))

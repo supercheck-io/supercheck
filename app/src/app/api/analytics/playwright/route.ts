@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
         totalRuns: count(),
         avgDurationMs: avg(runs.durationMs),
         passedRuns: sql<number>`SUM(CASE WHEN ${runs.status} = 'passed' THEN 1 ELSE 0 END)`,
-        failedRuns: sql<number>`SUM(CASE WHEN ${runs.status} = 'failed' OR ${runs.status} = 'error' THEN 1 ELSE 0 END)`,
+        failedRuns: sql<number>`SUM(CASE WHEN ${runs.status} = 'failed' THEN 1 ELSE 0 END)`,
         totalDurationMs: sql<number>`SUM(COALESCE(${runs.durationMs}, 0))`,
       })
       .from(runs)
@@ -140,7 +140,7 @@ export async function GET(request: NextRequest) {
         date: sql<string>`DATE(${runs.startedAt})`,
         count: count(),
         passed: sql<number>`SUM(CASE WHEN ${runs.status} = 'passed' THEN 1 ELSE 0 END)`,
-        failed: sql<number>`SUM(CASE WHEN ${runs.status} = 'failed' OR ${runs.status} = 'error' THEN 1 ELSE 0 END)`,
+        failed: sql<number>`SUM(CASE WHEN ${runs.status} = 'failed' THEN 1 ELSE 0 END)`,
       })
       .from(runs)
       .innerJoin(jobs, eq(runs.jobId, jobs.id))
