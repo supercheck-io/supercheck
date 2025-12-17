@@ -43,8 +43,8 @@ export default function Tests() {
     router.push(`/playground/${test.id}`);
   }, [router]);
 
-  const handleDeleteTest = useCallback(() => {
-    // Invalidate React Query cache to refresh tests list
+  const onTestDeleted = useCallback(() => {
+    // Invalidate React Query cache to refresh tests list after deletion
     invalidate();
   }, [invalidate]);
 
@@ -65,7 +65,7 @@ export default function Tests() {
         isLoading={isLoading}
         onRowClick={handleRowClick}
         meta={{
-          onDeleteTest: handleDeleteTest,
+          onDeleteTest: onTestDeleted,
         }}
       />
 

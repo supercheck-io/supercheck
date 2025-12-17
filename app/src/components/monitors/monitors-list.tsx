@@ -6,7 +6,6 @@ import { columns } from "./columns";
 import { DataTable } from "./data-table";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
 import { Monitor } from "./schema";
-import { Monitor as HookMonitor } from "@/hooks/use-monitors";
 import { Row } from "@tanstack/react-table";
 import { useMonitors } from "@/hooks/use-monitors";
 

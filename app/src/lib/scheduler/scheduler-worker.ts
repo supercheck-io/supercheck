@@ -26,7 +26,11 @@ let k6SchedulerWorker: Worker | null = null;
 let monitorSchedulerWorker: Worker | null = null;
 let isInitialized = false;
 let initPromise: Promise<void> | null = null;
-let processListenersAttached = false;
+
+// Use globalThis to persist flag across hot-reloads in development
+declare global {
+  var processListenersAttached: boolean | undefined;
+}
 
 // Worker settings optimized for schedulers (fast processing)
 const workerSettings = {
@@ -198,8 +202,8 @@ export function isSchedulerWorkersRunning(): boolean {
 // Handle process termination gracefully
 // Only attach process listeners once per application lifecycle
 // This prevents MaxListenersExceededWarning in development with hot reloading
-if (typeof process !== 'undefined' && !processListenersAttached) {
-  processListenersAttached = true;
+if (typeof process !== 'undefined' && !globalThis.processListenersAttached) {
+  globalThis.processListenersAttached = true;
 
   process.once('SIGTERM', () => {
     shutdownSchedulerWorkers().catch((err) => {
