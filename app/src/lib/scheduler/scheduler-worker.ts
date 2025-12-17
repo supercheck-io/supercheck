@@ -26,6 +26,7 @@ let k6SchedulerWorker: Worker | null = null;
 let monitorSchedulerWorker: Worker | null = null;
 let isInitialized = false;
 let initPromise: Promise<void> | null = null;
+let processListenersAttached = false;
 
 // Worker settings optimized for schedulers (fast processing)
 const workerSettings = {
@@ -195,14 +196,18 @@ export function isSchedulerWorkersRunning(): boolean {
 }
 
 // Handle process termination gracefully
-if (typeof process !== 'undefined') {
-  process.on('SIGTERM', () => {
+// Only attach process listeners once per application lifecycle
+// This prevents MaxListenersExceededWarning in development with hot reloading
+if (typeof process !== 'undefined' && !processListenersAttached) {
+  processListenersAttached = true;
+
+  process.once('SIGTERM', () => {
     shutdownSchedulerWorkers().catch((err) => {
       logger.error({ err }, 'Error during SIGTERM shutdown');
     });
   });
 
-  process.on('SIGINT', () => {
+  process.once('SIGINT', () => {
     shutdownSchedulerWorkers().catch((err) => {
       logger.error({ err }, 'Error during SIGINT shutdown');
     });

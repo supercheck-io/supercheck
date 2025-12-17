@@ -131,11 +131,14 @@ export default function TestSelector({
       setIsLoadingTests(true);
       try {
         const response = await fetch("/api/tests");
-        const data = await response.json();
+        const result = await response.json();
 
-        if (response.ok && data) {
+        // API returns { data, pagination } format - extract tests array
+        const testsArray = result?.data ?? result;
+
+        if (response.ok && testsArray) {
           // Map the API response to the Test type
-          let formattedTests: Test[] = (data as ActionTest[]).map(
+          let formattedTests: Test[] = (testsArray as ActionTest[]).map(
             (test: ActionTest) => {
               let mappedType: Test["type"];
               switch (test.type) {
@@ -190,7 +193,7 @@ export default function TestSelector({
 
           setAvailableTests(formattedTests);
         } else {
-          console.error("Failed to fetch tests:", data.error);
+          console.error("Failed to fetch tests:", result?.error);
         }
       } catch (error) {
         console.error("Error fetching tests:", error);
@@ -295,20 +298,20 @@ export default function TestSelector({
     (testTypeFilter
       ? "Select Playwright Test"
       : performanceMode
-      ? "Select Performance Test"
-      : useSingleSelection
-      ? "Select Test"
-      : "Select Tests");
+        ? "Select Performance Test"
+        : useSingleSelection
+          ? "Select Test"
+          : "Select Tests");
 
   const dialogDescriptionText =
     dialogDescription ??
     (testTypeFilter
       ? "Choose a Playwright test to monitor"
       : performanceMode
-      ? "Choose a performance test to run in this job"
-      : useSingleSelection
-      ? "Choose the test to include in this job"
-      : "Select tests in the sequence you want them to execute. Tests run one after another in the order shown by the # column.");
+        ? "Choose a performance test to run in this job"
+        : useSingleSelection
+          ? "Choose the test to include in this job"
+          : "Select tests in the sequence you want them to execute. Tests run one after another in the order shown by the # column.");
 
   const headerNote =
     maxSelectionLabel !== undefined ? (
@@ -424,8 +427,8 @@ export default function TestSelector({
                 <TableRow key={test.id} className="hover:bg-transparent">
                   {!useSingleSelection && (
                     <TableCell className="text-center">
-                      <Badge 
-                        variant="secondary" 
+                      <Badge
+                        variant="secondary"
                         className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 font-mono min-w-[28px] justify-center"
                       >
                         {index + 1}
@@ -478,10 +481,10 @@ export default function TestSelector({
                                   style={
                                     tag.color
                                       ? {
-                                          backgroundColor: tag.color + "20",
-                                          color: tag.color,
-                                          borderColor: tag.color + "40",
-                                        }
+                                        backgroundColor: tag.color + "20",
+                                        color: tag.color,
+                                        borderColor: tag.color + "40",
+                                      }
                                       : {}
                                   }
                                 >
@@ -508,10 +511,10 @@ export default function TestSelector({
                                   style={
                                     tag.color
                                       ? {
-                                          backgroundColor: tag.color + "20",
-                                          color: tag.color,
-                                          borderColor: tag.color + "40",
-                                        }
+                                        backgroundColor: tag.color + "20",
+                                        color: tag.color,
+                                        borderColor: tag.color + "40",
+                                      }
                                       : {}
                                   }
                                 >
@@ -699,8 +702,8 @@ export default function TestSelector({
                         {!useSingleSelection && (
                           <TableCell className="text-center">
                             {testSelections[test.id] ? (
-                              <Badge 
-                                variant="secondary" 
+                              <Badge
+                                variant="secondary"
                                 className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 font-mono min-w-[28px] justify-center"
                               >
                                 {testSelections[test.id]}
@@ -760,11 +763,11 @@ export default function TestSelector({
                                         style={
                                           tag.color
                                             ? {
-                                                backgroundColor:
-                                                  tag.color + "20",
-                                                color: tag.color,
-                                                borderColor: tag.color + "40",
-                                              }
+                                              backgroundColor:
+                                                tag.color + "20",
+                                              color: tag.color,
+                                              borderColor: tag.color + "40",
+                                            }
                                             : {}
                                         }
                                       >
@@ -794,11 +797,11 @@ export default function TestSelector({
                                         style={
                                           tag.color
                                             ? {
-                                                backgroundColor:
-                                                  tag.color + "20",
-                                                color: tag.color,
-                                                borderColor: tag.color + "40",
-                                              }
+                                              backgroundColor:
+                                                tag.color + "20",
+                                              color: tag.color,
+                                              borderColor: tag.color + "40",
+                                            }
                                             : {}
                                         }
                                       >

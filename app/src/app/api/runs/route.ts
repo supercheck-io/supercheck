@@ -25,19 +25,24 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = parseInt(searchParams.get('limit') || '10', 10);
+    const limitParam = searchParams.get('limit');
     const jobId = searchParams.get('jobId');
     const status = searchParams.get('status');
 
+    // If no limit specified, fetch all data (for client-side filtering)
+    // If limit specified, use pagination (max 1000 for safety)
+    const fetchAll = !limitParam;
+    const limit = fetchAll ? 1000 : Math.min(parseInt(limitParam || '10', 10), 1000);
+
     // Validate pagination parameters
-    if (page < 1 || limit < 1 || limit > 100) {
+    if (page < 1 || limit < 1) {
       return NextResponse.json(
-        { error: 'Invalid pagination parameters. Page must be >= 1, limit must be 1-100' },
+        { error: 'Invalid pagination parameters. Page must be >= 1, limit must be >= 1' },
         { status: 400 }
       );
     }
 
-    const offset = (page - 1) * limit;
+    const offset = fetchAll ? 0 : (page - 1) * limit;
 
     // SECURITY: Always filter by org/project from session, never trust client params
     const filters = [

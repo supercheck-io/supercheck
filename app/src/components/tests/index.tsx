@@ -3,95 +3,53 @@
 import { columns } from "./columns";
 import { DataTable } from "./data-table";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback, useMemo, useSyncExternalStore } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
-// import { useProjectContext } from "@/hooks/use-project-context"; // No longer needed
-// import { getTests } from "@/actions/get-tests"; // Replaced with API call
 import { Test } from "./schema";
 import { Row } from "@tanstack/react-table";
+import { useTests } from "@/hooks/use-tests";
 
 export default function Tests() {
   const [selectedTest] = useState<Test | null>(null);
-  const [tests, setTests] = useState<Test[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [mounted, setMounted] = useState(false);
+  const isMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
   const router = useRouter();
-  // Remove projectId dependency since API handles project context automatically
 
-  // Set mounted to true after initial render
-  useEffect(() => {
-    setMounted(true);
-    return () => {
-      setMounted(false);
-    };
-  }, []);
+  // Use React Query hook for tests data (cached, handles loading/error)
+  const { tests: rawTests, isLoading, invalidate } = useTests();
 
-  // Safe state setters that only run when component is mounted
-  const safeSetTests = useCallback((tests: Test[] | ((prev: Test[]) => Test[])) => {
-    if (mounted) {
-      setTests(tests);
-    }
-  }, [mounted]);
 
-  const safeSetIsLoading = useCallback((loading: boolean) => {
-    if (mounted) {
-      setIsLoading(loading);
-    }
-  }, [mounted]);
+  // Transform tests data with memoization to match local Test schema
+  const tests = useMemo<Test[]>(() => {
+    if (!rawTests || rawTests.length === 0) return [];
 
-  // Fetch tests from the database
-  useEffect(() => {
-    async function fetchTests() {
-      safeSetIsLoading(true);
-      try {
-        // API handles project context automatically, no need to check projectId
+    return rawTests.map((test) => ({
+      ...test,
+      title: test.title || test.name,
+      priority: ((test as unknown) as { priority?: string }).priority || "medium",
+      description: test.description || null,
+      createdAt: test.createdAt ?? undefined,
+      updatedAt: test.updatedAt ?? undefined,
+    })) as Test[];
+  }, [rawTests]);
 
-        const response = await fetch('/api/tests');
-        const data = await response.json();
-        
-        if (response.ok && data) {
-          const testsWithDefaults = data.map((test: { 
-            priority?: string; 
-            description?: string | null; 
-            createdAt?: string; 
-            updatedAt?: string;
-            [key: string]: unknown;
-          }) => ({
-            ...test,
-            priority: test.priority || "medium",
-            description: test.description || null,
-            createdAt: test.createdAt ?? undefined,
-            updatedAt: test.updatedAt ?? undefined,
-          }));
-          safeSetTests(testsWithDefaults);
-        } else {
-          console.error("Failed to fetch tests:", data.error);
-          safeSetTests([]);
-        }
-      } catch (error) {
-        console.error("Error fetching tests:", error);
-        safeSetTests([]);
-      } finally {
-        safeSetIsLoading(false);
-      }
-    }
-
-    fetchTests();
-  }, [safeSetTests, safeSetIsLoading]);
-
-  const handleRowClick = (row: Row<Test>) => {
+  const handleRowClick = useCallback((row: Row<Test>) => {
     const test = row.original;
     router.push(`/playground/${test.id}`);
-  };
+  }, [router]);
 
-  const handleDeleteTest = (testId: string) => {
-    safeSetTests((prevTests) => prevTests.filter((test) => test.id !== testId));
-  };
+  const handleDeleteTest = useCallback(() => {
+    // Invalidate React Query cache to refresh tests list
+    invalidate();
+  }, [invalidate]);
 
   // Don't render until component is mounted
-  if (!mounted) {
+  if (!isMounted) {
     return (
       <div className="flex h-full flex-col p-2 mt-6">
         <DataTableSkeleton columns={5} rows={3} />

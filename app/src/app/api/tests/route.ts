@@ -131,7 +131,16 @@ export async function GET() {
       })
     );
 
-    return NextResponse.json(formattedTests);
+    // Return standardized response format for React Query hooks
+    return NextResponse.json({
+      data: formattedTests,
+      pagination: {
+        total: formattedTests.length,
+        page: 1,
+        limit: formattedTests.length,
+        totalPages: 1,
+      },
+    });
   } catch (error) {
     console.error("Error fetching tests:", error);
 

@@ -50,6 +50,7 @@ import {
 } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { z } from "zod";
+import { useAppConfig } from "@/hooks/use-app-config";
 
 interface OrgStats {
   projects: number;
@@ -122,7 +123,9 @@ export default function OrgAdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [currentUserRole, setCurrentUserRole] =
     useState<string>("project_viewer");
-  const [isCloudHosted, setIsCloudHosted] = useState(false);
+
+  // Use cached hosting mode from useAppConfig (React Query cached)
+  const { isCloudHosted } = useAppConfig();
 
   // Members tab state
   const [members, setMembers] = useState<OrgMember[]>([]);
@@ -150,8 +153,7 @@ export default function OrgAdminDashboard() {
     // Also fetch members and invitations data on mount
     fetchMembers();
     fetchInvitations();
-    // Check hosting mode and subscription status
-    checkHostingAndSubscription();
+    // Hosting mode now comes from useAppConfig (cached)
   }, []);
 
   // Set breadcrumbs
@@ -235,19 +237,6 @@ export default function OrgAdminDashboard() {
       }
     } catch (error) {
       console.error("Error fetching invitations:", error);
-    }
-  };
-
-  const checkHostingAndSubscription = async () => {
-    try {
-      // Check hosting mode
-      const modeResponse = await fetch("/api/config/hosting-mode");
-      if (modeResponse.ok) {
-        const modeData = await modeResponse.json();
-        setIsCloudHosted(modeData.cloudHosted);
-      }
-    } catch (error) {
-      console.error("Error checking hosting mode:", error);
     }
   };
 

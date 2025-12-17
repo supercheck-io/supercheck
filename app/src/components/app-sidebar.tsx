@@ -45,6 +45,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { useAdminStatus } from "@/hooks/use-admin-status";
 
 // Sidebar navigation data
 const data = {
@@ -209,7 +210,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs",
       icon: BookOpenText,
-      badge: "v1.2.1",
+      badge: "v1.2.1-canary.0",
     },
   ],
   documents: [
@@ -232,44 +233,11 @@ const data = {
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const [isAdmin, setIsAdmin] = React.useState(false);
-  const [isOrgAdmin, setIsOrgAdmin] = React.useState(false);
-  const [isAdminStatusLoaded, setIsAdminStatusLoaded] = React.useState(false);
+  // Use cached admin status hook (React Query cached for 5 minutes)
+  const { isAdmin, isOrgAdmin, isLoading: isAdminStatusLoading } = useAdminStatus();
 
-  React.useEffect(() => {
-    // Check if user is admin
-    const checkAdminStatus = async () => {
-      try {
-        const response = await fetch("/api/admin/check");
-        if (response.ok) {
-          const data = await response.json();
-          setIsAdmin(data.isAdmin || false);
-        } else {
-          setIsAdmin(false);
-        }
-      } catch {
-        // Network errors or other issues - assume not admin
-        setIsAdmin(false);
-      }
-    };
-
-    // Check if user is organization admin
-    const checkOrgAdminStatus = async () => {
-      try {
-        const response = await fetch("/api/organizations/stats");
-        // Only set org admin if response is successful (200)
-        // 403 means user is not org admin, which is expected
-        setIsOrgAdmin(response.status === 200);
-      } catch {
-        // Network errors or other issues - assume not org admin
-        setIsOrgAdmin(false);
-      }
-    };
-
-    Promise.all([checkAdminStatus(), checkOrgAdminStatus()]).finally(() => {
-      setIsAdminStatusLoaded(true);
-    });
-  }, []);
+  // Status is loaded when not loading
+  const isAdminStatusLoaded = !isAdminStatusLoading;
 
   // Create combined admin items based on admin status
   const adminItems = React.useMemo(() => {

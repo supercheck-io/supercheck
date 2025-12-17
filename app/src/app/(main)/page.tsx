@@ -41,7 +41,7 @@ import {
   TestTube,
   ArrowRightLeft,
 } from "lucide-react";
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
@@ -72,110 +72,10 @@ import { K6AnalyticsTab } from "@/components/dashboard/k6-analytics-tab";
 import { PlaywrightAnalyticsTab } from "@/components/dashboard/playwright-analytics-tab";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { CheckIcon } from "@/components/logo/supercheck-logo";
-
-interface ProjectStats {
-  tests: number;
-  jobs: number;
-  monitors: number;
-  runs: number;
-}
-
-interface MonitorSummary {
-  total: number;
-  active: number;
-  up: number;
-  down: number;
-  uptime: number;
-  criticalAlerts: Array<{
-    id: string;
-    name: string;
-    type: string;
-    status: string;
-    lastCheckAt: string | null;
-  }>;
-  byType: Array<{ type: string; count: number }>;
-  responseTime: {
-    avg: number | null;
-    min: number | null;
-    max: number | null;
-  };
-  availabilityTrend?: Array<{
-    date: string;
-    uptime: number;
-  }>;
-}
-
-interface JobSummary {
-  total: number;
-  successfulRuns24h: number;
-  failedRuns24h: number;
-  recentRuns: Array<{
-    id: string;
-    jobId: string;
-    jobName: string;
-    status: string;
-    startedAt: string;
-    duration: string;
-    trigger: string;
-  }>;
-  executionTime: {
-    totalMs: number;
-    totalSeconds: number;
-    totalMinutes: number;
-    processedRuns: number;
-    skippedRuns: number;
-    errors: number;
-    period: string;
-  };
-}
-
-interface TestSummary {
-  total: number;
-  byType: Array<{ type: string; count: number }>;
-  playgroundExecutions30d: number;
-  playgroundExecutionsTrend: Array<{ date: string; count: number }>;
-}
-
-interface K6Summary {
-  totalRuns: number;
-  totalDurationMs: number;
-  totalDurationMinutes: number;
-  totalVuMinutes: number;
-  totalRequests: number;
-  avgResponseTimeMs: number;
-  period: string;
-}
-
-interface AlertHistoryItem {
-  id: string;
-  targetType: string;
-  targetName: string;
-  type: string;
-  message: string;
-  status: string;
-  timestamp: string;
-  notificationProvider: string;
-}
-
-interface SystemHealth {
-  timestamp: string;
-  healthy: boolean;
-  issues: Array<{
-    type: "monitor" | "job" | "queue";
-    message: string;
-    severity: "low" | "medium" | "high" | "critical";
-  }>;
-}
-
-interface DashboardData {
-  stats: ProjectStats;
-  monitors: MonitorSummary;
-  jobs: JobSummary;
-  tests: TestSummary;
-  k6: K6Summary;
-  alerts: AlertHistoryItem[];
-  system: SystemHealth;
-}
+import { useDashboard, type DashboardData } from "@/hooks/use-dashboard";
+// Types are now exported from useDashboard hook
+// Re-export for any components that still need them
+export type { DashboardData } from "@/hooks/use-dashboard";
 
 interface ChartDataPoint {
   day: string;
@@ -364,229 +264,14 @@ const formatCompactNumber = (value: number): string => {
 };
 
 export default function Home() {
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(
-    null
-  );
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Use React Query hook for dashboard data (cached, auto-refreshes)
+  const { data: dashboardData, isLoading: loading, error: queryError, refetch } = useDashboard();
+  const error = queryError?.message ?? null;
 
   const breadcrumbs = [
     { label: "Home", href: "/" },
     { label: "Dashboard", isCurrentPage: true },
   ];
-
-  const fetchDashboardData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
-      const [dashboardResponse, alertsResponse] = await Promise.all([
-        fetch(`/api/dashboard?t=${Date.now()}`, {
-          signal: controller.signal,
-          headers: {
-            "Content-Type": "application/json",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            Pragma: "no-cache",
-          },
-        }),
-        fetch("/api/alerts/history", {
-          signal: controller.signal,
-          headers: { "Content-Type": "application/json" },
-        }),
-      ]);
-
-      clearTimeout(timeoutId);
-
-      if (!dashboardResponse.ok) {
-        throw new Error(
-          `Dashboard API error: ${dashboardResponse.status} ${dashboardResponse.statusText}`
-        );
-      }
-
-      const data = await dashboardResponse.json();
-      const alertsData = alertsResponse.ok ? await alertsResponse.json() : [];
-
-      // Validate and sanitize the API response
-      const systemIssues: SystemHealth["issues"] = [];
-
-      // Analyze system health with proper validation
-      const monitorsDown = Number(data.monitors?.down) || 0;
-      if (monitorsDown > 0) {
-        systemIssues.push({
-          type: "monitor" as const,
-          message: `${monitorsDown} monitor${monitorsDown === 1 ? "" : "s"} ${monitorsDown === 1 ? "is" : "are"
-            } down`,
-          severity:
-            monitorsDown > 2 ? ("critical" as const) : ("high" as const),
-        });
-      }
-
-      const failedJobs = Number(data.jobs?.failedRuns24h) || 0;
-      if (failedJobs > 0) {
-        systemIssues.push({
-          type: "job" as const,
-          message: `${failedJobs} job${failedJobs === 1 ? "" : "s"
-            } failed in the last 24 hours`,
-          severity: failedJobs > 5 ? ("high" as const) : ("medium" as const),
-        });
-      }
-
-      const queueRunning = Number(data.queue?.running) || 0;
-      const queueCapacity = Number(data.queue?.runningCapacity) || 100;
-      if (queueRunning >= queueCapacity * 0.9) {
-        systemIssues.push({
-          type: "queue" as const,
-          message: "Queue capacity is running high",
-          severity: "medium" as const,
-        });
-      }
-
-      // Sanitize and validate all data
-      const transformedData: DashboardData = {
-        stats: {
-          tests: Math.max(0, Number(data.tests?.total) || 0),
-          jobs: Math.max(0, Number(data.jobs?.total) || 0),
-          monitors: Math.max(0, Number(data.monitors?.total) || 0),
-          runs: Math.max(0, Number(data.jobs?.recentRuns30d) || 0),
-        },
-        monitors: {
-          total: Math.max(0, Number(data.monitors?.total) || 0),
-          active: Math.max(0, Number(data.monitors?.active) || 0),
-          up: Math.max(0, Number(data.monitors?.up) || 0),
-          down: Math.max(0, Number(data.monitors?.down) || 0),
-          uptime: Math.max(
-            0,
-            Math.min(100, Number(data.monitors?.uptime) || 0)
-          ),
-          criticalAlerts: Array.isArray(data.monitors?.criticalAlerts)
-            ? data.monitors.criticalAlerts.slice(0, 100)
-            : [],
-          byType: Array.isArray(data.monitors?.byType)
-            ? data.monitors.byType.slice(0, 20)
-            : [],
-          responseTime: {
-            avg:
-              data.monitors?.responseTime?.avg !== null
-                ? Number(data.monitors.responseTime.avg) || null
-                : null,
-            min:
-              data.monitors?.responseTime?.min !== null
-                ? Number(data.monitors.responseTime.min) || null
-                : null,
-            max:
-              data.monitors?.responseTime?.max !== null
-                ? Number(data.monitors.responseTime.max) || null
-                : null,
-          },
-          availabilityTrend: Array.isArray(data.monitors?.availabilityTrend)
-            ? data.monitors.availabilityTrend.slice(0, LOOKBACK_DAYS)
-            : undefined,
-        },
-        jobs: {
-          total: Math.max(0, Number(data.jobs?.total) || 0),
-          successfulRuns24h: Math.max(
-            0,
-            Number(data.jobs?.successfulRuns24h) || 0
-          ),
-          failedRuns24h: Math.max(0, Number(data.jobs?.failedRuns24h) || 0),
-          recentRuns: Array.isArray(data.jobs?.recentRuns)
-            ? data.jobs.recentRuns.slice(0, 1000)
-            : [],
-          executionTime: {
-            totalMs: Math.max(
-              0,
-              Number(data.jobs?.executionTime?.totalMs) || 0
-            ),
-            totalSeconds: Math.max(
-              0,
-              Number(data.jobs?.executionTime?.totalSeconds) || 0
-            ),
-            totalMinutes: Math.max(
-              0,
-              Number(data.jobs?.executionTime?.totalMinutes) || 0
-            ),
-            processedRuns: Math.max(
-              0,
-              Number(data.jobs?.executionTime?.processedRuns) || 0
-            ),
-            skippedRuns: Math.max(
-              0,
-              Number(data.jobs?.executionTime?.skippedRuns) || 0
-            ),
-            errors: Math.max(0, Number(data.jobs?.executionTime?.errors) || 0),
-            period: data.jobs?.executionTime?.period || "last 30 days",
-          },
-        },
-        tests: {
-          total: Math.max(0, Number(data.tests?.total) || 0),
-          byType: Array.isArray(data.tests?.byType)
-            ? data.tests.byType.slice(0, 20)
-            : [],
-          playgroundExecutions30d: Math.max(
-            0,
-            Number(data.tests?.playgroundExecutions30d) || 0
-          ),
-          playgroundExecutionsTrend: Array.isArray(
-            data.tests?.playgroundExecutionsTrend
-          )
-            ? data.tests.playgroundExecutionsTrend.slice(0, LOOKBACK_DAYS)
-            : [],
-        },
-        k6: {
-          totalRuns: Math.max(0, Number(data.k6?.totalRuns) || 0),
-          totalDurationMs: Math.max(0, Number(data.k6?.totalDurationMs) || 0),
-          totalDurationMinutes: Math.max(
-            0,
-            Number(data.k6?.totalDurationMinutes) || 0
-          ),
-          totalVuMinutes: Math.max(
-            0,
-            Number(data.k6?.totalVuMinutes) || 0
-          ),
-          totalRequests: Math.max(0, Number(data.k6?.totalRequests) || 0),
-          avgResponseTimeMs: Math.max(
-            0,
-            Number(data.k6?.avgResponseTimeMs) || 0
-          ),
-          period: data.k6?.period || "last 30 days",
-        },
-        alerts: Array.isArray(alertsData) ? alertsData.slice(0, 10) : [],
-        system: {
-          timestamp:
-            typeof data.system?.timestamp === "string"
-              ? data.system.timestamp
-              : new Date().toISOString(),
-          healthy: Boolean(
-            (data.system?.healthy ?? true) && systemIssues.length === 0
-          ),
-          issues: systemIssues,
-        },
-      };
-
-      setDashboardData(transformedData);
-    } catch (err) {
-      console.error("Dashboard fetch error:", err);
-      if (err instanceof Error) {
-        if (err.name === "AbortError") {
-          setError("Request timed out. Please try again.");
-        } else {
-          // Don't expose detailed error messages to users for security
-          setError("Failed to load dashboard. Please try again.");
-        }
-      } else {
-        setError("An unexpected error occurred while loading the dashboard.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
 
   // Check for project switch success and refresh data
   useEffect(() => {
@@ -597,14 +282,14 @@ export default function Home() {
       // Force refresh dashboard data when project is switched
       // Add a small delay to ensure session has propagated
       setTimeout(() => {
-        fetchDashboardData();
+        refetch();
       }, 100);
 
       setTimeout(() => {
         toast.success(`Switched to ${projectName}`);
       }, 500);
     }
-  }, [fetchDashboardData]);
+  }, [refetch]);
 
   // Memoized chart data to prevent unnecessary recalculations
   const chartData = useMemo(() => {

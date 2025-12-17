@@ -97,14 +97,23 @@ export async function GET(request: Request) {
         },
       });
     } else {
-      // Original behavior for backward compatibility - still scoped by org/project
+      // Return all monitors with standardized format
       const monitorsList = await db
         .select()
         .from(monitors)
         .where(whereCondition)
         .orderBy(desc(monitors.id));
 
-      return NextResponse.json(monitorsList);
+      // Return standardized response format for React Query hooks
+      return NextResponse.json({
+        data: monitorsList,
+        pagination: {
+          total: monitorsList.length,
+          page: 1,
+          limit: monitorsList.length,
+          totalPages: 1,
+        },
+      });
     }
   } catch (error) {
     console.error("Error fetching monitors:", error);
