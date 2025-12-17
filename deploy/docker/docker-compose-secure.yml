@@ -275,10 +275,12 @@ services:
     networks:
       - supercheck-network
     deploy:
+      # Scale app instances for better performance (load balanced by Traefik)
+      replicas: ${APP_REPLICAS:-2}
       resources:
         limits:
-          cpus: "1.0"
-          memory: 2G
+          cpus: "1.5"
+          memory: 3G
         reservations:
           cpus: "0.5"
           memory: 1G

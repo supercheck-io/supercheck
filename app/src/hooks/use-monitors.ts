@@ -92,7 +92,7 @@ export const MONITOR_QUERY_KEY = ["monitor"] as const;
 const monitorsHook = createDataHook<Monitor, CreateMonitorData, UpdateMonitorData>({
   queryKey: MONITORS_QUERY_KEY,
   endpoint: "/api/monitors",
-  staleTime: 10 * 1000, // 10 seconds - balance freshness with load
+  staleTime: 30 * 1000, // 30 seconds - balance freshness with performance
   gcTime: 5 * 60 * 1000, // 5 minutes cache
   refetchOnWindowFocus: true,
   singleItemField: "monitor",

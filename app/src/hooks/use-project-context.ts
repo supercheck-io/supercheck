@@ -27,6 +27,18 @@ interface ProjectContextState {
 
 const ProjectContextContext = createContext<ProjectContextState | null>(null);
 
+// ============================================================================
+// MODULE-LEVEL CACHE (prevents refetch on every component mount)
+// ============================================================================
+interface ProjectsCache {
+  currentProject: ProjectContext | null;
+  projects: ProjectContext[];
+  timestamp: number;
+}
+
+let projectsCache: ProjectsCache | null = null;
+const CACHE_TTL = 30000; // 30 seconds - projects rarely change
+
 /**
  * Hook to access project context
  */
@@ -40,14 +52,26 @@ export function useProjectContext(): ProjectContextState {
 
 /**
  * Project context state management
+ * PERFORMANCE OPTIMIZATION: Uses module-level cache to prevent
+ * duplicate API calls when navigating between pages.
  */
 export function useProjectContextState(): ProjectContextState {
-  const [currentProject, setCurrentProject] = useState<ProjectContext | null>(null);
-  const [projects, setProjects] = useState<ProjectContext[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [currentProject, setCurrentProject] = useState<ProjectContext | null>(projectsCache?.currentProject || null);
+  const [projects, setProjects] = useState<ProjectContext[]>(projectsCache?.projects || []);
+  const [loading, setLoading] = useState(!projectsCache);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchProjects = useCallback(async () => {
+  const fetchProjects = useCallback(async (forceRefresh = false) => {
+    // Use cache if available and not expired (unless force refresh)
+    const now = Date.now();
+    if (!forceRefresh && projectsCache && (now - projectsCache.timestamp) < CACHE_TTL) {
+      // Use cached data - no API call needed
+      setProjects(projectsCache.projects);
+      setCurrentProject(projectsCache.currentProject);
+      setLoading(false);
+      return;
+    }
+
     try {
       setError(null);
       const response = await fetch('/api/projects');
@@ -60,25 +84,36 @@ export function useProjectContextState(): ProjectContextState {
           // Don't throw error, just set empty projects to allow setup flow to continue
           setProjects([]);
           setCurrentProject(null);
+          projectsCache = { projects: [], currentProject: null, timestamp: Date.now() };
           return;
         }
         throw new Error(data.error || 'Failed to fetch projects');
       }
 
       if (data.success && Array.isArray(data.data)) {
-        setProjects(data.data);
+        let newCurrentProject: ProjectContext | null = null;
         
         // Set current project from API response
         if (data.currentProject) {
-          setCurrentProject(data.currentProject);
+          newCurrentProject = data.currentProject;
         } else if (data.data.length > 0) {
           // Fallback to default or first project
-          const defaultProject = data.data.find((p: ProjectContext) => p.isDefault) || data.data[0];
-          setCurrentProject(defaultProject);
+          newCurrentProject = data.data.find((p: ProjectContext) => p.isDefault) || data.data[0];
         }
+        
+        // Update module-level cache
+        projectsCache = {
+          projects: data.data,
+          currentProject: newCurrentProject,
+          timestamp: Date.now(),
+        };
+        
+        setProjects(data.data);
+        setCurrentProject(newCurrentProject);
       } else {
         setProjects([]);
         setCurrentProject(null);
+        projectsCache = { projects: [], currentProject: null, timestamp: Date.now() };
       }
     } catch (err) {
       console.error('Error fetching projects:', err);
@@ -132,7 +167,7 @@ export function useProjectContextState(): ProjectContextState {
 
   const refreshProjects = useCallback(async () => {
     setLoading(true);
-    await fetchProjects();
+    await fetchProjects(true); // Force refresh - bypass cache
   }, [fetchProjects]);
 
   // Load projects on mount

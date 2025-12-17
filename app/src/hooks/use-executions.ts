@@ -57,6 +57,24 @@ export interface UseExecutionsReturn {
   refresh: () => Promise<void>;
 }
 
+// ============================================================================
+// MODULE-LEVEL CACHE (prevents refetch on every component mount)
+// ============================================================================
+interface ExecutionsCache {
+  running: ExecutionItem[];
+  queued: ExecutionItem[];
+  runningCapacity: number;
+  queuedCapacity: number;
+  timestamp: number;
+}
+
+let executionsCache: ExecutionsCache | null = null;
+const CACHE_TTL = 5000; // 5 seconds - balance between freshness and performance
+
+// ============================================================================
+// HOOK IMPLEMENTATION
+// ============================================================================
+
 /**
  * Shared hook for fetching executions data
  * Uses multiple mechanisms for real-time updates:
@@ -64,6 +82,9 @@ export interface UseExecutionsReturn {
  * 1. SSE (/api/executions/events) - For BullMQ job lifecycle events
  * 2. Browser events (notifyExecutionsChanged) - For instant updates on job submission
  * 3. Visibility change - Refresh when tab becomes visible
+ * 
+ * PERFORMANCE OPTIMIZATION: Uses module-level cache to prevent
+ * duplicate API calls when navigating between pages.
  * 
  * SINGLE SOURCE OF TRUTH: Both the top bar and dialog use this hook
  * to ensure consistent data across the UI.
@@ -73,11 +94,11 @@ export interface UseExecutionsReturn {
  * - Cloud mode: Uses plan-specific limits from database (plus/pro plans)
  */
 export function useExecutions(): UseExecutionsReturn {
-  const [running, setRunning] = useState<ExecutionItem[]>([]);
-  const [queued, setQueued] = useState<ExecutionItem[]>([]);
-  const [runningCapacity, setRunningCapacity] = useState(DEFAULT_RUNNING_CAPACITY);
-  const [queuedCapacity, setQueuedCapacity] = useState(DEFAULT_QUEUED_CAPACITY);
-  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState<ExecutionItem[]>(executionsCache?.running || []);
+  const [queued, setQueued] = useState<ExecutionItem[]>(executionsCache?.queued || []);
+  const [runningCapacity, setRunningCapacity] = useState(executionsCache?.runningCapacity || DEFAULT_RUNNING_CAPACITY);
+  const [queuedCapacity, setQueuedCapacity] = useState(executionsCache?.queuedCapacity || DEFAULT_QUEUED_CAPACITY);
+  const [loading, setLoading] = useState(!executionsCache);
   
   // Refs for SSE connection management
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -96,8 +117,20 @@ export function useExecutions(): UseExecutionsReturn {
   }, []);
 
   // Fetch executions from REST API (single source of truth)
-  const fetchExecutions = useCallback(async () => {
+  const fetchExecutions = useCallback(async (forceRefresh = false) => {
     if (!mountedRef.current) return;
+
+    // Use cache if available and not expired (unless force refresh)
+    const now = Date.now();
+    if (!forceRefresh && executionsCache && (now - executionsCache.timestamp) < CACHE_TTL) {
+      // Use cached data - no API call needed
+      setRunning(executionsCache.running);
+      setQueued(executionsCache.queued);
+      setRunningCapacity(executionsCache.runningCapacity);
+      setQueuedCapacity(executionsCache.queuedCapacity);
+      setLoading(false);
+      return;
+    }
 
     try {
       const res = await fetch("/api/executions/running", {
@@ -116,18 +149,24 @@ export function useExecutions(): UseExecutionsReturn {
 
       if (!mountedRef.current) return;
 
-      setRunning(parseExecutionItems(data.running || []));
-      setQueued(parseExecutionItems(data.queued || []));
-      
-      // Update capacity limits from API response
-      // API handles self-hosted (env vars) vs cloud mode (plan limits from DB)
-      if (typeof data.runningCapacity === 'number') {
-        setRunningCapacity(data.runningCapacity);
-      }
-      if (typeof data.queuedCapacity === 'number') {
-        setQueuedCapacity(data.queuedCapacity);
-      }
-      
+      const parsedRunning = parseExecutionItems(data.running || []);
+      const parsedQueued = parseExecutionItems(data.queued || []);
+      const newRunningCapacity = typeof data.runningCapacity === 'number' ? data.runningCapacity : DEFAULT_RUNNING_CAPACITY;
+      const newQueuedCapacity = typeof data.queuedCapacity === 'number' ? data.queuedCapacity : DEFAULT_QUEUED_CAPACITY;
+
+      // Update module-level cache
+      executionsCache = {
+        running: parsedRunning,
+        queued: parsedQueued,
+        runningCapacity: newRunningCapacity,
+        queuedCapacity: newQueuedCapacity,
+        timestamp: Date.now(),
+      };
+
+      setRunning(parsedRunning);
+      setQueued(parsedQueued);
+      setRunningCapacity(newRunningCapacity);
+      setQueuedCapacity(newQueuedCapacity);
       setLoading(false);
     } catch (error) {
       console.error("Error fetching executions:", error);
@@ -136,12 +175,13 @@ export function useExecutions(): UseExecutionsReturn {
   }, [parseExecutionItems]);
 
   // Debounced refresh to batch rapid updates (300ms debounce)
+  // Forces refresh to bypass cache when triggered by SSE or manual action
   const debouncedRefresh = useCallback(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
     debounceRef.current = setTimeout(() => {
-      fetchExecutions();
+      fetchExecutions(true); // Force refresh - bypass cache
     }, 300);
   }, [fetchExecutions]);
 
