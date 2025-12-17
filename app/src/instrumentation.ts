@@ -2,7 +2,7 @@
  * Next.js Instrumentation
  *
  * This file runs once when the Next.js server starts.
- * Used to initialize background services like the email template processor.
+ * ALL background services should be initialized here, NOT in React components.
  *
  * @see https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation
  */
@@ -29,17 +29,29 @@ export async function register() {
       }
     }
 
+    // Initialize job schedulers (MOVED from SchedulerInitializer component)
     try {
-      // Initialize data lifecycle service (cleanup/retention management)
+      console.log('[Instrumentation] Initializing job schedulers...');
+      const { initializeJobSchedulers, cleanupJobScheduler } = await import('@/lib/job-scheduler');
+      await cleanupJobScheduler();
+      const jobResult = await initializeJobSchedulers();
+      if (jobResult.success) {
+        console.log(`[Instrumentation] ✅ Job scheduler initialized (${jobResult.initialized} scheduled)`);
+      } else {
+        console.error('[Instrumentation] ❌ Job scheduler initialization failed', jobResult.error);
+      }
+    } catch (error) {
+      console.error('[Instrumentation] ❌ Failed to initialize job schedulers:', error);
+    }
+
+    // Initialize data lifecycle service
+    try {
       console.log('[Instrumentation] Loading data lifecycle service...');
       const { initializeDataLifecycleService } = await import('@/lib/job-scheduler');
       const lifecycleService = await initializeDataLifecycleService();
       if (lifecycleService) {
         const status = await lifecycleService.getStatus();
         console.log(`[Instrumentation] ✅ Data lifecycle service initialized (${status.enabledStrategies.length} strategies enabled)`);
-        if (status.enabledStrategies.length > 0) {
-          console.log(`    Enabled: ${status.enabledStrategies.join(', ')}`);
-        }
       } else {
         console.warn('[Instrumentation] ⚠️ Data lifecycle service failed to initialize');
       }
@@ -47,11 +59,27 @@ export async function register() {
       console.error('[Instrumentation] ❌ Failed to initialize data lifecycle service:', error);
     }
 
+    // Initialize monitor schedulers (MOVED from SchedulerInitializer component)
     try {
-      // Initialize email template processor
+      console.log('[Instrumentation] Initializing monitor schedulers...');
+      const { initializeMonitorSchedulers, cleanupMonitorScheduler } = await import('@/lib/monitor-scheduler');
+      await cleanupMonitorScheduler();
+      const monitorResult = await initializeMonitorSchedulers();
+      if (monitorResult.success) {
+        console.log(`[Instrumentation] ✅ Monitor scheduler initialized (${monitorResult.scheduled} monitors)`);
+      } else {
+        console.error('[Instrumentation] ❌ Monitor scheduler initialization failed');
+      }
+    } catch (error) {
+      console.error('[Instrumentation] ❌ Failed to initialize monitor schedulers:', error);
+    }
+
+    // Initialize email template processor
+    try {
       console.log('[Instrumentation] Loading email template processor...');
-      await import('@/lib/processors/email-template-processor');
-      console.log('[Instrumentation] ✅ Email template processor module loaded and initialized');
+      const { initializeEmailTemplateProcessor } = await import('@/lib/processors/email-template-processor');
+      await initializeEmailTemplateProcessor();
+      console.log('[Instrumentation] ✅ Email template processor initialized');
     } catch (error) {
       console.error('[Instrumentation] ❌ Failed to initialize email template processor:', error);
     }

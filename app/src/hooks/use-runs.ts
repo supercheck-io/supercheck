@@ -60,7 +60,7 @@ export const RUN_QUERY_KEY = ["run"] as const;
 const runsHook = createDataHook<Run>({
   queryKey: RUNS_QUERY_KEY,
   endpoint: "/api/runs",
-  staleTime: 0, // 0 seconds - always fetch fresh data for runs to ensure status is up to date
+  staleTime: 30 * 1000, // 30 seconds - SSE handles real-time updates, cache prevents refetch storms
   gcTime: 5 * 60 * 1000, // 5 minutes cache
   refetchOnWindowFocus: true,
   singleItemField: "run",
