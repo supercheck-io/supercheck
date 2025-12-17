@@ -340,21 +340,8 @@ export async function initializeEmailTemplateProcessor(): Promise<void> {
 }
 
 
-/**
- * Auto-initialize processor on app startup (server-side only)
- * This ensures the BullMQ worker is always running to process email template jobs
- * CRITICAL: Must run at module level because worker needs templates even when no user is logged in
- */
-if (typeof window === "undefined") {
-  // Only initialize on server-side
-  const initPromise = initializeEmailTemplateProcessor();
-  initPromise.catch((err) => {
-    console.error(
-      "[Email Template Processor] Auto-initialization failed - email templates may fall back to simple HTML:",
-      err instanceof Error ? err.message : String(err)
-    );
-  });
-}
+// NOTE: Initialization is now handled in instrumentation.ts
+// The auto-init code was removed to prevent double initialization
 
 /**
  * Gracefully shutdown the email template processor

@@ -37,6 +37,9 @@ export async function register() {
       const jobResult = await initializeJobSchedulers();
       if (jobResult.success) {
         console.log(`[Instrumentation] ✅ Job scheduler initialized (${jobResult.initialized} scheduled)`);
+        if (jobResult.failed && jobResult.failed > 0) {
+          console.warn(`[Instrumentation] ⚠️ ${jobResult.failed} job(s) failed to initialize`);
+        }
       } else {
         console.error('[Instrumentation] ❌ Job scheduler initialization failed', jobResult.error);
       }
@@ -67,6 +70,9 @@ export async function register() {
       const monitorResult = await initializeMonitorSchedulers();
       if (monitorResult.success) {
         console.log(`[Instrumentation] ✅ Monitor scheduler initialized (${monitorResult.scheduled} monitors)`);
+        if (monitorResult.failed && monitorResult.failed > 0) {
+          console.warn(`[Instrumentation] ⚠️ ${monitorResult.failed} monitor(s) failed to initialize`);
+        }
       } else {
         console.error('[Instrumentation] ❌ Monitor scheduler initialization failed');
       }

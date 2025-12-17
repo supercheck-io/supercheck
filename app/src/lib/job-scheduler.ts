@@ -335,77 +335,113 @@ export async function deleteScheduledJob(
 
 /**
  * Initializes job schedulers for all jobs with cron schedules
- * Called on application startup
+ * Called on application startup.
+ * Uses a distributed lock to prevent race conditions in clustered environments.
  */
 export async function initializeJobSchedulers() {
-  try {
-    // Initializing job scheduler
+  const maxRetries = 3;
+  const retryDelay = 2000; // 2 seconds
+  const LOCK_KEY = 'job:scheduler:init:lock';
+  const LOCK_TTL_SECONDS = 120; // 2 minutes - enough time to initialize all schedulers
 
-    const jobsWithSchedules = await db
-      .select()
-      .from(jobs)
-      .where(isNotNull(jobs.cronSchedule));
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Test Redis connection first
+      const { jobSchedulerQueue } = await getQueues();
+      const redisClient = await jobSchedulerQueue.client;
+      await redisClient.ping();
 
-    // Found scheduled jobs to initialize
+      // Acquire distributed lock to prevent multiple instances from initializing simultaneously
+      // This is critical in clustered deployments where multiple Next.js instances start together
+      const lockAcquired = await redisClient.set(LOCK_KEY, process.pid.toString(), 'EX', LOCK_TTL_SECONDS, 'NX');
+      
+      if (!lockAcquired) {
+        console.log('[JobScheduler] Another instance is initializing schedulers, skipping...');
+        return { success: true, initialized: 0, failed: 0 };
+      }
+      
+      console.log('[JobScheduler] Lock acquired, initializing schedulers...');
 
-    let initializedCount = 0;
-    let failedCount = 0;
+      const jobsWithSchedules = await db
+        .select()
+        .from(jobs)
+        .where(isNotNull(jobs.cronSchedule));
 
-    for (const job of jobsWithSchedules) {
-      if (!job.cronSchedule) continue;
+      if (jobsWithSchedules.length === 0) {
+        // Release lock early if no jobs to schedule
+        await redisClient.del(LOCK_KEY);
+        return { success: true, initialized: 0, failed: 0 };
+      }
 
-      try {
-        const schedulerId = await scheduleJob({
-          name: job.name,
-          cron: job.cronSchedule,
-          jobId: job.id,
-          // queue: JOB_EXECUTION_QUEUE, // No longer needed here
-          retryLimit: 3,
-        });
+      let initializedCount = 0;
+      let failedCount = 0;
 
-        // Update the job with the scheduler ID if needed
-        if (!job.scheduledJobId || job.scheduledJobId !== schedulerId) {
-          let nextRunAt = null;
+      for (const job of jobsWithSchedules) {
+        if (!job.cronSchedule) continue;
 
-          try {
-            if (job.cronSchedule) {
-              nextRunAt = getNextRunDate(job.cronSchedule);
+        try {
+          const schedulerId = await scheduleJob({
+            name: job.name,
+            cron: job.cronSchedule,
+            jobId: job.id,
+            retryLimit: 3,
+          });
+
+          // Update the job with the scheduler ID if needed
+          if (!job.scheduledJobId || job.scheduledJobId !== schedulerId) {
+            let nextRunAt = null;
+
+            try {
+              if (job.cronSchedule) {
+                nextRunAt = getNextRunDate(job.cronSchedule);
+              }
+            } catch (error) {
+              console.error(`Failed to calculate next run date: ${error}`);
             }
-          } catch (error) {
-            console.error(`Failed to calculate next run date: ${error}`);
+
+            await db
+              .update(jobs)
+              .set({
+                scheduledJobId: schedulerId,
+                nextRunAt: nextRunAt,
+              })
+              .where(eq(jobs.id, job.id));
           }
 
-          await db
-            .update(jobs)
-            .set({
-              scheduledJobId: schedulerId,
-              nextRunAt: nextRunAt,
-            })
-            .where(eq(jobs.id, job.id));
+          initializedCount++;
+        } catch (error) {
+          console.error(
+            `Failed to initialize scheduler for job ${job.id}:`,
+            error
+          );
+          failedCount++;
         }
-
-        // Initialized job scheduler
-        initializedCount++;
-      } catch (error) {
-        console.error(
-          `Failed to initialize scheduler for job ${job.id}:`,
-          error
-        );
-        failedCount++;
       }
-    }
 
-    // Job scheduler initialization complete
-    return {
-      success: true,
-      initialized: initializedCount,
-      failed: failedCount,
-    };
-  } catch (error) {
-    console.error(`Failed to initialize job schedulers:`, error);
-    return { success: false, error };
+      // Consider initialization successful if at least some jobs were scheduled
+      // or if there were no jobs to schedule
+      const success = initializedCount > 0 || (initializedCount === 0 && failedCount === 0);
+      return {
+        success,
+        initialized: initializedCount,
+        failed: failedCount,
+      };
+    } catch (error) {
+      console.error(`Failed to initialize job schedulers (attempt ${attempt}/${maxRetries}):`, error);
+
+      if (attempt === maxRetries) {
+        return { success: false, initialized: 0, failed: 0, error };
+      }
+
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+    }
   }
+
+  // This should never be reached, but just in case
+  return { success: false, initialized: 0, failed: 0 };
 }
+
 
 /**
  * Cleanup function to close all queues and workers
