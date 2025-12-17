@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import { useAppConfig } from "@/hooks/use-app-config";
 
 // Routes that don't require subscription
 const ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION = [
@@ -21,6 +22,11 @@ interface SubscriptionGuardProps {
 /**
  * SubscriptionGuard - Client component that checks subscription status
  * 
+ * PERFORMANCE OPTIMIZATION:
+ * - Uses cached useAppConfig hook for hosting mode (React Query cached)
+ * - Subscription check runs ONCE on mount, not on every navigation
+ * - Self-hosted mode bypasses all subscription checks immediately
+ * 
  * In cloud mode:
  * - Redirects users without active subscription to billing page
  * - Allows access to billing and settings pages without subscription
@@ -31,86 +37,96 @@ interface SubscriptionGuardProps {
 export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [isChecking, setIsChecking] = useState(true);
+
+  // Use cached hosting mode from React Query (no API call if cached)
+  const { isSelfHosted, isLoading: isConfigLoading } = useAppConfig();
+
+  const [isCheckingSubscription, setIsCheckingSubscription] = useState(true);
   const [hasSubscription, setHasSubscription] = useState(false);
-  const [isSelfHosted, setIsSelfHosted] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    const checkHostingModeAndSubscription = async () => {
-      // First, check hosting mode from server (runtime env var)
-      try {
-        const modeResponse = await fetch('/api/config/hosting-mode');
-        if (modeResponse.ok) {
-          const modeData = await modeResponse.json();
-          setIsSelfHosted(modeData.selfHosted);
+  // Track if subscription was already checked this session
+  const subscriptionCheckedRef = useRef(false);
 
-          // Self-hosted mode: skip subscription check
-          if (modeData.selfHosted) {
-            setHasSubscription(true);
-            setIsChecking(false);
-            return;
-          }
-        }
-      } catch (error) {
-        console.error('Failed to check hosting mode:', error);
-        // On error, assume self-hosted to avoid blocking users
-        setIsSelfHosted(true);
-        setHasSubscription(true);
-        setIsChecking(false);
-        return;
-      }
+  // Check if current route is allowed without subscription
+  const isAllowedRoute = ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION.some(
+    route => pathname.startsWith(route)
+  );
 
-      // Check if current route is allowed without subscription
-      const isAllowedRoute = ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION.some(
-        route => pathname.startsWith(route)
-      );
+  // Subscription check function - runs once per session
+  const checkSubscription = useCallback(async () => {
+    // Skip if already checked or if self-hosted
+    if (subscriptionCheckedRef.current || isSelfHosted) {
+      setIsCheckingSubscription(false);
+      return;
+    }
 
-      if (isAllowedRoute) {
-        setIsChecking(false);
-        return;
-      }
+    // Skip subscription check for allowed routes
+    if (isAllowedRoute) {
+      setIsCheckingSubscription(false);
+      return;
+    }
 
-      // Cloud mode: Check subscription status
-      try {
-        const response = await fetch('/api/billing/current');
-        if (response.ok) {
-          const data = await response.json();
-          // Check if subscription is actually active (not just that endpoint returned OK)
-          const isActive = data.subscription?.status === 'active' && data.subscription?.plan;
-          if (isActive) {
-            setHasSubscription(true);
-          } else {
-            // No active subscription - redirect to subscribe page
-            console.log('No active subscription (status:', data.subscription?.status, '), redirecting to subscribe');
-            router.push('/subscribe?required=true');
-            return;
-          }
+    try {
+      const response = await fetch('/api/billing/current');
+      if (response.ok) {
+        const data = await response.json();
+        // Check if subscription is actually active
+        const isActive = data.subscription?.status === 'active' && data.subscription?.plan;
+        if (isActive) {
+          setHasSubscription(true);
+          subscriptionCheckedRef.current = true;
         } else {
-          // API error - redirect to subscribe page
-          console.log('Billing API error, redirecting to subscribe');
+          // No active subscription - redirect to subscribe page
+          console.log('No active subscription (status:', data.subscription?.status, '), redirecting to subscribe');
           router.push('/subscribe?required=true');
           return;
         }
-      } catch (error) {
-        console.error('Failed to check subscription:', error);
-        // On error, redirect to subscribe to be safe
+      } else {
+        // API error - redirect to subscribe page
+        console.log('Billing API error, redirecting to subscribe');
         router.push('/subscribe?required=true');
         return;
-      } finally {
-        setIsChecking(false);
       }
-    };
+    } catch (error) {
+      console.error('Failed to check subscription:', error);
+      // On error, redirect to subscribe to be safe
+      router.push('/subscribe?required=true');
+      return;
+    } finally {
+      setIsCheckingSubscription(false);
+    }
+  }, [isSelfHosted, isAllowedRoute, router]);
 
-    checkHostingModeAndSubscription();
-  }, [pathname, router]);
+  // Run subscription check once when config is loaded
+  useEffect(() => {
+    // Wait for config to load first
+    if (isConfigLoading) {
+      return;
+    }
 
-  // Self-hosted mode or allowed route: render children immediately
-  if (isSelfHosted || ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION.some(route => pathname.startsWith(route))) {
+    // Self-hosted: immediately allow access, no subscription check needed
+    if (isSelfHosted) {
+      setHasSubscription(true);
+      setIsCheckingSubscription(false);
+      return;
+    }
+
+    // Cloud mode: check subscription once
+    checkSubscription();
+  }, [isConfigLoading, isSelfHosted, checkSubscription]);
+
+  // Self-hosted mode: always allow access immediately
+  if (isSelfHosted) {
     return <>{children}</>;
   }
 
-  // Still checking subscription - only shown in cloud mode, never in self-hosted
-  if (isChecking && !isSelfHosted) {
+  // Allowed routes: always allow access
+  if (isAllowedRoute) {
+    return <>{children}</>;
+  }
+
+  // Still loading config or checking subscription in cloud mode
+  if (isConfigLoading || isCheckingSubscription) {
     return (
       <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
         <SuperCheckLoading size="lg" message="Please wait, loading..." />

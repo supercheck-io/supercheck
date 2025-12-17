@@ -286,9 +286,15 @@ export async function GET() {
       };
     });
 
+    // Return standardized response format for React Query hooks
     return NextResponse.json({
-      success: true,
-      jobs: jobsWithTests,
+      data: jobsWithTests,
+      pagination: {
+        total: jobsWithTests.length,
+        page: 1,
+        limit: jobsWithTests.length,
+        totalPages: 1,
+      },
     });
   } catch (error) {
     console.error("Failed to fetch jobs:", error);

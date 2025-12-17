@@ -1,20 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useProjectContext } from "@/hooks/use-project-context";
 
+/**
+ * SetupChecker - Ensures new users have default organization/project
+ * 
+ * PERFORMANCE OPTIMIZATION:
+ * - Uses projects from ProjectContext instead of duplicate /api/projects fetch
+ * - Only runs setup check once per session (tracked via ref)
+ * - ProjectContext already fetches projects on mount, we just read from it
+ */
 export function SetupChecker() {
   const [isSetupComplete, setIsSetupComplete] = useState(false);
-  const { refreshProjects } = useProjectContext();
+  const { projects, loading, refreshProjects } = useProjectContext();
+  const setupAttemptedRef = useRef(false);
 
   useEffect(() => {
-    const checkAndSetupDefaults = async () => {
-      try {
-        // Check if user has active project
-        const response = await fetch("/api/projects");
-        const data = await response.json();
+    // Skip if setup already attempted or context is still loading
+    if (setupAttemptedRef.current || loading) {
+      return;
+    }
 
-        if (!data.success || data.data.length === 0) {
+    const checkAndSetupDefaults = async () => {
+      // Mark as attempted to prevent re-running
+      setupAttemptedRef.current = true;
+
+      try {
+        // Use projects from context - no additional API call needed!
+        if (projects.length === 0) {
           // Check if user is a member of any organization
           const membershipResponse = await fetch("/api/organizations");
           const membershipData = await membershipResponse.json();
@@ -26,15 +40,11 @@ export function SetupChecker() {
           ) {
             // User is a member of organizations but has no projects
             // This is likely an invited user with restricted project access
-
             setIsSetupComplete(true);
             return;
           }
 
-          // Additional check: see if user was recently invited
-          // This prevents creating defaults for users who just accepted invitations
-          // but haven't been assigned to projects yet due to timing issues
-
+          // No projects and no org membership - create defaults
           const setupResponse = await fetch("/api/auth/setup-defaults", {
             method: "POST",
           });
@@ -43,7 +53,6 @@ export function SetupChecker() {
             console.log("✅ Default organization and project created");
 
             // Wait a moment for database consistency, then refresh projects
-            // This helps with potential race conditions between org creation and permission checks
             await new Promise((resolve) => setTimeout(resolve, 2000));
 
             try {
@@ -77,7 +86,7 @@ export function SetupChecker() {
       const timer = setTimeout(checkAndSetupDefaults, 1000);
       return () => clearTimeout(timer);
     }
-  }, [isSetupComplete, refreshProjects]);
+  }, [loading, projects, isSetupComplete, refreshProjects]);
 
   return null; // This component doesn't render anything
 }

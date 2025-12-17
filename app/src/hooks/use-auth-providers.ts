@@ -1,60 +1,29 @@
-import { useEffect, useState } from "react";
+/**
+ * Auth Providers Hook
+ * 
+ * Thin wrapper around useAppConfig to check which auth providers are enabled.
+ * Uses shared React Query cache - no additional API calls are made.
+ */
 
-interface AuthProviders {
-  github: {
-    enabled: boolean;
-  };
-  google: {
-    enabled: boolean;
-  };
-}
+import { useAppConfig } from "./use-app-config";
 
 /**
  * Hook to check which authentication providers are enabled at runtime
- * Uses the unified /api/config/app endpoint for runtime configuration
+ * 
+ * Uses the centralized useAppConfig hook which caches the configuration.
+ * This prevents redundant API calls across components.
  */
 export function useAuthProviders() {
-  const [providers, setProviders] = useState<AuthProviders | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  useEffect(() => {
-    const fetchProviders = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        const response = await fetch("/api/config/app");
-        if (!response.ok) {
-          throw new Error("Failed to fetch app config");
-        }
-
-        const data = await response.json();
-        setProviders({
-          github: { enabled: data.authProviders?.github?.enabled ?? false },
-          google: { enabled: data.authProviders?.google?.enabled ?? false },
-        });
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error("Unknown error");
-        setError(error);
-        // Default to disabled on error (fail-safe approach)
-        setProviders({
-          github: { enabled: false },
-          google: { enabled: false },
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchProviders();
-  }, []);
+  const { config, isLoading, error, isGithubEnabled, isGoogleEnabled } = useAppConfig();
 
   return {
-    providers,
+    providers: config?.authProviders ?? {
+      github: { enabled: false },
+      google: { enabled: false },
+    },
     isLoading,
     error,
-    isGithubEnabled: providers?.github?.enabled ?? false,
-    isGoogleEnabled: providers?.google?.enabled ?? false,
+    isGithubEnabled,
+    isGoogleEnabled,
   };
 }

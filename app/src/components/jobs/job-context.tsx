@@ -10,8 +10,10 @@ import React, {
   useMemo,
 } from "react";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
 import { jobStatuses } from "./data";
+import { RUNS_QUERY_KEY } from "@/hooks/use-runs";
 interface JobStatusSSEPayload {
   status: string;
   jobId?: string;
@@ -121,7 +123,7 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
   >(new Map());
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
-  const router = useRouter();
+  const queryClient = useQueryClient();
 
   // Check if a specific job is running
   const isJobRunning = useCallback(
@@ -297,21 +299,21 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
               description: (
                 <>
                   {jobName}: {toastMessage}{" "}
-                  <a href={`/runs/${runId}`} className="underline font-medium">
+                  <Link href={`/runs/${runId}`} className="underline font-medium">
                     View Run Report
-                  </a>
+                  </Link>
                 </>
               ),
               duration: 10000,
             });
           }
 
-          // Refresh the page to get updated errorDetails for cancelled jobs
-          router.refresh();
+          // Invalidate React Query cache to refresh runs data
+          queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY });
         }
       }
     },
-    [setJobStatus, startJobRun, router]
+    [setJobStatus, startJobRun, queryClient]
   );
 
   useEffect(() => {
@@ -564,19 +566,19 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
               {success
                 ? "All tests executed successfully."
                 : "One or more tests did not complete successfully."}{" "}
-              <a href={`/runs/${runId}`} className="underline font-medium">
+              <Link href={`/runs/${runId}`} className="underline font-medium">
                 View Run Report
-              </a>
+              </Link>
             </>
           ),
           duration: 10000,
         }
       );
 
-      // Refresh the page
-      router.refresh();
+      // Invalidate React Query cache to refresh runs data
+      queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY });
     },
-    [router, setJobStatus]
+    [queryClient, setJobStatus]
   );
 
   // Memoize context value to prevent unnecessary re-renders

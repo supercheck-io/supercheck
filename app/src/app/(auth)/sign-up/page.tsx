@@ -3,6 +3,7 @@ import { signUp, signIn } from "@/utils/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { SignupForm } from "@/components/auth/signup-form";
+import { useAppConfig } from "@/hooks/use-app-config";
 
 interface InviteData {
   organizationName: string;
@@ -23,7 +24,8 @@ export default function SignUpPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [inviteData, setInviteData] = useState<InviteData | null>(null);
-  const [isCloudMode, setIsCloudMode] = useState<boolean | null>(null);
+  // Use cached hosting mode from useAppConfig (React Query cached)
+  const { isCloudHosted } = useAppConfig();
   // Store captcha token in ref since we need latest value in async handlers
   const captchaTokenRef = useRef<string | null>(null);
 
@@ -55,12 +57,7 @@ export default function SignUpPage() {
       }
     };
     fetchInviteData();
-
-    // Check hosting mode
-    fetch("/api/config/hosting-mode")
-      .then((res) => res.json())
-      .then((data) => setIsCloudMode(data.cloudHosted))
-      .catch(() => setIsCloudMode(true)); // Default to cloud mode if check fails
+    // Hosting mode comes from useAppConfig (cached)
   }, [inviteToken, router]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -214,14 +211,14 @@ export default function SignUpPage() {
     // The user needs to verify their email before they can proceed
     // EXCEPTION: For invitation flow, skip email verification since the email is already verified
     // by the invitation system (the invite was sent to that specific email)
-    if (isCloudMode && !inviteToken) {
+    if (isCloudHosted && !inviteToken) {
       router.push(`/verify-email?email=${encodeURIComponent(email)}`);
       return;
     }
 
     // For invitation flow in cloud mode: mark email as verified and SIGN IN
     // signUp doesn't establish a session, we need to explicitly sign in
-    if (isCloudMode && inviteToken) {
+    if (isCloudHosted && inviteToken) {
       try {
         const verifyResponse = await fetch("/api/auth/verify-invited-user", {
           method: "POST",
@@ -303,51 +300,40 @@ export default function SignUpPage() {
       return;
     }
 
-    // Check hosting mode - only verify subscription for cloud mode
-    // Note: This check is for new user signup WITHOUT invitation
-    // Invited members skip this check entirely (handled above)
-    try {
-      const modeResponse = await fetch("/api/config/hosting-mode");
-      if (modeResponse.ok) {
-        const modeData = await modeResponse.json();
-
-        // Only check subscription in cloud mode
-        if (modeData.cloudHosted) {
-          try {
-            const billingResponse = await fetch("/api/billing/current");
-            if (billingResponse.ok) {
-              const billingData = await billingResponse.json();
-              // Check if subscription is actually active
-              if (
-                billingData.subscription?.status !== "active" ||
-                !billingData.subscription?.plan
-              ) {
-                console.log(
-                  "Cloud mode: No active subscription, redirecting to subscribe"
-                );
-                router.push("/subscribe?setup=true");
-                setIsLoading(false);
-                return;
-              }
-            } else {
-              // Billing check failed - redirect to subscribe to be safe
-              router.push("/subscribe?setup=true");
-              setIsLoading(false);
-              return;
-            }
-          } catch {
+    // Check subscription for new user signup WITHOUT invitation
+    // For cloud mode, verify subscription status
+    // Note: isCloudHosted comes from useAppConfig (cached)
+    if (isCloudHosted) {
+      try {
+        const billingResponse = await fetch("/api/billing/current");
+        if (billingResponse.ok) {
+          const billingData = await billingResponse.json();
+          // Check if subscription is actually active
+          if (
+            billingData.subscription?.status !== "active" ||
+            !billingData.subscription?.plan
+          ) {
             console.log(
-              "Cloud mode: Failed to check subscription, redirecting to subscribe"
+              "Cloud mode: No active subscription, redirecting to subscribe"
             );
             router.push("/subscribe?setup=true");
             setIsLoading(false);
             return;
           }
+        } else {
+          // Billing check failed - redirect to subscribe to be safe
+          router.push("/subscribe?setup=true");
+          setIsLoading(false);
+          return;
         }
-        // Self-hosted mode: no subscription check needed, proceed to dashboard
+      } catch {
+        console.log(
+          "Cloud mode: Failed to check subscription, redirecting to subscribe"
+        );
+        router.push("/subscribe?setup=true");
+        setIsLoading(false);
+        return;
       }
-    } catch {
-      console.log("Could not check hosting mode, proceeding to dashboard");
     }
 
     // Default: redirect to dashboard

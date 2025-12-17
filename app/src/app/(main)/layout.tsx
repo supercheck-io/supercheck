@@ -13,7 +13,6 @@ import { SchedulerInitializer } from "@/components/scheduler-initializer";
 import { CommandSearch } from "@/components/ui/command-search";
 import { SetupChecker } from "@/components/setup-checker";
 import { ProjectContextProvider } from "@/hooks/use-project-context";
-import { QueryProvider } from "@/lib/query-provider";
 import { auth } from "@/utils/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -35,9 +34,8 @@ export default async function MainLayout({
   }
 
   return (
-    <QueryProvider>
-      <BreadcrumbProvider >
-        <ProjectContextProvider>
+    <BreadcrumbProvider>
+      <ProjectContextProvider>
           <SidebarProvider>
             <JobProvider>
               {/* Initialize job scheduler */}
@@ -72,7 +70,6 @@ export default async function MainLayout({
             </JobProvider>
           </SidebarProvider>
         </ProjectContextProvider>
-      </BreadcrumbProvider>
-    </QueryProvider>
+    </BreadcrumbProvider>
   );
 }

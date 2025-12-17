@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useSyncExternalStore } from "react";
 import { columns } from "./columns";
 import { DataTable } from "./data-table";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
@@ -35,7 +35,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-// import { getJobs } from "@/actions/get-jobs"; // Replaced with API call
 import { useJobContext } from "./job-context";
 import { formatDistanceToNow } from "date-fns";
 import { UUIDField } from "@/components/ui/uuid-field";
@@ -46,6 +45,7 @@ import { createJobTestColumns } from "./job-test-columns";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canEditJobs } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
+import { useJobs } from "@/hooks/use-jobs";
 
 // Helper function to map incoming types to the valid Test["type"]
 function mapToTestType(type: string | undefined): Test["type"] {
@@ -64,46 +64,30 @@ function mapToTestType(type: string | undefined): Test["type"] {
 export default function Jobs() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [selectedJobOverride, setSelectedJobOverride] = useState<Job | null>(null);
   const [isEditTestDialogOpen, setIsEditTestDialogOpen] = useState(false);
   const [selectedTest, setSelectedTest] = useState<Test | null>(null);
   const {} = useJobContext();
-  const [isLoading, setIsLoading] = useState(true);
-  const [mounted, setMounted] = useState(false);
-  const { projectId, currentProject } = useProjectContext();
+  const isMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+  const { currentProject } = useProjectContext();
+
+  // Use React Query hook for jobs data (cached, handles loading/error)
+  const { jobs: rawJobs, isLoading, invalidate } = useJobs();
   
   // Check permissions
   const userRole = currentProject?.userRole ? normalizeRole(currentProject.userRole) : null;
   const hasEditPermission = userRole ? canEditJobs(userRole) : false;
 
-  // Set mounted to true after initial render
-  useEffect(() => {
-    setMounted(true);
-    return () => {
-      setMounted(false);
-    };
-  }, []);
-
-  // Safe state setters that only run when component is mounted
-  const safeSetSelectedJob = useCallback((job: Job | null) => {
-    if (mounted) {
-      setSelectedJob(job);
-    }
-  }, [mounted]);
-
-  const safeSetIsSheetOpen = useCallback((open: boolean) => {
-    if (mounted) {
-      setIsSheetOpen(open);
-    }
-  }, [mounted]);
 
   const safeSetSelectedTest = useCallback((test: Test | null) => {
-    if (mounted) {
+    if (isMounted) {
       setSelectedTest(test);
     }
-  }, [mounted]);
+  }, [isMounted]);
 
   // Handle job selection with URL update
   const handleJobSelect = (job: Job) => {
@@ -122,87 +106,72 @@ export default function Jobs() {
     router.push(newUrl, { scroll: false });
   };
 
-  // Fetch jobs from the database on component mount
+  // Transform jobs data with memoization to match local Job schema
+  const jobs = useMemo<Job[]>(() => {
+    if (!rawJobs || rawJobs.length === 0) return [];
+
+    return rawJobs.map((job) => {
+      // Map tests from API format to local Test schema
+      const tests: Test[] = Array.isArray(job.tests)
+        ? job.tests.map((test) => ({
+            id: test.id,
+            name: test.title || test.name || "",
+            description: test.description || null,
+            type: mapToTestType(test.type),
+            status: undefined, // API doesn't return test status in job context
+            lastRunAt: test.updatedAt || null,
+            duration: null,
+            tags: test.tags?.map(t => ({ ...t, color: t.color || null })),
+          }))
+        : [];
+
+      // Map lastRun to match local schema
+      const lastRun = job.lastRun ? {
+        id: job.lastRun.id,
+        status: job.lastRun.status,
+        startedAt: job.lastRun.startedAt ?? null,
+        completedAt: job.lastRun.completedAt ?? null,
+        duration: null,
+        errorDetails: job.lastRun.errorDetails ?? null,
+      } : undefined;
+
+      return {
+        id: job.id,
+        name: job.name,
+        description: job.description || null,
+        cronSchedule: job.cronSchedule || null,
+        status: job.status as Job["status"],
+        jobType: (job.jobType || "playwright") as Job["jobType"],
+        lastRunAt: job.lastRunAt || null,
+        nextRunAt: job.nextRunAt || null,
+        createdAt: job.createdAt || undefined,
+        updatedAt: job.updatedAt || undefined,
+        tests,
+        alertConfig: job.alertConfig as Job["alertConfig"],
+        lastRun,
+      };
+    });
+  }, [rawJobs]);
+
+  // Derive selectedJob and isSheetOpen from URL params (no effect needed)
+  const jobIdFromUrl = searchParams.get('job');
+  const selectedJob = useMemo(() => {
+    if (selectedJobOverride) return selectedJobOverride;
+    if (!jobIdFromUrl || jobs.length === 0) return null;
+    return jobs.find((j: Job) => j.id === jobIdFromUrl) || null;
+  }, [jobIdFromUrl, jobs, selectedJobOverride]);
+  const isSheetOpen = !!selectedJob;
+
+  // Handle invalid job ID in URL (job not found)
   useEffect(() => {
-    async function fetchJobs() {
-      setIsLoading(true);
-      try {
-        // Only fetch jobs if we have a projectId
-        if (!projectId) {
-          setJobs([]);
-          setIsLoading(false);
-          return;
-        }
-
-        const response = await fetch(`/api/jobs?projectId=${projectId}`);
-        const data = await response.json();
-        
-        if (response.ok && data.success && data.jobs) {
-          const typedJobs = data.jobs.map((job: Record<string, unknown>) => ({
-            ...job,
-            jobType: (job.jobType || "playwright") as Job["jobType"],
-            status: job.status as Job["status"],
-            description: job.description || null,
-            cronSchedule: job.cronSchedule || null,
-            tests: Array.isArray(job.tests) 
-              ? job.tests.map((test: Record<string, unknown>) => ({
-                  ...test,
-                  type: mapToTestType(test.type as string | undefined),
-                  description: test.description || null,
-                  status: (test.status || "pending") as Test["status"],
-                  lastRunAt: test.lastRunAt || null,
-                  duration: test.duration || null,
-                }))
-              : [],
-            alertConfig: job.alertConfig as Record<string, unknown>,
-          }));
-          setJobs(typedJobs as Job[]);
-        } else {
-          console.error("Failed to fetch jobs:", data.error);
-          toast.error("Failed to fetch jobs", {
-            description: data.error || "An unknown error occurred",
-          });
-          setJobs([]);
-        }
-      } catch (error) {
-        console.error("Error fetching jobs:", error);
-        toast.error("Error fetching jobs", {
-          description:
-            error instanceof Error
-              ? error.message
-              : "An unknown error occurred",
-        });
-        setJobs([]);
-      } finally {
-        setIsLoading(false);
-      }
+    if (jobIdFromUrl && jobs.length > 0 && !jobs.find((j: Job) => j.id === jobIdFromUrl)) {
+      // Job not found, remove from URL
+      const params = new URLSearchParams(searchParams);
+      params.delete('job');
+      const newUrl = params.toString() ? `/jobs?${params.toString()}` : '/jobs';
+      router.replace(newUrl, { scroll: false });
     }
-
-    fetchJobs();
-  }, [projectId]);
-
-  // Handle URL parameter changes (for direct navigation to job details)
-  useEffect(() => {
-    const jobId = searchParams.get('job');
-    
-    if (jobId && jobs.length > 0) {
-      const job = jobs.find(j => j.id === jobId);
-      if (job) {
-        safeSetSelectedJob(job);
-        safeSetIsSheetOpen(true);
-      } else {
-        // Job not found, remove from URL
-        const params = new URLSearchParams(searchParams);
-        params.delete('job');
-        const newUrl = params.toString() ? `/jobs?${params.toString()}` : '/jobs';
-        router.replace(newUrl, { scroll: false });
-      }
-    } else if (!jobId && isSheetOpen) {
-      // URL doesn't have job ID but sheet is open, close it
-      safeSetIsSheetOpen(false);
-      safeSetSelectedJob(null);
-    }
-  }, [searchParams, jobs, isSheetOpen, router, safeSetSelectedJob, safeSetIsSheetOpen]);
+  }, [jobIdFromUrl, jobs, searchParams, router]);
 
   // Edit an existing test
   const handleEditTest = () => {
@@ -224,10 +193,10 @@ export default function Jobs() {
       };
 
       // Update the selected job
-      safeSetSelectedJob(updatedJob);
+      setSelectedJobOverride(updatedJob);
 
       // Reset the selected test
-      safeSetSelectedTest(null);
+      setSelectedTest(null);
 
       // Close the dialog
       setIsEditTestDialogOpen(false);
@@ -322,13 +291,12 @@ export default function Jobs() {
   };
 
   const handleDeleteJob = (jobId: string) => {
-    // Update local state by filtering out the deleted job
-    setJobs((prevJobs) => prevJobs.filter((job) => job.id !== jobId));
+    // Invalidate React Query cache to refresh jobs list
+    invalidate();
 
-    // If the deleted job is currently selected, close the sheet
+    // If the deleted job is currently selected, close the sheet by updating URL
     if (selectedJob && selectedJob.id === jobId) {
-      safeSetIsSheetOpen(false);
-      safeSetSelectedJob(null);
+      handleJobSheetClose();
     }
   };
 
@@ -350,7 +318,7 @@ export default function Jobs() {
   };
 
   // Don't render until component is mounted
-  if (!mounted) {
+  if (!isMounted) {
     return (
       <div className="flex h-full flex-col space-y-4 p-2 mt-6 w-full max-w-full overflow-x-hidden">
         <DataTableSkeleton columns={6} rows={3} />

@@ -88,6 +88,11 @@ import type {
 } from "@/lib/location-service";
 import type { MonitorConfig } from "@/db/schema";
 import { useAppConfig } from "@/hooks/use-app-config";
+import {
+  useMonitorStats,
+  useMonitorResults,
+  useMonitorPermissions,
+} from "@/hooks/use-monitor-details";
 
 export interface MonitorResultItem {
   id: string;
@@ -160,20 +165,6 @@ export function MonitorDetailClient({
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const [userRole, setUserRole] = useState<Role | null>(null);
-  const [permissionsLoading, setPermissionsLoading] = useState(true);
-  const [paginatedTableResults, setPaginatedTableResults] = useState<
-    MonitorResultItem[]
-  >([]);
-  const [paginationMeta, setPaginationMeta] = useState<{
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  } | null>(null);
-  const [isLoadingResults, setIsLoadingResults] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [selectedReportUrl, setSelectedReportUrl] = useState<string | null>(
     null
@@ -181,24 +172,24 @@ export function MonitorDetailClient({
   const [selectedLocation, setSelectedLocation] = useState<"all" | string>(
     "all"
   );
-  const [availableLocations, setAvailableLocations] = useState<string[]>([]);
-  const [monitorStats, setMonitorStats] = useState<{
-    period24h: {
-      totalChecks: number;
-      upChecks: number;
-      uptimePercentage: number | null;
-      avgResponseTimeMs: number | null;
-      p95ResponseTimeMs: number | null;
-    };
-    period30d: {
-      totalChecks: number;
-      upChecks: number;
-      uptimePercentage: number | null;
-      avgResponseTimeMs: number | null;
-      p95ResponseTimeMs: number | null;
-    };
-  } | null>(null);
   const resultsPerPage = 10;
+
+  // React Query hooks for data fetching with caching
+  const { stats: monitorStats } = useMonitorStats(monitor.id, selectedLocation);
+  const {
+    results: paginatedTableResults,
+    pagination: paginationMeta,
+    isFetching: isLoadingResults,
+  } = useMonitorResults(monitor.id, {
+    page: currentPage,
+    limit: resultsPerPage,
+    date: selectedDate,
+    location: selectedLocation,
+  });
+  const {
+    userRole,
+    isLoading: permissionsLoading,
+  } = useMonitorPermissions(monitor.id);
 
   // Copy to clipboard handler
   const handleCopy = useCallback((text: string, label: string) => {
@@ -212,95 +203,7 @@ export function MonitorDetailClient({
       });
   }, []);
 
-  // Function to fetch monitor stats from API
-  const fetchMonitorStats = useCallback(
-    async (locationFilter?: "all" | string) => {
-      try {
-        const params = new URLSearchParams();
-        if (locationFilter && locationFilter !== "all") {
-          params.append("location", locationFilter);
-        }
-        const url = `/api/monitors/${monitor.id}/stats${params.toString() ? `?${params}` : ""}`;
-        const response = await fetch(url);
-        if (response.ok) {
-          const data = await response.json();
-          setMonitorStats(data.data);
-        } else {
-          console.error("Failed to fetch monitor stats:", response.status);
-        }
-      } catch (error) {
-        console.error("Error fetching monitor stats:", error);
-      }
-    },
-    [monitor.id]
-  );
-
-  // Function to fetch paginated results
-  const fetchPaginatedResults = useCallback(
-    async (
-      page: number,
-      dateFilter?: Date,
-      locationFilter?: "all" | string
-    ) => {
-      setIsLoadingResults(true);
-      try {
-        const params = new URLSearchParams({
-          page: page.toString(),
-          limit: resultsPerPage.toString(),
-        });
-
-        // Add date filter if selected
-        if (dateFilter) {
-          params.append("date", dateFilter.toISOString().split("T")[0]);
-        }
-
-        // Add location filter if selected and not "all"
-        if (locationFilter && locationFilter !== "all") {
-          params.append("location", locationFilter);
-        }
-
-        const response = await fetch(
-          `/api/monitors/${monitor.id}/results?${params}`
-        );
-        if (response.ok) {
-          const data = await response.json();
-          setPaginatedTableResults(data.data);
-          setPaginationMeta(data.pagination);
-        } else {
-          console.error("Failed to fetch paginated results:", response.status);
-        }
-      } catch (error) {
-        console.error("Error fetching paginated results:", error);
-      } finally {
-        setIsLoadingResults(false);
-      }
-    },
-    [monitor.id, resultsPerPage]
-  );
-
-  // Fetch user permissions for this monitor
-  useEffect(() => {
-    const fetchPermissions = async () => {
-      try {
-        const response = await fetch(`/api/monitors/${monitor.id}/permissions`);
-        if (response.ok) {
-          const data = await response.json();
-          setUserRole(data.data.userRole || Role.PROJECT_VIEWER);
-        } else {
-          console.error("Failed to fetch permissions:", response.status);
-          setUserRole(Role.PROJECT_VIEWER); // Default to most restrictive role
-        }
-      } catch (error) {
-        console.error("Error fetching permissions:", error);
-        setUserRole(Role.PROJECT_VIEWER); // Default to most restrictive role
-      } finally {
-        setPermissionsLoading(false);
-      }
-    };
-
-    fetchPermissions();
-  }, [monitor.id]);
-
+  // Sync monitor state when props change
   useEffect(() => {
     if (
       initialMonitor &&
@@ -311,12 +214,10 @@ export function MonitorDetailClient({
     } else {
       setMonitor(initialMonitor);
     }
-    // Load initial paginated results
-    fetchPaginatedResults(1);
-  }, [initialMonitor, fetchPaginatedResults]);
+  }, [initialMonitor]);
 
-  // Extract available locations from chart + paginated data
-  useEffect(() => {
+  // Compute available locations from chart + paginated data
+  const availableLocations = useMemo(() => {
     const locationSet = new Set<string>();
     if (monitor.recentResults && monitor.recentResults.length > 0) {
       monitor.recentResults.forEach((result) => {
@@ -332,39 +233,19 @@ export function MonitorDetailClient({
         }
       });
     }
+    return Array.from(locationSet).sort((a, b) => a.localeCompare(b));
+  }, [monitor.recentResults, paginatedTableResults]);
 
-    const orderedLocations = Array.from(locationSet).sort((a, b) =>
-      a.localeCompare(b)
-    );
-
-    setAvailableLocations((prev) => {
-      if (
-        prev.length === orderedLocations.length &&
-        prev.every((loc, index) => orderedLocations[index] === loc)
-      ) {
-        return prev;
-      }
-      return orderedLocations;
-    });
-
+  // Reset location filter if selected location is no longer available
+  useEffect(() => {
     if (
       selectedLocation !== "all" &&
-      orderedLocations.length > 0 &&
-      !orderedLocations.includes(selectedLocation)
+      availableLocations.length > 0 &&
+      !availableLocations.includes(selectedLocation)
     ) {
       setSelectedLocation("all");
     }
-  }, [monitor.recentResults, paginatedTableResults, selectedLocation]);
-
-  // Load paginated results when page, date, or location changes
-  useEffect(() => {
-    fetchPaginatedResults(currentPage, selectedDate, selectedLocation);
-  }, [currentPage, selectedDate, selectedLocation, fetchPaginatedResults]);
-
-  // Fetch monitor stats when location changes
-  useEffect(() => {
-    fetchMonitorStats(selectedLocation);
-  }, [selectedLocation, fetchMonitorStats]);
+  }, [availableLocations, selectedLocation]);
 
   const handleDelete = async () => {
     setIsDeleting(true);

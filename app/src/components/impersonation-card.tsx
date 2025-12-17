@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,37 +12,20 @@ import {
   SidebarMenuButton,
   useSidebar,
 } from '@/components/ui/sidebar';
+import { useImpersonationStatus } from '@/hooks/use-impersonation-status';
 
-interface ImpersonationInfo {
-  isImpersonating: boolean;
-  impersonatedUser?: {
-    id: string;
-    name: string;
-    email: string;
-  };
-}
-
+/**
+ * ImpersonationCard - Shows impersonation status in sidebar
+ * 
+ * PERFORMANCE OPTIMIZATION:
+ * - Uses cached useImpersonationStatus hook (React Query)
+ * - Status is fetched once and cached, not on every sidebar mount
+ */
 export function ImpersonationCard() {
-  const [impersonationInfo, setImpersonationInfo] = useState<ImpersonationInfo>({ isImpersonating: false });
+  const { isImpersonating, impersonatedUser, invalidate } = useImpersonationStatus();
   const [stopping, setStopping] = useState(false);
   const { state } = useSidebar();
   const router = useRouter();
-
-  useEffect(() => {
-    checkImpersonationStatus();
-  }, []);
-
-  const checkImpersonationStatus = async () => {
-    try {
-      const response = await fetch('/api/auth/impersonation-status');
-      if (response.ok) {
-        const data = await response.json();
-        setImpersonationInfo(data);
-      }
-    } catch (error) {
-      console.error('Error checking impersonation status:', error);
-    }
-  };
 
   const stopImpersonation = async () => {
     setStopping(true);
@@ -55,6 +38,8 @@ export function ImpersonationCard() {
 
       if (data.success) {
         toast.success('Returned to admin account');
+        // Invalidate the cache so it refetches after stopping
+        invalidate();
         router.push('/');
         setTimeout(() => {
           window.location.reload();
@@ -70,11 +55,11 @@ export function ImpersonationCard() {
     }
   };
 
-  if (!impersonationInfo.isImpersonating) {
+  if (!isImpersonating) {
     return null;
   }
 
-  const tooltipText = `Impersonating: ${impersonationInfo.impersonatedUser?.name || ''} (${impersonationInfo.impersonatedUser?.email || ''})`;
+  const tooltipText = `Impersonating: ${impersonatedUser?.name || ''} (${impersonatedUser?.email || ''})`;
 
   // Show compact button when sidebar is collapsed
   if (state === 'collapsed') {
@@ -115,10 +100,10 @@ export function ImpersonationCard() {
           </Button>
         </div>
         <div className="text-xs font-medium truncate">
-          {impersonationInfo.impersonatedUser?.name}
+          {impersonatedUser?.name}
         </div>
         <div className="text-xs truncate">
-          {impersonationInfo.impersonatedUser?.email}
+          {impersonatedUser?.email}
         </div>
       </CardContent>
     </Card>

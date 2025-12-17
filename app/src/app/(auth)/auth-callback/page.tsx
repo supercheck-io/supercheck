@@ -67,12 +67,13 @@ export default function AuthCallbackPage() {
         await new Promise((resolve) => setTimeout(resolve, 500));
 
         // Check hosting mode from server (runtime env var, not build-time)
+        // Use the unified /api/config/app endpoint (same as useAppConfig hook)
         let isCloudMode = false;
         try {
-          const modeResponse = await fetch("/api/config/hosting-mode");
+          const modeResponse = await fetch("/api/config/app");
           if (modeResponse.ok) {
             const modeData = await modeResponse.json();
-            isCloudMode = modeData.cloudHosted;
+            isCloudMode = modeData.hosting?.cloudHosted ?? false;
           }
         } catch {
           // On error, assume self-hosted to avoid blocking users

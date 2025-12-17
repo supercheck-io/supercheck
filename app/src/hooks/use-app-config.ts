@@ -1,6 +1,20 @@
-import { useEffect, useState } from "react";
+/**
+ * Unified Application Configuration Hook
+ * 
+ * Uses React Query for efficient caching - config is fetched once and cached
+ * for 5 minutes per session. This prevents excessive API calls on navigation.
+ * 
+ * All other config hooks (useHostingMode, useAuthProviders) should use this
+ * hook internally to share the same cached data.
+ */
 
-interface AppConfig {
+import { useQuery } from "@tanstack/react-query";
+
+// ============================================================================
+// TYPES
+// ============================================================================
+
+export interface AppConfig {
   hosting: {
     selfHosted: boolean;
     cloudHosted: boolean;
@@ -17,6 +31,10 @@ interface AppConfig {
   };
 }
 
+// ============================================================================
+// DEFAULTS
+// ============================================================================
+
 const DEFAULT_CONFIG: AppConfig = {
   hosting: { selfHosted: true, cloudHosted: false },
   authProviders: {
@@ -31,53 +49,65 @@ const DEFAULT_CONFIG: AppConfig = {
   },
 };
 
+// ============================================================================
+// QUERY KEY (exported for cache invalidation if needed)
+// ============================================================================
+
+export const APP_CONFIG_QUERY_KEY = ["app-config"] as const;
+
+// ============================================================================
+// FETCH FUNCTION
+// ============================================================================
+
+async function fetchAppConfig(): Promise<AppConfig> {
+  const response = await fetch("/api/config/app");
+  if (!response.ok) {
+    throw new Error("Failed to fetch app config");
+  }
+  return response.json();
+}
+
+// ============================================================================
+// HOOK
+// ============================================================================
+
 /**
- * Hook to fetch unified application configuration at runtime
- * Replaces build-time NEXT_PUBLIC_* environment variables
+ * Hook to fetch unified application configuration at runtime.
+ * 
+ * Uses React Query for caching with long staleTime (5 minutes).
+ * Config rarely changes during a session, so we minimize refetches.
+ * 
+ * On error, returns safe defaults (self-hosted mode) to avoid blocking users.
  */
 export function useAppConfig() {
-  const [config, setConfig] = useState<AppConfig | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const { data: config, isLoading, error } = useQuery({
+    queryKey: APP_CONFIG_QUERY_KEY,
+    queryFn: fetchAppConfig,
+    staleTime: 5 * 60 * 1000, // 5 minutes - config rarely changes
+    gcTime: 10 * 60 * 1000,   // 10 minutes cache
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,    // Use cached data across components
+    refetchOnReconnect: false,
+    retry: 2,
+    // Return defaults on error for fail-safe behavior
+    placeholderData: DEFAULT_CONFIG,
+  });
 
-  useEffect(() => {
-    const fetchConfig = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        const response = await fetch("/api/config/app");
-        if (!response.ok) {
-          throw new Error("Failed to fetch app config");
-        }
-
-        const data = await response.json();
-        setConfig(data);
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error("Unknown error");
-        setError(error);
-        // Use defaults on error (fail-safe)
-        setConfig(DEFAULT_CONFIG);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchConfig();
-  }, []);
+  // Use config or defaults
+  const effectiveConfig = config ?? DEFAULT_CONFIG;
 
   return {
-    config,
+    config: effectiveConfig,
     isLoading,
-    error,
-    // Convenience accessors
-    isSelfHosted: config?.hosting?.selfHosted ?? true,
-    isCloudHosted: config?.hosting?.cloudHosted ?? false,
-    isDemoMode: config?.demoMode ?? false,
-    isGithubEnabled: config?.authProviders?.github?.enabled ?? false,
-    isGoogleEnabled: config?.authProviders?.google?.enabled ?? false,
-    maxJobNotificationChannels: config?.limits?.maxJobNotificationChannels ?? 10,
-    maxMonitorNotificationChannels: config?.limits?.maxMonitorNotificationChannels ?? 10,
-    recentMonitorResultsLimit: config?.limits?.recentMonitorResultsLimit,
+    error: error as Error | null,
+    // Convenience accessors with safe defaults
+    isSelfHosted: effectiveConfig.hosting?.selfHosted ?? true,
+    isCloudHosted: effectiveConfig.hosting?.cloudHosted ?? false,
+    isDemoMode: effectiveConfig.demoMode ?? false,
+    isGithubEnabled: effectiveConfig.authProviders?.github?.enabled ?? false,
+    isGoogleEnabled: effectiveConfig.authProviders?.google?.enabled ?? false,
+    maxJobNotificationChannels: effectiveConfig.limits?.maxJobNotificationChannels ?? 10,
+    maxMonitorNotificationChannels: effectiveConfig.limits?.maxMonitorNotificationChannels ?? 10,
+    recentMonitorResultsLimit: effectiveConfig.limits?.recentMonitorResultsLimit,
   };
 }

@@ -1,39 +1,107 @@
-import { useState, useEffect } from 'react';
+/**
+ * Tests Data Hook
+ *
+ * React Query hook for fetching tests list with efficient caching.
+ * Uses the generic data hook factory for DRY, consistent behavior.
+ * Caches data for 60 seconds.
+ */
+
+import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
+
+// ============================================================================
+// TYPES
+// ============================================================================
 
 export interface Test {
   id: string;
-  title: string;
+  name: string;
+  title?: string;
   description?: string;
-  type: string;
+  type: "playwright" | "k6" | "api" | "browser";
+  script?: string;
+  createdAt: string;
+  updatedAt: string;
+  projectId: string;
+  organizationId: string;
+  tags?: Array<{ id: string; name: string; color: string }>;
 }
 
-export function useTests() {
-  const [tests, setTests] = useState<Test[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export interface TestsResponse extends PaginatedResponse<Test> {}
 
-  useEffect(() => {
-    async function fetchTests() {
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await fetch('/api/tests');
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
-        }
-        const data = await response.json();
-        setTests(Array.isArray(data) ? data : []);
-      } catch (err) {
-        console.error('Error fetching tests:', err);
-        setError(err instanceof Error ? err.message : 'An error occurred while fetching tests');
-      } finally {
-        setLoading(false);
-      }
-    }
+interface CreateTestData {
+  name: string;
+  type: string;
+  script?: string;
+  description?: string;
+}
 
-    fetchTests();
-  }, []);
+interface UpdateTestData {
+  id: string;
+  name?: string;
+  script?: string;
+  description?: string;
+}
 
-  return { tests, loading, error };
-} 
+// ============================================================================
+// QUERY KEYS (exported for external cache invalidation)
+// ============================================================================
+
+export const TESTS_QUERY_KEY = ["tests"] as const;
+export const TEST_QUERY_KEY = ["test"] as const;
+
+// ============================================================================
+// HOOK FACTORY
+// ============================================================================
+
+const testsHook = createDataHook<Test, CreateTestData, UpdateTestData>({
+  queryKey: TESTS_QUERY_KEY,
+  endpoint: "/api/tests",
+  staleTime: 5 * 1000, // 5 seconds - ensure fresh data on navigation
+  gcTime: 5 * 60 * 1000, // 5 minutes cache
+  refetchOnWindowFocus: true,
+  singleItemField: "test",
+});
+
+// ============================================================================
+// HOOKS
+// ============================================================================
+
+export interface UseTestsOptions {
+  type?: string;
+  search?: string;
+  enabled?: boolean;
+}
+
+/**
+ * Hook to fetch tests list with React Query caching.
+ * Data is cached for 60 seconds and shared across components.
+ */
+export function useTests(options: UseTestsOptions = {}) {
+  const result = testsHook.useList(options as UseTestsOptions & { [key: string]: unknown });
+
+  return {
+    ...result,
+    tests: result.items, // Alias for component usage
+    loading: result.isLoading, // Alias for component usage
+  };
+}
+
+/**
+ * Hook to fetch a single test by ID with React Query caching.
+ */
+export function useTest(testId: string | null) {
+  return testsHook.useSingle(testId);
+}
+
+/**
+ * Hook for test mutations (create, update, delete) with optimistic updates.
+ */
+export function useTestMutations() {
+  const baseMutations = testsHook.useMutations();
+
+  return {
+    createTest: baseMutations.create,
+    updateTest: baseMutations.update,
+    deleteTest: baseMutations.remove,
+  };
+}
