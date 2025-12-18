@@ -102,7 +102,7 @@ const jobsHook = createDataHook<Job, CreateJobData, UpdateJobData>({
   endpoint: "/api/jobs",
   staleTime: 60 * 1000, // 60 seconds - cache invalidated after mutations
   gcTime: 5 * 60 * 1000, // 5 minutes cache for background display
-  refetchOnWindowFocus: true,
+  refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
   singleItemField: "job",
 });
 

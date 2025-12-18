@@ -58,7 +58,7 @@ const testsHook = createDataHook<Test, CreateTestData, UpdateTestData>({
   endpoint: "/api/tests",
   staleTime: 60 * 1000, // 60 seconds - cache invalidated after mutations
   gcTime: 5 * 60 * 1000, // 5 minutes cache
-  refetchOnWindowFocus: true,
+  refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
   singleItemField: "test",
 });
 
