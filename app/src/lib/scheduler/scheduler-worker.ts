@@ -122,7 +122,7 @@ export async function initializeSchedulerWorkers(): Promise<void> {
       monitorSchedulerWorker = new Worker<MonitorJobData>(
         MONITOR_SCHEDULER_QUEUE,
         async (job) => {
-          logger.debug({ jobId: job.id, name: job.name }, 'Processing monitor scheduler job');
+          // DEBUG logging removed to reduce log pollution
           return processScheduledMonitor(job);
         },
         {
@@ -132,8 +132,8 @@ export async function initializeSchedulerWorkers(): Promise<void> {
         }
       );
 
-      monitorSchedulerWorker.on('completed', (job) => {
-        logger.debug({ jobId: job?.id }, 'Monitor scheduler job completed');
+      monitorSchedulerWorker.on('completed', () => {
+        // DEBUG logging removed to reduce log pollution
       });
 
       monitorSchedulerWorker.on('failed', (job, error) => {

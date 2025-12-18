@@ -199,21 +199,12 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
     });
   }
 
-  const queueData = data.queue as Record<string, unknown> | undefined;
-  const queueRunning = Number(queueData?.running) || 0;
-  const queueCapacity = Number(queueData?.runningCapacity) || 100;
-  if (queueRunning >= queueCapacity * 0.9) {
-    systemIssues.push({
-      type: "queue" as const,
-      message: "Queue capacity is running high",
-      severity: "medium" as const,
-    });
-  }
+  // Queue capacity checks removed as per user request
+  // Only showing Monitor and Job issues derived from specific failure counts
 
   const monitorsData = data.monitors as Record<string, unknown> | undefined;
   const testsData = data.tests as Record<string, unknown> | undefined;
   const k6Data = data.k6 as Record<string, unknown> | undefined;
-  const systemData = data.system as Record<string, unknown> | undefined;
 
   return {
     stats: {
@@ -327,10 +318,8 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
         })
       : [],
     system: {
-      timestamp: typeof systemData?.timestamp === "string"
-        ? systemData.timestamp
-        : new Date().toISOString(),
-      healthy: Boolean((systemData?.healthy ?? true) && systemIssues.length === 0),
+      timestamp: new Date().toISOString(),
+      healthy: systemIssues.length === 0,
       issues: systemIssues,
     },
   };

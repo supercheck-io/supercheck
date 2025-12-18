@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
-import { runs, jobs, projects, tests } from '@/db/schema';
+import { runs, jobs, projects } from '@/db/schema';
 import { eq, and, inArray, or } from 'drizzle-orm';
-import { getQueues } from '@/lib/queue';
 import { requireProjectContext } from '@/lib/project-context';
 import { checkCapacityLimits } from '@/lib/middleware/plan-enforcement';
-import type { Queue } from 'bullmq';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -98,27 +96,16 @@ export async function GET() {
       );
     }
 
-    // Verify against BullMQ queues to handle race conditions
-    // (e.g. Job promoted to running in BullMQ but DB update pending/failed)
-    const { playwrightQueues, k6Queues } = await getQueues();
+    // PERFORMANCE OPTIMIZATION: Removed BullMQ queue verification
+    // The DB status is the source of truth; SSE handles real-time updates
+    // Previous code did O(n) Redis calls which caused 30+ second delays
 
-    // Helper to get correct queue for a run
-    const getQueueForRun = (
-      jobType: 'playwright' | 'k6',
-      location: string | null
-    ): Queue | undefined => {
-      if (jobType === 'playwright') {
-        return playwrightQueues['global'];
-      }
-      return k6Queues[location || 'global'] || k6Queues['global'];
-    };
-
-    // Helper function to build execution item
-    const buildExecutionItem = async (
+    // Helper function to build execution item - now SYNCHRONOUS (no Redis calls)
+    const buildExecutionItem = (
       run: typeof activeRuns[0]
-    ): Promise<ExecutionItem | null> => {
-      let runId = run.id;
-      let jobId = run.jobId;
+    ): ExecutionItem | null => {
+      const runId = run.id;
+      const jobId = run.jobId;
       let jobName = '';
       let jobType: 'playwright' | 'k6' = 'playwright'; // Default
       let source: 'job' | 'playground' = 'job';
@@ -136,50 +123,17 @@ export async function GET() {
         // Playground/Ad-hoc
         const metadata = (run.metadata as Record<string, unknown>) || {};
         const testType = metadata.testType as string || 'browser';
-        const testId = metadata.testId as string;
         
         jobType = testType === 'performance' ? 'k6' : 'playwright';
         source = (metadata.source === 'playground') ? 'playground' : 'job';
         
-        // Try to determine name
+        // Use simple name - no additional DB lookup needed
         jobName = source === 'playground' ? 'Playground Execution' : 'Ad-hoc Execution';
-        if (testId) {
-           try {
-             // Quick lookup (optimization: could be batched but this is rare)
-             const test = await db.query.tests.findFirst({
-               where: eq(tests.id, testId),
-               columns: { title: true },
-             });
-             if (test?.title) jobName = test.title;
-           } catch { /* ignore */ }
-        }
       }
 
-      // Check current status based on DB first
-      let status: 'running' | 'queued' = run.status as 'running' | 'queued';
-      let startedAt = run.startedAt;
-
-      // Verify with BullMQ to detect if actually running
-      // Only verify if DB says 'queued', because 'running' in DB is usually accurate (or leading)
-      if (status === 'queued') {
-        try {
-          const queue = getQueueForRun(jobType, run.location);
-          if (queue) {
-            const job = await queue.getJob(runId);
-            if (job) {
-              const state = await job.getState();
-              // If BullMQ says active, it IS running, regardless of what DB says
-              if (state === 'active') {
-                status = 'running';
-                startedAt = new Date(job.processedOn || Date.now());
-                console.log(`[API] Corrected status for ${runId}: queued -> running`);
-              }
-            }
-          }
-        } catch (e) {
-          console.warn(`[API] Failed to check BullMQ status for ${runId}:`, e);
-        }
-      }
+      // Trust database status - SSE handles real-time updates
+      const status: 'running' | 'queued' = run.status as 'running' | 'queued';
+      const startedAt = run.startedAt;
 
       return {
         runId,
@@ -193,12 +147,12 @@ export async function GET() {
       };
     };
 
-    // Process all runs
+    // Process all runs - now synchronous, no Redis calls
     const runningItems: ExecutionItem[] = [];
     const queuedItems: ExecutionItem[] = [];
 
     for (const run of activeRuns) {
-       const item = await buildExecutionItem(run);
+       const item = buildExecutionItem(run);
        if (item) {
          if (item.status === 'running') {
            runningItems.push(item);

@@ -122,7 +122,7 @@ class QueueEventHub extends EventEmitter {
         }))
       );
 
-      eventHubLogger.info("Successfully initialized with BullMQ event listeners");
+      // Initialization complete - no info log needed (reduces log pollution)
     } catch (error) {
       eventHubLogger.error({ err: error }, "Failed to initialize");
       throw error;
@@ -296,15 +296,8 @@ class QueueEventHub extends EventEmitter {
           typeof returnValue === "object" &&
           "success" in returnValue;
 
-        // OPTIMIZED: Reduced logging verbosity - this was logging 11+ times per minute
-        // Only log in debug mode, not for every single completed event
-        eventHubLogger.debug({
-          queueJobId,
-          event,
-          hasReturnvalue: !!returnValue,
-          returnvalueType: typeof returnValue,
-          hasSuccessField,
-        }, "Processing completed event");
+        // OPTIMIZED: Removed debug logging to reduce log pollution
+        // Only log errors from queue-event-hub
 
         // Check if this is a cancellation (error field contains cancellation message)
         const errorField = returnValue !== null && typeof returnValue === "object" && "error" in returnValue
@@ -328,15 +321,7 @@ class QueueEventHub extends EventEmitter {
               : "failed"; // Default to failed if no clear success indication
         }
 
-        // Only log status mapping for non-passed events (failures are more interesting)
-        if (status !== 'passed') {
-          eventHubLogger.info({
-            queueJobId,
-            mappedStatus: status,
-            isCancellation,
-            errorField,
-          }, `Mapped completed event to status: ${status}`);
-        }
+        // OPTIMIZED: Removed info logging to reduce log pollution
         break;
       case "failed":
       case "stalled":
