@@ -19,6 +19,8 @@ import { FormValues } from "./monitor-form";
 import { DEFAULT_LOCATION_CONFIG } from "@/lib/location-service";
 import type { LocationConfig } from "@/lib/location-service";
 import { useAppConfig } from "@/hooks/use-app-config";
+import { useQueryClient } from "@tanstack/react-query";
+import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
 
 type WizardStep = "monitor" | "location" | "alerts";
 
@@ -32,6 +34,7 @@ const STORAGE_KEYS = {
 
 export function MonitorCreationWizard() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const stepFromUrl = searchParams?.get("wizardStep") as WizardStep | null;
   const { maxMonitorNotificationChannels } = useAppConfig();
@@ -330,6 +333,9 @@ export function MonitorCreationWizard() {
 
         // Clear draft data
         clearDraft();
+
+        // Invalidate Monitors cache to ensure fresh data on monitors page
+        queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
 
         // Redirect to monitor details page using router
         router.push(`/monitors/${result.id}`);

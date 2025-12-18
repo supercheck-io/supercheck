@@ -108,7 +108,8 @@ interface TestResult {
 }
 
 // GET all jobs - OPTIMIZED: Uses batch queries instead of N+1 pattern
-export async function GET() {
+// SECURITY: Added default pagination to prevent fetching unlimited records
+export async function GET(request: Request) {
   try {
     const { project, organizationId } = await requireProjectContext();
 
@@ -128,7 +129,13 @@ export async function GET() {
       );
     }
 
-    // Query 1: Get all jobs for this project (scoped to project)
+    // OPTIMIZED: Parse pagination params with sensible defaults
+    const url = new URL(request.url);
+    const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+    const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "100", 10)));
+    const offset = (page - 1) * limit;
+
+    // Query 1: Get jobs for this project with pagination
     const jobsResult = await db
       .select({
         id: jobs.id,
@@ -153,7 +160,9 @@ export async function GET() {
           eq(jobs.organizationId, organizationId)
         )
       )
-      .orderBy(desc(jobs.id)); // UUIDv7 is time-ordered
+      .orderBy(desc(jobs.id)) // UUIDv7 is time-ordered
+      .limit(limit)
+      .offset(offset);
 
     if (jobsResult.length === 0) {
       return NextResponse.json({ success: true, jobs: [] });
@@ -335,8 +344,19 @@ export async function POST(request: NextRequest) {
     const targetProjectId = project.id;
 
     // SECURITY: Validate subscription before allowing job creation
-    await subscriptionService.blockUntilSubscribed(organizationId);
-    await subscriptionService.requireValidPolarCustomer(organizationId);
+    try {
+      await subscriptionService.blockUntilSubscribed(organizationId);
+      await subscriptionService.requireValidPolarCustomer(organizationId);
+    } catch (subscriptionError) {
+      console.error("Subscription validation failed:", subscriptionError);
+      const errorMessage = subscriptionError instanceof Error 
+        ? subscriptionError.message 
+        : "Subscription validation failed";
+      return NextResponse.json(
+        { success: false, error: errorMessage },
+        { status: 402 } // Payment Required
+      );
+    }
 
     // Build permission context and check access
     // Check permission to create jobs
@@ -657,12 +677,24 @@ async function runJob(request: Request) {
         { status: 400 }
       );
     }
-    await subscriptionService.blockUntilSubscribed(
-      jobDetails[0].organizationId
-    );
-    await subscriptionService.requireValidPolarCustomer(
-      jobDetails[0].organizationId
-    );
+    
+    try {
+      await subscriptionService.blockUntilSubscribed(
+        jobDetails[0].organizationId
+      );
+      await subscriptionService.requireValidPolarCustomer(
+        jobDetails[0].organizationId
+      );
+    } catch (subscriptionError) {
+      console.error("Subscription validation failed for job run:", subscriptionError);
+      const errorMessage = subscriptionError instanceof Error 
+        ? subscriptionError.message 
+        : "Subscription validation failed";
+      return NextResponse.json(
+        { success: false, error: errorMessage },
+        { status: 402 } // Payment Required
+      );
+    }
 
     // Create a new test run record in the database
     const runId = crypto.randomUUID();
@@ -678,23 +710,57 @@ async function runJob(request: Request) {
     });
 
     // Prepare test scripts for execution
-    const testScripts = [];
-
-    // Fetch test scripts for each test in the job
+    // OPTIMIZED: Batch fetch missing scripts instead of N+1 HTTP calls
+    const testScripts: { id: string; name: string; script: string }[] = [];
+    const testsWithScripts: typeof tests = [];
+    const testIdsMissingScripts: string[] = [];
+    
+    // Separate tests into those with scripts and those needing fetch
     for (const test of tests) {
-      // If script is missing, try to fetch it
+      if (test.script) {
+        testsWithScripts.push(test);
+      } else {
+        testIdsMissingScripts.push(test.id);
+      }
+    }
+    
+    // Batch fetch all missing scripts in a single query
+    // SECURITY: Added explicit organizationId filter for defense-in-depth
+    let fetchedScripts: Map<string, { title: string; script: string | null }> = new Map();
+    if (testIdsMissingScripts.length > 0) {
+      const scriptsFromDb: { id: string; title: string; script: string | null }[] = [];
+      const CHUNK_SIZE = 500; // Chunk to avoid parameter limit issues (Postgres limit is ~65k params)
+      
+      for (let i = 0; i < testIdsMissingScripts.length; i += CHUNK_SIZE) {
+        const chunk = testIdsMissingScripts.slice(i, i + CHUNK_SIZE);
+        const chunkRows = await db
+          .select({
+            id: testsTable.id,
+            title: testsTable.title,
+            script: testsTable.script,
+          })
+          .from(testsTable)
+          .where(and(
+            inArray(testsTable.id, chunk),
+            eq(testsTable.organizationId, jobDetails[0].organizationId!)
+          ));
+        
+        scriptsFromDb.push(...chunkRows);
+      }
+      
+      fetchedScripts = new Map(scriptsFromDb.map(s => [s.id, { title: s.title, script: s.script }]));
+    }
+    
+    // Build final test scripts array
+    for (const test of tests) {
       let testScript = test.script;
       let testName = test.name || test.title || `Test ${test.id}`;
-
+      
       if (!testScript) {
-        // Fetch the test from the database to get the script
-        const testResult = await fetch(
-          `${process.env.NEXT_PUBLIC_APP_URL}/api/tests/${test.id}`
-        );
-        const testData = await testResult.json();
-        if (testResult.ok && testData?.script) {
-          testScript = testData.script;
-          testName = testData.title || testName;
+        const fetched = fetchedScripts.get(test.id);
+        if (fetched?.script) {
+          testScript = fetched.script;
+          testName = fetched.title || testName;
         } else {
           console.error(`Failed to fetch script for test ${test.id}`);
           // Add a placeholder for tests without scripts

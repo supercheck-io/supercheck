@@ -64,7 +64,7 @@ export function useImpersonationStatus() {
 
   // Function to invalidate cache when impersonation starts/stops
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: IMPERSONATION_STATUS_QUERY_KEY });
+    queryClient.invalidateQueries({ queryKey: IMPERSONATION_STATUS_QUERY_KEY, refetchType: 'all' });
   };
 
   return {

@@ -153,12 +153,13 @@ export function useMonitorStats(monitorId: string, location: string = "all") {
     enabled: !!monitorId,
     staleTime: 30 * 1000, // 30 seconds - stats update frequently
     gcTime: 5 * 60 * 1000, // 5 minutes cache
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
   });
 
   const invalidate = () =>
     queryClient.invalidateQueries({
       queryKey: [...MONITOR_STATS_KEY, monitorId],
+      refetchType: 'all',
     });
 
   return {
@@ -205,13 +206,14 @@ export function useMonitorResults(
     enabled: !!monitorId,
     staleTime: 30 * 1000, // 30 seconds - results change with new checks
     gcTime: 5 * 60 * 1000, // 5 minutes cache
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
     placeholderData: (previousData) => previousData, // Keep previous data while fetching
   });
 
   const invalidate = () =>
     queryClient.invalidateQueries({
       queryKey: [...MONITOR_RESULTS_KEY, monitorId],
+      refetchType: 'all',
     });
 
   return {

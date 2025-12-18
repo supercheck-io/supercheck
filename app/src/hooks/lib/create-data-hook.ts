@@ -62,13 +62,11 @@ export interface ListQueryOptions {
   page?: number;
   pageSize?: number;
   enabled?: boolean;
-  pollingInterval?: number;
 }
 
 /** Options for single item queries */
 export interface SingleQueryOptions {
   enabled?: boolean;
-  pollingInterval?: number;
 }
 
 // ============================================================================
@@ -86,7 +84,7 @@ function buildSearchParams(
 
   Object.entries(options).forEach(([key, value]) => {
     if (value === undefined || value === null) return;
-    if (key === "enabled" || key === "pollingInterval") return; // Skip hook options
+    if (key === "enabled") return; // Skip hook options
 
     // Map pageSize to limit for API compatibility
     if (key === "pageSize") {
@@ -195,8 +193,9 @@ function createDeleteOptimisticHandlers<T extends { id: string }>(
       }
     },
     onSettled: () => {
-      // Always refetch after mutation
-      queryClient.invalidateQueries({ queryKey });
+      // Always refetch after mutation with refetchType: 'all' to ensure data freshness
+      // across all matching queries, even if they are currently inactive.
+      queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
     },
   };
 }
@@ -260,8 +259,9 @@ function createUpdateOptimisticHandlers<T extends { id: string }>(
       }
     },
     onSettled: (_data: unknown, _err: unknown, variables: { id: string }) => {
-      queryClient.invalidateQueries({ queryKey });
-      queryClient.invalidateQueries({ queryKey: [...singleQueryKey, variables.id] });
+      // Use refetchType: 'all' for both list and single item queries to ensure consistency
+      queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: [...singleQueryKey, variables.id], refetchType: 'all' });
     },
   };
 }
@@ -313,7 +313,7 @@ export function createDataHook<
     const projectId = currentProject?.id ?? null;
     const queryClient = useQueryClient();
 
-    const { enabled = true, pollingInterval = 0, ...filters } = options;
+    const { enabled = true, ...filters } = options;
 
     const query = useQuery({
       queryKey: getListQueryKey(projectId, filters),
@@ -322,11 +322,11 @@ export function createDataHook<
       staleTime,
       gcTime,
       refetchOnWindowFocus,
-
+      // No polling - data refreshes on page visit or manual refresh
     });
 
     const invalidate = () =>
-      queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
 
     return {
       data: query.data,
@@ -346,7 +346,7 @@ export function createDataHook<
    */
   function useSingle(id: string | null, options: SingleQueryOptions = {}) {
     const queryClient = useQueryClient();
-    const { enabled = true, pollingInterval = 0 } = options;
+    const { enabled = true } = options;
 
     const query = useQuery({
       queryKey: [...singleQueryKey, id],
@@ -354,11 +354,11 @@ export function createDataHook<
       enabled: enabled && !!id,
       staleTime: staleTime / 2, // Single items have shorter stale time
       gcTime,
-      refetchInterval: pollingInterval > 0 ? pollingInterval : undefined,
+      // No polling - data refreshes on page visit or manual refresh
     });
 
     const invalidate = () =>
-      queryClient.invalidateQueries({ queryKey: [...singleQueryKey, id] });
+      queryClient.invalidateQueries({ queryKey: [...singleQueryKey, id], refetchType: 'all' });
 
     return {
       data: query.data,
@@ -389,7 +389,9 @@ export function createDataHook<
         return response.json();
       },
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey });
+        // Use refetchType: 'all' to force immediate refetch of all matching queries
+        // This ensures new items appear even when navigating to a new page
+        queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
       },
     });
 
@@ -397,7 +399,7 @@ export function createDataHook<
       mutationFn: async (data: UpdateData) => {
         const { id, ...updateData } = data as unknown as { id: string; [key: string]: unknown };
         const response = await fetch(`${endpoint}/${id}`, {
-          method: "PATCH",
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(updateData),
         });

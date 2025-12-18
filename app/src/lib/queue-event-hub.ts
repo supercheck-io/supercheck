@@ -296,13 +296,14 @@ class QueueEventHub extends EventEmitter {
           typeof returnValue === "object" &&
           "success" in returnValue;
 
-        eventHubLogger.info({
+        // OPTIMIZED: Reduced logging verbosity - this was logging 11+ times per minute
+        // Only log in debug mode, not for every single completed event
+        eventHubLogger.debug({
           queueJobId,
           event,
           hasReturnvalue: !!returnValue,
           returnvalueType: typeof returnValue,
           hasSuccessField,
-          successValue: hasSuccessField ? (returnValue as { success?: unknown }).success : undefined,
         }, "Processing completed event");
 
         // Check if this is a cancellation (error field contains cancellation message)
@@ -327,12 +328,15 @@ class QueueEventHub extends EventEmitter {
               : "failed"; // Default to failed if no clear success indication
         }
 
-        eventHubLogger.info({
-          queueJobId,
-          mappedStatus: status,
-          isCancellation,
-          errorField,
-        }, `Mapped completed event to status: ${status}`);
+        // Only log status mapping for non-passed events (failures are more interesting)
+        if (status !== 'passed') {
+          eventHubLogger.info({
+            queueJobId,
+            mappedStatus: status,
+            isCancellation,
+            errorField,
+          }, `Mapped completed event to status: ${status}`);
+        }
         break;
       case "failed":
       case "stalled":

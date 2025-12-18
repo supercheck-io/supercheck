@@ -97,12 +97,15 @@ export async function GET(request: Request) {
         },
       });
     } else {
-      // Return all monitors with standardized format
+      // Return monitors with default limit for safety
+      // OPTIMIZED: Added default limit to prevent fetching unlimited records
+      const DEFAULT_LIMIT = 200;
       const monitorsList = await db
         .select()
         .from(monitors)
         .where(whereCondition)
-        .orderBy(desc(monitors.id));
+        .orderBy(desc(monitors.id))
+        .limit(DEFAULT_LIMIT);
 
       // Return standardized response format for React Query hooks
       return NextResponse.json({
@@ -110,8 +113,9 @@ export async function GET(request: Request) {
         pagination: {
           total: monitorsList.length,
           page: 1,
-          limit: monitorsList.length,
+          limit: DEFAULT_LIMIT,
           totalPages: 1,
+          hasMore: monitorsList.length === DEFAULT_LIMIT, // Indicate if there might be more
         },
       });
     }

@@ -108,6 +108,7 @@ beforeAll(() => {
       'Alert .* deleted successfully',
       'Resolved .* variables and .* secrets',
       'pre-resolved test scripts',
+      '\\[JobScheduler\\]',
     ];
     if (suppressedPatterns.some(pattern => new RegExp(pattern).test(message))) {
       return;

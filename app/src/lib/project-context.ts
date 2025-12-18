@@ -20,6 +20,9 @@ import {
 import { getUserOrgRole } from "./rbac/middleware";
 import { Role } from "./rbac/permissions";
 import { roleToString } from "./rbac/role-normalizer";
+import { getCachedAuthSession } from "./session-cache";
+
+// getCachedAuthSession imported from session-cache.ts (DRY principle)
 
 export interface ProjectContext {
   id: string;
@@ -35,9 +38,8 @@ export interface ProjectContext {
  */
 export async function getCurrentProjectContext(): Promise<ProjectContext | null> {
   try {
-    const sessionData = await auth.api.getSession({
-      headers: await headers(),
-    });
+    // Use cached session to avoid duplicate DB round-trips in Docker
+    const sessionData = await getCachedAuthSession();
 
     if (!sessionData?.session?.token || !sessionData?.user?.id) {
       return null;
@@ -145,9 +147,8 @@ export async function getCurrentProjectContext(): Promise<ProjectContext | null>
  */
 async function setDefaultProjectInSession(): Promise<ProjectContext | null> {
   try {
-    const sessionData = await auth.api.getSession({
-      headers: await headers(),
-    });
+    // Use cached session to avoid duplicate DB round-trips in Docker
+    const sessionData = await getCachedAuthSession();
 
     if (!sessionData?.session?.token || !sessionData?.user?.id) {
       return null;
@@ -309,9 +310,8 @@ export async function switchProject(
   projectId: string
 ): Promise<{ success: boolean; message?: string; project?: ProjectContext }> {
   try {
-    const sessionData = await auth.api.getSession({
-      headers: await headers(),
-    });
+    // Use cached session to avoid duplicate DB round-trips in Docker
+    const sessionData = await getCachedAuthSession();
 
     if (!sessionData?.session?.token || !sessionData?.user?.id) {
       return { success: false, message: "Not authenticated" };

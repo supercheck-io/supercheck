@@ -1,9 +1,9 @@
 /**
  * Runs Data Hook
  *
- * React Query hook for fetching runs list with efficient caching.
+ * React Query hook for fetching runs list.
  * Uses the generic data hook factory for DRY, consistent behavior.
- * Caches data for 30 seconds (runs change frequently during execution).
+ * Data always refetches on page visit to ensure new runs appear immediately.
  */
 
 import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
@@ -60,9 +60,9 @@ export const RUN_QUERY_KEY = ["run"] as const;
 const runsHook = createDataHook<Run>({
   queryKey: RUNS_QUERY_KEY,
   endpoint: "/api/runs",
-  staleTime: 30 * 1000, // 30 seconds - SSE handles real-time updates, cache prevents refetch storms
-  gcTime: 5 * 60 * 1000, // 5 minutes cache
-  refetchOnWindowFocus: true,
+  staleTime: 0, // Always refetch on mount - ensures new runs appear immediately after job trigger
+  gcTime: 5 * 60 * 1000, // 5 minutes cache - keeps data for back navigation
+  refetchOnWindowFocus: false,
   singleItemField: "run",
 });
 
@@ -78,13 +78,11 @@ export interface UseRunsOptions {
   from?: string;
   to?: string;
   enabled?: boolean;
-  /** Polling interval in ms for in-progress runs (0 to disable) */
-  pollingInterval?: number;
 }
 
 /**
- * Hook to fetch runs list with React Query caching.
- * Data is cached for 30 seconds and supports polling for in-progress runs.
+ * Hook to fetch runs list with React Query.
+ * Data always refetches on page mount to show new runs immediately.
  */
 export function useRuns(options: UseRunsOptions = {}) {
   const result = runsHook.useList(options as UseRunsOptions & { [key: string]: unknown });
@@ -97,9 +95,12 @@ export function useRuns(options: UseRunsOptions = {}) {
 }
 
 /**
- * Hook to fetch a single run by ID with React Query caching.
- * Supports polling for runs that are still in progress.
+ * Hook to fetch a single run by ID with React Query.
+ * 
+ * @param runId - The ID of the run to fetch. If `null`, the query will be disabled.
+ * @param options - Additional query options.
+ * @param options.enabled - Whether the query should be enabled. Defaults to `true`.
  */
-export function useRun(runId: string | null, options: { pollingInterval?: number } = {}) {
+export function useRun(runId: string | null, options: { enabled?: boolean } = {}) {
   return runsHook.useSingle(runId, options);
 }

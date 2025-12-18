@@ -34,6 +34,8 @@ import { canEditJobs, canDeleteJobs } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 
 import { Job } from "./schema";
+import { useQueryClient } from "@tanstack/react-query";
+import { JOBS_QUERY_KEY } from "@/hooks/use-jobs";
 
 interface DataTableRowActionsProps<TData> {
   row: Row<TData>;
@@ -45,6 +47,7 @@ export function DataTableRowActions<TData>({
   onDelete,
 }: DataTableRowActionsProps<TData>) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { currentProject } = useProjectContext();
   const job = row.original as unknown as Job;
   const [isDeleting, setIsDeleting] = useState(false);
@@ -93,6 +96,9 @@ export function DataTableRowActions<TData>({
       }
 
       toast.success("Job deleted successfully");
+
+      // Invalidate Jobs cache to ensure fresh data on jobs page
+      queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY, refetchType: 'all' });
 
       // Call onDelete callback if provided
       if (onDelete) {
@@ -158,17 +164,16 @@ export function DataTableRowActions<TData>({
                   onClick={
                     hasDeletePermission
                       ? (e) => {
-                          e.stopPropagation();
-                          setShowDeleteDialog(true);
-                        }
+                        e.stopPropagation();
+                        setShowDeleteDialog(true);
+                      }
                       : undefined
                   }
                   disabled={!hasDeletePermission}
-                  className={`${
-                    !hasDeletePermission
+                  className={`${!hasDeletePermission
                       ? "opacity-50 cursor-not-allowed"
                       : "text-red-600"
-                  }`}
+                    }`}
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
                   <span>Delete</span>

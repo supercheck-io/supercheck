@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { updateJob } from "@/actions/update-job";
 import { db } from "@/utils/db";
 import { jobs, jobTests, tests as testsTable, testTags, tags } from "@/db/schema";
-import { eq, inArray, asc } from "drizzle-orm";
+import { eq, inArray, asc, and } from "drizzle-orm";
 import { requireAuth, hasPermission } from '@/lib/rbac/middleware';
 
 export async function GET(
@@ -129,6 +129,72 @@ export async function GET(
     console.error("Error fetching job:", error);
     return NextResponse.json(
       { error: "Failed to fetch job" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const params = await context.params;
+  const jobId = params.id;
+
+  try {
+    const { userId, project, organizationId } = await requireAuth().then(async () => {
+      // We need project and org context as well for the updateJob action
+      const { requireProjectContext } = await import("@/lib/project-context");
+      return await requireProjectContext();
+    });
+
+    const rawData = await request.json();
+
+    // Fetch existing job to get required fields for updateJob action
+    const existingJob = await db.query.jobs.findFirst({
+      where: and(
+        eq(jobs.id, jobId),
+        eq(jobs.projectId, project.id),
+        eq(jobs.organizationId, organizationId)
+      ),
+    });
+
+    if (!existingJob) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
+
+    // Fetch current tests for the job
+    const currentTests = await db
+      .select({ id: testsTable.id })
+      .from(testsTable)
+      .innerJoin(jobTests, eq(testsTable.id, jobTests.testId))
+      .where(eq(jobTests.jobId, jobId))
+      .orderBy(asc(jobTests.orderPosition));
+
+    // Merge updates
+    const updateData = {
+      jobId,
+      name: rawData.name !== undefined ? rawData.name : existingJob.name,
+      description: rawData.description !== undefined ? rawData.description : (existingJob.description || ""),
+      cronSchedule: rawData.cronSchedule !== undefined ? rawData.cronSchedule : (existingJob.cronSchedule || ""),
+      tests: rawData.tests !== undefined ? rawData.tests : currentTests.map(t => ({ id: t.id })),
+      alertConfig: rawData.alertConfig !== undefined ? rawData.alertConfig : (existingJob.alertConfig || undefined),
+    } as any; // Cast as any to bypass strict UpdateJobData if needed, though structure matches
+
+    const result = await updateJob(updateData);
+
+    if (result.success) {
+      return NextResponse.json(result.job);
+    } else {
+      return NextResponse.json(
+        { error: result.message },
+        { status: 400 }
+      );
+    }
+  } catch (error) {
+    console.error("Error partially updating job:", error);
+    return NextResponse.json(
+      { error: "Failed to update job" },
       { status: 500 }
     );
   }

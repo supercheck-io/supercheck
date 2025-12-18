@@ -34,6 +34,8 @@ import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { canEditMonitors, canDeleteMonitors } from "@/lib/rbac/client-permissions";
 
 import { monitorSchema } from "./schema";
+import { useQueryClient } from "@tanstack/react-query";
+import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
 
 interface DataTableRowActionsProps<TData> {
   row: Row<TData>;
@@ -45,27 +47,28 @@ export function DataTableRowActions<TData>({
   onDelete,
 }: DataTableRowActionsProps<TData>) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { currentProject } = useProjectContext();
 
   // Check permissions using project context (same as jobs/tests approach)
   const userRole = currentProject?.userRole ? normalizeRole(currentProject.userRole) : null;
   const hasEditPermission = userRole ? canEditMonitors(userRole) : false;
   const hasDeletePermission = userRole ? canDeleteMonitors(userRole) : false;
-  
+
   // Use safeParse instead of parse to handle validation errors
   const parsedMonitor = monitorSchema.safeParse(row.original);
-  
+
   // If parsing fails, provide default values to prevent errors
-  const monitor = parsedMonitor.success 
-    ? parsedMonitor.data 
+  const monitor = parsedMonitor.success
+    ? parsedMonitor.data
     : {
-        id: (row.original as unknown as { id?: string })?.id || "",
-        name: (row.original as unknown as { name?: string })?.name || "Untitled Monitor",
-        url: (row.original as unknown as { url?: string })?.url || "",
-        method: "ping" as const, 
-        status: (row.original as unknown as { status?: string })?.status || "up",
-      };
-      
+      id: (row.original as unknown as { id?: string })?.id || "",
+      name: (row.original as unknown as { name?: string })?.name || "Untitled Monitor",
+      url: (row.original as unknown as { url?: string })?.url || "",
+      method: "ping" as const,
+      status: (row.original as unknown as { status?: string })?.status || "up",
+    };
+
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isPauseResumeLoading, setIsPauseResumeLoading] = useState(false);
@@ -102,6 +105,9 @@ export function DataTableRowActions<TData>({
         description: `${monitor.name} has been ${action}d.`,
       });
 
+      // Invalidate Monitors cache to ensure fresh data on monitors list
+      queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
+
       // Refresh the page to update the list
       router.refresh();
     } catch (error) {
@@ -137,6 +143,9 @@ export function DataTableRowActions<TData>({
         id: deleteToastId, // Update the loading toast
         duration: 5000, // Add auto-dismiss after 5 seconds
       });
+
+      // Invalidate Monitors cache to ensure fresh data on monitors list
+      queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
 
       // Call onDelete callback if provided
       if (onDelete) {
@@ -175,7 +184,7 @@ export function DataTableRowActions<TData>({
           <Tooltip>
             <TooltipTrigger asChild>
               <div>
-                <DropdownMenuItem 
+                <DropdownMenuItem
                   onClick={hasEditPermission ? handleEditMonitor : undefined}
                   disabled={!hasEditPermission}
                   className={!hasEditPermission ? "opacity-50 cursor-not-allowed" : ""}
@@ -191,12 +200,12 @@ export function DataTableRowActions<TData>({
               </TooltipContent>
             )}
           </Tooltip>
-          
+
           <Tooltip>
             <TooltipTrigger asChild>
               <div>
-                <DropdownMenuItem 
-                  onClick={hasEditPermission ? handleTogglePauseResume : undefined} 
+                <DropdownMenuItem
+                  onClick={hasEditPermission ? handleTogglePauseResume : undefined}
                   disabled={!hasEditPermission || isPauseResumeLoading}
                   className={!hasEditPermission ? "opacity-50 cursor-not-allowed" : ""}
                 >
@@ -220,9 +229,9 @@ export function DataTableRowActions<TData>({
               </TooltipContent>
             )}
           </Tooltip>
-          
+
           <DropdownMenuSeparator />
-          
+
           <Tooltip>
             <TooltipTrigger asChild>
               <div>

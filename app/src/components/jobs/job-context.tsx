@@ -14,6 +14,7 @@ import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { jobStatuses } from "./data";
 import { RUNS_QUERY_KEY } from "@/hooks/use-runs";
+import { getExecutionsData } from "@/hooks/use-executions";
 interface JobStatusSSEPayload {
   status: string;
   jobId?: string;
@@ -309,7 +310,7 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
           }
 
           // Invalidate React Query cache to refresh runs data
-          queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY });
+          queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY, refetchType: 'all' });
         }
       }
     },
@@ -330,40 +331,30 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
+    // PERFORMANCE: Use shared getExecutionsData() to prevent duplicate API calls
+    // This function uses module-level cache, so multiple components calling it
+    // will share the same cached data within 5 seconds
     const fetchRunningJobs = async () => {
       try {
-        const response = await fetch("/api/executions/running", {
-          cache: "no-store",
-        });
-
-        if (!response.ok) {
-          console.error("[JobContext] Failed to fetch running jobs");
+        const data = await getExecutionsData();
+        if (!data) {
           return;
         }
-
-        const data = await response.json();
-
-        // Map new response format to expected structure
-        // New format: { running: [...], queued: [...] }
-        // Old format: { runningJobs: [...] }
-        const runningItems = Array.isArray(data.running) ? data.running : [];
-
-        // Filter to only job executions (not playground) and map to expected format
-        const runningJobsData = runningItems
-          .filter((item: { source?: string; jobId?: string }) =>
-            item.source === 'job' && item.jobId
-          )
-          .map((item: { jobId: string; runId: string; jobName: string }) => ({
-            jobId: item.jobId,
-            runId: item.runId,
-            name: item.jobName,
-          }));
 
         if (!isMounted) {
           return;
         }
 
-        runningJobsData.forEach((job: { jobId: string; runId: string; name?: string }) => {
+        // Filter to only job executions (not playground) and map to expected format
+        const runningJobsData = data.running
+          .filter((item) => item.source === 'job' && item.jobId)
+          .map((item) => ({
+            jobId: item.jobId!,
+            runId: item.runId,
+            name: item.jobName,
+          }));
+
+        runningJobsData.forEach((job) => {
           if (!job?.jobId || !job?.runId) {
             return;
           }
@@ -576,7 +567,7 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
       );
 
       // Invalidate React Query cache to refresh runs data
-      queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY, refetchType: 'all' });
     },
     [queryClient, setJobStatus]
   );

@@ -71,6 +71,97 @@ interface ExecutionsCache {
 let executionsCache: ExecutionsCache | null = null;
 const CACHE_TTL = 5000; // 5 seconds - balance between freshness and performance
 
+// Promise-based lock to prevent race conditions when multiple components
+// call getExecutionsData simultaneously while cache is stale
+let pendingFetch: Promise<{
+  running: ExecutionItem[];
+  queued: ExecutionItem[];
+  runningCapacity: number;
+  queuedCapacity: number;
+} | null> | null = null;
+
+/**
+ * Get cached executions data or fetch fresh if cache is stale.
+ * PERFORMANCE: Shared function to prevent duplicate /api/executions/running calls
+ * from multiple components (useExecutions hook, job-context.tsx, etc.)
+ * 
+ * Uses promise-based locking to ensure only one fetch happens at a time
+ * when the cache is stale - other callers wait for the same promise.
+ * 
+ * @returns Cached or freshly fetched executions data
+ */
+export async function getExecutionsData(): Promise<{
+  running: ExecutionItem[];
+  queued: ExecutionItem[];
+  runningCapacity: number;
+  queuedCapacity: number;
+} | null> {
+  const now = Date.now();
+  
+  // Return cached data if available and not expired
+  if (executionsCache && (now - executionsCache.timestamp) < CACHE_TTL) {
+    return {
+      running: executionsCache.running,
+      queued: executionsCache.queued,
+      runningCapacity: executionsCache.runningCapacity,
+      queuedCapacity: executionsCache.queuedCapacity,
+    };
+  }
+
+  // If a fetch is already in progress, wait for it instead of starting another
+  if (pendingFetch) {
+    return pendingFetch;
+  }
+
+  // Start a new fetch and store the promise
+  pendingFetch = (async () => {
+    try {
+      const res = await fetch("/api/executions/running", {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      });
+
+      if (!res.ok) {
+        console.error("Failed to fetch executions");
+        return null;
+      }
+
+      const data = await res.json();
+      
+      const running: ExecutionItem[] = (data.running || []).map((item: ExecutionItem) => ({
+        ...item,
+        startedAt: item.startedAt ? new Date(item.startedAt) : null,
+      }));
+      const queued: ExecutionItem[] = (data.queued || []).map((item: ExecutionItem) => ({
+        ...item,
+        startedAt: item.startedAt ? new Date(item.startedAt) : null,
+      }));
+      const runningCapacity = typeof data.runningCapacity === 'number' ? data.runningCapacity : 1;
+      const queuedCapacity = typeof data.queuedCapacity === 'number' ? data.queuedCapacity : 10;
+
+      // Update cache
+      executionsCache = {
+        running,
+        queued,
+        runningCapacity,
+        queuedCapacity,
+        timestamp: Date.now(),
+      };
+
+      return { running, queued, runningCapacity, queuedCapacity };
+    } catch (error) {
+      console.error("Error fetching executions:", error);
+      return null;
+    } finally {
+      // Clear the pending fetch so next call can start a new one
+      pendingFetch = null;
+    }
+  })();
+
+  return pendingFetch;
+}
+
+
 // ============================================================================
 // HOOK IMPLEMENTATION
 // ============================================================================
@@ -108,71 +199,33 @@ export function useExecutions(): UseExecutionsReturn {
   // Debounce ref to prevent rapid refetches
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Parse execution items from API response
-  const parseExecutionItems = useCallback((items: ExecutionItem[]): ExecutionItem[] => {
-    return items.map((item) => ({
-      ...item,
-      startedAt: item.startedAt ? new Date(item.startedAt) : null,
-    }));
-  }, []);
-
-  // Fetch executions from REST API (single source of truth)
+  // Fetch executions using the shared getExecutionsData function
+  // This ensures consistent caching behavior across the app
   const fetchExecutions = useCallback(async (forceRefresh = false) => {
     if (!mountedRef.current) return;
 
-    // Use cache if available and not expired (unless force refresh)
-    const now = Date.now();
-    if (!forceRefresh && executionsCache && (now - executionsCache.timestamp) < CACHE_TTL) {
-      // Use cached data - no API call needed
-      setRunning(executionsCache.running);
-      setQueued(executionsCache.queued);
-      setRunningCapacity(executionsCache.runningCapacity);
-      setQueuedCapacity(executionsCache.queuedCapacity);
-      setLoading(false);
-      return;
+    // For force refresh, invalidate cache by setting timestamp to 0
+    if (forceRefresh && executionsCache) {
+      executionsCache.timestamp = 0;
     }
 
     try {
-      const res = await fetch("/api/executions/running", {
-        cache: "no-store",
-        headers: {
-          "Cache-Control": "no-cache",
-        },
-      });
-
-      if (!res.ok) {
-        console.error("Failed to fetch executions");
-        return;
-      }
-
-      const data = await res.json();
-
+      const data = await getExecutionsData();
+      
       if (!mountedRef.current) return;
-
-      const parsedRunning = parseExecutionItems(data.running || []);
-      const parsedQueued = parseExecutionItems(data.queued || []);
-      const newRunningCapacity = typeof data.runningCapacity === 'number' ? data.runningCapacity : DEFAULT_RUNNING_CAPACITY;
-      const newQueuedCapacity = typeof data.queuedCapacity === 'number' ? data.queuedCapacity : DEFAULT_QUEUED_CAPACITY;
-
-      // Update module-level cache
-      executionsCache = {
-        running: parsedRunning,
-        queued: parsedQueued,
-        runningCapacity: newRunningCapacity,
-        queuedCapacity: newQueuedCapacity,
-        timestamp: Date.now(),
-      };
-
-      setRunning(parsedRunning);
-      setQueued(parsedQueued);
-      setRunningCapacity(newRunningCapacity);
-      setQueuedCapacity(newQueuedCapacity);
+      
+      if (data) {
+        setRunning(data.running);
+        setQueued(data.queued);
+        setRunningCapacity(data.runningCapacity);
+        setQueuedCapacity(data.queuedCapacity);
+      }
       setLoading(false);
     } catch (error) {
       console.error("Error fetching executions:", error);
       setLoading(false);
     }
-  }, [parseExecutionItems]);
+  }, []);
 
   // Debounced refresh to batch rapid updates (300ms debounce)
   // Forces refresh to bypass cache when triggered by SSE or manual action

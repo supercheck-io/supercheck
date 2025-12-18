@@ -25,6 +25,9 @@ import {
 import { normalizeRole } from "./role-normalizer";
 import { isSuperAdmin } from "./super-admin";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { getCachedAuthSession } from "@/lib/session-cache";
+
+// getCachedAuthSession imported from session-cache.ts (DRY principle)
 
 // ============================================================================
 // PERMISSION CHECKING - Core Functions
@@ -80,9 +83,8 @@ export async function hasPermission(
   context?: Partial<PermissionContext>
 ): Promise<boolean> {
   try {
-    const authSession = await auth.api.getSession({
-      headers: await headers(),
-    });
+    // Use cached session to avoid duplicate DB round-trips in Docker
+    const authSession = await getCachedAuthSession();
 
     if (!authSession) {
       return false;
@@ -624,9 +626,8 @@ export async function requireAuth(): Promise<{
   userId: string;
   user: SessionUser;
 }> {
-  const authSession = await auth.api.getSession({
-    headers: await headers(),
-  });
+  // Use cached session to avoid duplicate DB round-trips in Docker
+  const authSession = await getCachedAuthSession();
 
   if (!authSession) {
     throw new Error("Authentication required");
@@ -652,9 +653,8 @@ export async function requireSuperAdmin(): Promise<{
   error?: string;
 }> {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
+    // Use cached session to avoid duplicate DB round-trips in Docker
+    const session = await getCachedAuthSession();
 
     if (!session) {
       return { userId: "", error: "Authentication required" };

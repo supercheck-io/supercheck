@@ -1,5 +1,8 @@
 /**
  * Session management utilities with unified RBAC support
+ * 
+ * PERFORMANCE: Uses request-scoped caching to avoid duplicate auth.api.getSession() calls.
+ * In Docker/production, each DB round-trip adds 3-5ms latency, so caching is critical.
  */
 
 import { auth } from "@/utils/auth";
@@ -15,6 +18,10 @@ import {
 import { eq, and } from "drizzle-orm";
 import { getUserRole, getUserOrgRole } from "./rbac/middleware";
 import { Role } from "./rbac/permissions";
+import { getCachedAuthSession } from "./session-cache";
+
+// getCachedAuthSession imported from session-cache.ts (DRY principle)
+
 
 export interface UserSession {
   id: string;
@@ -53,9 +60,8 @@ export interface ProjectWithRole {
  */
 export async function getCurrentUser(): Promise<UserSession | null> {
   try {
-    const authSession = await auth.api.getSession({
-      headers: await headers(),
-    });
+    // Use cached session to avoid duplicate DB round-trips in Docker
+    const authSession = await getCachedAuthSession();
 
     if (!authSession) {
       return null;
@@ -428,9 +434,8 @@ export async function switchProject(
     // based on project assignments, so no need to block access here
 
     // Update session with new active project
-    const authSession = await auth.api.getSession({
-      headers: await headers(),
-    });
+    // Use cached session to avoid duplicate DB round-trips
+    const authSession = await getCachedAuthSession();
 
     if (authSession) {
       await db

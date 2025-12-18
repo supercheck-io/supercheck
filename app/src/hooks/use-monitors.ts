@@ -92,9 +92,9 @@ export const MONITOR_QUERY_KEY = ["monitor"] as const;
 const monitorsHook = createDataHook<Monitor, CreateMonitorData, UpdateMonitorData>({
   queryKey: MONITORS_QUERY_KEY,
   endpoint: "/api/monitors",
-  staleTime: 30 * 1000, // 30 seconds - balance freshness with performance
+  staleTime: 30 * 1000, // 30 seconds - cache is invalidated after mutations
   gcTime: 5 * 60 * 1000, // 5 minutes cache
-  refetchOnWindowFocus: true,
+  refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
   singleItemField: "monitor",
 });
 
@@ -196,8 +196,8 @@ export function useMonitorMutations() {
       }
     },
     onSettled: (_data, _err, variables) => {
-      queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY });
-      queryClient.invalidateQueries({ queryKey: [...MONITOR_QUERY_KEY, variables.id] });
+      queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: [...MONITOR_QUERY_KEY, variables.id], refetchType: 'all' });
     },
   });
 
