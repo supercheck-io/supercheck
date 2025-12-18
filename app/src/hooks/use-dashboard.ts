@@ -199,16 +199,8 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
     });
   }
 
-  const queueData = data.queue as Record<string, unknown> | undefined;
-  const queueRunning = Number(queueData?.running) || 0;
-  const queueCapacity = Number(queueData?.runningCapacity) || 100;
-  if (queueRunning >= queueCapacity * 0.9) {
-    systemIssues.push({
-      type: "queue" as const,
-      message: "Queue capacity is running high",
-      severity: "medium" as const,
-    });
-  }
+  // Queue capacity checks removed as per user request
+  // Only showing Monitor and Job issues derived from specific failure counts
 
   const monitorsData = data.monitors as Record<string, unknown> | undefined;
   const testsData = data.tests as Record<string, unknown> | undefined;
@@ -330,7 +322,7 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
       timestamp: typeof systemData?.timestamp === "string"
         ? systemData.timestamp
         : new Date().toISOString(),
-      healthy: Boolean((systemData?.healthy ?? true) && systemIssues.length === 0),
+      healthy: systemIssues.length === 0,
       issues: systemIssues,
     },
   };

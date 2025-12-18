@@ -69,7 +69,7 @@ export async function processScheduledMonitor(
 
     await enqueueMonitorExecutionJobs(executionJobData, retryLimit);
 
-    logger.info({ monitorId }, 'Processed scheduled monitor trigger');
+    // INFO logging removed to reduce log pollution
     return { success: true };
   } catch (error) {
     logger.error(
@@ -125,11 +125,7 @@ async function enqueueMonitorExecutionJobs(
       );
     })
   );
-
-  logger.info(
-    { monitorId: jobData.monitorId, locations: expectedLocations, executionGroupId },
-    'Enqueued monitor execution jobs'
-  );
+  // INFO logging removed to reduce log pollution - monitors trigger very frequently
 }
 
 /**
