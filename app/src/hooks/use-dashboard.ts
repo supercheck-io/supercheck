@@ -205,7 +205,6 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
   const monitorsData = data.monitors as Record<string, unknown> | undefined;
   const testsData = data.tests as Record<string, unknown> | undefined;
   const k6Data = data.k6 as Record<string, unknown> | undefined;
-  const systemData = data.system as Record<string, unknown> | undefined;
 
   return {
     stats: {
@@ -319,9 +318,7 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
         })
       : [],
     system: {
-      timestamp: typeof systemData?.timestamp === "string"
-        ? systemData.timestamp
-        : new Date().toISOString(),
+      timestamp: new Date().toISOString(),
       healthy: systemIssues.length === 0,
       issues: systemIssues,
     },
