@@ -58,10 +58,16 @@ export async function GET(request: Request) {
           try {
             const runId = event.queueJobId;
             
-            // OPTIMIZED: Prevent unbounded cache growth
-            // Clear cache if it gets too large (simple LRU-like strategy)
+            // Evict oldest entries if cache gets too large (LRU-like strategy)
+            // Evicts half to avoid thundering herd effect of clearing all at once
             if (runCache.size > 1000) {
-              runCache.clear();
+              const entriesToRemove = Math.floor(runCache.size / 2);
+              let removed = 0;
+              for (const key of runCache.keys()) {
+                if (removed >= entriesToRemove) break;
+                runCache.delete(key);
+                removed++;
+              }
             }
 
             // Check cache first

@@ -46,11 +46,12 @@ export async function GET() {
       criticalAlerts
     ] = await Promise.all([
       // OPTIMIZED: Single query for all monitor counts using FILTER
+      // COALESCE ensures 0 instead of NULL when no rows match
       dbInstance.select({
         total: count(),
-        active: sql<number>`count(*) filter (where ${monitors.enabled} = true)`,
-        up: sql<number>`count(*) filter (where ${monitors.status} = 'up')`,
-        down: sql<number>`count(*) filter (where ${monitors.status} = 'down')`,
+        active: sql<number>`COALESCE(count(*) filter (where ${monitors.enabled} = true), 0)`,
+        up: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'up'), 0)`,
+        down: sql<number>`COALESCE(count(*) filter (where ${monitors.status} = 'down'), 0)`,
       }).from(monitors)
         .where(monitorBaseCondition),
       

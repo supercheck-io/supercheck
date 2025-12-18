@@ -169,10 +169,9 @@ export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  // PATCH is essentially the same as our PUT implementation which handles partials
-  // NOTE: In this API, PUT is implemented as a partial update (it only updates fields
-  // that are provided in the request body). PATCH intentionally delegates to PUT so both
-  // methods share the same partial-update semantics. This is a deliberate deviation from
-  // strict REST conventions to simplify the implementation while supporting flexible updates.
+  // NOTE: This API intentionally deviates from strict REST semantics.
+  // PATCH is the canonical endpoint for partial updates and internally reuses
+  // the same handler as PUT, which also behaves as a partial update for
+  // backward-compatibility with older clients. New consumers should prefer PATCH.
   return PUT(request, context);
 }

@@ -22,7 +22,7 @@ const connectionString =
 const client = postgres(connectionString, {
   max: parseInt(process.env.DB_POOL_MAX || "30", 10), // Default: 30 connections (increased from 10 for Docker)
   idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || "30", 10), // Default: 30 seconds
-  connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || "10", 10), // Default: 10 seconds (increased for stability)
+  connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || "10", 10), // Default: 10 seconds
   max_lifetime: parseInt(process.env.DB_MAX_LIFETIME || "1800", 10), // Default: 30 minutes (in seconds)
 });
 
