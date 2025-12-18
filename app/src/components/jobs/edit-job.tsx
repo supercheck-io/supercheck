@@ -52,6 +52,8 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { canDeleteJobs } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { useAppConfig } from "@/hooks/use-app-config";
+import { useQueryClient } from "@tanstack/react-query";
+import { JOBS_QUERY_KEY } from "@/hooks/use-jobs";
 
 
 interface AlertConfiguration {
@@ -81,6 +83,7 @@ interface EditJobProps {
 
 export default function EditJob({ jobId }: EditJobProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const stepFromUrl = searchParams.get('step') as 'job' | 'alerts' | 'cicd' | null;
   const { maxJobNotificationChannels } = useAppConfig();
@@ -165,7 +168,7 @@ export default function EditJob({ jobId }: EditJobProps) {
       cronSchedule: "",
     },
   });
-  
+
   // Watch form values for changes
   const watchedValues = form.watch();
 
@@ -281,7 +284,7 @@ export default function EditJob({ jobId }: EditJobProps) {
   // Handle form submission for job details
   const handleJobNext = form.handleSubmit(async () => {
     setSubmissionAttempted(true);
-    
+
     try {
       // Validate that at least one test is selected
       if (selectedTests.length === 0) {
@@ -360,12 +363,16 @@ export default function EditJob({ jobId }: EditJobProps) {
         duration: 5000,
       });
 
+      // Invalidate Jobs cache to ensure fresh data on jobs list and details
+      queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY, refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ["job", jobId], refetchType: 'all' });
+
       // Navigate to jobs page after successful update
       router.push("/jobs");
     } catch (error) {
       console.error("Error updating job:", error);
       toast.error("Error", {
-        description: 
+        description:
           error instanceof Error ? error.message : "Failed to update job. Please try again later.",
       });
     } finally {
@@ -416,7 +423,7 @@ export default function EditJob({ jobId }: EditJobProps) {
     setIsDeleting(true);
     try {
       const result = await deleteJob(jobId);
-      
+
       if (!result.success) {
         // If error is "Job not found", job may have been deleted already
         if (result.error === "Job not found") {
@@ -424,17 +431,22 @@ export default function EditJob({ jobId }: EditJobProps) {
           toast.warning("Job already deleted", {
             description: "This job was already deleted or doesn't exist. Returning to job list."
           });
-          
+
           // Navigate back to jobs page
           router.push("/jobs");
           return;
         }
-        
+
         // For other errors, throw the error to be caught below
         throw new Error(result.error || "Failed to delete job");
       }
-      
+
+
       toast.success("Job deleted successfully");
+
+      // Invalidate Jobs cache to ensure fresh data on jobs list
+      queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY, refetchType: 'all' });
+
       router.push("/jobs");
     } catch (error) {
       console.error("Error deleting job:", error);
@@ -627,14 +639,14 @@ export default function EditJob({ jobId }: EditJobProps) {
                           <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Optional</span>
                         </FormLabel>
                         <FormControl>
-                          <CronScheduler 
+                          <CronScheduler
                             value={field.value || ""}
                             onChange={field.onChange}
                           />
                         </FormControl>
                         <NextRunDisplay cronExpression={field.value} />
                         <p className="text-xs text-muted-foreground mt-4 flex items-center">
-                         <span>Leave empty for manual execution</span>
+                          <span>Leave empty for manual execution</span>
                         </p>
                         <FormMessage />
                       </FormItem>

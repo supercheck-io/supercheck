@@ -61,7 +61,9 @@ export async function GET() {
     }
 
     // Fetch tests scoped to the project
+    // OPTIMIZED: Added default limit to prevent fetching unlimited records
     // Using ID ordering instead of createdAt since UUIDv7 is time-ordered (PostgreSQL 18+)
+    const DEFAULT_LIMIT = 200;
     const allTests = await db
       .select()
       .from(tests)
@@ -71,7 +73,8 @@ export async function GET() {
           eq(tests.organizationId, organizationId)
         )
       )
-      .orderBy(desc(tests.id));
+      .orderBy(desc(tests.id))
+      .limit(DEFAULT_LIMIT);
 
     // Get tags for tests in this project only
     const testIds = allTests.map((test) => test.id);

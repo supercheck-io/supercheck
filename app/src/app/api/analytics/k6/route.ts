@@ -61,65 +61,68 @@ export async function GET(request: NextRequest) {
       baseConditions.push(eq(k6PerformanceRuns.jobId, jobId));
     }
 
-    // Fetch K6 jobs for this project
-    const k6Jobs = await dbInstance
-      .select({
-        id: jobs.id,
-        name: jobs.name,
-        status: jobs.status,
-        lastRunAt: jobs.lastRunAt,
-      })
-      .from(jobs)
-      .where(
-        and(
-          eq(jobs.projectId, targetProjectId),
-          eq(jobs.organizationId, organizationId),
-          eq(jobs.jobType, 'k6')
+    // OPTIMIZED: Execute all independent queries in parallel using Promise.all
+    const [k6Jobs, historicalRuns, aggregateStats] = await Promise.all([
+      // 1. Fetch K6 jobs
+      dbInstance
+        .select({
+          id: jobs.id,
+          name: jobs.name,
+          status: jobs.status,
+          lastRunAt: jobs.lastRunAt,
+        })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.projectId, targetProjectId),
+            eq(jobs.organizationId, organizationId),
+            eq(jobs.jobType, 'k6')
+          )
         )
-      )
-      .orderBy(desc(jobs.lastRunAt));
+        .orderBy(desc(jobs.lastRunAt)),
 
-    // Fetch historical runs with metrics
-    const historicalRuns = await dbInstance
-      .select({
-        id: k6PerformanceRuns.id,
-        runId: k6PerformanceRuns.runId,
-        jobId: k6PerformanceRuns.jobId,
-        status: k6PerformanceRuns.status,
-        startedAt: k6PerformanceRuns.startedAt,
-        completedAt: k6PerformanceRuns.completedAt,
-        durationMs: k6PerformanceRuns.durationMs,
-        thresholdsPassed: k6PerformanceRuns.thresholdsPassed,
-        totalRequests: k6PerformanceRuns.totalRequests,
-        failedRequests: k6PerformanceRuns.failedRequests,
-        requestRate: k6PerformanceRuns.requestRate,
-        avgResponseTimeMs: k6PerformanceRuns.avgResponseTimeMs,
-        p95ResponseTimeMs: k6PerformanceRuns.p95ResponseTimeMs,
-        p99ResponseTimeMs: k6PerformanceRuns.p99ResponseTimeMs,
-        vusMax: k6PerformanceRuns.vusMax,
-        jobName: jobs.name,
-      })
-      .from(k6PerformanceRuns)
-      .leftJoin(jobs, eq(k6PerformanceRuns.jobId, jobs.id))
-      .where(and(...baseConditions))
-      .orderBy(desc(k6PerformanceRuns.startedAt))
-      .limit(100); // Limit for performance
+      // 2. Fetch historical runs
+      dbInstance
+        .select({
+          id: k6PerformanceRuns.id,
+          runId: k6PerformanceRuns.runId,
+          jobId: k6PerformanceRuns.jobId,
+          status: k6PerformanceRuns.status,
+          startedAt: k6PerformanceRuns.startedAt,
+          completedAt: k6PerformanceRuns.completedAt,
+          durationMs: k6PerformanceRuns.durationMs,
+          thresholdsPassed: k6PerformanceRuns.thresholdsPassed,
+          totalRequests: k6PerformanceRuns.totalRequests,
+          failedRequests: k6PerformanceRuns.failedRequests,
+          requestRate: k6PerformanceRuns.requestRate,
+          avgResponseTimeMs: k6PerformanceRuns.avgResponseTimeMs,
+          p95ResponseTimeMs: k6PerformanceRuns.p95ResponseTimeMs,
+          p99ResponseTimeMs: k6PerformanceRuns.p99ResponseTimeMs,
+          vusMax: k6PerformanceRuns.vusMax,
+          jobName: jobs.name,
+        })
+        .from(k6PerformanceRuns)
+        .leftJoin(jobs, eq(k6PerformanceRuns.jobId, jobs.id))
+        .where(and(...baseConditions))
+        .orderBy(desc(k6PerformanceRuns.startedAt))
+        .limit(100),
 
-    // Calculate aggregate stats
-    const aggregateStats = await dbInstance
-      .select({
-        totalRuns: count(),
-        avgP95: avg(k6PerformanceRuns.p95ResponseTimeMs),
-        avgP99: avg(k6PerformanceRuns.p99ResponseTimeMs),
-        avgResponseTime: avg(k6PerformanceRuns.avgResponseTimeMs),
-        avgRequestRate: avg(k6PerformanceRuns.requestRate),
-        totalRequests: sql<number>`SUM(${k6PerformanceRuns.totalRequests})`,
-        passedRuns: sql<number>`SUM(CASE WHEN ${k6PerformanceRuns.status} = 'passed' THEN 1 ELSE 0 END)`,
-        failedRuns: sql<number>`SUM(CASE WHEN ${k6PerformanceRuns.status} = 'failed' THEN 1 ELSE 0 END)`,
-      })
-      .from(k6PerformanceRuns)
-      .leftJoin(jobs, eq(k6PerformanceRuns.jobId, jobs.id))
-      .where(and(...baseConditions));
+      // 3. Calculate aggregate stats
+      dbInstance
+        .select({
+          totalRuns: count(),
+          avgP95: avg(k6PerformanceRuns.p95ResponseTimeMs),
+          avgP99: avg(k6PerformanceRuns.p99ResponseTimeMs),
+          avgResponseTime: avg(k6PerformanceRuns.avgResponseTimeMs),
+          avgRequestRate: avg(k6PerformanceRuns.requestRate),
+          totalRequests: sql<number>`SUM(${k6PerformanceRuns.totalRequests})`,
+          passedRuns: sql<number>`SUM(CASE WHEN ${k6PerformanceRuns.status} = 'passed' THEN 1 ELSE 0 END)`,
+          failedRuns: sql<number>`SUM(CASE WHEN ${k6PerformanceRuns.status} = 'failed' THEN 1 ELSE 0 END)`,
+        })
+        .from(k6PerformanceRuns)
+        .leftJoin(jobs, eq(k6PerformanceRuns.jobId, jobs.id))
+        .where(and(...baseConditions))
+    ]);
 
     const stats = aggregateStats[0];
     const totalRuns = Number(stats?.totalRuns) || 0;

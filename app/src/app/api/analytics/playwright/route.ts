@@ -42,24 +42,6 @@ export async function GET(request: NextRequest) {
     const startDate = subDays(now, periodDays);
     const dbInstance = db;
 
-    // Fetch Playwright jobs for this project
-    const playwrightJobs = await dbInstance
-      .select({
-        id: jobs.id,
-        name: jobs.name,
-        status: jobs.status,
-        lastRunAt: jobs.lastRunAt,
-      })
-      .from(jobs)
-      .where(
-        and(
-          eq(jobs.projectId, targetProjectId),
-          eq(jobs.organizationId, organizationId),
-          eq(jobs.jobType, 'playwright')
-        )
-      )
-      .orderBy(desc(jobs.lastRunAt));
-
     // Build conditions for runs query
     const baseRunConditions = [
       gte(runs.startedAt, startDate),
@@ -67,56 +49,95 @@ export async function GET(request: NextRequest) {
       sql`${runs.completedAt} IS NOT NULL`
     ];
 
-    // If filtering by job, add job condition
-    // Otherwise, filter to only runs from playwright jobs
     if (jobId) {
       baseRunConditions.push(eq(runs.jobId, jobId));
     }
 
-    // Fetch historical runs - need to ensure they're from Playwright jobs
-    const historicalRuns = await dbInstance
-      .select({
-        id: runs.id,
-        jobId: runs.jobId,
-        status: runs.status,
-        startedAt: runs.startedAt,
-        completedAt: runs.completedAt,
-        durationMs: runs.durationMs,
-        errorDetails: runs.errorDetails,
-        trigger: runs.trigger,
-        jobName: jobs.name,
-        jobType: jobs.jobType,
-      })
-      .from(runs)
-      .innerJoin(jobs, eq(runs.jobId, jobs.id))
-      .where(
-        and(
-          ...baseRunConditions,
-          eq(jobs.jobType, 'playwright'),
-          eq(jobs.organizationId, organizationId)
+    // OPTIMIZED: Execute all independent queries in parallel using Promise.all
+    const [playwrightJobs, historicalRuns, aggregateStats, runsPerDay] = await Promise.all([
+      // 1. Fetch Playwright jobs
+      dbInstance
+        .select({
+          id: jobs.id,
+          name: jobs.name,
+          status: jobs.status,
+          lastRunAt: jobs.lastRunAt,
+        })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.projectId, targetProjectId),
+            eq(jobs.organizationId, organizationId),
+            eq(jobs.jobType, 'playwright')
+          )
         )
-      )
-      .orderBy(desc(runs.startedAt))
-      .limit(100); // Limit for performance
+        .orderBy(desc(jobs.lastRunAt)),
 
-    // Calculate aggregate stats
-    const aggregateStats = await dbInstance
-      .select({
-        totalRuns: count(),
-        avgDurationMs: avg(runs.durationMs),
-        passedRuns: sql<number>`SUM(CASE WHEN ${runs.status} = 'passed' THEN 1 ELSE 0 END)`,
-        failedRuns: sql<number>`SUM(CASE WHEN ${runs.status} = 'failed' THEN 1 ELSE 0 END)`,
-        totalDurationMs: sql<number>`SUM(COALESCE(${runs.durationMs}, 0))`,
-      })
-      .from(runs)
-      .innerJoin(jobs, eq(runs.jobId, jobs.id))
-      .where(
-        and(
-          ...baseRunConditions,
-          eq(jobs.jobType, 'playwright'),
-          eq(jobs.organizationId, organizationId)
+      // 2. Fetch historical runs
+      dbInstance
+        .select({
+          id: runs.id,
+          jobId: runs.jobId,
+          status: runs.status,
+          startedAt: runs.startedAt,
+          completedAt: runs.completedAt,
+          durationMs: runs.durationMs,
+          errorDetails: runs.errorDetails,
+          trigger: runs.trigger,
+          jobName: jobs.name,
+          jobType: jobs.jobType,
+        })
+        .from(runs)
+        .innerJoin(jobs, eq(runs.jobId, jobs.id))
+        .where(
+          and(
+            ...baseRunConditions,
+            eq(jobs.jobType, 'playwright'),
+            eq(jobs.organizationId, organizationId)
+          )
         )
-      );
+        .orderBy(desc(runs.startedAt))
+        .limit(100),
+
+      // 3. Calculate aggregate stats
+      dbInstance
+        .select({
+          totalRuns: count(),
+          avgDurationMs: avg(runs.durationMs),
+          passedRuns: sql<number>`SUM(CASE WHEN ${runs.status} = 'passed' THEN 1 ELSE 0 END)`,
+          failedRuns: sql<number>`SUM(CASE WHEN ${runs.status} = 'failed' THEN 1 ELSE 0 END)`,
+          totalDurationMs: sql<number>`SUM(COALESCE(${runs.durationMs}, 0))`,
+        })
+        .from(runs)
+        .innerJoin(jobs, eq(runs.jobId, jobs.id))
+        .where(
+          and(
+            ...baseRunConditions,
+            eq(jobs.jobType, 'playwright'),
+            eq(jobs.organizationId, organizationId)
+          )
+        ),
+
+      // 4. Calculate runs per day
+      dbInstance
+        .select({
+          date: sql<string>`DATE(${runs.startedAt})`,
+          count: count(),
+          passed: sql<number>`SUM(CASE WHEN ${runs.status} = 'passed' THEN 1 ELSE 0 END)`,
+          failed: sql<number>`SUM(CASE WHEN ${runs.status} = 'failed' THEN 1 ELSE 0 END)`,
+        })
+        .from(runs)
+        .innerJoin(jobs, eq(runs.jobId, jobs.id))
+        .where(
+          and(
+            ...baseRunConditions,
+            eq(jobs.jobType, 'playwright'),
+            eq(jobs.organizationId, organizationId)
+          )
+        )
+        .groupBy(sql`DATE(${runs.startedAt})`)
+        .orderBy(sql`DATE(${runs.startedAt})`)
+    ]);
 
     const stats = aggregateStats[0];
     const totalRuns = Number(stats?.totalRuns) || 0;
@@ -133,26 +154,6 @@ export async function GET(request: NextRequest) {
     const p95DurationMs = validDurations.length > 0
       ? Math.round(validDurations[Math.floor(validDurations.length * 0.95)] || validDurations[validDurations.length - 1] || 0)
       : 0;
-
-    // Calculate runs per day for frequency chart
-    const runsPerDay = await dbInstance
-      .select({
-        date: sql<string>`DATE(${runs.startedAt})`,
-        count: count(),
-        passed: sql<number>`SUM(CASE WHEN ${runs.status} = 'passed' THEN 1 ELSE 0 END)`,
-        failed: sql<number>`SUM(CASE WHEN ${runs.status} = 'failed' THEN 1 ELSE 0 END)`,
-      })
-      .from(runs)
-      .innerJoin(jobs, eq(runs.jobId, jobs.id))
-      .where(
-        and(
-          ...baseRunConditions,
-          eq(jobs.jobType, 'playwright'),
-          eq(jobs.organizationId, organizationId)
-        )
-      )
-      .groupBy(sql`DATE(${runs.startedAt})`)
-      .orderBy(sql`DATE(${runs.startedAt})`);
 
     // Format runs for response
     const formattedRuns = historicalRuns.map((run, index) => {

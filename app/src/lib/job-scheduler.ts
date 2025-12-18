@@ -375,6 +375,9 @@ export async function initializeJobSchedulers() {
 
       let initializedCount = 0;
       let failedCount = 0;
+      
+      // OPTIMIZED: Collect updates and batch them at the end
+      const schedulerUpdates: { id: string; scheduledJobId: string; nextRunAt: Date | null }[] = [];
 
       for (const job of jobsWithSchedules) {
         if (!job.cronSchedule) continue;
@@ -387,7 +390,7 @@ export async function initializeJobSchedulers() {
             retryLimit: 3,
           });
 
-          // Update the job with the scheduler ID if needed
+          // Collect updates instead of executing immediately
           if (!job.scheduledJobId || job.scheduledJobId !== schedulerId) {
             let nextRunAt = null;
 
@@ -399,13 +402,11 @@ export async function initializeJobSchedulers() {
               console.error(`Failed to calculate next run date: ${error}`);
             }
 
-            await db
-              .update(jobs)
-              .set({
-                scheduledJobId: schedulerId,
-                nextRunAt: nextRunAt,
-              })
-              .where(eq(jobs.id, job.id));
+            schedulerUpdates.push({
+              id: job.id,
+              scheduledJobId: schedulerId,
+              nextRunAt,
+            });
           }
 
           initializedCount++;
@@ -416,6 +417,25 @@ export async function initializeJobSchedulers() {
           );
           failedCount++;
         }
+      }
+      
+      // OPTIMIZED: Batch execute all updates in a single operation
+      if (schedulerUpdates.length > 0) {
+        console.log(`[JobScheduler] Batching ${schedulerUpdates.length} scheduler updates...`);
+        // Use Promise.all for parallel updates (within same connection pool)  
+        // This is still more efficient than sequential updates in the loop
+        await Promise.all(
+          schedulerUpdates.map(update =>
+            db
+              .update(jobs)
+              .set({
+                scheduledJobId: update.scheduledJobId,
+                nextRunAt: update.nextRunAt,
+              })
+              .where(eq(jobs.id, update.id))
+          )
+        );
+        console.log(`[JobScheduler] Completed ${schedulerUpdates.length} scheduler updates`);
       }
 
       // Consider initialization successful if at least some jobs were scheduled

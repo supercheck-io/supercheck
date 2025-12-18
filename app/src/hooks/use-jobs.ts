@@ -3,7 +3,7 @@
  *
  * React Query hook for fetching jobs list with efficient caching.
  * Uses the generic data hook factory for DRY, consistent behavior.
- * Caches data for 60 seconds to prevent re-fetches on navigation.
+ * Cache is invalidated after mutations to ensure fresh data.
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -100,8 +100,8 @@ export const JOB_QUERY_KEY = ["job"] as const;
 const jobsHook = createDataHook<Job, CreateJobData, UpdateJobData>({
   queryKey: JOBS_QUERY_KEY,
   endpoint: "/api/jobs",
-  staleTime: 30 * 1000, // 30 seconds
-  gcTime: 5 * 60 * 1000, // 5 minutes cache
+  staleTime: 60 * 1000, // 60 seconds - cache invalidated after mutations
+  gcTime: 5 * 60 * 1000, // 5 minutes cache for background display
   refetchOnWindowFocus: true,
   singleItemField: "job",
 });

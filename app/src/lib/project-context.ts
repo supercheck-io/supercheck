@@ -20,19 +20,9 @@ import {
 import { getUserOrgRole } from "./rbac/middleware";
 import { Role } from "./rbac/permissions";
 import { roleToString } from "./rbac/role-normalizer";
-import { getCachedSession } from "./session-cache";
+import { getCachedAuthSession } from "./session-cache";
 
-/**
- * Get auth session with request-scoped caching.
- * Eliminates duplicate DB round-trips in Docker production.
- */
-async function getCachedAuthSession() {
-  return getCachedSession('auth:session', async () => {
-    return auth.api.getSession({
-      headers: await headers(),
-    });
-  });
-}
+// getCachedAuthSession imported from session-cache.ts (DRY principle)
 
 export interface ProjectContext {
   id: string;

@@ -18,19 +18,9 @@ import {
 import { eq, and } from "drizzle-orm";
 import { getUserRole, getUserOrgRole } from "./rbac/middleware";
 import { Role } from "./rbac/permissions";
-import { getCachedSession } from "./session-cache";
+import { getCachedAuthSession } from "./session-cache";
 
-/**
- * Get auth session with request-scoped caching.
- * This eliminates duplicate auth.api.getSession() calls within a single request.
- */
-async function getCachedAuthSession() {
-  return getCachedSession('auth:session', async () => {
-    return auth.api.getSession({
-      headers: await headers(),
-    });
-  });
-}
+// getCachedAuthSession imported from session-cache.ts (DRY principle)
 
 
 export interface UserSession {

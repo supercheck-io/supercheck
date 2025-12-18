@@ -32,6 +32,8 @@ import TestSelector from "./test-selector";
 import CronScheduler from "./cron-scheduler";
 import { Loader2 } from "lucide-react";
 import NextRunDisplay from "./next-run-display";
+import { useQueryClient } from "@tanstack/react-query";
+import { JOBS_QUERY_KEY } from "@/hooks/use-jobs";
 
 const jobFormSchema = z.object({
   name: z.string().min(1, "Job name is required"),
@@ -65,6 +67,7 @@ export function CreateJob({
   performanceMode = false
 }: CreateJobProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<FormData>({
@@ -110,6 +113,10 @@ export function CreateJob({
         toast.success("Success", {
           description: `Job \"${jobData.name}\" has been created.`,
         });
+
+        // Invalidate Jobs cache to ensure fresh data on jobs page
+        queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY, refetchType: 'all' });
+
         router.push("/jobs");
       } else {
         console.error("Failed to create job:", response.error);
@@ -181,7 +188,7 @@ export function CreateJob({
                 </div>
 
                 {/* Right Column: Cron Scheduler */}
-                <div className="space-y-4"> 
+                <div className="space-y-4">
                   <FormField
                     control={form.control}
                     name="cronSchedule"
@@ -196,14 +203,14 @@ export function CreateJob({
                           <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Optional</span>
                         </FormLabel>
                         <FormControl>
-                          <CronScheduler 
+                          <CronScheduler
                             value={field.value || ""}
                             onChange={field.onChange}
                           />
                         </FormControl>
                         <NextRunDisplay cronExpression={field.value} />
                         <p className="text-xs text-muted-foreground mt-4 flex items-center">
-                         <span>Leave empty for manual execution</span>
+                          <span>Leave empty for manual execution</span>
                         </p>
                         <FormMessage />
                       </FormItem>
@@ -215,7 +222,7 @@ export function CreateJob({
               {/* Test Selector - now guaranteed to receive an array */}
               <TestSelector
                 selectedTests={selectedTests}
-                onTestsSelected={setSelectedTests || (() => {})}
+                onTestsSelected={setSelectedTests || (() => { })}
                 buttonLabel={performanceMode ? "Select Performance Test" : "Select Tests"}
                 emptyStateMessage={performanceMode ? "No performance test selected" : "No tests selected"}
                 required={true}
@@ -234,8 +241,8 @@ export function CreateJob({
                 >
                   Cancel
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   className="flex items-center"
                   disabled={isSubmitting || (hideAlerts && selectedTests.length === 0)}
                 >

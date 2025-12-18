@@ -105,3 +105,42 @@ export function clearRequestCache(): void {
 export function hasRequestContext(): boolean {
   return requestStore.getStore() !== undefined;
 }
+
+// ============================================================================
+// CENTRALIZED AUTH SESSION HELPER
+// ============================================================================
+
+// Lazy import to avoid circular dependencies
+let authModule: typeof import('@/utils/auth') | null = null;
+let headersModule: typeof import('next/headers') | null = null;
+
+/**
+ * Get cached auth session for the current request.
+ * This is the SINGLE source of truth for session caching across the app.
+ * 
+ * Previously duplicated in: session.ts, project-context.ts, rbac/middleware.ts
+ * Now centralized here to follow DRY principle.
+ * 
+ * @returns The auth session (cached within request scope)
+ * 
+ * @example
+ * ```typescript
+ * import { getCachedAuthSession } from '@/lib/session-cache';
+ * const session = await getCachedAuthSession();
+ * ```
+ */
+export async function getCachedAuthSession() {
+  // Lazy load modules to avoid circular dependencies
+  if (!authModule) {
+    authModule = await import('@/utils/auth');
+  }
+  if (!headersModule) {
+    headersModule = await import('next/headers');
+  }
+  
+  return getCachedSession('auth:session', async () => {
+    return authModule!.auth.api.getSession({
+      headers: await headersModule!.headers(),
+    });
+  });
+}

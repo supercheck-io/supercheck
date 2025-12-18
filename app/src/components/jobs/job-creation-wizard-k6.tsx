@@ -16,11 +16,14 @@ import { toast } from "sonner";
 import { Test } from "./schema";
 import { type AlertConfig } from "@/db/schema";
 import { useAppConfig } from "@/hooks/use-app-config";
+import { useQueryClient } from "@tanstack/react-query";
+import { JOBS_QUERY_KEY } from "@/hooks/use-jobs";
 
 type JobAlertConfig = AlertConfig;
 
 export function JobCreationWizardK6() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const stepFromUrl = searchParams.get('step') as "job" | "alerts" | null;
   const { maxJobNotificationChannels } = useAppConfig();
@@ -231,6 +234,10 @@ export function JobCreationWizardK6() {
         });
         // Clear draft data from sessionStorage
         clearDraft();
+
+        // Invalidate Jobs cache to ensure fresh data on jobs page
+        queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY, refetchType: 'all' });
+
         // Use router.push for proper navigation
         router.push("/jobs");
       } else {

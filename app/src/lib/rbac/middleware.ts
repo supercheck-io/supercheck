@@ -25,20 +25,9 @@ import {
 import { normalizeRole } from "./role-normalizer";
 import { isSuperAdmin } from "./super-admin";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { getCachedSession } from "@/lib/session-cache";
+import { getCachedAuthSession } from "@/lib/session-cache";
 
-/**
- * Get auth session with request-scoped caching.
- * PERFORMANCE: Eliminates duplicate DB round-trips per request in Docker.
- * This is critical for production performance.
- */
-async function getCachedAuthSession() {
-  return getCachedSession('auth:session', async () => {
-    return auth.api.getSession({
-      headers: await headers(),
-    });
-  });
-}
+// getCachedAuthSession imported from session-cache.ts (DRY principle)
 
 // ============================================================================
 // PERMISSION CHECKING - Core Functions

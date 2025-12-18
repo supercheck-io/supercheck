@@ -14,6 +14,11 @@ const connectionString =
 // Connection pool configuration for Next.js app with schedulers and API routes
 // Docker production: Higher pool size to handle concurrent RSC requests
 // See: https://github.com/porsager/postgres#connection-pool
+//
+// IMPORTANT: Ensure PostgreSQL `max_connections` is configured to handle:
+//   DB_POOL_MAX × number_of_app_instances + ~20 for worker/admin/maintenance
+//   Example: 30 × 4 instances + 20 = 140. Default PostgreSQL max is 100.
+//   Set in postgresql.conf: max_connections = 150
 const client = postgres(connectionString, {
   max: parseInt(process.env.DB_POOL_MAX || "30", 10), // Default: 30 connections (increased from 10 for Docker)
   idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || "20", 10), // Default: 20 seconds (reduced for faster recycling)

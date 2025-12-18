@@ -107,3 +107,68 @@ export async function GET(
     );
   }
 }
+
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const params = await context.params;
+  const testId = params.id;
+
+  try {
+    const { userId } = await requireAuth();
+    const body = await request.json();
+
+    // First check if test exists and get its project context
+    const existingTest = await db.query.tests.findFirst({
+      where: eq(tests.id, testId),
+    });
+
+    if (!existingTest) {
+      return NextResponse.json({ error: "Test not found" }, { status: 404 });
+    }
+
+    // Check permissions
+    const canUpdate = await hasPermission("test", "update", {
+      organizationId: existingTest.organizationId || undefined,
+      projectId: existingTest.projectId || undefined,
+    });
+
+    if (!canUpdate) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
+
+    // Update the test
+    const [updatedTest] = await db
+      .update(tests)
+      .set({
+        title: body.title !== undefined ? body.title : existingTest.title,
+        description: body.description !== undefined ? body.description : existingTest.description,
+        script: body.script !== undefined ? body.script : existingTest.script,
+        priority: body.priority !== undefined ? body.priority : existingTest.priority,
+        type: body.type !== undefined ? body.type : existingTest.type,
+        updatedAt: new Date(),
+      })
+      .where(eq(tests.id, testId))
+      .returning();
+
+    return NextResponse.json(updatedTest);
+  } catch (error) {
+    console.error(`Error updating test ${testId}:`, error);
+    return NextResponse.json(
+      { error: "Failed to update test" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  // PATCH is essentially the same as our PUT implementation which handles partials
+  return PUT(request, context);
+}

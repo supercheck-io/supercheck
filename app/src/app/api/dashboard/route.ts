@@ -33,30 +33,26 @@ export async function GET() {
     const queueStats = await getQueueStats();
 
     // Monitor Statistics - scoped to project
+    // OPTIMIZED: Consolidated 4 separate count queries into 1 using PostgreSQL FILTER clause
+    const monitorBaseCondition = and(
+      eq(monitors.projectId, targetProjectId),
+      eq(monitors.organizationId, organizationId)
+    );
+    
     const [
-      totalMonitors,
-      activeMonitors,
-      upMonitors,
-      downMonitors,
+      monitorCounts,
       recentMonitorResults,
       monitorsByType,
       criticalAlerts
     ] = await Promise.all([
-      // Total monitors
-      dbInstance.select({ count: count() }).from(monitors)
-        .where(and(eq(monitors.projectId, targetProjectId), eq(monitors.organizationId, organizationId))),
-      
-      // Active (enabled) monitors
-      dbInstance.select({ count: count() }).from(monitors)
-        .where(and(eq(monitors.enabled, true), eq(monitors.projectId, targetProjectId), eq(monitors.organizationId, organizationId))),
-      
-      // Up monitors (based on latest status)
-      dbInstance.select({ count: count() }).from(monitors)
-        .where(and(eq(monitors.status, "up"), eq(monitors.projectId, targetProjectId), eq(monitors.organizationId, organizationId))),
-      
-      // Down monitors
-      dbInstance.select({ count: count() }).from(monitors)
-        .where(and(eq(monitors.status, "down"), eq(monitors.projectId, targetProjectId), eq(monitors.organizationId, organizationId))),
+      // OPTIMIZED: Single query for all monitor counts using FILTER
+      dbInstance.select({
+        total: count(),
+        active: sql<number>`count(*) filter (where ${monitors.enabled} = true)`,
+        up: sql<number>`count(*) filter (where ${monitors.status} = 'up')`,
+        down: sql<number>`count(*) filter (where ${monitors.status} = 'down')`,
+      }).from(monitors)
+        .where(monitorBaseCondition),
       
       // Recent monitor results (last 24h) - only for monitors in this project
       dbInstance.select({ count: count() })
@@ -73,7 +69,7 @@ export async function GET() {
         type: monitors.type,
         count: count()
       }).from(monitors)
-        .where(and(eq(monitors.projectId, targetProjectId), eq(monitors.organizationId, organizationId)))
+        .where(monitorBaseCondition)
         .groupBy(monitors.type),
       
       // Critical alerts (down monitors)
@@ -89,23 +85,26 @@ export async function GET() {
     ]);
 
     // Job Statistics - scoped to project
+    // OPTIMIZED: Consolidated count queries using PostgreSQL FILTER clause
+    const jobBaseCondition = and(
+      eq(jobs.projectId, targetProjectId),
+      eq(jobs.organizationId, organizationId)
+    );
+    
     const [
-      totalJobs,
-      activeJobs,
+      jobCounts,
       recentRuns,
-      successfulRuns24h,
-      failedRuns24h,
+      runCounts24h,
       jobsByStatus,
       recentJobRuns,
       executionTimeData
     ] = await Promise.all([
-      // Total jobs
-      dbInstance.select({ count: count() }).from(jobs)
-        .where(and(eq(jobs.projectId, targetProjectId), eq(jobs.organizationId, organizationId))),
-      
-      // Active jobs (not paused)
-      dbInstance.select({ count: count() }).from(jobs)
-        .where(and(eq(jobs.status, "running"), eq(jobs.projectId, targetProjectId), eq(jobs.organizationId, organizationId))),
+      // OPTIMIZED: Single query for total and active job counts
+      dbInstance.select({
+        total: count(),
+        active: sql<number>`count(*) filter (where ${jobs.status} = 'running')`,
+      }).from(jobs)
+        .where(jobBaseCondition),
       
       // Recent runs (last 30 days) - only for jobs in this project
       dbInstance.select({ count: count() })
@@ -117,24 +116,16 @@ export async function GET() {
           eq(jobs.organizationId, organizationId)
         )),
       
-      // Successful runs in last 24h
-      dbInstance.select({ count: count() })
+      // OPTIMIZED: Single query for successful and failed runs in last 24h
+      dbInstance.select({
+        total: count(),
+        passed: sql<number>`count(*) filter (where ${runs.status} = 'passed')`,
+        failed: sql<number>`count(*) filter (where ${runs.status} = 'failed')`,
+      })
         .from(runs)
         .innerJoin(jobs, eq(runs.jobId, jobs.id))
         .where(and(
           gte(runs.startedAt, last24Hours),
-          eq(runs.status, "passed"),
-          eq(jobs.projectId, targetProjectId),
-          eq(jobs.organizationId, organizationId)
-        )),
-      
-      // Failed runs in last 24h
-      dbInstance.select({ count: count() })
-        .from(runs)
-        .innerJoin(jobs, eq(runs.jobId, jobs.id))
-        .where(and(
-          gte(runs.startedAt, last24Hours),
-          eq(runs.status, "failed"),
           eq(jobs.projectId, targetProjectId),
           eq(jobs.organizationId, organizationId)
         )),
@@ -144,7 +135,7 @@ export async function GET() {
         status: jobs.status,
         count: count()
       }).from(jobs)
-        .where(and(eq(jobs.projectId, targetProjectId), eq(jobs.organizationId, organizationId)))
+        .where(jobBaseCondition)
         .groupBy(jobs.status),
       
       // Recent job runs with details (last 30 days for chart data)
@@ -166,22 +157,24 @@ export async function GET() {
         ))
         .orderBy(desc(runs.startedAt)),
       
-      // Total execution time (last 30 days) 
+      // OPTIMIZED: Total execution time using SQL aggregation instead of fetching all rows
+      // Now returns aggregated stats directly rather than raw data
       dbInstance.select({
-        durationMs: runs.durationMs,
-        status: runs.status,
-        startedAt: runs.startedAt,
-        completedAt: runs.completedAt
+        totalMs: sql<number>`COALESCE(SUM(${runs.durationMs}), 0)`,
+        avgMs: sql<number>`COALESCE(AVG(${runs.durationMs}), 0)`,
+        count: count(),
       }).from(runs)
         .leftJoin(jobs, eq(runs.jobId, jobs.id))
         .where(and(
           gte(runs.startedAt, last30Days),
           eq(jobs.projectId, targetProjectId), 
           eq(jobs.organizationId, organizationId),
-          // Only include completed runs
-          sql`${runs.completedAt} IS NOT NULL`
+          // Only include completed runs with valid duration
+          sql`${runs.completedAt} IS NOT NULL`,
+          sql`${runs.durationMs} IS NOT NULL`,
+          sql`${runs.durationMs} >= 0`,
+          sql`${runs.durationMs} <= 86400000` // Max 24 hours in ms
         ))
-        .orderBy(desc(runs.startedAt))
     ]);
 
     // Test Statistics - scoped to project
@@ -274,23 +267,21 @@ export async function GET() {
         ))
     ]);
 
-    // Calculate uptime percentage for active monitors in this project
-    const uptimeStats = await dbInstance.select({
-      monitorId: monitorResults.monitorId,
-      isUp: monitorResults.isUp,
-      checkedAt: monitorResults.checkedAt
+    // OPTIMIZED: Calculate uptime percentage using SQL aggregation instead of fetching all rows
+    const uptimeResult = await dbInstance.select({
+      totalChecks: count(),
+      successfulChecks: sql<number>`count(*) filter (where ${monitorResults.isUp} = true)`,
     }).from(monitorResults)
       .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
       .where(and(
         gte(monitorResults.checkedAt, last24Hours),
         eq(monitors.projectId, targetProjectId),
         eq(monitors.organizationId, organizationId)
-      ))
-      .orderBy(desc(monitorResults.checkedAt));
+      ));
 
-    // Calculate overall uptime percentage
-    const totalChecks = uptimeStats.length;
-    const successfulChecks = uptimeStats.filter(r => r.isUp).length;
+    // Calculate overall uptime percentage from aggregated result
+    const totalChecks = uptimeResult[0]?.totalChecks ?? 0;
+    const successfulChecks = uptimeResult[0]?.successfulChecks ?? 0;
     const overallUptime = totalChecks > 0 ? (successfulChecks / totalChecks) * 100 : 100;
 
     // Monitor availability trend (last 30 days) - only for monitors in this project
@@ -340,69 +331,14 @@ export async function GET() {
     const totalExecutionTimeCalculation = (() => {
       const errors: string[] = [];
 
+      // OPTIMIZED: Job execution time now comes from SQL aggregation
+      // No more looping over thousands of rows - we use the pre-aggregated data
       const jobAggregate = {
-        totalMs: 0,
-        processed: 0,
-        skipped: 0,
-        totalRecords: executionTimeData.length
+        totalMs: Number(executionTimeData[0]?.totalMs) || 0,
+        processed: Number(executionTimeData[0]?.count) || 0,
+        skipped: 0, // Skipping is handled in SQL WHERE clause now
+        totalRecords: Number(executionTimeData[0]?.count) || 0
       };
-
-      for (const run of executionTimeData) {
-        try {
-          let durationMs: number | null = null;
-
-          // Use durationMs field when available
-          if (run.durationMs !== null && run.durationMs !== undefined) {
-            const numericDuration = Number(run.durationMs);
-            if (!Number.isFinite(numericDuration)) {
-              errors.push(`DurationMs not numeric: ${run.durationMs}`);
-              jobAggregate.skipped++;
-              continue;
-            }
-            durationMs = numericDuration;
-          } else if (run.startedAt && run.completedAt) {
-            // Fallback to calculating from timestamps
-            const startedAt =
-              run.startedAt instanceof Date ? run.startedAt : new Date(run.startedAt);
-            const completedAt =
-              run.completedAt instanceof Date ? run.completedAt : new Date(run.completedAt);
-
-            if (!Number.isNaN(startedAt.getTime()) && !Number.isNaN(completedAt.getTime())) {
-              durationMs = completedAt.getTime() - startedAt.getTime();
-            }
-          }
-
-          if (durationMs === null) {
-            errors.push(
-              `Unable to determine duration for run starting ${run.startedAt?.toString() ?? "unknown"}`
-            );
-            jobAggregate.skipped++;
-            continue;
-          }
-
-          if (!Number.isFinite(durationMs)) {
-            errors.push(
-              `Duration not finite for run starting ${run.startedAt?.toString() ?? "unknown"}`
-            );
-            jobAggregate.skipped++;
-            continue;
-          }
-
-          // Validate duration is reasonable (0ms to 24 hours max)
-          if (durationMs < 0 || durationMs > 24 * 60 * 60 * 1000) {
-            errors.push(`Duration out of range: ${durationMs}ms`);
-            jobAggregate.skipped++;
-            continue;
-          }
-
-          jobAggregate.totalMs += durationMs;
-          jobAggregate.processed++;
-
-        } catch (error) {
-          errors.push(`Error processing run ${run.startedAt}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          jobAggregate.skipped++;
-        }
-      }
 
       const monitorAggregate = {
         totalMs: 0,
@@ -553,10 +489,10 @@ export async function GET() {
       
       // Monitor Statistics
       monitors: {
-        total: totalMonitors[0].count,
-        active: activeMonitors[0].count,
-        up: upMonitors[0].count,
-        down: downMonitors[0].count,
+        total: monitorCounts[0].total,
+        active: monitorCounts[0].active,
+        up: monitorCounts[0].up,
+        down: monitorCounts[0].down,
         uptime: Math.round(overallUptime * 100) / 100,
         recentChecks24h: recentMonitorResults[0].count,
         byType: monitorsByType,
@@ -574,11 +510,11 @@ export async function GET() {
       
       // Job Statistics
       jobs: {
-        total: totalJobs[0].count,
-        active: activeJobs[0].count,
+        total: jobCounts[0].total,
+        active: jobCounts[0].active,
         recentRuns30d: recentRuns[0].count,
-        successfulRuns24h: successfulRuns24h[0].count,
-        failedRuns24h: failedRuns24h[0].count,
+        successfulRuns24h: runCounts24h[0].passed,
+        failedRuns24h: runCounts24h[0].failed,
         byStatus: jobsByStatus,
         recentRuns: recentJobRuns.map(run => ({
           id: run.id,
@@ -623,7 +559,7 @@ export async function GET() {
       // System Health
       system: {
         timestamp: now.toISOString(),
-        healthy: downMonitors[0].count === 0 && queueStats.running < queueStats.runningCapacity
+        healthy: monitorCounts[0].down === 0 && queueStats.running < queueStats.runningCapacity
       }
     });
 

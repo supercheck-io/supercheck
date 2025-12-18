@@ -2,8 +2,8 @@
  * Dashboard Data Hook
  * 
  * React Query hook for fetching dashboard data with efficient caching.
- * Caches data for 30 seconds to prevent re-fetches on navigation.
- * Auto-refreshes every 60 seconds when the component is mounted.
+ * Data is cached for 60 seconds to prevent re-fetches on navigation.
+ * No auto-refresh - data refreshes on page visit or manual action.
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";

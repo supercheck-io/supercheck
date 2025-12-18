@@ -68,6 +68,8 @@ import { canCreateMonitors } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { useAppConfig } from "@/hooks/use-app-config";
+import { useQueryClient } from "@tanstack/react-query";
+import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
 
 // Define presets for Expected Status Codes
 const statusCodePresets = [
@@ -410,6 +412,7 @@ export function MonitorForm({
   setMonitorData,
 }: MonitorFormProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { maxMonitorNotificationChannels } = useAppConfig();
@@ -933,6 +936,9 @@ export function MonitorForm({
           ? `Monitor "${apiData.name}" has been updated.`
           : `Monitor "${apiData.name}" has been created.`,
       });
+
+      // Invalidate Monitors cache to ensure fresh data on monitors page
+      queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
 
       if (editMode) {
         router.push(`/monitors/${id}`);
@@ -1490,10 +1496,10 @@ export function MonitorForm({
                       render={({ field }) => (
                         <FormItem
                           className={`${httpMethod === "POST" ||
-                              httpMethod === "PUT" ||
-                              httpMethod === "PATCH"
-                              ? ""
-                              : "md:col-span-2"
+                            httpMethod === "PUT" ||
+                            httpMethod === "PATCH"
+                            ? ""
+                            : "md:col-span-2"
                             }`}
                         >
                           <FormLabel>

@@ -6,7 +6,7 @@ import { db } from "@/utils/db";
 import { projects, projectMembers } from "@/db/schema";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { checkProjectLimit } from "@/lib/middleware/plan-enforcement";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { subscriptionService } from "@/lib/services/subscription-service";
 
 /**
@@ -134,14 +134,15 @@ export async function POST(request: NextRequest) {
     await subscriptionService.requireValidPolarCustomer(targetOrgId);
 
     // Check project limit based on subscription plan
-    const allProjectsInOrg = await db
-      .select({ count: projects.id })
+    // OPTIMIZED: Use SQL count(*) instead of fetching all rows and using .length
+    const projectCountResult = await db
+      .select({ count: sql<number>`count(*)` })
       .from(projects)
       .where(eq(projects.organizationId, targetOrgId));
 
     const limitCheck = await checkProjectLimit(
       targetOrgId,
-      allProjectsInOrg.length
+      Number(projectCountResult[0]?.count || 0)
     );
     if (!limitCheck.allowed) {
       console.warn(

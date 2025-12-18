@@ -93,6 +93,8 @@ import {
   useMonitorResults,
   useMonitorPermissions,
 } from "@/hooks/use-monitor-details";
+import { useQueryClient } from "@tanstack/react-query";
+import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
 
 export interface MonitorResultItem {
   id: string;
@@ -158,6 +160,7 @@ export function MonitorDetailClient({
   isNotificationView = false,
 }: MonitorDetailClientProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { recentMonitorResultsLimit } = useAppConfig();
   const [monitor, setMonitor] = useState<MonitorWithResults>(initialMonitor);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -258,6 +261,10 @@ export function MonitorDetailClient({
       }
 
       toast.success(`Monitor "${monitor.name}" deleted successfully.`);
+
+      // Invalidate Monitors cache to ensure fresh data on monitors list
+      queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
+
       router.push("/monitors");
       router.refresh();
     } catch (error) {
@@ -302,6 +309,9 @@ export function MonitorDetailClient({
       toast.success(
         `Monitor successfully ${newStatus === "paused" ? "paused" : "resumed"}.`
       );
+
+      // Invalidate Monitors cache to ensure fresh data on monitors list
+      queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
 
       // Refresh server-side props to get the latest data
       router.refresh();
@@ -437,8 +447,8 @@ export function MonitorDetailClient({
 
     const effectiveLocationsFromConfig =
       locationConfig.enabled &&
-      Array.isArray(locationConfig.locations) &&
-      locationConfig.locations.length > 0
+        Array.isArray(locationConfig.locations) &&
+        locationConfig.locations.length > 0
         ? locationConfig.locations
         : null;
 
@@ -475,23 +485,23 @@ export function MonitorDetailClient({
     const aggregationConfig: LocationConfig =
       locationConfig && locationConfig.enabled
         ? {
-            ...locationConfig,
-            locations:
-              locationConfig.locations && locationConfig.locations.length > 0
-                ? locationConfig.locations
-                : effectiveLocations,
-            threshold:
-              typeof locationConfig.threshold === "number"
-                ? locationConfig.threshold
-                : 50,
-            strategy: locationConfig.strategy ?? "majority",
-          }
+          ...locationConfig,
+          locations:
+            locationConfig.locations && locationConfig.locations.length > 0
+              ? locationConfig.locations
+              : effectiveLocations,
+          threshold:
+            typeof locationConfig.threshold === "number"
+              ? locationConfig.threshold
+              : 50,
+          strategy: locationConfig.strategy ?? "majority",
+        }
         : {
-            enabled: false,
-            locations: effectiveLocations,
-            threshold: 50,
-            strategy: "majority",
-          };
+          enabled: false,
+          locations: effectiveLocations,
+          threshold: 50,
+          strategy: "majority",
+        };
 
     const aggregated = calculateAggregatedStatus(
       latestByLocation,
@@ -509,8 +519,8 @@ export function MonitorDetailClient({
 
   const currentResponseTime =
     latestResult &&
-    latestResult.responseTimeMs !== undefined &&
-    latestResult.responseTimeMs !== null
+      latestResult.responseTimeMs !== undefined &&
+      latestResult.responseTimeMs !== null
       ? `${(latestResult.responseTimeMs / 1000).toFixed(2)} s`
       : "N/A";
 
@@ -675,7 +685,7 @@ export function MonitorDetailClient({
                     title={monitor.url}
                   >
                     {monitor.type === "synthetic_test" &&
-                    monitor.config?.testId ? (
+                      monitor.config?.testId ? (
                       <>
                         <span className="font-medium">Test ID:</span>{" "}
                         {monitor.config.testId}
@@ -685,8 +695,7 @@ export function MonitorDetailClient({
                       `${monitor.target || monitor.url}:${monitor.config.port}`
                     ) : monitor.type === "http_request" &&
                       monitor.config?.method ? (
-                      `${monitor.config.method.toUpperCase()} ${
-                        monitor.url || monitor.target
+                      `${monitor.config.method.toUpperCase()} ${monitor.url || monitor.target
                       }`
                     ) : (
                       monitor.url || monitor.target
@@ -696,24 +705,23 @@ export function MonitorDetailClient({
                     monitor.target ||
                     (monitor.type === "synthetic_test" &&
                       monitor.config?.testId)) && (
-                    <button
-                      onClick={() =>
-                        handleCopy(
-                          monitor.type === "synthetic_test" &&
-                            monitor.config?.testId
-                            ? monitor.config.testId
-                            : monitor.url || monitor.target || "",
-                          monitor.type === "synthetic_test" ? "Test ID" : "URL"
-                        )
-                      }
-                      className="p-1 hover:bg-muted rounded transition-colors"
-                      title={`Copy ${
-                        monitor.type === "synthetic_test" ? "Test ID" : "URL"
-                      }`}
-                    >
-                      <Copy className="h-3.5 w-3.5 text-muted-foreground" />
-                    </button>
-                  )}
+                      <button
+                        onClick={() =>
+                          handleCopy(
+                            monitor.type === "synthetic_test" &&
+                              monitor.config?.testId
+                              ? monitor.config.testId
+                              : monitor.url || monitor.target || "",
+                            monitor.type === "synthetic_test" ? "Test ID" : "URL"
+                          )
+                        }
+                        className="p-1 hover:bg-muted rounded transition-colors"
+                        title={`Copy ${monitor.type === "synthetic_test" ? "Test ID" : "URL"
+                          }`}
+                      >
+                        <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                      </button>
+                    )}
                 </div>
               </div>
             </div>
@@ -733,11 +741,10 @@ export function MonitorDetailClient({
                 {/* Main Alert Status */}
                 <div className="relative group mr-1">
                   <div
-                    className={`flex items-center justify-center h-10 w-10 rounded-full ${
-                      monitor.alertConfig?.enabled
+                    className={`flex items-center justify-center h-10 w-10 rounded-full ${monitor.alertConfig?.enabled
                         ? "bg-green-100 dark:bg-green-900/30"
                         : "bg-gray-100 dark:bg-gray-700/30"
-                    }`}
+                      }`}
                   >
                     {monitor.alertConfig?.enabled ? (
                       <Bell className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -789,32 +796,29 @@ export function MonitorDetailClient({
                 sslCertificateInfo &&
                 sslCertificateInfo.daysRemaining !== undefined && (
                   <div
-                    className={`flex items-center px-2 py-2 rounded-md border ${
-                      sslCertificateInfo.daysRemaining <= 7
+                    className={`flex items-center px-2 py-2 rounded-md border ${sslCertificateInfo.daysRemaining <= 7
                         ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
                         : sslCertificateInfo.daysRemaining <= 30
                           ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800"
                           : "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
-                    }`}
+                      }`}
                     title="SSL enabled"
                   >
                     <Shield
-                      className={`h-4 w-4 mr-1 ${
-                        sslCertificateInfo.daysRemaining <= 7
+                      className={`h-4 w-4 mr-1 ${sslCertificateInfo.daysRemaining <= 7
                           ? "text-red-600 dark:text-red-400"
                           : sslCertificateInfo.daysRemaining <= 30
                             ? "text-yellow-600 dark:text-yellow-400"
                             : "text-green-600 dark:text-green-400"
-                      }`}
+                        }`}
                     />
                     <span
-                      className={`text-xs ${
-                        sslCertificateInfo.daysRemaining <= 7
+                      className={`text-xs ${sslCertificateInfo.daysRemaining <= 7
                           ? "text-red-700 dark:text-red-300"
                           : sslCertificateInfo.daysRemaining <= 30
                             ? "text-yellow-700 dark:text-yellow-300"
                             : "text-green-700 dark:text-green-300"
-                      }`}
+                        }`}
                     >
                       SSL: {sslCertificateInfo.daysRemaining}d remaining
                     </span>
@@ -945,7 +949,7 @@ export function MonitorDetailClient({
                   {statusInfo?.label ??
                     (currentActualStatus
                       ? currentActualStatus.charAt(0).toUpperCase() +
-                        currentActualStatus.slice(1)
+                      currentActualStatus.slice(1)
                       : "Pending")}
                 </div>
               </CardContent>
@@ -1206,15 +1210,14 @@ export function MonitorDetailClient({
               <CardDescription>
                 {selectedDate
                   ? `Showing ${currentResultsCount} of ${totalResultsCount} checks for ${format(
-                      selectedDate,
-                      "MMMM dd, yyyy"
-                    )}`
-                  : `Showing ${currentResultsCount} of ${totalResultsCount}${
-                      recentMonitorResultsLimit &&
-                      totalResultsCount >= recentMonitorResultsLimit
-                        ? "+"
-                        : ""
-                    } recent checks.`}
+                    selectedDate,
+                    "MMMM dd, yyyy"
+                  )}`
+                  : `Showing ${currentResultsCount} of ${totalResultsCount}${recentMonitorResultsLimit &&
+                    totalResultsCount >= recentMonitorResultsLimit
+                    ? "+"
+                    : ""
+                  } recent checks.`}
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0 flex-1 flex flex-col">
@@ -1268,7 +1271,7 @@ export function MonitorDetailClient({
                     </thead>
                     <tbody className="bg-card divide-y divide-border">
                       {isLoadingResults &&
-                      paginatedTableResults.length === 0 ? (
+                        paginatedTableResults.length === 0 ? (
                         // Initial loading state (no data yet)
                         <tr>
                           <td
@@ -1294,8 +1297,8 @@ export function MonitorDetailClient({
                         paginatedTableResults.map((result) => {
                           const locationMetadata = result.location
                             ? getLocationMetadata(
-                                result.location as MonitoringLocation
-                              )
+                              result.location as MonitoringLocation
+                            )
                             : null;
                           // For synthetic tests: show report only if test failed, otherwise show N/A
                           const syntheticTestHasFailed =
@@ -1304,37 +1307,37 @@ export function MonitorDetailClient({
                             syntheticTestHasFailed &&
                             Boolean(
                               result.details?.reportUrl ||
-                                result.testReportS3Url
+                              result.testReportS3Url
                             );
 
                           // Extract error message from synthetic test failure
                           const syntheticReportError =
                             monitor.type === "synthetic_test" &&
-                            syntheticTestHasFailed
+                              syntheticTestHasFailed
                               ? (() => {
-                                  const detail = result.details;
-                                  if (!detail) return undefined;
-                                  const primaryMessage =
-                                    typeof detail.errorMessage === "string" &&
+                                const detail = result.details;
+                                if (!detail) return undefined;
+                                const primaryMessage =
+                                  typeof detail.errorMessage === "string" &&
                                     detail.errorMessage.trim().length > 0
-                                      ? detail.errorMessage.trim()
-                                      : undefined;
-                                  if (primaryMessage) return primaryMessage;
-                                  const executionErrors =
-                                    typeof detail.executionErrors ===
-                                      "string" &&
+                                    ? detail.errorMessage.trim()
+                                    : undefined;
+                                if (primaryMessage) return primaryMessage;
+                                const executionErrors =
+                                  typeof detail.executionErrors ===
+                                    "string" &&
                                     detail.executionErrors.trim().length > 0
-                                      ? detail.executionErrors.trim()
-                                      : undefined;
-                                  if (executionErrors) return executionErrors;
-                                  const executionSummary =
-                                    typeof detail.executionSummary ===
-                                      "string" &&
+                                    ? detail.executionErrors.trim()
+                                    : undefined;
+                                if (executionErrors) return executionErrors;
+                                const executionSummary =
+                                  typeof detail.executionSummary ===
+                                    "string" &&
                                     detail.executionSummary.trim().length > 0
-                                      ? detail.executionSummary.trim()
-                                      : undefined;
-                                  return executionSummary;
-                                })()
+                                    ? detail.executionSummary.trim()
+                                    : undefined;
+                                return executionSummary;
+                              })()
                               : undefined;
 
                           return (
@@ -1365,7 +1368,7 @@ export function MonitorDetailClient({
                               </td>
                               <td className="px-4 py-[11.5px] whitespace-nowrap text-sm text-muted-foreground">
                                 {result.responseTimeMs !== null &&
-                                result.responseTimeMs !== undefined
+                                  result.responseTimeMs !== undefined
                                   ? `${(result.responseTimeMs / 1000).toFixed(2)} s`
                                   : "N/A"}
                               </td>
@@ -1412,21 +1415,21 @@ export function MonitorDetailClient({
                                     </span>
                                   )
                                 ) : // Other monitor types: show error on failure, N/A on success
-                                result.isUp ? (
-                                  <span className="text-muted-foreground text-xs">
-                                    N/A
-                                  </span>
-                                ) : (
-                                  <TruncatedTextWithTooltip
-                                    text={
-                                      result.details?.errorMessage ||
-                                      "Check failed"
-                                    }
-                                    className="text-muted-foreground text-xs"
-                                    maxWidth="150px"
-                                    maxLength={30}
-                                  />
-                                )}
+                                  result.isUp ? (
+                                    <span className="text-muted-foreground text-xs">
+                                      N/A
+                                    </span>
+                                  ) : (
+                                    <TruncatedTextWithTooltip
+                                      text={
+                                        result.details?.errorMessage ||
+                                        "Check failed"
+                                      }
+                                      className="text-muted-foreground text-xs"
+                                      maxWidth="150px"
+                                      maxLength={30}
+                                    />
+                                  )}
                               </td>
                             </tr>
                           );

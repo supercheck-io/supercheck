@@ -18,6 +18,8 @@ import { decodeTestScript } from "@/actions/save-test";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
+import { useQueryClient } from "@tanstack/react-query";
+import { TESTS_QUERY_KEY } from "@/hooks/use-tests";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import {
   canCreateTags,
@@ -158,6 +160,7 @@ export function TestForm({
   onPerformanceLocationChange,
 }: TestFormProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [formChanged, setFormChanged] = useState(false);
@@ -584,6 +587,9 @@ export function TestForm({
 
             toast.success("Test updated successfully.");
 
+            // Invalidate React Query cache to ensure fresh data on tests page
+            queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY, refetchType: 'all' });
+
             // Navigate to the tests page after updating
             router.push("/tests/");
           } else {
@@ -604,6 +610,9 @@ export function TestForm({
             await saveTestTags(result.id);
 
             toast.success("Test saved successfully.");
+
+            // Invalidate React Query cache to ensure fresh data on tests page
+            queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY, refetchType: 'all' });
 
             // Navigate to the tests page with the test ID
             router.push("/tests/");
@@ -1117,6 +1126,10 @@ export function TestForm({
                   const result = await deleteTest(testId);
                   if (result.success) {
                     toast.success("Test deleted successfully");
+
+                    // Invalidate Tests cache to ensure fresh data on tests list
+                    queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY, refetchType: 'all' });
+
                     router.push("/tests");
                   } else {
                     toast.error("Failed to delete test");

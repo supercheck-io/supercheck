@@ -84,8 +84,8 @@ export async function GET(request: NextRequest) {
         durationMs: runs.durationMs,
         startedAt: runs.startedAt,
         completedAt: runs.completedAt,
-        logs: runs.logs,
-        errorDetails: runs.errorDetails,
+        // logs: runs.logs, // OPTIMIZED: Exclude logs from list view to reduce payload size
+        // errorDetails: runs.errorDetails, // OPTIMIZED: Exclude full error details from list view
         reportUrl: reports.s3Url,
         trigger: runs.trigger,
         location: runs.location,

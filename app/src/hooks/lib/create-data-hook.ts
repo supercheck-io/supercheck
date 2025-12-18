@@ -84,7 +84,7 @@ function buildSearchParams(
 
   Object.entries(options).forEach(([key, value]) => {
     if (value === undefined || value === null) return;
-    if (key === "enabled" || key === "pollingInterval") return; // Skip hook options
+    if (key === "enabled") return; // Skip hook options
 
     // Map pageSize to limit for API compatibility
     if (key === "pageSize") {
@@ -193,8 +193,9 @@ function createDeleteOptimisticHandlers<T extends { id: string }>(
       }
     },
     onSettled: () => {
-      // Always refetch after mutation
-      queryClient.invalidateQueries({ queryKey });
+      // Always refetch after mutation with refetchType: 'all' to ensure data freshness
+      // across all matching queries, even if they are currently inactive.
+      queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
     },
   };
 }
@@ -258,8 +259,9 @@ function createUpdateOptimisticHandlers<T extends { id: string }>(
       }
     },
     onSettled: (_data: unknown, _err: unknown, variables: { id: string }) => {
-      queryClient.invalidateQueries({ queryKey });
-      queryClient.invalidateQueries({ queryKey: [...singleQueryKey, variables.id] });
+      // Use refetchType: 'all' for both list and single item queries to ensure consistency
+      queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: [...singleQueryKey, variables.id], refetchType: 'all' });
     },
   };
 }
@@ -387,7 +389,9 @@ export function createDataHook<
         return response.json();
       },
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey });
+        // Use refetchType: 'all' to force immediate refetch of all matching queries
+        // This ensures new items appear even when navigating to a new page
+        queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
       },
     });
 
@@ -395,7 +399,7 @@ export function createDataHook<
       mutationFn: async (data: UpdateData) => {
         const { id, ...updateData } = data as unknown as { id: string; [key: string]: unknown };
         const response = await fetch(`${endpoint}/${id}`, {
-          method: "PATCH",
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(updateData),
         });

@@ -96,6 +96,10 @@ export function useRuns(options: UseRunsOptions = {}) {
 
 /**
  * Hook to fetch a single run by ID with React Query.
+ * 
+ * @param runId - The ID of the run to fetch. If `null`, the query will be disabled.
+ * @param options - Additional query options.
+ * @param options.enabled - Whether the query should be enabled. Defaults to `true`.
  */
 export function useRun(runId: string | null, options: { enabled?: boolean } = {}) {
   return runsHook.useSingle(runId, options);
