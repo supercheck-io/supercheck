@@ -62,13 +62,11 @@ export interface ListQueryOptions {
   page?: number;
   pageSize?: number;
   enabled?: boolean;
-  pollingInterval?: number;
 }
 
 /** Options for single item queries */
 export interface SingleQueryOptions {
   enabled?: boolean;
-  pollingInterval?: number;
 }
 
 // ============================================================================
@@ -313,7 +311,7 @@ export function createDataHook<
     const projectId = currentProject?.id ?? null;
     const queryClient = useQueryClient();
 
-    const { enabled = true, pollingInterval = 0, ...filters } = options;
+    const { enabled = true, ...filters } = options;
 
     const query = useQuery({
       queryKey: getListQueryKey(projectId, filters),
@@ -322,7 +320,7 @@ export function createDataHook<
       staleTime,
       gcTime,
       refetchOnWindowFocus,
-
+      // No polling - data refreshes on page visit or manual refresh
     });
 
     const invalidate = () =>
@@ -346,7 +344,7 @@ export function createDataHook<
    */
   function useSingle(id: string | null, options: SingleQueryOptions = {}) {
     const queryClient = useQueryClient();
-    const { enabled = true, pollingInterval = 0 } = options;
+    const { enabled = true } = options;
 
     const query = useQuery({
       queryKey: [...singleQueryKey, id],
@@ -354,7 +352,7 @@ export function createDataHook<
       enabled: enabled && !!id,
       staleTime: staleTime / 2, // Single items have shorter stale time
       gcTime,
-      refetchInterval: pollingInterval > 0 ? pollingInterval : undefined,
+      // No polling - data refreshes on page visit or manual refresh
     });
 
     const invalidate = () =>

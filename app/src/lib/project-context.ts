@@ -20,6 +20,19 @@ import {
 import { getUserOrgRole } from "./rbac/middleware";
 import { Role } from "./rbac/permissions";
 import { roleToString } from "./rbac/role-normalizer";
+import { getCachedSession } from "./session-cache";
+
+/**
+ * Get auth session with request-scoped caching.
+ * Eliminates duplicate DB round-trips in Docker production.
+ */
+async function getCachedAuthSession() {
+  return getCachedSession('auth:session', async () => {
+    return auth.api.getSession({
+      headers: await headers(),
+    });
+  });
+}
 
 export interface ProjectContext {
   id: string;
@@ -35,9 +48,8 @@ export interface ProjectContext {
  */
 export async function getCurrentProjectContext(): Promise<ProjectContext | null> {
   try {
-    const sessionData = await auth.api.getSession({
-      headers: await headers(),
-    });
+    // Use cached session to avoid duplicate DB round-trips in Docker
+    const sessionData = await getCachedAuthSession();
 
     if (!sessionData?.session?.token || !sessionData?.user?.id) {
       return null;
@@ -145,9 +157,8 @@ export async function getCurrentProjectContext(): Promise<ProjectContext | null>
  */
 async function setDefaultProjectInSession(): Promise<ProjectContext | null> {
   try {
-    const sessionData = await auth.api.getSession({
-      headers: await headers(),
-    });
+    // Use cached session to avoid duplicate DB round-trips in Docker
+    const sessionData = await getCachedAuthSession();
 
     if (!sessionData?.session?.token || !sessionData?.user?.id) {
       return null;
@@ -309,9 +320,8 @@ export async function switchProject(
   projectId: string
 ): Promise<{ success: boolean; message?: string; project?: ProjectContext }> {
   try {
-    const sessionData = await auth.api.getSession({
-      headers: await headers(),
-    });
+    // Use cached session to avoid duplicate DB round-trips in Docker
+    const sessionData = await getCachedAuthSession();
 
     if (!sessionData?.session?.token || !sessionData?.user?.id) {
       return { success: false, message: "Not authenticated" };

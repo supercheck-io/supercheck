@@ -71,6 +71,72 @@ interface ExecutionsCache {
 let executionsCache: ExecutionsCache | null = null;
 const CACHE_TTL = 5000; // 5 seconds - balance between freshness and performance
 
+/**
+ * Get cached executions data or fetch fresh if cache is stale.
+ * PERFORMANCE: Shared function to prevent duplicate /api/executions/running calls
+ * from multiple components (useExecutions hook, job-context.tsx, etc.)
+ * 
+ * @returns Cached or freshly fetched executions data
+ */
+export async function getExecutionsData(): Promise<{
+  running: ExecutionItem[];
+  queued: ExecutionItem[];
+  runningCapacity: number;
+  queuedCapacity: number;
+} | null> {
+  const now = Date.now();
+  
+  // Return cached data if available and not expired
+  if (executionsCache && (now - executionsCache.timestamp) < CACHE_TTL) {
+    return {
+      running: executionsCache.running,
+      queued: executionsCache.queued,
+      runningCapacity: executionsCache.runningCapacity,
+      queuedCapacity: executionsCache.queuedCapacity,
+    };
+  }
+
+  // Fetch fresh data
+  try {
+    const res = await fetch("/api/executions/running", {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" },
+    });
+
+    if (!res.ok) {
+      console.error("Failed to fetch executions");
+      return null;
+    }
+
+    const data = await res.json();
+    
+    const running: ExecutionItem[] = (data.running || []).map((item: ExecutionItem) => ({
+      ...item,
+      startedAt: item.startedAt ? new Date(item.startedAt) : null,
+    }));
+    const queued: ExecutionItem[] = (data.queued || []).map((item: ExecutionItem) => ({
+      ...item,
+      startedAt: item.startedAt ? new Date(item.startedAt) : null,
+    }));
+    const runningCapacity = typeof data.runningCapacity === 'number' ? data.runningCapacity : 1;
+    const queuedCapacity = typeof data.queuedCapacity === 'number' ? data.queuedCapacity : 10;
+
+    // Update cache
+    executionsCache = {
+      running,
+      queued,
+      runningCapacity,
+      queuedCapacity,
+      timestamp: Date.now(),
+    };
+
+    return { running, queued, runningCapacity, queuedCapacity };
+  } catch (error) {
+    console.error("Error fetching executions:", error);
+    return null;
+  }
+}
+
 // ============================================================================
 // HOOK IMPLEMENTATION
 // ============================================================================

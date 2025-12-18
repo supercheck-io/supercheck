@@ -37,19 +37,12 @@ export async function GET() {
   if (redisHost) {
     try {
       const redisStart = Date.now();
-      // Dynamic import to avoid loading Redis if not needed
-      const Redis = (await import('ioredis')).default;
-      const redis = new Redis({
-        host: redisHost,
-        port: parseInt(process.env.REDIS_PORT || '6379', 10),
-        password: process.env.REDIS_PASSWORD,
-        maxRetriesPerRequest: 1,
-        connectTimeout: 5000,
-        lazyConnect: true,
-      });
-      
+      // Reuse existing Redis connection from queue module to avoid connection leak
+      // Previously created new connection every 30s which caused overhead
+      const { getRedisConnection } = await import('@/lib/queue');
+      const redis = await getRedisConnection();
       await redis.ping();
-      await redis.quit();
+      // Don't quit - reuse the connection pool
       checks.redis = { status: 'ok', latencyMs: Date.now() - redisStart };
     } catch (error) {
       checks.redis = { 

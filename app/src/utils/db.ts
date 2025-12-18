@@ -12,11 +12,12 @@ const connectionString =
   }`;
 
 // Connection pool configuration for Next.js app with schedulers and API routes
+// Docker production: Higher pool size to handle concurrent RSC requests
 // See: https://github.com/porsager/postgres#connection-pool
 const client = postgres(connectionString, {
-  max: parseInt(process.env.DB_POOL_MAX || "10", 10), // Default: 10 connections
-  idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || "30", 10), // Default: 30 seconds
-  connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || "10", 10), // Default: 10 seconds
+  max: parseInt(process.env.DB_POOL_MAX || "30", 10), // Default: 30 connections (increased from 10 for Docker)
+  idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || "20", 10), // Default: 20 seconds (reduced for faster recycling)
+  connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || "5", 10), // Default: 5 seconds (reduced for faster failure)
   max_lifetime: parseInt(process.env.DB_MAX_LIFETIME || "1800", 10), // Default: 30 minutes (in seconds)
 });
 

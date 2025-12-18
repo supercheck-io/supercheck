@@ -38,89 +38,102 @@ export async function GET(request: Request) {
         const hub = getQueueEventHub();
         await hub.ready();
 
+        // Cache for run/job metadata to avoid repeated queries
+        // Key: runId, Value: { projectId, jobId, jobName, jobType, metadata }
+        const runCache = new Map<string, {
+          projectId: string | null;
+          jobId: string | null;
+          jobName: string;
+          jobType: string;
+          metadata: Record<string, unknown> | null;
+          organizationId: string | null;
+        } | null>();
+
         const sendEvent = async (event: NormalizedQueueEvent) => {
           // Only send job and test events (Playwright jobs are in 'test' category)
           if (event.category !== "job" && event.category !== "test") {
             return;
           }
 
-          // Security: Filter events to only include those from the user's project
           try {
-            // First check the run to verify it belongs to this project
-            const run = await db.query.runs.findFirst({
-              where: eq(runs.id, event.queueJobId),
-            });
+            const runId = event.queueJobId;
+            
+            // Check cache first
+            let runData = runCache.get(runId);
+            
+            if (runData === undefined) {
+              // Not in cache - fetch with a single optimized query
+              // This replaces 5 separate queries with 1 JOIN query
+              const result = await db
+                .select({
+                  runId: runs.id,
+                  runProjectId: runs.projectId,
+                  runJobId: runs.jobId,
+                  runMetadata: runs.metadata,
+                  jobName: jobs.name,
+                  jobType: jobs.jobType,
+                  jobProjectId: jobs.projectId,
+                  jobOrgId: jobs.organizationId,
+                })
+                .from(runs)
+                .leftJoin(jobs, eq(runs.jobId, jobs.id))
+                .where(eq(runs.id, runId))
+                .limit(1);
 
-            if (!run) {
-              // Run not found, skip this event
-              return;
-            }
-
-            // Verify the run belongs to the user's project
-            if (run.projectId !== project.id) {
-              // Run belongs to a different project, skip this event
-              return;
-            }
-
-            // For job runs (not playground), verify the job belongs to the project
-            if (run.jobId) {
-              const job = await db.query.jobs.findFirst({
-                where: eq(jobs.id, run.jobId),
-              });
-
-              if (!job || job.projectId !== project.id || job.organizationId !== organizationId) {
-                // Job doesn't exist or belongs to different project/org, skip this event
+              if (result.length === 0) {
+                // Run not found - cache null to avoid repeated lookups
+                runCache.set(runId, null);
                 return;
               }
-            }
-            // Playground runs (jobId is null) are allowed through if they belong to the project
 
-            // Fetch job name or test name
-            let jobName = "Unknown Execution";
-            
-            if (run.jobId) {
-              // It's a job run
-              const job = await db.query.jobs.findFirst({
-                where: eq(jobs.id, run.jobId),
-                columns: { name: true },
-              });
-              if (job?.name) jobName = job.name;
-            } else {
-              // It's a playground run
-              const metadata = (run.metadata as Record<string, unknown>) || {};
-              const testId = metadata.testId as string;
-              const isPlayground = metadata.source === 'playground';
+              const row = result[0];
+              const metadata = (row.runMetadata as Record<string, unknown>) || {};
               
-              jobName = isPlayground ? 'Playground Execution' : 'Ad-hoc Execution';
-              
-              if (testId) {
-                try {
-                  const test = await db.query.tests.findFirst({
-                    where: eq(tests.id, testId),
-                    columns: { title: true },
-                  });
-                  if (test?.title) {
-                    // Show full test name
-                    jobName = test.title;
-                  }
-                } catch {
-                  // Ignore error, keep default name
-                }
+              // Determine job name
+              let jobName = "Unknown Execution";
+              if (row.runJobId && row.jobName) {
+                jobName = row.jobName;
+              } else if (metadata.source === 'playground') {
+                jobName = 'Playground Execution';
+              } else if (metadata.testId) {
+                // For playground runs with testId, we could fetch test name
+                // but keeping it simple - use a generic name to avoid extra query
+                jobName = 'Test Execution';
               }
+
+              // Determine job type
+              let jobType = "playwright";
+              if (row.runJobId && row.jobType) {
+                jobType = row.jobType;
+              } else if (metadata.testType === 'performance') {
+                jobType = 'k6';
+              }
+
+              runData = {
+                projectId: row.runProjectId,
+                jobId: row.runJobId,
+                jobName,
+                jobType,
+                metadata,
+                organizationId: row.jobOrgId,
+              };
+              
+              runCache.set(runId, runData);
             }
 
-            // Determine job type
-            let jobType = "playwright"; // Default
-            if (run.jobId) {
-               const job = await db.query.jobs.findFirst({
-                where: eq(jobs.id, run.jobId),
-                columns: { jobType: true },
-              });
-              if (job?.jobType) jobType = job.jobType;
-            } else {
-               const metadata = (run.metadata as Record<string, unknown>) || {};
-               const testType = metadata.testType as string;
-               if (testType === 'performance') jobType = 'k6';
+            // If cached as null (not found), skip
+            if (runData === null) {
+              return;
+            }
+
+            // Security: Verify run belongs to user's project
+            if (runData.projectId !== project.id) {
+              return;
+            }
+
+            // For job runs, verify org membership
+            if (runData.jobId && runData.organizationId !== organizationId) {
+              return;
             }
 
             // Event is authorized, send it
@@ -130,13 +143,13 @@ export async function GET(request: Request) {
               status: event.status,
               runId: event.queueJobId,
               jobId: event.entityId ?? event.queueJobId,
-              jobName, // Add job name to payload
-              jobType, // Add job type to payload
+              jobName: runData.jobName,
+              jobType: runData.jobType,
               trigger: event.trigger,
               timestamp: event.timestamp,
               returnValue: event.returnValue,
               failedReason: event.failedReason,
-              hasJobId: !!run.jobId, // Add flag to distinguish job runs from playground runs
+              hasJobId: !!runData.jobId,
             };
 
             controller.enqueue(

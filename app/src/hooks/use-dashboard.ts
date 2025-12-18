@@ -358,14 +358,11 @@ export function useDashboard() {
     queryKey: getDashboardQueryKey(projectId),
     queryFn: fetchDashboard,
     enabled: !!projectId, // Only fetch when we have a project
-    // Cache Strategy:
-    // - staleTime: 30s - Dashboard data refreshes frequently but doesn't need to be real-time
-    // - gcTime: 5min - Keep in memory for navigation back to dashboard
-    // - refetchInterval: 60s - Auto-refresh for live updates
-    staleTime: 30 * 1000,
-    gcTime: 5 * 60 * 1000,
-    refetchInterval: 60 * 1000,
-    refetchOnWindowFocus: true,
+    // PERFORMANCE: No polling - data refreshes on page visit or manual refresh
+    // Dashboard makes 25+ DB queries per request - polling is too expensive
+    staleTime: 60 * 1000,  // 60 seconds
+    gcTime: 10 * 60 * 1000,    // 10 minutes - keep in memory
+    refetchOnWindowFocus: false,
     retry: 2,
   });
 

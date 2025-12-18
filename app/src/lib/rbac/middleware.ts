@@ -25,6 +25,20 @@ import {
 import { normalizeRole } from "./role-normalizer";
 import { isSuperAdmin } from "./super-admin";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { getCachedSession } from "@/lib/session-cache";
+
+/**
+ * Get auth session with request-scoped caching.
+ * PERFORMANCE: Eliminates duplicate DB round-trips per request in Docker.
+ * This is critical for production performance.
+ */
+async function getCachedAuthSession() {
+  return getCachedSession('auth:session', async () => {
+    return auth.api.getSession({
+      headers: await headers(),
+    });
+  });
+}
 
 // ============================================================================
 // PERMISSION CHECKING - Core Functions
@@ -80,9 +94,8 @@ export async function hasPermission(
   context?: Partial<PermissionContext>
 ): Promise<boolean> {
   try {
-    const authSession = await auth.api.getSession({
-      headers: await headers(),
-    });
+    // Use cached session to avoid duplicate DB round-trips in Docker
+    const authSession = await getCachedAuthSession();
 
     if (!authSession) {
       return false;
@@ -624,9 +637,8 @@ export async function requireAuth(): Promise<{
   userId: string;
   user: SessionUser;
 }> {
-  const authSession = await auth.api.getSession({
-    headers: await headers(),
-  });
+  // Use cached session to avoid duplicate DB round-trips in Docker
+  const authSession = await getCachedAuthSession();
 
   if (!authSession) {
     throw new Error("Authentication required");
@@ -652,9 +664,8 @@ export async function requireSuperAdmin(): Promise<{
   error?: string;
 }> {
   try {
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
+    // Use cached session to avoid duplicate DB round-trips in Docker
+    const session = await getCachedAuthSession();
 
     if (!session) {
       return { userId: "", error: "Authentication required" };
