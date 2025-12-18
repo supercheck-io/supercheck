@@ -106,6 +106,8 @@ export function DataTableRowActions<TData>({
         duration: 5000, // Add auto-dismiss after 5 seconds
       });
 
+      // Cancel any in-flight queries to prevent stale responses from overwriting the cache
+      await queryClient.cancelQueries({ queryKey: TESTS_QUERY_KEY });
       // Invalidate Tests cache to ensure fresh data on tests list
       queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY, refetchType: 'all' });
 

@@ -326,7 +326,7 @@ export function createDataHook<
     });
 
     const invalidate = () =>
-      queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
 
     return {
       data: query.data,
@@ -358,7 +358,7 @@ export function createDataHook<
     });
 
     const invalidate = () =>
-      queryClient.invalidateQueries({ queryKey: [...singleQueryKey, id] });
+      queryClient.invalidateQueries({ queryKey: [...singleQueryKey, id], refetchType: 'all' });
 
     return {
       data: query.data,

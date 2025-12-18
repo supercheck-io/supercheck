@@ -151,7 +151,7 @@ export function PlaywrightAnalyticsTab({
             setLoading(true);
             const params = new URLSearchParams();
             params.set("period", period.toString());
-            if (selectedJob !== "all") {
+            if (selectedJob !== "all" && selectedJob !== "") {
                 params.set("jobId", selectedJob);
             }
 
@@ -229,12 +229,12 @@ export function PlaywrightAnalyticsTab({
     if (!data || data.runs.length === 0) {
         return (
             <DashboardEmptyState
-                title="No Playwright Data"
-                description="Create a Playwright test first, then run the job to compare results or see the analytics."
-                icon={<PlaywrightLogo className="h-12 w-12" />}
+                title="No Playwright Analytics Available"
+                description="Analytics require completed job runs. Run a Playwright job to start tracking test results and trends."
+                icon={<PlaywrightLogo width={64} height={64} />}
                 action={
                     <Button asChild>
-                        <Link href="/tests/create">Create Test</Link>
+                        <Link href="/jobs">View Jobs</Link>
                     </Button>
                 }
             />

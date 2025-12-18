@@ -310,7 +310,7 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
           }
 
           // Invalidate React Query cache to refresh runs data
-          queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY });
+          queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY, refetchType: 'all' });
         }
       }
     },
@@ -567,7 +567,7 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
       );
 
       // Invalidate React Query cache to refresh runs data
-      queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY, refetchType: 'all' });
     },
     [queryClient, setJobStatus]
   );

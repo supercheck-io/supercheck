@@ -353,7 +353,8 @@ export async function initializeJobSchedulers() {
 
       // Acquire distributed lock to prevent multiple instances from initializing simultaneously
       // This is critical in clustered deployments where multiple Next.js instances start together
-      const lockAcquired = await redisClient.set(LOCK_KEY, process.pid.toString(), 'EX', LOCK_TTL_SECONDS, 'NX');
+      const lockResult = await redisClient.set(LOCK_KEY, process.pid.toString(), 'EX', LOCK_TTL_SECONDS, 'NX');
+      const lockAcquired = !!lockResult;
       
       if (!lockAcquired) {
         console.log('[JobScheduler] Another instance is initializing schedulers, skipping...');
@@ -362,90 +363,104 @@ export async function initializeJobSchedulers() {
       
       console.log('[JobScheduler] Lock acquired, initializing schedulers...');
 
-      const jobsWithSchedules = await db
-        .select()
-        .from(jobs)
-        .where(isNotNull(jobs.cronSchedule));
+      // Use try-finally to ensure lock is always released
+      try {
+        const jobsWithSchedules = await db
+          .select()
+          .from(jobs)
+          .where(isNotNull(jobs.cronSchedule));
 
-      if (jobsWithSchedules.length === 0) {
-        // Release lock early if no jobs to schedule
-        await redisClient.del(LOCK_KEY);
-        return { success: true, initialized: 0, failed: 0 };
-      }
+        if (jobsWithSchedules.length === 0) {
+          return { success: true, initialized: 0, failed: 0 };
+        }
 
-      let initializedCount = 0;
-      let failedCount = 0;
-      
-      // OPTIMIZED: Collect updates and batch them at the end
-      const schedulerUpdates: { id: string; scheduledJobId: string; nextRunAt: Date | null }[] = [];
+        let initializedCount = 0;
+        let failedCount = 0;
+        
+        // OPTIMIZED: Collect updates and batch them at the end
+        const schedulerUpdates: { id: string; scheduledJobId: string; nextRunAt: Date | null }[] = [];
 
-      for (const job of jobsWithSchedules) {
-        if (!job.cronSchedule) continue;
+        for (const job of jobsWithSchedules) {
+          if (!job.cronSchedule) continue;
 
-        try {
-          const schedulerId = await scheduleJob({
-            name: job.name,
-            cron: job.cronSchedule,
-            jobId: job.id,
-            retryLimit: 3,
-          });
+          try {
+            const schedulerId = await scheduleJob({
+              name: job.name,
+              cron: job.cronSchedule,
+              jobId: job.id,
+              retryLimit: 3,
+            });
 
-          // Collect updates instead of executing immediately
-          if (!job.scheduledJobId || job.scheduledJobId !== schedulerId) {
-            let nextRunAt = null;
+            // Collect updates instead of executing immediately
+            if (!job.scheduledJobId || job.scheduledJobId !== schedulerId) {
+              let nextRunAt = null;
 
-            try {
-              if (job.cronSchedule) {
-                nextRunAt = getNextRunDate(job.cronSchedule);
+              try {
+                if (job.cronSchedule) {
+                  nextRunAt = getNextRunDate(job.cronSchedule);
+                }
+              } catch (error) {
+                console.error(`Failed to calculate next run date: ${error}`);
               }
-            } catch (error) {
-              console.error(`Failed to calculate next run date: ${error}`);
+
+              schedulerUpdates.push({
+                id: job.id,
+                scheduledJobId: schedulerId,
+                nextRunAt,
+              });
             }
 
-            schedulerUpdates.push({
-              id: job.id,
-              scheduledJobId: schedulerId,
-              nextRunAt,
-            });
+            initializedCount++;
+          } catch (error) {
+            console.error(
+              `Failed to initialize scheduler for job ${job.id}:`,
+              error
+            );
+            failedCount++;
           }
+        }
+        
+        // OPTIMIZED: Batch execute all updates in chunks to prevent connection pool exhaustion
+        if (schedulerUpdates.length > 0) {
+          console.log(`[JobScheduler] Batching ${schedulerUpdates.length} scheduler updates...`);
+          
+          // Chunk the concurrent updates to avoid overwhelming the connection pool
+          const CHUNK_SIZE = 10;
+          for (let i = 0; i < schedulerUpdates.length; i += CHUNK_SIZE) {
+            const chunk = schedulerUpdates.slice(i, i + CHUNK_SIZE);
+            
+            await Promise.all(
+              chunk.map(update =>
+                db
+                  .update(jobs)
+                  .set({
+                    scheduledJobId: update.scheduledJobId,
+                    nextRunAt: update.nextRunAt,
+                  })
+                  .where(eq(jobs.id, update.id))
+              )
+            );
+          }
+          console.log(`[JobScheduler] Completed ${schedulerUpdates.length} scheduler updates`);
+        }
 
-          initializedCount++;
-        } catch (error) {
-          console.error(
-            `Failed to initialize scheduler for job ${job.id}:`,
-            error
-          );
-          failedCount++;
+        // Consider initialization successful if at least some jobs were scheduled
+        // or if there were no jobs to schedule
+        const success = initializedCount > 0 || (initializedCount === 0 && failedCount === 0);
+        return {
+          success,
+          initialized: initializedCount,
+          failed: failedCount,
+        };
+      } finally {
+        // Always release the lock after we're done (success or error)
+        try {
+          await redisClient.del(LOCK_KEY);
+          console.log('[JobScheduler] Lock released');
+        } catch (unlockError) {
+          console.error('[JobScheduler] Failed to release lock:', unlockError);
         }
       }
-      
-      // OPTIMIZED: Batch execute all updates in a single operation
-      if (schedulerUpdates.length > 0) {
-        console.log(`[JobScheduler] Batching ${schedulerUpdates.length} scheduler updates...`);
-        // Use Promise.all for parallel updates (within same connection pool)  
-        // This is still more efficient than sequential updates in the loop
-        await Promise.all(
-          schedulerUpdates.map(update =>
-            db
-              .update(jobs)
-              .set({
-                scheduledJobId: update.scheduledJobId,
-                nextRunAt: update.nextRunAt,
-              })
-              .where(eq(jobs.id, update.id))
-          )
-        );
-        console.log(`[JobScheduler] Completed ${schedulerUpdates.length} scheduler updates`);
-      }
-
-      // Consider initialization successful if at least some jobs were scheduled
-      // or if there were no jobs to schedule
-      const success = initializedCount > 0 || (initializedCount === 0 && failedCount === 0);
-      return {
-        success,
-        initialized: initializedCount,
-        failed: failedCount,
-      };
     } catch (error) {
       console.error(`Failed to initialize job schedulers (attempt ${attempt}/${maxRetries}):`, error);
 

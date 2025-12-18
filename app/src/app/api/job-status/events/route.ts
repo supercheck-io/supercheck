@@ -58,6 +58,12 @@ export async function GET(request: Request) {
           try {
             const runId = event.queueJobId;
             
+            // OPTIMIZED: Prevent unbounded cache growth
+            // Clear cache if it gets too large (simple LRU-like strategy)
+            if (runCache.size > 1000) {
+              runCache.clear();
+            }
+
             // Check cache first
             let runData = runCache.get(runId);
             

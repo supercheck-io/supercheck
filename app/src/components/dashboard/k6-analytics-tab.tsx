@@ -397,12 +397,12 @@ export function K6AnalyticsTab({
     if (!data || data.runs.length === 0) {
         return (
             <DashboardEmptyState
-                title="No K6 Data"
-                description="Create a K6 test first, then run the job to compare results or see the analytics."
-                icon={<K6Logo className="h-12 w-12" />}
+                title="No K6 Analytics Available"
+                description="Analytics require completed job runs. Run a K6 job to start tracking performance metrics and trends."
+                icon={<K6Logo size={64} />}
                 action={
                     <Button asChild>
-                        <Link href="/tests/create">Create Test</Link>
+                        <Link href="/jobs">View Jobs</Link>
                     </Button>
                 }
             />
@@ -512,7 +512,7 @@ export function K6AnalyticsTab({
             </div>
 
             {/* Response Time Trend Chart */}
-            {data.chartData.length > 1 && (
+            {data.chartData.length >= 1 && (
                 <Card className="relative overflow-hidden">
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-base font-semibold">
@@ -564,7 +564,7 @@ export function K6AnalyticsTab({
             )}
 
             {/* Request Rate Trend Chart */}
-            {data.chartData.length > 1 && data.chartData.some(d => d.requestRate !== null) && (
+            {data.chartData.length >= 1 && data.chartData.some(d => d.requestRate !== null) && (
                 <Card className="relative overflow-hidden">
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-base font-semibold">

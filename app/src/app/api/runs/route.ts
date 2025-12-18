@@ -55,9 +55,13 @@ export async function GET(request: NextRequest) {
     if (status) {
       // Validate status is a valid TestRunStatus
       const validStatuses: TestRunStatus[] = ["running", "passed", "failed", "error"];
-      if (validStatuses.includes(status as TestRunStatus)) {
-        filters.push(eq(runs.status, status as TestRunStatus));
+      if (!validStatuses.includes(status as TestRunStatus)) {
+        return NextResponse.json(
+          { error: `Invalid status filter. Valid values are: ${validStatuses.join(', ')}` },
+          { status: 400 }
+        );
       }
+      filters.push(eq(runs.status, status as TestRunStatus));
     }
 
     const whereCondition = and(...filters);

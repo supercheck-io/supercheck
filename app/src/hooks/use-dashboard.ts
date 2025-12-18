@@ -371,7 +371,7 @@ export function useDashboard() {
 
   // Function to invalidate cache (e.g., after data mutation)
   const invalidate = () => 
-    queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY });
+    queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
 
   return {
     data: query.data,

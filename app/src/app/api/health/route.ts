@@ -41,6 +41,11 @@ export async function GET() {
       // Previously created new connection every 30s which caused overhead
       const { getRedisConnection } = await import('@/lib/queue');
       const redis = await getRedisConnection();
+      
+      if (!redis) {
+        throw new Error('Redis connection is not initialized');
+      }
+
       await redis.ping();
       // Don't quit - reuse the connection pool
       checks.redis = { status: 'ok', latencyMs: Date.now() - redisStart };

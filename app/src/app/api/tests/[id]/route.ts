@@ -170,5 +170,9 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   // PATCH is essentially the same as our PUT implementation which handles partials
+  // NOTE: In this API, PUT is implemented as a partial update (it only updates fields
+  // that are provided in the request body). PATCH intentionally delegates to PUT so both
+  // methods share the same partial-update semantics. This is a deliberate deviation from
+  // strict REST conventions to simplify the implementation while supporting flexible updates.
   return PUT(request, context);
 }

@@ -344,8 +344,19 @@ export async function POST(request: NextRequest) {
     const targetProjectId = project.id;
 
     // SECURITY: Validate subscription before allowing job creation
-    await subscriptionService.blockUntilSubscribed(organizationId);
-    await subscriptionService.requireValidPolarCustomer(organizationId);
+    try {
+      await subscriptionService.blockUntilSubscribed(organizationId);
+      await subscriptionService.requireValidPolarCustomer(organizationId);
+    } catch (subscriptionError) {
+      console.error("Subscription validation failed:", subscriptionError);
+      const errorMessage = subscriptionError instanceof Error 
+        ? subscriptionError.message 
+        : "Subscription validation failed";
+      return NextResponse.json(
+        { success: false, error: errorMessage },
+        { status: 402 } // Payment Required
+      );
+    }
 
     // Build permission context and check access
     // Check permission to create jobs
@@ -666,12 +677,24 @@ async function runJob(request: Request) {
         { status: 400 }
       );
     }
-    await subscriptionService.blockUntilSubscribed(
-      jobDetails[0].organizationId
-    );
-    await subscriptionService.requireValidPolarCustomer(
-      jobDetails[0].organizationId
-    );
+    
+    try {
+      await subscriptionService.blockUntilSubscribed(
+        jobDetails[0].organizationId
+      );
+      await subscriptionService.requireValidPolarCustomer(
+        jobDetails[0].organizationId
+      );
+    } catch (subscriptionError) {
+      console.error("Subscription validation failed for job run:", subscriptionError);
+      const errorMessage = subscriptionError instanceof Error 
+        ? subscriptionError.message 
+        : "Subscription validation failed";
+      return NextResponse.json(
+        { success: false, error: errorMessage },
+        { status: 402 } // Payment Required
+      );
+    }
 
     // Create a new test run record in the database
     const runId = crypto.randomUUID();
@@ -705,17 +728,25 @@ async function runJob(request: Request) {
     // SECURITY: Added explicit organizationId filter for defense-in-depth
     let fetchedScripts: Map<string, { title: string; script: string | null }> = new Map();
     if (testIdsMissingScripts.length > 0) {
-      const scriptsFromDb = await db
-        .select({
-          id: testsTable.id,
-          title: testsTable.title,
-          script: testsTable.script,
-        })
-        .from(testsTable)
-        .where(and(
-          inArray(testsTable.id, testIdsMissingScripts),
-          eq(testsTable.organizationId, jobDetails[0].organizationId!)
-        ));
+      const scriptsFromDb: { id: string; title: string; script: string | null }[] = [];
+      const CHUNK_SIZE = 500; // Chunk to avoid parameter limit issues (Postgres limit is ~65k params)
+      
+      for (let i = 0; i < testIdsMissingScripts.length; i += CHUNK_SIZE) {
+        const chunk = testIdsMissingScripts.slice(i, i + CHUNK_SIZE);
+        const chunkRows = await db
+          .select({
+            id: testsTable.id,
+            title: testsTable.title,
+            script: testsTable.script,
+          })
+          .from(testsTable)
+          .where(and(
+            inArray(testsTable.id, chunk),
+            eq(testsTable.organizationId, jobDetails[0].organizationId!)
+          ));
+        
+        scriptsFromDb.push(...chunkRows);
+      }
       
       fetchedScripts = new Map(scriptsFromDb.map(s => [s.id, { title: s.title, script: s.script }]));
     }

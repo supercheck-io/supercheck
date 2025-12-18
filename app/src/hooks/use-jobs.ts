@@ -159,7 +159,7 @@ export function useJobMutations() {
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY, refetchType: 'all' });
     },
   });
 

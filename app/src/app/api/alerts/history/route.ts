@@ -7,8 +7,6 @@ import { requireProjectContext } from '@/lib/project-context';
 
 export async function GET() {
   try {
-    console.log('Alert history API called');
-    
     let userId: string, project: { id: string; name: string; organizationId: string }, organizationId: string;
     
     try {
@@ -16,7 +14,6 @@ export async function GET() {
       userId = context.userId;
       project = context.project;
       organizationId = context.organizationId;
-      console.log('Project context:', { userId, projectId: project.id, organizationId });
     } catch (contextError) {
       console.error('Project context error:', contextError);
       // Return empty array if no project context available or authentication failed
@@ -25,9 +22,7 @@ export async function GET() {
     
     // Build permission context and check access
     try {
-      console.log('Building permission context with:', { userId, organizationId, projectId: project.id });
       const canView = await hasPermission('monitor', 'view', { organizationId, projectId: project.id });
-      console.log('Permission check result:', canView);
       
       if (!canView) {
         return NextResponse.json([]);
@@ -39,7 +34,6 @@ export async function GET() {
     }
     
     const dbInstance = db;
-    console.log('Database instance created, starting queries...');
     
     try {
       // OPTIMIZED: Use UNION ALL to fetch both job and monitor alerts in a single query
@@ -115,7 +109,6 @@ export async function GET() {
       `);
 
       const history = historyResult as unknown as AlertHistoryRow[];
-      console.log('Alert history query completed, count:', history.length);
 
       // Transform the data to match the expected format
       const transformedHistory = history.map((item: AlertHistoryRow) => ({
@@ -137,7 +130,6 @@ export async function GET() {
         },
       }));
 
-      console.log('Transformation completed, returning data');
       return NextResponse.json(transformedHistory);
     } catch (dbError) {
       console.error('Database query error:', dbError);
@@ -251,4 +243,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}

@@ -159,6 +159,7 @@ export function useMonitorStats(monitorId: string, location: string = "all") {
   const invalidate = () =>
     queryClient.invalidateQueries({
       queryKey: [...MONITOR_STATS_KEY, monitorId],
+      refetchType: 'all',
     });
 
   return {
@@ -212,6 +213,7 @@ export function useMonitorResults(
   const invalidate = () =>
     queryClient.invalidateQueries({
       queryKey: [...MONITOR_RESULTS_KEY, monitorId],
+      refetchType: 'all',
     });
 
   return {
