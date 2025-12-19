@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 /**
  * ServiceWorkerRegistration - Registers service worker for static asset caching
@@ -12,6 +12,9 @@ import { useEffect } from "react";
  * This component should be placed in the root layout to register early.
  */
 export function ServiceWorkerRegistration() {
+    // Store interval ID for cleanup to prevent memory leaks
+    const updateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
     useEffect(() => {
         // Only register in production and if service workers are supported
         if (
@@ -19,8 +22,7 @@ export function ServiceWorkerRegistration() {
             "serviceWorker" in navigator &&
             process.env.NODE_ENV === "production"
         ) {
-            // Register after page load to not compete with critical resources
-            window.addEventListener("load", () => {
+            const handleLoad = () => {
                 navigator.serviceWorker
                     .register("/supercheck-sw.js")
                     .then((registration) => {
@@ -30,14 +32,27 @@ export function ServiceWorkerRegistration() {
                         );
 
                         // Check for updates periodically (every hour)
-                        setInterval(() => {
+                        // Store interval ID for cleanup
+                        updateIntervalRef.current = setInterval(() => {
                             registration.update();
                         }, 60 * 60 * 1000);
                     })
                     .catch((error) => {
                         console.debug("[ServiceWorker] Registration failed:", error);
                     });
-            });
+            };
+
+            // Register after page load to not compete with critical resources
+            window.addEventListener("load", handleLoad);
+
+            // Cleanup function
+            return () => {
+                window.removeEventListener("load", handleLoad);
+                if (updateIntervalRef.current) {
+                    clearInterval(updateIntervalRef.current);
+                    updateIntervalRef.current = null;
+                }
+            };
         }
     }, []);
 

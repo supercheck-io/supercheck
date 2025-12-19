@@ -82,36 +82,46 @@ export function DataPrefetcher() {
     if (prefetchedProjectIdRef.current === projectId) return;
     prefetchedProjectIdRef.current = projectId;
 
-    const prefetchPhase2 = async () => {
-      // Small delay to not compete with initial page render
-      await new Promise(resolve => setTimeout(resolve, 500));
+    /**
+     * Helper to safely fetch JSON with proper error handling
+     * Returns empty object on failure to prevent React Query errors
+     */
+    const safeFetch = async (url: string) => {
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.debug(`[DataPrefetcher] Prefetch failed for ${url}: ${response.status}`);
+        return {};
+      }
+      return response.json();
+    };
 
+    const prefetchPhase2 = async () => {
       const entityPrefetches = [
         // Tests list - warm cache for Tests page
         queryClient.prefetchQuery({
           queryKey: [...TESTS_QUERY_KEY, projectId, {}],
-          queryFn: () => fetch("/api/tests").then(r => r.json()),
+          queryFn: () => safeFetch("/api/tests"),
           staleTime: 60 * 1000,
         }),
 
         // Jobs list - warm cache for Jobs page
         queryClient.prefetchQuery({
           queryKey: [...JOBS_QUERY_KEY, projectId, {}],
-          queryFn: () => fetch("/api/jobs").then(r => r.json()),
+          queryFn: () => safeFetch("/api/jobs"),
           staleTime: 60 * 1000,
         }),
 
         // Monitors list - warm cache for Monitors page
         queryClient.prefetchQuery({
           queryKey: [...MONITORS_QUERY_KEY, projectId, {}],
-          queryFn: () => fetch("/api/monitors").then(r => r.json()),
+          queryFn: () => safeFetch("/api/monitors"),
           staleTime: 30 * 1000,
         }),
 
         // Variables - warm cache for Variables page
         queryClient.prefetchQuery({
           queryKey: ["variables", projectId],
-          queryFn: () => fetch(`/api/projects/${projectId}/variables`).then(r => r.json()),
+          queryFn: () => safeFetch(`/api/projects/${projectId}/variables`),
           staleTime: 60 * 1000,
         }),
 
@@ -127,7 +137,22 @@ export function DataPrefetcher() {
       await Promise.allSettled(entityPrefetches);
     };
 
-    prefetchPhase2();
+    /**
+     * Use requestIdleCallback to run prefetch during browser idle time.
+     * This ensures prefetching doesn't compete with critical page rendering.
+     * Falls back to setTimeout for browsers without requestIdleCallback support.
+     */
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      const idleCallbackId = window.requestIdleCallback(
+        () => prefetchPhase2(),
+        { timeout: 3000 } // Run within 3 seconds even if browser is busy
+      );
+      return () => window.cancelIdleCallback(idleCallbackId);
+    } else {
+      // Fallback: 500ms delay for browsers without requestIdleCallback
+      const timerId = setTimeout(() => prefetchPhase2(), 500);
+      return () => clearTimeout(timerId);
+    }
   }, [queryClient, projectId]);
 
   // This component doesn't render anything - it's just for side effects

@@ -148,9 +148,9 @@ const NO_CACHE_PATTERNS = [
   /\/reset-password/i,
   /better-auth/i,
   
-  // Billing & payments
-  /\/billing/i,
-  /stripe/i,
+  // Billing & payments (path segment match to avoid matching asset names)
+  /\/billing(?:\/|$)/i,  // Matches /billing or /billing/... but not /assets/billing-icon.png
+  /stripe\.com/i,        // Only match Stripe domain, not arbitrary paths with "stripe"
   
   // Development & HMR
   /\/_next\/webpack-hmr/i,
@@ -168,10 +168,10 @@ const NO_CACHE_PATTERNS = [
   // Server-side data fetching
   /\/_next\/data\//i,
   
-  // Server-sent events
-  /\/events/i,
-  /\/stream/i,
-  /\/sse/i,
+  // Server-sent events (path segment match to avoid matching page names)
+  /\/api\/events/i,      // API event endpoints
+  /\/api\/stream/i,      // API streaming endpoints
+  /\/api\/sse/i,         // Server-sent events API
 ];
 
 // ============================================================================
