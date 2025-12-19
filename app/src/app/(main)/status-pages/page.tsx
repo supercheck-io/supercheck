@@ -19,7 +19,6 @@ export default async function StatusPagesPage() {
       <PageBreadcrumbs items={breadcrumbs} />
       <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
         <CardContent>
-          {/* @ts-ignore - DB types mismatch with component types slightly but compatible at runtime */}
           <StatusPagesList initialStatusPages={statusPages} />
         </CardContent>
       </Card>

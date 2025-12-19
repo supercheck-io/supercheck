@@ -50,7 +50,6 @@ import {
 import { toast } from "sonner";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { getStatusPages } from "@/actions/get-status-pages";
 import { deleteStatusPage } from "@/actions/delete-status-page";
 import { CreateStatusPageForm } from "./create-status-page-form";
 import { useProjectContext } from "@/hooks/use-project-context";
@@ -61,8 +60,12 @@ import {
 } from "@/lib/rbac/client-permissions";
 import { getStatusPageUrl, getBaseDomain } from "@/lib/domain-utils";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 
+/**
+ * Status page type for display purposes.
+ * Uses Pick-style subset of the full DB schema fields that the component actually needs.
+ * This is intentionally loose to accept both full DB types and partial form results.
+ */
 type StatusPage = {
   id: string;
   name: string;
@@ -72,6 +75,7 @@ type StatusPage = {
   headline: string | null;
   createdAt: Date | null;
   updatedAt: Date | null;
+  [key: string]: unknown; // Allow extra fields from DB
 };
 
 export default function StatusPagesList({ initialStatusPages = [] }: { initialStatusPages?: StatusPage[] }) {
@@ -101,18 +105,6 @@ export default function StatusPagesList({ initialStatusPages = [] }: { initialSt
       setIsCreateDialogOpen(true);
     }
   }, [searchParams, canCreate]);
-
-  // Function to refresh list after operations (still useful for optimistic updates or re-fetch)
-  const refreshStatusPages = async () => {
-    try {
-      const result = await getStatusPages();
-      if (result.success) {
-        setStatusPages(result.statusPages as StatusPage[]);
-      }
-    } catch (error) {
-      console.error("Error refreshing status pages:", error);
-    }
-  };
 
   const handleCreateSuccess = (newPage: StatusPage) => {
     setStatusPages((prev) => [newPage, ...prev]);
