@@ -14,7 +14,7 @@ import { useAppConfig } from "./use-app-config";
  * This prevents redundant API calls across components.
  */
 export function useAuthProviders() {
-  const { config, isLoading, isFetched, error, isGithubEnabled, isGoogleEnabled } = useAppConfig();
+  const { config, isFetched, error, isGithubEnabled, isGoogleEnabled } = useAppConfig();
 
   return {
     providers: config?.authProviders ?? {

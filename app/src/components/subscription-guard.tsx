@@ -60,7 +60,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   // PERFORMANCE: useAppConfig now has initialData (self-hosted=true)
   // This means isSelfHosted starts as true, allowing immediate render
   // When real config loads, if cloud mode, subscription check triggers
-  const { isSelfHosted, isLoading: isConfigLoading, isFetched: isConfigFetched } = useAppConfig();
+  const { isSelfHosted, isFetched: isConfigFetched } = useAppConfig();
 
   // Check if current route is allowed without subscription
   const isAllowedRoute = ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION.some(
@@ -148,7 +148,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
 
   // Subscription check completed but not active - show loading while redirect happens
   // This prevents briefly exposing protected content
-  if (isFetched && !subscriptionStatus?.isActive) {
+  if (!subscriptionStatus?.isActive) {
     return (
       <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
         <SuperCheckLoading size="lg" message="Checking subscription..." />
