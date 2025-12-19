@@ -132,6 +132,21 @@ export function DataPrefetcher() {
           queryFn: () => getStatusPages(),
           staleTime: 60 * 1000,
         }),
+
+        // Notification Providers - warm cache for Monitor/Job create forms
+        // This makes the Alert Settings step load instantly
+        queryClient.prefetchQuery({
+          queryKey: ["notification-providers", projectId],
+          queryFn: () => safeFetch("/api/notification-providers"),
+          staleTime: 60 * 1000,
+        }),
+
+        // Tags - warm cache for Test creation and tagging
+        queryClient.prefetchQuery({
+          queryKey: ["tags", projectId],
+          queryFn: () => safeFetch("/api/tags"),
+          staleTime: 60 * 1000,
+        }),
       ];
 
       await Promise.allSettled(entityPrefetches);

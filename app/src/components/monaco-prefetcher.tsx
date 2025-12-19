@@ -60,13 +60,19 @@ function scheduleIdleTask(
 
 /**
  * Preload Monaco editor library
- * Uses dynamic import to trigger bundler to load the chunk
+ * Uses loader.init() which:
+ * 1. Loads Monaco from CDN
+ * 2. Loads Monaco CSS (prevents unstyled flash)
+ * 3. Caches the monaco instance for instant access
  */
 async function preloadMonacoLibrary(): Promise<void> {
     try {
-        // Dynamically import the Monaco React wrapper
-        // This triggers webpack to load the Monaco chunk
-        await import("@monaco-editor/react");
+        // Import the loader (small ~2KB)
+        const { loader } = await import("@monaco-editor/react");
+
+        // Initialize Monaco - this loads the full Monaco library + CSS
+        // Once initialized, subsequent Editor components mount instantly
+        await loader.init();
     } catch (error) {
         // Silently fail - preload is best-effort
         console.debug("[MonacoPrefetcher] Monaco library preload failed:", error);

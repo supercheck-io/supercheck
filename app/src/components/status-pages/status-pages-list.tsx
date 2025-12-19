@@ -61,6 +61,7 @@ import {
 } from "@/lib/rbac/client-permissions";
 import { getStatusPageUrl, getBaseDomain } from "@/lib/domain-utils";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 
 type StatusPage = {
   id: string;
@@ -73,9 +74,9 @@ type StatusPage = {
   updatedAt: Date | null;
 };
 
-export default function StatusPagesList() {
-  const [statusPages, setStatusPages] = useState<StatusPage[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function StatusPagesList({ initialStatusPages = [] }: { initialStatusPages?: StatusPage[] }) {
+  const [statusPages, setStatusPages] = useState<StatusPage[]>(initialStatusPages);
+  // No loading state needed - data is passed from server component
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingPage, setDeletingPage] = useState<StatusPage | null>(null);
@@ -87,9 +88,12 @@ export default function StatusPagesList() {
   const canCreate = canCreateStatusPages(normalizedRole);
   const canDelete = canDeleteStatusPages(normalizedRole);
 
+  // Sync initialData if it changes (though usually handled by key/remount)
   useEffect(() => {
-    loadStatusPages();
-  }, []);
+    if (initialStatusPages) {
+      setStatusPages(initialStatusPages);
+    }
+  }, [initialStatusPages]);
 
   useEffect(() => {
     const create = searchParams.get("create");
@@ -98,26 +102,15 @@ export default function StatusPagesList() {
     }
   }, [searchParams, canCreate]);
 
-  const loadStatusPages = async () => {
+  // Function to refresh list after operations (still useful for optimistic updates or re-fetch)
+  const refreshStatusPages = async () => {
     try {
-      setLoading(true);
       const result = await getStatusPages();
-
       if (result.success) {
         setStatusPages(result.statusPages as StatusPage[]);
-      } else {
-        console.error("Failed to fetch status pages:", result.message);
-        toast.error("Failed to load status pages", {
-          description: result.message,
-        });
       }
     } catch (error) {
-      console.error("Error loading status pages:", error);
-      toast.error("Failed to load status pages", {
-        description: "An unexpected error occurred",
-      });
-    } finally {
-      setLoading(false);
+      console.error("Error refreshing status pages:", error);
     }
   };
 
@@ -205,28 +198,7 @@ export default function StatusPagesList() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <div className="h-8 w-48 bg-muted rounded animate-pulse mb-2"></div>
-            <div className="h-4 w-64 bg-muted rounded animate-pulse"></div>
-          </div>
-          <div className="h-10 w-32 bg-muted rounded animate-pulse"></div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="border rounded-lg p-4 animate-pulse">
-              <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
-              <div className="h-3 bg-muted rounded w-1/2 mb-4"></div>
-              <div className="h-8 bg-muted rounded"></div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+
 
   return (
     <div className="p-6">

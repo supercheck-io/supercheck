@@ -5,6 +5,7 @@ import { Editor, useMonaco } from "@monaco-editor/react";
 import type { editor as editorType } from "monaco-editor";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
+import { Loader2 } from "lucide-react";
 
 type LineStyle = "error" | "warn" | "success" | "info";
 
@@ -221,8 +222,13 @@ export const MonacoConsoleViewer = memo(
           height="100%"
           defaultLanguage="console-log"
           value={displayContent}
-          onChange={() => {}}
+          onChange={() => { }}
           onMount={handleEditorDidMount}
+          loading={
+            <div className="flex h-full w-full items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          }
           options={
             {
               readOnly,

@@ -10,7 +10,7 @@ import { Editor, useMonaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { Maximize2, X } from "lucide-react";
+import { Maximize2, X, Loader2 } from "lucide-react";
 import { useMonacoPerformance } from "./use-monaco-performance";
 import { getCachedTypeDefs } from "@/components/monaco-prefetcher";
 
@@ -478,6 +478,14 @@ export const MonacoEditorClient = memo(
               beforeMount={beforeMount}
               onMount={handleEditorMount}
               aria-label="TypeScript code editor"
+              loading={
+                <div className="flex h-full w-full items-center justify-center bg-card">
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Loading editor...</span>
+                  </div>
+                </div>
+              }
               options={{
                 minimap: { enabled: false },
                 fontSize: 13.5,
