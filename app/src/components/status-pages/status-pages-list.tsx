@@ -50,7 +50,6 @@ import {
 import { toast } from "sonner";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { getStatusPages } from "@/actions/get-status-pages";
 import { deleteStatusPage } from "@/actions/delete-status-page";
 import { CreateStatusPageForm } from "./create-status-page-form";
 import { useProjectContext } from "@/hooks/use-project-context";
@@ -62,6 +61,11 @@ import {
 import { getStatusPageUrl, getBaseDomain } from "@/lib/domain-utils";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 
+/**
+ * Status page type for display purposes.
+ * Uses Pick-style subset of the full DB schema fields that the component actually needs.
+ * This is intentionally loose to accept both full DB types and partial form results.
+ */
 type StatusPage = {
   id: string;
   name: string;
@@ -71,11 +75,12 @@ type StatusPage = {
   headline: string | null;
   createdAt: Date | null;
   updatedAt: Date | null;
+  [key: string]: unknown; // Allow extra fields from DB
 };
 
-export default function StatusPagesList() {
-  const [statusPages, setStatusPages] = useState<StatusPage[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function StatusPagesList({ initialStatusPages = [] }: { initialStatusPages?: StatusPage[] }) {
+  const [statusPages, setStatusPages] = useState<StatusPage[]>(initialStatusPages);
+  // No loading state needed - data is passed from server component
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingPage, setDeletingPage] = useState<StatusPage | null>(null);
@@ -87,9 +92,12 @@ export default function StatusPagesList() {
   const canCreate = canCreateStatusPages(normalizedRole);
   const canDelete = canDeleteStatusPages(normalizedRole);
 
+  // Sync initialData if it changes (though usually handled by key/remount)
   useEffect(() => {
-    loadStatusPages();
-  }, []);
+    if (initialStatusPages) {
+      setStatusPages(initialStatusPages);
+    }
+  }, [initialStatusPages]);
 
   useEffect(() => {
     const create = searchParams.get("create");
@@ -97,29 +105,6 @@ export default function StatusPagesList() {
       setIsCreateDialogOpen(true);
     }
   }, [searchParams, canCreate]);
-
-  const loadStatusPages = async () => {
-    try {
-      setLoading(true);
-      const result = await getStatusPages();
-
-      if (result.success) {
-        setStatusPages(result.statusPages as StatusPage[]);
-      } else {
-        console.error("Failed to fetch status pages:", result.message);
-        toast.error("Failed to load status pages", {
-          description: result.message,
-        });
-      }
-    } catch (error) {
-      console.error("Error loading status pages:", error);
-      toast.error("Failed to load status pages", {
-        description: "An unexpected error occurred",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleCreateSuccess = (newPage: StatusPage) => {
     setStatusPages((prev) => [newPage, ...prev]);
@@ -205,28 +190,7 @@ export default function StatusPagesList() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <div className="h-8 w-48 bg-muted rounded animate-pulse mb-2"></div>
-            <div className="h-4 w-64 bg-muted rounded animate-pulse"></div>
-          </div>
-          <div className="h-10 w-32 bg-muted rounded animate-pulse"></div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="border rounded-lg p-4 animate-pulse">
-              <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
-              <div className="h-3 bg-muted rounded w-1/2 mb-4"></div>
-              <div className="h-8 bg-muted rounded"></div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+
 
   return (
     <div className="p-6">
@@ -371,7 +335,6 @@ export default function StatusPagesList() {
                             <Link
                               href={`/status-pages/${page.id}`}
                               className="cursor-pointer"
-                              prefetch={false}
                             >
                               <Settings className="h-4 w-4 mr-2" />
                               Manage
@@ -434,7 +397,7 @@ export default function StatusPagesList() {
                       size="sm"
                       className="flex-1 h-9"
                     >
-                      <Link href={`/status-pages/${page.id}`} prefetch={false}>
+                      <Link href={`/status-pages/${page.id}`}>
                         <Settings className="h-4 w-4 mr-1.5" />
                         Manage
                       </Link>

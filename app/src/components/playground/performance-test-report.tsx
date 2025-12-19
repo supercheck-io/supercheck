@@ -495,13 +495,12 @@ export function PerformanceTestReport({
     );
   }, []);
 
-  // Show loading state while initializing
   if (isInitializing) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">Loading report…</span>
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
+          <span className="text-lg text-muted-foreground">Loading report...</span>
         </div>
       </div>
     );

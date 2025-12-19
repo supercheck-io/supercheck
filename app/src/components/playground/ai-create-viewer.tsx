@@ -186,8 +186,8 @@ export function AICreateViewer({
               size="sm"
               onClick={onClose}
               className={`h-7 w-7 p-0 ${isDarkTheme
-                  ? "text-gray-400 hover:text-white hover:bg-gray-800"
-                  : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                ? "text-gray-400 hover:text-white hover:bg-gray-800"
+                : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
                 }`}
               disabled={isStreaming}
               aria-label="Close"
@@ -227,6 +227,11 @@ export function AICreateViewer({
             onMount={(instance) => {
               editorRef.current = instance;
             }}
+            loading={
+              <div className="flex h-full w-full items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            }
             options={{
               minimap: { enabled: false },
               scrollBeyondLastLine: false,

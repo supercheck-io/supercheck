@@ -234,7 +234,7 @@ export function PlaywrightAnalyticsTab({
                 icon={<PlaywrightLogo width={64} height={64} />}
                 action={
                     <Button asChild>
-                        <Link href="/jobs" prefetch={false}>View Jobs</Link>
+                        <Link href="/jobs">View Jobs</Link>
                     </Button>
                 }
             />

@@ -634,7 +634,6 @@ export function MonitorDetailClient({
                 <Link
                   href="/"
                   className="text-xl font-semibold text-foreground hover:opacity-80 transition-opacity"
-                  prefetch={false}
                 >
                   Supercheck
                 </Link>
@@ -643,7 +642,6 @@ export function MonitorDetailClient({
                 <Link
                   href="/"
                   className="flex items-center gap-1 hover:text-foreground transition-colors text-muted-foreground"
-                  prefetch={false}
                 >
                   <Home className="h-4 w-4" />
                 </Link>

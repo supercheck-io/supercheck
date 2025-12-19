@@ -63,6 +63,8 @@ const runsHook = createDataHook<Run>({
   staleTime: 0, // Always refetch on mount - ensures new runs appear immediately after job trigger
   gcTime: 5 * 60 * 1000, // 5 minutes cache - keeps data for back navigation
   refetchOnWindowFocus: false,
+  // CRITICAL: Force refetch on every mount to show new job executions immediately
+  refetchOnMount: 'always',
   singleItemField: "run",
 });
 

@@ -36,7 +36,7 @@ export function BreadcrumbDisplay() {
                 </BreadcrumbPage>
               ) : (
                 <BreadcrumbLink asChild>
-                  <Link href={item.href || "#"} prefetch={false}>
+                  <Link href={item.href || "#"}>
                     {item.label === "Home" ? <Home className="h-4 w-4" /> : item.label}
                   </Link>
                 </BreadcrumbLink>

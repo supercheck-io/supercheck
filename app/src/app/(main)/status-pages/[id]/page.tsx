@@ -13,6 +13,8 @@ type StatusPagePageProps = {
   }>;
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function StatusPagePage({ params }: StatusPagePageProps) {
   const resolvedParams = await params;
   const result = await getStatusPage(resolvedParams.id);

@@ -23,7 +23,6 @@ export function SimpleBreadcrumbs({ items }: SimpleBreadcrumbsProps) {
             <Link
               href={item.href}
               className="hover:text-foreground transition-colors"
-              prefetch={false}
             >
               {item.label}
             </Link>

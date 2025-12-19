@@ -50,7 +50,8 @@ export interface DataHookConfig<T, CreateData, UpdateData> {
   gcTime?: number;
   /** Whether to refetch on window focus (default: true) */
   refetchOnWindowFocus?: boolean;
-
+  /** Whether to refetch on mount - 'always' forces refetch regardless of stale state */
+  refetchOnMount?: boolean | 'always';
   /** Function to generate optimistic item for create (optional) */
   generateOptimisticItem?: (data: CreateData) => Partial<T>;
   /** Field name in single item response (e.g., "job" for { job: {...} }) */
@@ -293,7 +294,7 @@ export function createDataHook<
     staleTime = 60 * 1000,
     gcTime = 5 * 60 * 1000,
     refetchOnWindowFocus = true,
-
+    refetchOnMount,
     singleItemField,
   } = config;
 
@@ -322,7 +323,9 @@ export function createDataHook<
       staleTime,
       gcTime,
       refetchOnWindowFocus,
-      // No polling - data refreshes on page visit or manual refresh
+      // PERFORMANCE: Allow specific hooks to override refetchOnMount behavior
+      // Runs uses 'always' to ensure fresh data after job execution
+      ...(refetchOnMount !== undefined && { refetchOnMount }),
     });
 
     const invalidate = () =>
