@@ -15,12 +15,14 @@ export function QueryProvider({ children }: { children: ReactNode }) {
         defaultOptions: {
           queries: {
             // Default options for all queries
+            // PERFORMANCE: Conservative defaults to prevent excessive refetching
             staleTime: 60 * 1000, // 1 minute
             gcTime: 5 * 60 * 1000, // 5 minutes (formerly cacheTime)
-            retry: 3,
+            retry: 2,
             refetchOnWindowFocus: false,
-            refetchOnMount: true,
-            refetchOnReconnect: true,
+            // CRITICAL: Don't refetch on mount if data exists - prevents duplicate calls on navigation
+            refetchOnMount: false,
+            refetchOnReconnect: false,
           },
           mutations: {
             // Default options for all mutations

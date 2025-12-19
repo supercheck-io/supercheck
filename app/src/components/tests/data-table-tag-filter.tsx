@@ -20,6 +20,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
+import { useTags } from "@/hooks/use-tags";
 
 interface Tag {
   id: string;
@@ -36,8 +37,9 @@ export function DataTableTagFilter<TData, TValue>({
   column,
   title = "Tags",
 }: DataTableTagFilterProps<TData, TValue>) {
-  const [availableTags, setAvailableTags] = React.useState<Tag[]>([]);
-  const [isLoading, setIsLoading] = React.useState(false);
+  // Use React Query hook for centralized tags caching
+  // Tags from useTags already have the correct type (color: string | null)
+  const { tags: availableTags, isLoading } = useTags();
 
   const selectedValues = new Set(column?.getFilterValue() as string[]);
 
@@ -56,26 +58,6 @@ export function DataTableTagFilter<TData, TValue>({
     }
     return newFacets;
   }, [column]);
-
-  // Load available tags
-  React.useEffect(() => {
-    const loadTags = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch("/api/tags");
-        if (response.ok) {
-          const tags = await response.json();
-          setAvailableTags(tags);
-        }
-      } catch (error) {
-        console.error("Error loading tags:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadTags();
-  }, []);
 
   const selectedTags = availableTags.filter((tag) => selectedValues.has(tag.name));
 

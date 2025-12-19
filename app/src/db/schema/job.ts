@@ -173,6 +173,8 @@ export const runs = pgTable(
       table.projectId,
       table.createdAt
     ),
+    // PERFORMANCE: Index on started_at for dashboard date range queries
+    startedAtIdx: index("runs_started_at_idx").on(table.startedAt),
   })
 );
 

@@ -16,6 +16,7 @@ import { NavUser } from "@/components/nav-user";
 import { DemoBadge } from "@/components/demo-badge";
 import { SubscriptionGuard } from "@/components/subscription-guard";
 import { AuthGuard } from "@/components/auth-guard";
+import { DataPrefetcher } from "@/components/data-prefetcher";
 
 /**
  * Main Layout - SYNCHRONOUS (no async)
@@ -37,6 +38,8 @@ export default function MainLayout({
 }>) {
   return (
     <AuthGuard>
+      {/* PERFORMANCE: Prefetch all critical data in parallel immediately */}
+      <DataPrefetcher />
       <BreadcrumbProvider>
         <ProjectContextProvider>
           <SidebarProvider>

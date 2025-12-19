@@ -2,39 +2,39 @@
 
 import { Button } from "@/components/ui/button";
 import { authClient, signIn } from "@/utils/auth-client";
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { GitHubIcon, GoogleIcon } from "./social-icons";
-import { useAuthProviders } from "@/hooks/use-auth-providers";
 import { Badge } from "@/components/ui/badge";
 
 interface SocialAuthButtonsProps {
-  mode: "signin" | "signup";
   callbackUrl?: string;
   disabled?: boolean;
 }
 
 export function SocialAuthButtons({
-  mode,
   callbackUrl = "/",
   disabled = false,
 }: SocialAuthButtonsProps) {
   const [isGithubLoading, setIsGithubLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const {
-    isGithubEnabled,
-    isGoogleEnabled,
-    isLoading: isProvidersLoading,
-  } = useAuthProviders();
-
-  // Get the last used login method for "Last used" badge
-  const lastMethod = useMemo(() => {
-    try {
-      return authClient.getLastUsedLoginMethod?.() ?? null;
-    } catch {
-      return null;
-    }
+  
+  // HYDRATION FIX: Initialize with null on server and client, then update in effect
+  const [lastMethod, setLastMethod] = useState<string | null>(null);
+  
+  useEffect(() => {
+    // Defer state update to avoid cascading renders
+    const timer = setTimeout(() => {
+      try {
+        const method = authClient.getLastUsedLoginMethod?.() ?? null;
+        setLastMethod(method);
+      } catch {
+        // Ignore errors reading from localStorage
+      }
+    }, 0);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   const handleGitHubSignIn = async () => {
@@ -76,12 +76,7 @@ export function SocialAuthButtons({
   };
 
   const isLoading = isGithubLoading || isGoogleLoading;
-  const isDisabled = disabled || isLoading || isProvidersLoading;
-
-  // Don't render if loading providers or no social providers are enabled
-  if (isProvidersLoading || (!isGithubEnabled && !isGoogleEnabled)) {
-    return null;
-  }
+  const isDisabled = disabled || isLoading;
 
   return (
     <div className="flex flex-col gap-3">
@@ -91,70 +86,64 @@ export function SocialAuthButtons({
         </p>
       )}
 
-      {/* Always stack vertically for clean, professional look */}
+      {/* Always show both OAuth buttons - they are always visible */}
       <div className="flex flex-col gap-3">
-        {isGoogleEnabled && (
-          <div className="relative w-full">
-            {lastMethod === "google" && (
-              <Badge
-                variant="secondary"
-                className="absolute -top-1 -right-1 text-[10px] uppercase tracking-wide py-0 px-1.5 font-medium"
-                data-testid="last-used-badge"
-              >
-                Last used
-              </Badge>
-            )}
-            <Button
-              type="button"
-              variant={lastMethod === "google" ? "default" : "outline"}
-              size="lg"
-              className="w-full justify-center gap-3"
-              onClick={handleGoogleSignIn}
-              disabled={isDisabled}
-              data-testid="login-google-button"
+        <div className="relative w-full">
+          {lastMethod === "google" && (
+            <Badge
+              variant="secondary"
+              className="absolute -top-1 -right-1 text-[10px] uppercase tracking-wide py-0 px-1.5 font-medium"
+              data-testid="last-used-badge"
             >
-              {isGoogleLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <GoogleIcon className="h-5 w-5" />
-              )}
-              <span>Continue with Google</span>
-            </Button>
-          </div>
-        )}
+              Last used
+            </Badge>
+          )}
+          <Button
+            type="button"
+            variant={lastMethod === "google" ? "default" : "outline"}
+            size="lg"
+            className="w-full justify-center gap-3"
+            onClick={handleGoogleSignIn}
+            disabled={isDisabled}
+            data-testid="login-google-button"
+          >
+            {isGoogleLoading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <GoogleIcon className="h-5 w-5" />
+            )}
+            <span>Continue with Google</span>
+          </Button>
+        </div>
 
-        {isGithubEnabled && (
-          <div className="relative w-full">
-            {lastMethod === "github" && (
-              <Badge
-                variant="secondary"
-                className="absolute -top-1 -right-1 text-[10px] uppercase tracking-wide py-0 px-1.5 font-medium"
-                data-testid="last-used-badge"
-              >
-                Last used
-              </Badge>
-            )}
-            <Button
-              type="button"
-              variant={lastMethod === "github" ? "default" : "outline"}
-              size="lg"
-              className="w-full justify-center gap-3"
-              onClick={handleGitHubSignIn}
-              disabled={isDisabled}
-              data-testid="login-github-button"
+        <div className="relative w-full">
+          {lastMethod === "github" && (
+            <Badge
+              variant="secondary"
+              className="absolute -top-1 -right-1 text-[10px] uppercase tracking-wide py-0 px-1.5 font-medium"
+              data-testid="last-used-badge"
             >
-              {isGithubLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <GitHubIcon className="h-5 w-5" />
-              )}
-              <span>Continue with GitHub</span>
-            </Button>
-          </div>
-        )}
+              Last used
+            </Badge>
+          )}
+          <Button
+            type="button"
+            variant={lastMethod === "github" ? "default" : "outline"}
+            size="lg"
+            className="w-full justify-center gap-3"
+            onClick={handleGitHubSignIn}
+            disabled={isDisabled}
+            data-testid="login-github-button"
+          >
+            {isGithubLoading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <GitHubIcon className="h-5 w-5" />
+            )}
+            <span>Continue with GitHub</span>
+          </Button>
+        </div>
       </div>
     </div>
   );
 }
-
-

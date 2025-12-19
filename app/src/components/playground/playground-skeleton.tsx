@@ -45,7 +45,7 @@ export function PlaygroundSkeleton() {
                 <div className="flex items-center justify-between border-b bg-card px-4 py-2 rounded-tr-lg h-14">
                   <Skeleton className="h-6 w-24" />
                 </div>
-                <div className="flex-1 overflow-auto p-4 space-y-4">            
+                <div className="flex-1 overflow-auto p-4 space-y-4">
                   <Skeleton className="h-8 w-full" />
                   <Skeleton className="h-10 w-full" />
                   <Skeleton className="h-20 w-full" />
@@ -66,4 +66,4 @@ export function PlaygroundSkeleton() {
       </div>
     </div>
   );
-} 
+}

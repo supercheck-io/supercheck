@@ -24,10 +24,10 @@ interface AdminStatus {
 export const ADMIN_STATUS_QUERY_KEY = ["admin-status"] as const;
 
 // ============================================================================
-// FETCH FUNCTION
+// FETCH FUNCTION (exported for prefetching)
 // ============================================================================
 
-async function fetchAdminStatus(): Promise<AdminStatus> {
+export async function fetchAdminStatus(): Promise<AdminStatus> {
   // Fetch both admin statuses in parallel for efficiency
   const [adminResponse, orgAdminResponse] = await Promise.all([
     fetch("/api/admin/check"),

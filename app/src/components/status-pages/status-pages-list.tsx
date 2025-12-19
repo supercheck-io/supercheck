@@ -371,6 +371,7 @@ export default function StatusPagesList() {
                             <Link
                               href={`/status-pages/${page.id}`}
                               className="cursor-pointer"
+                              prefetch={false}
                             >
                               <Settings className="h-4 w-4 mr-2" />
                               Manage
@@ -433,7 +434,7 @@ export default function StatusPagesList() {
                       size="sm"
                       className="flex-1 h-9"
                     >
-                      <Link href={`/status-pages/${page.id}`}>
+                      <Link href={`/status-pages/${page.id}`} prefetch={false}>
                         <Settings className="h-4 w-4 mr-1.5" />
                         Manage
                       </Link>

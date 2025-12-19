@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import { useAppConfig } from "@/hooks/use-app-config";
+import { useQuery } from "@tanstack/react-query";
 
 // Routes that don't require subscription
 const ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION = [
@@ -19,12 +20,30 @@ interface SubscriptionGuardProps {
   children: React.ReactNode;
 }
 
+// Query key for subscription status (exported for cache invalidation)
+export const SUBSCRIPTION_STATUS_QUERY_KEY = ["subscription-status"] as const;
+
+// Fetch subscription status (exported for prefetching)
+export async function fetchSubscriptionStatus(): Promise<{ isActive: boolean; plan: string | null }> {
+  const response = await fetch('/api/billing/current');
+  if (!response.ok) {
+    throw new Error('Failed to fetch subscription status');
+  }
+  const data = await response.json();
+  const isActive = data.subscription?.status === 'active' && data.subscription?.plan;
+  return {
+    isActive: !!isActive,
+    plan: data.subscription?.plan || null,
+  };
+}
+
 /**
  * SubscriptionGuard - Client component that checks subscription status
  * 
  * PERFORMANCE OPTIMIZATION:
+ * - Uses React Query for subscription status (cached for 5 minutes)
  * - Uses cached useAppConfig hook for hosting mode (React Query cached)
- * - Subscription check runs ONCE on mount, not on every navigation
+ * - Does NOT block rendering for cached data - instant navigation
  * - Self-hosted mode bypasses all subscription checks immediately
  * 
  * In cloud mode:
@@ -38,95 +57,65 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Use cached hosting mode from React Query (no API call if cached)
-  const { isSelfHosted, isLoading: isConfigLoading } = useAppConfig();
-
-  const [isCheckingSubscription, setIsCheckingSubscription] = useState(true);
-  const [hasSubscription, setHasSubscription] = useState(false);
-
-  // Track if subscription was already checked this session
-  const subscriptionCheckedRef = useRef(false);
+  // PERFORMANCE: useAppConfig now has initialData (self-hosted=true)
+  // This means isSelfHosted starts as true, allowing immediate render
+  // When real config loads, if cloud mode, subscription check triggers
+  const { isSelfHosted, isFetched: isConfigFetched } = useAppConfig();
 
   // Check if current route is allowed without subscription
   const isAllowedRoute = ALLOWED_ROUTES_WITHOUT_SUBSCRIPTION.some(
     route => pathname.startsWith(route)
   );
 
-  // Subscription check function - runs once per session
-  const checkSubscription = useCallback(async () => {
-    // Skip if already checked or if self-hosted
-    if (subscriptionCheckedRef.current || isSelfHosted) {
-      setIsCheckingSubscription(false);
-      return;
-    }
+  // PERFORMANCE: Use React Query with aggressive caching
+  // DataPrefetcher may have already populated this cache
+  const { data: subscriptionStatus, isLoading: isSubscriptionLoading, isFetched } = useQuery({
+    queryKey: SUBSCRIPTION_STATUS_QUERY_KEY,
+    queryFn: fetchSubscriptionStatus,
+    // Long stale time - subscription status rarely changes mid-session
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000,   // 10 minutes cache
+    // CRITICAL: Don't refetch on mount if we have cached data
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    // PERFORMANCE: Enable immediately - DataPrefetcher starts this in parallel
+    // We check isSelfHosted in the render logic, not here
+    // This allows the query to start immediately via prefetch
+    enabled: !isAllowedRoute,
+    retry: 2,
+  });
 
-    // Skip subscription check for allowed routes
-    if (isAllowedRoute) {
-      setIsCheckingSubscription(false);
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/billing/current');
-      if (response.ok) {
-        const data = await response.json();
-        // Check if subscription is actually active
-        const isActive = data.subscription?.status === 'active' && data.subscription?.plan;
-        if (isActive) {
-          setHasSubscription(true);
-          subscriptionCheckedRef.current = true;
-        } else {
-          // No active subscription - redirect to subscribe page
-          console.log('No active subscription (status:', data.subscription?.status, '), redirecting to subscribe');
-          router.push('/subscribe?required=true');
-          return;
-        }
-      } else {
-        // API error - redirect to subscribe page
-        console.log('Billing API error, redirecting to subscribe');
-        router.push('/subscribe?required=true');
-        return;
-      }
-    } catch (error) {
-      console.error('Failed to check subscription:', error);
-      // On error, redirect to subscribe to be safe
-      router.push('/subscribe?required=true');
-      return;
-    } finally {
-      setIsCheckingSubscription(false);
-    }
-  }, [isSelfHosted, isAllowedRoute, router]);
-
-  // Run subscription check once when config is loaded
+  // Handle redirect for users without subscription
   useEffect(() => {
-    // Wait for config to load first
-    if (isConfigLoading) {
-      return;
+    // Skip if allowed route
+    if (isAllowedRoute) return;
+    
+    // PERFORMANCE: Wait for config to be fetched (not just loaded)
+    // initialData gives us self-hosted=true, but we need real config
+    if (!isConfigFetched) return;
+    
+    // Skip if self-hosted mode (no subscription required)
+    if (isSelfHosted) return;
+    
+    // Skip if subscription check hasn't completed yet
+    if (!isFetched) return;
+    
+    // If subscription is not active, redirect to subscribe page
+    if (subscriptionStatus && !subscriptionStatus.isActive) {
+      console.log('No active subscription, redirecting to subscribe');
+      router.push('/subscribe?required=true');
     }
+  }, [isConfigFetched, isSelfHosted, isAllowedRoute, isFetched, subscriptionStatus, router]);
 
-    // Self-hosted: immediately allow access, no subscription check needed
-    if (isSelfHosted) {
-      setHasSubscription(true);
-      setIsCheckingSubscription(false);
-      return;
-    }
-
-    // Cloud mode: check subscription once
-    checkSubscription();
-  }, [isConfigLoading, isSelfHosted, checkSubscription]);
-
-  // Self-hosted mode: always allow access immediately
-  if (isSelfHosted) {
-    return <>{children}</>;
-  }
-
-  // Allowed routes: always allow access
+  // Allowed routes: always allow access immediately
   if (isAllowedRoute) {
     return <>{children}</>;
   }
 
-  // Still loading config or checking subscription in cloud mode
-  if (isConfigLoading || isCheckingSubscription) {
+  // SECURITY: Must wait for config to be fetched before making decisions
+  // This prevents briefly showing content in cloud mode before we know hosting mode
+  if (!isConfigFetched) {
     return (
       <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
         <SuperCheckLoading size="lg" message="Please wait, loading..." />
@@ -134,11 +123,39 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
     );
   }
 
-  // Has subscription: render children
-  if (hasSubscription) {
+  // Config is fetched - now we know the real hosting mode
+  
+  // Self-hosted mode: always allow access (no subscription required)
+  if (isSelfHosted) {
     return <>{children}</>;
   }
 
-  // Fallback (should not reach here, but just in case)
+  // Cloud mode: Need to verify subscription
+  
+  // PERFORMANCE: If we have cached subscription data, use it immediately
+  if (subscriptionStatus?.isActive) {
+    return <>{children}</>;
+  }
+
+  // Subscription data loading or not yet fetched
+  if (!isFetched || isSubscriptionLoading) {
+    return (
+      <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
+        <SuperCheckLoading size="lg" message="Please wait, loading..." />
+      </div>
+    );
+  }
+
+  // Subscription check completed but not active - show loading while redirect happens
+  // This prevents briefly exposing protected content
+  if (!subscriptionStatus?.isActive) {
+    return (
+      <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
+        <SuperCheckLoading size="lg" message="Checking subscription..." />
+      </div>
+    );
+  }
+
+  // Fallback while waiting for data
   return null;
 }

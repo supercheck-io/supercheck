@@ -86,7 +86,7 @@ export function NavMain({
                       )}
                     </a>
                   ) : (
-                    <Link href={item.url}>
+                    <Link href={item.url} prefetch={false}>
                       {item.icon && <item.icon />}
                       <span>{item.title}</span>
                       {item.badge && (
@@ -123,12 +123,11 @@ export function NavMain({
                             return (
                               <SidebarMenuSubItem key={item.title}>
                                 <SidebarMenuSubButton asChild>
-                                  <Link href={item.url}>
+                                  <Link href={item.url} prefetch={false}>
                                     {ItemIcon && (
                                       <ItemIcon
-                                        className={`h-4 w-4 ${
-                                          item.color || ""
-                                        }`}
+                                        className={`h-4 w-4 ${item.color || ""
+                                          }`}
                                       />
                                     )}
                                     <span>{item.title}</span>
@@ -147,7 +146,7 @@ export function NavMain({
                     return (
                       <SidebarMenuSubItem key={regularItem.title}>
                         <SidebarMenuSubButton asChild>
-                          <Link href={regularItem.url}>
+                          <Link href={regularItem.url} prefetch={false}>
                             {IconComponent && (
                               <IconComponent
                                 className={`h-4 w-4 ${regularItem.color || ""}`}

@@ -14,6 +14,7 @@ import {
   jsonb,
   uuid,
   boolean,
+  index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -61,26 +62,35 @@ export const notificationProviders = pgTable("notification_providers", {
 /**
  * Logs the history of alerts that have been sent.
  */
-export const alertHistory = pgTable("alert_history", {
-  id: uuid("id")
-    .primaryKey()
-    .$defaultFn(() => sql`uuidv7()`),
-  message: text("message").notNull(),
-  type: varchar("type", { length: 50 }).$type<AlertType>().notNull(),
-  target: varchar("target", { length: 255 }).notNull(),
-  targetType: varchar("target_type", { length: 50 }).notNull(),
-  monitorId: uuid("monitor_id").references(() => monitors.id, {
-    onDelete: "cascade",
-  }),
-  jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
-  provider: varchar("provider", { length: 100 }).notNull(),
-  status: varchar("status", { length: 50 })
-    .$type<AlertStatus>()
-    .notNull()
-    .default("pending"),
-  sentAt: timestamp("sent_at").defaultNow(),
-  errorMessage: text("error_message"),
-});
+export const alertHistory = pgTable(
+  "alert_history",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => sql`uuidv7()`),
+    message: text("message").notNull(),
+    type: varchar("type", { length: 50 }).$type<AlertType>().notNull(),
+    target: varchar("target", { length: 255 }).notNull(),
+    targetType: varchar("target_type", { length: 50 }).notNull(),
+    monitorId: uuid("monitor_id").references(() => monitors.id, {
+      onDelete: "cascade",
+    }),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "cascade" }),
+    provider: varchar("provider", { length: 100 }).notNull(),
+    status: varchar("status", { length: 50 })
+      .$type<AlertStatus>()
+      .notNull()
+      .default("pending"),
+    sentAt: timestamp("sent_at").defaultNow(),
+    errorMessage: text("error_message"),
+  },
+  (table) => ({
+    // PERFORMANCE: Indexes for alert history queries
+    sentAtIdx: index("alert_history_sent_at_idx").on(table.sentAt),
+    monitorIdIdx: index("alert_history_monitor_id_idx").on(table.monitorId),
+    jobIdIdx: index("alert_history_job_id_idx").on(table.jobId),
+  })
+);
 
 /**
  * Join table to link monitors with specific notification providers.

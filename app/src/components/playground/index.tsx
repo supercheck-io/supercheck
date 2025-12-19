@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/resizable";
 import { CodeEditor } from "./code-editor";
 import { TestForm } from "./test-form";
-import { LoadingOverlay } from "./loading-overlay";
 import { ValidationError } from "./validation-error";
 import { Loader2Icon, ZapIcon, Text, Code2, X } from "lucide-react";
 import * as z from "zod";
@@ -54,6 +53,7 @@ import {
 import { TemplateDialog } from "./template-dialog";
 import type { TestPriority, TestType } from "@/db/schema/types";
 import { notifyExecutionsChanged } from "@/hooks/use-executions";
+import { useSession } from "@/utils/auth-client";
 
 const extractCodeFromResponse = (rawText: string): string => {
   if (!rawText) {
@@ -142,9 +142,10 @@ const Playground: React.FC<PlaygroundProps> = ({
   const userCanRunTests = currentProject?.userRole
     ? canRunTests(normalizeRole(currentProject.userRole))
     : false;
-  const [currentUserId, setCurrentUserId] = useState<string | undefined>(
-    undefined
-  );
+  // Get user ID from session (Better Auth) instead of manual fetch
+  // This leverages the existing session cache and avoids duplicate API calls
+  const { data: session } = useSession();
+  const currentUserId = session?.user?.id;
 
   const initialPerformanceLocation: PerformanceLocation | null =
     initialResolvedType === "performance" && initialTestData
@@ -171,22 +172,6 @@ const Playground: React.FC<PlaygroundProps> = ({
       );
   }, []);
 
-  // Fetch current user ID for permissions
-  useEffect(() => {
-    const fetchUserId = async () => {
-      try {
-        const response = await fetch("/api/auth/user");
-        if (response.ok) {
-          const userData = await response.json();
-          setCurrentUserId(userData.user?.id);
-        }
-      } catch {
-        // Silently ignore user fetch errors
-      }
-    };
-    fetchUserId();
-  }, []);
-
   const [activeTab, setActiveTab] = useState<string>("editor");
   const [isRunning, setIsRunning] = useState(false);
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
@@ -194,7 +179,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isReportLoading, setIsReportLoading] = useState(false);
-  const [pageLoading, setPageLoading] = useState(true);
+
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [performanceRunId, setPerformanceRunId] = useState<string | null>(null);
   const [performanceLocation, setPerformanceLocation] =
@@ -390,13 +375,6 @@ const Playground: React.FC<PlaygroundProps> = ({
     if (window.location.pathname === "/playground") {
       setTestId(null);
     }
-
-    // Set pageLoading to false after a short delay to ensure UI is ready
-    const timer = setTimeout(() => {
-      setPageLoading(false);
-    }, 1000);
-
-    return () => clearTimeout(timer);
   }, []);
 
   // Initialize validation state for existing test data (only once per test load)
@@ -421,78 +399,9 @@ const Playground: React.FC<PlaygroundProps> = ({
     lastEditorContentRef.current = editorContent;
   }, [editorContent]);
 
-  // Load test data if testId is provided
-  useEffect(() => {
-    if (initialTestId) {
-      loadTestById(initialTestId);
-    }
-  }, [initialTestId]);
-
-  // Function to load a test by ID
-  const loadTestById = async (id: string) => {
-    try {
-      setLoading(true);
-
-      // Fetch the test data from API
-      const response = await fetch(`/api/tests/${id}`);
-      const result = await response.json();
-
-      if (response.ok && result) {
-        const resolvedType = normalizeTestTypeValue(result.type);
-        const resolvedPriority = normalizePriorityValue(result.priority);
-        // Update the test case data
-        setTestCase({
-          title: result.title,
-          description: result.description,
-          priority: resolvedPriority,
-          type: resolvedType,
-          updatedAt: result.updatedAt || null,
-          createdAt: result.createdAt || null,
-          location:
-            (result.location as PerformanceLocation | null) ??
-            (resolvedType === "performance" ? "global" : null),
-        });
-
-        // Update the editor content
-        setEditorContent(result.script);
-        setInitialEditorContent(result.script);
-
-        // Update the form values
-        setInitialFormValues({
-          title: result.title,
-          description: result.description,
-          priority: resolvedPriority,
-          type: resolvedType,
-          updatedAt: result.updatedAt || null,
-          createdAt: result.createdAt || null,
-          location:
-            (result.location as PerformanceLocation | null) ??
-            (resolvedType === "performance" ? "global" : null),
-        });
-
-        if (resolvedType === "performance") {
-          setPerformanceLocation(
-            (result.location as PerformanceLocation) ?? "global"
-          );
-        }
-
-        // Set the test ID
-        setTestId(id);
-      } else {
-        console.error("Failed to load test:", result.error);
-        toast.error("Error loading test", {
-          description: "Failed to load test details. Please try again later.",
-        });
-      }
-    } catch (error) {
-      console.error("Error loading test:", error);
-      toast.error("Error", {
-        description: "Failed to load test details. Please try again later.",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  // REMOVED: loadTestById function since initialTestData is already passed via props
+  // Test data is fetched once in page.tsx using useTest hook (React Query cached)
+  // and passed down via initialTestData prop - no need for duplicate fetching
 
   // Monitor URL search params changes and potentially load scripts/set type
   useEffect(() => {
@@ -1258,15 +1167,8 @@ const Playground: React.FC<PlaygroundProps> = ({
   };
 
   return (
-    <>
-      <LoadingOverlay isVisible={pageLoading} />
-      <div
-        className={
-          pageLoading
-            ? "opacity-0"
-            : "opacity-100 transition-opacity duration-300"
-        }
-      >
+    <div className="h-full">
+      <div className="h-full">
         <div className="md:hidden">{/* Mobile view */}</div>
         <div className="hidden flex-col flex-1 md:flex p-4  h-[calc(100vh-5rem)]">
           <ResizablePanelGroup direction="horizontal">
@@ -1680,7 +1582,7 @@ const Playground: React.FC<PlaygroundProps> = ({
         guidance={guidanceMessage}
         onClose={handleCloseGuidanceModal}
       />
-    </>
+    </div>
   );
 };
 

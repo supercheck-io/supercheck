@@ -33,7 +33,7 @@ import { toast } from "sonner";
 export interface Tag {
   id: string;
   name: string;
-  color?: string;
+  color: string | null;
   createdByUserId?: string;
 }
 

@@ -97,13 +97,13 @@ export function UpgradePrompt({
           </div>
 
           <div className="flex gap-2">
-            <Link href="/billing" className="flex-1">
+            <Link href="/billing" className="flex-1" prefetch={false}>
               <Button className="w-full">
                 Upgrade Now
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
-            <Link href="/billing">
+            <Link href="/billing" prefetch={false}>
               <Button variant="outline">
                 Compare Plans
               </Button>
@@ -125,12 +125,12 @@ export function UpgradePrompt({
           {nextPlan && ` Upgrade to ${nextPlan.name} for ${nextPlan.limit} ${resource}.`}
         </p>
         <div className="flex gap-2">
-          <Link href="/billing">
+          <Link href="/billing" prefetch={false}>
             <Button size="sm" variant="default">
               Upgrade Plan
             </Button>
           </Link>
-          <Link href="/billing">
+          <Link href="/billing" prefetch={false}>
             <Button size="sm" variant="outline">
               View Details
             </Button>
@@ -153,7 +153,7 @@ interface QuickUpgradeButtonProps {
 
 export function QuickUpgradeButton({ resource, className = "" }: QuickUpgradeButtonProps) {
   return (
-    <Link href="/billing">
+    <Link href="/billing" prefetch={false}>
       <Button size="sm" variant="default" className={className}>
         <Zap className="mr-2 h-4 w-4" />
         Upgrade{resource ? ` for more ${resource}` : ""}

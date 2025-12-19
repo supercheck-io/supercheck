@@ -20,9 +20,10 @@ export function SimpleBreadcrumbs({ items }: SimpleBreadcrumbsProps) {
           {item.isCurrentPage || !item.href ? (
             <span className="font-medium text-foreground">{item.label}</span>
           ) : (
-            <Link 
-              href={item.href} 
+            <Link
+              href={item.href}
               className="hover:text-foreground transition-colors"
+              prefetch={false}
             >
               {item.label}
             </Link>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { Suspense, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Card,
@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, ArrowRight, Loader2, RefreshCw } from "lucide-react";
 
-export default function BillingSuccessPage() {
+function BillingSuccessContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [countdown, setCountdown] = useState(3);
@@ -187,5 +187,26 @@ export default function BillingSuccessPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function BillingSuccessPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-[60vh] p-8">
+          <Card className="max-w-md w-full text-center">
+            <CardHeader className="space-y-4">
+              <div className="mx-auto w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center">
+                <Loader2 className="w-10 h-10 text-green-500 animate-spin" />
+              </div>
+              <CardTitle className="text-2xl">Loading...</CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
+      }
+    >
+      <BillingSuccessContent />
+    </Suspense>
   );
 }

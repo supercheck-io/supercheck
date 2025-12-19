@@ -131,7 +131,7 @@ export function LoginForm({
                   </>
                 ) : (
                   <span className="text-xs text-muted-foreground">
-                    New here? Sign in with GitHub or Google
+                    New here? Sign in with GitHub or Google to get started
                   </span>
                 )}
               </FieldDescription>
@@ -172,13 +172,12 @@ export function LoginForm({
             {!inviteData && (
               <>
                 <SocialAuthButtons
-                  mode="signin"
                   callbackUrl={inviteToken ? `/invite/${inviteToken}` : "/"}
                   disabled={isLoading}
                 />
 
                 {/* Separator */}
-                <FieldSeparator>Or continue with email</FieldSeparator>
+                <FieldSeparator>Or sign in with email (invited members)</FieldSeparator>
               </>
             )}
 

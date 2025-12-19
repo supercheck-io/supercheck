@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { TESTS_QUERY_KEY } from "@/hooks/use-tests";
+import { useTags, useTestTags, useTagMutations, useSaveTestTags } from "@/hooks/use-tags";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import {
   canCreateTags,
@@ -168,11 +169,11 @@ export function TestForm({
   const performanceMode = isPerformanceMode || testCase.type === "performance";
 
 
-  // Tag management state
-  const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
-  const [initialTags, setInitialTags] = useState<Tag[]>([]);
-  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
-  const [isLoadingTags, setIsLoadingTags] = useState(false);
+  // Tag management - use React Query hooks for efficient caching
+  const { tags: availableTags, isLoading: isLoadingAvailableTags } = useTags();
+  const { testTags: fetchedTestTags, isLoading: isLoadingTestTags } = useTestTags(testId ?? null);
+  const { createTag: createTagMutation, deleteTag: deleteTagMutation } = useTagMutations();
+  const saveTestTagsMutation = useSaveTestTags();
 
   // Permission checks
   const role = userRole ? normalizeRole(userRole) : null;
@@ -228,88 +229,46 @@ export function TestForm({
     );
   };
 
-  // Load available tags and test tags
+  // Sync selected tags when test tags are fetched from React Query hook
+  const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
+  const [initialTags, setInitialTags] = useState<Tag[]>([]);
+  const isLoadingTags = isLoadingAvailableTags || isLoadingTestTags;
+
+  // Track if we've initialized tags to prevent infinite loops
+  const hasInitializedTagsRef = React.useRef(false);
+
+  // Update selected/initial tags when test tags are loaded from React Query
+  // Only run ONCE when fetchedTestTags first becomes available
   useEffect(() => {
-    const loadTags = async () => {
-      setIsLoadingTags(true);
-      try {
-        // Load available tags
-        const tagsResponse = await fetch("/api/tags");
-        if (tagsResponse.ok) {
-          const tags = await tagsResponse.json();
-          setAvailableTags(tags);
-        }
+    // Reset flag if testId changes
+    if (!testId) {
+      hasInitializedTagsRef.current = false;
+      setSelectedTags([]);
+      setInitialTags([]);
+      return;
+    }
 
-        // Load test tags if we have a test ID
-        if (testId) {
-          const testTagsResponse = await fetch(`/api/tests/${testId}/tags`);
-          if (testTagsResponse.ok) {
-            const testTags = await testTagsResponse.json();
-            setSelectedTags(testTags);
-            setInitialTags(testTags); // Set initial tags for change detection
-          }
-        } else {
-          // For new tests, no initial tags
-          setInitialTags([]);
-        }
-      } catch (error) {
-        console.error("Error loading tags:", error);
-      } finally {
-        setIsLoadingTags(false);
-      }
-    };
+    // Only initialize once when fetchedTestTags is available (even if empty array)
+    // Using !== undefined to handle tests with zero tags properly
+    if (!hasInitializedTagsRef.current && fetchedTestTags !== undefined) {
+      hasInitializedTagsRef.current = true;
+      setSelectedTags(fetchedTestTags);
+      setInitialTags(fetchedTestTags);
+    }
+  }, [fetchedTestTags, testId]);
 
-    loadTags();
-  }, [testId]);
-
-  // Handle tag creation
+  // Handle tag creation - uses mutation hook with automatic cache invalidation
   const handleCreateTag = async (
     name: string,
     color?: string
   ): Promise<Tag> => {
-    const response = await fetch("/api/tags", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, color }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Failed to create tag");
-    }
-
-    const newTag = await response.json();
-
-    // Add to available tags
-    setAvailableTags((prev) => [...prev, newTag]);
-
+    const newTag = await createTagMutation.mutateAsync({ name, color });
     return newTag;
   };
 
+  // Handle tag deletion - uses mutation hook with automatic cache invalidation
   const handleDeleteTag = async (tagId: string): Promise<void> => {
-    const response = await fetch(`/api/tags/${tagId}`, {
-      method: "DELETE",
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-
-      if (response.status === 409) {
-        // Tag is in use - show specific error message
-        throw new Error(
-          errorData.error || "Tag is currently in use and cannot be deleted"
-        );
-      }
-
-      throw new Error(errorData.error || "Failed to delete tag");
-    }
-
-    const result = await response.json();
-
-    // Remove from available tags
-    setAvailableTags((prev) => prev.filter((tag) => tag.id !== tagId));
-
-    // Show success message with tag name if available
+    const result = await deleteTagMutation.mutateAsync(tagId);
     const deletedTagName = result.deletedTag?.name || "Tag";
     toast.success(`${deletedTagName} deleted successfully`);
   };
@@ -319,18 +278,19 @@ export function TestForm({
     setSelectedTags(tags);
   };
 
-  // Save tags when form is submitted
-  const saveTestTags = async (testId: string) => {
+  // Save tags when form is submitted - uses mutation hook
+  // Note: For new tests (no testId), tags should be saved after the test is created.
+  // The testIdToSave parameter supports both existing and new tests.
+  const saveTestTags = async (testIdToSave: string) => {
+    // Skip if no test ID - tags will be saved when test is created
+    if (!testIdToSave) {
+      return;
+    }
     try {
-      const response = await fetch(`/api/tests/${testId}/tags`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tagIds: selectedTags.map((tag) => tag.id) }),
+      await saveTestTagsMutation.mutateAsync({
+        testId: testIdToSave,
+        tagIds: selectedTags.map((tag) => tag.id),
       });
-
-      if (!response.ok) {
-        console.error("Failed to save test tags");
-      }
     } catch (error) {
       console.error("Error saving test tags:", error);
     }

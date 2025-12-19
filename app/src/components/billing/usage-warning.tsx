@@ -95,7 +95,7 @@ export function UsageWarning({
             {is100 && " - Upgrade now to continue"}
           </p>
         </div>
-        <Link href="/billing" passHref>
+        <Link href="/billing" passHref prefetch={false}>
           <Button
             size="sm"
             variant={is100 ? "default" : "outline"}

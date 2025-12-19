@@ -13,6 +13,7 @@ import {
   integer,
   boolean,
   uuid,
+  index,
 } from "drizzle-orm/pg-core";
 import { sql, relations } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -25,10 +26,12 @@ import type { K6Location, TestRunStatus } from "./types";
 /**
  * Stores k6 performance test execution results and detailed metrics
  */
-export const k6PerformanceRuns = pgTable("k6_performance_runs", {
-  id: uuid("id")
-    .primaryKey()
-    .$defaultFn(() => sql`uuidv7()`),
+export const k6PerformanceRuns = pgTable(
+  "k6_performance_runs",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => sql`uuidv7()`),
 
   // Relationships
   testId: uuid("test_id"),
@@ -78,10 +81,20 @@ export const k6PerformanceRuns = pgTable("k6_performance_runs", {
   errorDetails: text("error_details"),
   consoleOutput: text("console_output"), // Truncated for quick view (full in S3)
 
-  // Timestamps
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
+    // Timestamps
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    // PERFORMANCE: Indexes for dashboard K6 analytics queries
+    projectOrgIdx: index("k6_runs_project_org_idx").on(
+      table.projectId,
+      table.organizationId
+    ),
+    startedAtIdx: index("k6_runs_started_at_idx").on(table.startedAt),
+    runIdIdx: index("k6_runs_run_id_idx").on(table.runId),
+  })
+);
 
 // Relations
 export const k6PerformanceRunsRelations = relations(

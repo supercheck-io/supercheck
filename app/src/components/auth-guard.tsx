@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import { useSession } from "@/utils/auth-client";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 
 /**
  * AuthGuard - Client-side authentication guard using Better Auth
- * 
- * PERFORMANCE OPTIMIZATION:
+ *
+ * SECURITY & PERFORMANCE:
  * - Uses Better Auth's useSession hook (properly handles session state)
- * - Does NOT block server rendering (layout stays synchronous)
- * - Prevents layout remounts on navigation
+ * - Does NOT render protected content until authentication is confirmed
+ * - Shows loading state while checking authentication
+ * - Prevents layout remounts on navigation once authenticated
  */
 
 interface AuthGuardProps {
@@ -21,36 +22,39 @@ interface AuthGuardProps {
 export function AuthGuard({ children }: AuthGuardProps) {
     const router = useRouter();
     const { data: session, isPending } = useSession();
+    // Use ref to track redirect to avoid re-renders and lint warnings
+    const isRedirectingRef = useRef(false);
 
     useEffect(() => {
         // Wait for session check to complete
         if (isPending) return;
 
-        // If no session, go to sign-in
-        if (!session) {
+        // If no session, go to sign-in (use ref to prevent duplicate redirects)
+        if (!session && !isRedirectingRef.current) {
+            isRedirectingRef.current = true;
             router.replace("/sign-in");
         }
     }, [session, isPending, router]);
 
-    // Show loading while checking session
+    // Show loading while checking session - DO NOT render protected content
     if (isPending) {
         return (
-            <div className="flex min-h-screen items-center justify-center">
-                <SuperCheckLoading size="lg" message="Loading, please wait..." />
+            <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">
+                <SuperCheckLoading size="lg" message="Checking authentication..." />
             </div>
         );
     }
 
-    // No session - will redirect (show loading briefly)
+    // No session - show loading while redirecting, DO NOT render protected content
     if (!session) {
         return (
-            <div className="flex min-h-screen items-center justify-center">
-                <SuperCheckLoading size="lg" message="Redirecting..." />
+            <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">
+                <SuperCheckLoading size="lg" message="Redirecting to sign in..." />
             </div>
         );
     }
 
-    // Session exists - render children
+    // Session exists - render protected children
     return <>{children}</>;
 }
 

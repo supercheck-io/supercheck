@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Test } from "./schema";
 import { Button } from "@/components/ui/button";
@@ -53,7 +53,7 @@ import { canDeleteJobs } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useQueryClient } from "@tanstack/react-query";
-import { JOBS_QUERY_KEY } from "@/hooks/use-jobs";
+import { JOBS_QUERY_KEY, type Job, type JobTest } from "@/hooks/use-jobs";
 
 
 interface AlertConfiguration {
@@ -79,9 +79,10 @@ type FormData = z.infer<typeof jobFormSchema>;
 
 interface EditJobProps {
   jobId: string;
+  initialJobData?: Job; // Pre-fetched job data from page.tsx to avoid duplicate API calls
 }
 
-export default function EditJob({ jobId }: EditJobProps) {
+export default function EditJob({ jobId, initialJobData }: EditJobProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
@@ -172,114 +173,88 @@ export default function EditJob({ jobId }: EditJobProps) {
   // Watch form values for changes
   const watchedValues = form.watch();
 
-  // Load job data
-  const loadJob = useCallback(async (signal?: AbortSignal) => {
-    try {
-      setIsLoading(true);
-      const response = await fetch(`/api/jobs/${jobId}`, { signal });
-      const data = await response.json();
-
-      if (!response.ok || data.error) {
-        // This check is now handled by the server component
-        // But we'll still handle it here for robustness
-        toast.error("Error", {
-          description: data.error || "Job not found. Redirecting to jobs list.",
-        });
-        router.push("/jobs");
-        return;
-      }
-
-      const jobData = data;
-
-      // Set form values
-      const formValues = {
-        name: jobData.name,
-        description: jobData.description || "",
-        cronSchedule: jobData.cronSchedule || "",
-      };
-
-      form.reset(formValues);
-
-      // Map the tests to the format expected by TestSelector
-      const tests = jobData.tests.map((test: Record<string, unknown>) => ({
-        id: test.id,
-        name: test.name,
-        description: test.description || null,
-        type: test.type as "browser" | "api" | "custom" | "database" | "performance",
-        status: "running" as const,
-        lastRunAt: null,
-        duration: null,
-        tags: test.tags || [], // <-- Ensure tags are included
-      }));
-
-      setSelectedTests(tests);
-
-      // Detect if this is a k6 (performance) job or Playwright job
-      // If all tests are performance type, it's a k6 job
-      const allPerformanceTests = tests.length > 0 && tests.every((test: Test) => test.type === "performance");
-      setIsPerformanceJob(allPerformanceTests);
-
-      // Load alert configuration if it exists
-      const alertConfigData: AlertConfiguration = {
-        enabled: false,
-        notificationProviders: [],
-        alertOnFailure: true,
-        alertOnSuccess: false,
-        alertOnTimeout: true,
-        failureThreshold: 1,
-        recoveryThreshold: 1,
-        customMessage: "",
-      };
-
-      if (jobData.alertConfig && typeof jobData.alertConfig === 'object') {
-        const alertConfig = jobData.alertConfig as Record<string, unknown>; // Safe cast since we checked it's an object
-        alertConfigData.enabled = Boolean(alertConfig.enabled);
-        alertConfigData.notificationProviders = Array.isArray(alertConfig.notificationProviders) ? (alertConfig.notificationProviders as string[]) : [];
-        alertConfigData.alertOnFailure = alertConfig.alertOnFailure !== undefined ? Boolean(alertConfig.alertOnFailure) : true;
-        alertConfigData.alertOnSuccess = Boolean(alertConfig.alertOnSuccess);
-        alertConfigData.alertOnTimeout = alertConfig.alertOnTimeout !== undefined ? Boolean(alertConfig.alertOnTimeout) : true;
-        alertConfigData.failureThreshold = typeof alertConfig.failureThreshold === 'number' ? alertConfig.failureThreshold : 1;
-        alertConfigData.recoveryThreshold = typeof alertConfig.recoveryThreshold === 'number' ? alertConfig.recoveryThreshold : 1;
-        alertConfigData.customMessage = typeof alertConfig.customMessage === 'string' ? alertConfig.customMessage : "";
-      }
-
-      setAlertConfig(alertConfigData);
-
-      // Store complete initial state for change detection
-      setInitialFormState({
-        name: formValues.name,
-        description: formValues.description,
-        cronSchedule: formValues.cronSchedule,
-        tests: tests,
-        alertConfig: alertConfigData
-      });
-
-      // Reset form changed state after successful load
-      setFormChanged(false);
-      setApiKeysChanged(false);
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        // Request was cancelled, ignore
-        return;
-      }
-      console.error("Error loading job:", error);
+  // Process job data either from props (initialJobData) or refetch
+  // This eliminates duplicate API calls - data is fetched once in page.tsx
+  useEffect(() => {
+    if (!initialJobData) {
+      // No initial data - shouldn't happen in normal flow
       toast.error("Error", {
-        description: "Failed to load job details. Please try again later.",
+        description: "Job data not available. Redirecting to jobs list.",
       });
       router.push("/jobs");
-    } finally {
-      setIsLoading(false);
+      return;
     }
-  }, [jobId, router, form]);
 
-  useEffect(() => {
-    const abortController = new AbortController();
-    loadJob(abortController.signal);
+    // Process the initial job data
+    const jobData = initialJobData;
 
-    return () => {
-      abortController.abort();
+    // Set form values
+    const formValues = {
+      name: jobData.name,
+      description: jobData.description || "",
+      cronSchedule: jobData.cronSchedule || "",
     };
-  }, [loadJob]);
+
+    form.reset(formValues);
+
+    // Map the tests to the format expected by TestSelector
+    const tests = (jobData.tests || []).map((test: JobTest) => ({
+      id: test.id,
+      name: test.name || test.title || "",
+      description: test.description || null,
+      type: (test.type as "browser" | "api" | "custom" | "database" | "performance") || "browser",
+      status: "running" as const,
+      lastRunAt: null,
+      duration: null,
+      tags: test.tags || [],
+    }));
+
+    setSelectedTests(tests);
+
+    // Detect if this is a k6 (performance) job or Playwright job
+    const allPerformanceTests = tests.length > 0 && tests.every((test) => test.type === "performance");
+    setIsPerformanceJob(allPerformanceTests);
+
+    // Load alert configuration if it exists
+    const alertConfigData: AlertConfiguration = {
+      enabled: false,
+      notificationProviders: [],
+      alertOnFailure: true,
+      alertOnSuccess: false,
+      alertOnTimeout: true,
+      failureThreshold: 1,
+      recoveryThreshold: 1,
+      customMessage: "",
+    };
+
+    if (jobData.alertConfig && typeof jobData.alertConfig === 'object') {
+      const ac = jobData.alertConfig;
+      alertConfigData.enabled = Boolean(ac.enabled);
+      alertConfigData.notificationProviders = Array.isArray(ac.notificationProviders) ? ac.notificationProviders : [];
+      alertConfigData.alertOnFailure = ac.alertOnFailure !== undefined ? Boolean(ac.alertOnFailure) : true;
+      alertConfigData.alertOnSuccess = Boolean(ac.alertOnSuccess);
+      alertConfigData.alertOnTimeout = ac.alertOnTimeout !== undefined ? Boolean(ac.alertOnTimeout) : true;
+      alertConfigData.failureThreshold = typeof ac.failureThreshold === 'number' ? ac.failureThreshold : 1;
+      alertConfigData.recoveryThreshold = typeof ac.recoveryThreshold === 'number' ? ac.recoveryThreshold : 1;
+      alertConfigData.customMessage = typeof ac.customMessage === 'string' ? ac.customMessage : "";
+    }
+
+    setAlertConfig(alertConfigData);
+
+    // Store complete initial state for change detection
+    setInitialFormState({
+      name: formValues.name,
+      description: formValues.description,
+      cronSchedule: formValues.cronSchedule,
+      tests: tests,
+      alertConfig: alertConfigData
+    });
+
+    // Reset form changed state after processing
+    setFormChanged(false);
+    setApiKeysChanged(false);
+    setIsLoading(false);
+  }, [initialJobData, router, form]);
 
   // Handle form submission for job details
   const handleJobNext = form.handleSubmit(async () => {

@@ -300,7 +300,7 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
               description: (
                 <>
                   {jobName}: {toastMessage}{" "}
-                  <Link href={`/runs/${runId}`} className="underline font-medium">
+                  <Link href={`/runs/${runId}`} className="underline font-medium" prefetch={false}>
                     View Run Report
                   </Link>
                 </>
@@ -557,7 +557,7 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
               {success
                 ? "All tests executed successfully."
                 : "One or more tests did not complete successfully."}{" "}
-              <Link href={`/runs/${runId}`} className="underline font-medium">
+              <Link href={`/runs/${runId}`} className="underline font-medium" prefetch={false}>
                 View Run Report
               </Link>
             </>

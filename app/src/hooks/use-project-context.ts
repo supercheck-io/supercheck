@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
+import { getDashboardQueryKey, fetchDashboard } from './use-dashboard';
 
 export interface ProjectContext {
   id: string;
@@ -40,7 +42,16 @@ let projectsCache: ProjectsCache | null = null;
 const CACHE_TTL = 30000; // 30 seconds - projects rarely change
 
 /**
+ * Clear the module-level projects cache
+ * Call this on sign-out to prevent data leakage between sessions
+ */
+export function clearProjectsCache(): void {
+  projectsCache = null;
+}
+
+/**
  * Hook to access project context
+ * @throws Error if used outside ProjectContextProvider
  */
 export function useProjectContext(): ProjectContextState {
   const context = useContext(ProjectContextContext);
@@ -51,15 +62,26 @@ export function useProjectContext(): ProjectContextState {
 }
 
 /**
+ * Safe hook to access project context without throwing
+ * Returns null if used outside ProjectContextProvider
+ * Use this for components that may render outside the provider
+ */
+export function useProjectContextSafe(): ProjectContextState | null {
+  return useContext(ProjectContextContext);
+}
+
+/**
  * Project context state management
  * PERFORMANCE OPTIMIZATION: Uses module-level cache to prevent
  * duplicate API calls when navigating between pages.
+ * Also prefetches dashboard data as soon as project is available.
  */
 export function useProjectContextState(): ProjectContextState {
   const [currentProject, setCurrentProject] = useState<ProjectContext | null>(projectsCache?.currentProject || null);
   const [projects, setProjects] = useState<ProjectContext[]>(projectsCache?.projects || []);
   const [loading, setLoading] = useState(!projectsCache);
   const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
   const fetchProjects = useCallback(async (forceRefresh = false) => {
     // Use cache if available and not expired (unless force refresh)
@@ -174,6 +196,19 @@ export function useProjectContextState(): ProjectContextState {
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
+
+  // PERFORMANCE: Prefetch dashboard data as soon as we have a project
+  // This starts the slow dashboard fetch in parallel with other initializations
+  useEffect(() => {
+    if (currentProject?.id) {
+      // Prefetch dashboard data - doesn't block, just warms the cache
+      queryClient.prefetchQuery({
+        queryKey: getDashboardQueryKey(currentProject.id),
+        queryFn: fetchDashboard,
+        staleTime: 60 * 1000, // Same as useDashboard
+      });
+    }
+  }, [currentProject?.id, queryClient]);
 
   return {
     currentProject,

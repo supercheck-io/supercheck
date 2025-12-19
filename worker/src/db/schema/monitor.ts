@@ -67,7 +67,20 @@ export const monitors = pgTable("monitors", {
   scheduledJobId: varchar("scheduled_job_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at"),
-});
+  },
+  (table) => ({
+    // PERFORMANCE: Indexes for dashboard monitor queries
+    projectOrgIdx: index("monitors_project_org_idx").on(
+      table.projectId,
+      table.organizationId
+    ),
+    projectOrgStatusIdx: index("monitors_project_org_status_idx").on(
+      table.projectId,
+      table.organizationId,
+      table.status
+    ),
+  })
+);
 
 /**
  * Stores the results of each monitor check.
@@ -110,6 +123,12 @@ export const monitorResults = pgTable(
     testReportS3Url: text("test_report_s3_url"), // Full S3 URL to the report
   },
   (table) => ({
+    // PERFORMANCE: Indexes for dashboard monitor queries
+    checkedAtIdx: index("monitor_results_checked_at_idx").on(table.checkedAt),
+    monitorCheckedIdx: index("monitor_results_monitor_checked_idx").on(
+      table.monitorId,
+      table.checkedAt
+    ),
     // Composite index for efficient location-based queries
     monitorLocationIdx: index(
       "monitor_results_monitor_location_checked_idx"
