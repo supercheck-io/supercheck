@@ -14,14 +14,16 @@ import { useAppConfig } from "./use-app-config";
  * This prevents redundant API calls across components.
  */
 export function useAuthProviders() {
-  const { config, isLoading, error, isGithubEnabled, isGoogleEnabled } = useAppConfig();
+  const { config, isLoading, isFetched, error, isGithubEnabled, isGoogleEnabled } = useAppConfig();
 
   return {
     providers: config?.authProviders ?? {
       github: { enabled: false },
       google: { enabled: false },
     },
-    isLoading,
+    // IMPORTANT: For auth pages, we need to wait for real config before showing/hiding buttons
+    // isLoading is false immediately due to initialData, so we use !isFetched instead
+    isLoading: !isFetched,
     error,
     isGithubEnabled,
     isGoogleEnabled,

@@ -124,16 +124,17 @@ export interface DashboardData {
 export const DASHBOARD_QUERY_KEY = ["dashboard"] as const;
 
 // Helper to create project-scoped key
-const getDashboardQueryKey = (projectId: string | null) => 
+export const getDashboardQueryKey = (projectId: string | null) => 
   [...DASHBOARD_QUERY_KEY, projectId] as const;
 
 // ============================================================================
-// FETCH FUNCTION
+// FETCH FUNCTION (exported for prefetching)
 // ============================================================================
 
-async function fetchDashboard(): Promise<DashboardData> {
+export async function fetchDashboard(): Promise<DashboardData> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
+  // Increased timeout to 30s for cold starts when database connections are warming up
+  const timeoutId = setTimeout(() => controller.abort('Dashboard request timeout'), 30000);
 
   try {
     const [dashboardResponse, alertsResponse] = await Promise.all([
@@ -166,6 +167,10 @@ async function fetchDashboard(): Promise<DashboardData> {
     return transformDashboardData(data, alertsData);
   } catch (error) {
     clearTimeout(timeoutId);
+    // Provide more descriptive error message for abort
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Dashboard request timed out. Please try again.');
+    }
     throw error;
   }
 }

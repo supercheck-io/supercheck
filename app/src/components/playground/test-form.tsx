@@ -173,7 +173,7 @@ export function TestForm({
   const { tags: availableTags, isLoading: isLoadingAvailableTags } = useTags();
   const { testTags: fetchedTestTags, isLoading: isLoadingTestTags } = useTestTags(testId ?? null);
   const { createTag: createTagMutation, deleteTag: deleteTagMutation } = useTagMutations();
-  const saveTestTagsMutation = useSaveTestTags(testId ?? null);
+  const saveTestTagsMutation = useSaveTestTags();
 
   // Permission checks
   const role = userRole ? normalizeRole(userRole) : null;
@@ -280,15 +280,17 @@ export function TestForm({
 
   // Save tags when form is submitted - uses mutation hook
   // Note: For new tests (no testId), tags should be saved after the test is created.
-  // The mutation hook is scoped to the testId captured at hook creation time.
-  // The testIdToSave parameter is used for new tests where testId wasn't available at mount.
+  // The testIdToSave parameter supports both existing and new tests.
   const saveTestTags = async (testIdToSave: string) => {
     // Skip if no test ID - tags will be saved when test is created
     if (!testIdToSave) {
       return;
     }
     try {
-      await saveTestTagsMutation.mutateAsync(selectedTags.map((tag) => tag.id));
+      await saveTestTagsMutation.mutateAsync({
+        testId: testIdToSave,
+        tagIds: selectedTags.map((tag) => tag.id),
+      });
     } catch (error) {
       console.error("Error saving test tags:", error);
     }

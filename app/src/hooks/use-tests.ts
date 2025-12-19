@@ -17,13 +17,14 @@ export interface Test {
   name: string;
   title?: string;
   description?: string;
-  type: "playwright" | "k6" | "api" | "browser";
+  type: "playwright" | "k6" | "api" | "browser" | "database" | "custom" | "performance";
+  priority?: "low" | "medium" | "high";
   script?: string;
   createdAt: string;
   updatedAt: string;
   projectId: string;
   organizationId: string;
-  tags?: Array<{ id: string; name: string; color: string }>;
+  tags?: Array<{ id: string; name: string; color: string | null }>;
 }
 
 export interface TestsResponse extends PaginatedResponse<Test> {}

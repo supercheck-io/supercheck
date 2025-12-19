@@ -169,21 +169,21 @@ export function useTagMutations() {
 
 /**
  * Hook for saving test tags with automatic cache invalidation.
- * 
- * Note: testId is captured at hook creation time. If testId changes,
- * the component should re-render with a new hook instance.
+ *
+ * Accepts testId as a mutation parameter to support both:
+ * - Existing tests (testId available at mount)
+ * - New tests (testId available only after creation)
  */
-export function useSaveTestTags(testId: string | null) {
+export function useSaveTestTags() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (tagIds: string[]) => {
+    mutationFn: ({ testId, tagIds }: { testId: string; tagIds: string[] }) => {
       if (!testId) throw new Error("Test ID is required");
       return saveTestTagsApi(testId, tagIds);
     },
     onSuccess: () => {
       // Invalidate all test tags queries to ensure consistency
-      // This handles edge cases where testId might change during component lifecycle
       queryClient.invalidateQueries({ queryKey: TEST_TAGS_QUERY_KEY });
     },
   });

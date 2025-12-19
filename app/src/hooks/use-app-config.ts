@@ -56,10 +56,10 @@ const DEFAULT_CONFIG: AppConfig = {
 export const APP_CONFIG_QUERY_KEY = ["app-config"] as const;
 
 // ============================================================================
-// FETCH FUNCTION
+// FETCH FUNCTION (exported for prefetching)
 // ============================================================================
 
-async function fetchAppConfig(): Promise<AppConfig> {
+export async function fetchAppConfig(): Promise<AppConfig> {
   const response = await fetch("/api/config/app");
   if (!response.ok) {
     throw new Error("Failed to fetch app config");
@@ -80,7 +80,7 @@ async function fetchAppConfig(): Promise<AppConfig> {
  * On error, returns safe defaults (self-hosted mode) to avoid blocking users.
  */
 export function useAppConfig() {
-  const { data: config, isLoading, error } = useQuery({
+  const { data: config, isLoading, error, isFetched } = useQuery({
     queryKey: APP_CONFIG_QUERY_KEY,
     queryFn: fetchAppConfig,
     staleTime: 5 * 60 * 1000, // 5 minutes - config rarely changes
@@ -89,8 +89,11 @@ export function useAppConfig() {
     refetchOnMount: false,    // Use cached data across components
     refetchOnReconnect: false,
     retry: 2,
-    // Return defaults on error for fail-safe behavior
-    placeholderData: DEFAULT_CONFIG,
+    // PERFORMANCE: Use initialData for instant render with safe defaults
+    // Self-hosted is the safe default (no subscription checks needed)
+    initialData: DEFAULT_CONFIG,
+    // Mark initial data as stale so it gets refetched
+    initialDataUpdatedAt: 0,
   });
 
   // Use config or defaults
@@ -98,7 +101,10 @@ export function useAppConfig() {
 
   return {
     config: effectiveConfig,
-    isLoading,
+    // PERFORMANCE: isLoading is false when we have initialData
+    // Use isFetched to know when real data is available
+    isLoading: isLoading && !config,
+    isFetched,
     error: error as Error | null,
     // Convenience accessors with safe defaults
     isSelfHosted: effectiveConfig.hosting?.selfHosted ?? true,

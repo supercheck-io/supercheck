@@ -8,6 +8,20 @@
       "when": 1765778874789,
       "tag": "0000_robust_rick_jones",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1766137820580,
+      "tag": "0001_faithful_marten_broadcloak",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1766138419653,
+      "tag": "0002_deep_penance",
+      "breakpoints": true
     }
   ]
 }

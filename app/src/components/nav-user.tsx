@@ -14,7 +14,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTheme } from "next-themes";
 import { Moon, Sun, User, Monitor } from "lucide-react";
-import { useProjectContext } from "@/hooks/use-project-context";
+import { useProjectContextSafe, clearProjectsCache } from "@/hooks/use-project-context";
 
 export function NavUser() {
   const { data: session, isPending } = useSession();
@@ -22,21 +22,22 @@ export function NavUser() {
   const user = session?.user;
   const { theme, setTheme } = useTheme();
 
-  // Safely try to get project context, handle case where component is used outside provider
-  let currentProject = null;
-  try {
-    const projectContext = useProjectContext();
-    currentProject = projectContext.currentProject;
-  } catch {
-    // Component is used outside ProjectContextProvider, that's fine
-    console.debug('NavUser: Project context not available');
-  }
+  // Use safe hook that returns null if outside provider (no try-catch needed)
+  const projectContext = useProjectContextSafe();
+  const currentProject = projectContext?.currentProject ?? null;
 
   useEffect(() => {
-    setIsClient(true);
+    // Defer state update to avoid cascading renders
+    const timer = setTimeout(() => {
+      setIsClient(true);
+    }, 0);
+    
+    return () => clearTimeout(timer);
   }, []);
 
   const handleLogout = async () => {
+    // Clear module-level caches to prevent data leakage between sessions
+    clearProjectsCache();
     await signOut();
     window.location.href = "/sign-in";
   };
@@ -51,7 +52,7 @@ export function NavUser() {
       <DropdownMenuTrigger asChild>
         <button data-testid="user-menu" className="h-8 w-8 rounded-full focus-visible:ring-ring flex items-center focus-visible:outline-none">
           <Avatar className="h-8 w-8 rounded-full">
-            <AvatarImage src={user?.image || ""} alt={user?.name || ""} />
+            <AvatarImage src={user?.image || undefined} alt={user?.name || ""} />
             <AvatarFallback className="rounded-full">
               {user?.name?.charAt(0).toUpperCase()}
               {/* {user?.name?.charAt(1).toUpperCase()} */}

@@ -38,13 +38,8 @@ export function DataTableTagFilter<TData, TValue>({
   title = "Tags",
 }: DataTableTagFilterProps<TData, TValue>) {
   // Use React Query hook for centralized tags caching
-  const { tags: fetchedTags, isLoading } = useTags();
-
-  // Map to local Tag interface (handle null color)
-  const availableTags: Tag[] = React.useMemo(() =>
-    fetchedTags.map(t => ({ ...t, color: t.color ?? null })),
-    [fetchedTags]
-  );
+  // Tags from useTags already have the correct type (color: string | null)
+  const { tags: availableTags, isLoading } = useTags();
 
   const selectedValues = new Set(column?.getFilterValue() as string[]);
 
