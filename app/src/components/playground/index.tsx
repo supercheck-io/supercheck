@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/resizable";
 import { CodeEditor } from "./code-editor";
 import { TestForm } from "./test-form";
-import { LoadingOverlay } from "./loading-overlay";
 import { ValidationError } from "./validation-error";
 import { Loader2Icon, ZapIcon, Text, Code2, X } from "lucide-react";
 import * as z from "zod";
@@ -180,7 +179,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isReportLoading, setIsReportLoading] = useState(false);
-  const [pageLoading, setPageLoading] = useState(true);
+
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [performanceRunId, setPerformanceRunId] = useState<string | null>(null);
   const [performanceLocation, setPerformanceLocation] =
@@ -376,13 +375,6 @@ const Playground: React.FC<PlaygroundProps> = ({
     if (window.location.pathname === "/playground") {
       setTestId(null);
     }
-
-    // Set pageLoading to false after a short delay to ensure UI is ready
-    const timer = setTimeout(() => {
-      setPageLoading(false);
-    }, 1000);
-
-    return () => clearTimeout(timer);
   }, []);
 
   // Initialize validation state for existing test data (only once per test load)
@@ -1175,15 +1167,8 @@ const Playground: React.FC<PlaygroundProps> = ({
   };
 
   return (
-    <>
-      <LoadingOverlay isVisible={pageLoading} />
-      <div
-        className={
-          pageLoading
-            ? "opacity-0"
-            : "opacity-100 transition-opacity duration-300"
-        }
-      >
+    <div className="h-full">
+      <div className="h-full">
         <div className="md:hidden">{/* Mobile view */}</div>
         <div className="hidden flex-col flex-1 md:flex p-4  h-[calc(100vh-5rem)]">
           <ResizablePanelGroup direction="horizontal">
@@ -1597,7 +1582,7 @@ const Playground: React.FC<PlaygroundProps> = ({
         guidance={guidanceMessage}
         onClose={handleCloseGuidanceModal}
       />
-    </>
+    </div>
   );
 };
 

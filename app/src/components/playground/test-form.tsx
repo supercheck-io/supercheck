@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { TESTS_QUERY_KEY } from "@/hooks/use-tests";
-import { useTags, useTestTags, useTagMutations, useSaveTestTags, TAGS_QUERY_KEY } from "@/hooks/use-tags";
+import { useTags, useTestTags, useTagMutations, useSaveTestTags } from "@/hooks/use-tags";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import {
   canCreateTags,
@@ -248,8 +248,9 @@ export function TestForm({
       return;
     }
 
-    // Only initialize once when we have test tags
-    if (!hasInitializedTagsRef.current && fetchedTestTags && fetchedTestTags.length > 0) {
+    // Only initialize once when fetchedTestTags is available (even if empty array)
+    // Using !== undefined to handle tests with zero tags properly
+    if (!hasInitializedTagsRef.current && fetchedTestTags !== undefined) {
       hasInitializedTagsRef.current = true;
       setSelectedTags(fetchedTestTags);
       setInitialTags(fetchedTestTags);
@@ -278,10 +279,11 @@ export function TestForm({
   };
 
   // Save tags when form is submitted - uses mutation hook
-  // Note: For new tests (no testId), tags should be saved after the test is created
+  // Note: For new tests (no testId), tags should be saved after the test is created.
+  // The mutation hook is already scoped to the current test via component state.
   const saveTestTags = async (testIdToSave: string) => {
     // Skip if no test ID - tags will be saved when test is created
-    if (!testIdToSave || !testId) {
+    if (!testIdToSave) {
       return;
     }
     try {

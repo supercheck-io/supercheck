@@ -612,7 +612,7 @@ export function MonitorForm({
   }, [type, editMode, initialData?.syntheticConfig_testId, syntheticTestId]);
 
   // Use React Query hook for test data - single source of truth, no duplicate calls
-  const { data: fetchedTestData, isLoading: isTestLoading } = useTest(syntheticTestIdToFetch);
+  const { data: fetchedTestData } = useTest(syntheticTestIdToFetch);
 
   // Sync selectedTests when test data is fetched via React Query
   useEffect(() => {
