@@ -10,7 +10,7 @@
  * - refetchOnWindowFocus: false to prevent aggressive re-fetching
  */
 
-import { useQuery, useMutation, useQueryClient, UseQueryResult, UseMutationResult } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, UseQueryResult } from "@tanstack/react-query";
 
 // ============================================================================
 // TYPES
@@ -19,7 +19,7 @@ import { useQuery, useMutation, useQueryClient, UseQueryResult, UseMutationResul
 export interface Tag {
   id: string;
   name: string;
-  color: string;
+  color: string | null;
   createdAt?: string;
   createdByUserId?: string;
 }
@@ -141,7 +141,7 @@ export function useTestTags(testId: string | null): UseQueryResult<Tag[], Error>
 export function useTagMutations() {
   const queryClient = useQueryClient();
 
-  const createTag: UseMutationResult<Tag, Error, { name: string; color?: string }> = useMutation({
+  const createTag = useMutation({
     mutationFn: createTagApi,
     onSuccess: (newTag) => {
       // Add new tag to cache immediately (optimistic update)
@@ -151,7 +151,7 @@ export function useTagMutations() {
     },
   });
 
-  const deleteTag: UseMutationResult<{ deletedTag?: { name: string } }, Error, string> = useMutation({
+  const deleteTag = useMutation({
     mutationFn: deleteTagApi,
     onSuccess: (_result, tagId) => {
       // Remove tag from cache immediately (optimistic update)
@@ -169,6 +169,9 @@ export function useTagMutations() {
 
 /**
  * Hook for saving test tags with automatic cache invalidation.
+ * 
+ * Note: testId is captured at hook creation time. If testId changes,
+ * the component should re-render with a new hook instance.
  */
 export function useSaveTestTags(testId: string | null) {
   const queryClient = useQueryClient();
@@ -179,10 +182,9 @@ export function useSaveTestTags(testId: string | null) {
       return saveTestTagsApi(testId, tagIds);
     },
     onSuccess: () => {
-      // Invalidate test tags cache
-      if (testId) {
-        queryClient.invalidateQueries({ queryKey: [...TEST_TAGS_QUERY_KEY, testId] });
-      }
+      // Invalidate all test tags queries to ensure consistency
+      // This handles edge cases where testId might change during component lifecycle
+      queryClient.invalidateQueries({ queryKey: TEST_TAGS_QUERY_KEY });
     },
   });
 }

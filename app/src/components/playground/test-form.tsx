@@ -280,7 +280,8 @@ export function TestForm({
 
   // Save tags when form is submitted - uses mutation hook
   // Note: For new tests (no testId), tags should be saved after the test is created.
-  // The mutation hook is already scoped to the current test via component state.
+  // The mutation hook is scoped to the testId captured at hook creation time.
+  // The testIdToSave parameter is used for new tests where testId wasn't available at mount.
   const saveTestTags = async (testIdToSave: string) => {
     // Skip if no test ID - tags will be saved when test is created
     if (!testIdToSave) {

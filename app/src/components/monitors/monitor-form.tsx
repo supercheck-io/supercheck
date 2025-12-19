@@ -452,6 +452,9 @@ export function MonitorForm({
     initialLocationConfig
   );
   const [selectedTests, setSelectedTests] = useState<Test[]>([]);
+  
+  // Track previous selected test ID to prevent unnecessary updates
+  const prevSelectedTestIdRef = React.useRef<string | null>(null);
 
   // Get current monitor type from URL params if not provided as prop
   const urlType = searchParams.get("type") as FormValues["type"];
@@ -618,20 +621,32 @@ export function MonitorForm({
   useEffect(() => {
     // Clear selections when switching away from synthetic monitors
     if (type !== "synthetic_test") {
-      if (selectedTests.length > 0) {
+      if (prevSelectedTestIdRef.current !== null) {
+        prevSelectedTestIdRef.current = null;
         setSelectedTests([]);
       }
       return;
     }
 
     // If we have fetched test data, update selectedTests
+    // Use ref to track previous selection and avoid unnecessary re-renders
     if (fetchedTestData && syntheticTestIdToFetch) {
-      // Only update if not already selected (avoid unnecessary re-renders)
-      if (!selectedTests.some(test => test.id === syntheticTestIdToFetch)) {
-        setSelectedTests([mapApiTestToTest(fetchedTestData as unknown as Record<string, unknown>)]);
+      if (prevSelectedTestIdRef.current !== syntheticTestIdToFetch) {
+        prevSelectedTestIdRef.current = syntheticTestIdToFetch;
+        // Type assertion is safe here as fetchedTestData matches the expected shape
+        const testRecord: Record<string, unknown> = {
+          id: fetchedTestData.id,
+          title: fetchedTestData.title,
+          name: fetchedTestData.name,
+          description: fetchedTestData.description,
+          type: fetchedTestData.type,
+          updatedAt: fetchedTestData.updatedAt,
+          tags: fetchedTestData.tags,
+        };
+        setSelectedTests([mapApiTestToTest(testRecord)]);
       }
     }
-  }, [type, fetchedTestData, syntheticTestIdToFetch, selectedTests]);
+  }, [type, fetchedTestData, syntheticTestIdToFetch]);
 
   const targetPlaceholders: Record<FormValues["type"], string> = {
     http_request: "e.g., https://example.com or https://api.example.com/health",

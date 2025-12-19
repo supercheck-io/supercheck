@@ -2,8 +2,8 @@
 import Playground from "@/components/playground";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { useSearchParams } from "next/navigation";
-import React, { useState, useEffect, Suspense } from "react";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import React, { Suspense } from "react";
+import { PlaygroundSkeleton } from "@/components/playground/playground-skeleton";
 
 // Function to generate breadcrumbs based on scriptType
 const getBreadcrumbs = (scriptType: string | null) => {
@@ -35,49 +35,16 @@ const getBreadcrumbs = (scriptType: string | null) => {
   ];
 };
 
-// Loading fallback component - maintains layout structure during loading
+// Loading fallback component - shows skeleton during initial load
 function LoadingFallback() {
-  return (
-    <div className="h-full flex flex-col">
-      <PageBreadcrumbs items={[
-        { label: "Home", href: "/" },
-        { label: "Tests", href: "/tests" },
-        { label: "Loading...", isCurrentPage: true },
-      ]} />
-      <div className="relative flex-1 overflow-hidden flex items-center justify-center">
-        <SuperCheckLoading size="lg" message="Loading, please wait..." />
-      </div>
-    </div>
-  );
+  return <PlaygroundSkeleton />;
 }
 
 // Client Boundary Component
 function PlaygroundClientBoundary() {
   const searchParams = useSearchParams();
   const scriptType = searchParams.get("scriptType");
-  const [isLoading, setIsLoading] = useState(true);
-
   const breadcrumbs = getBreadcrumbs(scriptType);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 500); // Reduced timer for smoother UX
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Show loading state with spinner
-  if (isLoading) {
-    return (
-      <div className="h-full flex flex-col">
-        <PageBreadcrumbs items={breadcrumbs} />
-        <div className="relative flex-1 overflow-hidden flex items-center justify-center">
-          <SuperCheckLoading size="lg" message="Loading, please wait..." />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="h-full flex flex-col">
