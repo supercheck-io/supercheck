@@ -634,6 +634,7 @@ export function MonitorDetailClient({
                 <Link
                   href="/"
                   className="text-xl font-semibold text-foreground hover:opacity-80 transition-opacity"
+                  prefetch={false}
                 >
                   Supercheck
                 </Link>
@@ -642,6 +643,7 @@ export function MonitorDetailClient({
                 <Link
                   href="/"
                   className="flex items-center gap-1 hover:text-foreground transition-colors text-muted-foreground"
+                  prefetch={false}
                 >
                   <Home className="h-4 w-4" />
                 </Link>
@@ -742,8 +744,8 @@ export function MonitorDetailClient({
                 <div className="relative group mr-1">
                   <div
                     className={`flex items-center justify-center h-10 w-10 rounded-full ${monitor.alertConfig?.enabled
-                        ? "bg-green-100 dark:bg-green-900/30"
-                        : "bg-gray-100 dark:bg-gray-700/30"
+                      ? "bg-green-100 dark:bg-green-900/30"
+                      : "bg-gray-100 dark:bg-gray-700/30"
                       }`}
                   >
                     {monitor.alertConfig?.enabled ? (
@@ -797,27 +799,27 @@ export function MonitorDetailClient({
                 sslCertificateInfo.daysRemaining !== undefined && (
                   <div
                     className={`flex items-center px-2 py-2 rounded-md border ${sslCertificateInfo.daysRemaining <= 7
-                        ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-                        : sslCertificateInfo.daysRemaining <= 30
-                          ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800"
-                          : "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
+                      ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
+                      : sslCertificateInfo.daysRemaining <= 30
+                        ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800"
+                        : "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
                       }`}
                     title="SSL enabled"
                   >
                     <Shield
                       className={`h-4 w-4 mr-1 ${sslCertificateInfo.daysRemaining <= 7
-                          ? "text-red-600 dark:text-red-400"
-                          : sslCertificateInfo.daysRemaining <= 30
-                            ? "text-yellow-600 dark:text-yellow-400"
-                            : "text-green-600 dark:text-green-400"
+                        ? "text-red-600 dark:text-red-400"
+                        : sslCertificateInfo.daysRemaining <= 30
+                          ? "text-yellow-600 dark:text-yellow-400"
+                          : "text-green-600 dark:text-green-400"
                         }`}
                     />
                     <span
                       className={`text-xs ${sslCertificateInfo.daysRemaining <= 7
-                          ? "text-red-700 dark:text-red-300"
-                          : sslCertificateInfo.daysRemaining <= 30
-                            ? "text-yellow-700 dark:text-yellow-300"
-                            : "text-green-700 dark:text-green-300"
+                        ? "text-red-700 dark:text-red-300"
+                        : sslCertificateInfo.daysRemaining <= 30
+                          ? "text-yellow-700 dark:text-yellow-300"
+                          : "text-green-700 dark:text-green-300"
                         }`}
                     >
                       SSL: {sslCertificateInfo.daysRemaining}d remaining

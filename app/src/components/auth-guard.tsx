@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import { useSession } from "@/utils/auth-client";
 
 /**
@@ -32,22 +31,16 @@ export function AuthGuard({ children }: AuthGuardProps) {
         }
     }, [session, isPending, router]);
 
-    // Show loading while checking session
+    // Show loading while checking session - render children to preserve sidebar layout
+    // The page-level loading.tsx files handle showing appropriate loading skeletons
     if (isPending) {
-        return (
-            <div className="flex min-h-screen items-center justify-center">
-                <SuperCheckLoading size="lg" message="Loading, please wait..." />
-            </div>
-        );
+        return <>{children}</>;
     }
 
     // No session - will redirect (show loading briefly)
+    // Still render children to preserve layout during redirect
     if (!session) {
-        return (
-            <div className="flex min-h-screen items-center justify-center">
-                <SuperCheckLoading size="lg" message="Redirecting..." />
-            </div>
-        );
+        return <>{children}</>;
     }
 
     // Session exists - render children

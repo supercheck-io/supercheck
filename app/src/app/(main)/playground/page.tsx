@@ -78,8 +78,10 @@ function PlaygroundClientBoundary() {
 
 export default function PlaygroundPage() {
   // No useSearchParams or client logic here
+  // Note: We use null fallback to preserve the sidebar layout
+  // The actual loading skeleton is rendered inside PlaygroundClientBoundary
   return (
-    <Suspense fallback={<PlaygroundSkeleton />}>
+    <Suspense fallback={null}>
       <PlaygroundClientBoundary />
     </Suspense>
   );

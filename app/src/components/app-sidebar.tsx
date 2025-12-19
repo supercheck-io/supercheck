@@ -210,7 +210,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs",
       icon: BookOpenText,
-      badge: "v1.2.1-canary.5",
+      badge: "v1.2.1-canary.6",
     },
   ],
   documents: [
@@ -285,7 +285,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarGroup className="-mb-2 ">
           <SidebarMenu>
             <SidebarMenuItem>
-              <Link href="/create" className="flex w-full">
+              <Link href="/create" className="flex w-full" prefetch={false}>
                 <SidebarMenuButton
                   tooltip="Quick Create"
                   className="flex items-center justify-center min-w-7 bg-primary text-primary-foreground duration-200 ease-linear hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground  w-[90%] ml-[5%] mr-[5%] group-data-[collapsible=icon]:mt-3 group-data-[collapsible=icon]:mb-2"

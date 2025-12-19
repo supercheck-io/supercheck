@@ -3,77 +3,37 @@
 import { useParams, useRouter } from "next/navigation";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import EditJob from "@/components/jobs/edit-job";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { EditJobSkeleton } from "@/components/jobs/edit-job-skeleton";
 import { toast } from "sonner";
+import { useJob } from "@/hooks/use-jobs";
 
 export default function EditJobPage() {
   const params = useParams();
   const router = useRouter();
   const jobId = params.id as string;
-  const [isLoading, setIsLoading] = useState(true);
-  const [jobName, setJobName] = useState<string>("");
-  const [loadError, setLoadError] = useState(false);
 
+  // Use React Query hook for job data - this caches for 60s and prevents duplicate fetches
+  const { data: jobData, isLoading, error } = useJob(jobId);
+
+  // Redirect to not-found if job doesn't exist
   useEffect(() => {
-    const abortController = new AbortController();
-
-    async function checkJobExists() {
-      try {
-        const response = await fetch(`/api/jobs/${jobId}`, {
-          signal: abortController.signal
-        });
-
-        if (!response.ok) {
-          if (response.status === 404) {
-            toast.error("Job Not Found", {
-              description: "The job you're looking for doesn't exist or has been deleted."
-            });
-            router.push("/jobs");
-            return;
-          }
-          throw new Error(`Failed to load job: ${response.statusText}`);
-        }
-
-        const jobData = await response.json();
-        setJobName(jobData.name || jobId);
-        setLoadError(false);
-      } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          // Request was cancelled, ignore
-          return;
-        }
-        console.error("Error checking job:", error);
-        setLoadError(true);
-        toast.error("Error Loading Job", {
-          description: "Failed to load job details. Please try again."
-        });
-      } finally {
-        setIsLoading(false);
-      }
+    if (error) {
+      toast.error("Job Not Found", {
+        description: "The job you're looking for doesn't exist or has been deleted."
+      });
+      router.push("/jobs");
     }
+  }, [error, router]);
 
-    checkJobExists();
+  const jobName = jobData?.name || jobId;
 
-    return () => {
-      abortController.abort();
-    };
-  }, [jobId, router]);
-  
   const breadcrumbs = [
     { label: "Home", href: "/" },
     { label: "Jobs", href: "/jobs" },
     { label: jobName.length > 20 ? `${jobName.substring(0, 20)}...` : jobName, href: `/jobs?job=${jobId}` },
     { label: "Edit", isCurrentPage: true },
-    
   ];
-
-  const handleRetry = () => {
-    setIsLoading(true);
-    setLoadError(false);
-    // Trigger re-fetch by updating a dummy state or use a key
-    window.location.reload();
-  };
 
   if (isLoading) {
     return (
@@ -84,7 +44,7 @@ export default function EditJobPage() {
     );
   }
 
-  if (loadError) {
+  if (error || !jobData) {
     return (
       <div className=" mx-auto p-4 space-y-4">
         <PageBreadcrumbs items={breadcrumbs} />
@@ -97,7 +57,7 @@ export default function EditJobPage() {
           </div>
           <div className="flex gap-4">
             <button
-              onClick={handleRetry}
+              onClick={() => window.location.reload()}
               className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
             >
               Retry
@@ -117,7 +77,8 @@ export default function EditJobPage() {
   return (
     <div className=" mx-auto p-4 space-y-4">
       <PageBreadcrumbs items={breadcrumbs} />
-      <EditJob jobId={jobId} />
+      <EditJob jobId={jobId} initialJobData={jobData} />
     </div>
   );
 }
+

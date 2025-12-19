@@ -228,7 +228,7 @@ export function StatusPageDetail({
               size="default"
               className="border-2 hover:bg-muted"
             >
-              <Link href={`/status-pages/${statusPage.id}/public`}>
+              <Link href={`/status-pages/${statusPage.id}/public`} prefetch={false}>
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Preview
               </Link>

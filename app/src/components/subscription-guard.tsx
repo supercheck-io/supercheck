@@ -126,12 +126,9 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   }
 
   // Still loading config or checking subscription in cloud mode
+  // Render children to preserve sidebar layout - page-level loading.tsx handles skeletons
   if (isConfigLoading || isCheckingSubscription) {
-    return (
-      <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
-        <SuperCheckLoading size="lg" message="Please wait, loading..." />
-      </div>
-    );
+    return <>{children}</>;
   }
 
   // Has subscription: render children

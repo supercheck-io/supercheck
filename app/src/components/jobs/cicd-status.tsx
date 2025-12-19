@@ -45,7 +45,7 @@ export function CiCdStatus({ jobId, compact = false }: CiCdStatusProps) {
       setIsLoading(false);
     }
   }, [jobId]);
-  
+
   useEffect(() => {
     loadApiKeys();
   }, [jobId, loadApiKeys]);
@@ -89,7 +89,7 @@ export function CiCdStatus({ jobId, compact = false }: CiCdStatusProps) {
           <Key className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">CI/CD:</span>
         </div>
-        
+
         {hasActiveKeys ? (
           <div className="flex items-center gap-2">
             <Badge variant="default" className="flex items-center gap-1">
@@ -104,12 +104,12 @@ export function CiCdStatus({ jobId, compact = false }: CiCdStatusProps) {
               <AlertCircle className="h-3 w-3" />
               {totalKeysCount} Disabled
             </Badge>
-              <UrlTriggerTooltip jobId={jobId} />
+            <UrlTriggerTooltip jobId={jobId} />
           </div>
         ) : (
           <div className="flex items-center gap-2">
             <Badge variant="outline">Not Configured</Badge>
-                <UrlTriggerTooltip jobId={jobId} />
+            <UrlTriggerTooltip jobId={jobId} />
           </div>
         )}
       </div>
@@ -149,7 +149,7 @@ export function CiCdStatus({ jobId, compact = false }: CiCdStatusProps) {
               </div>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2">
             {hasActiveKeys && (
               <Badge variant="default" className="flex items-center gap-1">
@@ -158,7 +158,7 @@ export function CiCdStatus({ jobId, compact = false }: CiCdStatusProps) {
               </Badge>
             )}
             <Button asChild variant="outline" size="sm">
-              <Link href={`/jobs/${jobId}/edit`}>
+              <Link href={`/jobs/${jobId}/edit`} prefetch={false}>
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Manage Keys
               </Link>

@@ -70,6 +70,7 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useQueryClient } from "@tanstack/react-query";
 import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
+import { useTest } from "@/hooks/use-tests";
 
 // Define presets for Expected Status Codes
 const statusCodePresets = [
@@ -591,68 +592,46 @@ export function MonitorForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editMode, initialData]);
 
-  // Initialize selectedTests when editing a synthetic monitor
-  useEffect(() => {
-    if (
-      editMode &&
-      initialData?.type === "synthetic_test" &&
-      initialData?.syntheticConfig_testId
-    ) {
-      const fetchTest = async () => {
-        try {
-          const response = await fetch(
-            `/api/tests/${initialData.syntheticConfig_testId}`
-          );
-          if (response.ok) {
-            const testData = await response.json();
-            setSelectedTests([mapApiTestToTest(testData)]);
-          }
-        } catch (error) {
-          console.error("Error fetching test for edit mode:", error);
-        }
-      };
-      void fetchTest();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editMode, initialData?.syntheticConfig_testId]);
+  // Determine which test ID to fetch for synthetic monitors
+  // Priority: initialData (edit mode) > syntheticTestId (form field) > fromTestId (URL param)
+  const syntheticTestIdToFetch = useMemo(() => {
+    if (type !== "synthetic_test") return null;
 
-  // Hydrate selected test when a synthetic test id is already present (e.g., deep-link from tests)
+    // In edit mode, use the initial test ID
+    if (editMode && initialData?.syntheticConfig_testId) {
+      return initialData.syntheticConfig_testId;
+    }
+
+    // For new monitors or changed test ID
+    const trimmedTestId = syntheticTestId?.trim();
+    if (trimmedTestId) {
+      return trimmedTestId;
+    }
+
+    return null;
+  }, [type, editMode, initialData?.syntheticConfig_testId, syntheticTestId]);
+
+  // Use React Query hook for test data - single source of truth, no duplicate calls
+  const { data: fetchedTestData, isLoading: isTestLoading } = useTest(syntheticTestIdToFetch);
+
+  // Sync selectedTests when test data is fetched via React Query
   useEffect(() => {
+    // Clear selections when switching away from synthetic monitors
     if (type !== "synthetic_test") {
-      // Clear stale selections when switching away from synthetic monitors
       if (selectedTests.length > 0) {
         setSelectedTests([]);
       }
       return;
     }
 
-    const trimmedTestId = syntheticTestId?.trim();
-    if (!trimmedTestId) return;
-    if (selectedTests.some((test) => test.id === trimmedTestId)) return;
-
-    const controller = new AbortController();
-    const hydrate = async () => {
-      try {
-        const response = await fetch(`/api/tests/${trimmedTestId}`, {
-          signal: controller.signal,
-        });
-        if (!response.ok) {
-          console.error(
-            `Failed to hydrate synthetic test ${trimmedTestId}: ${response.statusText}`
-          );
-          return;
-        }
-        const testData = await response.json();
-        setSelectedTests([mapApiTestToTest(testData)]);
-      } catch (error) {
-        if ((error as Error).name === "AbortError") return;
-        console.error("Error hydrating synthetic test:", error);
+    // If we have fetched test data, update selectedTests
+    if (fetchedTestData && syntheticTestIdToFetch) {
+      // Only update if not already selected (avoid unnecessary re-renders)
+      if (!selectedTests.some(test => test.id === syntheticTestIdToFetch)) {
+        setSelectedTests([mapApiTestToTest(fetchedTestData as unknown as Record<string, unknown>)]);
       }
-    };
-
-    void hydrate();
-    return () => controller.abort();
-  }, [syntheticTestId, selectedTests, type]);
+    }
+  }, [type, fetchedTestData, syntheticTestIdToFetch, selectedTests]);
 
   const targetPlaceholders: Record<FormValues["type"], string> = {
     http_request: "e.g., https://example.com or https://api.example.com/health",

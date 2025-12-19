@@ -132,15 +132,13 @@ export function RunDetails({
   useEffect(() => {
     if (run.reportUrl) {
       // Use the API proxy with direct UUID format instead of /jobs/ prefix
-      const apiUrl = `/api/test-results/${
-        run.id
-      }/report/index.html?t=${Date.now()}`;
+      const apiUrl = `/api/test-results/${run.id
+        }/report/index.html?t=${Date.now()}`;
       setReportUrl(apiUrl);
     } else {
       // If no report URL, still try to use the test-results API with direct UUID
-      const apiUrl = `/api/test-results/${
-        run.id
-      }/report/index.html?t=${Date.now()}`;
+      const apiUrl = `/api/test-results/${run.id
+        }/report/index.html?t=${Date.now()}`;
       setReportUrl(apiUrl);
     }
 
@@ -197,9 +195,8 @@ export function RunDetails({
       const remainingSeconds = seconds % 60;
 
       if (minutes > 0) {
-        return `${minutes}m ${
-          remainingSeconds > 0 ? `${remainingSeconds}s` : ""
-        }`.trim();
+        return `${minutes}m ${remainingSeconds > 0 ? `${remainingSeconds}s` : ""
+          }`.trim();
       } else {
         return `${seconds}s`;
       }
@@ -218,9 +215,8 @@ export function RunDetails({
 
       if (newReportUrl) {
         // Regardless of the reportUrl from SSE, use our API proxy with direct UUID
-        const apiUrl = `/api/test-results/${
-          run.id
-        }/report/index.html?t=${Date.now()}`;
+        const apiUrl = `/api/test-results/${run.id
+          }/report/index.html?t=${Date.now()}`;
         setReportUrl(apiUrl);
       }
 
@@ -288,6 +284,7 @@ export function RunDetails({
               <Link
                 href="/"
                 className="text-xl font-semibold text-foreground hover:opacity-80 transition-opacity"
+                prefetch={false}
               >
                 Supercheck
               </Link>
@@ -296,6 +293,7 @@ export function RunDetails({
               <Link
                 href="/"
                 className="flex items-center gap-1 hover:text-foreground transition-colors text-muted-foreground"
+                prefetch={false}
               >
                 <Home className="h-4 w-4" />
               </Link>
@@ -313,7 +311,7 @@ export function RunDetails({
           <div className="flex items-center gap-2">
             {!isNotificationView && (
               <Button variant="outline" size="icon" className="h-7 w-7" asChild>
-                <Link href="/runs">
+                <Link href="/runs" prefetch={false}>
                   <ChevronLeft className="h-3.5 w-3.5" />
                   <span className="sr-only">Back to runs</span>
                 </Link>
@@ -474,8 +472,8 @@ export function RunDetails({
               <div className="text-sm font-semibold truncate">
                 {run.completedAt
                   ? formatDistanceToNow(new Date(run.completedAt), {
-                      addSuffix: true,
-                    })
+                    addSuffix: true,
+                  })
                   : currentStatus === "running"
                     ? "In Progress"
                     : "Unknown"}

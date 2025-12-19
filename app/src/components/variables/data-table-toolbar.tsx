@@ -16,7 +16,7 @@ import {
 import { VariableDialog } from "./variable-dialog";
 import { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 
 interface DataTableToolbarProps<TData> {
   table: Table<TData>;
@@ -38,6 +38,24 @@ export function DataTableToolbar<TData>({
   const meta = table.options.meta as TableMeta;
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // Track if we're intentionally closing the dialog (to prevent race conditions)
+  const closingRef = useRef(false);
+
+  // Handler that clears URL params when dialog is closed
+  const handleDialogOpenChange = (open: boolean) => {
+    if (!open) {
+      closingRef.current = true;
+      // Clear create and type params from URL when dialog closes
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("create");
+      params.delete("type");
+      const newUrl = params.toString() ? `/variables?${params.toString()}` : "/variables";
+      router.replace(newUrl, { scroll: false });
+    }
+    setDialogOpen(open);
+  };
 
   // Initialize dialog open state from URL params
   const [dialogOpen, setDialogOpen] = useState(
@@ -55,6 +73,12 @@ export function DataTableToolbar<TData>({
     // Skip the initial mount - already handled by useState initializer
     if (!initialOpenHandled.current) {
       initialOpenHandled.current = true;
+      return;
+    }
+
+    // Skip if we're intentionally closing the dialog
+    if (closingRef.current) {
+      closingRef.current = false;
       return;
     }
 
@@ -152,7 +176,7 @@ await page.fill('#password', apiKey);
                           }
                         >
                           {copiedCode ===
-                          `// Variables
+                            `// Variables
 const baseUrl = getVariable('BASE_URL');
 
 // Secrets
@@ -227,11 +251,11 @@ await page.fill('#password', apiKey);
             {(meta?.canManage || meta?.canCreateEdit) && (
               <VariableDialog
                 open={dialogOpen}
-                onOpenChange={setDialogOpen}
+                onOpenChange={handleDialogOpenChange}
                 projectId={meta.projectId}
                 onSuccess={() => {
                   meta.onSuccess?.();
-                  setDialogOpen(false);
+                  handleDialogOpenChange(false);
                 }}
                 defaultIsSecret={defaultIsSecret}
               />

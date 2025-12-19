@@ -402,7 +402,7 @@ export function K6AnalyticsTab({
                 icon={<K6Logo size={64} />}
                 action={
                     <Button asChild>
-                        <Link href="/jobs">View Jobs</Link>
+                        <Link href="/jobs" prefetch={false}>View Jobs</Link>
                     </Button>
                 }
             />
