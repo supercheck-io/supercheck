@@ -284,7 +284,6 @@ export function RunDetails({
               <Link
                 href="/"
                 className="text-xl font-semibold text-foreground hover:opacity-80 transition-opacity"
-                prefetch={false}
               >
                 Supercheck
               </Link>
@@ -293,7 +292,6 @@ export function RunDetails({
               <Link
                 href="/"
                 className="flex items-center gap-1 hover:text-foreground transition-colors text-muted-foreground"
-                prefetch={false}
               >
                 <Home className="h-4 w-4" />
               </Link>
@@ -311,7 +309,7 @@ export function RunDetails({
           <div className="flex items-center gap-2">
             {!isNotificationView && (
               <Button variant="outline" size="icon" className="h-7 w-7" asChild>
-                <Link href="/runs" prefetch={false}>
+                <Link href="/runs">
                   <ChevronLeft className="h-3.5 w-3.5" />
                   <span className="sr-only">Back to runs</span>
                 </Link>

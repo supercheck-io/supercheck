@@ -158,7 +158,7 @@ export function CiCdStatus({ jobId, compact = false }: CiCdStatusProps) {
               </Badge>
             )}
             <Button asChild variant="outline" size="sm">
-              <Link href={`/jobs/${jobId}/edit`} prefetch={false}>
+              <Link href={`/jobs/${jobId}/edit`}>
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Manage Keys
               </Link>

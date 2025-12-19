@@ -12,6 +12,7 @@ import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Maximize2, X } from "lucide-react";
 import { useMonacoPerformance } from "./use-monaco-performance";
+import { getCachedTypeDefs } from "@/components/monaco-prefetcher";
 
 interface MonacoEditorProps {
   value: string;
@@ -111,6 +112,7 @@ export const MonacoEditorClient = memo(
         });
 
         // Load enhanced type definitions with secure error handling
+        // PERFORMANCE: Uses cached types from MonacoPrefetcher if available
         const loadTypeDefinitions = async () => {
           try {
             // Load comprehensive Supercheck types (includes all Playwright types)
@@ -124,15 +126,20 @@ export const MonacoEditorClient = memo(
 
             for (const typeFile of typeFiles) {
               try {
-                const response = await fetch(typeFile.path);
-                if (!response.ok) {
-                  console.error(
-                    `Failed to fetch ${typeFile.name} types: ${response.status}`
-                  );
-                  continue;
-                }
+                // PERFORMANCE: Try to use cached type definitions first
+                let typeContent = getCachedTypeDefs();
 
-                const typeContent = await response.text();
+                if (!typeContent) {
+                  // Fall back to fetching if not cached
+                  const response = await fetch(typeFile.path);
+                  if (!response.ok) {
+                    console.error(
+                      `Failed to fetch ${typeFile.name} types: ${response.status}`
+                    );
+                    continue;
+                  }
+                  typeContent = await response.text();
+                }
                 if (!typeContent || typeContent.trim().length === 0) {
                   console.warn(`Empty content for ${typeFile.name} types`);
                   continue;

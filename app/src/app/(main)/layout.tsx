@@ -17,6 +17,7 @@ import { DemoBadge } from "@/components/demo-badge";
 import { SubscriptionGuard } from "@/components/subscription-guard";
 import { AuthGuard } from "@/components/auth-guard";
 import { DataPrefetcher } from "@/components/data-prefetcher";
+import { MonacoPrefetcher } from "@/components/monaco-prefetcher";
 
 /**
  * Main Layout - SYNCHRONOUS (no async)
@@ -38,10 +39,13 @@ export default function MainLayout({
 }>) {
   return (
     <AuthGuard>
-      {/* PERFORMANCE: Prefetch all critical data in parallel immediately */}
-      <DataPrefetcher />
+      {/* PERFORMANCE: Preload Monaco editor assets in background */}
+      <MonacoPrefetcher />
       <BreadcrumbProvider>
         <ProjectContextProvider>
+          {/* PERFORMANCE: Prefetch all critical data in parallel immediately */}
+          {/* Placed inside ProjectContextProvider to enable Phase 2 entity prefetching */}
+          <DataPrefetcher />
           <SidebarProvider>
             <JobProvider>
               {/* Check and setup defaults for new users */}

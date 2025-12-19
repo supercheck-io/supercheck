@@ -3,6 +3,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/lib/query-provider";
+import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 
 // Use system fonts instead of Google Fonts for offline builds
 const systemFonts = {
@@ -31,6 +32,8 @@ export default function RootLayout({
         } as React.CSSProperties}
         suppressHydrationWarning
       >
+        {/* PERFORMANCE: Register service worker for static asset caching */}
+        <ServiceWorkerRegistration />
         <QueryProvider>
           <ThemeProvider
             attribute="class"
@@ -45,4 +48,4 @@ export default function RootLayout({
       </body>
     </html>
   );
-} 
+}

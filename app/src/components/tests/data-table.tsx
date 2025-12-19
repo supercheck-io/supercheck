@@ -31,6 +31,8 @@ import { DataTablePagination } from "./data-table-pagination";
 import { DataTableToolbar } from "./data-table-toolbar";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
 import { cn } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
+import { prefetchTestPage } from "@/lib/prefetch-utils";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -86,15 +88,27 @@ export function DataTable<TData, TValue>({
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [mounted, setMounted] = React.useState(false);
 
+  // PERFORMANCE: Get query client for hover prefetching
+  const queryClient = useQueryClient();
+
+  // Track hover timers for debouncing
+  const hoverTimersRef = React.useRef<Map<string, NodeJS.Timeout>>(new Map());
+
   // Set mounted to true after initial render
   React.useEffect(() => {
     const timer = setTimeout(() => {
       setMounted(true);
     }, 0);
-    
+
+    // Copy ref value to local variable for cleanup
+    const hoverTimers = hoverTimersRef.current;
+
     return () => {
       clearTimeout(timer);
       setMounted(false);
+      // Clear all hover timers on unmount
+      hoverTimers.forEach(t => clearTimeout(t));
+      hoverTimers.clear();
     };
   }, []);
 
@@ -108,7 +122,7 @@ export function DataTable<TData, TValue>({
       }
     }
   }, [mounted]);
-  
+
   const safeSetSorting = React.useCallback((updaterOrValue: SortingState | ((old: SortingState) => SortingState)) => {
     if (mounted) {
       if (typeof updaterOrValue === 'function') {
@@ -118,7 +132,7 @@ export function DataTable<TData, TValue>({
       }
     }
   }, [mounted]);
-  
+
   const safeSetColumnFilters = React.useCallback((updaterOrValue: ColumnFiltersState | ((old: ColumnFiltersState) => ColumnFiltersState)) => {
     if (mounted) {
       if (typeof updaterOrValue === 'function') {
@@ -128,7 +142,7 @@ export function DataTable<TData, TValue>({
       }
     }
   }, [mounted]);
-  
+
   const safeSetColumnVisibility = React.useCallback((updaterOrValue: VisibilityState | ((old: VisibilityState) => VisibilityState)) => {
     if (mounted) {
       if (typeof updaterOrValue === 'function') {
@@ -138,7 +152,7 @@ export function DataTable<TData, TValue>({
       }
     }
   }, [mounted]);
-  
+
   const safeSetGlobalFilter = React.useCallback((updaterOrValue: string | ((old: string) => string)) => {
     if (mounted) {
       if (typeof updaterOrValue === 'function') {
@@ -223,9 +237,9 @@ export function DataTable<TData, TValue>({
                       {header.isPlaceholder
                         ? null
                         : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
                     </TableHead>
                   );
                 })}
@@ -248,23 +262,54 @@ export function DataTable<TData, TValue>({
                 </TableCell>
               </TableRow>
             ) : table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                  className={cn(onRowClick && "cursor-pointer")}
-                  onClick={() => onRowClick?.(row)}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="py-2.5">
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+              table.getRowModel().rows.map((row) => {
+                // Get row ID for prefetch tracking
+                const rowId = (row.original as { id?: string })?.id;
+
+                return (
+                  <TableRow
+                    key={row.id}
+                    data-state={row.getIsSelected() && "selected"}
+                    className={cn(onRowClick && "cursor-pointer")}
+                    onClick={() => onRowClick?.(row)}
+                    // PERFORMANCE: Prefetch test data on hover intent
+                    onMouseEnter={() => {
+                      if (rowId && onRowClick) {
+                        // Clear any existing timer for this row
+                        const existingTimer = hoverTimersRef.current.get(rowId);
+                        if (existingTimer) clearTimeout(existingTimer);
+
+                        // Start prefetch after 150ms hover (intent detection)
+                        const timer = setTimeout(() => {
+                          prefetchTestPage(rowId, queryClient);
+                          hoverTimersRef.current.delete(rowId);
+                        }, 150);
+
+                        hoverTimersRef.current.set(rowId, timer);
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      // Cancel prefetch if user leaves before 150ms
+                      if (rowId) {
+                        const timer = hoverTimersRef.current.get(rowId);
+                        if (timer) {
+                          clearTimeout(timer);
+                          hoverTimersRef.current.delete(rowId);
+                        }
+                      }
+                    }}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell key={cell.id} className="py-2.5">
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext()
+                        )}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                );
+              })
             ) : (
               <TableRow>
                 <TableCell

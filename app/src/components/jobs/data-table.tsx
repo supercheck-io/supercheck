@@ -32,6 +32,8 @@ import { DataTablePagination } from "./data-table-pagination";
 import { DataTableToolbar } from "./data-table-toolbar";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
 import { cn } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
+import { prefetchJobPage } from "@/lib/prefetch-utils";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -72,15 +74,27 @@ export function DataTable<TData, TValue>({
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [mounted, setMounted] = React.useState(false);
 
+  // PERFORMANCE: Get query client for hover prefetching
+  const queryClient = useQueryClient();
+
+  // Track hover timers for debouncing
+  const hoverTimersRef = React.useRef<Map<string, NodeJS.Timeout>>(new Map());
+
   // Set mounted to true after initial render
   React.useEffect(() => {
     const timer = setTimeout(() => {
       setMounted(true);
     }, 0);
 
+    // Copy ref value to local variable for cleanup
+    const hoverTimers = hoverTimersRef.current;
+
     return () => {
       clearTimeout(timer);
       setMounted(false);
+      // Clear all hover timers on unmount
+      hoverTimers.forEach(t => clearTimeout(t));
+      hoverTimers.clear();
     };
   }, []);
 
@@ -148,19 +162,19 @@ export function DataTable<TData, TValue>({
     },
     state: mounted
       ? {
-          sorting,
-          columnVisibility,
-          rowSelection,
-          columnFilters,
-          globalFilter,
-        }
+        sorting,
+        columnVisibility,
+        rowSelection,
+        columnFilters,
+        globalFilter,
+      }
       : {
-          sorting: [],
-          columnVisibility: {},
-          rowSelection: {},
-          columnFilters: [],
-          globalFilter: "",
-        },
+        sorting: [],
+        columnVisibility: {},
+        rowSelection: {},
+        columnFilters: [],
+        globalFilter: "",
+      },
     enableRowSelection: true,
     onRowSelectionChange: safeSetRowSelection,
     onSortingChange: safeSetSorting,
@@ -212,9 +226,9 @@ export function DataTable<TData, TValue>({
                       {header.isPlaceholder
                         ? null
                         : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
+                          header.column.columnDef.header,
+                          header.getContext()
+                        )}
                     </TableHead>
                   );
                 })}
@@ -237,30 +251,58 @@ export function DataTable<TData, TValue>({
                 </TableCell>
               </TableRow>
             ) : table.getRowModel().rows?.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() && "selected"}
-                  onClick={() => onRowClick && onRowClick(row)}
-                  className={cn(onRowClick && "cursor-pointer")}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className={cn(
-                        "py-2.5",
-                        // Allow overflow for the "run" column to show the cancel button
-                        cell.column.id === "run" && "overflow-visible"
-                      )}
-                    >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+              table.getRowModel().rows.map((row) => {
+                // Get row ID for prefetch tracking
+                const rowId = (row.original as { id?: string })?.id;
+
+                return (
+                  <TableRow
+                    key={row.id}
+                    data-state={row.getIsSelected() && "selected"}
+                    onClick={() => onRowClick && onRowClick(row)}
+                    className={cn(onRowClick && "cursor-pointer")}
+                    // PERFORMANCE: Prefetch job data on hover intent
+                    onMouseEnter={() => {
+                      if (rowId && onRowClick) {
+                        const existingTimer = hoverTimersRef.current.get(rowId);
+                        if (existingTimer) clearTimeout(existingTimer);
+
+                        const timer = setTimeout(() => {
+                          prefetchJobPage(rowId, queryClient);
+                          hoverTimersRef.current.delete(rowId);
+                        }, 150);
+
+                        hoverTimersRef.current.set(rowId, timer);
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      if (rowId) {
+                        const timer = hoverTimersRef.current.get(rowId);
+                        if (timer) {
+                          clearTimeout(timer);
+                          hoverTimersRef.current.delete(rowId);
+                        }
+                      }
+                    }}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell
+                        key={cell.id}
+                        className={cn(
+                          "py-2.5",
+                          // Allow overflow for the "run" column to show the cancel button
+                          cell.column.id === "run" && "overflow-visible"
+                        )}
+                      >
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext()
+                        )}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                );
+              })
             ) : (
               <TableRow>
                 <TableCell
