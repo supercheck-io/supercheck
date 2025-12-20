@@ -38,18 +38,34 @@ flowchart TB
 For true multi-location monitoring, see [Multi-Location Workers](/docs/deployment/multi-location).
 </Callout>
 
-## Deployment Options
+## Choose Your Deployment
 
-| Option | SSL/HTTPS | Status Pages |
-|--------|-----------|--------------|
-| **Without Domain** | ❌ HTTP only | ❌ No |
-| **With Domain** | ✅ Automatic | ✅ Yes |
+<Cards>
+  <Card
+    icon={<Laptop className="text-sky-500" />}
+    title="Without Domain"
+    description="HTTP only — Best for local testing or internal networks"
+    href="#option-1-without-domain"
+  />
+  <Card
+    icon={<Globe className="text-emerald-500" />}
+    title="With Domain"
+    description="HTTPS + Status Pages — Recommended for production"
+    href="#option-2-with-domain"
+  />
+</Cards>
+
+| Feature | Without Domain | With Domain |
+|---------|----------------|-------------|
+| SSL/HTTPS | ❌ HTTP only | ✅ Automatic |
+| Status Pages | ❌ No | ✅ Yes |
+| Custom Domain | ❌ No | ✅ Yes |
 
 ---
 
-## Option 1: Without Domain
+## <span style={{color: '#0ea5e9'}}>Option 1: Without Domain</span>
 
-Best for testing or internal networks.
+Best for local testing or internal networks.
 
 ### 1. Install Docker
 
@@ -87,9 +103,13 @@ cd supercheck/deploy/docker
 ./init-secrets.sh
 ```
 
-Edit `.env` and add your OAuth credentials:
+Edit `.env` and add your OAuth credentials (see [OAuth Setup](#oauth-setup) for details):
 
 ```bash
+# ─────────────────────────────────────────────────────────────────
+# OAuth Authentication (at least one provider is required)
+# See OAuth Setup section below for how to obtain these
+# ─────────────────────────────────────────────────────────────────
 GITHUB_CLIENT_ID=your-github-client-id
 GITHUB_CLIENT_SECRET=your-github-client-secret
 ```
@@ -111,7 +131,7 @@ docker compose exec app npm run setup:admin your-email@example.com
 
 ---
 
-## Option 2: With Domain
+## <span style={{color: '#10b981'}}>Option 2: With Domain</span>
 
 For production with HTTPS and status pages.
 
@@ -195,9 +215,16 @@ cd supercheck/deploy/docker
 Edit `.env` and add your domain and OAuth credentials:
 
 ```bash
+# ─────────────────────────────────────────────────────────────────
+# Domain Configuration (required for HTTPS)
+# ─────────────────────────────────────────────────────────────────
 APP_DOMAIN=app.yourdomain.com
-ACME_EMAIL=admin@yourdomain.com
+ACME_EMAIL=admin@yourdomain.com  # For Let's Encrypt SSL certificate
 
+# ─────────────────────────────────────────────────────────────────
+# OAuth Authentication (at least one provider is required)
+# See OAuth Setup section below for how to obtain these
+# ─────────────────────────────────────────────────────────────────
 GITHUB_CLIENT_ID=your-github-client-id
 GITHUB_CLIENT_SECRET=your-github-client-secret
 ```
@@ -285,23 +312,31 @@ For local development, use `http://localhost:3000` for all URLs.
 
 ### Email (SMTP)
 
-Required for alerts and invitations.
+Required for alerts and team invitations.
 
 ```bash
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
+# ─────────────────────────────────────────────────────────────────
+# Email Configuration (SMTP)
+# Required for alerts and team invitations
+# ─────────────────────────────────────────────────────────────────
+SMTP_HOST=smtp.gmail.com           # Your SMTP server
+SMTP_PORT=587                       # Usually 587 for TLS
+SMTP_USER=your-email@gmail.com      # SMTP username
+SMTP_PASSWORD=your-app-password     # SMTP password (use app password for Gmail)
 SMTP_FROM_EMAIL=notifications@yourdomain.com
 ```
 
 ### AI Features
 
-AI Create and AI Fix for Playwright and k6 tests, plus AI Analyze for k6 performance run insights.
+Enable AI-powered features: AI Create and AI Fix for Playwright and k6 tests, plus AI Analyze for k6 performance run insights.
 
 ```bash
-OPENAI_API_KEY=sk-your-api-key
-AI_MODEL=gpt-4o-mini
+# ─────────────────────────────────────────────────────────────────
+# AI Features (optional)
+# Enables AI Create, AI Fix, and AI Analyze
+# ─────────────────────────────────────────────────────────────────
+OPENAI_API_KEY=sk-your-openai-api-key
+AI_MODEL=gpt-4o-mini  # or gpt-4o for better results
 ```
 
 ---

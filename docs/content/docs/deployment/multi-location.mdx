@@ -72,7 +72,7 @@ flowchart TB
 
 ## Setup Options
 
-### Option A: Single Location (Default)
+### <span style={{color: '#0ea5e9'}}>Option A: Single Location (Default)</span>
 
 For most self-hosted deployments, a single location is sufficient. The main docker-compose uses `WORKER_LOCATION=local` which processes all regional queues from one server.
 
@@ -80,7 +80,7 @@ For most self-hosted deployments, a single location is sufficient. The main dock
 
 ---
 
-### Option B: Multi-Location (3 Regions)
+### <span style={{color: '#10b981'}}>Option B: Multi-Location (3 Regions)</span>
 
 For true geographic distribution, deploy workers in each region.
 
@@ -146,10 +146,10 @@ For true geographic distribution, deploy workers in each region.
         ```
       </Tab>
       <Tab value="macOS">
-        Download [Docker Desktop for Mac](https://docs.docker.com/desktop/setup/install/mac-install/).
+        Download [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Mac.
       </Tab>
       <Tab value="Windows">
-        Download [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/).
+        Download [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Windows.
       </Tab>
     </Tabs>
 
@@ -160,16 +160,34 @@ For true geographic distribution, deploy workers in each region.
     ```
 
     **3. Create `.env`:**
+    
+    Create a `.env` file with the following configuration. Replace the placeholder values with your actual credentials from the main server:
+    
     ```bash
+    # ─────────────────────────────────────────────────────────────────
+    # Remote Worker Configuration
+    # ─────────────────────────────────────────────────────────────────
+    
+    # Database connection (get password from main server's .env file)
     DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@MAIN_SERVER_IP:5432/supercheck
+    
+    # Redis connection (get password from main server's .env file)
     REDIS_URL=redis://:YOUR_REDIS_PASSWORD@MAIN_SERVER_IP:6379
+    
+    # S3/MinIO connection (use main server's MinIO credentials)
     S3_ENDPOINT=http://MAIN_SERVER_IP:9000
-    AWS_ACCESS_KEY_ID=minioadmin
-    AWS_SECRET_ACCESS_KEY=minioadmin
-
-    # Set this worker's location
+    AWS_ACCESS_KEY_ID=YOUR_MINIO_ACCESS_KEY
+    AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
+    
+    # ─────────────────────────────────────────────────────────────────
+    # Worker Location (choose one: us-east, eu-central, asia-pacific)
+    # ─────────────────────────────────────────────────────────────────
     WORKER_LOCATION=us-east
     ```
+    
+    <Callout type="tip">
+    Find your main server credentials in the `.env` file at `supercheck/deploy/docker/.env`.
+    </Callout>
 
     **4. Start Worker:**
     ```bash
@@ -183,11 +201,11 @@ For true geographic distribution, deploy workers in each region.
 
 ## Complete 3-Region Example
 
-| Server | Location | `WORKER_LOCATION` | Queues Processed |
-|--------|----------|-------------------|------------------|
-| Main (Germany) | Hetzner NBG1 | `eu-central` | EU Central only |
-| Remote (US) | Hetzner ASH | `us-east` | US East only |
-| Remote (Singapore) | Hetzner SIN | `asia-pacific` | Asia Pacific only |
+| Server | Region | `WORKER_LOCATION` | Queues Processed |
+|--------|--------|-------------------|------------------|
+| Main Server | Europe | `eu-central` | EU Central only |
+| Remote VPS 1 | US | `us-east` | US East only |
+| Remote VPS 2 | Asia | `asia-pacific` | Asia Pacific only |
 
 ### Main Server `.env`:
 ```bash
@@ -196,28 +214,29 @@ WORKER_LOCATION=eu-central
 
 ### US VPS `.env`:
 ```bash
+# Worker location
 WORKER_LOCATION=us-east
-DATABASE_URL=postgresql://postgres:password@main.example.com:5432/supercheck
-REDIS_URL=redis://:password@main.example.com:6379
-S3_ENDPOINT=http://main.example.com:9000
+
+# Connection to main server (replace with your values)
+DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@YOUR_MAIN_SERVER_IP:5432/supercheck
+REDIS_URL=redis://:YOUR_REDIS_PASSWORD@YOUR_MAIN_SERVER_IP:6379
+S3_ENDPOINT=http://YOUR_MAIN_SERVER_IP:9000
+AWS_ACCESS_KEY_ID=YOUR_MINIO_ACCESS_KEY
+AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
 ```
 
 ### APAC VPS `.env`:
 ```bash
+# Worker location
 WORKER_LOCATION=asia-pacific
-DATABASE_URL=postgresql://postgres:password@main.example.com:5432/supercheck
-REDIS_URL=redis://:password@main.example.com:6379
-S3_ENDPOINT=http://main.example.com:9000
+
+# Connection to main server (replace with your values)
+DATABASE_URL=postgresql://postgres:YOUR_DB_PASSWORD@YOUR_MAIN_SERVER_IP:5432/supercheck
+REDIS_URL=redis://:YOUR_REDIS_PASSWORD@YOUR_MAIN_SERVER_IP:6379
+S3_ENDPOINT=http://YOUR_MAIN_SERVER_IP:9000
+AWS_ACCESS_KEY_ID=YOUR_MINIO_ACCESS_KEY
+AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
 ```
-
----
-
-## Enable Multi-Location in UI
-
-1. Go to your Supercheck instance
-2. Create or edit a monitor
-3. Enable **Multi-Location Monitoring**
-4. Select the regions where you have workers deployed
 
 ---
 
@@ -234,12 +253,12 @@ WORKER_REPLICAS=2 docker compose up -d
 
 **Worker can't connect to database:**
 ```bash
-docker run --rm -it postgres:15 psql "$DATABASE_URL" -c "SELECT 1"
+docker run --rm -it postgres:18 psql "$DATABASE_URL" -c "SELECT 1"
 ```
 
 **Worker can't connect to Redis:**
 ```bash
-docker run --rm -it redis:7 redis-cli -u "$REDIS_URL" ping
+docker run --rm -it redis:8 redis-cli -u "$REDIS_URL" ping
 ```
 
 **Verify worker location:**
