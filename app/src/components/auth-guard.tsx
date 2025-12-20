@@ -40,7 +40,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
     if (isPending) {
         return (
             <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">
-                <SuperCheckLoading size="lg" message="Please wait, loading..." />
+                <SuperCheckLoading size="lg" message="Checking authentication..." />
             </div>
         );
     }

@@ -90,17 +90,17 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   useEffect(() => {
     // Skip if allowed route
     if (isAllowedRoute) return;
-    
+
     // PERFORMANCE: Wait for config to be fetched (not just loaded)
     // initialData gives us self-hosted=true, but we need real config
     if (!isConfigFetched) return;
-    
+
     // Skip if self-hosted mode (no subscription required)
     if (isSelfHosted) return;
-    
+
     // Skip if subscription check hasn't completed yet
     if (!isFetched) return;
-    
+
     // If subscription is not active, redirect to subscribe page
     if (subscriptionStatus && !subscriptionStatus.isActive) {
       console.log('No active subscription, redirecting to subscribe');
@@ -118,20 +118,20 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   if (!isConfigFetched) {
     return (
       <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
-        <SuperCheckLoading size="lg" message="Please wait, loading..." />
+        <SuperCheckLoading size="lg" message="Loading configuration..." />
       </div>
     );
   }
 
   // Config is fetched - now we know the real hosting mode
-  
+
   // Self-hosted mode: always allow access (no subscription required)
   if (isSelfHosted) {
     return <>{children}</>;
   }
 
   // Cloud mode: Need to verify subscription
-  
+
   // PERFORMANCE: If we have cached subscription data, use it immediately
   if (subscriptionStatus?.isActive) {
     return <>{children}</>;
@@ -141,7 +141,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   if (!isFetched || isSubscriptionLoading) {
     return (
       <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
-        <SuperCheckLoading size="lg" message="Please wait, loading..." />
+        <SuperCheckLoading size="lg" message="Checking access..." />
       </div>
     );
   }
@@ -151,7 +151,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   if (!subscriptionStatus?.isActive) {
     return (
       <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
-        <SuperCheckLoading size="lg" message="Checking subscription..." />
+        <SuperCheckLoading size="lg" message="Checking access..." />
       </div>
     );
   }
