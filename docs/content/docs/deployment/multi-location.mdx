@@ -132,10 +132,26 @@ For true geographic distribution, deploy workers in each region.
     On each remote VPS:
 
     **1. Install Docker:**
-    ```bash
-    curl -fsSL https://get.docker.com | sh
-    sudo usermod -aG docker $USER
-    ```
+    
+    <Callout type="info">
+    Skip this step if Docker is already installed on the remote VPS.
+    </Callout>
+    
+    <Tabs items={['Linux VPS', 'macOS', 'Windows']}>
+      <Tab value="Linux VPS">
+        ```bash
+        curl -fsSL https://get.docker.com | sh
+        sudo usermod -aG docker $USER
+        newgrp docker
+        ```
+      </Tab>
+      <Tab value="macOS">
+        Download [Docker Desktop for Mac](https://docs.docker.com/desktop/setup/install/mac-install/).
+      </Tab>
+      <Tab value="Windows">
+        Download [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/).
+      </Tab>
+    </Tabs>
 
     **2. Download Worker Compose:**
     ```bash

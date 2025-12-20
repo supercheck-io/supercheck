@@ -53,10 +53,29 @@ Best for testing or internal networks.
 
 ### 1. Install Docker
 
-```bash
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-```
+<Callout type="info">
+Already have Docker or Docker Desktop installed? [Skip to Clone and Configure](#2-clone-and-configure).
+</Callout>
+
+<Tabs items={['macOS', 'Windows', 'Linux']}>
+  <Tab value="macOS">
+    Download and install [Docker Desktop for Mac](https://docs.docker.com/desktop/setup/install/mac-install/).
+    
+    After installation, start Docker Desktop from your Applications folder.
+  </Tab>
+  <Tab value="Windows">
+    Download and install [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/).
+    
+    After installation, start Docker Desktop from the Start menu.
+  </Tab>
+  <Tab value="Linux">
+    ```bash
+    curl -fsSL https://get.docker.com | sh
+    sudo usermod -aG docker $USER
+    newgrp docker  # Apply group changes without logout
+    ```
+  </Tab>
+</Tabs>
 
 ### 2. Clone and Configure
 
@@ -98,10 +117,29 @@ For production with HTTPS and status pages.
 
 ### 1. Install Docker
 
-```bash
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-```
+<Callout type="info">
+Already have Docker or Docker Desktop installed? [Skip to Configure DNS](#2-configure-dns).
+</Callout>
+
+<Tabs items={['macOS', 'Windows', 'Linux']}>
+  <Tab value="macOS">
+    Download and install [Docker Desktop for Mac](https://docs.docker.com/desktop/setup/install/mac-install/).
+    
+    After installation, start Docker Desktop from your Applications folder.
+  </Tab>
+  <Tab value="Windows">
+    Download and install [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/).
+    
+    After installation, start Docker Desktop from the Start menu.
+  </Tab>
+  <Tab value="Linux">
+    ```bash
+    curl -fsSL https://get.docker.com | sh
+    sudo usermod -aG docker $USER
+    newgrp docker  # Apply group changes without logout
+    ```
+  </Tab>
+</Tabs>
 
 ### 2. Configure DNS
 
@@ -257,7 +295,7 @@ docker compose pull && docker compose up -d
 
 **Backup:**
 ```bash
-docker exec supercheck-postgres pg_dump -U postgres supercheck > backup.sql
+docker compose exec postgres pg_dump -U postgres supercheck > backup.sql
 ```
 
 **Troubleshoot:**
