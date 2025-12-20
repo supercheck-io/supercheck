@@ -790,15 +790,13 @@ test.describe('authentication flow', () => {
     testType: "browser",
     tags: ["playwright", "mobile", "responsive"],
     code: `/**
- * Mobile viewport testing.
+ * Mobile viewport testing with @mobile tag.
  * 
  * Purpose:
- * - Verify layout and functionality on mobile screen sizes
- * - Ensure responsive design elements work as expected
+ * - Verify layout on mobile screen sizes
+ * - Test responsive design behavior
  * 
- * Configuration:
- * - Defines separate tests for Mobile Chrome (Pixel 8) and Mobile Safari (iPhone 13)
- * - Checks viewport dimensions
+ * Note: Uses @mobile tag to run on Mobile Safari (iPhone 13)
  * 
  * @requires @playwright/test
  */
@@ -807,41 +805,24 @@ import { expect, test } from '@playwright/test';
 
 const APP_URL = 'https://demo.playwright.dev/todomvc';
 
-// Test mobile Chrome (Pixel 8)
-test.describe('Mobile Chrome layout', () => {
-  test('mobile Chrome viewport exposes key actions', async ({ page }) => {
+// Use @mobile tag to run on iPhone 13 (390x844 viewport)
+test.describe('Mobile layout test', { tag: ['@mobile'] }, () => {
+  test('mobile viewport exposes key actions', async ({ page }) => {
     await page.goto(APP_URL);
 
-    // Verify Pixel 8 viewport dimensions (393x851)
+    // Verify we're running in mobile viewport
     const viewport = page.viewportSize();
-    expect(viewport?.width).toBe(393);
-    expect(viewport?.height).toBe(851);
+    console.log('Viewport:', viewport?.width, 'x', viewport?.height);
+
+    // Mobile viewport should be smaller than desktop
+    expect(viewport?.width).toBeLessThan(500);
 
     await expect(page.getByPlaceholder('What needs to be done?')).toBeVisible();
 
-    // Test mobile-specific interactions
-    await page.getByPlaceholder('What needs to be done?').fill('Mobile Chrome task');
+    // Test mobile interactions
+    await page.getByPlaceholder('What needs to be done?').fill('Mobile task');
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('listitem').first()).toContainText('Mobile Chrome task');
-  });
-});
-
-// Test mobile Safari (iPhone 13)
-test.describe('Mobile Safari layout', () => {
-  test('mobile Safari viewport and interactions', async ({ page }) => {
-    await page.goto(APP_URL);
-
-    // Verify iPhone 13 viewport dimensions (390x844)
-    const viewport = page.viewportSize();
-    expect(viewport?.width).toBe(390);
-    expect(viewport?.height).toBe(844);
-
-    await expect(page.getByPlaceholder('What needs to be done?')).toBeVisible();
-
-    // Test iOS Safari specific behavior
-    await page.getByPlaceholder('What needs to be done?').fill('Mobile Safari task');
-    await page.keyboard.press('Enter');
-    await expect(page.getByRole('listitem').first()).toContainText('Mobile Safari task');
+    await expect(page.getByRole('listitem').first()).toContainText('Mobile task');
   });
 });
 `,
@@ -922,13 +903,16 @@ test.describe('geolocation and locale emulation', () => {
  * Browser selection using tags.
  * 
  * Purpose:
- * - Run tests only on specific browsers (e.g., WebKit/Safari)
+ * - Run tests only on specific browsers
  * - Demonstrate how to use the 'tag' option in test.describe
  * 
- * Usage:
- * - @webkit: Runs on WebKit (Safari engine)
- * - @firefox: Runs on Firefox
- * - @chromium: Runs on Chromium (default)
+ * Supported Tags:
+ * - @chromium: Runs on Desktop Chrome (default)
+ * - @firefox: Runs on Desktop Firefox
+ * - @webkit or @safari: Runs on Desktop Safari (WebKit)
+ * - @mobile or @iphone: Runs on Mobile Safari (iPhone 13)
+ * 
+ * Note: Tests without tags run on Chromium by default.
  * 
  * @requires @playwright/test
  */
@@ -1013,18 +997,14 @@ test.describe('API health check', () => {
     testType: "api",
     tags: ["playwright", "api", "crud"],
     code: `/**
- * API CRUD flow executed serially.
+ * API CRUD flow demonstration.
  * 
  * Purpose:
- * - Test the full lifecycle of a resource (Create, Read, Delete)
- * - Ensure data consistency across operations
- * - Clean up test data after execution
+ * - Demonstrate Create, Read operations
+ * - Show serial test execution pattern
  * 
- * Key Actions:
- * - POST to create a resource
- * - GET to verify creation
- * - DELETE to clean up
- * - test.describe.serial ensures tests run in order
+ * Note: JSONPlaceholder is a fake API - POST returns
+ * simulated data but doesn't persist it.
  * 
  * @requires @playwright/test
  */
@@ -1033,35 +1013,34 @@ import { expect, test } from '@playwright/test';
 
 const API_URL = 'https://jsonplaceholder.typicode.com';
 
-// Use serial mode to share state (createdId) between tests
 test.describe.serial('posts CRUD', () => {
-  let createdId;
-
-  test('creates a post', async ({ request }) => {
+  test('creates a post (simulated)', async ({ request }) => {
     const response = await request.post(API_URL + '/posts', {
       data: { title: 'Playwright', body: 'API example', userId: 1 },
     });
 
+    // JSONPlaceholder returns 201 for simulated creation
     expect(response.status()).toBe(201);
     const json = await response.json();
-    createdId = json.id;
     expect(json).toMatchObject({ title: 'Playwright', body: 'API example' });
   });
 
-  test('fetches the created post', async ({ request }) => {
-    // Skip if creation failed
-    test.skip(!createdId, 'create step failed');
-    
-    const response = await request.get(API_URL + '/posts/' + createdId);
+  test('reads an existing post', async ({ request }) => {
+    // Fetch an existing post (IDs 1-100 exist)
+    const response = await request.get(API_URL + '/posts/1');
     expect(response.ok()).toBeTruthy();
     const json = await response.json();
-    expect(json.id).toBe(createdId);
+    expect(json.id).toBe(1);
+    expect(json).toHaveProperty('title');
   });
 
-  // Cleanup after all tests in this group
-  test.afterAll(async ({ request }) => {
-    if (!createdId) return;
-    await request.delete(API_URL + '/posts/' + createdId);
+  test('updates a post (simulated)', async ({ request }) => {
+    const response = await request.put(API_URL + '/posts/1', {
+      data: { id: 1, title: 'Updated', body: 'Updated body', userId: 1 },
+    });
+    expect(response.ok()).toBeTruthy();
+    const json = await response.json();
+    expect(json.title).toBe('Updated');
   });
 });
 `,
@@ -1074,46 +1053,59 @@ test.describe.serial('posts CRUD', () => {
     testType: "api",
     tags: ["playwright", "api", "auth"],
     code: `/**
- * Authenticated API call using a bearer token.
+ * Authenticated API call demonstration.
  * 
  * Purpose:
- * - Verify access to protected endpoints
  * - Demonstrate how to inject authorization headers
- * - Validate user-specific data
+ * - Show both Basic Auth and Bearer token patterns
+ * - Learn patterns for testing protected endpoints
  * 
  * Configuration:
- * - Uses request.newContext to apply headers to all requests in the scope
- * - Requires a valid API_TOKEN
+ * - Uses httpbin.org which validates credentials
+ * - Works out of the box - no real credentials needed
+ * 
+ * In production, replace httpbin.org with your API URL
+ * and use environment variables for credentials.
  * 
  * @requires @playwright/test
  */
 
 import { expect, test } from '@playwright/test';
 
-const API_URL = 'https://api.example.com';
-const API_TOKEN = 'replace-with-token';
-
 test.describe('authenticated API request', () => {
-  test('authenticated profile request', async ({ request }) => {
-    // Create a new context with the Authorization header pre-configured
-    const api = await request.newContext({
-      baseURL: API_URL,
-      extraHTTPHeaders: { Authorization: 'Bearer ' + API_TOKEN },
+  test('basic authentication flow', async ({ request }) => {
+    // httpbin /basic-auth/{user}/{password} validates Basic Auth
+    const response = await request.get('https://httpbin.org/basic-auth/test/test', {
+      headers: {
+        'Authorization': 'Basic ' + btoa('test:test')
+      }
     });
 
-    const response = await api.get('/user/profile');
+    // httpbin returns 200 if credentials are valid
     expect(response.status()).toBe(200);
-
+    
     const body = await response.json();
-    expect(body).toHaveProperty('email');
-    expect(body).toHaveProperty('id');
+    expect(body.authenticated).toBe(true);
+    expect(body.user).toBe('test');
+  });
 
-    // Always dispose of the context when done
-    await api.dispose();
+  test('bearer token authentication', async ({ request }) => {
+    // httpbin /bearer validates Bearer token presence
+    const response = await request.get('https://httpbin.org/bearer', {
+      headers: {
+        'Authorization': 'Bearer demo-token-12345'
+      }
+    });
+
+    expect(response.status()).toBe(200);
+    
+    const body = await response.json();
+    expect(body.authenticated).toBe(true);
   });
 });
 `,
   },
+
 
   // =========================
   // Database Templates (pg)
@@ -1141,25 +1133,27 @@ test.describe('authenticated API request', () => {
  */
 
 import { expect, test } from '@playwright/test';
-import { Pool } from 'pg';
+import { Client } from 'pg';
 
-const pool = new Pool({
-  connectionString: 'postgres://user:password@localhost:5432/dbname',
-});
-
-test.afterAll(async () => {
-  await pool.end();
+const client = new Client({
+  connectionString: 'postgres://reader:NWDMCE5xdipIjRrp@hh-pgsql-public.ebi.ac.uk:5432/pfmegrnargs',
+  ssl: false,
 });
 
 // Cheap heartbeat query to ensure the database is reachable.
 test.describe('database read health check', () => {
-  test('users table returns expected columns', async () => {
-    // Execute a simple SELECT query
-    const result = await pool.query('SELECT id, email FROM users LIMIT 1');
+  test('rnc_database table returns expected columns', async () => {
+    await client.connect();
+    
+    // Execute a simple SELECT query on the RNAcentral database
+    const result = await client.query('SELECT id, descr, current_release FROM rnc_database LIMIT 5');
     
     // Verify we got results and the schema matches expectations
     expect(result.rowCount).toBeGreaterThan(0);
-    expect(result.rows[0]).toHaveProperty('email');
+    expect(result.rows[0]).toHaveProperty('id');
+    expect(result.rows[0]).toHaveProperty('descr');
+    
+    await client.end();
   });
 });
 `,
@@ -1172,65 +1166,54 @@ test.describe('database read health check', () => {
     testType: "database",
     tags: ["playwright", "database", "transaction"],
     code: `/**
- * Transactional insert with rollback for clean state.
+ * Transaction isolation demonstration.
  * 
  * Purpose:
- * - Test write operations without polluting the database
- * - Verify that INSERTs work correctly
- * - Ensure data isolation by rolling back changes
+ * - Demonstrate PostgreSQL transaction concepts
+ * - Show how BEGIN/COMMIT/ROLLBACK work
+ * - Verify transaction isolation with consistent reads
  * 
- * Key Actions:
- * - BEGIN transaction
- * - INSERT data
- * - Verify insertion
- * - ROLLBACK transaction
- * - Verify data is gone
+ * Key Concepts:
+ * - BEGIN: Starts a transaction block
+ * - COMMIT: Makes changes permanent
+ * - ROLLBACK: Discards all changes in the transaction
+ * 
+ * Note: Uses RNAcentral public database (read-only)
+ * In production, use this pattern for write operations.
  * 
  * @requires @playwright/test, pg
  */
 
 import { expect, test } from '@playwright/test';
-import { Pool } from 'pg';
+import { Client } from 'pg';
 
-const pool = new Pool({
-  connectionString: 'postgres://user:password@localhost:5432/dbname',
+const client = new Client({
+  connectionString: 'postgres://reader:NWDMCE5xdipIjRrp@hh-pgsql-public.ebi.ac.uk:5432/pfmegrnargs',
+  ssl: false,
 });
 
-test.afterAll(async () => {
-  await pool.end();
-});
+// Demonstrate transaction isolation with reads
+test.describe('database transaction demonstration', () => {
+  test('transaction isolation ensures consistent reads', async () => {
+    await client.connect();
 
-// Use transactions so test data never leaks into production.
-test.describe('database transaction with rollback', () => {
-  test('insert + rollback keeps DB clean', async () => {
-    const client = await pool.connect();
+    // Start a transaction
+    await client.query('BEGIN');
 
-    try {
-      // Start transaction
-      await client.query('BEGIN');
+    // First read within transaction
+    const firstRead = await client.query('SELECT COUNT(*) as total FROM rnc_database');
+    const countAtStart = parseInt(firstRead.rows[0].total);
 
-      // Perform insert
-      const inserted = await client.query(
-        'INSERT INTO users (email, name) VALUES ($1, $2) RETURNING id, email, name',
-        ['playwright@example.com', 'Playwright Test']
-      );
+    // Second read within same transaction (should see same count)
+    const secondRead = await client.query('SELECT COUNT(*) as total FROM rnc_database');
+    const countAtEnd = parseInt(secondRead.rows[0].total);
 
-      // Verify insert was successful within the transaction
-      expect(inserted.rowCount).toBe(1);
-      expect(inserted.rows[0].email).toBe('playwright@example.com');
+    // Within a transaction, both reads should return the same value
+    expect(countAtStart).toBe(countAtEnd);
 
-      // Rollback changes
-      await client.query('ROLLBACK');
-
-      // Verify data was removed
-      const check = await client.query(
-        'SELECT 1 FROM users WHERE email = $1',
-        ['playwright@example.com']
-      );
-      expect(check.rowCount).toBe(0);
-    } finally {
-      client.release();
-    }
+    // End the transaction
+    await client.query('COMMIT');
+    await client.end();
   });
 });
 `,
@@ -1243,47 +1226,65 @@ test.describe('database transaction with rollback', () => {
     testType: "database",
     tags: ["playwright", "database", "update"],
     code: `/**
- * Safe UPDATE example with RETURNING.
+ * SQL Query Analysis with EXPLAIN.
  * 
  * Purpose:
- * - Demonstrate how to safely update records
- * - Verify the update affected the correct rows
- * - Check the returned data matches expectations
+ * - Demonstrate query execution plan analysis
+ * - Understand query performance before running
+ * - Learn UPDATE/DELETE safety patterns
  * 
- * Best Practices:
- * - Always use WHERE clauses to limit scope
- * - Use RETURNING to verify the new state immediately
+ * Key Concepts:
+ * - EXPLAIN: Shows query execution plan without running
+ * - WHERE clauses: Essential for safe UPDATE/DELETE
+ * - RETURNING clause: Get affected rows after modification
+ * 
+ * Note: Uses RNAcentral public database (read-only)
+ * UPDATE patterns are shown in comments for reference.
  * 
  * @requires @playwright/test, pg
  */
 
 import { expect, test } from '@playwright/test';
-import { Pool } from 'pg';
+import { Client } from 'pg';
 
-const pool = new Pool({
-  connectionString: 'postgres://user:password@localhost:5432/dbname',
+const client = new Client({
+  connectionString: 'postgres://reader:NWDMCE5xdipIjRrp@hh-pgsql-public.ebi.ac.uk:5432/pfmegrnargs',
+  ssl: false,
 });
 
-test.afterAll(async () => {
-  await pool.end();
-});
+test.describe('SQL query analysis', () => {
+  test('analyze query execution plan', async () => {
+    await client.connect();
 
-// Example update: always scope by id and assert row count.
-test.describe('safe database update', () => {
-  test('updates a user safely', async () => {
-    const result = await pool.query(
-      'UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name',
-      ['Updated Name', 1]
+    // Use EXPLAIN to analyze a SELECT query
+    const explainResult = await client.query(
+      'EXPLAIN SELECT id, descr FROM rnc_database WHERE current_release IS NOT NULL LIMIT 10'
     );
 
-    // Verify exactly one row was updated
-    expect(result.rowCount).toBe(1);
-    expect(result.rows[0].id).toBe(1);
-    expect(result.rows[0].name).toBe('Updated Name');
+    // EXPLAIN returns the query plan as rows
+    expect(explainResult.rows.length).toBeGreaterThan(0);
+    
+    // Run the actual query
+    const result = await client.query(
+      'SELECT id, descr, current_release FROM rnc_database WHERE current_release IS NOT NULL LIMIT 5'
+    );
+
+    expect(result.rowCount).toBeGreaterThan(0);
+    expect(result.rows[0]).toHaveProperty('id');
+
+    // Production UPDATE pattern example (commented):
+    // const updateResult = await client.query(
+    //   'UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name',
+    //   ['New Name', 123]
+    // );
+    // expect(updateResult.rowCount).toBe(1);
+
+    await client.end();
   });
 });
 `,
   },
+
 
   {
     id: "pw-custom-fixtures",
@@ -1606,30 +1607,14 @@ test.describe('API + UI end-to-end test', () => {
     testType: "browser",
     tags: ["playwright", "browser", "comprehensive"],
     code: `/**
- * Comprehensive browser automation test suite with Playwright
- * Demonstrates core UI testing patterns: navigation, element interaction, and form submission
- *
+ * Comprehensive browser automation test suite.
+ * 
  * Purpose:
- * - Test page title and metadata correctness
- * - Verify navigation flow and DOM element visibility
- * - Validate form input, submission, and data persistence
- *
- * Test Coverage:
- * 1. Page Title Test: Validates page metadata and document title
- * 2. Navigation Test: Simulates user clicking links and verifying page changes
- * 3. Form Test: Fills form fields, submits data, and verifies results
- *
- * Configuration:
- * - Browser: Chromium (default) unless specified via config
- * - Base URL: Uses absolute URLs for flexibility
- * - Assertions: Uses semantic locators (role, label, placeholder) for resilience
- *
- * Use Case:
- * - Validate core user journeys (landing page → documentation → form)
- * - Smoke test for UI layer regressions
- * - Onboarding test to verify key application flows work
- *
- * @requires '@playwright/test'
+ * - Test page title and navigation
+ * - Verify element visibility and form interactions
+ * - Demonstrate core Playwright patterns
+ * 
+ * @requires @playwright/test
  */
 
 import { test, expect } from '@playwright/test';
@@ -1681,30 +1666,14 @@ test.describe('browser automation tests', () => {
     testType: "api",
     tags: ["playwright", "api", "comprehensive"],
     code: `/**
- * REST API testing with Playwright
- * Comprehensive API tests covering HTTP methods, response validation, and error handling
- *
+ * Comprehensive REST API test suite.
+ * 
  * Purpose:
- * - Validate read operations (GET) with exact response matching
- * - Verify write operations (POST) with state validation
- * - Test error handling for edge cases (404, missing resources)
- *
- * Test Coverage:
- * 1. GET Request Test: Validates HTTP status, headers, and full response structure
- * 2. POST Request Test: Tests data submission, ID generation, and response data
- * 3. Error Handling Test: Validates 404 responses and empty result handling
- *
- * Configuration:
- * - API Base: JSONPlaceholder (public fake API for testing)
- * - Assertions: Strict validation (exact equality, not partial matching)
- * - Response Format: JSON
- *
- * Use Case:
- * - Smoke test API endpoints before deploying to production
- * - Validate API contract changes
- * - Test error scenarios and edge cases
- *
- * @requires '@playwright/test'
+ * - Test GET, POST requests and response validation
+ * - Verify error handling (404, missing resources)
+ * - Demonstrate API testing patterns
+ * 
+ * @requires @playwright/test
  */
 
 import { test, expect } from '@playwright/test';
@@ -2023,26 +1992,17 @@ test.describe('GitHub integration tests', () => {
     testType: "performance",
     tags: ["k6", "basic", "performance"],
     code: `/**
- * Basic k6 performance test script
- * Simple load testing with concurrent virtual users and SLA thresholds
- *
+ * Basic k6 performance test script.
+ * 
  * Purpose:
- * - Verify baseline API performance under moderate load
- * - Check response times meet acceptable thresholds (p95 < 500ms)
- * - Monitor error rates during normal operation
- *
+ * - Verify baseline API performance under load
+ * - Check response times meet thresholds (p95 < 500ms)
+ * - Monitor error rates during operation
+ * 
  * Configuration:
- * - VUs: 10 concurrent virtual users
+ * - VUs: 5 concurrent users
  * - Duration: 30 seconds
- * - Thresholds:
- *   - Response time: 95th percentile must be < 500ms
- *   - Error rate: Must be < 10%
- *
- * Use Case:
- * - Quick performance baseline check
- * - Part of CI/CD pipeline for regression testing
- * - Verify API health before running heavier tests
- *
+ * 
  * @requires k6 binary
  */
 
