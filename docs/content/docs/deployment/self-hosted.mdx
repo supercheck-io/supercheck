@@ -59,12 +59,12 @@ Already have Docker or Docker Desktop installed? [Skip to Clone and Configure](#
 
 <Tabs items={['macOS', 'Windows', 'Linux']}>
   <Tab value="macOS">
-    Download and install [Docker Desktop for Mac](https://docs.docker.com/desktop/setup/install/mac-install/).
+    Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Mac.
     
     After installation, start Docker Desktop from your Applications folder.
   </Tab>
   <Tab value="Windows">
-    Download and install [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/).
+    Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Windows.
     
     After installation, start Docker Desktop from the Start menu.
   </Tab>
@@ -123,12 +123,12 @@ Already have Docker or Docker Desktop installed? [Skip to Configure DNS](#2-conf
 
 <Tabs items={['macOS', 'Windows', 'Linux']}>
   <Tab value="macOS">
-    Download and install [Docker Desktop for Mac](https://docs.docker.com/desktop/setup/install/mac-install/).
+    Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Mac.
     
     After installation, start Docker Desktop from your Applications folder.
   </Tab>
   <Tab value="Windows">
-    Download and install [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/).
+    Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Windows.
     
     After installation, start Docker Desktop from the Start menu.
   </Tab>
@@ -143,9 +143,44 @@ Already have Docker or Docker Desktop installed? [Skip to Configure DNS](#2-conf
 
 ### 2. Configure DNS
 
-Create A records pointing to your server:
-- `app.yourdomain.com` → Server IP
-- `*.yourdomain.com` → Server IP (for status pages)
+Before deploying, point your domain to your server by adding DNS records through your **domain provider** (e.g., Cloudflare, GoDaddy, Namecheap, or wherever you purchased your domain).
+
+<Steps>
+  <Step>
+    **Find Your Server's IP Address**
+    
+    You'll need your server's public IP address. Run this on your server:
+    ```bash
+    curl -4 ifconfig.me
+    ```
+  </Step>
+  <Step>
+    **Log in to Your Domain Provider**
+    
+    Go to your domain registrar's website and navigate to the DNS management section. This is usually labeled as "DNS Settings", "Manage DNS", or "DNS Records".
+  </Step>
+  <Step>
+    **Add the Following DNS Records**
+    
+    | Type | Name | Value | TTL |
+    |------|------|-------|-----|
+    | A | `app` | Your Server IP (e.g., `203.0.113.50`) | Auto or 3600 |
+    | A | `*` | Your Server IP (e.g., `203.0.113.50`) | Auto or 3600 |
+
+    <Callout type="info">
+    The wildcard (`*`) record enables custom subdomains for status pages (e.g., `status.yourdomain.com`, `api-status.yourdomain.com`).
+    </Callout>
+  </Step>
+  <Step>
+    **Wait for DNS Propagation**
+    
+    DNS changes can take a few minutes to propagate. Verify your records are active:
+    ```bash
+    # Should return your server IP
+    dig +short app.yourdomain.com
+    ```
+  </Step>
+</Steps>
 
 ### 3. Clone and Configure
 
