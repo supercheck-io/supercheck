@@ -6,6 +6,7 @@ import { X, Check, Sparkles, Loader2 } from "lucide-react";
 import { Editor, useMonaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 import { useTheme } from "next-themes";
+import { getMonacoTheme } from "@/lib/monaco-config";
 
 interface AICreateViewerProps {
   currentScript: string;
@@ -37,7 +38,7 @@ export function AICreateViewer({
   const isMountedRef = useRef(true);
   const { resolvedTheme } = useTheme();
   const isDarkTheme = resolvedTheme !== "light";
-  const editorTheme = isDarkTheme ? "vs-dark" : "warm-light";
+  const editorTheme = getMonacoTheme(resolvedTheme);
 
   // Update editor during streaming - avoid setState to prevent re-renders
   useEffect(() => {
@@ -228,7 +229,7 @@ export function AICreateViewer({
               editorRef.current = instance;
             }}
             loading={
-              <div className="flex h-full w-full items-center justify-center">
+              <div className="flex h-full w-full items-center justify-center bg-card">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
             }

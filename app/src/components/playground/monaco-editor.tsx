@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Maximize2, X, Loader2 } from "lucide-react";
 import { useMonacoPerformance } from "./use-monaco-performance";
 import { getCachedTypeDefs } from "@/components/monaco-prefetcher";
+import { registerMonacoThemes, getMonacoTheme } from "@/lib/monaco-config";
 
 interface MonacoEditorProps {
   value: string;
@@ -66,9 +67,7 @@ export const MonacoEditorClient = memo(
       // Update editor theme when app theme changes
       useEffect(() => {
         if (monaco) {
-          const editorTheme =
-            resolvedTheme === "dark" ? "vs-dark" : "warm-light";
-          monaco.editor.setTheme(editorTheme);
+          monaco.editor.setTheme(getMonacoTheme(resolvedTheme));
         }
       }, [resolvedTheme, monaco]);
 
@@ -373,15 +372,8 @@ export const MonacoEditorClient = memo(
       // Add custom styles to remove all borders, but only once
       const beforeMount = useCallback(
         (monaco: typeof import("monaco-editor")) => {
-          // Define custom warm light theme before editor mounts
-          monaco.editor.defineTheme("warm-light", {
-            base: "vs",
-            inherit: true,
-            rules: [],
-            colors: {
-              "editor.background": "#FAF7F3",
-            },
-          });
+          // Register shared Monaco themes (idempotent)
+          registerMonacoThemes(monaco);
 
           // Check if the style already exists by ID
           if (!document.getElementById("monaco-editor-styles")) {
@@ -473,7 +465,7 @@ export const MonacoEditorClient = memo(
               defaultLanguage="typescript"
               value={value}
               onChange={handleEditorChange}
-              theme={resolvedTheme === "dark" ? "vs-dark" : "warm-light"}
+              theme={getMonacoTheme(resolvedTheme)}
               className="w-full overflow-hidden"
               beforeMount={beforeMount}
               onMount={handleEditorMount}
@@ -581,7 +573,7 @@ export const MonacoEditorClient = memo(
                     defaultLanguage="typescript"
                     value={value}
                     onChange={handleEditorChange}
-                    theme={resolvedTheme === "dark" ? "vs-dark" : "warm-light"}
+                    theme={getMonacoTheme(resolvedTheme)}
                     className="w-full h-full"
                     beforeMount={beforeMount}
                     onMount={handleFullscreenEditorMount}
