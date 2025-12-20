@@ -813,6 +813,10 @@ ALTER TABLE "status_page_subscribers" ADD CONSTRAINT "status_page_subscribers_st
 ALTER TABLE "status_pages" ADD CONSTRAINT "status_pages_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "status_pages" ADD CONSTRAINT "status_pages_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "status_pages" ADD CONSTRAINT "status_pages_created_by_user_id_user_id_fk" FOREIGN KEY ("created_by_user_id") REFERENCES "public"."user"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "audit_logs_action_idx" ON "audit_logs" USING btree ("action");--> statement-breakpoint
+CREATE INDEX "audit_logs_organization_id_idx" ON "audit_logs" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX "audit_logs_created_at_idx" ON "audit_logs" USING btree ("created_at");--> statement-breakpoint
+CREATE INDEX "audit_logs_action_org_created_idx" ON "audit_logs" USING btree ("action","organization_id","created_at");--> statement-breakpoint
 CREATE INDEX "account_user_id_idx" ON "account" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "account_provider_account_idx" ON "account" USING btree ("provider_id","account_id");--> statement-breakpoint
 CREATE INDEX "apikey_key_idx" ON "apikey" USING btree ("key");--> statement-breakpoint
@@ -865,10 +869,21 @@ CREATE INDEX "runs_status_idx" ON "runs" USING btree ("status");--> statement-br
 CREATE INDEX "runs_created_at_idx" ON "runs" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "runs_completed_at_idx" ON "runs" USING btree ("completed_at");--> statement-breakpoint
 CREATE INDEX "runs_project_created_at_idx" ON "runs" USING btree ("project_id","created_at");--> statement-breakpoint
+CREATE INDEX "runs_started_at_idx" ON "runs" USING btree ("started_at");--> statement-breakpoint
+CREATE INDEX "k6_runs_project_org_idx" ON "k6_performance_runs" USING btree ("project_id","organization_id");--> statement-breakpoint
+CREATE INDEX "k6_runs_started_at_idx" ON "k6_performance_runs" USING btree ("started_at");--> statement-breakpoint
+CREATE INDEX "k6_runs_run_id_idx" ON "k6_performance_runs" USING btree ("run_id");--> statement-breakpoint
 CREATE INDEX "monitor_results_monitor_location_checked_idx" ON "monitor_results" USING btree ("monitor_id","location","checked_at");--> statement-breakpoint
+CREATE INDEX "monitor_results_checked_at_idx" ON "monitor_results" USING btree ("checked_at");--> statement-breakpoint
+CREATE INDEX "monitor_results_monitor_checked_idx" ON "monitor_results" USING btree ("monitor_id","checked_at");--> statement-breakpoint
+CREATE INDEX "monitors_project_org_idx" ON "monitors" USING btree ("project_id","organization_id");--> statement-breakpoint
+CREATE INDEX "monitors_project_org_status_idx" ON "monitors" USING btree ("project_id","organization_id","status");--> statement-breakpoint
 CREATE UNIQUE INDEX "monitor_aggregates_unique_idx" ON "monitor_aggregates" USING btree ("monitor_id","period_type","period_start","location");--> statement-breakpoint
 CREATE INDEX "monitor_aggregates_monitor_time_idx" ON "monitor_aggregates" USING btree ("monitor_id","period_start");--> statement-breakpoint
 CREATE INDEX "monitor_aggregates_cleanup_idx" ON "monitor_aggregates" USING btree ("period_type","period_start");--> statement-breakpoint
+CREATE INDEX "alert_history_sent_at_idx" ON "alert_history" USING btree ("sent_at");--> statement-breakpoint
+CREATE INDEX "alert_history_monitor_id_idx" ON "alert_history" USING btree ("monitor_id");--> statement-breakpoint
+CREATE INDEX "alert_history_job_id_idx" ON "alert_history" USING btree ("job_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "tags_project_name_idx" ON "tags" USING btree ("project_id","name");--> statement-breakpoint
 CREATE UNIQUE INDEX "reports_entity_type_id_idx" ON "reports" USING btree ("entity_type","entity_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "postmortems_incident_idx" ON "postmortems" USING btree ("incident_id");--> statement-breakpoint

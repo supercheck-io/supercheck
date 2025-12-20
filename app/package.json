@@ -48,7 +48,7 @@
     "e2e:report": "cd e2e && npx playwright show-report",
     "e2e:install": "cd e2e && npm install && npx playwright install --with-deps",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "drizzle-kit migrate && node scripts/db-seed.js",
     "db:seed": "node scripts/db-seed.js",
     "db:studio": "drizzle-kit studio",
     "db:migrate:prod": "./scripts/migrate.sh",

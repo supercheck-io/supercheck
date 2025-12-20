@@ -61,6 +61,25 @@ export async function POST(request: NextRequest) {
           { status: 402 }
         );
       }
+
+      // Atomically consume AI credit (prevents race conditions)
+      // This increments first, then checks limit, and rolls back if exceeded
+      const creditResult = await usageTracker.consumeAICredit(activeOrg.id, "ai_fix");
+      if (!creditResult.allowed) {
+        return NextResponse.json(
+          {
+            success: false,
+            reason: "ai_credits_exhausted",
+            message: creditResult.reason,
+            guidance: "Upgrade your plan for more AI credits or wait until your next billing cycle.",
+            usage: {
+              used: creditResult.used,
+              limit: creditResult.limit,
+            },
+          },
+          { status: 429 }
+        );
+      }
     }
 
     // Step 3: Rate limiting check (with user/org context)
@@ -184,17 +203,9 @@ export async function POST(request: NextRequest) {
           // Use AI confidence if available, otherwise use default for basic analysis
           const basicConfidence = aiResponse.aiConfidence || 0.7;
 
-          // Track AI credit usage
-          try {
-            const activeOrg = await getActiveOrganization();
-            if (activeOrg) {
-              await usageTracker.trackAIUsage(activeOrg.id, "ai_fix", {
-                testId,
-                contextSource: "basic_analysis",
-              });
-            }
-          } catch (trackingError) {
-            console.error("[AI Fix] Failed to track AI usage:", trackingError);
+          // Credit already consumed atomically above - just log
+          if (activeOrg) {
+            console.log(`[AI Fix] Basic analysis completed for org ${activeOrg.id.slice(0, 8)}...`);
           }
 
           return NextResponse.json({
@@ -269,15 +280,9 @@ export async function POST(request: NextRequest) {
     // Use AI confidence if available, otherwise use fix decision confidence
     const finalConfidence = aiResponse.aiConfidence || fixDecision.confidence;
 
-    // Track AI credit usage and token usage
+    // Credit already consumed atomically above - just track token usage and log audit
     try {
-      const activeOrg = await getActiveOrganization();
       if (activeOrg) {
-        await usageTracker.trackAIUsage(activeOrg.id, "ai_fix", {
-          testId,
-          contextSource,
-        });
-
         // Track token usage for rate limiting
         if (aiResponse.usage.totalTokens > 0) {
           await AuthService.trackTokenUsage(
@@ -307,8 +312,9 @@ export async function POST(request: NextRequest) {
         });
       }
     } catch (trackingError) {
-      console.error("[AI Fix] Failed to track AI usage:", trackingError);
+      console.error("[AI Fix] Failed to log audit event:", trackingError);
     }
+
 
     return NextResponse.json({
       success: true,

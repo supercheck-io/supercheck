@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { DiffEditor, useMonaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 import { useTheme } from "next-themes";
+import { getMonacoTheme } from "@/lib/monaco-config";
 
 interface AIDiffViewerProps {
   originalScript: string;
@@ -39,7 +40,7 @@ export function AIDiffViewer({
   const isMountedRef = useRef(true);
   const { resolvedTheme } = useTheme();
   const isDarkTheme = resolvedTheme !== "light";
-  const editorTheme = isDarkTheme ? "vs-dark" : "warm-light";
+  const editorTheme = getMonacoTheme(resolvedTheme);
 
   const scrollEditorsToTop = useCallback(() => {
     if (!editorRef.current) return;
@@ -343,8 +344,8 @@ export function AIDiffViewer({
               size="sm"
               onClick={onClose}
               className={`h-7 w-7 p-0 ${isDarkTheme
-                  ? "text-gray-400 hover:text-white hover:bg-gray-800"
-                  : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+                ? "text-gray-400 hover:text-white hover:bg-gray-800"
+                : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
                 }`}
               disabled={isStreaming}
               aria-label="Close"

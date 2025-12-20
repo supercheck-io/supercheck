@@ -110,6 +110,25 @@ export async function POST(request: NextRequest) {
           { status: 402 }
         );
       }
+
+      // Atomically consume AI credit (prevents race conditions)
+      // This increments first, then checks limit, and rolls back if exceeded
+      const creditResult = await usageTracker.consumeAICredit(activeOrg.id, "ai_create");
+      if (!creditResult.allowed) {
+        return NextResponse.json(
+          {
+            success: false,
+            reason: "ai_credits_exhausted",
+            message: creditResult.reason,
+            guidance: "Upgrade your plan for more AI credits or wait until your next billing cycle.",
+            usage: {
+              used: creditResult.used,
+              limit: creditResult.limit,
+            },
+          },
+          { status: 429 }
+        );
+      }
     }
 
     await AuthService.checkRateLimit({
@@ -134,15 +153,9 @@ export async function POST(request: NextRequest) {
       testType,
     });
 
-    // Step 5: Track AI credit usage
+    // Step 5: Log audit event (credit already consumed atomically above)
     try {
-      const activeOrg = await getActiveOrganization();
       if (activeOrg) {
-        await usageTracker.trackAIUsage(activeOrg.id, "ai_create", {
-          testType,
-        });
-
-        // Log audit event for AI create action
         await logAuditEvent({
           userId,
           organizationId: activeOrg.id,
@@ -159,8 +172,9 @@ export async function POST(request: NextRequest) {
         });
       }
     } catch (trackingError) {
-      console.error("[AI Create] Failed to track AI usage:", trackingError);
+      console.error("[AI Create] Failed to log audit event:", trackingError);
     }
+
 
     // Step 6: Return streaming response with appropriate headers
     return new NextResponse(aiResponse.stream, {

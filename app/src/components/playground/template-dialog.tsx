@@ -18,6 +18,7 @@ import { TestType } from "@/db/schema/types";
 import { CodeTemplate, getTemplatesByType } from "./template-data";
 import { Code2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getMonacoTheme } from "@/lib/monaco-config";
 
 interface TemplateDialogProps {
   open: boolean;
@@ -75,7 +76,7 @@ export function TemplateDialog({
       <DialogContent className="max-w-[95vw] h-[85vh] p-0 gap-0 min-w-[1300px]">
         <DialogHeader className="px-6 pt-6 pb-4 border-b">
           <div className="flex items-center gap-2">
-         
+
             <DialogTitle className="text-2xl">Code Templates</DialogTitle>
           </div>
           <DialogDescription className="text-base">
@@ -107,7 +108,7 @@ export function TemplateDialog({
                             className={cn(
                               "flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/60 bg-card/60 px-4 py-3 transition hover:border-primary/60 hover:bg-card/80",
                               selectedTemplateId === template.id &&
-                                "border-primary bg-primary/5"
+                              "border-primary bg-primary/5"
                             )}
                           >
                             <div className="flex-1 min-w-0">
@@ -157,7 +158,7 @@ export function TemplateDialog({
                       isPerformance ? "javascript" : "typescript"
                     }
                     value={selectedTemplate.code}
-                    theme={resolvedTheme === "dark" ? "vs-dark" : "warm-light"}
+                    theme={getMonacoTheme(resolvedTheme)}
                     options={{
                       readOnly: true,
                       minimap: { enabled: true },

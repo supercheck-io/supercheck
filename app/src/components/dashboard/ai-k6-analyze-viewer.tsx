@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import Editor, { Monaco, useMonaco } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 import { useTheme } from "next-themes";
+import { registerMonacoThemes, getMonacoTheme } from "@/lib/monaco-config";
 
 interface AIK6AnalyzeViewerProps {
     open: boolean;
@@ -39,7 +40,7 @@ export function AIK6AnalyzeViewer({
     const monaco = useMonaco();
     const { resolvedTheme } = useTheme();
     const isDarkTheme = resolvedTheme !== "light";
-    const editorTheme = isDarkTheme ? "vs-dark" : "warm-light";
+    const editorTheme = getMonacoTheme(resolvedTheme);
 
     // Update editor theme when system theme changes
     useEffect(() => {
@@ -63,18 +64,11 @@ export function AIK6AnalyzeViewer({
         editorRef.current = editor;
         monacoRef.current = monaco;
 
-        // Define warm-light theme for light mode
-        monaco.editor.defineTheme("warm-light", {
-            base: "vs",
-            inherit: true,
-            rules: [],
-            colors: {
-                "editor.background": "#FAF7F3",
-            },
-        });
+        // Register shared Monaco themes (idempotent)
+        registerMonacoThemes(monaco);
 
         // Apply the correct theme based on current system preference
-        monaco.editor.setTheme(isDarkTheme ? "vs-dark" : "warm-light");
+        monaco.editor.setTheme(editorTheme);
 
         // Configure markdown language
         monaco.languages.setLanguageConfiguration("markdown", {

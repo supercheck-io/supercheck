@@ -203,13 +203,10 @@ export function MonacoPrefetcher(): null {
         if (hasTriggeredRef.current) return;
         hasTriggeredRef.current = true;
 
-        // Wait a bit after initial render to avoid competing with
-        // critical page resources
-        const delayMs = 2000;
-
+        // 1 second delay to let critical resources load first
         const timer = setTimeout(() => {
             triggerMonacoPreload();
-        }, delayMs);
+        }, 1000);
 
         return () => {
             clearTimeout(timer);

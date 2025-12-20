@@ -38,10 +38,8 @@ import {
 } from "@/lib/validations/project";
 // import { useFormValidation } from "@/hooks/use-form-validation";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
-import {
-  OrgAdminDashboardSkeleton,
-  TabLoadingSpinner,
-} from "@/components/ui/table-skeleton";
+import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import { Loader2 } from "lucide-react";
 import {
   canCreateProjects,
@@ -418,7 +416,11 @@ export default function OrgAdminDashboard() {
   };
 
   if (loading) {
-    return <OrgAdminDashboardSkeleton />;
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <SuperCheckLoading size="lg" message="Loading organization..." />
+      </div>
+    );
   }
 
   if (!stats || !orgDetails) {

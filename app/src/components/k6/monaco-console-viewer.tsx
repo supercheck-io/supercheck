@@ -6,6 +6,7 @@ import type { editor as editorType } from "monaco-editor";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
+import { registerMonacoThemes, getMonacoTheme } from "@/lib/monaco-config";
 
 type LineStyle = "error" | "warn" | "success" | "info";
 
@@ -72,7 +73,7 @@ export const MonacoConsoleViewer = memo(
     const previousContentRef = useRef<string>("");
     const decorationsRef = useRef<string[]>([]);
 
-    // Initialize console language - use same theme as playground
+    // Initialize console language - use shared theme registration
     useEffect(() => {
       if (!monaco || isInitializing.current) return;
 
@@ -84,15 +85,8 @@ export const MonacoConsoleViewer = memo(
           monaco.languages.register({ id: "console-log" });
         }
 
-        // Define custom warm light theme - same as playground editor
-        monaco.editor.defineTheme("warm-light", {
-          base: "vs",
-          inherit: true,
-          rules: [],
-          colors: {
-            "editor.background": "#FAF7F3",
-          },
-        });
+        // Register shared Monaco themes (idempotent)
+        registerMonacoThemes(monaco);
       } catch (err) {
         console.error("Failed to initialize Monaco console viewer:", err);
       }
@@ -149,13 +143,12 @@ export const MonacoConsoleViewer = memo(
         return newDecorations;
       }, [content, resolvedTheme, monaco]);
 
-    // Update theme when it changes - use same logic as playground editor
+    // Update theme when it changes - use shared getMonacoTheme
     useEffect(() => {
       if (!monaco) return;
 
-      const editorTheme = resolvedTheme === "dark" ? "vs-dark" : "warm-light";
       try {
-        monaco.editor.setTheme(editorTheme);
+        monaco.editor.setTheme(getMonacoTheme(resolvedTheme));
       } catch {
         // Theme might not be defined yet
       }
@@ -178,8 +171,8 @@ export const MonacoConsoleViewer = memo(
       (editor: editorType.IStandaloneCodeEditor) => {
         editorRef.current = editor;
 
-        // Use same theme as playground editor
-        const editorTheme = resolvedTheme === "dark" ? "vs-dark" : "warm-light";
+        // Use shared getMonacoTheme helper
+        const editorTheme = getMonacoTheme(resolvedTheme);
         try {
           monaco?.editor.setTheme(editorTheme);
         } catch {
@@ -225,7 +218,7 @@ export const MonacoConsoleViewer = memo(
           onChange={() => { }}
           onMount={handleEditorDidMount}
           loading={
-            <div className="flex h-full w-full items-center justify-center">
+            <div className="flex h-full w-full items-center justify-center bg-card">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           }
