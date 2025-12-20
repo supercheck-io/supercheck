@@ -54,6 +54,50 @@ export async function POST(request: NextRequest) {
       tier: session.tier,
     });
 
+    // Step 3.5: CRITICAL - Check subscription and AI credits in cloud mode
+    const activeOrg = await getActiveOrganization();
+    if (activeOrg) {
+      // Import subscription service
+      const { subscriptionService } = await import("@/lib/services/subscription-service");
+      
+      try {
+        await subscriptionService.blockUntilSubscribed(activeOrg.id);
+        await subscriptionService.requireValidPolarCustomer(activeOrg.id);
+      } catch (error) {
+        return NextResponse.json(
+          {
+            success: false,
+            reason: "subscription_required",
+            message:
+              error instanceof Error
+                ? error.message
+                : "Subscription required to use AI features",
+            guidance: "Please subscribe to a plan at /billing to use AI Fix",
+          },
+          { status: 402 }
+        );
+      }
+
+      // Atomically consume AI credit (prevents race conditions)
+      // This increments first, then checks limit, and rolls back if exceeded
+      const creditResult = await usageTracker.consumeAICredit(activeOrg.id, "ai_fix");
+      if (!creditResult.allowed) {
+        return NextResponse.json(
+          {
+            success: false,
+            reason: "ai_credits_exhausted",
+            message: creditResult.reason,
+            guidance: "Upgrade your plan for more AI credits or wait until your next billing cycle.",
+            usage: {
+              used: creditResult.used,
+              limit: creditResult.limit,
+            },
+          },
+          { status: 429 }
+        );
+      }
+    }
+
     let prompt: string;
     let confidence = 0.7;
 
@@ -179,16 +223,9 @@ export async function POST(request: NextRequest) {
       testType,
     });
 
-    // Step 5: Track AI credit usage
+    // Step 5: Log audit event (credit already consumed atomically above)
     try {
-      const activeOrg = await getActiveOrganization();
       if (activeOrg) {
-        await usageTracker.trackAIUsage(activeOrg.id, "ai_fix", {
-          testId,
-          testType,
-        });
-
-        // Log audit event for AI fix action
         await logAuditEvent({
           userId: session.user.id,
           organizationId: activeOrg.id,
@@ -206,8 +243,9 @@ export async function POST(request: NextRequest) {
         });
       }
     } catch (trackingError) {
-      console.error("[AI Fix Stream] Failed to track AI usage:", trackingError);
+      console.error("[AI Fix Stream] Failed to log audit event:", trackingError);
     }
+
 
     // Step 6: Return streaming response with appropriate headers
     return new NextResponse(aiResponse.stream, {

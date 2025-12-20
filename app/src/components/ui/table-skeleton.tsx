@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2 } from "lucide-react";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 
 interface TableSkeletonProps {
   rows?: number;
@@ -20,6 +20,7 @@ interface TableSkeletonProps {
 }
 
 // Consistent loading spinner for all tab content
+// Uses SuperCheckLoading for consistent branding across the app
 export function TabLoadingSpinner({
   message = "Loading...",
 }: {
@@ -27,11 +28,11 @@ export function TabLoadingSpinner({
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-16">
-      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-3" />
-      <p className="text-sm text-muted-foreground">{message}</p>
+      <SuperCheckLoading size="md" message={message} />
     </div>
   );
 }
+
 
 export function TableSkeleton({
   rows = 3,
@@ -75,9 +76,8 @@ export function TableSkeleton({
               {Array.from({ length: columns }).map((_, index) => (
                 <TableHead
                   key={index}
-                  className={`h-12 px-4 text-left align-middle font-semibold text-muted-foreground ${
-                    index === 0 ? "rounded-tl-lg" : ""
-                  } ${index === columns - 1 ? "rounded-tr-lg" : ""}`}
+                  className={`h-12 px-4 text-left align-middle font-semibold text-muted-foreground ${index === 0 ? "rounded-tl-lg" : ""
+                    } ${index === columns - 1 ? "rounded-tr-lg" : ""}`}
                 >
                   <Skeleton className="h-4 w-20" />
                 </TableHead>

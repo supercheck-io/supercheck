@@ -917,9 +917,9 @@ export function TestForm({
           placeholder="Select or create tags to organize tests..."
           disabled={isRunning || isLoadingTags}
         />
-        {isLoadingTags && (
+        {/* {isLoadingTags && (
           <p className="text-xs text-muted-foreground">Loading tags...</p>
-        )}
+        )} */}
       </div>
 
       <div className="mt-4">

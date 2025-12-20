@@ -69,6 +69,11 @@ export class SubscriptionService {
   >();
 
   /**
+   * Counter for cache accesses - triggers cleanup periodically
+   */
+  private cacheAccessCount = 0;
+
+  /**
    * Clear expired cache entries (called periodically)
    */
   private cleanExpiredCache(): void {
@@ -110,10 +115,13 @@ export class SubscriptionService {
       return cached.valid;
     }
 
-    // Clean expired cache entries periodically
-    if (this.validationCache.size > 100) {
+    // Clean expired cache entries periodically (every 50 accesses or when size > 100)
+    this.cacheAccessCount++;
+    if (this.cacheAccessCount >= 50 || this.validationCache.size > 100) {
       this.cleanExpiredCache();
+      this.cacheAccessCount = 0;
     }
+
 
     try {
       const config = getPolarConfig();

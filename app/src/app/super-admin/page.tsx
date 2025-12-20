@@ -41,10 +41,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
-import {
-  AdminDashboardSkeleton,
-  TabLoadingSpinner,
-} from "@/components/ui/table-skeleton";
+import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import { Loader2 } from "lucide-react";
 import { FormInput } from "@/components/ui/form-input";
 import {
@@ -324,7 +322,11 @@ export default function AdminDashboard() {
   };
 
   if (loading) {
-    return <AdminDashboardSkeleton />;
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <SuperCheckLoading size="lg" message="Loading admin dashboard..." />
+      </div>
+    );
   }
 
   if (!stats) {
@@ -751,14 +753,10 @@ export default function AdminDashboard() {
                       minHeight: "600px",
                     }}
                   >
-                    <div className="flex flex-col items-center space-y-4">
-                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                      <span className="text-muted-foreground">
-                        Loading Queue Dashboard...
-                      </span>
-                    </div>
+                    <SuperCheckLoading size="lg" message="Loading Queue Dashboard..." />
                   </div>
                 ) : null}
+
                 <iframe
                   ref={iframeRef}
                   src="/api/admin/queues/"

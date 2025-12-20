@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import {
   Calendar,
   Users,
@@ -172,7 +172,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
   const handleManageSubscription = async () => {
     setOpeningPortal(true);
     try {
-       
+
       const result = await (authClient as any).customer.portal();
       if (result?.data?.url) {
         toast.success("Opening Polar customer portal...", {
@@ -201,7 +201,11 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
   };
 
   if (loading) {
-    return <SubscriptionTabSkeleton />;
+    return (
+      <div className="flex items-center justify-center py-16">
+        <SuperCheckLoading size="md" message="Loading subscription..." />
+      </div>
+    );
   }
 
   if (!data) {
@@ -532,40 +536,3 @@ function CompactResourceCard({
   );
 }
 
-function SubscriptionTabSkeleton() {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between pb-4 border-b">
-        <div className="space-y-2">
-          <Skeleton className="h-5 w-24" />
-          <Skeleton className="h-3 w-40" />
-        </div>
-        <Skeleton className="h-8 w-20" />
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-3">
-            <Skeleton className="h-4 w-32" />
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Skeleton className="h-6 w-full" />
-            <Skeleton className="h-6 w-full" />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <Skeleton className="h-4 w-28" />
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-3">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
