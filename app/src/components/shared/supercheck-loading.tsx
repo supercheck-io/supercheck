@@ -17,16 +17,16 @@ interface SuperCheckLoadingProps {
  * - Static, professional text (no flashing)
  */
 export function SuperCheckLoading({
-    message = "Please wait, loading...",
+    message = "Loading...",
     size = "md",
     className
 }: SuperCheckLoadingProps) {
     // Config: Logo size and Spinner size
     // Spinner is tighter to logo now
     const sizeConfig = {
-        sm: { logo: 32, spinner: 48, stroke: 'border-[3px]' },
-        md: { logo: 48, spinner: 72, stroke: 'border-[4px]' }, // Bigger logo (48px)
-        lg: { logo: 64, spinner: 96, stroke: 'border-[4px]' }, // Much bigger logo (64px)
+        sm: { logo: 24, spinner: 40, stroke: 'border-[2px]' },
+        md: { logo: 32, spinner: 48, stroke: 'border-[3px]' },
+        lg: { logo: 48, spinner: 72, stroke: 'border-[4px]' },
     };
 
     const config = sizeConfig[size];
@@ -94,7 +94,7 @@ function SuperCheckLogo({ size = 24 }: { size?: number }) {
  * FullPageLoading - Full page loading overlay with SuperCheck branding
  */
 export function FullPageLoading({
-    message = "Please wait, loading..."
+    message = "Loading..."
 }: {
     message?: string
 }) {
