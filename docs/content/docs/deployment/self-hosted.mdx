@@ -353,18 +353,37 @@ Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys).
 
 ---
 
-## Scaling Workers
+## Resource Requirements
+
+### Base Infrastructure
+
+All deployments require these minimum resources for the core services:
+
+| Component | CPU | Memory | Storage | Notes |
+|-----------|-----|--------|---------|-------|
+| App (Next.js) | 1 vCPU | 2GB | - | UI + API server |
+| PostgreSQL | 0.5 vCPU | 1GB | 10GB+ | Primary database |
+| Redis | 0.25 vCPU | 256MB | - | Queue + cache |
+| MinIO | 0.5 vCPU | 1GB | 30GB+ | Artifact storage (grows with usage) |
+
+<Callout type="info">
+**Minimum single-server deployment:** 4 vCPU / 8GB RAM covers all base services plus 1 worker.
+</Callout>
+
+### Worker Scaling
+
+Workers run Playwright browser tests and k6 load tests. Each worker requires **2 vCPU / 4GB RAM** (includes spawned test containers).
 
 ```bash
 # Scale to 2 workers
 WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
 ```
 
-| Workers | Concurrent Tests | Server Size |
-|---------|------------------|-------------|
-| 1 | 1 | 2 vCPU / 4GB |
-| 2 | 2 | 4 vCPU / 8GB |
-| 4 | 4 | 8 vCPU / 16GB |
+| Workers | Concurrent Tests | Additional Resources |
+|---------|------------------|---------------------|
+| 1 | 1 | +2 vCPU / 4GB |
+| 2 | 2 | +4 vCPU / 8GB |
+| 4 | 4 | +8 vCPU / 16GB |
 
 ---
 

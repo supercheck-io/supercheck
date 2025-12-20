@@ -39,7 +39,7 @@ export function baseOptions(): BaseLayoutProps {
             height={32}
             className="rounded-md"
           />
-          <span className="font-semibold">Supercheck</span>
+          <span className="font-semibold">Supercheck Docs</span>
         </>
       ),
     },
