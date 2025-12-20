@@ -52,23 +52,25 @@ const PERFORMANCE_LIBRARIES: AllowedLibrary[] = [
   { name: "k6/ws", description: "WebSocket support" },
   { name: "k6/grpc", description: "gRPC client support" },
   { name: "k6/net/grpc", description: "Low-level gRPC networking" },
+  { name: "k6/execution", description: "Execution context (VU, scenario info)" },
 ];
 
 const PLAYWRIGHT_RUNTIME: RuntimeInfo = {
-  title: "Playwright Runtime Libraries",
-  description: "Pre-approved modules available to Playwright-based tests.",
+  title: "Playwright Runtime Modules",
+  description:
+    "These modules are available when running Playwright tests.",
   libraries: PLAYWRIGHT_LIBRARIES,
   footer:
-    "Scripts are validated for security. Node.js core modules are blocked and test execution has a 5-minute timeout.",
+    "Scripts are validated for security. Node.js core modules are blocked. Playwright test execution has a 5-minute timeout.",
 };
 
 const PERFORMANCE_RUNTIME: RuntimeInfo = {
   title: "k6 Runtime Modules",
   description:
-    "These ES modules are available when running k6 performance tests.",
+    "These modules are available when running k6 performance tests.",
   libraries: PERFORMANCE_LIBRARIES,
   footer:
-    "Scripts run inside the k6 engine. Only k6 modules listed above are supported and Node.js packages are blocked.",
+    "Scripts are validated for security. Node.js packages are blocked. k6 test execution has a 60-minute timeout.",
 };
 
 const getRuntimeInfo = (testType: TestType | undefined): RuntimeInfo => {

@@ -19,6 +19,7 @@ const ALLOWED_MODULES = new Set([
   "k6/ws", // WebSocket support
   "k6/grpc", // gRPC support
   "k6/net/grpc", // gRPC networking
+  "k6/execution", // Execution context (VU, scenario info)
 
   // Database Clients
   "mssql", // MSSQL database client

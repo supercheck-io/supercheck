@@ -790,15 +790,13 @@ test.describe('authentication flow', () => {
     testType: "browser",
     tags: ["playwright", "mobile", "responsive"],
     code: `/**
- * Mobile viewport testing.
+ * Mobile viewport testing with @mobile tag.
  * 
  * Purpose:
- * - Verify layout and functionality on mobile screen sizes
- * - Ensure responsive design elements work as expected
+ * - Verify layout on mobile screen sizes
+ * - Test responsive design behavior
  * 
- * Configuration:
- * - Defines separate tests for Mobile Chrome (Pixel 8) and Mobile Safari (iPhone 13)
- * - Checks viewport dimensions
+ * Note: Uses @mobile tag to run on Mobile Safari (iPhone 13)
  * 
  * @requires @playwright/test
  */
@@ -807,41 +805,24 @@ import { expect, test } from '@playwright/test';
 
 const APP_URL = 'https://demo.playwright.dev/todomvc';
 
-// Test mobile Chrome (Pixel 8)
-test.describe('Mobile Chrome layout', () => {
-  test('mobile Chrome viewport exposes key actions', async ({ page }) => {
+// Use @mobile tag to run on iPhone 13 (390x844 viewport)
+test.describe('Mobile layout test', { tag: ['@mobile'] }, () => {
+  test('mobile viewport exposes key actions', async ({ page }) => {
     await page.goto(APP_URL);
 
-    // Verify Pixel 8 viewport dimensions (393x851)
+    // Verify we're running in mobile viewport
     const viewport = page.viewportSize();
-    expect(viewport?.width).toBe(393);
-    expect(viewport?.height).toBe(851);
+    console.log('Viewport:', viewport?.width, 'x', viewport?.height);
+
+    // Mobile viewport should be smaller than desktop
+    expect(viewport?.width).toBeLessThan(500);
 
     await expect(page.getByPlaceholder('What needs to be done?')).toBeVisible();
 
-    // Test mobile-specific interactions
-    await page.getByPlaceholder('What needs to be done?').fill('Mobile Chrome task');
+    // Test mobile interactions
+    await page.getByPlaceholder('What needs to be done?').fill('Mobile task');
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('listitem').first()).toContainText('Mobile Chrome task');
-  });
-});
-
-// Test mobile Safari (iPhone 13)
-test.describe('Mobile Safari layout', () => {
-  test('mobile Safari viewport and interactions', async ({ page }) => {
-    await page.goto(APP_URL);
-
-    // Verify iPhone 13 viewport dimensions (390x844)
-    const viewport = page.viewportSize();
-    expect(viewport?.width).toBe(390);
-    expect(viewport?.height).toBe(844);
-
-    await expect(page.getByPlaceholder('What needs to be done?')).toBeVisible();
-
-    // Test iOS Safari specific behavior
-    await page.getByPlaceholder('What needs to be done?').fill('Mobile Safari task');
-    await page.keyboard.press('Enter');
-    await expect(page.getByRole('listitem').first()).toContainText('Mobile Safari task');
+    await expect(page.getByRole('listitem').first()).toContainText('Mobile task');
   });
 });
 `,
@@ -1016,18 +997,14 @@ test.describe('API health check', () => {
     testType: "api",
     tags: ["playwright", "api", "crud"],
     code: `/**
- * API CRUD flow executed serially.
+ * API CRUD flow demonstration.
  * 
  * Purpose:
- * - Test the full lifecycle of a resource (Create, Read, Delete)
- * - Ensure data consistency across operations
- * - Clean up test data after execution
+ * - Demonstrate Create, Read operations
+ * - Show serial test execution pattern
  * 
- * Key Actions:
- * - POST to create a resource
- * - GET to verify creation
- * - DELETE to clean up
- * - test.describe.serial ensures tests run in order
+ * Note: JSONPlaceholder is a fake API - POST returns
+ * simulated data but doesn't persist it.
  * 
  * @requires @playwright/test
  */
@@ -1036,35 +1013,34 @@ import { expect, test } from '@playwright/test';
 
 const API_URL = 'https://jsonplaceholder.typicode.com';
 
-// Use serial mode to share state (createdId) between tests
 test.describe.serial('posts CRUD', () => {
-  let createdId;
-
-  test('creates a post', async ({ request }) => {
+  test('creates a post (simulated)', async ({ request }) => {
     const response = await request.post(API_URL + '/posts', {
       data: { title: 'Playwright', body: 'API example', userId: 1 },
     });
 
+    // JSONPlaceholder returns 201 for simulated creation
     expect(response.status()).toBe(201);
     const json = await response.json();
-    createdId = json.id;
     expect(json).toMatchObject({ title: 'Playwright', body: 'API example' });
   });
 
-  test('fetches the created post', async ({ request }) => {
-    // Skip if creation failed
-    test.skip(!createdId, 'create step failed');
-    
-    const response = await request.get(API_URL + '/posts/' + createdId);
+  test('reads an existing post', async ({ request }) => {
+    // Fetch an existing post (IDs 1-100 exist)
+    const response = await request.get(API_URL + '/posts/1');
     expect(response.ok()).toBeTruthy();
     const json = await response.json();
-    expect(json.id).toBe(createdId);
+    expect(json.id).toBe(1);
+    expect(json).toHaveProperty('title');
   });
 
-  // Cleanup after all tests in this group
-  test.afterAll(async ({ request }) => {
-    if (!createdId) return;
-    await request.delete(API_URL + '/posts/' + createdId);
+  test('updates a post (simulated)', async ({ request }) => {
+    const response = await request.put(API_URL + '/posts/1', {
+      data: { id: 1, title: 'Updated', body: 'Updated body', userId: 1 },
+    });
+    expect(response.ok()).toBeTruthy();
+    const json = await response.json();
+    expect(json.title).toBe('Updated');
   });
 });
 `,
@@ -1286,7 +1262,7 @@ test.describe('SQL query analysis', () => {
     );
 
     // EXPLAIN returns the query plan as rows
-    expect(explainResult.rowCount).toBeGreaterThan(0);
+    expect(explainResult.rows.length).toBeGreaterThan(0);
     
     // Run the actual query
     const result = await client.query(
