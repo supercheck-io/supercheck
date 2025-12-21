@@ -13,8 +13,8 @@ export const metadata: Metadata = {
     process.env.NEXT_PUBLIC_APP_URL || 'https://supercheck.io'
   ),
   title: {
-    default: 'Supercheck',
-    template: '%s | Supercheck',
+    default: 'Supercheck Docs',
+    template: '%s | Supercheck Docs',
   },
   description: 'Open source AI-powered test automation and monitoring platform',
   openGraph: {
