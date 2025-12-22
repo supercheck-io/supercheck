@@ -21,7 +21,7 @@ const s3Client = new S3Client({
 
 // Use dedicated status page bucket
 const BUCKET_NAME =
-  process.env.S3_STATUS_BUCKET_NAME || "supercheck-status-artifacts";
+  process.env.S3_STATUS_BUCKET_NAME || "status-page-artifacts";
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = [
   "image/png",
@@ -48,12 +48,6 @@ export async function POST(request: Request, context: RouteContext) {
 
     // Check authentication and permissions
     const { organizationId, project } = await requireProjectContext();
-    console.log(
-      "[UPLOAD] Organization ID:",
-      organizationId,
-      "Project ID:",
-      project.id
-    );
     await requirePermissions(
       { status_page: ["update"] },
       { organizationId, projectId: project.id }
@@ -142,11 +136,6 @@ export async function POST(request: Request, context: RouteContext) {
 
     await s3Client.send(uploadCommand);
 
-    // Store the S3 key in the database (not the full URL)
-    // We'll use proxy URLs when fetching the status page
-    // This avoids the varchar(500) limit and allows URLs to be regenerated
-    console.log(`[UPLOAD] Successfully uploaded ${uploadType} to S3: ${s3Key}`);
-
     // Update database with S3 key
     const updateData: {
       faviconLogo?: string;
@@ -175,10 +164,6 @@ export async function POST(request: Request, context: RouteContext) {
 
     // Generate proxy URL for the response (instead of presigned URL)
     const proxyUrl = generateProxyUrl(s3Reference);
-
-    console.log(
-      `[UPLOAD] Successfully stored ${uploadType} for status page ${statusPageId}: ${s3Reference}`
-    );
 
     return NextResponse.json({
       success: true,

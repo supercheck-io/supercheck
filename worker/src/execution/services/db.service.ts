@@ -211,7 +211,7 @@ export class DbService implements OnModuleInit {
       // Add completedAt timestamp for terminal statuses
       if (['failed', 'passed', 'error'].includes(status)) {
         updateData.completedAt = now;
-        
+
         // If no duration provided, calculate from startedAt
         if (!duration) {
           try {
@@ -220,13 +220,16 @@ export class DbService implements OnModuleInit {
               .from(runs)
               .where(eq(runs.id, runId))
               .limit(1);
-              
+
             if (existingRun.length > 0 && existingRun[0].startedAt) {
-              const durationMs = now.getTime() - existingRun[0].startedAt.getTime();
+              const durationMs =
+                now.getTime() - existingRun[0].startedAt.getTime();
               updateData.durationMs = durationMs;
             }
           } catch (e) {
-            this.logger.warn(`Could not calculate duration for run ${runId}: ${e}`);
+            this.logger.warn(
+              `Could not calculate duration for run ${runId}: ${e}`,
+            );
           }
         }
       }

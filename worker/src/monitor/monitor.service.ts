@@ -707,7 +707,7 @@ export class MonitorService {
           if (currentStatus === 'down') {
             // Failure alert logic:
             // 1st alert: when consecutive failures reach the threshold
-            // 2nd & 3rd alerts: after every X failures (based on threshold) but max 3 total
+            // 2nd & 3rd alerts: at exponentially increasing intervals to prevent alert flood
             const failureThreshold = alertConfig?.failureThreshold || 1;
 
             if (consecutiveFailureCount === failureThreshold) {
@@ -716,13 +716,22 @@ export class MonitorService {
                 alertConfig?.alertOnFailure && alertsSentForFailure === 0;
             } else if (
               consecutiveFailureCount > failureThreshold &&
-              (consecutiveFailureCount - failureThreshold) %
-                failureThreshold ===
-                0
+              alertsSentForFailure < 3
             ) {
-              // Subsequent alerts: every X failures after threshold, but max 3 total
+              // Subsequent alerts use exponential intervals to prevent alert flood
+              // Alert at: threshold, threshold + 5, threshold + 15 (approximately 2x, 4x intervals)
+              // This ensures minimum 5 failures between alerts regardless of threshold
+              const subsequentInterval = Math.max(5, failureThreshold * 2);
+              const failuresAfterThreshold =
+                consecutiveFailureCount - failureThreshold;
+              const expectedAlerts = Math.floor(
+                failuresAfterThreshold / subsequentInterval,
+              );
+              // Only alert if we've passed a new interval checkpoint
               shouldSendFailureAlert =
-                alertConfig?.alertOnFailure && alertsSentForFailure < 3;
+                alertConfig?.alertOnFailure &&
+                expectedAlerts >= alertsSentForFailure &&
+                failuresAfterThreshold % subsequentInterval === 0;
             }
           } else if (currentStatus === 'up' && previousStatus === 'down') {
             // Recovery alert logic:
@@ -737,14 +746,20 @@ export class MonitorService {
                 alertsSentForRecovery === 0;
             } else if (
               consecutiveSuccessCount > recoveryThreshold &&
-              (consecutiveSuccessCount - recoveryThreshold) %
-                recoveryThreshold ===
-                0
+              alertsSentForRecovery < 3
             ) {
-              // Subsequent recovery alerts: every X successes after threshold, but max 3 total
+              // Subsequent recovery alerts use exponential intervals to prevent alert flood
+              const subsequentInterval = Math.max(5, recoveryThreshold * 2);
+              const successesAfterThreshold =
+                consecutiveSuccessCount - recoveryThreshold;
+              const expectedAlerts = Math.floor(
+                successesAfterThreshold / subsequentInterval,
+              );
+              // Only alert if we've passed a new interval checkpoint
               shouldSendRecoveryAlert =
                 (alertConfig?.alertOnRecovery || false) &&
-                alertsSentForRecovery < 3;
+                expectedAlerts >= alertsSentForRecovery &&
+                successesAfterThreshold % subsequentInterval === 0;
             }
           }
 
@@ -2083,8 +2098,7 @@ export class MonitorService {
           // Continue success sequence
           consecutiveSuccessCount =
             (lastResult.consecutiveSuccessCount || 0) + 1;
-          alertsSentForRecovery =
-            lastResult.alertsSentForRecovery || 0;
+          alertsSentForRecovery = lastResult.alertsSentForRecovery || 0;
         } else {
           // Start new success sequence (just recovered)
           consecutiveSuccessCount = 1;

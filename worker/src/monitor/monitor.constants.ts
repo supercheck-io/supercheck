@@ -15,11 +15,7 @@ import type { MonitoringLocation } from '../common/location/location.service';
  */
 
 // Available regions for monitor execution
-export const REGIONS = [
-  'us-east',
-  'eu-central',
-  'asia-pacific',
-] as const;
+export const REGIONS = ['us-east', 'eu-central', 'asia-pacific'] as const;
 
 // Queue names for each region
 export const MONITOR_QUEUES = {

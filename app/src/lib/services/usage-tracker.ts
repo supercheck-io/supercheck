@@ -111,13 +111,8 @@ export class UsageTracker {
   /**
    * Atomically consume an AI credit and check if within limit
    *
-   * This method solves the TOCTOU (Time-Of-Check-To-Time-Of-Use) race condition
-   * by using atomic database operations:
-   * 1. Increment the counter first
-   * 2. Check if we're over the limit
-   * 3. If over, rollback the increment
-   *
-   * This ensures that concurrent requests cannot bypass the limit.
+   * This method uses a single atomic SQL statement to prevent TOCTOU race conditions.
+   * The increment only happens if the current value is below the limit.
    *
    * @returns { allowed: true } if credit was consumed successfully
    * @returns { allowed: false, reason: string } if limit exceeded (no credit consumed)
@@ -138,15 +133,20 @@ export class UsageTracker {
     }
 
     try {
-      // Step 1: Get the plan limits first (we need this for the limit check)
+      // Get the plan limits first
       const plan = await subscriptionService.getOrganizationPlan(organizationId);
       const limit = plan.aiCreditsIncluded;
 
-      // Step 2: Atomically increment and get new value
+      // ATOMIC: Increment only if under limit using a single SQL statement
+      // This prevents race conditions by making check-and-increment atomic
       const result = await db
         .update(organization)
         .set({
-          aiCreditsUsed: sql`COALESCE(${organization.aiCreditsUsed}, 0) + 1`,
+          aiCreditsUsed: sql`CASE
+            WHEN COALESCE(${organization.aiCreditsUsed}, 0) < ${limit}
+            THEN COALESCE(${organization.aiCreditsUsed}, 0) + 1
+            ELSE ${organization.aiCreditsUsed}
+          END`,
         })
         .where(eq(organization.id, organizationId))
         .returning({ aiCreditsUsed: organization.aiCreditsUsed });
@@ -156,28 +156,35 @@ export class UsageTracker {
         return { allowed: true }; // Fail open if org not found
       }
 
-      const used = result[0].aiCreditsUsed ?? 1;
+      const currentUsed = result[0].aiCreditsUsed ?? 0;
 
-      // Step 3: Check if we exceeded the limit
-      if (used > limit) {
-        // Over limit - rollback the increment
-        await db
-          .update(organization)
-          .set({
-            aiCreditsUsed: sql`GREATEST(COALESCE(${organization.aiCreditsUsed}, 0) - 1, 0)`,
-          })
-          .where(eq(organization.id, organizationId));
+      // Check if we're at or over the limit (meaning increment was blocked)
+      // We need to check the previous value to determine if increment happened
+      // If currentUsed >= limit, the increment was blocked
+      if (currentUsed >= limit) {
+        // We need to verify if increment actually happened by checking if we're exactly at limit
+        // Get previous value by querying again (this is safe, just for verification)
+        const prevCheck = await db
+          .select({ aiCreditsUsed: organization.aiCreditsUsed })
+          .from(organization)
+          .where(eq(organization.id, organizationId))
+          .limit(1);
 
-        return {
-          allowed: false,
-          reason: `You've used all ${limit} AI credits included in your ${plan.plan} plan this month. Credits reset at the start of your next billing cycle.`,
-          used: used - 1, // Return the actual used count (before our failed attempt)
-          limit,
-        };
+        const actualUsed = prevCheck[0]?.aiCreditsUsed ?? 0;
+
+        // If at limit and no room, return error
+        if (actualUsed >= limit) {
+          return {
+            allowed: false,
+            reason: `You've used all ${limit} AI credits included in your ${plan.plan} plan this month. Credits reset at the start of your next billing cycle.`,
+            used: actualUsed,
+            limit,
+          };
+        }
       }
 
       // Success - credit was consumed
-      return { allowed: true, used, limit };
+      return { allowed: true, used: currentUsed, limit };
     } catch (error) {
       // Fail open - allow AI usage if we can't check the limit
       console.error("[UsageTracker] Failed to consume AI credit:", error);

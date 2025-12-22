@@ -544,6 +544,12 @@ export function K6AnalyticsTab({
                                             tick={{ fontSize: 11, fill: '#888' }}
                                             fontSize={11}
                                             tickFormatter={(val) => `${val}ms`}
+                                            domain={[0, (dataMax: number) => {
+                                                // Ensure minimum domain height for visibility when all values are zero or very small
+                                                const minDomain = 1;
+                                                return dataMax <= 0 ? minDomain : Math.ceil(dataMax * 1.1);
+                                            }]}
+                                            allowDataOverflow={false}
                                         />
                                         <ChartTooltip content={<ChartTooltipContent />} />
                                         <Area
@@ -552,6 +558,7 @@ export function K6AnalyticsTab({
                                             stroke="#3b82f6"
                                             fill="url(#k6P95Gradient)"
                                             strokeWidth={2}
+                                            connectNulls
                                         />
                                     </AreaChart>
                                 </ResponsiveContainer>
@@ -564,7 +571,7 @@ export function K6AnalyticsTab({
             )}
 
             {/* Request Rate Trend Chart */}
-            {data.chartData.length >= 1 && data.chartData.some(d => d.requestRate !== null) && (
+            {data.chartData.length >= 1 && data.chartData.some(d => d.requestRate !== null && d.requestRate !== undefined) && (
                 <Card className="relative overflow-hidden">
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-base font-semibold">
@@ -596,6 +603,12 @@ export function K6AnalyticsTab({
                                             tick={{ fontSize: 11, fill: '#888' }}
                                             fontSize={11}
                                             tickFormatter={(val) => `${val}/s`}
+                                            domain={[0, (dataMax: number) => {
+                                                // Ensure minimum domain height for visibility when all values are zero or very small
+                                                const minDomain = 1;
+                                                return dataMax <= 0 ? minDomain : Math.ceil(dataMax * 1.1);
+                                            }]}
+                                            allowDataOverflow={false}
                                         />
                                         <ChartTooltip content={<ChartTooltipContent />} />
                                         <Area
@@ -604,6 +617,7 @@ export function K6AnalyticsTab({
                                             stroke="#22c55e"
                                             fill="url(#k6RequestRateGradient)"
                                             strokeWidth={2}
+                                            connectNulls
                                         />
                                     </AreaChart>
                                 </ResponsiveContainer>

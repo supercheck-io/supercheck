@@ -3,7 +3,7 @@ import { fetchFromS3 } from "@/lib/s3-proxy";
 
 // Bucket name from environment
 const BUCKET_NAME =
-  process.env.S3_STATUS_BUCKET_NAME || "supercheck-status-artifacts";
+  process.env.S3_STATUS_BUCKET_NAME || "status-page-artifacts";
 
 // Interface for S3 error objects
 interface S3Error extends Error {

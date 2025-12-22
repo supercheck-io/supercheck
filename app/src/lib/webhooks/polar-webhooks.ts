@@ -32,14 +32,14 @@ async function tryClaimWebhook(
   try {
     const expiresAt = new Date(Date.now() + WEBHOOK_IDEMPOTENCY_TTL_MS);
 
-    // Atomic insert - will fail if unique constraint violated
+    // First, try to insert with null status (not yet processed)
     // This is the key to preventing race conditions in multi-instance deployments
     const result = await db
       .insert(webhookIdempotency)
       .values({
         webhookId,
         eventType,
-        resultStatus: "success",
+        resultStatus: null,
         expiresAt,
       })
       .onConflictDoNothing({
@@ -47,8 +47,53 @@ async function tryClaimWebhook(
       })
       .returning();
 
-    // If no row returned, the webhook was already claimed/processed
-    return result.length > 0;
+    // If row was inserted, we own this webhook
+    if (result.length > 0) {
+      return true;
+    }
+
+    // Row exists - check if it was successfully processed
+    // If status is null (previous processing failed), allow retry
+    const existing = await db.query.webhookIdempotency.findFirst({
+      where: and(
+        eq(webhookIdempotency.webhookId, webhookId),
+        eq(webhookIdempotency.eventType, eventType)
+      ),
+    });
+
+    // If status is "success", already processed - skip
+    if (existing?.resultStatus === "success") {
+      console.log(
+        `[Polar] Webhook ${truncateId(webhookId)} already processed successfully, skipping`
+      );
+      return false;
+    }
+
+    // If status is null or "error", allow retry by updating the record
+    // This handles the case where previous processing failed
+    if (existing && (existing.resultStatus === null || existing.resultStatus === "error")) {
+      console.log(
+        `[Polar] Webhook ${truncateId(webhookId)} previous status: ${existing.resultStatus || 'null'}, allowing retry`
+      );
+      // Update the expiry to extend the window
+      await db
+        .update(webhookIdempotency)
+        .set({ 
+          expiresAt,
+          resultStatus: null, // Reset for retry
+          resultMessage: null,
+        })
+        .where(
+          and(
+            eq(webhookIdempotency.webhookId, webhookId),
+            eq(webhookIdempotency.eventType, eventType)
+          )
+        );
+      return true;
+    }
+
+    // Status is "skipped" - don't retry
+    return false;
   } catch (error) {
     // If table doesn't exist yet (pre-migration), fall back to allowing processing
     // This prevents blocking webhooks during migration period
@@ -477,6 +522,9 @@ export async function handleSubscriptionActive(payload: PolarWebhookPayload) {
   }
 
   console.log(`[Polar] ✅ Activated ${plan} for org ${truncateId(org.id)}`);
+
+  // Mark webhook as successfully processed
+  await updateWebhookResult(webhookId, "subscription.active", "success", `Activated ${plan}`);
 }
 
 /**
@@ -565,6 +613,9 @@ export async function handleSubscriptionUpdated(payload: PolarWebhookPayload) {
   console.log(
     `[Polar] ✅ Updated ${newPlan}/${status} for org ${truncateId(org.id)}`
   );
+
+  // Mark webhook as successfully processed
+  await updateWebhookResult(webhookId, "subscription.updated", "success", `Updated to ${newPlan}/${status}`);
 }
 
 /**
@@ -609,6 +660,9 @@ export async function handleSubscriptionCanceled(payload: PolarWebhookPayload) {
   console.log(
     `[Polar] ✅ Canceled subscription for org ${truncateId(org.id)} (access until ${subscriptionDates.endsAt?.toISOString() || "period end"})`
   );
+
+  // Mark webhook as successfully processed
+  await updateWebhookResult(webhookId, "subscription.canceled", "success", "Subscription canceled");
 }
 
 /**
@@ -653,6 +707,9 @@ export async function handleSubscriptionRevoked(payload: PolarWebhookPayload) {
   console.log(
     `[Polar] ⚠️ REVOKED subscription for org ${truncateId(org.id)} - access terminated immediately`
   );
+
+  // Mark webhook as successfully processed
+  await updateWebhookResult(webhookId, "subscription.revoked", "success", "Subscription revoked");
 }
 
 /**
@@ -732,6 +789,12 @@ export async function handleOrderPaid(payload: PolarWebhookPayload) {
     console.log(
       `[Polar] ✅ Order activated ${plan} for org ${truncateId(org.id)}`
     );
+
+    // Mark webhook as successfully processed
+    await updateWebhookResult(webhookId, "order.paid", "success", `Order activated ${plan}`);
+  } else {
+    // No product ID - just mark as processed
+    await updateWebhookResult(webhookId, "order.paid", "success", "Order processed (no product)");
   }
 }
 

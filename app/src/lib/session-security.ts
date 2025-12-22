@@ -46,6 +46,7 @@ export function hashSessionToken(
 
 /**
  * Verify a session token against its hash
+ * Uses constant-time comparison to prevent timing attacks
  */
 export function verifySessionToken(
   token: string,
@@ -53,7 +54,24 @@ export function verifySessionToken(
   salt: string
 ): boolean {
   const { hash: computedHash } = hashSessionToken(token, salt);
-  return computedHash === hash;
+
+  // Use constant-time comparison to prevent timing attacks
+  // Both hashes are hex strings, so convert to buffers for comparison
+  try {
+    const computedBuffer = Buffer.from(computedHash, "hex");
+    const hashBuffer = Buffer.from(hash, "hex");
+
+    // Length check - if lengths differ, we still need constant-time behavior
+    // timingSafeEqual throws if lengths differ, so handle that case
+    if (computedBuffer.length !== hashBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(computedBuffer, hashBuffer);
+  } catch {
+    // If buffer conversion fails (invalid hex), return false
+    return false;
+  }
 }
 
 /**
@@ -62,6 +80,15 @@ export function verifySessionToken(
 export function generateSecureToken(): string {
   return toHex(getRandomBytes(64));
 }
+
+/**
+ * Session duration constants - aligned with Better Auth configuration in auth.ts
+ * IMPORTANT: Keep these in sync with auth.ts session.expiresIn
+ */
+export const SESSION_DURATION = {
+  MAX_AGE_MS: 7 * 24 * 60 * 60 * 1000, // 7 days (matches auth.ts)
+  TIMEOUT_PERIOD_MS: 24 * 60 * 60 * 1000, // 24 hours inactivity timeout
+} as const;
 
 /**
  * Session validation context
@@ -78,6 +105,10 @@ export interface SessionValidationContext {
 
 /**
  * Validate session token and context
+ * 
+ * NOTE: This function is primarily for custom session validation scenarios.
+ * Better Auth handles session validation automatically for normal auth flows.
+ * Use this only for advanced custom session management requirements.
  */
 export function validateSessionContext(
   token: string,
@@ -92,17 +123,15 @@ export function validateSessionContext(
     return { valid: false, reason: "Invalid token hash" };
   }
 
-  // Check session age (24 hour max)
-  const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+  // Check session age (7 days max - aligned with auth.ts)
   const sessionAge = Date.now() - context.createdAt.getTime();
-  if (sessionAge > maxAge) {
+  if (sessionAge > SESSION_DURATION.MAX_AGE_MS) {
     return { valid: false, reason: "Session expired" };
   }
 
-  // Check last used (2 hour timeout)
-  const timeoutPeriod = 2 * 60 * 60 * 1000; // 2 hours
+  // Check last used (24 hour inactivity timeout)
   const timeSinceLastUse = Date.now() - context.lastUsedAt.getTime();
-  if (timeSinceLastUse > timeoutPeriod) {
+  if (timeSinceLastUse > SESSION_DURATION.TIMEOUT_PERIOD_MS) {
     return { valid: false, reason: "Session timed out" };
   }
 
@@ -343,7 +372,7 @@ export function createSecureSession(
   const token = generateSecureToken();
   const { hash, salt } = hashSessionToken(token);
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours
+  const expiresAt = new Date(now.getTime() + SESSION_DURATION.MAX_AGE_MS);
 
   return {
     token,

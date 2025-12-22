@@ -1323,24 +1323,68 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
               entityType: mapEntityType(report.entityType),
             }));
 
+            // Stage 1: Delete S3 artifacts FIRST
+            // If this fails, we preserve DB records for retry
             const s3Result =
               await this.s3Service.deleteReports(s3DeletionInputs);
             orgS3Deleted = s3Result.deletedObjects.length;
 
             if (!s3Result.success) {
+              // Partial S3 failure - log but continue with what we can
               result.errors.push(
                 `S3 cleanup for org ${orgRetention.organizationId} had ${s3Result.failedObjects.length} failures`
               );
+              
+              // Log failed keys for manual review
+              console.warn(
+                `[DATA_LIFECYCLE] [job_runs] Partial S3 failure for org ${orgRetention.organizationId}:`,
+                { 
+                  failedCount: s3Result.failedObjects.length,
+                  failedKeys: s3Result.failedObjects.slice(0, 5).map(f => f.key) // Sample
+                }
+              );
             }
 
-            // Delete reports from database
+            // Stage 2: Delete DB records only after S3 deletion
+            // We proceed even with partial S3 failures to avoid orphaned DB records
             const reportIds = associatedReports.map((r) => r.id);
-            await db.delete(reports).where(inArray(reports.id, reportIds));
+            try {
+              await db.delete(reports).where(inArray(reports.id, reportIds));
+            } catch (dbError) {
+              // CRITICAL: S3 deleted but DB failed - log for manual cleanup
+              console.error(
+                `[DATA_LIFECYCLE] [CRITICAL] S3 deleted but reports DB deletion failed:`,
+                {
+                  organizationId: orgRetention.organizationId,
+                  reportIds: reportIds.slice(0, 10), // Sample
+                  error: dbError instanceof Error ? dbError.message : String(dbError),
+                }
+              );
+              result.errors.push(
+                `DB deletion failed after S3 cleanup for org ${orgRetention.organizationId} - orphaned references logged`
+              );
+              continue; // Skip runs deletion since reports failed
+            }
           }
 
-          // Delete runs (k6_performance_runs are auto-deleted via ON DELETE CASCADE on runId FK)
-          await db.delete(runs).where(inArray(runs.id, runIds));
-          orgDeleted = oldRuns.length;
+          // Stage 3: Delete runs (k6_performance_runs are auto-deleted via ON DELETE CASCADE on runId FK)
+          try {
+            await db.delete(runs).where(inArray(runs.id, runIds));
+            orgDeleted = oldRuns.length;
+          } catch (dbError) {
+            // CRITICAL: Reports deleted but runs deletion failed
+            console.error(
+              `[DATA_LIFECYCLE] [CRITICAL] Reports deleted but runs DB deletion failed:`,
+              {
+                organizationId: orgRetention.organizationId,
+                runIds: runIds.slice(0, 10), // Sample  
+                error: dbError instanceof Error ? dbError.message : String(dbError),
+              }
+            );
+            result.errors.push(
+              `Runs deletion failed after reports cleanup for org ${orgRetention.organizationId}`
+            );
+          }
         }
 
         if (orgDeleted > 0) {
@@ -1540,20 +1584,30 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
       const runIds = oldPlaygroundRuns.map((r) => r.id);
       let s3Deleted = 0;
 
-      // Get and delete associated reports
+      // Get and delete associated reports for all playground entity types
+      // Playground runs can have reports with entityType: test (Playwright) or k6_test (K6)
       const associatedReports = await db
         .select()
         .from(reports)
         .where(
-          and(eq(reports.entityType, "job"), inArray(reports.entityId, runIds))
+          and(
+            inArray(reports.entityType, ["test", "k6_test"]),
+            inArray(reports.entityId, runIds)
+          )
         );
 
       if (associatedReports.length > 0) {
+        // Map entity types to S3 bucket types
+        const mapEntityType = (type: string): "test" | "k6_test" => {
+          if (type === "k6_test") return "k6_test";
+          return "test"; // default to test bucket for 'test' type
+        };
+
         const s3DeletionInputs = associatedReports.map((report) => ({
           reportPath: report.reportPath,
           s3Url: report.s3Url || undefined,
           entityId: report.entityId,
-          entityType: "job" as const,
+          entityType: mapEntityType(report.entityType),
         }));
 
         const s3Result = await this.s3Service.deleteReports(s3DeletionInputs);
@@ -1737,9 +1791,19 @@ export class PlaygroundArtifactsCleanupStrategy implements ICleanupStrategy {
     const startTime = Date.now();
     const maxAgeHours = Number(this.config.customConfig?.maxAgeHours || 24);
     const cutoffTime = Date.now() - maxAgeHours * 60 * 60 * 1000;
-    const bucketName = String(
-      this.config.customConfig?.bucketName || "playwright-test-artifacts"
+    
+    // Clean up both Playwright and K6 test buckets
+    const playwrightBucket = String(
+      this.config.customConfig?.bucketName || process.env.S3_TEST_BUCKET_NAME || "playwright-test-artifacts"
     );
+    const k6Bucket = String(
+      process.env.S3_K6_TEST_BUCKET_NAME || "k6-test-artifacts"
+    );
+    
+    const bucketsToClean = [
+      { bucketName: playwrightBucket, entityType: "test" as const },
+      { bucketName: k6Bucket, entityType: "k6_test" as const },
+    ];
 
     const result: CleanupOperationResult = {
       success: true,
@@ -1750,28 +1814,13 @@ export class PlaygroundArtifactsCleanupStrategy implements ICleanupStrategy {
       errors: [],
       details: {
         cutoffTime: new Date(cutoffTime).toISOString(),
-        bucketName,
+        buckets: bucketsToClean.map(b => b.bucketName),
         dryRun,
       },
     };
 
-    // Check if S3 is available before attempting cleanup
-    const isAvailable = await this.checkS3Available();
-    if (!isAvailable) {
-      result.duration = Date.now() - startTime;
-      result.details = {
-        ...result.details,
-        skipped: true,
-        reason: "S3 bucket not available",
-      };
-      return result;
-    }
-
     try {
-      // List old objects
-      const objectsToDelete: Array<{ key: string; lastModified: Date }> = [];
-
-      const { S3Client, ListObjectsV2Command } = await import(
+      const { S3Client, ListObjectsV2Command, HeadBucketCommand } = await import(
         "@aws-sdk/client-s3"
       );
 
@@ -1785,96 +1834,114 @@ export class PlaygroundArtifactsCleanupStrategy implements ICleanupStrategy {
         },
       });
 
-      let continuationToken: string | undefined;
+      let totalDeleted = 0;
+      const bucketResults: Record<string, number> = {};
 
-      do {
-        const response = await s3Client.send(
-          new ListObjectsV2Command({
-            Bucket: bucketName,
-            ContinuationToken: continuationToken,
-            MaxKeys: 1000,
-          })
-        );
+      // Process each bucket
+      for (const { bucketName, entityType } of bucketsToClean) {
+        try {
+          // Check if bucket exists
+          await s3Client.send(new HeadBucketCommand({ Bucket: bucketName }));
+        } catch (error: unknown) {
+          const err = error as { $metadata?: { httpStatusCode?: number }; Code?: string };
+          if (err?.$metadata?.httpStatusCode === 404 || err?.Code === "NoSuchBucket") {
+            console.log(`[DATA_LIFECYCLE] [playground_artifacts] Bucket '${bucketName}' does not exist, skipping`);
+            bucketResults[bucketName] = 0;
+            continue;
+          }
+          // Other errors - log and continue with next bucket
+          console.warn(`[DATA_LIFECYCLE] [playground_artifacts] Failed to access bucket '${bucketName}':`, err);
+          bucketResults[bucketName] = 0;
+          continue;
+        }
 
-        if (response.Contents) {
-          for (const obj of response.Contents) {
-            if (obj.Key && obj.LastModified) {
-              const lastModifiedTime = obj.LastModified.getTime();
+        // List old objects in this bucket
+        const objectsToDelete: Array<{ key: string; lastModified: Date }> = [];
+        let continuationToken: string | undefined;
 
-              if (lastModifiedTime < cutoffTime) {
-                objectsToDelete.push({
-                  key: obj.Key,
-                  lastModified: obj.LastModified,
-                });
+        do {
+          const response = await s3Client.send(
+            new ListObjectsV2Command({
+              Bucket: bucketName,
+              ContinuationToken: continuationToken,
+              MaxKeys: 1000,
+            })
+          );
+
+          if (response.Contents) {
+            for (const obj of response.Contents) {
+              if (obj.Key && obj.LastModified) {
+                const lastModifiedTime = obj.LastModified.getTime();
+
+                if (lastModifiedTime < cutoffTime) {
+                  objectsToDelete.push({
+                    key: obj.Key,
+                    lastModified: obj.LastModified,
+                  });
+                }
               }
             }
           }
+
+          continuationToken = response.NextContinuationToken;
+        } while (continuationToken);
+
+        if (objectsToDelete.length === 0) {
+          bucketResults[bucketName] = 0;
+          continue;
         }
 
-        continuationToken = response.NextContinuationToken;
-      } while (continuationToken);
+        if (!dryRun) {
+          const deletionInputs = objectsToDelete.map((obj) => ({
+            reportPath: obj.key,
+            entityId: obj.key.split("/")[0] || "unknown",
+            entityType: entityType,
+          }));
 
-      if (objectsToDelete.length === 0) {
-        result.duration = Date.now() - startTime;
-        return result;
-      }
+          const s3Result = await this.s3Service.deleteReports(deletionInputs);
+          bucketResults[bucketName] = s3Result.deletedObjects.length;
+          totalDeleted += s3Result.deletedObjects.length;
 
-      if (!dryRun) {
-        const deletionInputs = objectsToDelete.map((obj) => ({
-          reportPath: obj.key,
-          entityId: obj.key.split("/")[0] || "unknown",
-          entityType: "test" as const,
-        }));
+          if (!s3Result.success) {
+            result.errors.push(
+              `S3 cleanup for bucket '${bucketName}' had ${s3Result.failedObjects.length} failures`
+            );
+          }
+        } else {
+          bucketResults[bucketName] = objectsToDelete.length;
+          totalDeleted += objectsToDelete.length;
+        }
 
-        const s3Result = await this.s3Service.deleteReports(deletionInputs);
-        result.s3ObjectsDeleted = s3Result.deletedObjects.length;
-
-        if (!s3Result.success) {
-          result.success = false;
-          result.errors.push(
-            `S3 cleanup had ${s3Result.failedObjects.length} failures`
+        if (bucketResults[bucketName] > 0) {
+          console.log(
+            `[DATA_LIFECYCLE] [playground_artifacts] Bucket '${bucketName}': ${
+              dryRun ? "Would delete" : "Deleted"
+            } ${bucketResults[bucketName]} objects`
           );
         }
-      } else {
-        result.s3ObjectsDeleted = objectsToDelete.length;
       }
 
+      result.s3ObjectsDeleted = totalDeleted;
+      result.details.bucketResults = bucketResults;
       result.duration = Date.now() - startTime;
-      if (result.s3ObjectsDeleted && result.s3ObjectsDeleted > 0) {
+
+      if (totalDeleted > 0) {
         console.log(
-          `[DATA_LIFECYCLE] ${this.entityType}: ${
-            dryRun ? "Would delete" : "Deleted"
-          } ${result.s3ObjectsDeleted} S3 objects`
+          `[DATA_LIFECYCLE] ${this.entityType}: Total ${
+            dryRun ? "would delete" : "deleted"
+          } ${totalDeleted} S3 objects across ${bucketsToClean.length} buckets`
         );
       }
     } catch (error: unknown) {
-      const err = error as {
-        $metadata?: { httpStatusCode?: number };
-        Code?: string;
-      };
       result.success = false;
       result.duration = Date.now() - startTime;
-
-      // Handle NoSuchBucket error gracefully - this is expected if S3 isn't set up yet
-      if (
-        err?.$metadata?.httpStatusCode === 404 ||
-        err?.Code === "NoSuchBucket"
-      ) {
-        console.warn(
-          `[DATA_LIFECYCLE] [${this.entityType}] S3 bucket '${bucketName}' does not exist. Skipping cleanup.`
-        );
-        result.errors.push(`S3 bucket '${bucketName}' does not exist`);
-        // Mark as success since missing bucket is not a failure condition
-        result.success = true;
-      } else {
-        result.errors.push(
-          error instanceof Error ? error.message : String(error)
-        );
-        console.error(
-          `[DATA_LIFECYCLE] [${this.entityType}] Cleanup failed:`,
-          error
-        );
-      }
+      result.errors.push(
+        error instanceof Error ? error.message : String(error)
+      );
+      console.error(
+        `[DATA_LIFECYCLE] [${this.entityType}] Cleanup failed:`,
+        error
+      );
     }
 
     return result;
@@ -2039,6 +2106,7 @@ export class DataLifecycleService {
   private cleanupWorker: Worker<CleanupJobData, CleanupOperationResult> | null =
     null;
   private cleanupQueueEvents: QueueEvents | null = null;
+  private redisConnection: Redis | null = null;
 
   constructor(strategyConfigs: CleanupStrategyConfig[]) {
     // Initialize strategies
@@ -2087,6 +2155,9 @@ export class DataLifecycleService {
       return;
     }
 
+    // Store Redis connection for distributed locking
+    this.redisConnection = redisConnection;
+
     try {
       // Create unified cleanup queue
       this.cleanupQueue = new Queue<CleanupJobData>("data-lifecycle-cleanup", {
@@ -2106,18 +2177,41 @@ export class DataLifecycleService {
         connection: redisConnection,
       });
 
-      // Create worker
+      // Create worker with distributed locking
       this.cleanupWorker = new Worker<CleanupJobData, CleanupOperationResult>(
         "data-lifecycle-cleanup",
         async (job) => {
-          const strategy = this.strategies.get(job.data.entityType);
-          if (!strategy) {
-            throw new Error(
-              `No strategy found for entity type: ${job.data.entityType}`
+          const entityType = job.data.entityType;
+          
+          // Acquire distributed lock to prevent concurrent cleanup across instances
+          const lockAcquired = await this.acquireCleanupLock(entityType);
+          if (!lockAcquired) {
+            console.log(
+              `[DATA_LIFECYCLE] Skipping ${entityType} - another instance is running cleanup`
             );
+            return {
+              success: true,
+              entityType,
+              recordsDeleted: 0,
+              duration: 0,
+              errors: [],
+              details: { skipped: true, reason: "Lock held by another instance" },
+            };
           }
 
-          return await strategy.execute(job.data.dryRun || false);
+          try {
+            const strategy = this.strategies.get(entityType);
+            if (!strategy) {
+              throw new Error(
+                `No strategy found for entity type: ${entityType}`
+              );
+            }
+
+            return await strategy.execute(job.data.dryRun || false);
+          } finally {
+            // Always release lock, even on failure
+            await this.releaseCleanupLock(entityType);
+          }
         },
         {
           connection: redisConnection,
@@ -2199,6 +2293,68 @@ export class DataLifecycleService {
         error
       );
       // Don't throw error - continue with other strategies
+    }
+  }
+
+  /**
+   * Acquire a distributed lock for cleanup operation
+   * Uses Redis SET NX (only set if not exists) with TTL for safety
+   * 
+   * @param entityType - The cleanup entity type to lock
+   * @param ttlSeconds - Lock TTL (default 1 hour to handle long cleanups)
+   * @returns true if lock acquired, false if already held by another instance
+   */
+  private async acquireCleanupLock(
+    entityType: CleanupEntityType,
+    ttlSeconds: number = 3600
+  ): Promise<boolean> {
+    if (!this.redisConnection) {
+      console.warn("[DATA_LIFECYCLE] No Redis connection - skipping distributed lock");
+      return true; // Allow execution if Redis not available
+    }
+
+    const lockKey = `cleanup:${entityType}:lock`;
+    try {
+      // SET key value EX ttl NX - only sets if key doesn't exist
+      const result = await this.redisConnection.set(
+        lockKey,
+        JSON.stringify({ 
+          acquiredAt: new Date().toISOString(),
+          pid: process.pid 
+        }),
+        "EX",
+        ttlSeconds,
+        "NX"
+      );
+      
+      const acquired = result === "OK";
+      if (acquired) {
+        console.log(`[DATA_LIFECYCLE] Acquired lock for ${entityType} (TTL: ${ttlSeconds}s)`);
+      }
+      return acquired;
+    } catch (error) {
+      console.error(`[DATA_LIFECYCLE] Failed to acquire lock for ${entityType}:`, error);
+      return false; // Don't proceed if lock acquisition fails
+    }
+  }
+
+  /**
+   * Release the distributed lock for cleanup operation
+   * 
+   * @param entityType - The cleanup entity type to unlock
+   */
+  private async releaseCleanupLock(entityType: CleanupEntityType): Promise<void> {
+    if (!this.redisConnection) {
+      return;
+    }
+
+    const lockKey = `cleanup:${entityType}:lock`;
+    try {
+      await this.redisConnection.del(lockKey);
+      console.log(`[DATA_LIFECYCLE] Released lock for ${entityType}`);
+    } catch (error) {
+      console.error(`[DATA_LIFECYCLE] Failed to release lock for ${entityType}:`, error);
+      // Don't throw - lock will expire via TTL
     }
   }
 

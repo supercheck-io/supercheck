@@ -6,7 +6,7 @@
  */
 
 // Default bucket name - must match the default in upload route and assets API
-const DEFAULT_STATUS_BUCKET_NAME = "supercheck-status-artifacts";
+const DEFAULT_STATUS_BUCKET_NAME = "status-page-artifacts";
 
 /**
  * Get the status bucket name from environment or use default
@@ -40,23 +40,24 @@ export function generateProxyUrl(
     const bucket = parts[0];
     const key = parts.slice(1).join("/");
 
-    // For now, we only proxy the status bucket
-    // In the future, we could extend this to other buckets
+    // Proxy the status bucket through our API route
     const statusBucketName = getStatusBucketName();
     if (bucket === statusBucketName) {
       return `/api/assets/${key}`;
     }
 
-    // For other buckets, we could create additional proxy routes
-    // For now, fall back to the original presigned URL approach
-    console.warn(`[ASSET PROXY] Bucket ${bucket} not supported for proxying`);
-    return null;
+    // For unsupported buckets, return the original reference as fallback
+    // This allows the UI to attempt direct access or show a placeholder
+    // instead of breaking completely with null
+    console.warn(`[ASSET PROXY] Bucket ${bucket} not supported for proxying, returning original reference`);
+    return s3Reference;
   } catch (error) {
     console.error(
       `[ASSET PROXY] Error generating proxy URL for ${s3Reference}:`,
       error
     );
-    return null;
+    // Return original reference as fallback instead of null
+    return s3Reference;
   }
 }
 

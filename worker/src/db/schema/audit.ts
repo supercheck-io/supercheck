@@ -11,39 +11,41 @@ import {
   jsonb,
   uuid,
   index,
-} from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
-import { createInsertSchema, createSelectSchema } from "drizzle-zod";
-import { user } from "./auth";
-import { organization } from "./organization";
-import type { AuditDetails } from "./types";
+} from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
+import { user } from './auth';
+import { organization } from './organization';
+import type { AuditDetails } from './types';
 
 /**
  * Records a log of all significant actions performed by users.
  */
 export const auditLogs = pgTable(
-  "audit_logs",
+  'audit_logs',
   {
-    id: uuid("id")
+    id: uuid('id')
       .primaryKey()
       .$defaultFn(() => sql`uuidv7()`),
-    userId: uuid("user_id").references(() => user.id),
-    organizationId: uuid("organization_id").references(() => organization.id),
-    action: varchar("action", { length: 255 }).notNull(),
-    details: jsonb("details").$type<AuditDetails>(),
-    createdAt: timestamp("created_at").defaultNow(),
+    userId: uuid('user_id').references(() => user.id),
+    organizationId: uuid('organization_id').references(() => organization.id),
+    action: varchar('action', { length: 255 }).notNull(),
+    details: jsonb('details').$type<AuditDetails>(),
+    createdAt: timestamp('created_at').defaultNow(),
   },
   (table) => ({
     // PERFORMANCE: Indexes for dashboard audit queries
-    actionIdx: index("audit_logs_action_idx").on(table.action),
-    organizationIdIdx: index("audit_logs_organization_id_idx").on(table.organizationId),
-    createdAtIdx: index("audit_logs_created_at_idx").on(table.createdAt),
-    actionOrgCreatedIdx: index("audit_logs_action_org_created_idx").on(
+    actionIdx: index('audit_logs_action_idx').on(table.action),
+    organizationIdIdx: index('audit_logs_organization_id_idx').on(
+      table.organizationId,
+    ),
+    createdAtIdx: index('audit_logs_created_at_idx').on(table.createdAt),
+    actionOrgCreatedIdx: index('audit_logs_action_org_created_idx').on(
       table.action,
       table.organizationId,
-      table.createdAt
+      table.createdAt,
     ),
-  })
+  }),
 );
 
 // Zod schemas for audit logs
