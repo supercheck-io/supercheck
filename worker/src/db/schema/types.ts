@@ -32,8 +32,10 @@ export type ArtifactPaths = {
   screenshots?: string[];
 };
 
-// Report types
-export type ReportType = "test" | "job" | "monitor" | "k6_performance";
+// Report types for execution artifacts tracked in the reports table
+// Note: S3EntityType in s3.service.ts includes 'status' for status page assets,
+// but those aren't tracked in the reports table (different lifecycle)
+export type ReportType = "test" | "job" | "monitor" | "k6_test" | "k6_job";
 
 // Monitor types
 export type MonitorType =

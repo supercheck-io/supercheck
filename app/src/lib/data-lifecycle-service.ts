@@ -1299,7 +1299,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
             .from(reports)
             .where(
               and(
-                inArray(reports.entityType, ["job", "test", "monitor", "k6_performance"]),
+                inArray(reports.entityType, ["job", "test", "monitor", "k6_test", "k6_job"]),
                 inArray(reports.entityId, runIds)
               )
             );
@@ -1307,11 +1307,13 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
           // Delete S3 artifacts
           if (associatedReports.length > 0) {
             // Map entity types to S3 bucket types
-            // k6_performance maps to 'job' bucket since k6 reports are stored in job artifacts
-            const mapEntityType = (type: string): "job" | "test" | "monitor" => {
+            // k6_test uses k6-test-artifacts bucket, k6_job uses k6-job-artifacts bucket
+            const mapEntityType = (type: string): "job" | "test" | "monitor" | "k6_test" | "k6_job" => {
               if (type === "test") return "test";
               if (type === "monitor") return "monitor";
-              return "job"; // job and k6_performance both use job bucket
+              if (type === "k6_test") return "k6_test";
+              if (type === "k6_job") return "k6_job";
+              return "job"; // default to job bucket for 'job' type
             };
 
             const s3DeletionInputs = associatedReports.map((report) => ({
@@ -1336,7 +1338,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
             await db.delete(reports).where(inArray(reports.id, reportIds));
           }
 
-          // Delete runs
+          // Delete runs (k6_performance_runs are auto-deleted via ON DELETE CASCADE on runId FK)
           await db.delete(runs).where(inArray(runs.id, runIds));
           orgDeleted = oldRuns.length;
         }
@@ -1446,17 +1448,20 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
           .from(reports)
           .where(
             and(
-              inArray(reports.entityType, ["job", "test", "monitor", "k6_performance"]),
+              inArray(reports.entityType, ["job", "test", "monitor", "k6_test", "k6_job"]),
               inArray(reports.entityId, runIds)
             )
           );
 
         if (associatedReports.length > 0) {
           // Map entity types to S3 bucket types
-          const mapEntityType = (type: string): "job" | "test" | "monitor" => {
+          // k6_test uses k6-test-artifacts bucket, k6_job uses k6-job-artifacts bucket
+          const mapEntityType = (type: string): "job" | "test" | "monitor" | "k6_test" | "k6_job" => {
             if (type === "test") return "test";
             if (type === "monitor") return "monitor";
-            return "job"; // job and k6_performance both use job bucket
+            if (type === "k6_test") return "k6_test";
+            if (type === "k6_job") return "k6_job";
+            return "job"; // default to job bucket for 'job' type
           };
 
           const s3DeletionInputs = associatedReports.map((report) => ({
@@ -1473,6 +1478,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
           await db.delete(reports).where(inArray(reports.id, reportIds));
         }
 
+        // Delete runs (k6_performance_runs are auto-deleted via ON DELETE CASCADE on runId FK)
         await db.delete(runs).where(inArray(runs.id, runIds));
         result.recordsDeleted = oldRuns.length;
       } else {
@@ -1557,6 +1563,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
         await db.delete(reports).where(inArray(reports.id, reportIds));
       }
 
+      // Delete runs (k6_performance_runs are auto-deleted via ON DELETE CASCADE on runId FK)
       await db.delete(runs).where(inArray(runs.id, runIds));
 
       console.log(

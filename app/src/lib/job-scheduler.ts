@@ -68,20 +68,24 @@ export async function scheduleJob(options: ScheduleOptions): Promise<string> {
 
     // Prepared test cases with variables resolved
 
-    // Clean up any existing repeatable jobs for this job ID
+    // Clean up ALL existing repeatable jobs for this job ID
+    // Using .filter() instead of .find() to remove ALL matching jobs,
+    // preventing accumulated schedules from causing multiple triggers
     const schedulerQueue = job.jobType === "k6" ? k6JobSchedulerQueue : jobSchedulerQueue;
 
     const repeatableJobs = await schedulerQueue.getRepeatableJobs();
-    const existingJob = repeatableJobs.find(
+    const existingJobs = repeatableJobs.filter(
       (job) =>
         job.id === options.jobId ||
         job.key.includes(options.jobId) ||
         job.name === schedulerJobName
     );
 
-    if (existingJob) {
-      // Removing existing job
-      await schedulerQueue.removeRepeatableByKey(existingJob.key);
+    if (existingJobs.length > 0) {
+      // Removing all existing jobs for this scheduler
+      await Promise.all(
+        existingJobs.map(job => schedulerQueue.removeRepeatableByKey(job.key))
+      );
     }
 
     await schedulerQueue.add(

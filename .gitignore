@@ -45,6 +45,8 @@ lerna-debug.log* # From runner
 .env.local
 .env.*.local
 .env
+.env.config
+.env.secret
 *.pem
 
 ## Temp / Runtime / Reports

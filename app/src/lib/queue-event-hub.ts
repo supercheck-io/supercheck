@@ -24,7 +24,7 @@ export type NormalizedQueueEvent = {
   category: QueueCategory;
   queue: string;
   event: "waiting" | "active" | "completed" | "failed" | "stalled";
-  status: "running" | "passed" | "failed" | "error" | "cancelled";
+  status: "running" | "passed" | "failed" | "error";
   queueJobId: string;
   entityId?: string;
   trigger?: string;
@@ -300,6 +300,7 @@ class QueueEventHub extends EventEmitter {
         // Only log errors from queue-event-hub
 
         // Check if this is a cancellation (error field contains cancellation message)
+        // Note: Cancellations are now treated as "error" status, not a separate status
         const errorField = returnValue !== null && typeof returnValue === "object" && "error" in returnValue
           ? (returnValue as { error?: string }).error
           : undefined;
@@ -309,7 +310,8 @@ class QueueEventHub extends EventEmitter {
         );
 
         if (isCancellation) {
-          status = "cancelled";
+          // Cancellations are treated as errors (infrastructure-level failures)
+          status = "error";
         } else {
           status =
             hasSuccessField
@@ -324,8 +326,13 @@ class QueueEventHub extends EventEmitter {
         // OPTIMIZED: Removed info logging to reduce log pollution
         break;
       case "failed":
+        status = "failed";
+        break;
       case "stalled":
-        status = event === "failed" ? "failed" : "error";
+        // Stalled jobs are automatically retried by BullMQ (up to maxStalledCount).
+        // Mapping to 'error' causes UI flicker since the job transitions back to 'active'.
+        // Keep status as 'running' to reflect the actual lifecycle.
+        status = "running";
         break;
       default:
         status = "running";

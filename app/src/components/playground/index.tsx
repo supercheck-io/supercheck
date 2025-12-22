@@ -731,13 +731,16 @@ const Playground: React.FC<PlaygroundProps> = ({
                   ? data.reportStatus.toLowerCase()
                   : null;
 
+              // Cancellations are now stored as 'error' status with cancellation info in errorDetails
+              // Check both explicit error field and errorDetails for cancellation keywords
+              const errorDetailsCheck = typeof data.errorDetails === 'string'
+                ? data.errorDetails.toLowerCase()
+                : '';
               const isCancelled =
-                normalizedStatus === "cancelled" ||
-                derivedStatus === "cancelled" ||
-                reportStatus === "cancelled";
+                errorDetailsCheck.includes('cancellation') ||
+                errorDetailsCheck.includes('cancelled');
 
               const isTerminalStatus =
-                isCancelled ||
                 normalizedStatus === "completed" ||
                 normalizedStatus === "passed" ||
                 normalizedStatus === "failed" ||
@@ -1416,8 +1419,8 @@ const Playground: React.FC<PlaygroundProps> = ({
                                 // Script failed to execute - don't allow saving
                                 setTestExecutionStatus("failed");
                               }
-                              // Note: "cancelled" status returns "running" from toDisplayStatus,
-                              // so it won't reach here. Cancelled runs don't generate reports.
+                              // Note: Cancellations are stored as "error" status with cancellation
+                              // info in errorDetails. They're handled in the error case above.
                             }
                           }}
                         />

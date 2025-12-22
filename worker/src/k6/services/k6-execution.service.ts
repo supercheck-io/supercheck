@@ -482,8 +482,10 @@ export class K6ExecutionService {
       // HTML report and metrics.json are already in the extracted directory
 
       // 7. Upload extracted reports to S3
+      // Use k6_job bucket for scheduled jobs, k6_test bucket for playground runs
+      const entityType = task.jobId ? 'k6_job' : 'k6_test';
       const s3KeyPrefix = `${runId}`;
-      const bucket = this.s3Service.getBucketForEntityType('k6_performance');
+      const bucket = this.s3Service.getBucketForEntityType(entityType);
 
       await this.s3Service.uploadDirectory(
         extractedReportsDir,
@@ -491,10 +493,7 @@ export class K6ExecutionService {
         bucket,
       );
 
-      const baseUrl = this.s3Service.getBaseUrlForEntity(
-        'k6_performance',
-        runId,
-      );
+      const baseUrl = this.s3Service.getBaseUrlForEntity(entityType, runId);
       const reportUrl = hasHtmlReport ? `${baseUrl}/index.html` : null;
       const summaryUrl = `${baseUrl}/summary.json`;
       const consoleUrl = `${baseUrl}/console.log`;
@@ -535,12 +534,23 @@ export class K6ExecutionService {
       };
 
       // Store report metadata so the app can proxy the report via /api/test-results
+      // Determine the correct status:
+      // - 'passed': test ran successfully, all thresholds/checks passed
+      // - 'failed': test ran but thresholds breached or checks failed
+      // - 'error': execution error (infrastructure issue, Docker not available, timeout, etc.)
+      // Note: timedOut is a standalone condition since execResult.error might be null for timeouts
+      const isExecutionError = !overallSuccess && (timedOut || (!summary && execResult.error));
+      const reportStatus = overallSuccess
+        ? 'passed'
+        : isExecutionError
+          ? 'error'
+          : 'failed';
       try {
         await this.dbService.storeReportMetadata({
           entityId: runId,
-          entityType: 'k6_performance',
+          entityType,
           reportPath: `${s3KeyPrefix}/report`,
-          status: overallSuccess ? 'passed' : 'failed',
+          status: reportStatus,
           s3Url: reportUrl ?? undefined,
         });
       } catch (metadataError) {

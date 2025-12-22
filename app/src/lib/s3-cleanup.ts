@@ -23,6 +23,9 @@ export interface S3Config {
   jobBucketName: string;
   testBucketName: string;
   monitorBucketName: string;
+  k6TestBucketName: string;
+  k6JobBucketName: string;
+  statusBucketName: string;
   maxRetries?: number;
   operationTimeout?: number;
 }
@@ -41,7 +44,7 @@ export interface ReportDeletionInput {
   reportPath?: string;
   s3Url?: string;
   entityId: string;
-  entityType: "job" | "test" | "monitor";
+  entityType: "job" | "test" | "monitor" | "k6_test" | "k6_job" | "status";
 }
 
 /**
@@ -75,14 +78,24 @@ export class S3CleanupService {
    * Get the appropriate bucket name based on entity type
    */
   private getBucketForEntityType(
-    entityType: "job" | "test" | "monitor"
+    entityType: "job" | "test" | "monitor" | "k6_test" | "k6_job" | "status"
   ): string {
-    if (entityType === "monitor") {
-      return this.config.monitorBucketName;
+    switch (entityType) {
+      case "test":
+        return this.config.testBucketName;
+      case "job":
+        return this.config.jobBucketName;
+      case "monitor":
+        return this.config.monitorBucketName;
+      case "k6_test":
+        return this.config.k6TestBucketName;
+      case "k6_job":
+        return this.config.k6JobBucketName;
+      case "status":
+        return this.config.statusBucketName;
+      default:
+        return this.config.jobBucketName; // fallback
     }
-    return entityType === "test"
-      ? this.config.testBucketName
-      : this.config.jobBucketName;
   }
 
   /**
@@ -587,11 +600,20 @@ export function createS3CleanupService(): S3CleanupService {
     region: process.env.AWS_REGION || "us-east-1",
     accessKeyId: process.env.AWS_ACCESS_KEY_ID || "minioadmin",
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "minioadmin",
+    // Playwright buckets
     jobBucketName: process.env.S3_JOB_BUCKET_NAME || "playwright-job-artifacts",
     testBucketName:
       process.env.S3_TEST_BUCKET_NAME || "playwright-test-artifacts",
     monitorBucketName:
       process.env.S3_MONITOR_BUCKET_NAME || "playwright-monitor-artifacts",
+    // K6 buckets
+    k6TestBucketName:
+      process.env.S3_K6_TEST_BUCKET_NAME || "k6-test-artifacts",
+    k6JobBucketName:
+      process.env.S3_K6_JOB_BUCKET_NAME || "k6-job-artifacts",
+    // Status page bucket
+    statusBucketName:
+      process.env.S3_STATUS_BUCKET_NAME || "status-page-artifacts",
     maxRetries: process.env.S3_MAX_RETRIES
       ? parseInt(process.env.S3_MAX_RETRIES, 10)
       : 3,
