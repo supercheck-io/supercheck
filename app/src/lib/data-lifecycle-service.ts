@@ -43,7 +43,6 @@ import {
   planLimits,
   monitorAggregates,
   jobs,
-  k6PerformanceRuns,
 } from "@/db/schema";
 import { sql, and, lt, eq, inArray, isNotNull } from "drizzle-orm";
 import { Queue, Worker, QueueEvents } from "bullmq";
@@ -1339,10 +1338,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
             await db.delete(reports).where(inArray(reports.id, reportIds));
           }
 
-          // Delete k6_performance_runs first (references runId)
-          await db.delete(k6PerformanceRuns).where(inArray(k6PerformanceRuns.runId, runIds));
-
-          // Delete runs
+          // Delete runs (k6_performance_runs are auto-deleted via ON DELETE CASCADE on runId FK)
           await db.delete(runs).where(inArray(runs.id, runIds));
           orgDeleted = oldRuns.length;
         }
@@ -1482,9 +1478,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
           await db.delete(reports).where(inArray(reports.id, reportIds));
         }
 
-        // Delete k6_performance_runs first (references runId)
-        await db.delete(k6PerformanceRuns).where(inArray(k6PerformanceRuns.runId, runIds));
-
+        // Delete runs (k6_performance_runs are auto-deleted via ON DELETE CASCADE on runId FK)
         await db.delete(runs).where(inArray(runs.id, runIds));
         result.recordsDeleted = oldRuns.length;
       } else {
@@ -1569,9 +1563,7 @@ export class JobRunsCleanupStrategy implements ICleanupStrategy {
         await db.delete(reports).where(inArray(reports.id, reportIds));
       }
 
-      // Delete k6_performance_runs first (references runId)
-      await db.delete(k6PerformanceRuns).where(inArray(k6PerformanceRuns.runId, runIds));
-
+      // Delete runs (k6_performance_runs are auto-deleted via ON DELETE CASCADE on runId FK)
       await db.delete(runs).where(inArray(runs.id, runIds));
 
       console.log(
