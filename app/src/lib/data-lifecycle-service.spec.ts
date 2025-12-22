@@ -563,7 +563,6 @@ describe("Data Lifecycle Service", () => {
       });
 
       it("should preserve DB records if S3 deletion completely fails", () => {
-        const s3Success = false;
         const s3Error = true; // Complete failure, not partial
         const shouldDeleteDb = !s3Error;
         expect(shouldDeleteDb).toBe(false);
