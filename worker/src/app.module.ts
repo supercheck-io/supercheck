@@ -65,4 +65,3 @@ import { QueueAlertingModule } from './queue-alerting/queue-alerting.module';
   providers: [AppService],
 })
 export class AppModule {}
-

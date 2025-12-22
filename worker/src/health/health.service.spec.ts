@@ -74,12 +74,18 @@ describe('HealthService', () => {
       await service.getHealthStatus();
 
       // Verify explicit queue names
-      expect(mockRedisService.getQueueHealth).toHaveBeenCalledWith('playwright-global');
+      expect(mockRedisService.getQueueHealth).toHaveBeenCalledWith(
+        'playwright-global',
+      );
       expect(mockRedisService.getQueueHealth).toHaveBeenCalledWith('k6-global');
-      
+
       // Verify NOT called with removed or regional queues
-      expect(mockRedisService.getQueueHealth).not.toHaveBeenCalledWith('monitor-global');
-      expect(mockRedisService.getQueueHealth).not.toHaveBeenCalledWith('monitor-us-east');
+      expect(mockRedisService.getQueueHealth).not.toHaveBeenCalledWith(
+        'monitor-global',
+      );
+      expect(mockRedisService.getQueueHealth).not.toHaveBeenCalledWith(
+        'monitor-us-east',
+      );
     });
 
     it('should return unhealthy overall if a check fails', async () => {

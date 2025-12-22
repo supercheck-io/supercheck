@@ -10,6 +10,9 @@ import { db } from "@/utils/db";
 import { runs } from "@/db/schema";
 import { createLogger } from "./logger/index";
 
+// UUID validation regex - defined once to avoid duplication
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Create queue event hub logger
 const eventHubLogger = createLogger({ module: 'queue-event-hub' }) as {
   debug: (data: unknown, msg?: string) => void;
@@ -228,22 +231,26 @@ class QueueEventHub extends EventEmitter {
         
         if (isCompositeMonitorId) {
           const parts = queueJobId.split(':');
-          // Assuming first part is monitorId (UUID)
+          // First part is monitorId (UUID)
           const monitorId = parts[0];
-          // Simple UUID regex check
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           
-          if (uuidRegex.test(monitorId)) {
+          if (UUID_REGEX.test(monitorId)) {
             entityId = monitorId;
             trigger = 'schedule'; // Default trigger for monitors
             this.runMetaCache.set(queueJobId, { entityId, trigger });
+          } else {
+            // Log warning for invalid composite ID format
+            eventHubLogger.warn(
+              { queueJobId, monitorId, category },
+              'Invalid monitor composite ID format - monitorId is not a valid UUID'
+            );
+            // Cache to avoid repeated warnings
+            this.runMetaCache.set(queueJobId, { entityId: undefined, trigger: undefined });
           }
         } 
         // Only query runs table if queueJobId is a valid UUID
         else {
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          
-          if (uuidRegex.test(queueJobId)) {
+          if (UUID_REGEX.test(queueJobId)) {
             const run = await db.query.runs.findFirst({
               where: eq(runs.id, queueJobId),
             });
@@ -312,15 +319,35 @@ class QueueEventHub extends EventEmitter {
         if (isCancellation) {
           // Cancellations are treated as errors (infrastructure-level failures)
           status = "error";
+        } else if (hasSuccessField) {
+          // Direct success field - use it
+          status = (returnValue as { success?: unknown }).success === true ? "passed" : "failed";
+        } else if (category === "monitor" && Array.isArray(returnValue) && returnValue.length > 0) {
+          // Monitor results are arrays - check if ALL results succeeded
+          const allSucceeded = returnValue.every((result) => {
+            if (typeof result === "object" && result !== null) {
+              // Check for explicit success field
+              if ("success" in result) {
+                return result.success === true;
+              }
+              // Check for error field (indicates failure)
+              if ("error" in result && result.error) {
+                return false;
+              }
+              // Check for status field
+              if ("status" in result) {
+                return result.status === "passed" || result.status === "success";
+              }
+            }
+            // If we can't determine, assume success (backward compatibility)
+            return true;
+          });
+          status = allSucceeded ? "passed" : "failed";
+        } else if (Array.isArray(returnValue) && returnValue.length > 0) {
+          // Non-monitor arrays - default to failed for safety
+          status = "failed";
         } else {
-          status =
-            hasSuccessField
-              ? (returnValue as { success?: unknown }).success === true
-                ? "passed"
-                : "failed"
-              : Array.isArray(returnValue) && returnValue.length > 0
-              ? "passed" // Assume array result (like monitors) means success if not empty
-              : "failed"; // Default to failed if no clear success indication
+          status = "failed"; // Default to failed if no clear success indication
         }
 
         // OPTIMIZED: Removed info logging to reduce log pollution

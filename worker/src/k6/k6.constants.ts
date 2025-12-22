@@ -16,11 +16,7 @@
 export const K6_QUEUE = 'k6-global';
 
 // Available regions for K6 execution (excludes 'global' - use K6_QUEUE for global)
-export const REGIONS = [
-  'us-east',
-  'eu-central',
-  'asia-pacific',
-] as const;
+export const REGIONS = ['us-east', 'eu-central', 'asia-pacific'] as const;
 export type Region = (typeof REGIONS)[number];
 
 export const K6_QUEUES = {
@@ -29,4 +25,3 @@ export const K6_QUEUES = {
   ASIA_PACIFIC: 'k6-asia-pacific',
   GLOBAL: 'k6-global', // Alias for K6_QUEUE
 };
-

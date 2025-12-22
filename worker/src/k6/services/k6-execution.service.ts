@@ -113,13 +113,23 @@ export class K6ExecutionService {
 
     this.logger.log(`K6 binary path: ${this.k6BinaryPath}`);
     this.logger.log(`K6 Docker image: ${this.k6DockerImage}`);
-    this.logger.log(`Max concurrent k6 runs: ${this.maxConcurrentK6Runs} (hardcoded for horizontal scaling)`);
+    this.logger.log(
+      `Max concurrent k6 runs: ${this.maxConcurrentK6Runs} (hardcoded for horizontal scaling)`,
+    );
     // Note: Environment variables are always strings, so we must parse them as numbers
-    const testTimeoutEnv = this.configService.get<string>('K6_TEST_EXECUTION_TIMEOUT_MS');
-    this.testExecutionTimeoutMs = testTimeoutEnv ? parseInt(testTimeoutEnv, 10) : 60 * 60 * 1000;
-    
-    const jobTimeoutEnv = this.configService.get<string>('K6_JOB_EXECUTION_TIMEOUT_MS');
-    this.jobExecutionTimeoutMs = jobTimeoutEnv ? parseInt(jobTimeoutEnv, 10) : 60 * 60 * 1000;
+    const testTimeoutEnv = this.configService.get<string>(
+      'K6_TEST_EXECUTION_TIMEOUT_MS',
+    );
+    this.testExecutionTimeoutMs = testTimeoutEnv
+      ? parseInt(testTimeoutEnv, 10)
+      : 60 * 60 * 1000;
+
+    const jobTimeoutEnv = this.configService.get<string>(
+      'K6_JOB_EXECUTION_TIMEOUT_MS',
+    );
+    this.jobExecutionTimeoutMs = jobTimeoutEnv
+      ? parseInt(jobTimeoutEnv, 10)
+      : 60 * 60 * 1000;
     this.logger.log(
       `k6 test execution timeout: ${this.testExecutionTimeoutMs}ms (${Math.round(this.testExecutionTimeoutMs / 60000)}m)`,
     );
@@ -539,7 +549,8 @@ export class K6ExecutionService {
       // - 'failed': test ran but thresholds breached or checks failed
       // - 'error': execution error (infrastructure issue, Docker not available, timeout, etc.)
       // Note: timedOut is a standalone condition since execResult.error might be null for timeouts
-      const isExecutionError = !overallSuccess && (timedOut || (!summary && execResult.error));
+      const isExecutionError =
+        !overallSuccess && (timedOut || (!summary && execResult.error));
       const reportStatus = overallSuccess
         ? 'passed'
         : isExecutionError
@@ -569,9 +580,7 @@ export class K6ExecutionService {
         if (!thresholdsPassed) details.push('thresholds breached');
         if (checksFailed) details.push('checks failed');
         const detailStr = details.length > 0 ? ` (${details.join(', ')})` : '';
-        this.logger.log(
-          `[${runId}] k6 completed: ${statusMsg}${detailStr}`,
-        );
+        this.logger.log(`[${runId}] k6 completed: ${statusMsg}${detailStr}`);
       }
     } catch (error) {
       this.logger.error(
@@ -875,7 +884,9 @@ export class K6ExecutionService {
     // K6 exit code 99 definitively means threshold failure
     // This takes precedence over summary.json parsing since k6 knows best
     if (exitCode === 99) {
-      this.logger.debug('Thresholds failed: k6 exit code 99 (threshold breach)');
+      this.logger.debug(
+        'Thresholds failed: k6 exit code 99 (threshold breach)',
+      );
       return false;
     }
 

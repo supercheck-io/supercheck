@@ -60,8 +60,10 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
     const processStartTime = Date.now();
     const requestedLocation = job.data.location || 'eu-central';
     const normalizedJobLocation = requestedLocation.toLowerCase();
-    const jobLocationIsWildcard = this.isWildcardLocation(normalizedJobLocation);
-    
+    const jobLocationIsWildcard = this.isWildcardLocation(
+      normalizedJobLocation,
+    );
+
     // If job location is wildcard (*, any), use worker's actual location for reporting
     const effectiveJobLocation = jobLocationIsWildcard
       ? this.workerLocation
@@ -193,12 +195,15 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       // - 'failed': test ran but thresholds breached or checks failed
       // - 'passed': test ran successfully
       // Note: timedOut is a standalone condition since result.error might be null for timeouts
-      const isExecutionError = !result.success && (result.timedOut || (!result.summary && result.error));
-      const k6PerformanceStatus = wasCancelled || isExecutionError
-        ? 'error'
-        : result.success
-          ? 'passed'
-          : 'failed';
+      const isExecutionError =
+        !result.success &&
+        (result.timedOut || (!result.summary && result.error));
+      const k6PerformanceStatus =
+        wasCancelled || isExecutionError
+          ? 'error'
+          : result.success
+            ? 'passed'
+            : 'failed';
 
       await this.dbService.db.insert(schema.k6PerformanceRuns).values({
         testId,
@@ -248,11 +253,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       // Use the wasCancelled and isExecutionError checks from above
       // - 'error': cancelled, timed out, or execution error (Docker not available, etc.)
       // - 'failed': test ran but thresholds breached or checks failed
-      const runStatus: 'passed' | 'failed' | 'error' = wasCancelled || isExecutionError
-        ? 'error'
-        : result.success
-          ? 'passed'
-          : 'failed';
+      const runStatus: 'passed' | 'failed' | 'error' =
+        wasCancelled || isExecutionError
+          ? 'error'
+          : result.success
+            ? 'passed'
+            : 'failed';
       const runUpdate: Record<string, any> = {
         status: runStatus,
         completedAt: new Date(),
@@ -325,13 +331,14 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
 
       if (taskData.jobId) {
         // Use the same execution error check for final job status
-        const finalStatus = wasCancelled || isExecutionError
-          ? 'error'
-          : result.timedOut
-            ? 'failed'
-            : result.success
-              ? 'passed'
-              : 'failed';
+        const finalStatus =
+          wasCancelled || isExecutionError
+            ? 'error'
+            : result.timedOut
+              ? 'failed'
+              : result.success
+                ? 'passed'
+                : 'failed';
 
         // Update job status based on all current run statuses
         try {

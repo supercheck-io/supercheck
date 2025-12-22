@@ -42,6 +42,8 @@ BETTER_AUTH_SECRET=$(generate_secret 16)
 SECRET_ENCRYPTION_KEY=$(generate_secret 16)
 DB_PASSWORD=$(generate_secret 16)
 REDIS_PASSWORD=$(generate_secret 16)
+MINIO_ACCESS_KEY=$(generate_secret 16)
+MINIO_SECRET_KEY=$(generate_secret 32)
 
 # Create .env file
 cat > "$ENV_FILE" << EOF
@@ -82,6 +84,10 @@ REDIS_PASSWORD=${REDIS_PASSWORD}
 # Updated Redis URL with new password
 REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
 DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@postgres:5432/supercheck
+
+# MinIO/S3 Credentials (auto-generated)
+AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
+AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
 
 # ------------------------------------------------------------
 # OPTIONAL: Email Notifications (SMTP)

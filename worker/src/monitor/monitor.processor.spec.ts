@@ -56,7 +56,9 @@ describe('MonitorProcessor', () => {
       ],
     }).compile();
 
-    monitorProcessor = module.get<MonitorProcessorUSEast>(MonitorProcessorUSEast);
+    monitorProcessor = module.get<MonitorProcessorUSEast>(
+      MonitorProcessorUSEast,
+    );
     monitorService = module.get<MonitorService>(MonitorService);
   });
 
@@ -111,13 +113,12 @@ describe('MonitorProcessor', () => {
         locationJob.data,
         'us-east',
       );
-      expect(mockMonitorService.saveDistributedMonitorResult).toHaveBeenCalledWith(
-        mockResult,
-        {
-          executionGroupId: 'group-123',
-          expectedLocations: undefined,
-        },
-      );
+      expect(
+        mockMonitorService.saveDistributedMonitorResult,
+      ).toHaveBeenCalledWith(mockResult, {
+        executionGroupId: 'group-123',
+        expectedLocations: undefined,
+      });
       expect(result).toHaveLength(1);
       expect(result[0]).toBe(mockResult);
     });
@@ -148,9 +149,9 @@ describe('MonitorProcessor', () => {
 
       const result = await monitorProcessor.process(locationJob);
 
-      expect(mockMonitorService.executeMonitorWithLocations).toHaveBeenCalledWith(
-        locationJob.data,
-      );
+      expect(
+        mockMonitorService.executeMonitorWithLocations,
+      ).toHaveBeenCalledWith(locationJob.data);
       expect(result).toBe(mockResults);
     });
   });
@@ -163,7 +164,9 @@ describe('MonitorProcessor', () => {
     });
 
     it('should instantiate MonitorProcessorEUCentral with MonitorService', () => {
-      const processor = new MonitorProcessorEUCentral(mockMonitorService as any);
+      const processor = new MonitorProcessorEUCentral(
+        mockMonitorService as any,
+      );
       expect((processor as any).monitorService).toBe(mockMonitorService);
     });
 

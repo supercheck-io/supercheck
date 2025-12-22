@@ -40,7 +40,12 @@ const queueSettings = {
  * - 'eu-central': EU Central regional worker - processes eu-central + global queues
  * - 'asia-pacific': Asia Pacific regional worker - processes asia-pacific + global queues
  */
-const VALID_LOCATIONS = ['local', 'us-east', 'eu-central', 'asia-pacific'] as const;
+const VALID_LOCATIONS = [
+  'local',
+  'us-east',
+  'eu-central',
+  'asia-pacific',
+] as const;
 type WorkerLocation = (typeof VALID_LOCATIONS)[number];
 
 function isValidLocation(location: string): location is WorkerLocation {
@@ -76,13 +81,20 @@ export class K6Module {
         `Valid values: ${VALID_LOCATIONS.join(', ')}`;
 
       if (nodeEnv === 'production') {
-        throw new Error(`${errorMessage}. This error is fatal in production to prevent queue misrouting.`);
+        throw new Error(
+          `${errorMessage}. This error is fatal in production to prevent queue misrouting.`,
+        );
       }
-      K6Module.logger.warn(`${errorMessage}. Defaulting to 'local' mode in development.`);
+      K6Module.logger.warn(
+        `${errorMessage}. Defaulting to 'local' mode in development.`,
+      );
     }
 
-    const effectiveLocation = isValidLocation(workerLocation) ? workerLocation : 'local';
-    const { queues, processors } = K6Module.getQueuesAndProcessors(effectiveLocation);
+    const effectiveLocation = isValidLocation(workerLocation)
+      ? workerLocation
+      : 'local';
+    const { queues, processors } =
+      K6Module.getQueuesAndProcessors(effectiveLocation);
 
     K6Module.logger.log(
       `K6Module initialized [${effectiveLocation}]: ${queues.map((q) => q.name).join(', ')}`,

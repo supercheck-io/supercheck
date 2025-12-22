@@ -11,15 +11,15 @@ function isPolarEnabled(): boolean {
 
 /**
  * Usage Tracker Service for Worker
- * 
+ *
  * Tracks Playwright and K6 usage and updates organization usage counters.
  * Also records usage events for Polar billing integration.
- * 
+ *
  * ARCHITECTURE:
  * - Updates local database counters immediately
  * - Records usage events to usage_events table for audit trail
  * - Syncs events to Polar API for billing (async, non-blocking)
- * 
+ *
  * The spending limit check (shouldBlockExecution) runs BEFORE execution
  * starts and provides a "best effort" check based on current recorded usage.
  */
@@ -453,7 +453,6 @@ export class UsageTrackerService {
       );
       return { blocked: false };
     }
-
   }
 
   /**

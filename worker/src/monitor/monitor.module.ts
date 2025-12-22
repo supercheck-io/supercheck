@@ -60,7 +60,12 @@ const commonProviders = [
  * NOTE: Monitors MUST run in their specified location for accurate results.
  * There is no global/fallback queue - each monitor runs only in its designated region.
  */
-const VALID_LOCATIONS = ['local', 'us-east', 'eu-central', 'asia-pacific'] as const;
+const VALID_LOCATIONS = [
+  'local',
+  'us-east',
+  'eu-central',
+  'asia-pacific',
+] as const;
 type WorkerLocation = (typeof VALID_LOCATIONS)[number];
 
 function isValidLocation(location: string): location is WorkerLocation {
@@ -96,13 +101,20 @@ export class MonitorModule {
         `Valid values: ${VALID_LOCATIONS.join(', ')}`;
 
       if (nodeEnv === 'production') {
-        throw new Error(`${errorMessage}. This error is fatal in production to prevent queue misrouting.`);
+        throw new Error(
+          `${errorMessage}. This error is fatal in production to prevent queue misrouting.`,
+        );
       }
-      MonitorModule.logger.warn(`${errorMessage}. Defaulting to 'local' mode in development.`);
+      MonitorModule.logger.warn(
+        `${errorMessage}. Defaulting to 'local' mode in development.`,
+      );
     }
 
-    const effectiveLocation = isValidLocation(workerLocation) ? workerLocation : 'local';
-    const { queues, processors } = MonitorModule.getQueuesAndProcessors(effectiveLocation);
+    const effectiveLocation = isValidLocation(workerLocation)
+      ? workerLocation
+      : 'local';
+    const { queues, processors } =
+      MonitorModule.getQueuesAndProcessors(effectiveLocation);
 
     MonitorModule.logger.log(
       `MonitorModule initialized [${effectiveLocation}]: ${queues.map((q) => q.name).join(', ')}`,

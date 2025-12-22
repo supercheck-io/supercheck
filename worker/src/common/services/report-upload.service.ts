@@ -202,7 +202,7 @@ export class ReportUploadService {
         return;
       }
 
-      let htmlContent = await fs.readFile(indexPath, 'utf-8');
+      const htmlContent = await fs.readFile(indexPath, 'utf-8');
 
       // NOTE: Previously had no-op replacements here (replacing ./data/ with ./data/)
       // The report files are already using relative paths which work correctly with S3

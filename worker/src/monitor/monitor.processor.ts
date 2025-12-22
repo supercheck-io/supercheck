@@ -100,7 +100,6 @@ export abstract class MonitorProcessor extends WorkerHost {
       err.stack,
     );
   }
-
 }
 
 @Processor('monitor-us-east')
@@ -135,4 +134,3 @@ export class MonitorProcessorAsiaPacific extends MonitorProcessor {
     return MonitorProcessorAsiaPacific.name;
   }
 }
-
