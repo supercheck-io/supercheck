@@ -26,40 +26,75 @@ function getErrorStack(error: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * S3 Bucket Entity Types
+ * - 'test': Playwright playground runs -> playwright-test-artifacts
+ * - 'job': Playwright scheduled jobs -> playwright-job-artifacts
+ * - 'monitor': Monitor health checks -> playwright-monitor-artifacts
+ * - 'k6_test': K6 playground runs -> k6-test-artifacts
+ * - 'k6_job': K6 scheduled jobs -> k6-job-artifacts
+ * - 'status': Status page assets -> status-page-artifacts
+ */
+export type S3EntityType =
+  | 'test'
+  | 'job'
+  | 'monitor'
+  | 'k6_test'
+  | 'k6_job'
+  | 'status';
+
 @Injectable()
 export class S3Service implements OnModuleInit {
   private readonly logger = new Logger(S3Service.name);
   private s3Client: S3Client;
-  private jobBucketName: string;
-  private testBucketName: string;
-  private monitorBucketName: string;
-  private statusBucketName: string;
-  private k6PerformanceBucketName: string;
-  private s3Endpoint: string;
-  private maxRetries: number;
-  private operationTimeout: number;
+
+  // Playwright buckets
+  private readonly testBucketName: string;
+  private readonly jobBucketName: string;
+  private readonly monitorBucketName: string;
+
+  // K6 buckets
+  private readonly k6TestBucketName: string;
+  private readonly k6JobBucketName: string;
+
+  // Status page bucket
+  private readonly statusBucketName: string;
+
+  private readonly s3Endpoint: string;
+  private readonly maxRetries: number;
+  private readonly operationTimeout: number;
 
   constructor(private configService: ConfigService) {
-    this.jobBucketName = this.configService.get<string>(
-      'S3_JOB_BUCKET_NAME',
-      'playwright-job-artifacts',
-    );
+    // Playwright buckets
     this.testBucketName = this.configService.get<string>(
       'S3_TEST_BUCKET_NAME',
       'playwright-test-artifacts',
+    );
+    this.jobBucketName = this.configService.get<string>(
+      'S3_JOB_BUCKET_NAME',
+      'playwright-job-artifacts',
     );
     this.monitorBucketName = this.configService.get<string>(
       'S3_MONITOR_BUCKET_NAME',
       'playwright-monitor-artifacts',
     );
+
+    // K6 buckets
+    this.k6TestBucketName = this.configService.get<string>(
+      'S3_K6_TEST_BUCKET_NAME',
+      'k6-test-artifacts',
+    );
+    this.k6JobBucketName = this.configService.get<string>(
+      'S3_K6_JOB_BUCKET_NAME',
+      'k6-job-artifacts',
+    );
+
+    // Status page bucket
     this.statusBucketName = this.configService.get<string>(
       'S3_STATUS_BUCKET_NAME',
-      'supercheck-status-artifacts',
+      'status-page-artifacts',
     );
-    this.k6PerformanceBucketName = this.configService.get<string>(
-      'S3_PERFORMANCE_BUCKET_NAME',
-      'supercheck-performance-artifacts',
-    );
+
     this.s3Endpoint = this.configService.get<string>(
       'S3_ENDPOINT',
       'http://localhost:9000',
@@ -80,7 +115,7 @@ export class S3Service implements OnModuleInit {
     );
 
     this.logger.debug(
-      `S3 initialized with buckets: job=${this.jobBucketName}, test=${this.testBucketName}, monitor=${this.monitorBucketName}, status=${this.statusBucketName}, k6=${this.k6PerformanceBucketName}`,
+      `S3 initialized with buckets: playwright=[test=${this.testBucketName}, job=${this.jobBucketName}, monitor=${this.monitorBucketName}], k6=[test=${this.k6TestBucketName}, job=${this.k6JobBucketName}], status=${this.statusBucketName}`,
     );
 
     this.s3Client = new S3Client({
@@ -94,12 +129,18 @@ export class S3Service implements OnModuleInit {
 
   async onModuleInit() {
     try {
-      // Ensure all buckets exist
-      await this.ensureBucketExists(this.jobBucketName);
-      await this.ensureBucketExists(this.testBucketName);
-      await this.ensureBucketExists(this.monitorBucketName);
-      await this.ensureBucketExists(this.statusBucketName);
-      await this.ensureBucketExists(this.k6PerformanceBucketName);
+      // Ensure all buckets exist (initialize in parallel for faster startup)
+      await Promise.all([
+        // Playwright buckets
+        this.ensureBucketExists(this.testBucketName),
+        this.ensureBucketExists(this.jobBucketName),
+        this.ensureBucketExists(this.monitorBucketName),
+        // K6 buckets
+        this.ensureBucketExists(this.k6TestBucketName),
+        this.ensureBucketExists(this.k6JobBucketName),
+        // Status page bucket
+        this.ensureBucketExists(this.statusBucketName),
+      ]);
 
       this.logger.log('S3 buckets initialized successfully');
     } catch (error) {
@@ -113,18 +154,36 @@ export class S3Service implements OnModuleInit {
 
   /**
    * Get the appropriate bucket based on entity type
+   * @param entityType - The type of entity (test, job, monitor, k6_test, k6_job, status)
+   * @returns The bucket name for the given entity type
    */
-  getBucketForEntityType(entityType: string): string {
-    if (entityType === 'test') {
-      return this.testBucketName;
+  getBucketForEntityType(entityType: S3EntityType | string): string {
+    switch (entityType) {
+      // Playwright buckets
+      case 'test':
+        return this.testBucketName;
+      case 'job':
+        return this.jobBucketName;
+      case 'monitor':
+        return this.monitorBucketName;
+
+      // K6 buckets
+      case 'k6_test':
+        return this.k6TestBucketName;
+      case 'k6_job':
+        return this.k6JobBucketName;
+
+      // Status page bucket
+      case 'status':
+        return this.statusBucketName;
+
+      // Default to job bucket for unknown entity types
+      default:
+        this.logger.warn(
+          `Unknown entity type '${entityType}', defaulting to job bucket`,
+        );
+        return this.jobBucketName;
     }
-    if (entityType === 'monitor') {
-      return this.monitorBucketName;
-    }
-    if (entityType === 'k6_performance') {
-      return this.k6PerformanceBucketName;
-    }
-    return this.jobBucketName; // Default to job bucket for 'job' and other entity types
   }
 
   private async withRetry<T>(

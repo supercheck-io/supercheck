@@ -18,16 +18,20 @@ export async function scheduleMonitor(options: ScheduleMonitorOptions): Promise<
     const { monitorSchedulerQueue } = await getQueues();
     const schedulerJobName = `scheduled-monitor-${options.monitorId}`;
 
-    // Clean up any existing repeatable jobs for this monitor ID
+    // Clean up ALL existing repeatable jobs for this monitor ID
+    // Using .filter() instead of .find() to remove ALL matching jobs,
+    // preventing accumulated schedules from causing multiple triggers
     const repeatableJobs = await monitorSchedulerQueue.getRepeatableJobs();
-    const existingJob = repeatableJobs.find(job =>
+    const existingJobs = repeatableJobs.filter(job =>
       job.id === options.monitorId ||
       job.key.includes(options.monitorId) ||
       job.name === schedulerJobName
     );
 
-    if (existingJob) {
-      await monitorSchedulerQueue.removeRepeatableByKey(existingJob.key);
+    if (existingJobs.length > 0) {
+      await Promise.all(
+        existingJobs.map(job => monitorSchedulerQueue.removeRepeatableByKey(job.key))
+      );
     }
 
     // Create a repeatable job that follows the frequency schedule

@@ -76,19 +76,7 @@ export function JobStatusDisplay({
     const contextStatus = getJobStatus(jobId);
     // Use context status if available (especially for terminal statuses)
     // Otherwise fall back to db status
-    let statusToUse = contextStatus || dbStatus;
-
-    // Check if this is a cancelled run (status is error but errorDetails contains cancellation)
-    if (statusToUse === "error" && lastRunErrorDetails) {
-      const lowerErrorDetails = lastRunErrorDetails.toLowerCase();
-      if (
-        lowerErrorDetails.includes("cancellation") ||
-        lowerErrorDetails.includes("cancelled")
-      ) {
-        statusToUse = "cancelled";
-      }
-    }
-
+    const statusToUse = contextStatus || dbStatus;
     return statusToUse || "pending";
   };
 
@@ -246,13 +234,13 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (
-        ["completed", "passed", "failed", "error", "cancelled"].includes(status)
+        ["completed", "passed", "failed", "error"].includes(status)
       ) {
         setJobStatus(jobId, payload.status);
         if (activeRunsRef.current[jobId]?.runId === runId) {
           const jobName = activeRunsRef.current[jobId]?.jobName || jobId;
           const passed = status === "completed" || status === "passed";
-          const cancelled = status === "cancelled" || status === "error"; // Cancelled status from SSE or error status
+          const isError = status === "error";
 
           // Remove from active runs
           setActiveRuns((prev) => {
@@ -290,10 +278,10 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
               ? "All tests executed successfully."
               : "One or more tests did not complete successfully.";
 
-            if (cancelled) {
+            if (isError) {
               toastType = "info";
-              toastTitle = "Job execution cancelled";
-              toastMessage = "The job execution was cancelled by a user.";
+              toastTitle = "Job execution error";
+              toastMessage = "An error occurred during execution.";
             }
 
             toast[toastType](toastTitle, {

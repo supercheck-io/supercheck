@@ -189,7 +189,12 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
       const p99DurationMs = Math.round(metrics.p99ResponseTimeMs || 0);
 
       // Determine k6_performance_runs status
-      const k6PerformanceStatus = wasCancelled
+      // - 'error': cancelled, timed out, or execution error (no summary = couldn't run at all)
+      // - 'failed': test ran but thresholds breached or checks failed
+      // - 'passed': test ran successfully
+      // Note: timedOut is a standalone condition since result.error might be null for timeouts
+      const isExecutionError = !result.success && (result.timedOut || (!result.summary && result.error));
+      const k6PerformanceStatus = wasCancelled || isExecutionError
         ? 'error'
         : result.success
           ? 'passed'
@@ -240,8 +245,10 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         durationString = `${durationSeconds}s`;
       }
 
-      // Use the wasCancelled check from above (line 163)
-      const runStatus: 'passed' | 'failed' | 'error' = wasCancelled
+      // Use the wasCancelled and isExecutionError checks from above
+      // - 'error': cancelled, timed out, or execution error (Docker not available, etc.)
+      // - 'failed': test ran but thresholds breached or checks failed
+      const runStatus: 'passed' | 'failed' | 'error' = wasCancelled || isExecutionError
         ? 'error'
         : result.success
           ? 'passed'
@@ -317,7 +324,8 @@ abstract class BaseK6ExecutionProcessor extends WorkerHost {
         );
 
       if (taskData.jobId) {
-        const finalStatus = wasCancelled
+        // Use the same execution error check for final job status
+        const finalStatus = wasCancelled || isExecutionError
           ? 'error'
           : result.timedOut
             ? 'failed'

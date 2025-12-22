@@ -32,8 +32,8 @@ export type ArtifactPaths = {
   screenshots?: string[];
 };
 
-// Report types
-export type ReportType = "test" | "job" | "monitor" | "k6_performance";
+// Report types - matches S3EntityType in worker s3.service.ts
+export type ReportType = "test" | "job" | "monitor" | "k6_test" | "k6_job";
 
 // Monitor types
 export type MonitorType =

@@ -24,7 +24,7 @@ type AccessContext = {
 function getPermissionResource(entityType: string): "test" | "monitor" | "run" | null {
   if (entityType === "test") return "test";
   if (entityType === "monitor") return "monitor";
-  if (entityType === "job" || entityType === "k6_performance") return "run";
+  if (entityType === "job" || entityType === "k6_test" || entityType === "k6_job") return "run";
   return null;
 }
 
@@ -68,7 +68,7 @@ async function resolveAccessContext(
       };
     }
 
-    if (entityType === "k6_performance") {
+    if (entityType === "k6_test" || entityType === "k6_job") {
       const result = await db
         .select({
           organizationId: k6PerformanceRuns.organizationId,
@@ -275,7 +275,7 @@ export async function GET(request: Request) {
     }
 
     const reportResult =
-      reportRows.find((row) => row.entityType === "k6_performance") ??
+      reportRows.find((row) => row.entityType === "k6_test" || row.entityType === "k6_job") ??
       reportRows[0];
 
     const permissionResource = getPermissionResource(reportResult.entityType);
@@ -354,7 +354,7 @@ export async function GET(request: Request) {
           if (isCancellation) {
             errorDetails = "Cancellation requested by user";
           }
-        } else if (reportResult.entityType === "k6_performance") {
+        } else if (reportResult.entityType === "k6_test" || reportResult.entityType === "k6_job") {
           const k6Record = await db
             .select({ errorDetails: k6PerformanceRuns.errorDetails })
             .from(k6PerformanceRuns)
@@ -386,7 +386,7 @@ export async function GET(request: Request) {
         }
         
         // For non-cancelled failed executions, check for timeout
-        if (reportResult.entityType === "test") {
+        if (reportResult.entityType === "test" || reportResult.entityType === "k6_test") {
           return NextResponse.json(
             {
               error: "Test execution timeout",
@@ -403,7 +403,7 @@ export async function GET(request: Request) {
             },
             { status: 408 }
           ); // 408 Request Timeout
-        } else if (reportResult.entityType === "job") {
+        } else if (reportResult.entityType === "job" || reportResult.entityType === "k6_job") {
           return NextResponse.json(
             {
               error: "Job execution timeout",

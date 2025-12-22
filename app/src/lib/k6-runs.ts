@@ -29,7 +29,7 @@ export const statusLabelMap: Record<K6RunStatus, string> = {
   running: "Running performance test…",
   passed: "Test completed",
   failed: "Test failed",
-  error: "Console stream interrupted",
+  error: "Execution error",
 };
 
 export const toDisplayStatus = (
@@ -45,8 +45,8 @@ export const toDisplayStatus = (
   if (normalized === "failed") {
     return "failed";
   }
-  // Cancelled runs and errors don't generate complete reports
-  if (normalized === "error" || normalized === "cancelled") {
+  // Error status (includes cancellations which are stored as 'error')
+  if (normalized === "error") {
     return "error";
   }
   return "running";
