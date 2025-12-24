@@ -41,6 +41,7 @@ Uses external managed services instead of local containers:
 ```bash
 DATABASE_URL=postgresql://user:pass@host:5432/supercheck
 REDIS_URL=redis://:password@redis.cloud:6379
+REDIS_TLS_ENABLED=true
 S3_ENDPOINT=https://your-bucket.r2.cloudflarestorage.com
 APP_DOMAIN=supercheck.yourdomain.com
 ACME_EMAIL=admin@yourdomain.com
@@ -115,6 +116,7 @@ All compose files use sensible defaults. Critical variables to change for produc
 | `BETTER_AUTH_SECRET` | Auth secret (32+ chars) | `CHANGE_THIS_GENERATE_32_CHAR_HEX` |
 | `SECRET_ENCRYPTION_KEY` | Encryption key (32+ chars) | `CHANGE_THIS_GENERATE_32_CHAR_HEX` |
 | `REDIS_PASSWORD` | Redis password | `supersecure-redis-password-change-this` |
+| `REDIS_TLS_ENABLED` | Enable TLS | `false` |
 
 ### Domain Configuration (for secure.yml)
 

@@ -160,6 +160,7 @@ export function buildRedisOptions(
   const host = process.env.REDIS_HOST || "localhost";
   const port = parseInt(process.env.REDIS_PORT || "6379");
   const password = process.env.REDIS_PASSWORD;
+  const tlsEnabled = process.env.REDIS_TLS_ENABLED === "true";
 
   return {
     host,
@@ -167,6 +168,8 @@ export function buildRedisOptions(
     password: password || undefined,
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
+    // Enable TLS for cloud Redis (Upstash, Redis Cloud, etc.)
+    ...(tlsEnabled && { tls: {} }),
     retryStrategy: (times: number) => {
       const delay = Math.min(times * 100, 3000);
       queueLogger.warn(

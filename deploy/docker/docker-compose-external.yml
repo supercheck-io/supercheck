@@ -31,6 +31,8 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   REDIS_PORT: ${REDIS_PORT:-6379}
   REDIS_PASSWORD: ${REDIS_PASSWORD}
   REDIS_URL: ${REDIS_URL}
+  # Enable TLS for cloud Redis (Upstash, Redis Cloud, etc.)
+  REDIS_TLS_ENABLED: ${REDIS_TLS_ENABLED:-true}
 
   # App Configuration
   NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
