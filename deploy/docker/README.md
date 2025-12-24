@@ -7,6 +7,7 @@ Production-ready Docker Compose files for self-hosting SuperCheck.
 ### `docker-compose.yml` (Development with Pre-built Images)
 
 Full stack using pre-built Docker images from GitHub Container Registry:
+
 - **App**: Next.js frontend (port 3000)
 - **Worker**: Job execution service
 - **PostgreSQL**: Primary database (port 5432)
@@ -20,6 +21,7 @@ docker compose -f docker-compose.yml up -d
 ### `docker-compose-local.yml` (Local Development)
 
 Builds images from source with hot-reload for development:
+
 - Builds app and worker from local `../../app` and `../../worker` directories
 - Mounts source code for live changes
 - Exposes all ports for debugging
@@ -32,12 +34,14 @@ docker compose -f docker-compose-local.yml up -d
 ### `docker-compose-external.yml` (Managed Services)
 
 Uses external managed services instead of local containers:
+
 - **No PostgreSQL container** - connects to external PostgreSQL (Neon, Supabase, PlanetScale)
 - **No Redis container** - connects to external Redis (Upstash, Redis Cloud)
 - **No MinIO container** - connects to external S3 (AWS S3, Cloudflare R2)
 - Includes Traefik for HTTPS
 
 **Required environment variables** (no defaults):
+
 ```bash
 DATABASE_URL=postgresql://user:pass@host:5432/supercheck
 REDIS_URL=redis://:password@redis.cloud:6379
@@ -54,6 +58,7 @@ docker compose -f docker-compose-external.yml up -d
 ### `docker-compose-secure.yml` (Production)
 
 Production-hardened deployment with HTTPS:
+
 - **Traefik** reverse proxy with SSL/TLS
 - All services included (PostgreSQL, Redis, MinIO)
 - Security hardening (capability drops, no-new-privileges)
@@ -71,6 +76,7 @@ docker compose -f docker-compose-secure.yml up -d
 ### `docker-compose-worker.yml` (Multi-Location Workers)
 
 Deploy workers in remote geographic regions connecting to your main Supercheck instance:
+
 - Connects to central PostgreSQL, Redis, and MinIO
 - Set `WORKER_LOCATION` to target region (us-east, eu-central, asia-pacific)
 - True multi-location monitoring and performance testing
@@ -111,44 +117,45 @@ All compose files use sensible defaults. Critical variables to change for produc
 
 ### Required for Production
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `BETTER_AUTH_SECRET` | Auth secret (32+ chars) | `CHANGE_THIS_GENERATE_32_CHAR_HEX` |
-| `SECRET_ENCRYPTION_KEY` | Encryption key (32+ chars) | `CHANGE_THIS_GENERATE_32_CHAR_HEX` |
-| `REDIS_PASSWORD` | Redis password | `supersecure-redis-password-change-this` |
-| `REDIS_TLS_ENABLED` | Enable TLS | `false` |
+| Variable                        | Description                | Default                                  |
+| ------------------------------- | -------------------------- | ---------------------------------------- |
+| `BETTER_AUTH_SECRET`            | Auth secret (32+ chars)    | `CHANGE_THIS_GENERATE_32_CHAR_HEX`       |
+| `SECRET_ENCRYPTION_KEY`         | Encryption key (32+ chars) | `CHANGE_THIS_GENERATE_32_CHAR_HEX`       |
+| `REDIS_PASSWORD`                | Redis password             | `supersecure-redis-password-change-this` |
+| `REDIS_TLS_ENABLED`             | Enable TLS for Redis       | `false`                                  |
+| `REDIS_TLS_REJECT_UNAUTHORIZED` | Reject invalid TLS certs   | `true`                                   |
 
 ### Domain Configuration (for secure.yml)
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `APP_DOMAIN` | Your domain | `demo.supercheck.io` |
-| `ACME_EMAIL` | Let's Encrypt email | `admin@example.com` |
+| Variable     | Description         | Default              |
+| ------------ | ------------------- | -------------------- |
+| `APP_DOMAIN` | Your domain         | `demo.supercheck.io` |
+| `ACME_EMAIL` | Let's Encrypt email | `admin@example.com`  |
 
 ### Email (SMTP)
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SMTP_HOST` | SMTP server | `smtp.resend.com` |
-| `SMTP_PORT` | SMTP port | `587` |
-| `SMTP_USER` | SMTP username | `resend` |
-| `SMTP_PASSWORD` | SMTP password | Required |
-| `SMTP_FROM_EMAIL` | From address | `notification@example.com` |
+| Variable          | Description   | Default                    |
+| ----------------- | ------------- | -------------------------- |
+| `SMTP_HOST`       | SMTP server   | `smtp.resend.com`          |
+| `SMTP_PORT`       | SMTP port     | `587`                      |
+| `SMTP_USER`       | SMTP username | `resend`                   |
+| `SMTP_PASSWORD`   | SMTP password | Required                   |
+| `SMTP_FROM_EMAIL` | From address  | `notification@example.com` |
 
 ### AI Features (Optional)
 
-| Variable | Description | Default |
-|----------|-------------|---------|
+| Variable         | Description    | Default               |
+| ---------------- | -------------- | --------------------- |
 | `OPENAI_API_KEY` | OpenAI API key | Required for AI fixes |
-| `AI_MODEL` | Model to use | `gpt-4o-mini` |
+| `AI_MODEL`       | Model to use   | `gpt-4o-mini`         |
 
 ### Scaling
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `WORKER_REPLICAS` | Number of workers | `1` |
-| `RUNNING_CAPACITY` | Max concurrent jobs | `1` |
-| `QUEUED_CAPACITY` | Max queued jobs | `10` |
+| Variable           | Description         | Default |
+| ------------------ | ------------------- | ------- |
+| `WORKER_REPLICAS`  | Number of workers   | `1`     |
+| `RUNNING_CAPACITY` | Max concurrent jobs | `1`     |
+| `QUEUED_CAPACITY`  | Max queued jobs     | `10`    |
 
 ---
 
