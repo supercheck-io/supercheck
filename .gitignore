@@ -171,3 +171,5 @@ tmp/
 
 # Task management
 tasks/
+# Infisical
+.infisical.json
