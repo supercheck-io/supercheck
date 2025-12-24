@@ -19,6 +19,7 @@ import { ReportUploadService } from './common/services/report-upload.service';
 import { SecurityModule } from './common/security/security.module';
 import { CancellationModule } from './common/services/cancellation.module';
 import * as schema from './db/schema';
+import { getSSLConfig } from './db/db-ssl';
 
 // Import constants from constants file
 import { PLAYWRIGHT_QUEUE } from './execution/constants';
@@ -51,7 +52,7 @@ const drizzleProvider: Provider = {
 
     // Initialize the Postgres.js client with connection pooling
     const client = postgres(connectionString, {
-      ssl: false,
+      ssl: getSSLConfig(),
       max: parseInt(process.env.DB_POOL_MAX || '10', 10), // Default: 10 connections
       idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || '30', 10), // Default: 30 seconds
       connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || '10', 10), // Default: 10 seconds
