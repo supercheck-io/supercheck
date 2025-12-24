@@ -28,6 +28,8 @@ x-common-env: &common-env # Database Configuration
   REDIS_PORT: ${REDIS_PORT:-6379}
   REDIS_PASSWORD: ${REDIS_PASSWORD:-supersecure-redis-password-change-this}
   REDIS_URL: ${REDIS_URL:-redis://:supersecure-redis-password-change-this@redis:6379}
+  REDIS_TLS_ENABLED: ${REDIS_TLS_ENABLED:-false}
+  REDIS_TLS_REJECT_UNAUTHORIZED: ${REDIS_TLS_REJECT_UNAUTHORIZED:-false}
 
   # App Configuration
   NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
