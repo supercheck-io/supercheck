@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 function GithubIcon({ className }: { className?: string }) {
     return (
@@ -85,7 +86,7 @@ export function SiteFooter({
                         {/* Logo and description */}
                         <div>
                             <div className="flex items-center gap-2 mb-2">
-                                <img
+                                <Image
                                     src="/supercheck-logo.png"
                                     alt="Supercheck Logo"
                                     width={28}
