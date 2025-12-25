@@ -66,6 +66,8 @@ export class K6ExecutionService {
   // Use custom worker image with xk6-dashboard pre-installed for consistency and performance
   private readonly k6DockerImage =
     'ghcr.io/supercheck-io/supercheck/worker:latest';
+  // Dedicated output directory for K6 reports (avoids uploading node-compile-cache and other junk)
+  private readonly K6_OUTPUT_DIR = '/tmp/k6-output';
   private readonly maxConcurrentK6Runs: number;
   private readonly testExecutionTimeoutMs: number;
   private readonly jobExecutionTimeoutMs: number;
@@ -267,27 +269,28 @@ export class K6ExecutionService {
       // Ensure OS temp directory exists for extracted reports
       await fs.mkdir(extractedReportsDir, { recursive: true });
 
-      // Build k6 command using container paths (/tmp inside container)
-      // All files will be created inside the container at /tmp
+      // Build k6 command using container paths
+      // Use a dedicated output directory to avoid uploading unnecessary files like node-compile-cache
+      const k6OutputDir = this.K6_OUTPUT_DIR;
       const scriptFileName = 'test.js';
       const summaryFileName = 'summary.json';
       const jsonOutputFileName = 'metrics.json';
       const reportDirName = 'report';
       const htmlReportFileName = 'index.html';
       const htmlExportFileName = 'report.html';
-      const htmlExportPathContainer = `/tmp/${reportDirName}/${htmlExportFileName}`;
+      const htmlExportPathContainer = `${k6OutputDir}/${reportDirName}/${htmlExportFileName}`;
 
       const args = [
         'run',
         '--summary-export',
-        `/tmp/${summaryFileName}`,
+        `${k6OutputDir}/${summaryFileName}`,
         // Include p(99) in summary.json - K6 defaults only include p(90) and p(95)
         '--summary-trend-stats',
         'avg,min,med,max,p(90),p(95),p(99)',
         '--out',
         'web-dashboard',
         '--out',
-        `json=/tmp/${jsonOutputFileName}`, // JSON output for detailed network metrics
+        `json=${k6OutputDir}/${jsonOutputFileName}`, // JSON output for detailed network metrics
         `/tmp/${scriptFileName}`,
       ];
 
@@ -745,7 +748,8 @@ export class K6ExecutionService {
 
       // Create report directory structure inside container before execution
       // K6_WEB_DASHBOARD_EXPORT requires the parent directory to exist
-      const directoriesToEnsure = new Set<string>(['/tmp']);
+      // Also ensure the K6 output directory exists for metrics/summary files
+      const directoriesToEnsure = new Set<string>(['/tmp', this.K6_OUTPUT_DIR]);
       const webDashboardExportPath = overrideEnv.K6_WEB_DASHBOARD_EXPORT;
       if (webDashboardExportPath) {
         const exportDir = webDashboardExportPath.endsWith('.html')
@@ -764,7 +768,7 @@ export class K6ExecutionService {
             inlineScriptContent: scriptContent,
             inlineScriptFileName: scriptFileName,
             ensureDirectories: Array.from(directoriesToEnsure),
-            extractFromContainer: '/tmp/.', // Extract contents of /tmp (trailing /. copies contents)
+            extractFromContainer: `${this.K6_OUTPUT_DIR}/.`, // Only extract K6 output dir (avoids node-compile-cache and other junk)
             extractToHost: extractToHost, // To OS temp directory
             timeoutMs: timeoutMs || this.testExecutionTimeoutMs,
             env: {
