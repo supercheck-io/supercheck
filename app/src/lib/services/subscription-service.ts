@@ -31,9 +31,9 @@ const FALLBACK_UNLIMITED_LIMITS = {
   maxStatusPages: 999,
   customDomains: true,
   ssoEnabled: true,
-  dataRetentionDays: 365,
-  aggregatedDataRetentionDays: 365,
-  jobDataRetentionDays: 365,
+  dataRetentionDays: 30, // Raw monitor data: 30 days (high frequency)
+  aggregatedDataRetentionDays: 180, // Aggregated metrics: 6 months max
+  jobDataRetentionDays: 180, // Job runs: 6 months max for self-hosted
 } as const;
 
 // Blocked plan limits for deleted Polar customers

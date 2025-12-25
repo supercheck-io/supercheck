@@ -3,6 +3,7 @@ import { drizzle, PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 const postgres = require('postgres');
 import * as schema from './schema';
 import { eq } from 'drizzle-orm';
+import { getSSLConfig } from './db-ssl';
 
 @Injectable()
 export class DbService implements OnModuleInit {
@@ -12,13 +13,14 @@ export class DbService implements OnModuleInit {
   onModuleInit() {
     this.logger.log('Initializing database connection...');
     try {
+      const connectionString = process.env.DATABASE_URL!;
       // Initialize with proper connection pooling
-      const queryClient = postgres(process.env.DATABASE_URL!, {
+      const queryClient = postgres(connectionString, {
+        ssl: getSSLConfig(),
         max: parseInt(process.env.DB_POOL_MAX || '10', 10), // Default: 10 connections
         idle_timeout: parseInt(process.env.DB_IDLE_TIMEOUT || '30', 10), // Default: 30 seconds
         connect_timeout: parseInt(process.env.DB_CONNECT_TIMEOUT || '10', 10), // Default: 10 seconds
         max_lifetime: parseInt(process.env.DB_MAX_LIFETIME || '1800', 10), // Default: 30 minutes (in seconds)
-        ssl: (process.env.DATABASE_URL?.includes('sslmode=require') || process.env.DB_SSL === 'true') ? 'require' : undefined,
       });
       this.db = drizzle(queryClient, { schema });
       this.logger.log('Database connection initialized successfully.');

@@ -230,6 +230,17 @@ export class S3Service implements OnModuleInit {
         awsError?.name === 'NoSuchBucket' ||
         awsError?.Code === 'NoSuchBucket'
       ) {
+        // Only attempt to create bucket in self-hosted mode
+        // In cloud mode, buckets should be created via Terraform/Wrangler
+        const isSelfHosted =
+          this.configService.get('SELF_HOSTED')?.toLowerCase() === 'true';
+
+        if (!isSelfHosted) {
+          const message = `Bucket '${bucketName}' does not exist. Auto-creation is disabled in Cloud mode (SELF_HOSTED!=true). Please create the bucket manually.`;
+          this.logger.error(message);
+          throw new Error(message);
+        }
+
         try {
           await this.withRetry(
             () =>
