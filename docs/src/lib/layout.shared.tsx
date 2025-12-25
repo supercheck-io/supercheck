@@ -17,7 +17,6 @@ export const linkItems: LinkItemType[] = [
     icon: <GitHubIcon />,
     external: true,
   },
-
 ];
 
 /**

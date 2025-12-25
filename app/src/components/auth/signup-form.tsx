@@ -289,8 +289,8 @@ export function SignupForm({
       {/* Footer */}
       <FieldDescription className="px-6 text-center">
         By clicking continue, you agree to our{" "}
-        <Link href="/terms">Terms of Service</Link> and{" "}
-        <Link href="/privacy">Privacy Policy</Link>.
+        <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
+        <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
       </FieldDescription>
     </div>
   );

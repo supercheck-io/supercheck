@@ -79,11 +79,11 @@ export function PricingComparisonTable({
             // Category header row
             <TableRow
               key={`category-${categoryIndex}`}
-              className="bg-muted/40 hover:bg-muted/50"
+              className="bg-muted/50 hover:bg-muted/50 border-l-2 border-l-primary/50"
             >
               <TableCell
                 colSpan={3}
-                className="font-semibold text-sm py-2.5 text-foreground"
+                className="font-semibold text-xs uppercase tracking-wider py-3 text-muted-foreground"
               >
                 {category.category}
               </TableCell>
@@ -107,10 +107,10 @@ export function PricingComparisonTable({
             )),
           ])}
           {/* Overage Pricing Section */}
-          <TableRow className="bg-muted/40 hover:bg-muted/50 border-t-2">
+          <TableRow className="bg-muted/50 hover:bg-muted/50 border-l-2 border-l-primary/50 border-t-2">
             <TableCell
               colSpan={3}
-              className="font-semibold text-sm py-2.5 text-foreground"
+              className="font-semibold text-xs uppercase tracking-wider py-3 text-muted-foreground"
             >
               Overage Pricing
             </TableCell>
