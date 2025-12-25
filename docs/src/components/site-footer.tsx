@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 function GithubIcon({ className }: { className?: string }) {
     return (
@@ -82,10 +83,19 @@ export function SiteFooter({
             <div className="mx-auto max-w-6xl px-6">
                 <div className="flex w-full flex-col justify-between gap-10 lg:flex-row lg:items-start lg:text-left">
                     <div className="flex w-full flex-col justify-between gap-6 lg:max-w-xs lg:items-start">
-                        {/* Description only (Logo removed as requested) */}
+                        {/* Logo and description */}
                         <div>
-                            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Supercheck</h2>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Image
+                                    src="/supercheck-logo.png"
+                                    alt="Supercheck Logo"
+                                    width={28}
+                                    height={28}
+                                    className="rounded"
+                                />
+                                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Supercheck</h2>
+                            </div>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mt-2">
                                 {description}
                             </p>
                         </div>

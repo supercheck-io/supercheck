@@ -298,7 +298,7 @@ export default function SubscribePage() {
           Contact us for volume discounts, custom SLAs, and dedicated support.
         </p>
         <Button size="default" asChild>
-          <a href="mailto:support@supercheck.io">Contact Sales</a>
+          <a href="mailto:hello@supercheck.io">Contact Sales</a>
         </Button>
       </section>
     </div>

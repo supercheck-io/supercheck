@@ -205,9 +205,14 @@ export async function GET() {
             pro: plans.find((p) => p.plan === "pro")?.ssoEnabled ?? true,
           },
           {
-            name: "API Access",
-            plus: "Standard",
-            pro: "Enhanced",
+            name: "CI/CD Integration",
+            plus: true,
+            pro: true,
+          },
+          {
+            name: "Cron Job Scheduling",
+            plus: true,
+            pro: true,
           },
         ],
       },

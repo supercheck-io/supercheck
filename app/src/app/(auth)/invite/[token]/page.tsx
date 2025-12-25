@@ -232,7 +232,7 @@ export default function InvitePage({
   if (invitation) {
     const daysUntilExpiry = Math.ceil(
       (new Date(invitation.expiresAt).getTime() - new Date().getTime()) /
-        (1000 * 60 * 60 * 24)
+      (1000 * 60 * 60 * 24)
     );
     const isExpiringSoon = daysUntilExpiry <= 2;
 
@@ -352,8 +352,8 @@ export default function InvitePage({
         {/* Footer */}
         <FieldDescription className="px-6 text-center">
           By accepting, you agree to our{" "}
-          <Link href="/terms">Terms of Service</Link> and{" "}
-          <Link href="/privacy">Privacy Policy</Link>.
+          <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
+          <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
         </FieldDescription>
       </div>
     );
