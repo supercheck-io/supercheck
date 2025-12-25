@@ -64,8 +64,7 @@ export class K6ExecutionService {
   private readonly logger = new Logger(K6ExecutionService.name);
   private readonly k6BinaryPath: string;
   // Use custom worker image with xk6-dashboard pre-installed for consistency and performance
-  private readonly k6DockerImage =
-    'ghcr.io/supercheck-io/supercheck/worker:latest';
+  private readonly k6DockerImage: string;
   // Dedicated output directory for K6 reports (avoids uploading node-compile-cache and other junk)
   private readonly K6_OUTPUT_DIR = '/tmp/k6-output';
   private readonly maxConcurrentK6Runs: number;
@@ -100,6 +99,11 @@ export class K6ExecutionService {
       this.k6BinaryPath =
         process.env.NODE_ENV === 'production' ? '/usr/local/bin/k6' : 'k6';
     }
+
+    this.k6DockerImage = this.configService.get<string>(
+      'WORKER_IMAGE',
+      'ghcr.io/supercheck-io/supercheck/worker:latest',
+    );
 
     /**
      * Maximum concurrent k6 runs per worker instance.

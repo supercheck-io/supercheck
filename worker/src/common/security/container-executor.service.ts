@@ -127,9 +127,7 @@ export interface ContainerExecutionResult {
 export class ContainerExecutorService {
   private readonly logger = new Logger(ContainerExecutorService.name);
   // Use custom worker image with Playwright browsers and k6 pre-installed
-  private readonly defaultImage =
-    process.env.WORKER_IMAGE ||
-    'ghcr.io/supercheck-io/supercheck/worker:latest';
+  private readonly defaultImage: string;
 
   // Seccomp profile path for Chromium sandbox security
   // This enables running Chromium with sandbox as non-root user
@@ -148,6 +146,11 @@ export class ContainerExecutorService {
     this.seccompProfilePath =
       process.env.SECCOMP_PROFILE_PATH ||
       path.resolve(__dirname, 'seccomp_profile.json');
+
+    this.defaultImage = this.configService.get<string>(
+      'WORKER_IMAGE',
+      'ghcr.io/supercheck-io/supercheck/worker:latest',
+    );
 
     this.logger.log(
       `Container executor initialized with default image: ${this.defaultImage}`,
@@ -600,6 +603,9 @@ export class ContainerExecutorService {
         this.logger.error(
           `Container ${containerName} failed with exit code ${result.exitCode}`,
         );
+        if (result.stderr && result.stderr.trim().length > 0) {
+          this.logger.error(`Container stderr:\n${result.stderr}`);
+        }
       }
 
       // Extract files from container if requested (before container is destroyed)

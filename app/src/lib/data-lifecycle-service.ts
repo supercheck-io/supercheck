@@ -21,7 +21,7 @@
  * - Each organization's data is cleaned based on their subscription plan's dataRetentionDays
  * - Plus plan: 7 days raw data retention, 30 days aggregated metrics
  * - Pro plan: 30 days raw data retention, 365 days (1 year) aggregated metrics
- * - Unlimited plan: 365 days retention (self-hosted)
+ * - Unlimited plan: 30 days raw data, 180 days (6 months) aggregated/job data (self-hosted)
  * - Cleanup is performed per-organization to respect plan limits
  *
  * PostgreSQL TTL Note:
@@ -145,7 +145,7 @@ interface OrganizationRetention {
 
 /**
  * Get retention settings for all organizations based on their subscription plans
- * This enables plan-based data retention (Plus: 30d, Pro: 90d, Unlimited: 365d)
+ * This enables plan-based data retention (Plus: 7d, Pro: 30d, Unlimited: 30d for raw data)
  *
  * @param fallbackRetentionDays - Default retention if plan lookup fails
  * @returns Array of organization retention settings
@@ -154,13 +154,24 @@ async function getOrganizationRetentionSettings(
   fallbackRetentionDays: number
 ): Promise<OrganizationRetention[]> {
   try {
-    // In self-hosted mode, use the global retention setting for all orgs
+    // In self-hosted mode, use the unlimited plan's retention from database
     if (!isPolarEnabled()) {
       const orgs = await db.select({ id: organization.id }).from(organization);
 
+      // Fetch the unlimited plan's retention from database
+      const unlimitedPlan = await db
+        .select({ dataRetentionDays: planLimits.dataRetentionDays })
+        .from(planLimits)
+        .where(eq(planLimits.plan, "unlimited"))
+        .limit(1);
+
+      // Use database value if available, otherwise fallback
+      const retentionDays =
+        unlimitedPlan[0]?.dataRetentionDays ?? fallbackRetentionDays;
+
       return orgs.map((org) => ({
         organizationId: org.id,
-        retentionDays: fallbackRetentionDays,
+        retentionDays,
         plan: "unlimited",
       }));
     }
@@ -212,13 +223,24 @@ async function getOrganizationAggregatedRetentionSettings(
   }>
 > {
   try {
-    // In self-hosted mode, use the global retention setting for all orgs
+    // In self-hosted mode, use the unlimited plan's retention from database
     if (!isPolarEnabled()) {
       const orgs = await db.select({ id: organization.id }).from(organization);
 
+      // Fetch the unlimited plan's aggregated retention from database
+      const unlimitedPlan = await db
+        .select({ aggregatedDataRetentionDays: planLimits.aggregatedDataRetentionDays })
+        .from(planLimits)
+        .where(eq(planLimits.plan, "unlimited"))
+        .limit(1);
+
+      // Use database value if available, otherwise fallback
+      const aggregatedRetentionDays =
+        unlimitedPlan[0]?.aggregatedDataRetentionDays ?? fallbackAggregatedRetentionDays;
+
       return orgs.map((org) => ({
         organizationId: org.id,
-        aggregatedRetentionDays: fallbackAggregatedRetentionDays,
+        aggregatedRetentionDays,
         plan: "unlimited",
       }));
     }
@@ -269,7 +291,7 @@ async function getOrganizationAggregatedRetentionSettings(
  * Supercheck values:
  * - Plus: 30 days
  * - Pro: 90 days
- * - Unlimited: 365 days
+ * - Unlimited: 180 days (6 months max for self-hosted)
  */
 async function getOrganizationJobRetentionSettings(
   fallbackJobRetentionDays: number
@@ -281,13 +303,24 @@ async function getOrganizationJobRetentionSettings(
   }>
 > {
   try {
-    // In self-hosted mode, use the global retention setting for all orgs
+    // In self-hosted mode, use the unlimited plan's retention from database
     if (!isPolarEnabled()) {
       const orgs = await db.select({ id: organization.id }).from(organization);
 
+      // Fetch the unlimited plan's job retention from database
+      const unlimitedPlan = await db
+        .select({ jobDataRetentionDays: planLimits.jobDataRetentionDays })
+        .from(planLimits)
+        .where(eq(planLimits.plan, "unlimited"))
+        .limit(1);
+
+      // Use database value if available, otherwise fallback
+      const jobRetentionDays =
+        unlimitedPlan[0]?.jobDataRetentionDays ?? fallbackJobRetentionDays;
+
       return orgs.map((org) => ({
         organizationId: org.id,
-        jobRetentionDays: fallbackJobRetentionDays,
+        jobRetentionDays,
         plan: "unlimited",
       }));
     }

@@ -108,9 +108,9 @@ const PLAN_LIMITS_SEED = [
     maxStatusPages: 999,
     customDomains: true,
     ssoEnabled: true,
-    dataRetentionDays: 365,
-    aggregatedDataRetentionDays: 730,
-    jobDataRetentionDays: 365, // Full year for self-hosted
+    dataRetentionDays: 30, // Raw monitor data: 30 days (high frequency, keep lean)
+    aggregatedDataRetentionDays: 180, // Aggregated metrics: 6 months max
+    jobDataRetentionDays: 180, // Job runs: 6 months max for self-hosted
   },
 ];
 
