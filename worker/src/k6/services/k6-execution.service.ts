@@ -772,7 +772,7 @@ export class K6ExecutionService {
             inlineScriptContent: scriptContent,
             inlineScriptFileName: scriptFileName,
             ensureDirectories: Array.from(directoriesToEnsure),
-            extractFromContainer: `${this.K6_OUTPUT_DIR}/.`, // Only extract K6 output dir (avoids node-compile-cache and other junk)
+            extractFromContainer: this.K6_OUTPUT_DIR, // Only extract K6 output dir (avoids node-compile-cache and other junk)
             extractToHost: extractToHost, // To OS temp directory
             timeoutMs: timeoutMs || this.testExecutionTimeoutMs,
             env: {

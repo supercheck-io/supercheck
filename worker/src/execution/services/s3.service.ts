@@ -236,10 +236,9 @@ export class S3Service implements OnModuleInit {
           this.configService.get('SELF_HOSTED')?.toLowerCase() === 'true';
 
         if (!isSelfHosted) {
-          this.logger.error(
-            `Bucket '${bucketName}' does not exist. Auto-creation is disabled in Cloud mode (SELF_HOSTED!=true). Please create the bucket manually.`,
-          );
-          return;
+          const message = `Bucket '${bucketName}' does not exist. Auto-creation is disabled in Cloud mode (SELF_HOSTED!=true). Please create the bucket manually.`;
+          this.logger.error(message);
+          throw new Error(message);
         }
 
         try {
