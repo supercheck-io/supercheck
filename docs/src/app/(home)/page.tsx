@@ -125,6 +125,10 @@ const transitionVariants = {
 export default function HomePage() {
   const [isDark, setIsDark] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+
+  // YouTube Video ID from the provided URL
+  const YOUTUBE_VIDEO_ID = "A9CzmekuvfI";
 
   useEffect(() => {
     setIsMounted(true);
@@ -307,7 +311,7 @@ export default function HomePage() {
 
               </div>
 
-              {/* Supercheck App Preview - Full Width */}
+              {/* YouTube Video Demo - Full Width */}
               <motion.div
                 initial={{
                   opacity: 0,
@@ -322,16 +326,69 @@ export default function HomePage() {
                   duration: 0.9,
                   delay: 1,
                 }}
-                className="mt-16 mx-auto max-w-7xl px-8"
+                className="mt-12 md:mt-16 mx-auto max-w-7xl px-2 sm:px-4 md:px-8"
               >
-                <Image
-                  src="/supercheck-screenshot.png"
-                  alt="Supercheck App - Automation & Monitoring Dashboard"
-                  width={1600}
-                  height={1005}
-                  className="w-full h-auto object-contain rounded-lg border border-gray-200 dark:border-gray-800 shadow-2xl"
-                  priority
-                />
+                <div className="relative w-full aspect-video rounded-lg md:rounded-xl border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden bg-gray-900">
+                  {isVideoPlaying ? (
+                    // YouTube iframe - loads only when play is clicked
+                    <iframe
+                      src={`https://www.youtube.com/embed/${YOUTUBE_VIDEO_ID}?autoplay=1&rel=0&modestbranding=1&playsinline=1`}
+                      title="Supercheck Platform Demo"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                      allowFullScreen
+                      className="absolute inset-0 w-full h-full"
+                    />
+                  ) : (
+                    // Thumbnail with play button - shown initially for fast loading
+                    <button
+                      onClick={() => setIsVideoPlaying(true)}
+                      className="group absolute inset-0 w-full h-full cursor-pointer focus:outline-none focus-visible:ring-4 focus-visible:ring-emerald-500/50"
+                      aria-label="Play demo video"
+                    >
+                      {/* Video thumbnail */}
+                      <Image
+                        src="/supercheck-screenshot.png"
+                        alt="Supercheck Platform Demo Video Thumbnail"
+                        fill
+                        className="object-cover"
+                        priority
+                      />
+
+                      {/* Gradient overlay for better play button visibility */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent opacity-70 group-hover:opacity-50 transition-opacity duration-300" />
+
+                      {/* YouTube play button - clean and professional */}
+                      <div className="absolute inset-0 flex items-center justify-center pb-8 md:pb-12">
+                        <motion.div
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.95 }}
+                          className="cursor-pointer"
+                        >
+                          {/* Custom YouTube-style play button SVG */}
+                          <svg
+                            viewBox="0 0 68 48"
+                            className="w-16 h-12 md:w-20 md:h-14 drop-shadow-lg transition-transform duration-200"
+                          >
+                            {/* Red rounded rectangle background */}
+                            <path
+                              d="M66.52,7.74c-0.78-2.93-2.49-5.41-5.42-6.19C55.79,.13,34,0,34,0S12.21,.13,6.9,1.55 C3.97,2.33,2.27,4.81,1.48,7.74C0.06,13.05,0,24,0,24s0.06,10.95,1.48,16.26c0.78,2.93,2.49,5.41,5.42,6.19 C12.21,47.87,34,48,34,48s21.79-0.13,27.1-1.55c2.93-0.78,4.64-3.26,5.42-6.19C67.94,34.95,68,24,68,24S67.94,13.05,66.52,7.74z"
+                              fill="#FF0000"
+                            />
+                            {/* White play triangle */}
+                            <path d="M 45,24 27,14 27,34" fill="#FFFFFF" />
+                          </svg>
+                        </motion.div>
+                      </div>
+
+                      {/* "Watch Demo" text - positioned below play button */}
+                      <div className="absolute bottom-3 md:bottom-6 left-0 right-0 flex justify-center">
+                        <span className="text-xs md:text-base font-medium text-white/90 bg-black/40 backdrop-blur-sm px-3 py-1.5 md:px-4 md:py-2 rounded-full">
+                          Watch Demo
+                        </span>
+                      </div>
+                    </button>
+                  )}
+                </div>
               </motion.div>
             </div>
           </div>
