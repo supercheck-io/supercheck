@@ -394,26 +394,32 @@ describe('Variable Resolver', () => {
       });
     });
 
-    describe('Secret Protection', () => {
-      it('should generate protected secret object', () => {
+    describe('Secret Handling', () => {
+      it('should return raw string value for secrets', () => {
         const result = generateVariableFunctions({}, { SECRET: 'value' });
         
-        expect(result).toContain('protectedSecret');
-        expect(result).toContain("toString: () => '[SECRET]'");
-        expect(result).toContain("toJSON: () => '[SECRET]'");
+        // Secrets now return raw string values for proper usage in template literals,
+        // HTTP headers, form fills, etc.
+        expect(result).toContain('function getSecret');
+        expect(result).toContain('return value');
+        // Should not contain the old protected object pattern
+        expect(result).not.toContain('protectedSecret');
       });
 
-      it('should prevent console logging of secrets', () => {
-        const result = generateVariableFunctions({}, { SECRET: 'value' });
+      it('should embed secret values in the generated function', () => {
+        const result = generateVariableFunctions({}, { API_KEY: 'my-secret-key' });
         
-        expect(result).toContain('[Symbol.for');
-        expect(result).toContain('[SECRET]');
+        expect(result).toContain('API_KEY');
+        expect(result).toContain('my-secret-key');
       });
 
-      it('should seal protected secret object', () => {
+      it('should support type conversion for secrets', () => {
         const result = generateVariableFunctions({}, { SECRET: 'value' });
         
-        expect(result).toContain('Object.seal(protectedSecret)');
+        expect(result).toContain("options.type");
+        expect(result).toContain("'number'");
+        expect(result).toContain("'boolean'");
+        expect(result).toContain("'string'");
       });
     });
 

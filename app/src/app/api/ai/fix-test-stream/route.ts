@@ -150,8 +150,11 @@ export async function POST(request: NextRequest) {
         errorClassifications =
           PlaywrightMarkdownParser.parseMarkdownForErrors(errorContext);
       } else {
+        // Try multiple sources for error information
         const htmlContent = await getHTMLReportContent(testId);
-        if (!htmlContent) {
+        const resultsJSON = await getPlaywrightResultsJSON(testId);
+
+        if (!htmlContent && !resultsJSON.found) {
           return NextResponse.json(
             {
               success: false,
@@ -164,27 +167,67 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        const parsedHtmlReport =
-          await HTMLReportParser.parseHTMLReport(htmlContent);
-        errorContext =
-          HTMLReportParser.convertErrorsToMarkdownFormat(parsedHtmlReport);
-        contextSource = "html";
+        // Parse HTML if available
+        let parsedHtmlReport = null;
+        if (htmlContent) {
+          parsedHtmlReport = await HTMLReportParser.parseHTMLReport(htmlContent);
+        }
 
-        errorClassifications = parsedHtmlReport.errors.map((error) => ({
-          message: error.message,
-          location: error.lineNumber
-            ? `line ${error.lineNumber}`
-            : "unknown location",
-          stackTrace: error.stackTrace,
-          classification: {
-            category: categorizeHTMLError(error.message),
-            confidence: 0.8,
-            aiFixable: true,
-            keywords: [error.testName],
-            patterns: [],
-            severity: "medium" as const,
-          },
-        }));
+        // Combine error sources for better coverage (especially for browser tests)
+        const htmlErrors = parsedHtmlReport?.errors || [];
+        const jsonErrors = resultsJSON.errors;
+
+        // Use results.json errors as primary source if they have more specific information
+        // This is crucial for browser tests where HTML might only have JavaScript-rendered content
+        if (jsonErrors.length > 0 && (htmlErrors.length === 0 || 
+            jsonErrors.some(e => e.stackTrace && e.stackTrace.length > 50))) {
+          // Prefer results.json as it has structured error data
+          errorContext = convertResultsJSONToMarkdown(jsonErrors);
+          if (parsedHtmlReport) {
+            // Append HTML context for additional information
+            const htmlContext = HTMLReportParser.convertErrorsToMarkdownFormat(parsedHtmlReport);
+            errorContext += "\n\n## Additional Context from HTML Report\n\n" + htmlContext;
+          }
+          contextSource = "html"; // Still mark as html for confidence calculation
+
+          errorClassifications = jsonErrors.map((error) => ({
+            message: error.message,
+            location: "from results.json",
+            stackTrace: error.stackTrace,
+            classification: {
+              category: categorizeHTMLError(error.message),
+              confidence: 0.85, // Higher confidence for structured JSON data
+              aiFixable: true,
+              keywords: [error.testName],
+              patterns: [],
+              severity: "medium" as const,
+            },
+          }));
+        } else if (parsedHtmlReport) {
+          // Fallback to HTML parsing
+          errorContext = HTMLReportParser.convertErrorsToMarkdownFormat(parsedHtmlReport);
+          contextSource = "html";
+
+          errorClassifications = parsedHtmlReport.errors.map((error) => ({
+            message: error.message,
+            location: error.lineNumber
+              ? `line ${error.lineNumber}`
+              : "unknown location",
+            stackTrace: error.stackTrace,
+            classification: {
+              category: categorizeHTMLError(error.message),
+              confidence: 0.8,
+              aiFixable: true,
+              keywords: [error.testName],
+              patterns: [],
+              severity: "medium" as const,
+            },
+          }));
+        } else {
+          // Last resort: we have results.json but no detailed errors
+          errorContext = "Test failed but no detailed error information could be extracted.";
+          errorClassifications = [];
+        }
       }
 
       // ALWAYS attempt fix - no threshold checks
@@ -454,6 +497,118 @@ async function getHTMLReportContent(testId: string): Promise<string | null> {
     console.error("Error fetching HTML report:", error);
     return null;
   }
+}
+
+// Helper function to get and parse Playwright results.json for error extraction
+async function getPlaywrightResultsJSON(testId: string): Promise<{
+  errors: Array<{ message: string; stackTrace?: string; testName: string }>;
+  found: boolean;
+}> {
+  try {
+    const testBucketName =
+      process.env.S3_TEST_BUCKET_NAME || "playwright-test-artifacts";
+    const resultsPath = `${testId}/report/results.json`;
+
+    const content = await getS3FileContent(testBucketName, resultsPath);
+    if (!content) {
+      return { errors: [], found: false };
+    }
+
+    const results = JSON.parse(content);
+    const errors: Array<{ message: string; stackTrace?: string; testName: string }> = [];
+
+    // Recursively extract errors from Playwright results.json structure
+    const extractErrors = (node: unknown, parentTitle: string = "") => {
+      if (!node || typeof node !== "object") return;
+
+      const obj = node as Record<string, unknown>;
+
+      // Handle test results array
+      if (Array.isArray(obj.results)) {
+        for (const result of obj.results) {
+          if (result && typeof result === "object") {
+            const r = result as Record<string, unknown>;
+            // Check for failed status
+            if (r.status === "failed" || r.status === "timedOut") {
+              // Extract error from attachments or error field
+              if (r.error && typeof r.error === "object") {
+                const err = r.error as Record<string, unknown>;
+                errors.push({
+                  message: String(err.message || "Test failed"),
+                  stackTrace: err.stack ? String(err.stack) : undefined,
+                  testName: parentTitle || "Unknown test",
+                });
+              }
+              // Also check for errors array
+              if (Array.isArray(r.errors)) {
+                for (const e of r.errors) {
+                  if (e && typeof e === "object") {
+                    const err = e as Record<string, unknown>;
+                    errors.push({
+                      message: String(err.message || "Test error"),
+                      stackTrace: err.stack ? String(err.stack) : undefined,
+                      testName: parentTitle || "Unknown test",
+                    });
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Build test title path
+      const title = obj.title ? String(obj.title) : "";
+      const fullTitle = parentTitle ? `${parentTitle} > ${title}` : title;
+
+      // Recurse into nested structures
+      if (Array.isArray(obj.suites)) {
+        for (const suite of obj.suites) {
+          extractErrors(suite, fullTitle);
+        }
+      }
+      if (Array.isArray(obj.specs)) {
+        for (const spec of obj.specs) {
+          extractErrors(spec, fullTitle);
+        }
+      }
+      if (Array.isArray(obj.tests)) {
+        for (const test of obj.tests) {
+          extractErrors(test, fullTitle);
+        }
+      }
+    };
+
+    extractErrors(results);
+
+    return { errors, found: true };
+  } catch (error) {
+    console.error("Error fetching/parsing results.json:", error);
+    return { errors: [], found: false };
+  }
+}
+
+// Helper function to convert results.json errors to markdown format
+function convertResultsJSONToMarkdown(
+  errors: Array<{ message: string; stackTrace?: string; testName: string }>
+): string {
+  if (errors.length === 0) {
+    return "";
+  }
+
+  let markdown = "# Test Failures from results.json\n\n";
+  markdown += `**Total Errors**: ${errors.length}\n\n`;
+
+  errors.forEach((error, index) => {
+    markdown += `## Error ${index + 1}: ${error.testName}\n\n`;
+    markdown += `**Message**: ${error.message}\n\n`;
+    if (error.stackTrace) {
+      markdown += `**Stack Trace**:\n\`\`\`\n${error.stackTrace}\n\`\`\`\n\n`;
+    }
+    markdown += "---\n\n";
+  });
+
+  return markdown;
 }
 
 // Helper function to calculate confidence based on HTML error quality
