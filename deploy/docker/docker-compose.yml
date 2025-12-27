@@ -151,17 +151,9 @@ x-common-env: &common-env # Database Configuration
   AI_MAX_RETRIES: ${AI_MAX_RETRIES:-2}
   AI_TEMPERATURE: ${AI_TEMPERATURE:-0.1}
 
-  # Self-Hosted Mode (set to 'true' for unlimited features without Polar billing)
+  # Self-Hosted Mode (set to 'true' for unlimited features)
   # Client-side code fetches this from /api/config/hosting-mode at runtime
   SELF_HOSTED: ${SELF_HOSTED:-true}
-
-  # Polar Billing Configuration (only for cloud deployments)
-  # Set SELF_HOSTED=false to enable Polar billing
-  POLAR_ACCESS_TOKEN: ${POLAR_ACCESS_TOKEN:-}
-  POLAR_SERVER: ${POLAR_SERVER:-production}
-  POLAR_WEBHOOK_SECRET: ${POLAR_WEBHOOK_SECRET:-}
-  POLAR_PLUS_PRODUCT_ID: ${POLAR_PLUS_PRODUCT_ID:-}
-  POLAR_PRO_PRODUCT_ID: ${POLAR_PRO_PRODUCT_ID:-}
 
   # OAuth Configuration (optional - enable social login)
   # Social auth buttons are automatically shown when client ID and secret are configured
@@ -181,15 +173,6 @@ x-common-env: &common-env # Database Configuration
   # Alerts: High depth (>70%), Long wait (>15m), High failure (>5%), Stall detection
   QUEUE_ALERT_SLACK_WEBHOOK_URL: ${QUEUE_ALERT_SLACK_WEBHOOK_URL:-}
   QUEUE_ALERT_WEBHOOK_URL: ${QUEUE_ALERT_WEBHOOK_URL:-} # JSON payload { type: 'queue_alert', alert: ... }
-
-  # Threshold Configuration
-  # QUEUE_DEPTH_WARNING_THRESHOLD: ${QUEUE_DEPTH_WARNING_THRESHOLD:-70}
-  # QUEUE_DEPTH_CRITICAL_THRESHOLD: ${QUEUE_DEPTH_CRITICAL_THRESHOLD:-90}
-  # MAX_QUEUE_DEPTH: ${MAX_QUEUE_DEPTH:-10000}
-  # QUEUE_WAIT_TIME_WARNING_MS: ${QUEUE_WAIT_TIME_WARNING_MS:-900000}
-  # QUEUE_WAIT_TIME_CRITICAL_MS: ${QUEUE_WAIT_TIME_CRITICAL_MS:-2700000}
-  # QUEUE_FAILURE_RATE_WARNING: ${QUEUE_FAILURE_RATE_WARNING:-5}
-  # QUEUE_FAILURE_RATE_CRITICAL: ${QUEUE_FAILURE_RATE_CRITICAL:-15}
 
 services:
   # App (Next.js Frontend) - Handles migrations internally

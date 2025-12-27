@@ -19,6 +19,9 @@ import { usageTracker } from "@/lib/services/usage-tracker";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
 
+// Minimum stack trace length to consider as useful for error analysis
+const MINIMUM_USEFUL_STACKTRACE_LENGTH = 50;
+
 // S3 Client configuration
 const s3Client = new S3Client({
   region: process.env.AWS_REGION || "us-east-1",
@@ -180,7 +183,7 @@ export async function POST(request: NextRequest) {
         // Use results.json errors as primary source if they have more specific information
         // This is crucial for browser tests where HTML might only have JavaScript-rendered content
         if (jsonErrors.length > 0 && (htmlErrors.length === 0 || 
-            jsonErrors.some(e => e.stackTrace && e.stackTrace.length > 50))) {
+            jsonErrors.some(e => e.stackTrace && e.stackTrace.length > MINIMUM_USEFUL_STACKTRACE_LENGTH))) {
           // Prefer results.json as it has structured error data
           errorContext = convertResultsJSONToMarkdown(jsonErrors);
           if (parsedHtmlReport) {
@@ -514,7 +517,14 @@ async function getPlaywrightResultsJSON(testId: string): Promise<{
       return { errors: [], found: false };
     }
 
-    const results = JSON.parse(content);
+    let results: unknown;
+    try {
+      results = JSON.parse(content);
+    } catch (parseError) {
+      console.error("Malformed JSON in Playwright results.json:", parseError);
+      return { errors: [], found: false };
+    }
+
     const errors: Array<{ message: string; stackTrace?: string; testName: string }> = [];
 
     // Recursively extract errors from Playwright results.json structure
