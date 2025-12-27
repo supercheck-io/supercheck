@@ -187,34 +187,7 @@ function getSecret(key, options = {}) {
     return options.default !== undefined ? options.default : '';
   }
   
-  // Create a protected secret object that prevents console logging
-  const protectedSecret = {
-    valueOf: () => value,
-    toString: () => '[SECRET]',
-    toJSON: () => '[SECRET]',
-    [Symbol.toPrimitive]: (hint) => {
-      // Only return actual value for non-string coercion (numbers, boolean, etc.)
-      if (hint === 'string') return '[SECRET]';
-      return value;
-    },
-    // Prevent inspection and enumeration
-    [Symbol.for('nodejs.util.inspect.custom')]: () => '[SECRET]',
-    // Block common methods that might expose the value
-    substring: () => '[SECRET]',
-    slice: () => '[SECRET]',
-    charAt: () => '[SECRET]',
-    charCodeAt: () => NaN,
-    indexOf: () => -1,
-    split: () => ['[SECRET]'],
-    replace: () => '[SECRET]',
-    match: () => null,
-    search: () => -1
-  };
-  
-  // Make the object sealed to prevent modification
-  Object.seal(protectedSecret);
-  
-  // Handle type conversion with protection
+  // Handle type conversion
   if (options.type) {
     switch (options.type) {
       case 'number':
@@ -226,13 +199,16 @@ function getSecret(key, options = {}) {
       case 'boolean':
         return value.toLowerCase() === 'true' || value === '1';
       case 'string':
-        return value;
       default:
-        return protectedSecret;
+        return value;
     }
   }
   
-  return protectedSecret;
+  // Return the actual string value directly
+  // This allows secrets to work with template literals, HTTP headers, form fills, etc.
+  // Security note: secrets are already embedded in the script at execution time,
+  // so returning the raw value doesn't introduce additional exposure
+  return value;
 }
 `;
 }
