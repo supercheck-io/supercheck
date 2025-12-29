@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useSyncExternalStore } from "react";
 import {
   Card,
   CardDescription,
@@ -60,6 +60,8 @@ import {
 } from "@/lib/rbac/client-permissions";
 import { getStatusPageUrl, getBaseDomain } from "@/lib/domain-utils";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import { useStatusPages } from "@/hooks/use-status-pages";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 
 /**
  * Status page type for display purposes.
@@ -78,9 +80,17 @@ type StatusPage = {
   [key: string]: unknown; // Allow extra fields from DB
 };
 
-export default function StatusPagesList({ initialStatusPages = [] }: { initialStatusPages?: StatusPage[] }) {
-  const [statusPages, setStatusPages] = useState<StatusPage[]>(initialStatusPages);
-  // No loading state needed - data is passed from server component
+export default function StatusPagesList() {
+  // Use React Query hook for status pages data (cached, handles loading/error)
+  const { statusPages: rawStatusPages, isLoading, invalidate } = useStatusPages();
+
+  // Track mount state to prevent hydration mismatch
+  const isMounted = useSyncExternalStore(
+    () => () => { },
+    () => true,
+    () => false
+  );
+
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deletingPage, setDeletingPage] = useState<StatusPage | null>(null);
@@ -92,12 +102,12 @@ export default function StatusPagesList({ initialStatusPages = [] }: { initialSt
   const canCreate = canCreateStatusPages(normalizedRole);
   const canDelete = canDeleteStatusPages(normalizedRole);
 
-  // Sync initialData if it changes (though usually handled by key/remount)
-  useEffect(() => {
-    if (initialStatusPages) {
-      setStatusPages(initialStatusPages);
-    }
-  }, [initialStatusPages]);
+  // Transform API response to local StatusPage type
+  const statusPages: StatusPage[] = (rawStatusPages || []).map((page) => ({
+    ...page,
+    createdAt: page.createdAt ? new Date(page.createdAt) : null,
+    updatedAt: page.updatedAt ? new Date(page.updatedAt) : null,
+  }));
 
   useEffect(() => {
     const create = searchParams.get("create");
@@ -106,8 +116,9 @@ export default function StatusPagesList({ initialStatusPages = [] }: { initialSt
     }
   }, [searchParams, canCreate]);
 
-  const handleCreateSuccess = (newPage: StatusPage) => {
-    setStatusPages((prev) => [newPage, ...prev]);
+  const handleCreateSuccess = () => {
+    // Invalidate React Query cache to refresh the list
+    invalidate();
     setIsCreateDialogOpen(false);
     toast.success("Status page created successfully");
   };
@@ -124,7 +135,8 @@ export default function StatusPagesList({ initialStatusPages = [] }: { initialSt
       const result = await deleteStatusPage(deletingPage.id);
 
       if (result.success) {
-        setStatusPages((prev) => prev.filter((p) => p.id !== deletingPage.id));
+        // Invalidate React Query cache to refresh the list
+        invalidate();
         toast.success("Status page deleted successfully");
       } else {
         toast.error("Failed to delete status page", {
@@ -190,7 +202,14 @@ export default function StatusPagesList({ initialStatusPages = [] }: { initialSt
     }
   };
 
-
+  // Show loading state while data is being fetched
+  if (!isMounted || isLoading) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <SuperCheckLoading size="lg" message="Loading status pages..." />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
