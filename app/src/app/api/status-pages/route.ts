@@ -46,29 +46,15 @@ export async function GET() {
       .limit(DEFAULT_LIMIT);
 
     // Map the database results to the expected format
+    // Use spread operator with explicit overrides for date fields that need transformation
     const formattedPages = pages.map((page) => ({
-      id: page.id,
-      name: page.name,
-      subdomain: page.subdomain,
-      status: page.status,
-      pageDescription: page.pageDescription,
-      headline: page.headline,
-      supportUrl: page.supportUrl,
-      timezone: page.timezone,
-      allowPageSubscribers: page.allowPageSubscribers,
-      customDomain: page.customDomain,
-      customDomainVerified: page.customDomainVerified,
-      faviconLogo: page.faviconLogo,
-      transactionalLogo: page.transactionalLogo,
-      heroCover: page.heroCover,
+      ...page,
       createdAt: page.createdAt
         ? new Date(page.createdAt).toISOString()
         : null,
       updatedAt: page.updatedAt
         ? new Date(page.updatedAt).toISOString()
         : null,
-      projectId: page.projectId,
-      organizationId: page.organizationId,
     }));
 
     // Return standardized response format for React Query hooks

@@ -1,13 +1,15 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useSyncExternalStore, useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusPageDetail } from "@/components/status-pages/status-page-detail";
 import { useStatusPageDetail } from "@/hooks/use-status-pages";
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { AlertCircle, ArrowLeft } from "lucide-react";
 
 export default function StatusPagePage() {
   const params = useParams();
@@ -44,11 +46,33 @@ export default function StatusPagePage() {
     );
   }
 
-  // Handle case where page doesn't exist
+  // Handle case where page doesn't exist after loading completed
+  // Note: If error is set, useEffect above handles the redirect, so we show loading
   if (!statusPage) {
+    // If there was an error, useEffect will redirect, show loading during redirect
+    if (error) {
+      return (
+        <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">
+          <SuperCheckLoading size="lg" message="Redirecting..." />
+        </div>
+      );
+    }
+    // If no error and no data, show not found (edge case - shouldn't normally happen)
     return (
       <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">
-        <SuperCheckLoading size="lg" message="Loading status page..." />
+        <Card className="max-w-md w-full mx-4">
+          <CardContent className="py-8 text-center">
+            <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Status page not found</h2>
+            <p className="text-sm text-muted-foreground mb-6">
+              The status page you&apos;re looking for doesn&apos;t exist or may have been deleted.
+            </p>
+            <Button onClick={() => router.push("/status-pages")} variant="outline">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Status Pages
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }

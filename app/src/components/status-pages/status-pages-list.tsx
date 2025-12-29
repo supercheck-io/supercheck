@@ -116,6 +116,12 @@ export default function StatusPagesList() {
     }
   }, [searchParams, canCreate]);
 
+  /**
+   * Handle successful status page creation.
+   * Note: We use server actions for mutations (create/delete) while reads use React Query.
+   * This is intentional - server actions provide better error handling and revalidation,
+   * while React Query provides caching for reads. After mutation, we invalidate the cache.
+   */
   const handleCreateSuccess = () => {
     // Invalidate React Query cache to refresh the list
     invalidate();
