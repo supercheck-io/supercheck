@@ -180,7 +180,7 @@ x-common-env: &common-env # Database Configuration
 services:
   # Traefik Reverse Proxy with HTTPS
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.6.6
     environment:
       # Traefik Configuration using environment variables
       - TRAEFIK_API_DASHBOARD=false
