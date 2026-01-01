@@ -454,7 +454,7 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
               </p>
               <div className="flex gap-2 mt-5">
                 <Input
-                  placeholder="status.yourcompany.com"
+                  placeholder={`status.${statusPageDomain}`}
                   {...register("customDomain")}
                   disabled={!canUpdate}
                   className="font-mono text-sm"
@@ -526,7 +526,7 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                         <code className="bg-muted px-1 py-0.5 rounded text-sm">
                           status
                         </code>{" "}
-                        (for status.yourcompany.com)
+                        (for status.{statusPageDomain})
                       </div>
                       <div>
                         • Points to:{" "}
