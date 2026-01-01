@@ -60,12 +60,16 @@ export async function verifyStatusPageDomain(statusPageId: string) {
     try {
       const cnames = await resolveCname(statusPage.customDomain);
 
-      // Check if any of the CNAMEs point to supercheck.io (or the configured app domain)
-      // In a real scenario, this might be a specific CNAME target like "cname.supercheck.io"
+      // Get valid CNAME targets from environment
+      // STATUS_PAGE_DOMAIN is the base domain for status pages
+      // Self-hosted users should set this to their own domain
+      const baseDomain = process.env.STATUS_PAGE_DOMAIN || "supercheck.io";
+
+      // Accept the base domain and common CNAME subdomains
       const validTargets = [
-        "supercheck.io",
-        "cname.supercheck.io",
-        "ingress.supercheck.io",
+        baseDomain, // e.g., "supercheck.io" or "yourdomain.com"
+        `cname.${baseDomain}`, // e.g., "cname.supercheck.io"
+        `ingress.${baseDomain}`, // e.g., "ingress.supercheck.io"
       ];
       const isValid = cnames.some((cname) =>
         validTargets.some((target) => cname.includes(target))
@@ -109,7 +113,7 @@ export async function verifyStatusPageDomain(statusPageId: string) {
       } else {
         return {
           success: false,
-          message: `CNAME record found but points to ${cnames.join(", ")}. It should point to supercheck.io`,
+          message: `CNAME record found but points to ${cnames.join(", ")}. It should point to ${baseDomain}`,
         };
       }
     } catch (error) {

@@ -207,7 +207,7 @@ services:
 
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.2.1-canary.12
+    image: ghcr.io/supercheck-io/supercheck/app:1.2.1-canary.23
     expose:
       - "3000"
     environment:
@@ -238,8 +238,8 @@ services:
       - "traefik.http.routers.app.service=app"
 
       # Status pages — wildcard subdomain (extracts base domain from APP_DOMAIN)
-      # Note: For status pages, configure STATUS_PAGE_BASE_DOMAIN separately if needed
-      - "traefik.http.routers.status-pages.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_BASE_DOMAIN:-supercheck.io}`)"
+      # Note: For status pages, configure STATUS_PAGE_DOMAIN in environment
+      - "traefik.http.routers.status-pages.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN:-supercheck.io}`)"
       - "traefik.http.routers.status-pages.priority=50"
       - "traefik.http.routers.status-pages.entrypoints=websecure"
       - "traefik.http.routers.status-pages.tls=true"
@@ -252,7 +252,7 @@ services:
       - "traefik.http.routers.app-http.service=app"
 
       # HTTP → HTTPS redirect for status pages
-      - "traefik.http.routers.status-pages-http.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_BASE_DOMAIN:-supercheck.io}`)"
+      - "traefik.http.routers.status-pages-http.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN:-supercheck.io}`)"
       - "traefik.http.routers.status-pages-http.entrypoints=web"
       - "traefik.http.routers.status-pages-http.middlewares=app-https-redirect"
       - "traefik.http.routers.status-pages-http.service=app"
@@ -278,7 +278,7 @@ services:
   # Tests run in isolated Docker containers (Playwright/K6), not inside worker
   # Playwright Docker best practices: https://playwright.dev/docs/docker
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.2.1-canary.12
+    image: ghcr.io/supercheck-io/supercheck/worker:1.2.1-canary.23
     # init: Use tini as PID 1 to avoid zombie processes (Playwright recommendation)
     init: true
     environment:

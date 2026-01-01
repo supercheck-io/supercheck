@@ -36,7 +36,7 @@ x-common-env: &common-env # Database Configuration
   BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
 
   # Status Page Domain Configuration
-  STATUS_PAGE_BASE_DOMAIN: ${STATUS_PAGE_BASE_DOMAIN:-localhost}
+  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-localhost}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
   # Scaling Configuration
@@ -177,7 +177,7 @@ x-common-env: &common-env # Database Configuration
 services:
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.2.1-canary.12
+    image: ghcr.io/supercheck-io/supercheck/app:1.2.1-canary.23
     ports:
       - "3000:3000"
     environment:
@@ -212,7 +212,7 @@ services:
   # Tests run in isolated Docker containers (Playwright/K6), not inside worker
   # Playwright Docker best practices: https://playwright.dev/docs/docker
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.2.1-canary.12
+    image: ghcr.io/supercheck-io/supercheck/worker:1.2.1-canary.23
     # init: Use tini as PID 1 to avoid zombie processes (Playwright recommendation)
     init: true
     environment:

@@ -7,7 +7,7 @@ icon: Tally4
 Create public status pages to communicate system health, incidents, and scheduled maintenance to your users.
 
 <Callout type="info">
-Status pages are hosted on unique subdomains (e.g., `[uuid].supercheck.io`) and are publicly accessible without authentication.
+Status pages are hosted on unique subdomains and are publicly accessible without authentication.
 </Callout>
 
 ## Public Status Page
@@ -208,14 +208,6 @@ Add updates to keep users informed:
 4. Update status if changed
 5. Choose whether to notify subscribers
 
-### Incident Templates
-
-Create reusable templates for common incident types:
-
-1. Go to **Settings** tab
-2. Create templates with pre-filled title, message, and status
-3. Use templates when creating new incidents for faster response
-
 ### Scheduled Maintenance
 
 Communicate planned maintenance in advance:
@@ -223,19 +215,9 @@ Communicate planned maintenance in advance:
 1. Create incident with **Scheduled** status
 2. Set start and end times
 3. Enable automatic status transitions
-4. Configure reminder notifications (3, 6, 12, 24 hours before)
+4. Configure reminder notifications
 
 The system automatically updates status during the maintenance window.
-
-### Postmortems
-
-After resolving an incident, create a postmortem to document:
-- Root cause analysis
-- Timeline of events
-- Remediation steps taken
-- Preventive measures
-
-Postmortems can be published to subscribers for transparency.
 
 ---
 
@@ -284,23 +266,106 @@ Configure branding and notification settings.
 
 ### Custom Domains
 
-Use your own domain for the status page:
+Use your own domain (e.g., `status.yourcompany.com`) instead of the default subdomain.
 
-1. Add CNAME record: `status.yourdomain.com` → `supercheck.io`
-2. Configure custom domain in Settings
-3. SSL certificate is automatically provisioned
+#### How Custom Domains Work
+
+```mermaid
+flowchart LR
+    A[Add CNAME] --> B[Configure in Settings] --> C[Verify DNS] --> D[✅ Active]
+    style D fill:#10b981,stroke:#047857,color:#fff
+```
+
+#### Step-by-Step Setup
+
+<Steps>
+  <Step>
+    **Add DNS Record**
+    
+    Log in to your DNS provider (e.g., Cloudflare, GoDaddy, Namecheap) and add a CNAME record:
+
+    | Type | Name | Target |
+    |------|------|--------|
+    | CNAME | `status` | Your Supercheck domain* |
+
+    <Callout type="info">
+    **CNAME Target:**
+    - **Cloud users:** Point to `supercheck.io`
+    - **Self-hosted:** Point to your `STATUS_PAGE_DOMAIN` value
+    </Callout>
+  </Step>
+  <Step>
+    **Configure in Supercheck**
+    
+    1. Go to your status page → **Settings** tab
+    2. Enter your custom domain (e.g., `status.yourcompany.com`)
+    3. Click **Save**
+  </Step>
+  <Step>
+    **Verify DNS**
+    
+    1. Wait 5-15 minutes for DNS propagation
+    2. Click **Verify DNS** button
+    3. Once verified, your custom domain is active
+  </Step>
+  <Step>
+    **SSL Certificate**
+    
+    An SSL certificate is automatically provisioned via Let's Encrypt. Your custom domain will serve HTTPS traffic within minutes of verification.
+  </Step>
+</Steps>
+
+#### DNS Verification
+
+Supercheck verifies your domain by checking that your CNAME record points to the correct target. When you click **Verify DNS**, it resolves your domain and confirms it points to your Supercheck domain.
+
+#### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| "CNAME not found" | Wait 15-30 minutes for DNS propagation |
+| "Points to wrong target" | Verify CNAME target matches your Supercheck domain |
+| "Domain already in use" | The domain is configured on another status page |
+| SSL certificate pending | Wait a few minutes after verification |
+
+<Callout type="tip">
+**Test DNS Propagation:** Use [dnschecker.org](https://dnschecker.org) to verify your CNAME record has propagated globally.
+</Callout>
 
 ---
 
 ## Best Practices
 
-**Incident Communication:**
-- Be transparent — share what you know
-- Update regularly — even if no progress
-- Use clear language — avoid technical jargon
-- Set expectations — provide estimated resolution times
+### Incident Communication
 
-**Component Organization:**
-- Use clear, user-friendly names
-- Keep the list focused (5-15 components)
-- Add descriptions for context
+```mermaid
+flowchart LR
+    A[Detect Issue] --> B[Create Incident] --> C[Post Updates] --> D[Resolve]
+    style A fill:#ef4444,stroke:#b91c1c,color:#fff
+    style D fill:#10b981,stroke:#047857,color:#fff
+```
+
+**Tips for effective incident communication:**
+- **Be transparent** — Share what you know, even if incomplete
+- **Update regularly** — Post updates every 30-60 minutes during active incidents
+- **Use clear language** — Avoid technical jargon your users won't understand
+- **Set expectations** — Provide estimated resolution times when possible
+
+### Organizing Components
+
+- **Use clear names** — "Website" and "API" are better than internal service names
+- **Keep it focused** — 5-15 components is ideal for most status pages
+- **Add descriptions** — Help users understand what each component does
+
+### Managing Subscribers
+
+- **Enable all channels** — Let users choose email, Slack, or webhooks
+- **Enable RSS** — Technical users often prefer RSS feeds
+- **Review regularly** — Check the Subscribers tab to see engagement
+- **One-click unsubscribe** — Users can unsubscribe anytime via email link
+
+### Custom Domain Tips
+
+- **Use a subdomain** — `status.yourcompany.com` is the industry standard
+- **Test before sharing** — Verify your custom domain works before announcing it
+- **Allow DNS time** — Wait 15-30 minutes for DNS changes to propagate
