@@ -381,7 +381,7 @@ export function AIDiffViewer({
             height="500px"
             language="javascript"
             original={originalScript}
-            modified={currentFixedScript}
+            modified={isStreaming ? streamingContent : currentFixedScript}
             onMount={handleEditorDidMount}
             options={{
               fontSize: 12,

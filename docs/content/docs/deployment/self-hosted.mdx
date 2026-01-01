@@ -339,21 +339,125 @@ SMTP_FROM_EMAIL=notifications@yourdomain.com
 
 Enable AI-powered features: AI Create and AI Fix for Playwright and k6 tests, plus AI Analyze for k6 performance run insights.
 
-```bash
-# ─────────────────────────────────────────────────────────────────
-# AI Features (optional)
-# Enables AI Create, AI Fix, and AI Analyze
-# ─────────────────────────────────────────────────────────────────
-OPENAI_API_KEY=sk-your-openai-api-key
-AI_MODEL=gpt-4o-mini
-```
+Supercheck supports multiple AI providers. Choose one based on your requirements:
 
-<Callout type="info">
-Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys).
-</Callout>
+<Tabs items={['OpenAI (Default)', 'Azure OpenAI', 'Anthropic', 'Google Gemini', 'Google Vertex AI', 'AWS Bedrock', 'OpenRouter']}>
+  <Tab value="OpenAI (Default)">
+    ```bash
+    # ─────────────────────────────────────────────────────────────────
+    # OpenAI Configuration (Recommended for quick setup)
+    # ─────────────────────────────────────────────────────────────────
+    AI_PROVIDER=openai
+    AI_MODEL=gpt-4o-mini
+    OPENAI_API_KEY=sk-your-openai-api-key
+    ```
+    
+    Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys).
+  </Tab>
+  <Tab value="Azure OpenAI">
+    ```bash
+    # ─────────────────────────────────────────────────────────────────
+    # Azure OpenAI Configuration (Enterprise compliance)
+    # ─────────────────────────────────────────────────────────────────
+    AI_PROVIDER=azure
+    AI_MODEL=gpt-4o-mini
+    AZURE_RESOURCE_NAME=your-resource-name
+    AZURE_API_KEY=your-azure-api-key
+    AZURE_OPENAI_DEPLOYMENT=your-deployment-name
+    AZURE_API_VERSION=2024-06-01
+    ```
+    
+    <Callout type="tip">
+    **Production**: Use Managed Identity with Microsoft Entra ID instead of API keys for enhanced security.
+    </Callout>
+  </Tab>
+  <Tab value="Anthropic">
+    ```bash
+    # ─────────────────────────────────────────────────────────────────
+    # Anthropic (Claude) Configuration
+    # ─────────────────────────────────────────────────────────────────
+    AI_PROVIDER=anthropic
+    AI_MODEL=claude-3-5-haiku-20241022
+    ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
+    ```
+    
+    Get your API key from [Anthropic Console](https://console.anthropic.com/).
+  </Tab>
+  <Tab value="Google Gemini">
+    ```bash
+    # ─────────────────────────────────────────────────────────────────
+    # Google Gemini Configuration (Recommended - simple API key)
+    # ─────────────────────────────────────────────────────────────────
+    AI_PROVIDER=gemini
+    AI_MODEL=gemini-2.0-flash
+    GOOGLE_GENERATIVE_AI_API_KEY=your-google-ai-api-key
+    ```
+    
+    Get your API key from [Google AI Studio](https://aistudio.google.com/apikey).
 
-<Callout type="tip">
-**Recommended Models:** `gpt-4o-mini` (default), `gpt-5-mini`, `gpt-5.2`
+    <Callout type="tip">
+    **Recommended for most users**: Simple API key setup, works just like OpenAI.
+    </Callout>
+  </Tab>
+  <Tab value="Google Vertex AI">
+    ```bash
+    # ─────────────────────────────────────────────────────────────────
+    # Google Vertex AI Configuration (GCP Enterprise)
+    # ─────────────────────────────────────────────────────────────────
+    AI_PROVIDER=google-vertex
+    AI_MODEL=gemini-2.0-flash
+    GOOGLE_VERTEX_PROJECT=your-gcp-project-id
+    GOOGLE_VERTEX_LOCATION=us-central1
+    ```
+    
+    Setup in [Google Cloud Console](https://console.cloud.google.com/vertex-ai).
+
+    <Callout type="tip">
+    **Enterprise on GCP**: Use service accounts with ADC for authentication.
+    </Callout>
+  </Tab>
+  <Tab value="AWS Bedrock">
+    ```bash
+    # ─────────────────────────────────────────────────────────────────
+    # AWS Bedrock Configuration
+    # Uses BEDROCK_* prefix to avoid conflicts with S3 credentials
+    # ─────────────────────────────────────────────────────────────────
+    AI_PROVIDER=bedrock
+    AI_MODEL=anthropic.claude-3-5-haiku-20241022-v1:0
+    BEDROCK_AWS_REGION=us-east-1
+    # For non-AWS environments only:
+    # BEDROCK_AWS_ACCESS_KEY_ID=your-access-key
+    # BEDROCK_AWS_SECRET_ACCESS_KEY=your-secret-key
+    ```
+    
+    <Callout type="tip">
+    **Production on AWS**: Use IAM roles with temporary credentials. The SDK automatically uses instance credentials.
+    </Callout>
+  </Tab>
+  <Tab value="OpenRouter">
+    ```bash
+    # ─────────────────────────────────────────────────────────────────
+    # OpenRouter Configuration (unified gateway to 400+ models)
+    # ─────────────────────────────────────────────────────────────────
+    AI_PROVIDER=openrouter
+    AI_MODEL=anthropic/claude-3.5-haiku
+    OPENROUTER_API_KEY=sk-or-your-openrouter-key
+    ```
+    
+    Get your API key from [OpenRouter](https://openrouter.ai/keys).
+
+    <Callout type="tip">
+    **Best for developers**: Access 400+ models with one API key, automatic failover, and cost optimization.
+    </Callout>
+  </Tab>
+</Tabs>
+
+<Callout type="warning">
+**Security Best Practices:**
+- Never commit API keys to version control
+- Use different keys for dev, staging, and production environments
+- Rotate API keys every 90 days
+- Use secrets managers (AWS Secrets Manager, Azure Key Vault, GCP Secret Manager) in production
 </Callout>
 
 ---

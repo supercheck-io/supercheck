@@ -138,13 +138,74 @@ x-common-env: &common-env # Database Configuration
   SMTP_SECURE: ${SMTP_SECURE:-false}
   SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-notification@example.com}
 
-  # AI Fix Feature Configuration
+  # ==========================================================================
+  # AI Features Configuration (AI Fix, AI Create, AI Analyze)
+  # ==========================================================================
+  # Supercheck supports multiple AI providers. Choose ONE provider and configure
+  # its credentials below. The AI_PROVIDER setting determines which provider  # --------------------------------------------------------------------------
+  # AI Model Configuration
+  # Set AI_PROVIDER to one of: openai, azure, anthropic, gemini, google-vertex, bedrock, openrouter
+  # --------------------------------------------------------------------------
   AI_PROVIDER: ${AI_PROVIDER:-openai}
   AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
-  OPENAI_API_KEY: ${OPENAI_API_KEY:-your-openai-api-key-here}
   AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-90000}
   AI_MAX_RETRIES: ${AI_MAX_RETRIES:-2}
   AI_TEMPERATURE: ${AI_TEMPERATURE:-0.1}
+
+  # --------------------------------------------------------------------------
+  # Provider A: OpenAI (default)
+  # Get your API key from: https://platform.openai.com/api-keys
+  # --------------------------------------------------------------------------
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+
+  # --------------------------------------------------------------------------
+  # Provider B: Azure OpenAI
+  # Setup: https://portal.azure.com → Create Azure OpenAI resource
+  # Get keys from: Azure Portal → Your Resource → Keys and Endpoint
+  # --------------------------------------------------------------------------
+  AZURE_RESOURCE_NAME: ${AZURE_RESOURCE_NAME:-}
+  AZURE_API_KEY: ${AZURE_API_KEY:-}
+  AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-}
+  AZURE_API_VERSION: ${AZURE_API_VERSION:-2024-06-01}
+  AZURE_USE_MANAGED_IDENTITY: ${AZURE_USE_MANAGED_IDENTITY:-false}
+
+  # --------------------------------------------------------------------------
+  # Provider C: Anthropic Claude
+  # Get your API key from: https://console.anthropic.com/settings/keys
+  # --------------------------------------------------------------------------
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+
+  # --------------------------------------------------------------------------
+  # Provider D: Google Gemini (AI Studio - simple API key, recommended)
+  # Get your API key from: https://aistudio.google.com/apikey
+  # --------------------------------------------------------------------------
+  GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
+
+  # --------------------------------------------------------------------------
+  # Provider E: Google Vertex AI (GCP enterprise - requires GCP project)
+  # Setup: https://console.cloud.google.com/vertex-ai
+  # Requires: GCP project + ADC authentication
+  # --------------------------------------------------------------------------
+  GOOGLE_VERTEX_PROJECT: ${GOOGLE_VERTEX_PROJECT:-}
+  GOOGLE_VERTEX_LOCATION: ${GOOGLE_VERTEX_LOCATION:-us-central1}
+
+  # --------------------------------------------------------------------------
+  # Provider F: AWS Bedrock
+  # Setup: https://console.aws.amazon.com/bedrock
+  # Uses BEDROCK_* prefix to avoid conflicts with S3 credentials
+  # On AWS infrastructure: leave credentials empty to use IAM role
+  # --------------------------------------------------------------------------
+  BEDROCK_AWS_REGION: ${BEDROCK_AWS_REGION:-}
+  BEDROCK_AWS_ACCESS_KEY_ID: ${BEDROCK_AWS_ACCESS_KEY_ID:-}
+  BEDROCK_AWS_SECRET_ACCESS_KEY: ${BEDROCK_AWS_SECRET_ACCESS_KEY:-}
+  BEDROCK_AWS_SESSION_TOKEN: ${BEDROCK_AWS_SESSION_TOKEN:-}
+
+  # --------------------------------------------------------------------------
+  # Provider G: OpenRouter (unified gateway to 400+ models)
+  # Get your API key from: https://openrouter.ai/keys
+  # Model IDs use provider/model format, e.g. anthropic/claude-3.5-haiku
+  # --------------------------------------------------------------------------
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
 
   # Worker Location for geo-distributed monitoring and load testing
   # Options: local (for local dev - processes all regions) | us-east | eu-central | asia-pacific (for production)

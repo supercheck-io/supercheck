@@ -92,5 +92,25 @@ Before modifying core systems, read the relevant spec in `/docs/specs/`:
 - Auth flows: `02-authentication/AUTHENTICATION_SYSTEM.md`
 - Test execution: `03-execution/EXECUTION_SYSTEM.md`
 - Monitoring: `04-monitoring/MONITORING_SYSTEM.md`
+- AI Features: `05-features/AI_FIX_SYSTEM.md` (Multi-provider: OpenAI, Azure, Anthropic, Google Vertex, Bedrock)
 
 Update specs when changing API contracts, DB schema, or auth logic.
+
+## AI Features
+
+Supercheck supports multiple AI providers for AI Fix, AI Create, and AI Analyze features:
+
+```bash
+# Provider selection (default: openai)
+AI_PROVIDER=openai|azure|anthropic|google|bedrock
+AI_MODEL=gpt-4o-mini  # Provider-specific model ID
+
+# Provider-specific env vars (SDK auto-reads these):
+OPENAI_API_KEY=sk-...              # OpenAI
+ANTHROPIC_API_KEY=sk-ant-...       # Anthropic
+AZURE_RESOURCE_NAME=...            # Azure OpenAI
+GOOGLE_VERTEX_PROJECT=...          # Google Vertex AI
+BEDROCK_AWS_REGION=...             # AWS Bedrock (uses BEDROCK_* prefix)
+```
+
+Key files: `/app/src/lib/ai/ai-service.ts`, `/app/src/lib/ai/ai-streaming-service.ts`

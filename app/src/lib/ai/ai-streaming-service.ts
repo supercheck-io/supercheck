@@ -1,5 +1,11 @@
 import { openai } from "@ai-sdk/openai";
-import { streamText } from "ai";
+import { azure } from "@ai-sdk/azure";
+import { anthropic } from "@ai-sdk/anthropic";
+import { google } from "@ai-sdk/google";
+import { vertex } from "@ai-sdk/google-vertex";
+import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { streamText, LanguageModel } from "ai";
 import { aiRateLimiter } from "./ai-rate-limiter";
 import { aiCodeValidator } from "./ai-code-validator";
 import { getRedisConnection } from "@/lib/queue";
@@ -35,40 +41,174 @@ interface AIUsageLog {
   testType?: string;
 }
 
+// Supported AI providers
+// - gemini: Google AI Studio with simple API key (recommended for most users)
+// - google-vertex: Google Vertex AI with GCP project (enterprise)
+// - openrouter: Unified gateway to 400+ models (simple fallback and model variety)
+type AIProvider = "openai" | "azure" | "anthropic" | "gemini" | "google-vertex" | "bedrock" | "openrouter";
+
 export class AIStreamingService {
+  /**
+   * Validates that the required credentials are configured for the selected provider.
+   * Throws an error if credentials are missing or invalid.
+   */
   private static validateConfiguration(): void {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const provider = (process.env.AI_PROVIDER || "openai").toLowerCase() as AIProvider;
 
-    if (
-      !apiKey ||
-      apiKey === "your-openai-api-key-here" ||
-      apiKey.trim().length === 0
-    ) {
-      throw new Error(
-        "OpenAI API key is not configured. Please set OPENAI_API_KEY environment variable with a valid API key."
-      );
-    }
+    switch (provider) {
+      case "azure": {
+        const resourceName = process.env.AZURE_RESOURCE_NAME;
+        const apiKey = process.env.AZURE_API_KEY;
+        const useManagedIdentity = process.env.AZURE_USE_MANAGED_IDENTITY === "true";
+        
+        if (!resourceName) {
+          throw new Error("Azure OpenAI resource name is not configured. Please set AZURE_RESOURCE_NAME environment variable.");
+        }
+        if (!useManagedIdentity && (!apiKey || apiKey.trim().length === 0)) {
+          throw new Error("Azure OpenAI API key is not configured. Please set AZURE_API_KEY or enable AZURE_USE_MANAGED_IDENTITY.");
+        }
+        break;
+      }
 
-    // Validate API key format (should start with sk- for OpenAI)
-    if (!apiKey.startsWith("sk-")) {
-      console.warn(
-        "[AI Streaming Service] Warning: API key does not follow expected OpenAI format (sk-*)"
-      );
+      case "anthropic": {
+        const apiKey = process.env.ANTHROPIC_API_KEY;
+        if (!apiKey || apiKey.trim().length === 0) {
+          throw new Error("Anthropic API key is not configured. Please set ANTHROPIC_API_KEY environment variable.");
+        }
+        if (!apiKey.startsWith("sk-ant-")) {
+          console.warn("[AI Streaming Service] Warning: Anthropic API key does not follow expected format (sk-ant-*)");
+        }
+        break;
+      }
+
+      case "gemini": {
+        // Google AI Studio - simple API key like OpenAI
+        const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+        if (!apiKey || apiKey.trim().length === 0) {
+          throw new Error("Google AI API key is not configured. Please set GOOGLE_GENERATIVE_AI_API_KEY environment variable. Get your key from https://aistudio.google.com/apikey");
+        }
+        break;
+      }
+
+      case "google-vertex": {
+        // Google Vertex AI - enterprise GCP setup
+        const projectId = process.env.GOOGLE_VERTEX_PROJECT;
+        if (!projectId) {
+          throw new Error("Google Vertex AI project ID is not configured. Please set GOOGLE_VERTEX_PROJECT environment variable.");
+        }
+        break;
+      }
+
+      case "bedrock": {
+        const region = process.env.BEDROCK_AWS_REGION;
+        if (!region) {
+          throw new Error("AWS Bedrock region is not configured. Please set BEDROCK_AWS_REGION environment variable.");
+        }
+        // Validate credential pair: if one is set, both must be set
+        const accessKeyId = process.env.BEDROCK_AWS_ACCESS_KEY_ID;
+        const secretAccessKey = process.env.BEDROCK_AWS_SECRET_ACCESS_KEY;
+        if ((accessKeyId && !secretAccessKey) || (!accessKeyId && secretAccessKey)) {
+          throw new Error("AWS Bedrock credentials incomplete. Both BEDROCK_AWS_ACCESS_KEY_ID and BEDROCK_AWS_SECRET_ACCESS_KEY must be set together, or neither (for IAM role authentication).");
+        }
+        break;
+      }
+
+      case "openrouter": {
+        // OpenRouter - unified gateway to many providers
+        const apiKey = process.env.OPENROUTER_API_KEY;
+        if (!apiKey || apiKey.trim().length === 0) {
+          throw new Error("OpenRouter API key is not configured. Please set OPENROUTER_API_KEY environment variable. Get your key from https://openrouter.ai/keys");
+        }
+        break;
+      }
+
+      case "openai":
+      default: {
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (!apiKey || apiKey === "your-openai-api-key-here" || apiKey.trim().length === 0) {
+          throw new Error("OpenAI API key is not configured. Please set OPENAI_API_KEY environment variable with a valid API key.");
+        }
+        if (!apiKey.startsWith("sk-")) {
+          console.warn("[AI Streaming Service] Warning: API key does not follow expected OpenAI format (sk-*)");
+        }
+        break;
+      }
     }
   }
 
-  private static getModel() {
-    const modelName = process.env.AI_MODEL || "gpt-4o-mini";
+  /**
+   * Factory method that returns the appropriate AI model based on AI_PROVIDER env var.
+   * Supports: OpenAI, Azure OpenAI, Anthropic, Google Vertex AI, AWS Bedrock.
+   * Falls back to OpenAI gpt-4o-mini on any initialization error.
+   */
+  private static getProviderModel(): LanguageModel {
+    const provider = (process.env.AI_PROVIDER || "openai").toLowerCase() as AIProvider;
+    const modelName = process.env.AI_MODEL;
 
     try {
-      return openai(modelName);
+      switch (provider) {
+        case "azure": {
+          const deployment = process.env.AZURE_OPENAI_DEPLOYMENT || modelName || "gpt-4o-mini";
+          console.log(`[AI Streaming Service] Initializing Azure OpenAI with deployment: ${deployment}`);
+          return azure(deployment) as unknown as LanguageModel;
+        }
+
+        case "anthropic": {
+          const model = modelName || "claude-3-5-haiku-20241022";
+          console.log(`[AI Streaming Service] Initializing Anthropic with model: ${model}`);
+          return anthropic(model) as unknown as LanguageModel;
+        }
+
+        case "gemini": {
+          // Google AI Studio - simple API key like OpenAI
+          const model = modelName || "gemini-2.0-flash";
+          console.log(`[AI Streaming Service] Initializing Google AI (Gemini) with model: ${model}`);
+          return google(model) as unknown as LanguageModel;
+        }
+
+        case "google-vertex": {
+          // Google Vertex AI - enterprise GCP setup
+          const model = modelName || "gemini-2.0-flash";
+          console.log(`[AI Streaming Service] Initializing Google Vertex AI with model: ${model}`);
+          return vertex(model) as unknown as LanguageModel;
+        }
+
+        case "bedrock": {
+          const bedrock = createAmazonBedrock({
+            region: process.env.BEDROCK_AWS_REGION || "us-east-1",
+            accessKeyId: process.env.BEDROCK_AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.BEDROCK_AWS_SECRET_ACCESS_KEY,
+            sessionToken: process.env.BEDROCK_AWS_SESSION_TOKEN,
+          });
+          const model = modelName || "anthropic.claude-3-5-haiku-20241022-v1:0";
+          console.log(`[AI Streaming Service] Initializing AWS Bedrock with model: ${model}`);
+          return bedrock(model) as unknown as LanguageModel;
+        }
+
+        case "openrouter": {
+          // OpenRouter - unified gateway to 400+ models
+          const openrouter = createOpenRouter({
+            apiKey: process.env.OPENROUTER_API_KEY!,
+          });
+          const model = modelName || "anthropic/claude-3.5-haiku";
+          console.log(`[AI Streaming Service] Initializing OpenRouter with model: ${model}`);
+          return openrouter(model) as unknown as LanguageModel;
+        }
+
+        case "openai":
+        default: {
+          const model = modelName || "gpt-4o-mini";
+          if (provider !== "openai") {
+            console.warn(`[AI Streaming Service] Unknown provider '${provider}', falling back to OpenAI`);
+          }
+          console.log(`[AI Streaming Service] Initializing OpenAI with model: ${model}`);
+          return openai(model) as unknown as LanguageModel;
+        }
+      }
     } catch (error) {
-      console.error(
-        "[AI Streaming Service] Error initializing OpenAI model:",
-        error
-      );
-      // Fallback to default model
-      return openai("gpt-4o-mini");
+      console.error(`[AI Streaming Service] Error initializing ${provider}:`, error);
+      console.log("[AI Streaming Service] Falling back to OpenAI gpt-4o-mini");
+      return openai("gpt-4o-mini") as unknown as LanguageModel;
     }
   }
 
@@ -212,13 +352,17 @@ export class AIStreamingService {
 
       // Step 4: Create streaming response
       const result = await streamText({
-        model: this.getModel(),
+        model: this.getProviderModel(),
         prompt,
         temperature: temperature || config.temperature,
         maxRetries: config.maxRetries,
         abortSignal: AbortSignal.timeout(config.timeout),
         maxOutputTokens: maxTokens,
       });
+
+      // Capture the idempotency key and cache key for use in the stream callback
+      const cacheIdempotencyKey = idempotencyKey;
+      const CACHE_TTL_SECONDS = 300; // 5 minutes
 
       // Create a custom readable stream that handles the AI response
       const stream = new ReadableStream({
@@ -227,6 +371,7 @@ export class AIStreamingService {
             let totalTokens = 0;
             let chunkCount = 0;
             let totalContentLength = 0;
+            const collectedContent: string[] = []; // Collect content for idempotency caching
 
             console.log(
               "[AI Streaming Service] Starting to consume text stream..."
@@ -236,6 +381,7 @@ export class AIStreamingService {
             for await (const chunk of result.textStream) {
               chunkCount++;
               totalContentLength += chunk.length;
+              collectedContent.push(chunk); // Collect for idempotency caching
 
               // Security: Validate chunk for critical security patterns
               const validation = aiCodeValidator.quickValidate(chunk);
@@ -278,23 +424,15 @@ export class AIStreamingService {
 
             // Get usage information after streaming completes
             const usage = await result.usage;
-            // LanguageModelV2Usage may not expose prompt/completion tokens; fall back to input/output
-            const promptTokens =
-              "promptTokens" in (usage || {})
-                ? (usage as Record<string, number>).promptTokens
-                : "inputTokens" in (usage || {})
-                  ? (usage as Record<string, number>).inputTokens
-                  : 0;
-            const completionTokens =
-              "completionTokens" in (usage || {})
-                ? (usage as Record<string, number>).completionTokens
-                : "outputTokens" in (usage || {})
-                  ? (usage as Record<string, number>).outputTokens
-                  : 0;
-            totalTokens =
-              "totalTokens" in (usage || {})
-                ? (usage as Record<string, number>).totalTokens
-                : promptTokens + completionTokens;
+            // AI SDK v6 LanguageModelUsage type - safely extract token counts
+            const usageData = usage as unknown as { 
+              promptTokens?: number; 
+              completionTokens?: number; 
+              totalTokens?: number;
+            } | undefined;
+            const promptTokens = usageData?.promptTokens ?? 0;
+            const completionTokens = usageData?.completionTokens ?? 0;
+            totalTokens = usageData?.totalTokens ?? (promptTokens + completionTokens);
 
             // Send completion message with metadata
             const duration = Date.now() - startTime;
@@ -324,6 +462,20 @@ export class AIStreamingService {
               model: process.env.AI_MODEL || "gpt-4o-mini",
               testType,
             });
+
+            // Store in idempotency cache if key was provided
+            if (cacheIdempotencyKey && collectedContent.length > 0) {
+              try {
+                const redis = await getRedisConnection();
+                const cacheKey = `${IDEMPOTENCY_KEY_PREFIX}:${cacheIdempotencyKey}`;
+                const fullContent = collectedContent.join('');
+                await redis.set(cacheKey, fullContent, 'EX', CACHE_TTL_SECONDS);
+                console.log(`[AI Streaming Service] Cached result for idempotency key: ${cacheIdempotencyKey.slice(0, 8)}... (TTL: ${CACHE_TTL_SECONDS}s)`);
+              } catch (cacheError) {
+                // Cache failure should not affect the response
+                console.warn('[AI Streaming Service] Failed to cache idempotency result:', cacheError);
+              }
+            }
 
             controller.close();
           } catch (error) {
@@ -382,47 +534,37 @@ export class AIStreamingService {
         testType,
       });
 
-      // Provide specific error messages based on error type
+      // Map provider-specific errors to standardized Supercheck errors
       if (
         errorMessage.includes("API key") ||
-        errorMessage.includes("OPENAI_API_KEY")
+        errorMessage.toLowerCase().includes("not configured") ||
+        errorMessage.toLowerCase().includes("invalid api key")
       ) {
-        throw new Error(
-          "OpenAI API key is not configured. Please configure OPENAI_API_KEY environment variable with a valid API key to use AI features."
-        );
+        throw new Error("AI_AUTH_ERROR: AI provider credentials are not configured. Please check your environment variables.");
       }
 
       if (
         errorMessage.includes("401") ||
-        errorMessage.includes("Unauthorized")
+        errorMessage.toLowerCase().includes("unauthorized")
       ) {
-        throw new Error(
-          "OpenAI API authentication failed. Please check that your OPENAI_API_KEY is valid and has not expired."
-        );
+        throw new Error("AI_AUTH_ERROR: Invalid API credentials");
       }
 
-      if (errorMessage.includes("429") || errorMessage.includes("rate limit")) {
-        throw new Error(
-          "OpenAI API rate limit exceeded. Please wait a moment before trying again."
-        );
+      if (errorMessage.includes("429") || errorMessage.toLowerCase().includes("rate limit")) {
+        throw new Error("AI_RATE_LIMIT: Provider rate limit exceeded");
       }
 
       if (
-        errorMessage.includes("timeout") ||
-        errorMessage.includes("timed out")
+        errorMessage.toLowerCase().includes("timeout") ||
+        errorMessage.toLowerCase().includes("timed out") ||
+        (error instanceof Error && error.name === "AbortError")
       ) {
-        throw new Error(
-          "AI request timed out. The request may be too complex or the service may be experiencing high load. Please try again."
-        );
+        throw new Error("AI_TIMEOUT: Request timed out");
       }
 
       // Re-throw with sanitized error message for other errors
-      const sanitizedMessage = errorMessage.replace(
-        /api[_\s]*key/gi,
-        "[REDACTED]"
-      );
-
-      throw new Error(`AI streaming generation failed: ${sanitizedMessage}`);
+      const sanitizedMessage = errorMessage.replace(/api[_\s]*key/gi, "[REDACTED]");
+      throw new Error(`AI_FIX_ERROR: ${sanitizedMessage}`);
     }
   }
 
@@ -437,7 +579,7 @@ export class AIStreamingService {
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
       const result = await streamText({
-        model: this.getModel(),
+        model: this.getProviderModel(),
         prompt: testPrompt,
         abortSignal: controller.signal,
       });
