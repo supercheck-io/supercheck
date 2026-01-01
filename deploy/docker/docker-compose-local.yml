@@ -40,7 +40,7 @@ x-common-env: &common-env # Database Configuration
   BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
 
   # Status Page Domain Configuration
-  STATUS_PAGE_BASE_DOMAIN: ${STATUS_PAGE_BASE_DOMAIN:-localhost}
+  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-localhost}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
   # Parallel Execution Capacity (self-hosted mode)

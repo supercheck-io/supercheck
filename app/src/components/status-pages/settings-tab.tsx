@@ -42,6 +42,7 @@ import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useAppConfig } from "@/hooks/use-app-config";
 
 type StatusPage = {
   id: string;
@@ -119,6 +120,7 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
   const router = useRouter();
   const [isResetting, setIsResetting] = useState(false);
   const [isVerifyingDNS, setIsVerifyingDNS] = useState(false);
+  const { statusPageDomain } = useAppConfig();
 
   // Upload states
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -452,7 +454,7 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
               </p>
               <div className="flex gap-2 mt-5">
                 <Input
-                  placeholder="status.yourcompany.com"
+                  placeholder={`status.${statusPageDomain}`}
                   {...register("customDomain")}
                   disabled={!canUpdate}
                   className="font-mono text-sm"
@@ -524,12 +526,12 @@ export function SettingsTab({ statusPage, canUpdate }: SettingsTabProps) {
                         <code className="bg-muted px-1 py-0.5 rounded text-sm">
                           status
                         </code>{" "}
-                        (for status.yourcompany.com)
+                        (for status.{statusPageDomain})
                       </div>
                       <div>
                         • Points to:{" "}
                         <code className="bg-muted px-1 py-0.5 rounded text-sm">
-                          supercheck.io
+                          {statusPageDomain}
                         </code>
                       </div>
                       <div>• Wait 15-30 minutes for DNS propagation</div>

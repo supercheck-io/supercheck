@@ -29,6 +29,9 @@ export interface AppConfig {
     maxMonitorNotificationChannels: number;
     recentMonitorResultsLimit?: number;
   };
+  statusPage?: {
+    domain: string;
+  };
 }
 
 // ============================================================================
@@ -46,6 +49,9 @@ const DEFAULT_CONFIG: AppConfig = {
     maxJobNotificationChannels: 10,
     maxMonitorNotificationChannels: 10,
     recentMonitorResultsLimit: undefined,
+  },
+  statusPage: {
+    domain: "supercheck.io",
   },
 };
 
@@ -115,5 +121,6 @@ export function useAppConfig() {
     maxJobNotificationChannels: effectiveConfig.limits?.maxJobNotificationChannels ?? 10,
     maxMonitorNotificationChannels: effectiveConfig.limits?.maxMonitorNotificationChannels ?? 10,
     recentMonitorResultsLimit: effectiveConfig.limits?.recentMonitorResultsLimit,
+    statusPageDomain: effectiveConfig.statusPage?.domain ?? "supercheck.io",
   };
 }

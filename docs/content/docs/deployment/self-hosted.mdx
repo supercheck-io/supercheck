@@ -220,6 +220,7 @@ Edit `.env` and add your domain and OAuth credentials:
 # ─────────────────────────────────────────────────────────────────
 APP_DOMAIN=app.yourdomain.com
 ACME_EMAIL=admin@yourdomain.com  # For Let's Encrypt SSL certificate
+STATUS_PAGE_DOMAIN=yourdomain.com  # Base domain for status pages
 
 # ─────────────────────────────────────────────────────────────────
 # OAuth Authentication (at least one provider is required)
@@ -228,6 +229,10 @@ ACME_EMAIL=admin@yourdomain.com  # For Let's Encrypt SSL certificate
 GITHUB_CLIENT_ID=your-github-client-id
 GITHUB_CLIENT_SECRET=your-github-client-secret
 ```
+
+<Callout type="info">
+**Status Page Custom Domains:** The `STATUS_PAGE_DOMAIN` is used as the CNAME target when users configure custom domains for their status pages. Users will point their CNAME records to this domain.
+</Callout>
 
 ### 4. Deploy
 

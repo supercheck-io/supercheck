@@ -46,5 +46,13 @@ export async function GET() {
         ? parseInt(process.env.RECENT_MONITOR_RESULTS_LIMIT, 10)
         : undefined,
     },
+
+    // Status page configuration
+    statusPage: {
+      // Domain used for CNAME target in custom domain setup
+      // Self-hosted users should set STATUS_PAGE_DOMAIN to their own domain
+      domain: process.env.STATUS_PAGE_DOMAIN || "supercheck.io",
+    },
   });
 }
+

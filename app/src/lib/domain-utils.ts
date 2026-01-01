@@ -53,12 +53,13 @@ export function getBaseDomain(requestHostname?: string): string {
 
 /**
  * Gets the base domain specifically for status pages
- * This uses the STATUS_PAGE_BASE_DOMAIN environment variable if available,
+ * This uses the STATUS_PAGE_DOMAIN environment variable if available,
  * otherwise falls back to the standard base domain detection
  */
 export function getStatusPageBaseDomain(requestHostname?: string): string {
-  if (process.env.STATUS_PAGE_BASE_DOMAIN) {
-    return process.env.STATUS_PAGE_BASE_DOMAIN;
+  // Use STATUS_PAGE_DOMAIN for consistency across the codebase
+  if (process.env.STATUS_PAGE_DOMAIN) {
+    return process.env.STATUS_PAGE_DOMAIN;
   }
 
   if (requestHostname) {
