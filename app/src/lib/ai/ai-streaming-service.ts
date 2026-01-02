@@ -138,7 +138,7 @@ export class AIStreamingService {
 
   /**
    * Factory method that returns the appropriate AI model based on AI_PROVIDER env var.
-   * Supports: OpenAI, Azure OpenAI, Anthropic, Google Vertex AI, AWS Bedrock.
+   * Supports: OpenAI, Azure OpenAI, Anthropic, Gemini (Google AI Studio), Google Vertex AI, AWS Bedrock, OpenRouter.
    * Falls back to OpenAI gpt-4o-mini on any initialization error.
    */
   private static getProviderModel(): LanguageModel {

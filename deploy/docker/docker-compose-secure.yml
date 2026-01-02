@@ -142,7 +142,8 @@ x-common-env: &common-env # Database Configuration
   # AI Features Configuration (AI Fix, AI Create, AI Analyze)
   # ==========================================================================
   # Supercheck supports multiple AI providers. Choose ONE provider and configure
-  # its credentials below. The AI_PROVIDER setting determines which provider  # --------------------------------------------------------------------------
+  # its credentials below. The AI_PROVIDER setting determines which provider is used.
+  # --------------------------------------------------------------------------
   # AI Model Configuration
   # Set AI_PROVIDER to one of: openai, azure, anthropic, gemini, google-vertex, bedrock, openrouter
   # --------------------------------------------------------------------------

@@ -102,15 +102,17 @@ Supercheck supports multiple AI providers for AI Fix, AI Create, and AI Analyze 
 
 ```bash
 # Provider selection (default: openai)
-AI_PROVIDER=openai|azure|anthropic|google|bedrock
+AI_PROVIDER=openai|azure|anthropic|gemini|google-vertex|bedrock|openrouter
 AI_MODEL=gpt-4o-mini  # Provider-specific model ID
 
 # Provider-specific env vars (SDK auto-reads these):
-OPENAI_API_KEY=sk-...              # OpenAI
-ANTHROPIC_API_KEY=sk-ant-...       # Anthropic
-AZURE_RESOURCE_NAME=...            # Azure OpenAI
-GOOGLE_VERTEX_PROJECT=...          # Google Vertex AI
-BEDROCK_AWS_REGION=...             # AWS Bedrock (uses BEDROCK_* prefix)
+OPENAI_API_KEY=sk-...                    # OpenAI
+ANTHROPIC_API_KEY=sk-ant-...             # Anthropic
+AZURE_RESOURCE_NAME=...                  # Azure OpenAI
+GOOGLE_GENERATIVE_AI_API_KEY=...         # Gemini (Google AI Studio)
+GOOGLE_VERTEX_PROJECT=...                # Google Vertex AI
+BEDROCK_AWS_REGION=...                   # AWS Bedrock (uses BEDROCK_* prefix)
+OPENROUTER_API_KEY=sk-or-...             # OpenRouter
 ```
 
 Key files: `/app/src/lib/ai/ai-service.ts`, `/app/src/lib/ai/ai-streaming-service.ts`

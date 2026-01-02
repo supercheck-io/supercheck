@@ -166,6 +166,7 @@ export class HardStopNotificationService {
         },
         tls: {
           rejectUnauthorized: true,
+          minVersion: 'TLSv1.2' as const, // Required for ZeptoMail and security best practices
         },
         connectionTimeout: 10000,
         greetingTimeout: 5000,
