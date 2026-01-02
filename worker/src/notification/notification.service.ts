@@ -606,6 +606,7 @@ export class NotificationService {
         },
         tls: {
           rejectUnauthorized: true, // Validate SSL certificates for security
+          minVersion: 'TLSv1.2' as const, // Required for ZeptoMail and security best practices
         },
         connectionTimeout: 10000, // 10 seconds
         greetingTimeout: 5000, // 5 seconds

@@ -142,12 +142,28 @@ All compose files use sensible defaults. Critical variables to change for produc
 | `SMTP_PASSWORD`   | SMTP password | Required                   |
 | `SMTP_FROM_EMAIL` | From address  | `notification@example.com` |
 
-### AI Features (Optional)
+### AI Features (Optional - Multi-Provider)
 
-| Variable         | Description    | Default               |
-| ---------------- | -------------- | --------------------- |
-| `OPENAI_API_KEY` | OpenAI API key | Required for AI fixes |
-| `AI_MODEL`       | Model to use   | `gpt-4o-mini`         |
+Supercheck supports multiple AI providers for AI Fix, AI Create, and AI Analyze features.
+
+| Variable       | Description                                                                 | Default      |
+| -------------- | --------------------------------------------------------------------------- | ------------ |
+| `AI_PROVIDER`  | Provider: openai, azure, anthropic, gemini, google-vertex, bedrock, openrouter | `openai`     |
+| `AI_MODEL`     | Model ID (provider-specific)                                                | `gpt-4o-mini`|
+
+**Provider-specific credentials** (configure ONE):
+
+| Provider       | Required Variables                                                          |
+| -------------- | --------------------------------------------------------------------------- |
+| OpenAI         | `OPENAI_API_KEY`                                                            |
+| Azure          | `AZURE_RESOURCE_NAME`, `AZURE_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`           |
+| Anthropic      | `ANTHROPIC_API_KEY`                                                         |
+| Gemini         | `GOOGLE_GENERATIVE_AI_API_KEY`                                              |
+| Google Vertex  | `GOOGLE_VERTEX_PROJECT`, `GOOGLE_VERTEX_LOCATION`                           |
+| Bedrock        | `BEDROCK_AWS_REGION`, `BEDROCK_AWS_ACCESS_KEY_ID`, `BEDROCK_AWS_SECRET_ACCESS_KEY` |
+| OpenRouter     | `OPENROUTER_API_KEY`                                                        |
+
+See the docker-compose files for detailed configuration comments.
 
 ### Scaling
 

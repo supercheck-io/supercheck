@@ -1,5 +1,11 @@
 import { openai } from "@ai-sdk/openai";
-import { generateText } from "ai";
+import { azure } from "@ai-sdk/azure";
+import { anthropic } from "@ai-sdk/anthropic";
+import { google } from "@ai-sdk/google";
+import { vertex } from "@ai-sdk/google-vertex";
+import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { generateText, LanguageModel } from "ai";
 import { aiRateLimiter } from "./ai-rate-limiter";
 
 interface AIFixRequest {
@@ -35,16 +41,213 @@ interface AIUsageLog {
   testType?: string;
 }
 
+// Supported AI providers
+// - gemini: Google AI Studio with simple API key (recommended for most users)
+// - google-vertex: Google Vertex AI with GCP project (enterprise)
+// - openrouter: Unified gateway to 400+ models (simple fallback and model variety)
+type AIProvider = "openai" | "azure" | "anthropic" | "gemini" | "google-vertex" | "bedrock" | "openrouter";
+
 export class AIFixService {
-  private static getModel() {
-    const modelName = process.env.AI_MODEL || "gpt-4o-mini";
+  /**
+   * Validates that the required credentials are configured for the selected provider.
+   * Throws an error if credentials are missing or invalid.
+   */
+  private static validateConfiguration(): void {
+    const provider = (process.env.AI_PROVIDER || "openai").toLowerCase() as AIProvider;
+
+    switch (provider) {
+      case "azure": {
+        const resourceName = process.env.AZURE_RESOURCE_NAME;
+        const apiKey = process.env.AZURE_API_KEY;
+        const useManagedIdentity = process.env.AZURE_USE_MANAGED_IDENTITY === "true";
+        
+        if (!resourceName) {
+          throw new Error("Azure OpenAI resource name is not configured. Please set AZURE_RESOURCE_NAME environment variable.");
+        }
+        if (!useManagedIdentity && (!apiKey || apiKey.trim().length === 0)) {
+          throw new Error("Azure OpenAI API key is not configured. Please set AZURE_API_KEY or enable AZURE_USE_MANAGED_IDENTITY.");
+        }
+        break;
+      }
+
+      case "anthropic": {
+        const apiKey = process.env.ANTHROPIC_API_KEY;
+        if (!apiKey || apiKey.trim().length === 0) {
+          throw new Error("Anthropic API key is not configured. Please set ANTHROPIC_API_KEY environment variable.");
+        }
+        if (!apiKey.startsWith("sk-ant-")) {
+          console.warn("[AI Service] Warning: Anthropic API key does not follow expected format (sk-ant-*)");
+        }
+        break;
+      }
+
+      case "gemini": {
+        // Google AI Studio - simple API key like OpenAI
+        const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+        if (!apiKey || apiKey.trim().length === 0) {
+          throw new Error("Google AI API key is not configured. Please set GOOGLE_GENERATIVE_AI_API_KEY environment variable. Get your key from https://aistudio.google.com/apikey");
+        }
+        break;
+      }
+
+      case "google-vertex": {
+        // Google Vertex AI - enterprise GCP setup
+        const projectId = process.env.GOOGLE_VERTEX_PROJECT;
+        if (!projectId) {
+          throw new Error("Google Vertex AI project ID is not configured. Please set GOOGLE_VERTEX_PROJECT environment variable.");
+        }
+        break;
+      }
+
+      case "bedrock": {
+        const region = process.env.BEDROCK_AWS_REGION;
+        if (!region) {
+          throw new Error("AWS Bedrock region is not configured. Please set BEDROCK_AWS_REGION environment variable.");
+        }
+        // Validate credential pair: if one is set, both must be set
+        const accessKeyId = process.env.BEDROCK_AWS_ACCESS_KEY_ID;
+        const secretAccessKey = process.env.BEDROCK_AWS_SECRET_ACCESS_KEY;
+        if ((accessKeyId && !secretAccessKey) || (!accessKeyId && secretAccessKey)) {
+          throw new Error("AWS Bedrock credentials incomplete. Both BEDROCK_AWS_ACCESS_KEY_ID and BEDROCK_AWS_SECRET_ACCESS_KEY must be set together, or neither (for IAM role authentication).");
+        }
+        break;
+      }
+
+      case "openrouter": {
+        // OpenRouter - unified gateway to many providers
+        const apiKey = process.env.OPENROUTER_API_KEY;
+        if (!apiKey || apiKey.trim().length === 0) {
+          throw new Error("OpenRouter API key is not configured. Please set OPENROUTER_API_KEY environment variable. Get your key from https://openrouter.ai/keys");
+        }
+        break;
+      }
+
+      case "openai":
+      default: {
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (!apiKey || apiKey === "your-openai-api-key-here" || apiKey.trim().length === 0) {
+          throw new Error("OpenAI API key is not configured. Please set OPENAI_API_KEY environment variable with a valid API key.");
+        }
+        if (!apiKey.trim().startsWith("sk-")) {
+          console.warn("[AI Service] Warning: API key does not follow expected OpenAI format (sk-*)");
+        }
+        break;
+      }
+    }
+  }
+
+  /**
+   * Returns the actual model name being used based on provider configuration.
+   * Used for accurate logging and metrics.
+   */
+  private static getActualModelName(): string {
+    const provider = (process.env.AI_PROVIDER || "openai").toLowerCase() as AIProvider;
+    const modelName = process.env.AI_MODEL;
+
+    switch (provider) {
+      case "azure":
+        return process.env.AZURE_OPENAI_DEPLOYMENT || modelName || "gpt-4o-mini";
+      case "anthropic":
+        return modelName || "claude-3-5-haiku-20241022";
+      case "gemini":
+        return modelName || "gemini-2.0-flash";
+      case "google-vertex":
+        return modelName || "gemini-2.0-flash";
+      case "bedrock":
+        return modelName || "anthropic.claude-3-5-haiku-20241022-v1:0";
+      case "openrouter":
+        return modelName || "anthropic/claude-3.5-haiku";
+      case "openai":
+      default:
+        return modelName || "gpt-4o-mini";
+    }
+  }
+
+  /**
+   * Factory method that returns the appropriate AI model based on AI_PROVIDER env var.
+   * Supports: OpenAI, Azure OpenAI, Anthropic, Gemini (Google AI Studio), Google Vertex AI, AWS Bedrock, OpenRouter.
+   * Falls back to OpenAI gpt-4o-mini on any initialization error.
+   */
+  private static getProviderModel(): LanguageModel {
+    const provider = (process.env.AI_PROVIDER || "openai").toLowerCase() as AIProvider;
+    const modelName = process.env.AI_MODEL;
 
     try {
-      return openai(modelName);
+      switch (provider) {
+        case "azure": {
+          // Azure uses deployment name, not model name
+          // AZURE_RESOURCE_NAME and AZURE_API_KEY are read automatically from env
+          const deployment = process.env.AZURE_OPENAI_DEPLOYMENT || modelName || "gpt-4o-mini";
+          console.log(`[AI Service] Initializing Azure OpenAI with deployment: ${deployment}`);
+          return azure(deployment) as unknown as LanguageModel;
+        }
+
+        case "anthropic": {
+          // ANTHROPIC_API_KEY is read automatically from env
+          const model = modelName || "claude-3-5-haiku-20241022";
+          console.log(`[AI Service] Initializing Anthropic with model: ${model}`);
+          return anthropic(model) as unknown as LanguageModel;
+        }
+
+        case "gemini": {
+          // Google AI Studio - simple API key like OpenAI
+          // GOOGLE_GENERATIVE_AI_API_KEY is read automatically from env
+          const model = modelName || "gemini-2.0-flash";
+          console.log(`[AI Service] Initializing Google AI (Gemini) with model: ${model}`);
+          return google(model) as unknown as LanguageModel;
+        }
+
+        case "google-vertex": {
+          // Google Vertex AI - enterprise GCP setup
+          // Uses ADC automatically, GOOGLE_VERTEX_PROJECT and GOOGLE_VERTEX_LOCATION configure the endpoint
+          const model = modelName || "gemini-2.0-flash";
+          console.log(`[AI Service] Initializing Google Vertex AI with model: ${model}`);
+          return vertex(model) as unknown as LanguageModel;
+        }
+
+        case "bedrock": {
+          // Create Bedrock with ISOLATED credentials (BEDROCK_* prefix)
+          // This prevents conflicts with S3/R2 which use standard AWS_* vars
+          const bedrock = createAmazonBedrock({
+            region: process.env.BEDROCK_AWS_REGION || "us-east-1",
+            // Only pass explicit creds if running outside AWS (self-hosted)
+            // On AWS (ECS/Lambda/EC2), leave undefined to use instance role
+            accessKeyId: process.env.BEDROCK_AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.BEDROCK_AWS_SECRET_ACCESS_KEY,
+            sessionToken: process.env.BEDROCK_AWS_SESSION_TOKEN,
+          });
+          const model = modelName || "anthropic.claude-3-5-haiku-20241022-v1:0";
+          console.log(`[AI Service] Initializing AWS Bedrock with model: ${model}`);
+          return bedrock(model) as unknown as LanguageModel;
+        }
+
+        case "openrouter": {
+          // OpenRouter - unified gateway to 400+ models
+          // OPENROUTER_API_KEY is read automatically from env
+          const openrouter = createOpenRouter({
+            apiKey: process.env.OPENROUTER_API_KEY!,
+          });
+          const model = modelName || "anthropic/claude-3.5-haiku";
+          console.log(`[AI Service] Initializing OpenRouter with model: ${model}`);
+          return openrouter(model) as unknown as LanguageModel;
+        }
+
+        case "openai":
+        default: {
+          // OPENAI_API_KEY is read automatically from env
+          const model = modelName || "gpt-4o-mini";
+          if (provider !== "openai") {
+            console.warn(`[AI Service] Unknown provider '${provider}', falling back to OpenAI`);
+          }
+          console.log(`[AI Service] Initializing OpenAI with model: ${model}`);
+          return openai(model) as unknown as LanguageModel;
+        }
+      }
     } catch (error) {
-      console.error("[AI Service] Error initializing OpenAI model:", error);
-      // Fallback to default model
-      return openai("gpt-4o-mini");
+      console.error(`[AI Service] Error initializing ${provider}:`, error);
+      // Fallback to OpenAI on initialization error
+      console.log("[AI Service] Falling back to OpenAI gpt-4o-mini");
+      return openai("gpt-4o-mini") as unknown as LanguageModel;
     }
   }
 
@@ -237,7 +440,10 @@ EXPLANATION:
     const startTime = Date.now();
 
     try {
-      // Security: Check rate limits before making request
+      // Step 1: Validate configuration before doing anything
+      this.validateConfiguration();
+
+      // Step 2: Check rate limits before making request
       await this.checkRateLimit(userId, orgId, tier);
 
       // Get universal service configuration
@@ -247,7 +453,7 @@ EXPLANATION:
       const optimizedPrompt = this.optimizePrompt(prompt, testType);
 
       const { text, usage } = await generateText({
-        model: this.getModel(),
+        model: this.getProviderModel(),
         prompt: optimizedPrompt,
         temperature: temperature || config.temperature,
         maxRetries: config.maxRetries,
@@ -289,23 +495,31 @@ EXPLANATION:
       };
     } catch (error) {
       const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
       // Log failure metrics for monitoring
       await this.logAIUsage({
         success: false,
         duration,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: errorMessage,
         model: process.env.AI_MODEL || "gpt-4o-mini",
         testType,
       });
 
-      // Re-throw with sanitized error message
-      const sanitizedMessage =
-        error instanceof Error
-          ? error.message.replace(/api[_\s]*key/gi, "[REDACTED]")
-          : "AI service temporarily unavailable";
+      // Map provider-specific errors to standardized Supercheck errors
+      if (errorMessage.includes("401") || errorMessage.toLowerCase().includes("unauthorized") || errorMessage.toLowerCase().includes("invalid api key")) {
+        throw new Error("AI_AUTH_ERROR: Invalid API credentials");
+      }
+      if (errorMessage.includes("429") || errorMessage.toLowerCase().includes("rate limit")) {
+        throw new Error("AI_RATE_LIMIT: Provider rate limit exceeded");
+      }
+      if (errorMessage.toLowerCase().includes("timeout") || (error instanceof Error && error.name === "AbortError")) {
+        throw new Error("AI_TIMEOUT: Request timed out");
+      }
 
-      throw new Error(`AI fix generation failed: ${sanitizedMessage}`);
+      // Re-throw with sanitized error message
+      const sanitizedMessage = errorMessage.replace(/api[_\s]*key/gi, "[REDACTED]");
+      throw new Error(`AI_FIX_ERROR: ${sanitizedMessage}`);
     }
   }
 
@@ -320,7 +534,7 @@ EXPLANATION:
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
       await generateText({
-        model: this.getModel(),
+        model: this.getProviderModel(),
         prompt: testPrompt,
         abortSignal: controller.signal,
       });
