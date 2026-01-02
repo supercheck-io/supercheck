@@ -652,33 +652,13 @@ export default function AdminDashboard() {
               {usersLoading && users.length === 0 ? (
                 <TabLoadingSpinner message="Loading users..." />
               ) : (
-                <>
-                  <UserTable
-                    users={users}
-                    onUserUpdate={() => {
-                      fetchUsers();
-                      fetchStats();
-                    }}
-                  />
-                  {usersPagination.hasMore && (
-                    <div className="flex justify-center pt-4">
-                      <Button
-                        variant="outline"
-                        onClick={() =>
-                          fetchUsers(
-                            Math.floor(
-                              usersPagination.offset / usersPagination.limit
-                            ) + 1,
-                            false
-                          )
-                        }
-                        disabled={usersLoading}
-                      >
-                        Load More Users
-                      </Button>
-                    </div>
-                  )}
-                </>
+                <UserTable
+                  users={users}
+                  onUserUpdate={() => {
+                    fetchUsers();
+                    fetchStats();
+                  }}
+                />
               )}
             </TabsContent>
 
@@ -686,27 +666,7 @@ export default function AdminDashboard() {
               {orgsLoading && organizations.length === 0 ? (
                 <TabLoadingSpinner message="Loading organizations..." />
               ) : (
-                <>
-                  <OrgTable organizations={organizations} />
-                  {orgsPagination.hasMore && (
-                    <div className="flex justify-center pt-4">
-                      <Button
-                        variant="outline"
-                        onClick={() =>
-                          fetchOrganizations(
-                            Math.floor(
-                              orgsPagination.offset / orgsPagination.limit
-                            ) + 1,
-                            false
-                          )
-                        }
-                        disabled={orgsLoading}
-                      >
-                        Load More Organizations
-                      </Button>
-                    </div>
-                  )}
-                </>
+                <OrgTable organizations={organizations} />
               )}
             </TabsContent>
 

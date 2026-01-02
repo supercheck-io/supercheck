@@ -161,14 +161,14 @@ export class AIStreamingService {
 
         case "gemini": {
           // Google AI Studio - simple API key like OpenAI
-          const model = modelName || "gemini-2.0-flash";
+          const model = modelName || "gemini-2.5-flash";
           console.log(`[AI Streaming Service] Initializing Google AI (Gemini) with model: ${model}`);
           return google(model) as unknown as LanguageModel;
         }
 
         case "google-vertex": {
           // Google Vertex AI - enterprise GCP setup
-          const model = modelName || "gemini-2.0-flash";
+          const model = modelName || "gemini-2.5-flash";
           console.log(`[AI Streaming Service] Initializing Google Vertex AI with model: ${model}`);
           return vertex(model) as unknown as LanguageModel;
         }

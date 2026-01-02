@@ -150,9 +150,9 @@ export class AIFixService {
       case "anthropic":
         return modelName || "claude-3-5-haiku-20241022";
       case "gemini":
-        return modelName || "gemini-2.0-flash";
+        return modelName || "gemini-2.5-flash";
       case "google-vertex":
-        return modelName || "gemini-2.0-flash";
+        return modelName || "gemini-2.5-flash";
       case "bedrock":
         return modelName || "anthropic.claude-3-5-haiku-20241022-v1:0";
       case "openrouter":
@@ -192,7 +192,7 @@ export class AIFixService {
         case "gemini": {
           // Google AI Studio - simple API key like OpenAI
           // GOOGLE_GENERATIVE_AI_API_KEY is read automatically from env
-          const model = modelName || "gemini-2.0-flash";
+          const model = modelName || "gemini-2.5-flash";
           console.log(`[AI Service] Initializing Google AI (Gemini) with model: ${model}`);
           return google(model) as unknown as LanguageModel;
         }
@@ -200,7 +200,7 @@ export class AIFixService {
         case "google-vertex": {
           // Google Vertex AI - enterprise GCP setup
           // Uses ADC automatically, GOOGLE_VERTEX_PROJECT and GOOGLE_VERTEX_LOCATION configure the endpoint
-          const model = modelName || "gemini-2.0-flash";
+          const model = modelName || "gemini-2.5-flash";
           console.log(`[AI Service] Initializing Google Vertex AI with model: ${model}`);
           return vertex(model) as unknown as LanguageModel;
         }

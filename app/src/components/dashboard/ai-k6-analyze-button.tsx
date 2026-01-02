@@ -160,18 +160,20 @@ export function AIK6AnalyzeButton({
                 )}
             </Button>
 
-            <AIK6AnalyzeViewer
-                open={isViewerOpen}
-                onClose={() => {
-                    setIsViewerOpen(false);
-                    setAnalysisContent("");
-                }}
-                content={analysisContent}
-                isStreaming={isStreaming}
-                baselineRunId={baselineRun.runId}
-                compareRunId={compareRun.runId}
-                jobName={jobName}
-            />
+            {isViewerOpen && (
+                <AIK6AnalyzeViewer
+                    open={isViewerOpen}
+                    onClose={() => {
+                        setIsViewerOpen(false);
+                        setAnalysisContent("");
+                    }}
+                    content={analysisContent}
+                    isStreaming={isStreaming}
+                    baselineRunId={baselineRun.runId}
+                    compareRunId={compareRun.runId}
+                    jobName={jobName}
+                />
+            )}
         </>
     );
 }
