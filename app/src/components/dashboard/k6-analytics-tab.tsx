@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
     Card,
     CardContent,
@@ -56,9 +56,11 @@ import {
 
     ArrowLeft,
     ArrowRightLeft,
+    FileX,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import Link from "next/link";
+import { triggerMonacoPreload } from "@/components/monaco-prefetcher";
 import { cn } from "@/lib/utils";
 import { K6Logo } from "@/components/logo/k6-logo";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
@@ -93,8 +95,8 @@ interface K6Run {
     completedAt: string | null;
     durationMs: number | null;
     thresholdsPassed: boolean | null;
-    metrics: K6RunMetrics;
-    delta: {
+    metrics?: K6RunMetrics;  // Optional - may not exist in all responses
+    delta?: {
         p95: number | null;
     };
 }
@@ -186,9 +188,11 @@ function ComparisonRow({
     unit?: string;
     lowerIsBetter?: boolean;
 }) {
-    const formatVal = (val: string | number | null) => {
+    const formatVal = (val: string | number | null | unknown) => {
         if (val === null || val === undefined) return "-";
-        return typeof val === "number" ? val.toLocaleString() : val;
+        if (typeof val === "number") return val.toLocaleString();
+        if (typeof val === "object") return JSON.stringify(val); // Safety for [object Object] error
+        return String(val);
     };
 
     const getDeltaClass = () => {
@@ -259,8 +263,20 @@ export function K6AnalyticsTab({
     const isComparing = isComparingOpen !== undefined ? isComparingOpen : internalIsComparing;
     const setIsComparing = onCompareOpenChange ?? setInternalIsComparing;
 
+    // Deduplicated runs - computed once when data changes
+    const uniqueRuns = useMemo(() => {
+        if (!data?.runs) return [];
+        const runMap = new Map<string, K6Run>();
+        for (const run of data.runs) {
+            if (run.runId && !runMap.has(run.runId)) {
+                runMap.set(run.runId, run);
+            }
+        }
+        return Array.from(runMap.values());
+    }, [data?.runs]);
+
     // Main data fetch - does NOT include comparison run IDs
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (signal?: AbortSignal) => {
         try {
             setLoading(true);
             const params = new URLSearchParams();
@@ -269,20 +285,27 @@ export function K6AnalyticsTab({
                 params.set("jobId", selectedJob);
             }
 
-            const response = await fetch(`/api/analytics/k6?${params.toString()}`);
+            const response = await fetch(`/api/analytics/k6?${params.toString()}`, { signal });
             if (!response.ok) throw new Error("Failed to fetch K6 analytics");
             const result = await response.json();
-            setData(result);
-            setError(null);
-        } catch (err) {
+
+            // Should not happen if aborted, but good safety
+            if (!signal?.aborted) {
+                setData(result);
+                setError(null);
+            }
+        } catch (err: unknown) {
+            if (err instanceof Error && err.name === 'AbortError') return;
             setError(err instanceof Error ? err.message : "Unknown error");
         } finally {
-            setLoading(false);
+            if (!signal?.aborted) {
+                setLoading(false);
+            }
         }
     }, [period, selectedJob]);
 
     // Separate comparison fetch - updates only comparison data without re-rendering charts
-    const fetchComparison = useCallback(async () => {
+    const fetchComparison = useCallback(async (signal?: AbortSignal) => {
         if (!leftRunId || !rightRunId || selectedJob === "all" || selectedJob === "") return;
 
         try {
@@ -292,42 +315,63 @@ export function K6AnalyticsTab({
             params.set("leftRunId", leftRunId);
             params.set("rightRunId", rightRunId);
 
-            const response = await fetch(`/api/analytics/k6?${params.toString()}`);
+            const response = await fetch(`/api/analytics/k6?${params.toString()}`, { signal });
             if (!response.ok) return;
             const result = await response.json();
-            // Only update comparison data, not the entire data object
-            setData(prev => prev ? { ...prev, comparison: result.comparison } : prev);
+
+            if (!signal?.aborted) {
+                // Only update comparison data, not the entire data object
+                setData(prev => prev ? { ...prev, comparison: result.comparison } : prev);
+            }
         } catch (err) {
+            if (err instanceof Error && err.name === 'AbortError') return;
             console.error("Failed to fetch comparison:", err);
         }
     }, [period, selectedJob, leftRunId, rightRunId]);
 
     useEffect(() => {
-        fetchData();
+        const controller = new AbortController();
+        fetchData(controller.signal);
+        return () => controller.abort();
     }, [fetchData]);
 
     // Fetch comparison data when run selection changes
     useEffect(() => {
         if (leftRunId && rightRunId) {
-            fetchComparison();
+            const controller = new AbortController();
+            fetchComparison(controller.signal);
+            return () => controller.abort();
         }
     }, [leftRunId, rightRunId, fetchComparison]);
 
-    // Auto-select comparison runs when data loads with 2+ runs or when dialog opens
+    // Auto-select comparison runs when dialog opens and we have data
     useEffect(() => {
-        if (data && data.runs.length >= 2 && !leftRunId && !rightRunId) {
-            // Auto-select the two most recent runs for comparison
-            setLeftRunId(data.runs[1]?.runId ?? null);
-            setRightRunId(data.runs[0]?.runId ?? null);
+        // Start loading Monaco in background as soon as dialog opens
+        if (isComparing) {
+            triggerMonacoPreload();
         }
-    }, [data, leftRunId, rightRunId, isComparing]);
+
+        if (!isComparing || uniqueRuns.length < 2) return;
+
+        // Only auto-select if both are null (initial state when dialog opens)
+        if (leftRunId === null && rightRunId === null) {
+            // Select the two most recent runs (runs are sorted by startedAt desc)
+            const firstRun = uniqueRuns[0]?.runId ?? null;
+            const secondRun = uniqueRuns[1]?.runId ?? null;
+            if (firstRun && secondRun && firstRun !== secondRun) {
+                setRightRunId(firstRun);  // Most recent goes to right (compare)
+                setLeftRunId(secondRun);   // Second most recent goes to left (baseline)
+            }
+        }
+    }, [isComparing, uniqueRuns, leftRunId, rightRunId]);
 
     // Reset comparison when job changes
     useEffect(() => {
         setLeftRunId(null);
         setRightRunId(null);
         setShowReportsView(false);
-        // Keep isComparing true - user wants it open by default
+        // Clear comparison data when job changes
+        setData(prev => prev ? { ...prev, comparison: null } : prev);
     }, [selectedJob]);
 
     if (loading) {
@@ -387,7 +431,7 @@ export function K6AnalyticsTab({
                     <div className="text-center py-12">
                         <XCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
                         <p className="text-destructive mb-4">Error: {error}</p>
-                        <Button variant="outline" onClick={fetchData}>Retry</Button>
+                        <Button variant="outline" onClick={() => fetchData()}>Retry</Button>
                     </div>
                 </CardContent>
             </Card>
@@ -419,7 +463,7 @@ export function K6AnalyticsTab({
     const compDeltas = data.comparison?.deltas;
 
     // Check if a specific job is selected (enables comparison)
-    const canCompare = selectedJob !== "all" && data.runs.length >= 2;
+    const canCompare = selectedJob !== "all" && selectedJob !== "" && uniqueRuns.length >= 2;
 
     return (
         <div className="space-y-4">
@@ -643,9 +687,10 @@ export function K6AnalyticsTab({
                                 </DialogTitle>
                                 <DialogDescription>Compare metrics between two runs</DialogDescription>
                             </div>
-                            {/* View k6 Report / Back to Metrics button */}
-                            {compLeft && compRight && compLeft.reportS3Url && compRight.reportS3Url && (
+                            {/* Action buttons - show immediately when runs are selected */}
+                            {leftRunId && rightRunId && (
                                 <div className="flex items-center gap-2 mr-10 mt-5">
+                                    {/* View k6 Reports button - always show when runs are selected */}
                                     <Button
                                         variant="outline"
                                         size="sm"
@@ -664,27 +709,31 @@ export function K6AnalyticsTab({
                                             </>
                                         )}
                                     </Button>
-                                    <AIK6AnalyzeButton
-                                        baselineRun={{
-                                            runId: compLeft.runId,
-                                            status: compLeft.status,
-                                            startedAt: compLeft.startedAt,
-                                            durationMs: compLeft.durationMs,
-                                            requestRate: compLeft.requestRate,
-                                            metrics: compLeft.metrics,
-                                            reportS3Url: compLeft.reportS3Url,
-                                        } as K6RunData}
-                                        compareRun={{
-                                            runId: compRight.runId,
-                                            status: compRight.status,
-                                            startedAt: compRight.startedAt,
-                                            durationMs: compRight.durationMs,
-                                            requestRate: compRight.requestRate,
-                                            metrics: compRight.metrics,
-                                            reportS3Url: compRight.reportS3Url,
-                                        } as K6RunData}
-                                        jobName={compLeft.jobName ?? undefined}
-                                    />
+
+                                    {/* AI Analyze button - show when comparison data is loaded */}
+                                    {compLeft && compRight && compLeft.metrics && compRight.metrics && (
+                                        <AIK6AnalyzeButton
+                                            baselineRun={{
+                                                runId: compLeft.runId,
+                                                status: compLeft.status,
+                                                startedAt: compLeft.startedAt,
+                                                durationMs: compLeft.durationMs,
+                                                requestRate: compLeft.requestRate,
+                                                metrics: compLeft.metrics,
+                                                reportS3Url: compLeft.reportS3Url,
+                                            } as K6RunData}
+                                            compareRun={{
+                                                runId: compRight.runId,
+                                                status: compRight.status,
+                                                startedAt: compRight.startedAt,
+                                                durationMs: compRight.durationMs,
+                                                requestRate: compRight.requestRate,
+                                                metrics: compRight.metrics,
+                                                reportS3Url: compRight.reportS3Url,
+                                            } as K6RunData}
+                                            jobName={compLeft.jobName ?? undefined}
+                                        />
+                                    )}
                                 </div>
                             )}
                         </DialogHeader>
@@ -698,16 +747,18 @@ export function K6AnalyticsTab({
                                             <SelectValue placeholder="Select run" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {data.runs.filter(r => r.runId !== rightRunId).map((run) => (
-                                                <SelectItem key={run.runId} value={run.runId}>
-                                                    <span className="flex items-center gap-2">
-                                                        {run.status === "passed" ? <CheckCircle className="h-3 w-3 text-green-500" /> : <XCircle className="h-3 w-3 text-red-500" />}
-                                                        {run.startedAt ? format(parseISO(run.startedAt), "MMM d, HH:mm") : "Unknown"}
-                                                        <span className="text-muted-foreground text-xs">p95: {run.metrics.p95ResponseTimeMs ?? "-"}ms</span>
-                                                        <span className="text-muted-foreground text-xs">Run ID: {run.runId}</span>
-                                                    </span>
-                                                </SelectItem>
-                                            ))}
+                                            {uniqueRuns
+                                                .filter(r => r.runId !== rightRunId || r.runId === leftRunId)
+                                                .map((run) => (
+                                                    <SelectItem key={run.runId} value={run.runId}>
+                                                        <span className="flex items-center gap-2">
+                                                            {run.status === "passed" ? <CheckCircle className="h-3 w-3 text-green-500" /> : <XCircle className="h-3 w-3 text-red-500" />}
+                                                            {run.startedAt ? format(parseISO(run.startedAt), "MMM d, HH:mm") : "Unknown"}
+                                                            <span className="text-muted-foreground text-xs">p95: {run.metrics?.p95ResponseTimeMs ?? "-"}ms</span>
+                                                            <span className="text-muted-foreground text-xs">Run ID: {run.runId}</span>
+                                                        </span>
+                                                    </SelectItem>
+                                                ))}
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -718,16 +769,18 @@ export function K6AnalyticsTab({
                                             <SelectValue placeholder="Select run" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {data.runs.filter(r => r.runId !== leftRunId).map((run) => (
-                                                <SelectItem key={run.runId} value={run.runId}>
-                                                    <span className="flex items-center gap-2">
-                                                        {run.status === "passed" ? <CheckCircle className="h-3 w-3 text-green-500" /> : <XCircle className="h-3 w-3 text-red-500" />}
-                                                        {run.startedAt ? format(parseISO(run.startedAt), "MMM d, HH:mm") : "Unknown"}
-                                                        <span className="text-muted-foreground text-xs">p95: {run.metrics.p95ResponseTimeMs ?? "-"}ms</span>
-                                                        <span className="text-muted-foreground text-xs">Run ID: {run.runId}</span>
-                                                    </span>
-                                                </SelectItem>
-                                            ))}
+                                            {uniqueRuns
+                                                .filter(r => r.runId !== leftRunId || r.runId === rightRunId)
+                                                .map((run) => (
+                                                    <SelectItem key={run.runId} value={run.runId}>
+                                                        <span className="flex items-center gap-2">
+                                                            {run.status === "passed" ? <CheckCircle className="h-3 w-3 text-green-500" /> : <XCircle className="h-3 w-3 text-red-500" />}
+                                                            {run.startedAt ? format(parseISO(run.startedAt), "MMM d, HH:mm") : "Unknown"}
+                                                            <span className="text-muted-foreground text-xs">p95: {run.metrics?.p95ResponseTimeMs ?? "-"}ms</span>
+                                                            <span className="text-muted-foreground text-xs">Run ID: {run.runId}</span>
+                                                        </span>
+                                                    </SelectItem>
+                                                ))}
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -790,32 +843,52 @@ export function K6AnalyticsTab({
                                     )}
 
                                     {/* Side-by-side reports view */}
-                                    {showReportsView && compLeft.reportS3Url && compRight.reportS3Url && (
+                                    {showReportsView && (
                                         <div className="grid grid-cols-2 gap-4 h-[600px]">
                                             {/* Left report */}
-                                            <div className="flex flex-col border rounded-md overflow-hidden">
-                                                <div className="flex-1 min-h-0">
-                                                    <ReportViewer
-                                                        reportUrl={`/api/test-results/${encodeURIComponent(compLeft.runId)}/report.html`}
-                                                        isK6Report={true}
-                                                        hideFullscreenButton={true}
-                                                        hideEmptyMessage={true}
-                                                        containerClassName="w-full h-full"
-                                                        iframeClassName="w-full h-full"
-                                                    />
+                                            <div className="flex flex-col border rounded-md overflow-hidden bg-background">
+                                                <div className="flex-1 min-h-0 relative">
+                                                    {compLeft.reportS3Url ? (
+                                                        <ReportViewer
+                                                            reportUrl={`/api/test-results/${encodeURIComponent(compLeft.runId)}/report.html`}
+                                                            isK6Report={true}
+                                                            hideFullscreenButton={true}
+                                                            hideEmptyMessage={true}
+                                                            containerClassName="w-full h-full"
+                                                            iframeClassName="w-full h-full"
+                                                        />
+                                                    ) : (
+                                                        <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground p-4 text-center">
+                                                            <div className="rounded-full bg-muted p-3 mb-2">
+                                                                <FileX className="h-6 w-6" />
+                                                            </div>
+                                                            <p className="font-medium">No report available</p>
+                                                            <p className="text-xs">This run does not have a generated HTML report.</p>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                             {/* Right report */}
-                                            <div className="flex flex-col border rounded-md overflow-hidden">
-                                                <div className="flex-1 min-h-0">
-                                                    <ReportViewer
-                                                        reportUrl={`/api/test-results/${encodeURIComponent(compRight.runId)}/report.html`}
-                                                        isK6Report={true}
-                                                        hideFullscreenButton={true}
-                                                        hideEmptyMessage={true}
-                                                        containerClassName="w-full h-full"
-                                                        iframeClassName="w-full h-full"
-                                                    />
+                                            <div className="flex flex-col border rounded-md overflow-hidden bg-background">
+                                                <div className="flex-1 min-h-0 relative">
+                                                    {compRight.reportS3Url ? (
+                                                        <ReportViewer
+                                                            reportUrl={`/api/test-results/${encodeURIComponent(compRight.runId)}/report.html`}
+                                                            isK6Report={true}
+                                                            hideFullscreenButton={true}
+                                                            hideEmptyMessage={true}
+                                                            containerClassName="w-full h-full"
+                                                            iframeClassName="w-full h-full"
+                                                        />
+                                                    ) : (
+                                                        <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground p-4 text-center">
+                                                            <div className="rounded-full bg-muted p-3 mb-2">
+                                                                <FileX className="h-6 w-6" />
+                                                            </div>
+                                                            <p className="font-medium">No report available</p>
+                                                            <p className="text-xs">This run does not have a generated HTML report.</p>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>

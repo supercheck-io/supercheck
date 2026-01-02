@@ -215,7 +215,7 @@ export async function getAllUsers(limit = 50, offset = 0) {
 /**
  * Get the user's highest role across all organizations for super admin display
  */
-async function getUserHighestRole(userId: string): Promise<string> {
+export async function getUserHighestRole(userId: string): Promise<string> {
   // Super admin access is now managed through the database
   // Check user role directly from the database
 
