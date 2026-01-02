@@ -3,7 +3,6 @@ import { db } from "@/utils/db";
 import { user, member, organization } from "@/db/schema";
 import { desc, eq, inArray } from "drizzle-orm";
 import { requireAdmin } from "@/lib/admin";
-import { getUserHighestRole } from "@/lib/admin";
 
 // Batch size for fetching users - keeps memory usage low
 const BATCH_SIZE = 100;
@@ -101,7 +100,6 @@ export async function GET() {
             .offset(offset);
 
           if (users.length === 0) {
-            hasMore = false;
             break;
           }
 
