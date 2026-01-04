@@ -9,14 +9,21 @@
 #
 # Quick Start:
 #   1. Set up external PostgreSQL, Redis, and S3
-#   2. Create .env with connection strings:
-#      DATABASE_URL=postgresql://user:pass@host:5432/supercheck
-#      REDIS_URL=redis://:password@host:6379
-#      S3_ENDPOINT=https://your-bucket.s3.amazonaws.com
+#   2. Create .env with connection strings (see docs for full list)
 #   3. Run: docker compose -f docker-compose-external.yml up -d
+#
+# S3 Buckets:
+#   Supercheck auto-creates buckets on startup if credentials have permission.
+#   If using restricted IAM policies, pre-create these buckets:
+#   - playwright-test-artifacts, playwright-job-artifacts, playwright-monitor-artifacts
+#   - k6-test-artifacts, k6-job-artifacts, status-page-artifacts, test-requirement-artifacts
 #
 # Documentation: https://supercheck.io/docs/deployment/self-hosted
 # ============================================================================
+
+# Project name ensures consistent volume naming across different directories
+name: supercheck
+
 # YAML anchors for shared configuration
 x-common-env: &common-env # Database Configuration - External PostgreSQL
   DATABASE_URL: ${DATABASE_URL}

@@ -11,8 +11,15 @@
 #
 # For production with HTTPS, use docker-compose-secure.yml instead.
 #
+# Data Persistence:
+#   PostgreSQL data is stored in a Docker named volume (postgres-data).
+#   IMPORTANT: Take regular backups! See Maintenance section in docs.
+#
 # Documentation: https://supercheck.io/docs/deployment/self-hosted
 # ============================================================================
+
+# Project name ensures consistent volume naming across different directories
+name: supercheck
 
 # YAML anchors for shared configuration
 x-common-env: &common-env # Database Configuration
@@ -347,7 +354,7 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
       - POSTGRES_DB=${DB_NAME:-supercheck}
     volumes:
-      - postgres-data:/var/lib/postgresql
+      - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
