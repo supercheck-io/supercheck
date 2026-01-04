@@ -18,6 +18,9 @@
 # Documentation: https://supercheck.io/docs/deployment/self-hosted
 # ============================================================================
 
+# Project name ensures consistent volume naming across different directories
+name: supercheck
+
 # YAML anchors for shared configuration
 x-common-env: &common-env # Database Configuration
   DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/supercheck}
@@ -336,7 +339,7 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=supercheck
     volumes:
-      - postgres-data:/var/lib/postgresql
+      - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]

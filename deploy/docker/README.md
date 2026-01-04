@@ -175,6 +175,32 @@ See the docker-compose files for detailed configuration comments.
 
 ---
 
+## Data Persistence
+
+<details>
+<summary><strong>⚠️ Important: Backup Your Data</strong></summary>
+
+When using local PostgreSQL (`docker-compose.yml`, `docker-compose-secure.yml`, `docker-compose-local.yml`), data is stored in Docker named volumes. **Take regular backups:**
+
+```bash
+# Backup (creates dated file, e.g., backup-20260104.sql)
+docker compose exec postgres pg_dump -U postgres supercheck > backup-$(date +%Y%m%d).sql
+
+# Restore from a specific backup
+cat backup-20260104.sql | docker compose exec -T postgres psql -U postgres supercheck
+```
+
+Data can be lost if:
+- Docker is reinstalled or storage is reset
+- You run `docker compose down -v` (removes volumes)
+- Docker storage location changes during OS upgrades
+
+**For maximum safety**, use `docker-compose-external.yml` with managed PostgreSQL (Neon, Supabase, AWS RDS).
+
+</details>
+
+---
+
 ## Quick Start
 
 ```bash

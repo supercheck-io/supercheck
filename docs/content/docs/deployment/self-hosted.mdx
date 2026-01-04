@@ -246,7 +246,7 @@ docker compose -f docker-compose-secure.yml up -d
 2. Promote your account to super admin:
 
 ```bash
-docker compose exec app npm run setup:admin your-email@example.com
+docker compose -f docker-compose-secure.yml exec app npm run setup:admin your-email@example.com
 ```
 
 ---
@@ -496,16 +496,80 @@ WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
 
 ---
 
+## Data Persistence & Backups
+
+<Callout type="error">
+**Critical:** When using local PostgreSQL (included in `docker-compose.yml` and `docker-compose-secure.yml`), your data is stored in Docker named volumes. This data can be lost if:
+- Docker is reinstalled or reset
+- You run `docker compose down -v` (the `-v` flag removes volumes)
+- The Docker storage location changes during OS upgrades
+- You run compose from a different directory without setting `COMPOSE_PROJECT_NAME`
+</Callout>
+
+### Recommended: Regular Backups
+
+Set up automated daily backups for production deployments:
+
+```bash
+# Create a backup (includes date in filename)
+docker compose exec postgres pg_dump -U postgres supercheck > backup-$(date +%Y%m%d).sql
+
+# Restore from a specific backup file
+cat backup-20260104.sql | docker compose exec -T postgres psql -U postgres supercheck
+```
+
+<Callout type="tip">
+**For maximum data safety**, consider using `docker-compose-external.yml` with a managed PostgreSQL service (Neon, Supabase, AWS RDS). Managed databases include automatic backups, point-in-time recovery, and high availability.
+</Callout>
+
+### Using External Services
+
+If you prefer managed services for reliability and automatic backups, use `docker-compose-external.yml` which connects to external PostgreSQL, Redis, and S3 instead of running them locally.
+
+**Prerequisites:**
+1. External PostgreSQL database (Neon, Supabase, AWS RDS, etc.)
+2. External Redis instance (Upstash, Redis Cloud, etc.)
+3. External S3-compatible storage (AWS S3, Cloudflare R2, etc.)
+
+<Callout type="info">
+**S3 Buckets:** Supercheck will automatically create the required buckets on startup if your credentials have permission. If using AWS S3 with restricted IAM policies, pre-create these buckets: `playwright-test-artifacts`, `playwright-job-artifacts`, `playwright-monitor-artifacts`, `k6-test-artifacts`, `k6-job-artifacts`, `status-page-artifacts`, `test-requirement-artifacts`.
+</Callout>
+
+```bash
+# Use external services configuration
+docker compose -f docker-compose-external.yml up -d
+```
+
+Required environment variables (add to `.env`):
+```bash
+# Domain & SSL (required)
+APP_DOMAIN=app.yourdomain.com
+ACME_EMAIL=admin@yourdomain.com
+
+# Database (required)
+DATABASE_URL=postgresql://user:pass@your-db-host:5432/supercheck
+
+# Redis (required) - set REDIS_TLS_ENABLED=true for cloud providers
+REDIS_URL=redis://:password@your-redis-host:6379
+REDIS_TLS_ENABLED=true
+
+# S3 Storage (required)
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+S3_ENDPOINT=https://s3.us-east-1.amazonaws.com
+
+# OAuth (at least one required)
+GITHUB_CLIENT_ID=your-client-id
+GITHUB_CLIENT_SECRET=your-client-secret
+```
+
+---
+
 ## Maintenance
 
 **Update:**
 ```bash
 docker compose pull && docker compose up -d
-```
-
-**Backup:**
-```bash
-docker compose exec postgres pg_dump -U postgres supercheck > backup.sql
 ```
 
 **Troubleshoot:**
