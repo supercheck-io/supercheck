@@ -47,6 +47,7 @@ interface TagSelectorProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  maxTags?: number;
 }
 
 const predefinedColors = [
@@ -77,6 +78,7 @@ export function TagSelector({
   placeholder = "Select tags...",
   className,
   disabled = false,
+  maxTags = 10,
 }: TagSelectorProps) {
   const [open, setOpen] = React.useState(false);
   const [inputValue, setInputValue] = React.useState("");
@@ -104,9 +106,9 @@ export function TagSelector({
       // Remove tag
       onChange(value.filter((t) => t.id !== tag.id));
     } else {
-      // Check if we've reached the maximum number of tags per test (10)
-      if (value.length >= 10) {
-        toast.error("Maximum of 10 tags allowed per test");
+      // Check if we've reached the maximum number of tags
+      if (value.length >= maxTags) {
+        toast.error(`Maximum of ${maxTags} tags allowed`);
         return;
       }
       // Add tag
@@ -174,9 +176,9 @@ export function TagSelector({
       return;
     }
 
-    // Check if we've reached the maximum number of tags per test (10)
-    if (value.length >= 10) {
-      toast.error("Maximum of 10 tags allowed per test");
+    // Check if we've reached the maximum number of tags per test (default 10)
+    if (value.length >= maxTags) {
+      toast.error(`Maximum of ${maxTags} tags allowed`);
       return;
     }
 
@@ -271,10 +273,10 @@ export function TagSelector({
                     style={
                       tag.color
                         ? {
-                            backgroundColor: tag.color + "20",
-                            color: tag.color,
-                            borderColor: tag.color + "40",
-                          }
+                          backgroundColor: tag.color + "20",
+                          color: tag.color,
+                          borderColor: tag.color + "40",
+                        }
                         : {}
                     }
                   >
@@ -351,9 +353,8 @@ export function TagSelector({
                       >
                         {isCreating
                           ? "Creating..."
-                          : `Create with ${
-                              selectedColor ? "selected" : "random"
-                            } color`}
+                          : `Create with ${selectedColor ? "selected" : "random"
+                          } color`}
                       </Button>
                     )}
                   </div>

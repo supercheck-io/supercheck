@@ -26,6 +26,7 @@ import {
   Tally4,
   type LucideIcon,
   ClipboardList,
+  Target,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -122,6 +123,11 @@ const data = {
           ],
         },
       ],
+    },
+    {
+      title: "Requirements",
+      url: "/requirements",
+      icon: Target,
     },
     {
       title: "Tests",

@@ -28,7 +28,7 @@ import {
   FormMessage,
 } from "@/components/form";
 import { ControllerRenderProps } from "react-hook-form";
-import TestSelector from "./test-selector";
+import TestSelector from "@/components/shared/test-selector";
 import CronScheduler from "./cron-scheduler";
 import { Loader2 } from "lucide-react";
 import NextRunDisplay from "./next-run-display";

@@ -5,10 +5,12 @@ import {
   XCircle,
   Mail,
   Webhook,
-  Bot,
-  Slack,
   BotMessageSquare,
 } from "lucide-react";
+import { MicrosoftTeamsLogo } from "@/components/logo/microsoft-teams-logo";
+import { TelegramLogo } from "@/components/logo/telegram-logo";
+import { SlackLogo } from "@/components/logo/slack-logo";
+import { DiscordLogo } from "@/components/logo/discord-logo";
 
 export const alertStatuses = [
   {
@@ -86,9 +88,8 @@ export const notificationProviders = [
   {
     type: "slack",
     label: "Slack",
-    icon: Slack,
+    icon: SlackLogo,
     color: "text-sky-500",
-
   },
   {
     type: "webhook",
@@ -99,14 +100,20 @@ export const notificationProviders = [
   {
     type: "telegram",
     label: "Telegram",
-    icon: Bot,
+    icon: TelegramLogo,
     color: "text-blue-400",
   },
   {
     type: "discord",
     label: "Discord",
-    icon: BotMessageSquare,
+    icon: DiscordLogo,
     color: "text-indigo-500",
+  },
+  {
+    type: "teams",
+    label: "Microsoft Teams",
+    icon: MicrosoftTeamsLogo,
+    color: "text-[#6264A7]",
   },
 ];
 
@@ -116,15 +123,15 @@ export const getNotificationProviderConfig = (type: string) => {
   if (exactMatch) {
     return exactMatch;
   }
-  
+
   // If no exact match, try case-insensitive match
-  const caseInsensitiveMatch = notificationProviders.find(provider => 
+  const caseInsensitiveMatch = notificationProviders.find(provider =>
     provider.type.toLowerCase() === type.toLowerCase()
   );
   if (caseInsensitiveMatch) {
     return caseInsensitiveMatch;
   }
-  
+
   // If still no match, create a fallback config for unknown providers
   return {
     type: type,

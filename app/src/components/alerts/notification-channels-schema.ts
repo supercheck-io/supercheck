@@ -4,7 +4,7 @@ import { z } from "zod";
 export const notificationChannelSchema = z.object({
   id: z.string(),
   name: z.string(),
-  type: z.enum(["email", "slack", "webhook", "telegram", "discord"]),
+  type: z.enum(["email", "slack", "webhook", "telegram", "discord", "teams"]),
   config: z.record(z.unknown()),
   isEnabled: z.boolean(),
   createdAt: z.string(),

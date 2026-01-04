@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,6 +27,8 @@ interface AICreateButtonProps {
   onStreamingStart?: () => void;
   onStreamingUpdate?: (text: string) => void;
   onStreamingEnd?: () => void;
+  initialPrompt?: string;
+  initialIsOpen?: boolean;
 }
 
 export function AICreateButton({
@@ -39,14 +41,39 @@ export function AICreateButton({
   onStreamingStart,
   onStreamingUpdate,
   onStreamingEnd,
+  initialPrompt,
+  initialIsOpen,
 }: AICreateButtonProps) {
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [userRequest, setUserRequest] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(initialIsOpen || false);
+  const [userRequest, setUserRequest] = useState(initialPrompt || "");
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Update userRequest if initialPrompt changes
+  useState(() => {
+    if (initialPrompt) setUserRequest(initialPrompt);
+  });
+
+  // React to prop changes (optional, but good for dynamic updates)
+  useEffect(() => {
+    if (initialIsOpen) {
+      setIsDialogOpen(true);
+    }
+  }, [initialIsOpen]);
+
+  useEffect(() => {
+    if (initialPrompt) {
+      setUserRequest(initialPrompt);
+    }
+  }, [initialPrompt]);
 
   const handleOpenDialog = () => {
     setIsDialogOpen(true);
-    setUserRequest("");
+    // Don't clear userRequest if it was initialized
+    if (!userRequest && initialPrompt) {
+      setUserRequest(initialPrompt);
+    } else if (!userRequest) {
+      setUserRequest("");
+    }
   };
 
   const handleCloseDialog = () => {
@@ -316,7 +343,7 @@ export function AICreateButton({
       </Button>
 
       <Dialog open={isDialogOpen} onOpenChange={handleCloseDialog}>
-        <DialogContent className="sm:max-w-[640px]">
+        <DialogContent className="sm:max-w-[920px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500/20 to-pink-500/20">

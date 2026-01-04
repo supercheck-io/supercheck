@@ -89,7 +89,7 @@ function AlertsPage() {
     if (create === "true" && canCreate) {
       if (
         type &&
-        ["email", "slack", "webhook", "telegram", "discord"].includes(type)
+        ["email", "slack", "webhook", "telegram", "discord", "teams"].includes(type)
       ) {
         setPreselectedType(type as NotificationProviderType);
       }

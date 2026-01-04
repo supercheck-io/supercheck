@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@/components/ui/textarea";  // Ensure this is imported
+import { getLinkedTestRequirement } from "@/actions/get-linked-requirement";
 import {
   Select,
   SelectContent,
@@ -10,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SaveIcon, Trash2, Loader2 } from "lucide-react";
+import { SaveIcon, Trash2, Loader2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { testsInsertSchema, TestPriority, TestType } from "@/db/schema";
 import { saveTest } from "@/actions/save-test";
@@ -138,6 +139,7 @@ interface TestFormProps {
   isPerformanceMode?: boolean;
   performanceLocation?: PerformanceLocation;
   onPerformanceLocationChange?: (location: PerformanceLocation) => void;
+  linkedRequirement?: { id: string; title: string; externalUrl?: string | null } | null;
 }
 
 export function TestForm({
@@ -159,6 +161,7 @@ export function TestForm({
   isPerformanceMode = false,
   performanceLocation,
   onPerformanceLocationChange,
+  linkedRequirement: initialLinkedRequirement,
 }: TestFormProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -167,6 +170,19 @@ export function TestForm({
   const [formChanged, setFormChanged] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const performanceMode = isPerformanceMode || testCase.type === "performance";
+
+  // Linked Requirement State
+  const [linkedReq, setLinkedReq] = useState<{ id: string; title: string; externalUrl?: string | null } | null>(initialLinkedRequirement || null);
+
+  useEffect(() => {
+    if (testId) {
+      getLinkedTestRequirement(testId).then(req => {
+        if (req) {
+          setLinkedReq(req);
+        }
+      });
+    }
+  }, [testId]);
 
 
   // Tag management - use React Query hooks for efficient caching
@@ -539,6 +555,9 @@ export function TestForm({
           const result = await saveTest({
             id: testId,
             ...updatedTestCase,
+            // Pass the requirementId if this is a new test creation from a requirement
+            // This ensures the link is created on save
+            requirementId: testId ? undefined : initialLinkedRequirement?.id
           });
 
           if (result.success) {
@@ -734,6 +753,38 @@ export function TestForm({
           </div> */}
         </div>
       )}
+
+      {/* Linked Requirement Display */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-foreground">Requirement</label>
+        {linkedReq ? (
+          <div className="flex items-center gap-2 text-sm p-3 rounded-md border bg-muted/30 min-w-0">
+            <a
+              href={`/requirements?id=${linkedReq.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium truncate flex-1 hover:underline hover:text-primary transition-colors cursor-pointer min-w-0 block"
+              title={linkedReq.title}
+            >
+              {linkedReq.title}
+            </a>
+
+            {linkedReq.externalUrl ? (
+              <a href={linkedReq.externalUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors shrink-0" title="Open External Link">
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            ) : (
+              <a href={`/requirements?id=${linkedReq.id}`} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors shrink-0" title="Open Requirement Details">
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            )}
+          </div>
+        ) : (
+          <div className="text-sm text-muted-foreground p-3 rounded-md border border-dashed bg-muted/10">
+            Not Linked
+          </div>
+        )}
+      </div>
 
       {/* Test title */}
       <div className="space-y-2">

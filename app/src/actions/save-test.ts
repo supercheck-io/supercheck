@@ -10,6 +10,7 @@ import {
   testsInsertSchema,
   type TestPriority,
   type TestType,
+  testRequirements,
 } from "@/db/schema";
 import { db } from "@/utils/db";
 import { revalidatePath } from "next/cache";
@@ -28,6 +29,7 @@ const saveTestSchema = testsInsertSchema.omit({
 // Add an optional id field for updates
 const saveTestWithIdSchema = saveTestSchema.extend({
   id: z.string().optional(),
+  requirementId: z.string().optional(),
 });
 
 export type SaveTestInput = z.infer<typeof saveTestWithIdSchema>;
@@ -172,6 +174,14 @@ export async function saveTest(
         createdAt: new Date(),
         // Don't set updatedAt on creation - it should remain null until first update
       });
+
+      // If requirementId is provided, link the test to the requirement
+      if (validatedData.requirementId) {
+        await db.insert(testRequirements).values({
+          testId: newTestId,
+          requirementId: validatedData.requirementId,
+        });
+      }
 
       // Log the audit event for test creation
       await logAuditEvent({

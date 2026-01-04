@@ -17,12 +17,14 @@ const SENSITIVE_FIELDS: Record<NotificationProviderType, string[]> = {
   webhook: ["url", "headers"],
   telegram: ["botToken"],
   discord: ["discordWebhookUrl"],
+  teams: ["teamsWebhookUrl"],
 };
 
 const ALWAYS_SENSITIVE_FIELDS = new Set([
   "botToken",
   "webhookUrl",
   "discordWebhookUrl",
+  "teamsWebhookUrl",
 ]);
 
 export function encryptNotificationProviderConfig(

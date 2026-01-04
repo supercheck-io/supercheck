@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/sheet";
 import { jobStatuses } from "./data";
 import { Job, Test } from "./schema";
-import { CalendarIcon, ClockIcon, TimerIcon, Edit } from "lucide-react";
+import { CalendarIcon, ClockIcon, TimerIcon, Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -45,7 +45,18 @@ import { createJobTestColumns } from "./job-test-columns";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canEditJobs } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
-import { useJobs } from "@/hooks/use-jobs";
+import { useJobs, useJobMutations } from "@/hooks/use-jobs";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 // Helper function to map incoming types to the valid Test["type"]
 function mapToTestType(type: string | undefined): Test["type"] {
@@ -67,9 +78,9 @@ export default function Jobs() {
   const [selectedJobOverride, setSelectedJobOverride] = useState<Job | null>(null);
   const [isEditTestDialogOpen, setIsEditTestDialogOpen] = useState(false);
   const [selectedTest, setSelectedTest] = useState<Test | null>(null);
-  const {} = useJobContext();
+  const { } = useJobContext();
   const isMounted = useSyncExternalStore(
-    () => () => {},
+    () => () => { },
     () => true,
     () => false
   );
@@ -77,7 +88,7 @@ export default function Jobs() {
 
   // Use React Query hook for jobs data (cached, handles loading/error)
   const { jobs: rawJobs, isLoading, invalidate } = useJobs();
-  
+
   // Check permissions
   const userRole = currentProject?.userRole ? normalizeRole(currentProject.userRole) : null;
   const hasEditPermission = userRole ? canEditJobs(userRole) : false;
@@ -114,15 +125,15 @@ export default function Jobs() {
       // Map tests from API format to local Test schema
       const tests: Test[] = Array.isArray(job.tests)
         ? job.tests.map((test) => ({
-            id: test.id,
-            name: test.title || test.name || "",
-            description: test.description || null,
-            type: mapToTestType(test.type),
-            status: undefined, // API doesn't return test status in job context
-            lastRunAt: test.updatedAt || null,
-            duration: null,
-            tags: test.tags?.map(t => ({ ...t, color: t.color || null })),
-          }))
+          id: test.id,
+          name: test.title || test.name || "",
+          description: test.description || null,
+          type: mapToTestType(test.type),
+          status: undefined, // API doesn't return test status in job context
+          lastRunAt: test.updatedAt || null,
+          duration: null,
+          tags: test.tags?.map(t => ({ ...t, color: t.color || null })),
+        }))
         : [];
 
       // Map lastRun to match local schema
@@ -290,13 +301,20 @@ export default function Jobs() {
     }
   };
 
-  const handleDeleteJob = (jobId: string) => {
-    // Invalidate React Query cache to refresh jobs list
-    invalidate();
+  const { deleteJob } = useJobMutations();
 
-    // If the deleted job is currently selected, close the sheet by updating URL
-    if (selectedJob && selectedJob.id === jobId) {
-      handleJobSheetClose();
+  const handleDeleteJob = async (jobId: string) => {
+    try {
+      await deleteJob.mutateAsync(jobId);
+      toast.success("Job deleted successfully");
+
+      // If the deleted job is currently selected, close the sheet by updating URL
+      if (selectedJob && selectedJob.id === jobId) {
+        handleJobSheetClose();
+      }
+    } catch (error) {
+      toast.error("Failed to delete job");
+      console.error(error);
     }
   };
 
@@ -357,11 +375,10 @@ export default function Jobs() {
                     {/* Alert Status Icon */}
                     <div className="relative group">
                       <div
-                        className={`flex items-center justify-center h-10 w-10 rounded-full ${
-                          selectedJob.alertConfig?.enabled
-                            ? 'bg-green-100 dark:bg-green-900/30'
-                            : 'bg-gray-100 dark:bg-gray-700/30'
-                        }`}
+                        className={`flex items-center justify-center h-10 w-10 rounded-full ${selectedJob.alertConfig?.enabled
+                          ? 'bg-green-100 dark:bg-green-900/30'
+                          : 'bg-gray-100 dark:bg-gray-700/30'
+                          }`}
                       >
                         {selectedJob.alertConfig?.enabled ? (
                           <Bell className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -383,36 +400,53 @@ export default function Jobs() {
                             </div>
                           </div>
                         )}
-                        {selectedJob.alertConfig.alertOnFailure && (
-                          <div className="relative group">
-                            <XCircle className="h-4 w-4 text-red-600 dark:text-red-500" />
-                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
-                              Job failure alert
-                            </div>
-                          </div>
-                        )}
-                        {selectedJob.alertConfig.alertOnTimeout && (
-                          <div className="relative group">
-                            <Clock className="h-4 w-4 text-orange-600 dark:text-orange-500" />
-                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
-                              Job timeout alert
-                            </div>
-                          </div>
-                        )}
                       </div>
                     )}
+
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={hasEditPermission ? () =>
                         router.push(`/jobs/edit/${selectedJob.id}`)
-                       : undefined}
+                        : undefined}
                       disabled={!hasEditPermission}
-                      className={`ml-2 ${!hasEditPermission ? "opacity-50 cursor-not-allowed" : ""}`}
+                      className={`mr-2 ${!hasEditPermission ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
                       <Edit className="h-4 w-4 mr-2 " />
-                      Edit Job
+                      Edit
                     </Button>
+
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={!hasEditPermission}
+                          className={`${!hasEditPermission ? "opacity-50 cursor-not-allowed" : ""}`}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete the job
+                            and all associated run history.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => handleDeleteJob(selectedJob.id)}
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               </SheetHeader>
@@ -446,11 +480,11 @@ export default function Jobs() {
                   <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="details">Details</TabsTrigger>
                     <TabsTrigger value="tests">
-                      Tests 
-                    <code className="font-mono text-xs font-semibold px-2 py-0.5 bg-card rounded-sm ml-2">
-                       {selectedJob.tests?.length || 0}
-                    </code>
-                   
+                      Linked Tests
+                      <code className="font-mono text-xs font-semibold px-2 py-0.5 bg-card rounded-sm ml-2">
+                        {selectedJob.tests?.length || 0}
+                      </code>
+
                     </TabsTrigger>
                   </TabsList>
 
@@ -480,7 +514,7 @@ export default function Jobs() {
                           })()}
                         </div>
                       </div>
-                      
+
                       {/* Schedule */}
                       <div className="space-y-2 bg-card p-4 rounded-lg border border-border/40">
                         <h3 className="text-xs font-medium text-muted-foreground">Schedule</h3>
@@ -565,17 +599,17 @@ export default function Jobs() {
                         <h3 className="text-xs font-medium text-muted-foreground">CI/CD Remote Job Trigger</h3>
                         <UrlTriggerTooltip jobId={selectedJob.id} />
                       </div>
-                      
+
                       <div className="space-y-3">
-            
+
                         <div className="space-y-2">
                           {/* <h4 className="text-sm font-medium">Curl</h4> */}
                           <div className="relative">
                             <pre className="p-3 bg-muted rounded text-xs overflow-x-auto">
-{`curl -X POST "${typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/jobs/${selectedJob.id}/trigger" \\
+                              {`curl -X POST "${typeof window !== 'undefined' ? window.location.origin : 'https://your-domain.com'}/api/jobs/${selectedJob.id}/trigger" \\
 -H "Authorization: Bearer YOUR_API_KEY" \\
-  -H "Content-Type: application/json"`}   
-  
+  -H "Content-Type: application/json"`}
+
                             </pre>
                             <Button
                               size="sm"
@@ -592,7 +626,7 @@ export default function Jobs() {
                           </div>
                         </div>
 
-                        
+
 
                         <div className="text-xs text-muted-foreground space-y-1">
                           <p><strong>Note:</strong> You need to create an API key first in the job settings and replace <i> YOUR_API_KEY</i> with actual API key.</p>
@@ -730,7 +764,7 @@ export default function Jobs() {
                                 "pending": "running",
                                 "skipped": undefined
                               };
-                              
+
                               setSelectedTest({
                                 ...selectedTest,
                                 status: statusMap[value]
@@ -766,6 +800,6 @@ export default function Jobs() {
           )}
         </SheetContent>
       </Sheet>
-    </div>
+    </div >
   );
 }

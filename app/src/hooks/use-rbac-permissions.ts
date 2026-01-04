@@ -31,6 +31,9 @@ import {
   canViewAPIKeys,
   canManageAPIKeys,
   canExportResults,
+  canCreateRequirements,
+  canEditRequirements,
+  canDeleteRequirements,
 } from "@/lib/rbac/client-permissions";
 import { Role } from "@/lib/rbac/permissions-client";
 
@@ -73,6 +76,11 @@ export interface RBACPermissions {
   // Export permissions
   canExportResult: boolean;
 
+  // Requirement permissions
+  canCreateRequirement: boolean;
+  canEditRequirement: boolean;
+  canDeleteRequirement: boolean;
+
   // Role info
   userRole: Role | null;
   userRoleString: string | null;
@@ -111,6 +119,9 @@ export function useRBACPermissions(): RBACPermissions {
         canViewAPIKey: false,
         canManageAPIKey: false,
         canExportResult: false,
+        canCreateRequirement: false,
+        canEditRequirement: false,
+        canDeleteRequirement: false,
         userRole: null,
         userRoleString: null,
         isLoading: true,
@@ -142,6 +153,9 @@ export function useRBACPermissions(): RBACPermissions {
         canViewAPIKey: false,
         canManageAPIKey: false,
         canExportResult: false,
+        canCreateRequirement: false,
+        canEditRequirement: false,
+        canDeleteRequirement: false,
         userRole: null,
         userRoleString: null,
         isLoading: false,
@@ -190,6 +204,11 @@ export function useRBACPermissions(): RBACPermissions {
 
       // Export permissions
       canExportResult: canExportResults(normalizedRole),
+
+      // Requirement permissions
+      canCreateRequirement: canCreateRequirements(normalizedRole),
+      canEditRequirement: canEditRequirements(normalizedRole),
+      canDeleteRequirement: canDeleteRequirements(normalizedRole),
 
       // Role info
       userRole: normalizedRole,
@@ -294,6 +313,23 @@ export function useProjectPermissions() {
     canCreateProject,
     canDeleteProject,
     canManageProject,
+    isLoading,
+    hasError,
+  };
+}
+
+export function useRequirementPermissions() {
+  const {
+    canCreateRequirement,
+    canEditRequirement,
+    canDeleteRequirement,
+    isLoading,
+    hasError,
+  } = useRBACPermissions();
+  return {
+    canCreateRequirement,
+    canEditRequirement,
+    canDeleteRequirement,
     isLoading,
     hasError,
   };

@@ -54,6 +54,7 @@ import { TemplateDialog } from "./template-dialog";
 import type { TestPriority, TestType } from "@/db/schema/types";
 import { notifyExecutionsChanged } from "@/hooks/use-executions";
 import { useSession } from "@/utils/auth-client";
+import { getRequirement } from "@/actions/requirements";
 
 const extractCodeFromResponse = (rawText: string): string => {
   if (!rawText) {
@@ -146,6 +147,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   // This leverages the existing session cache and avoids duplicate API calls
   const { data: session } = useSession();
   const currentUserId = session?.user?.id;
+  const searchParams = useSearchParams();
 
   const initialPerformanceLocation: PerformanceLocation | null =
     initialResolvedType === "performance" && initialTestData
@@ -271,6 +273,66 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [streamingCreateContent, setStreamingCreateContent] =
     useState<string>("");
 
+  // AI Prompt pre-filling from Requirement
+  const [aiPrompt, setAiPrompt] = useState<string | undefined>(undefined);
+  const [aiAutoOpen, setAiAutoOpen] = useState(false);
+  const [linkedRequirement, setLinkedRequirement] = useState<{ id: string; title: string; externalUrl?: string | null } | null>(null);
+
+  useEffect(() => {
+    const requirementId = searchParams.get("requirementId");
+    if (requirementId) {
+      getRequirement(requirementId).then((req) => {
+        if (req) {
+          setLinkedRequirement({
+            id: req.id,
+            title: req.title,
+            externalUrl: req.externalUrl
+          });
+
+          // Construct a detailed prompt based on the requirement
+          const type = testCase.type || "test";
+
+          let missingInfoPrompt = "";
+          if (type === "api") {
+            missingInfoPrompt = `[REQUIRED_INFO]:
+- Target Endpoint/URL: [ENTER_URL_HERE]
+- HTTP Method: [GET/POST/PUT/DELETE]
+- Request Payload (if applicable): [JSON_SCHEMA_OR_EXAMPLE]
+- Authentication: [AUTH_TYPE_AND_CREDENTIALS]`;
+          } else if (type === "database") {
+            missingInfoPrompt = `[REQUIRED_INFO]:
+- Connection String / Config: [ENTER_DB_CONNECTION]
+- Query to Run: [SQL_QUERY]
+- Expected Result Scheme: [SCHEMA_VALIDATION]`;
+          } else if (type === "performance") {
+            missingInfoPrompt = `[REQUIRED_INFO]:
+- Target URL: [ENTER_URL_HERE]
+- RPS Goal (e.g. 50): [ENTER_RPS]
+- Duration (e.g. 30s): [ENTER_DURATION]
+- Thresholds (e.g. p95 < 500ms): [ENTER_THRESHOLDS]`;
+          }
+
+          const prompt = `Create a ${type} test for the following requirement:
+
+Title: ${req.title}
+Description:
+${req.description || "No description provided."}
+${req.sourceDocumentName ? `Source Document: ${req.sourceDocumentName}` : ""}
+${req.sourceSection ? `Section: ${req.sourceSection}` : ""}
+
+${missingInfoPrompt}
+
+Please generate a robust test script covering the success and error scenarios described above. If any of the [REQUIRED_INFO] above is missing from the description, please generate the script using standard placeholders (e.g., 'https://api.example.com', 'SELECT * FROM table') but add comments indicating where the user needs to fill in the real values.`;
+          setAiPrompt(prompt);
+          setAiAutoOpen(true);
+        }
+      }).catch(err => console.error("Failed to fetch requirement for AI prompt:", err));
+    } else {
+      setAiPrompt(undefined);
+      setAiAutoOpen(false);
+    }
+  }, [searchParams, testCase.type]); // Update prompt if type changes while requirement is loaded
+
   // Derived state: is current script validated and passed?
   const isCurrentScriptValidated =
     hasValidated && isValid && editorContent === lastValidatedScript;
@@ -320,7 +382,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   // Track the last editor content to prevent spurious onChange events from resetting state
   // Monaco editor sometimes fires onChange during re-renders even when content hasn't changed
   const lastEditorContentRef = useRef<string>(editorContent);
-  const searchParams = useSearchParams();
+
 
   // Manual validation function (called only on run/submit)
   const validateScript = async (
@@ -1482,6 +1544,8 @@ const Playground: React.FC<PlaygroundProps> = ({
                         onStreamingStart={handleAICreateStreamingStart}
                         onStreamingUpdate={handleAICreateStreamingUpdate}
                         onStreamingEnd={handleAICreateStreamingEnd}
+                        initialPrompt={aiPrompt}
+                        initialIsOpen={aiAutoOpen}
                       />
                     )}
                   </div>

@@ -26,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import TestSelector from "@/components/jobs/test-selector";
+import TestSelector from "@/components/shared/test-selector";
 import { Test } from "@/components/jobs/schema";
 import { monitorTypes } from "./data";
 import {
@@ -452,7 +452,7 @@ export function MonitorForm({
     initialLocationConfig
   );
   const [selectedTests, setSelectedTests] = useState<Test[]>([]);
-  
+
   // Track previous selected test ID to prevent unnecessary updates
   const prevSelectedTestIdRef = React.useRef<string | null>(null);
 

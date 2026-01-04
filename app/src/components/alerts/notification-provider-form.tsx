@@ -33,10 +33,11 @@ import {
   VALIDATION_PATTERNS,
   CHARACTER_LIMITS,
 } from "@/lib/error-utils";
+import { notificationProviders } from "@/components/alerts/data";
 
 const notificationProviderSchema = z
   .object({
-    type: z.enum(["email", "slack", "webhook", "telegram", "discord"] as const),
+    type: z.enum(["email", "slack", "webhook", "telegram", "discord", "teams"] as const),
     config: z.object({
       name: z.string().min(1, "Name is required"),
 
@@ -160,6 +161,20 @@ const notificationProviderSchema = z
             message: "Please enter a valid Discord webhook URL",
           }
         ),
+
+      // Teams fields
+      teamsWebhookUrl: z
+        .string()
+        .optional()
+        .refine(
+          (url) => {
+            if (!url) return true;
+            return VALIDATION_PATTERNS.teamsWebhook.test(url);
+          },
+          {
+            message: "Please enter a valid Microsoft Teams webhook URL",
+          }
+        ),
     }),
   })
   .refine(
@@ -181,6 +196,9 @@ const notificationProviderSchema = z
       if (data.type === "discord") {
         return data.config.discordWebhookUrl;
       }
+      if (data.type === "teams") {
+        return data.config.teamsWebhookUrl;
+      }
       return true;
     },
     {
@@ -194,6 +212,7 @@ const MASKED_FIELD_LABELS: Record<string, string> = {
   headers: "Headers",
   botToken: "Bot Token",
   discordWebhookUrl: "Discord Webhook URL",
+  teamsWebhookUrl: "Teams Webhook URL",
 };
 
 type FormValues = z.infer<typeof notificationProviderSchema>;
@@ -228,61 +247,65 @@ export function NotificationProviderForm({
     mode: "onSubmit", // Only validate on submit, not on every change
     defaultValues: initialData
       ? {
-          type: initialData.type,
-          config: {
-            name:
-              ((initialData.config as Record<string, unknown>)
-                .name as string) || "",
-            emails:
-              ((initialData.config as Record<string, unknown>)
-                .emails as string) || "",
-            webhookUrl:
-              ((initialData.config as Record<string, unknown>)
-                .webhookUrl as string) || "",
-            channel:
-              ((initialData.config as Record<string, unknown>)
-                .channel as string) || "",
-            url:
-              ((initialData.config as Record<string, unknown>).url as string) ||
-              "",
-            method:
-              ((initialData.config as Record<string, unknown>).method as
-                | "GET"
-                | "POST"
-                | "PUT") || "POST",
-            headers:
-              ((initialData.config as Record<string, unknown>)
-                .headers as Record<string, string>) || {},
-            bodyTemplate:
-              ((initialData.config as Record<string, unknown>)
-                .bodyTemplate as string) || "",
-            botToken:
-              ((initialData.config as Record<string, unknown>)
-                .botToken as string) || "",
-            chatId:
-              ((initialData.config as Record<string, unknown>)
-                .chatId as string) || "",
-            discordWebhookUrl:
-              ((initialData.config as Record<string, unknown>)
-                .discordWebhookUrl as string) || "",
-          },
-        }
-      : {
-          type: defaultType || "email",
-          config: {
-            name: "",
-            emails: "",
-            webhookUrl: "",
-            channel: "",
-            url: "",
-            method: "POST",
-            headers: {},
-            bodyTemplate: "",
-            botToken: "",
-            chatId: "",
-            discordWebhookUrl: "",
-          },
+        type: initialData.type,
+        config: {
+          name:
+            ((initialData.config as Record<string, unknown>)
+              .name as string) || "",
+          emails:
+            ((initialData.config as Record<string, unknown>)
+              .emails as string) || "",
+          webhookUrl:
+            ((initialData.config as Record<string, unknown>)
+              .webhookUrl as string) || "",
+          channel:
+            ((initialData.config as Record<string, unknown>)
+              .channel as string) || "",
+          url:
+            ((initialData.config as Record<string, unknown>).url as string) ||
+            "",
+          method:
+            ((initialData.config as Record<string, unknown>).method as
+              | "GET"
+              | "POST"
+              | "PUT") || "POST",
+          headers:
+            ((initialData.config as Record<string, unknown>)
+              .headers as Record<string, string>) || {},
+          bodyTemplate:
+            ((initialData.config as Record<string, unknown>)
+              .bodyTemplate as string) || "",
+          botToken:
+            ((initialData.config as Record<string, unknown>)
+              .botToken as string) || "",
+          chatId:
+            ((initialData.config as Record<string, unknown>)
+              .chatId as string) || "",
+          discordWebhookUrl:
+            ((initialData.config as Record<string, unknown>)
+              .discordWebhookUrl as string) || "",
+          teamsWebhookUrl:
+            ((initialData.config as Record<string, unknown>)
+              .teamsWebhookUrl as string) || "",
         },
+      }
+      : {
+        type: defaultType || "email",
+        config: {
+          name: "",
+          emails: "",
+          webhookUrl: "",
+          channel: "",
+          url: "",
+          method: "POST",
+          headers: {},
+          bodyTemplate: "",
+          botToken: "",
+          chatId: "",
+          discordWebhookUrl: "",
+          teamsWebhookUrl: "",
+        },
+      },
   });
 
   const selectedType = form.watch("type");
@@ -366,15 +389,37 @@ export function NotificationProviderForm({
                 >
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select channel type" />
+                      <SelectValue placeholder="Select channel type">
+                        {field.value && (
+                          <div className="flex items-center gap-2">
+                            {(() => {
+                              const provider = notificationProviders.find(p => p.type === field.value);
+                              if (!provider) return null;
+                              const Icon = provider.icon;
+                              return (
+                                <>
+                                  <Icon size={16} className={provider.color} />
+                                  <span>{provider.label}</span>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </SelectValue>
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="slack">Slack</SelectItem>
-                    <SelectItem value="webhook">Webhook</SelectItem>
-                    <SelectItem value="telegram">Telegram</SelectItem>
-                    <SelectItem value="discord">Discord</SelectItem>
+                    {notificationProviders.map((provider) => {
+                      const Icon = provider.icon;
+                      return (
+                        <SelectItem key={provider.type} value={provider.type}>
+                          <div className="flex items-center gap-2">
+                            <Icon size={16} className={provider.color} />
+                            <span>{provider.label}</span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -610,6 +655,33 @@ export function NotificationProviderForm({
                       disabled={isSubmitting || isTesting}
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        )}
+
+        {/* Teams Configuration */}
+        {selectedType === "teams" && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">Microsoft Teams Configuration</h3>
+            <FormField
+              control={form.control}
+              name="config.teamsWebhookUrl"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Incoming Webhook URL</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="https://xxxxx.webhook.office.com/webhookb2/..."
+                      {...field}
+                      disabled={isSubmitting || isTesting}
+                    />
+                  </FormControl>
+                  <div className="text-sm text-muted-foreground">
+                    Create an Incoming Webhook in your Teams channel settings.
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}

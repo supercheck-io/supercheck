@@ -136,6 +136,7 @@
     "react": "19.2.0",
     "react-day-picker": "^9.8.1",
     "react-dom": "19.2.0",
+    "react-dropzone": "^14.3.8",
     "react-email": "^4.3.2",
     "react-hook-form": "^7.55.0",
     "react-js-cron": "^5.2.0",

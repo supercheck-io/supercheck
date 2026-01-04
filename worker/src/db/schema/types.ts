@@ -13,6 +13,12 @@ export type TestType =
   | 'custom'
   | 'performance';
 
+// Requirement types - using same priority as tests for consistency
+export type RequirementPriority = 'low' | 'medium' | 'high';
+export type RequirementCreatedBy = 'ai' | 'user';
+export type RequirementCoverageStatus = 'covered' | 'failing' | 'missing';
+export type RequirementDocumentType = 'pdf' | 'docx' | 'md' | 'text';
+
 // K6 Performance Testing types (includes global option for any location)
 export type K6Location = 'us-east' | 'eu-central' | 'asia-pacific' | 'global';
 
@@ -182,7 +188,8 @@ export type NotificationProviderType =
   | 'slack'
   | 'webhook'
   | 'telegram'
-  | 'discord';
+  | 'discord'
+  | 'teams';
 
 type SecretEnvelope = {
   encrypted: true;
@@ -204,6 +211,7 @@ export type PlainNotificationProviderConfig = {
   botToken?: string;
   chatId?: string;
   discordWebhookUrl?: string;
+  teamsWebhookUrl?: string;
   [key: string]: unknown;
 };
 

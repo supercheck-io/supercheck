@@ -41,7 +41,8 @@ export type S3EntityType =
   | 'monitor'
   | 'k6_test'
   | 'k6_job'
-  | 'status';
+  | 'status'
+  | 'requirements';
 
 @Injectable()
 export class S3Service implements OnModuleInit {
@@ -59,6 +60,9 @@ export class S3Service implements OnModuleInit {
 
   // Status page bucket
   private readonly statusBucketName: string;
+
+  // Requirements bucket
+  private readonly requirementsBucketName: string;
 
   private readonly s3Endpoint: string;
   private readonly maxRetries: number;
@@ -93,6 +97,12 @@ export class S3Service implements OnModuleInit {
     this.statusBucketName = this.configService.get<string>(
       'S3_STATUS_BUCKET_NAME',
       'status-page-artifacts',
+    );
+
+    // Requirements bucket
+    this.requirementsBucketName = this.configService.get<string>(
+      'S3_REQUIREMENTS_BUCKET_NAME',
+      'test-requirement-artifacts',
     );
 
     this.s3Endpoint = this.configService.get<string>(
@@ -140,6 +150,8 @@ export class S3Service implements OnModuleInit {
         this.ensureBucketExists(this.k6JobBucketName),
         // Status page bucket
         this.ensureBucketExists(this.statusBucketName),
+        // Requirements bucket
+        this.ensureBucketExists(this.requirementsBucketName),
       ]);
 
       this.logger.log('S3 buckets initialized successfully');
@@ -176,6 +188,10 @@ export class S3Service implements OnModuleInit {
       // Status page bucket
       case 'status':
         return this.statusBucketName;
+
+      // Requirements bucket
+      case 'requirements':
+        return this.requirementsBucketName;
 
       // Default to job bucket for unknown entity types
       default:
