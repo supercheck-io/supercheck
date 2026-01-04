@@ -40,6 +40,13 @@ export function validateProviderConfig(
         );
       }
       break;
+    case "teams":
+      if (missing("teamsWebhookUrl")) {
+        throw new Error(
+          "Microsoft Teams notification providers require a webhook URL."
+        );
+      }
+      break;
     default:
       throw new Error("Unsupported notification provider type.");
   }

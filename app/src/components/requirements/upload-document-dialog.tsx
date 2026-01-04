@@ -43,6 +43,7 @@ interface ExtractedRequirement {
     title: string;
     description: string | null;
     priority: "low" | "medium" | "high" | null;
+    tags: string[];
     selected: boolean;
 }
 
@@ -211,11 +212,12 @@ export function UploadDocumentDialog({
 
             // Transform to include selection state
             const requirements: ExtractedRequirement[] = result.requirements.map(
-                (req: { title: string; description?: string; priority?: string }, index: number) => ({
+                (req: { title: string; description?: string; priority?: string; tags?: string[] }, index: number) => ({
                     id: `extracted-${index}`,
                     title: req.title,
                     description: req.description || null,
                     priority: (req.priority as "low" | "medium" | "high") || null,
+                    tags: req.tags || [],
                     selected: true,
                 })
             );
@@ -268,11 +270,13 @@ export function UploadDocumentDialog({
         try {
             let created = 0;
             for (const req of selectedRequirements) {
+                // Combine AI-extracted tags with 'ai' marker, avoiding duplicates
+                const allTags = new Set(["ai", ...req.tags]);
                 await createRequirement({
                     title: req.title,
                     description: req.description || "Extracted from document",
                     priority: req.priority || "medium",
-                    tags: "ai",
+                    tags: Array.from(allTags).join(", "),
                     sourceDocumentId: documentId,
                     createdBy: "ai",
                 });
@@ -456,6 +460,11 @@ export function UploadDocumentDialog({
                                                 <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                                                     <span className="font-medium">{req.title}</span>
                                                     <PriorityBadge priority={req.priority} />
+                                                    {req.tags.map((tag) => (
+                                                        <Badge key={tag} variant="secondary" className="text-xs">
+                                                            {tag}
+                                                        </Badge>
+                                                    ))}
                                                 </div>
                                                 {req.description && (
                                                     <p className="text-sm text-muted-foreground line-clamp-2">
@@ -517,18 +526,20 @@ export function UploadDocumentDialog({
                             </p>
 
                             {/* What's Next Guidance */}
-                            <div className="max-w-md mx-auto bg-muted/30 rounded-lg p-4 border border-border/50">
-                                <div className="flex items-center gap-2 mb-3">
+                            <div className="max-w-lg mx-auto bg-muted/30 rounded-lg p-5 border border-border/50 text-left">
+                                <div className="flex items-center gap-2 mb-4">
                                     <Lightbulb className="h-5 w-5 text-amber-500" />
                                     <span className="font-medium">What&apos;s Next?</span>
                                 </div>
-                                <p className="text-sm text-muted-foreground text-left mb-3">
-                                    Select a requirement and click <strong>&quot;Create Test&quot;</strong> to generate automated tests.
-                                    For browser tests, use the Recorder in Playground first.
-                                </p>
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    <ArrowRight className="h-3 w-3" />
-                                    <span>Requirement → Create Test → Link & Track Coverage</span>
+                                <ol className="text-sm text-muted-foreground space-y-2 mb-4 list-decimal list-inside">
+                                    <li>Click on a requirement in the list to open its details</li>
+                                    <li>In the <strong>&quot;Create Test&quot;</strong> section, choose the test type (API, Browser, Database, etc.)</li>
+                                    <li>AI will generate a test script pre-filled with your requirement details</li>
+                                    <li>Review, customize, run the test, and save to automatically link it to your requirement</li>
+                                </ol>
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground pt-3 border-t border-border/50">
+                                    <ArrowRight className="h-3 w-3 flex-shrink-0" />
+                                    <span>Coverage status updates automatically when linked tests run in jobs</span>
                                 </div>
                             </div>
 

@@ -29,6 +29,7 @@ interface AICreateButtonProps {
   onStreamingEnd?: () => void;
   initialPrompt?: string;
   initialIsOpen?: boolean;
+  isLoadingPrompt?: boolean;
 }
 
 export function AICreateButton({
@@ -43,6 +44,7 @@ export function AICreateButton({
   onStreamingEnd,
   initialPrompt,
   initialIsOpen,
+  isLoadingPrompt,
 }: AICreateButtonProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(initialIsOpen || false);
   const [userRequest, setUserRequest] = useState(initialPrompt || "");
@@ -374,15 +376,22 @@ export function AICreateButton({
                 What do you want to test?{" "}
                 <span className="text-destructive">*</span>
               </Label>
-              <Textarea
-                id="user-request"
-                placeholder={`Step 1: Select the right template (Browser, API, DB, Performance, etc.)\nStep 2: Describe your test requirements\n\n🌐 Playwright API Test Example:\nGET request to https://jsonplaceholder.typicode.com/todos/1, assert status 200, validate response schema (userId, id, title, completed)\n\n⚡ k6 Performance Test Example:\nGET requests to https://test-api.k6.io/public/crocodiles/, 10 VUs for 30s, verify status 200, response time < 500ms, p95 < 500ms, error rate < 10%`}
-                value={userRequest}
-                onChange={(e) => setUserRequest(e.target.value)}
-                disabled={isProcessing}
-                className="min-h-[160px] resize-none placeholder:text-xs"
-                aria-describedby="request-hint"
-              />
+              {isLoadingPrompt ? (
+                <div className="min-h-[160px] rounded-md border border-input bg-muted/30 flex flex-col items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary mb-2" />
+                  <span className="text-sm text-muted-foreground">Loading requirement details...</span>
+                </div>
+              ) : (
+                <Textarea
+                  id="user-request"
+                  placeholder={`Step 1: Select the right template (Browser, API, DB, Performance, etc.)\nStep 2: Describe your test requirements\n\n🌐 Playwright API Test Example:\nGET request to https://jsonplaceholder.typicode.com/todos/1, assert status 200, validate response schema (userId, id, title, completed)\n\n⚡ k6 Performance Test Example:\nGET requests to https://test-api.k6.io/public/crocodiles/, 10 VUs for 30s, verify status 200, response time < 500ms, p95 < 500ms, error rate < 10%`}
+                  value={userRequest}
+                  onChange={(e) => setUserRequest(e.target.value)}
+                  disabled={isProcessing}
+                  className="min-h-[160px] resize-none placeholder:text-xs"
+                  aria-describedby="request-hint"
+                />
+              )}
               <div className="flex items-center justify-between">
                 <p id="request-hint" className="text-xs text-muted-foreground">
                   Minimum 10 characters required
@@ -418,7 +427,7 @@ export function AICreateButton({
             </Button>
             <Button
               onClick={handleGenerate}
-              disabled={isProcessing || userRequest.trim().length < 10}
+              disabled={isProcessing || isLoadingPrompt || userRequest.trim().length < 10}
               className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
             >
               {isProcessing ? (

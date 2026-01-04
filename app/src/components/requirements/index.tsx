@@ -61,7 +61,7 @@ import {
     ArrowDown,
 
     Target,
-
+    Info,
     Plus,
 
     Chrome,
@@ -380,12 +380,19 @@ export default function RequirementsPage() {
                                             <div className="space-y-2 bg-card p-4 rounded-lg border border-border/40">
                                                 <div className="flex items-center gap-1">
                                                     <h3 className="text-xs font-medium text-muted-foreground">Coverage Status</h3>
-                                                    <span
-                                                        className="text-muted-foreground/60 cursor-help"
-                                                        title="Coverage updates when jobs run. Single test runs from the playground do not affect coverage."
-                                                    >
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></svg>
-                                                    </span>
+                                                    <Popover>
+                                                        <PopoverTrigger asChild>
+                                                            <Button variant="ghost" size="icon" className="h-5 w-5 p-0">
+                                                                <Info className="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors" />
+                                                                <span className="sr-only">Coverage info</span>
+                                                            </Button>
+                                                        </PopoverTrigger>
+                                                        <PopoverContent className="w-72 text-xs" align="start">
+                                                            <p className="text-muted-foreground">
+                                                                Coverage updates when jobs run. Single test runs from the playground do not affect coverage.
+                                                            </p>
+                                                        </PopoverContent>
+                                                    </Popover>
                                                 </div>
                                                 <div className="flex items-center space-x-2">
                                                     {(() => {

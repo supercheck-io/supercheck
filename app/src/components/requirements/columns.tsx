@@ -91,7 +91,56 @@ function DescriptionWithPopover({ description }: { description: string | null })
     );
 }
 
-// Tags cell (matching tests pattern)
+// Predefined colors for common requirement tags
+// These provide consistent coloring for AI-extracted and commonly used tags
+const TAG_COLORS: Record<string, string> = {
+    // AI & Generation
+    ai: "#a855f7",           // purple-500 - AI generated content
+
+    // Test Categories (Functional)
+    api: "#14b8a6",          // teal-500 - API tests
+    ui: "#3b82f6",           // blue-500 - UI/Frontend tests
+    auth: "#f59e0b",         // amber-500 - Authentication/Authorization
+    data: "#22c55e",         // green-500 - Data/Database operations
+    integration: "#ec4899",  // pink-500 - Integration tests
+    validation: "#06b6d4",   // cyan-500 - Input/Form validation
+
+    // Test Categories (Non-Functional)
+    performance: "#8b5cf6",  // violet-500 - Performance/Load tests
+    security: "#ef4444",     // red-500 - Security tests
+    accessibility: "#6366f1", // indigo-500 - Accessibility (a11y)
+
+    // Test Types
+    e2e: "#0ea5e9",          // sky-500 - End-to-end tests
+    unit: "#84cc16",         // lime-500 - Unit tests
+    smoke: "#f97316",        // orange-500 - Smoke tests
+    regression: "#64748b",   // slate-500 - Regression tests
+
+    // Priority/Importance
+    critical: "#dc2626",     // red-600 - Critical path
+    "edge-case": "#a3a3a3",  // neutral-400 - Edge cases
+
+    // Categories
+    crud: "#10b981",         // emerald-500 - CRUD operations
+    workflow: "#8b5cf6",     // violet-500 - Business workflows
+    error: "#f43f5e",        // rose-500 - Error handling
+    negative: "#fb923c",     // orange-400 - Negative test cases
+
+    // Common feature areas
+    search: "#2dd4bf",       // teal-400 - Search functionality
+    upload: "#34d399",       // emerald-400 - File upload
+    payment: "#fbbf24",      // amber-400 - Payment/Billing
+    notification: "#a78bfa", // violet-400 - Notifications
+    report: "#60a5fa",       // blue-400 - Reports/Analytics
+};
+
+/**
+ * Get color for a tag - DB color takes priority, then predefined, then null
+ */
+function getTagColor(tag: { name: string; color: string | null }): string | null {
+    if (tag.color) return tag.color;
+    return TAG_COLORS[tag.name.toLowerCase()] || null;
+}
 function TagsCell({ tags }: { tags: Array<{ id: string; name: string; color: string | null }> }) {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -110,7 +159,7 @@ function TagsCell({ tags }: { tags: Array<{ id: string; name: string; color: str
                         key={tag.id}
                         variant="secondary"
                         className="text-xs whitespace-nowrap flex-shrink-0"
-                        style={tag.color ? { backgroundColor: tag.color + "20", color: tag.color } : {}}
+                        style={(() => { const color = getTagColor(tag); return color ? { backgroundColor: color + "20", color: color } : {}; })()}
                     >
                         {tag.name}
                     </Badge>
@@ -132,7 +181,7 @@ function TagsCell({ tags }: { tags: Array<{ id: string; name: string; color: str
                             key={tag.id}
                             variant="secondary"
                             className="text-xs whitespace-nowrap flex-shrink-0"
-                            style={tag.color ? { backgroundColor: tag.color + "20", color: tag.color } : {}}
+                            style={(() => { const color = getTagColor(tag); return color ? { backgroundColor: color + "20", color: color } : {}; })()}
                         >
                             {tag.name}
                         </Badge>
@@ -151,7 +200,7 @@ function TagsCell({ tags }: { tags: Array<{ id: string; name: string; color: str
                             key={tag.id}
                             variant="secondary"
                             className="text-xs"
-                            style={tag.color ? { backgroundColor: tag.color + "20", color: tag.color } : {}}
+                            style={(() => { const color = getTagColor(tag); return color ? { backgroundColor: color + "20", color: color } : {}; })()}
                         >
                             {tag.name}
                         </Badge>

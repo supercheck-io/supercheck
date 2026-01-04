@@ -19,6 +19,7 @@ import crypto from "crypto";
 import { requireProjectContext } from "@/lib/project-context";
 import { hasPermission } from "@/lib/rbac/middleware";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { updateCoverageSnapshot } from "@/actions/requirements";
 
 // Create a schema for the save test action
 const saveTestSchema = testsInsertSchema.omit({
@@ -181,6 +182,8 @@ export async function saveTest(
           testId: newTestId,
           requirementId: validatedData.requirementId,
         });
+        // Update the coverage snapshot to reflect the new link
+        await updateCoverageSnapshot(validatedData.requirementId);
       }
 
       // Log the audit event for test creation
@@ -202,6 +205,11 @@ export async function saveTest(
 
       // Revalidate the tests page to show the updated data
       revalidatePath("/tests");
+      
+      // If linked to a requirement, revalidate requirements page too
+      if (validatedData.requirementId) {
+        revalidatePath("/requirements");
+      }
 
       // Return the inserted test ID
       return { id: newTestId, success: true };

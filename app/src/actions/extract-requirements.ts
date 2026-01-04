@@ -24,6 +24,7 @@ interface ExtractedRequirement {
   title: string;
   description?: string;
   priority?: "low" | "medium" | "high";
+  tags?: string[];
 }
 
 interface ExtractResult {
@@ -168,44 +169,74 @@ async function deleteDocumentRecord(id: string) {
 // AI EXTRACTION
 // ============================================================================
 
-const EXTRACTION_PROMPT = `You are a Technical QA Engineer extracting PRECISE, TESTABLE, and TECHNICAL requirements from documentation.
+const EXTRACTION_PROMPT = `You are a Senior QA Architect extracting TESTABLE requirements from product documentation.
 
-YOUR GOAL: Extract requirements detailed enough that an AI can generate automated tests (Playwright, K6, API) directly from them without further context.
+YOUR GOAL: Transform documentation into precise, actionable requirements that can be directly used to create automated tests (Playwright, K6, API tests).
 
-CRITICAL: Requirements must include TECHNICAL SPECS (API endpoints, JSON structure, DB fields, UI selectors) when available in the source text.
-
-❌ BAD (Vague): "Users can create a project."
-✅ GOOD (Technical): "API: POST /api/projects with body {name: string, orgId: uuid} creates a new project and returns 201 Created."
-✅ GOOD (UI): "Clicking 'Create Project' button (id: create-btn) opens modal. Submitting valid form adds project to list (data-testid: project-list)."
-
+## OUTPUT FORMAT
 For each requirement, provide:
-1. title: Concise technical summary (max 100 chars). E.g., "API: Create Project Endpoint" or "UI: Login Form Validation"
-2. description: Detailed technical specifications for testing (max 500 chars). Include:
-    - API: Method, Endpoint, Request Body, Response Code/Body
-    - UI: Element interactions, specific error messages, state changes
-    - DB: Table names, field constraints, expected data states
-3. priority: "high", "medium", or "low"
+1. **title**: Clean, concise summary (max 80 chars). NO prefixes like "API:", "UI:". Just the requirement itself.
+   - ✅ GOOD: "User can reset password via email link"
+   - ✅ GOOD: "Search returns results within 200ms"
+   - ❌ BAD: "API: Password Reset Endpoint"
+   - ❌ BAD: "UI: Search functionality"
 
-TECHNICAL GUIDELINES:
-- AUTOMATION-FIRST: Imagine you are writing a spec for a test automation script.
-- EXTRACT DATA: If the doc mentions "max 50 chars", include it. If it mentions "user_id column", include it.
-- EXTRACT LOGIC: Include "If X then Y" logic explicitly.
-- IGNORE FLUFF: Skip marketing language ("easy to use", "seamless"). Focus on the mechanics.
+2. **description**: Technical specification for testing (max 400 chars). Include:
+   - Endpoints, methods, request/response formats
+   - UI elements, interactions, expected states
+   - Validation rules, error messages, edge cases
+   - Performance thresholds if applicable
 
-EXAMPLES:
-- Title: "API: User Registration"
-  Description: "POST /api/register accepts {email, password}. Valid request returns 200 and JWT token. Duplicate email returns 409 Conflict."
-- Title: "UI: File Upload Validation"
-  Description: "Upload component accepts only .pdf and .docx. Uploading .exe triggers error message 'Invalid file type' immediately."
-- Title: "Perf: Search Latency"
-  Description: "Search API point /api/search must return results within 200ms for query length > 3 chars."
+3. **priority**: "high" (core functionality, security), "medium" (standard features), or "low" (nice-to-have, edge cases)
 
-DOCUMENT CONTENT:
+4. **tags**: Array of 1-3 lowercase category tags from this list:
+   - "api" - REST/GraphQL endpoints, HTTP operations
+   - "ui" - User interface, forms, navigation, display
+   - "auth" - Authentication, authorization, security
+   - "data" - Database operations, data validation, CRUD
+   - "integration" - Third-party services, webhooks, external systems
+   - "performance" - Load testing, latency, throughput
+   - "validation" - Input validation, form validation, error handling
+
+## EXTRACTION RULES
+1. **Be Specific**: Include actual values (200ms, 50 chars max, specific error messages)
+2. **Be Testable**: Every requirement should answer "How do I verify this passed?"
+3. **Ignore Fluff**: Skip marketing language, vague statements, and aspirational goals
+4. **Consolidate**: Combine related items into single comprehensive requirements
+5. **Technical Focus**: Extract the engineering specs, not the business pitch
+
+## EXAMPLES
+Example 1:
+{
+  "title": "User registration with email verification",
+  "description": "POST /api/register accepts {email, password, name}. Password min 8 chars with 1 number. Returns 201 with userId. Sends verification email within 30s. Duplicate email returns 409.",
+  "priority": "high",
+  "tags": ["api", "auth", "validation"]
+}
+
+Example 2:
+{
+  "title": "File upload accepts PDF and DOCX only",
+  "description": "Upload component (data-testid='file-upload') accepts .pdf and .docx under 10MB. Invalid files show 'Unsupported format' error. Progress bar shows during upload. Success shows filename in list.",
+  "priority": "medium",
+  "tags": ["ui", "validation"]
+}
+
+Example 3:
+{
+  "title": "Dashboard loads within 2 seconds",
+  "description": "GET /api/dashboard must return complete data within 2000ms for users with up to 1000 items. Response includes user stats, recent activity (limit 10), and notifications.",
+  "priority": "high",
+  "tags": ["performance", "api"]
+}
+
+## DOCUMENT TO ANALYZE
 {DOCUMENT_TEXT}
 
-Respond ONLY with a valid JSON array of requirements:
+## RESPONSE
+Respond ONLY with a valid JSON array:
 [
-  {"title": "...", "description": "...", "priority": "medium"},
+  {"title": "...", "description": "...", "priority": "...", "tags": ["...", "..."]},
   ...
 ]`;
 
@@ -260,6 +291,7 @@ async function extractWithAI(documentText: string): Promise<ExtractedRequirement
     title: z.string().min(5).max(500),
     description: z.string().max(2000).optional(),
     priority: z.enum(["low", "medium", "high"]).optional(),
+    tags: z.array(z.string().max(30)).max(5).optional(),
   });
 
   const validated: ExtractedRequirement[] = [];

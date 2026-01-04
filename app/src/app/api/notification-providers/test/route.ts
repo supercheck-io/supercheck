@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     const { type, config } = await req.json();
 
     // Validate provider type
-    const validTypes = ["email", "slack", "webhook", "telegram", "discord"];
+    const validTypes = ["email", "slack", "webhook", "telegram", "discord", "teams"];
     if (!type || !validTypes.includes(type)) {
       return NextResponse.json(
         { success: false, error: "Unsupported or missing provider type" },
@@ -48,6 +48,8 @@ export async function POST(req: NextRequest) {
         return await testTelegramConnection(config);
       case "discord":
         return await testDiscordConnection(config);
+      case "teams":
+        return await testTeamsConnection(config);
       default:
         return NextResponse.json(
           { success: false, error: "Unsupported provider type" },
@@ -398,6 +400,117 @@ async function testDiscordConnection(config: NotificationProviderConfig) {
       {
         success: false,
         error: `Discord connection failed: ${error instanceof Error ? error.message : String(error)}`,
+      },
+      { status: 400 }
+    );
+  }
+}
+
+async function testTeamsConnection(config: NotificationProviderConfig) {
+  try {
+    const typedConfig = config as Record<string, unknown>;
+    if (!typedConfig.teamsWebhookUrl) {
+      throw new Error("Teams webhook URL is required");
+    }
+
+    const webhookUrl = typedConfig.teamsWebhookUrl as string;
+
+    // Validate URL format - Teams webhooks follow pattern: https://*.webhook.office.com/...
+    const teamsUrlPattern = /^https:\/\/[a-zA-Z0-9-]+\.webhook\.office\.com\//;
+    if (!teamsUrlPattern.test(webhookUrl)) {
+      throw new Error(
+        "Invalid Teams webhook URL format. Must be a valid https://*.webhook.office.com/ URL"
+      );
+    }
+
+    // Validate URL is parseable and uses HTTPS
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(webhookUrl);
+    } catch {
+      throw new Error("Invalid URL format");
+    }
+
+    if (parsedUrl.protocol !== "https:") {
+      throw new Error("Teams webhook URL must use HTTPS");
+    }
+
+    // Build Adaptive Card test payload
+    const adaptiveCardPayload = {
+      type: "message",
+      attachments: [
+        {
+          contentType: "application/vnd.microsoft.card.adaptive",
+          content: {
+            $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+            type: "AdaptiveCard",
+            version: "1.4",
+            body: [
+              {
+                type: "TextBlock",
+                text: "✅ Supercheck Connection Test",
+                weight: "bolder",
+                size: "large",
+                color: "good",
+                wrap: true,
+              },
+              {
+                type: "TextBlock",
+                text: "This is a test message from Supercheck to verify your Microsoft Teams webhook is configured correctly.",
+                wrap: true,
+                spacing: "medium",
+              },
+              {
+                type: "FactSet",
+                facts: [
+                  { title: "Status", value: "Connected Successfully" },
+                  { title: "Provider", value: "Microsoft Teams" },
+                ],
+                spacing: "medium",
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    // Add timeout to prevent hanging connections
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "Supercheck-Monitor/1.0",
+        },
+        body: JSON.stringify(adaptiveCardPayload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: "Microsoft Teams connection successful",
+      });
+    } catch (fetchError) {
+      clearTimeout(timeout);
+      if (fetchError instanceof Error && fetchError.name === "AbortError") {
+        throw new Error("Request timed out after 10 seconds");
+      }
+      throw fetchError;
+    }
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Microsoft Teams connection failed: ${error instanceof Error ? error.message : String(error)}`,
       },
       { status: 400 }
     );

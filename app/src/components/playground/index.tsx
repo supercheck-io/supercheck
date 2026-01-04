@@ -276,11 +276,16 @@ const Playground: React.FC<PlaygroundProps> = ({
   // AI Prompt pre-filling from Requirement
   const [aiPrompt, setAiPrompt] = useState<string | undefined>(undefined);
   const [aiAutoOpen, setAiAutoOpen] = useState(false);
+  const [isLoadingPrompt, setIsLoadingPrompt] = useState(false);
   const [linkedRequirement, setLinkedRequirement] = useState<{ id: string; title: string; externalUrl?: string | null } | null>(null);
 
   useEffect(() => {
     const requirementId = searchParams.get("requirementId");
     if (requirementId) {
+      // Immediately open the dialog and show loading state
+      setAiAutoOpen(true);
+      setIsLoadingPrompt(true);
+
       getRequirement(requirementId).then((req) => {
         if (req) {
           setLinkedRequirement({
@@ -324,12 +329,13 @@ ${missingInfoPrompt}
 
 Please generate a robust test script covering the success and error scenarios described above. If any of the [REQUIRED_INFO] above is missing from the description, please generate the script using standard placeholders (e.g., 'https://api.example.com', 'SELECT * FROM table') but add comments indicating where the user needs to fill in the real values.`;
           setAiPrompt(prompt);
-          setAiAutoOpen(true);
         }
-      }).catch(err => console.error("Failed to fetch requirement for AI prompt:", err));
+      }).catch(err => console.error("Failed to fetch requirement for AI prompt:", err))
+        .finally(() => setIsLoadingPrompt(false));
     } else {
       setAiPrompt(undefined);
       setAiAutoOpen(false);
+      setIsLoadingPrompt(false);
     }
   }, [searchParams, testCase.type]); // Update prompt if type changes while requirement is loaded
 
@@ -1546,6 +1552,7 @@ Please generate a robust test script covering the success and error scenarios de
                         onStreamingEnd={handleAICreateStreamingEnd}
                         initialPrompt={aiPrompt}
                         initialIsOpen={aiAutoOpen}
+                        isLoadingPrompt={isLoadingPrompt}
                       />
                     )}
                   </div>
@@ -1577,6 +1584,7 @@ Please generate a robust test script covering the success and error scenarios de
                           location,
                         }));
                       }}
+                      linkedRequirement={linkedRequirement}
                     />
                   </div>
                 </ScrollArea>

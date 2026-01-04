@@ -209,7 +209,7 @@ export function DataTable<TData, TValue>({
     }
 
     return (
-        <div className="space-y-2">
+        <div className="space-y-2 -mb-2">
             <DataTableToolbar table={table} canCreateRequirement={canCreateRequirement} />
             <div className="rounded-t-lg border relative">
                 <Table>

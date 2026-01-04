@@ -110,6 +110,12 @@ describe('NotificationService', () => {
     config: { url: 'https://api.example.com/webhook' },
   };
 
+  const teamsProvider: NotificationProvider = {
+    id: 'provider-teams',
+    type: 'teams',
+    config: { teamsWebhookUrl: 'https://example.webhook.office.com/webhook/xxx' },
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -307,6 +313,29 @@ describe('NotificationService', () => {
         expect(result).toBe(false);
       });
     });
+
+    describe('Teams Provider', () => {
+      it('should validate with Teams webhook URL', async () => {
+        const result = await service.sendNotification(
+          teamsProvider,
+          basePayload,
+        );
+        expect(result).toBe(true);
+      });
+
+      it('should reject without Teams webhook URL', async () => {
+        const invalidProvider: NotificationProvider = {
+          ...teamsProvider,
+          config: {},
+        };
+
+        const result = await service.sendNotification(
+          invalidProvider,
+          basePayload,
+        );
+        expect(result).toBe(false);
+      });
+    });
   });
 
   // ==========================================================================
@@ -454,6 +483,45 @@ describe('NotificationService', () => {
   });
 
   // ==========================================================================
+  // TEAMS NOTIFICATION TESTS
+  // ==========================================================================
+
+  describe('Teams Notifications', () => {
+    it('should send to Teams webhook', async () => {
+      await service.sendNotification(teamsProvider, basePayload);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        teamsProvider.config.teamsWebhookUrl,
+        expect.objectContaining({
+          method: 'POST',
+        }),
+      );
+    });
+
+    it('should include Adaptive Card payload', async () => {
+      await service.sendNotification(teamsProvider, basePayload);
+
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+
+      expect(body.type).toBe('message');
+      expect(body.attachments).toBeDefined();
+      expect(body.attachments[0].contentType).toBe(
+        'application/vnd.microsoft.card.adaptive',
+      );
+    });
+
+    it('should use proper Adaptive Card version', async () => {
+      await service.sendNotification(teamsProvider, basePayload);
+
+      const callArgs = mockFetch.mock.calls[0];
+      const body = JSON.parse(callArgs[1].body);
+
+      expect(body.attachments[0].content.version).toBe('1.4');
+      expect(body.attachments[0].content.type).toBe('AdaptiveCard');
+    });
+  });
+
   // EMAIL NOTIFICATION TESTS
   // ==========================================================================
 
@@ -703,6 +771,7 @@ describe('NotificationService', () => {
         discordProvider,
         telegramProvider,
         webhookProvider,
+        teamsProvider,
       ];
 
       for (const provider of providers) {
@@ -725,6 +794,7 @@ describe('NotificationService', () => {
         'discord',
         'telegram',
         'webhook',
+        'teams',
       ]);
     });
   });

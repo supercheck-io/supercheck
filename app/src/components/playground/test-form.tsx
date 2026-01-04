@@ -555,9 +555,7 @@ export function TestForm({
           const result = await saveTest({
             id: testId,
             ...updatedTestCase,
-            // Pass the requirementId if this is a new test creation from a requirement
-            // This ensures the link is created on save
-            requirementId: testId ? undefined : initialLinkedRequirement?.id
+            // Note: requirementId is not passed for updates - the link is already established
           });
 
           if (result.success) {
@@ -582,7 +580,11 @@ export function TestForm({
           }
         } else {
           // Save as a new test
-          const result = await saveTest(updatedTestCase);
+          // Include requirementId if we're creating from a requirement context
+          const result = await saveTest({
+            ...updatedTestCase,
+            requirementId: initialLinkedRequirement?.id,
+          });
 
           if (result.success && result.id) {
             // Save tags after successful test creation
@@ -758,26 +760,26 @@ export function TestForm({
       <div className="space-y-2">
         <label className="block text-sm font-medium text-foreground">Requirement</label>
         {linkedReq ? (
-          <div className="flex items-center gap-2 text-sm p-3 rounded-md border bg-muted/30 min-w-0">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center text-sm p-3 rounded-md border bg-muted/30">
             <a
               href={`/requirements?id=${linkedReq.id}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-medium truncate flex-1 hover:underline hover:text-primary transition-colors cursor-pointer min-w-0 block"
+              className="font-medium truncate hover:underline hover:text-primary transition-colors cursor-pointer"
               title={linkedReq.title}
             >
               {linkedReq.title}
             </a>
 
-            {linkedReq.externalUrl ? (
-              <a href={linkedReq.externalUrl} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors shrink-0" title="Open External Link">
-                <ExternalLink className="h-4 w-4" />
-              </a>
-            ) : (
-              <a href={`/requirements?id=${linkedReq.id}`} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors shrink-0" title="Open Requirement Details">
-                <ExternalLink className="h-4 w-4" />
-              </a>
-            )}
+            <a
+              href={linkedReq.externalUrl || `/requirements?id=${linkedReq.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-primary transition-colors shrink-0 flex items-center"
+              title={linkedReq.externalUrl ? "Open External Link" : "Open Requirement Details"}
+            >
+              <ExternalLink className="h-4 w-4" />
+            </a>
           </div>
         ) : (
           <div className="text-sm text-muted-foreground p-3 rounded-md border border-dashed bg-muted/10">
