@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import {
     Dialog,
@@ -148,7 +147,6 @@ export function UploadDocumentDialog({
     onOpenChange,
     onComplete,
 }: UploadDocumentDialogProps) {
-    const router = useRouter();
     const [state, setState] = useState<UploadState>("idle");
     const [progress, setProgress] = useState(0);
     const [file, setFile] = useState<File | null>(null);

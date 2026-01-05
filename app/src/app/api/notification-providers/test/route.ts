@@ -415,15 +415,7 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
 
     const webhookUrl = typedConfig.teamsWebhookUrl as string;
 
-    // Validate URL format - Teams webhooks follow pattern: https://*.webhook.office.com/...
-    const teamsUrlPattern = /^https:\/\/[a-zA-Z0-9-]+\.webhook\.office\.com\//;
-    if (!teamsUrlPattern.test(webhookUrl)) {
-      throw new Error(
-        "Invalid Teams webhook URL format. Must be a valid https://*.webhook.office.com/ URL"
-      );
-    }
-
-    // Validate URL is parseable and uses HTTPS
+    // Parse URL first for proper validation
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(webhookUrl);
@@ -431,8 +423,35 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
       throw new Error("Invalid URL format");
     }
 
+    // Enforce HTTPS protocol
     if (parsedUrl.protocol !== "https:") {
       throw new Error("Teams webhook URL must use HTTPS");
+    }
+
+    const hostname = parsedUrl.hostname.toLowerCase();
+
+    // Block direct IP addresses (IPv4 and IPv6) to prevent SSRF
+    const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+    const ipv6Pattern = /^\[?[0-9a-fA-F:]+\]?$/;
+    if (ipv4Pattern.test(hostname) || ipv6Pattern.test(hostname)) {
+      throw new Error("Invalid Teams webhook URL: IP addresses are not allowed");
+    }
+
+    // Block localhost and loopback addresses
+    if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+      throw new Error("Invalid Teams webhook URL: localhost is not allowed");
+    }
+
+    // Validate hostname - Teams webhooks must be from webhook.office.com
+    // Using exact hostname validation on parsed URL to prevent bypass attacks
+    const isValidTeamsHost = 
+      hostname === "webhook.office.com" || 
+      (hostname.endsWith(".webhook.office.com") && /^[a-zA-Z0-9-]+\.webhook\.office\.com$/.test(hostname));
+    
+    if (!isValidTeamsHost) {
+      throw new Error(
+        "Invalid Teams webhook URL format. Must be a valid https://*.webhook.office.com/ URL"
+      );
     }
 
     // Build Adaptive Card test payload

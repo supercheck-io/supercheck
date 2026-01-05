@@ -15,7 +15,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
@@ -82,11 +81,10 @@ import { useRequirements, useRequirementMutations, REQUIREMENTS_QUERY_KEY } from
 import { useTags } from "@/hooks/use-tags";
 import { useRequirementPermissions } from "@/hooks/use-rbac-permissions";
 
-import { getLinkedTests, updateRequirement, unlinkTestFromRequirement } from "@/actions/requirements";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { getLinkedTests } from "@/actions/requirements";
+import { useQuery } from "@tanstack/react-query";
 import { Requirement } from "./schema";
 import { RequirementWithCoverage } from "@/actions/requirements";
-import { cn } from "@/lib/utils";
 import { RequirementTestDataTable } from "./requirement-test-data-table";
 import { createRequirementTestColumns } from "./requirement-test-columns";
 import { DocumentsList } from "./documents-list";
@@ -114,7 +112,6 @@ const priorityConfig = {
 export default function RequirementsPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const queryClient = useQueryClient();
     const { canCreateRequirement, canEditRequirement, canDeleteRequirement } = useRequirementPermissions();
 
 
@@ -171,19 +168,6 @@ export default function RequirementsPage() {
 
 
 
-    // Unlink mutation
-    const unlinkMutation = useMutation({
-        mutationFn: (testId: string) => unlinkTestFromRequirement(selectedRequirement!.id, testId),
-        onSuccess: (result) => {
-            if (result.success) {
-                refetchLinkedTests();
-                invalidate();
-                toast.success("Test unlinked");
-            } else {
-                toast.error("Failed to unlink", { description: result.error });
-            }
-        },
-    });
 
     const handleRowClick = useCallback((row: Row<Requirement>) => {
         // Invalidate cache to get fresh data when opening the sheet

@@ -95,7 +95,7 @@ export async function getRequirements(options?: {
   priority?: RequirementPriority;
   status?: RequirementCoverageStatus;
 }): Promise<RequirementListResponse> {
-  const { userId, project, organizationId } = await requireProjectContext();
+  const { project, organizationId } = await requireProjectContext();
 
   // Check view permission
   const canView = await hasPermission("requirement", "view", {
@@ -492,7 +492,7 @@ export async function deleteRequirements(
     }
 
     // Delete requirements (cascade handles snapshots and test links)
-    const result = await db
+    await db
       .delete(requirements)
       .where(
         and(

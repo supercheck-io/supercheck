@@ -57,7 +57,7 @@ jest.mock("@/lib/ai/ai-security", () => ({
   },
   AISecurityService: {
     escapeForPrompt: jest.fn((text: string) => `[ESCAPED]${text}`),
-    sanitizeTextOutput: jest.fn((text: string) => text.replace(/<[^>]*>/g, "")),
+    sanitizeTextOutput: jest.fn((text: string) => text.replace(/[<>]/g, "")),
   },
 }));
 

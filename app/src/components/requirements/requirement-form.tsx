@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import {
     FormLabel,
     FormMessage,
 } from "@/components/form";
-import { Loader2, SaveIcon, ArrowLeft, Trash2, ArrowUp, ArrowRight, ArrowDown } from "lucide-react";
+import { Loader2, SaveIcon, Trash2, ArrowUp, ArrowRight, ArrowDown } from "lucide-react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -41,7 +41,7 @@ import {
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { useForm, ControllerRenderProps } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { createRequirement, updateRequirement, linkTestsToRequirement, unlinkTestFromRequirement, deleteRequirement } from "@/actions/requirements";

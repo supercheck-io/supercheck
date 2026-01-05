@@ -163,7 +163,8 @@ async function extractTextFromDocx(file: File): Promise<string> {
     // Extract text between XML tags (basic approach)
     const textMatches = rawText.match(/<w:t[^>]*>([^<]+)<\/w:t>/g) || [];
     const extractedText = textMatches
-      .map((match) => match.replace(/<[^>]+>/g, ""))
+      // Remove all angle brackets to prevent leaving partial HTML/script tags
+      .map((match) => match.replace(/[<>]/g, ""))
       .join(" ");
 
     if (extractedText.length < 100) {

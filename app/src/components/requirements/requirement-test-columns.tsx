@@ -7,7 +7,7 @@ import { DataTableColumnHeader } from "../jobs/data-table-column-header"
 import { LinkedTest } from "@/actions/requirements"
 import { types } from "../tests/data"
 import { Button } from "@/components/ui/button"
-import { Link2Off, Eye, ExternalLink } from "lucide-react"
+import { Link2Off, ExternalLink } from "lucide-react"
 
 interface CreateColumnsProps {
     onUnlink?: (id: string) => void;
