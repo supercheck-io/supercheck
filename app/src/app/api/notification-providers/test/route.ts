@@ -442,15 +442,16 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
       throw new Error("Invalid Teams webhook URL: localhost is not allowed");
     }
 
-    // Validate hostname - Teams webhooks must be from webhook.office.com
-    // Using exact hostname validation on parsed URL to prevent bypass attacks
-    const isValidTeamsHost = 
-      hostname === "webhook.office.com" || 
-      (hostname.endsWith(".webhook.office.com") && /^[a-zA-Z0-9-]+\.webhook\.office\.com$/.test(hostname));
+    // Validate hostname - Teams webhooks must be from allowed Microsoft domains
+    // Using allowlist approach to prevent SSRF attacks
+    const allowedHostSuffixes = ["webhook.office.com", "outlook.office.com"];
+    const isValidTeamsHost = allowedHostSuffixes.some((suffix) => 
+      hostname === suffix || hostname.endsWith("." + suffix)
+    );
     
     if (!isValidTeamsHost) {
       throw new Error(
-        "Invalid Teams webhook URL format. Must be a valid https://*.webhook.office.com/ URL"
+        "Invalid Teams webhook URL. Must point to a valid Microsoft Teams endpoint"
       );
     }
 

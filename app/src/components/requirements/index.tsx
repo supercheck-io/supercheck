@@ -15,23 +15,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { UUIDField } from "@/components/ui/uuid-field";
 import {
     AlertDialog,
@@ -77,7 +60,7 @@ import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import { K6Logo } from "@/components/logo/k6-logo";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { useRequirements, useRequirementMutations, REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
+import { useRequirements, useRequirementMutations } from "@/hooks/use-requirements";
 import { useTags } from "@/hooks/use-tags";
 import { useRequirementPermissions } from "@/hooks/use-rbac-permissions";
 
@@ -160,7 +143,7 @@ export default function RequirementsPage() {
     const isSheetOpen = !!selectedRequirement;
 
     // Fetch linked tests for selected requirement
-    const { data: linkedTests = [], isLoading: testsLoading, refetch: refetchLinkedTests } = useQuery({
+    const { data: linkedTests = [], isLoading: testsLoading } = useQuery({
         queryKey: ["requirement-tests", selectedRequirement?.id],
         queryFn: () => selectedRequirement ? getLinkedTests(selectedRequirement.id) : [],
         enabled: !!selectedRequirement,
