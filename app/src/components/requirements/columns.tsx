@@ -15,7 +15,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
-import { MoreHorizontal, ExternalLink, Link2, Trash2, Pencil, CalendarIcon, CheckCircle, XCircle, CircleDashed } from "lucide-react";
+import { MoreHorizontal, ExternalLink, Trash2, Pencil, CalendarIcon, CheckCircle, XCircle, CircleDashed } from "lucide-react";
 import { DataTableColumnHeader } from "@/components/tests/data-table-column-header";
 import { UUIDField } from "@/components/ui/uuid-field";
 import { toast } from "sonner";
@@ -26,7 +26,6 @@ import { priorities } from "./data";
 // Meta type for row actions (passed from parent)
 export interface RequirementsTableMeta {
     onDeleteRequirement?: (id: string) => void;
-    onLinkTests?: (id: string) => void;
     onEditRequirement?: (id: string) => void;
     canEdit?: boolean;
     canDelete?: boolean;
@@ -277,11 +276,13 @@ export const columns: ColumnDef<Requirement>[] = [
             }[status] || CircleDashed;
 
             return (
-                <div className="flex items-center w-[100px]">
+                <div className="flex items-center w-[120px]">
                     <StatusIcon className={`h-4 w-4 mr-2 ${config.color}`} />
                     <span>{config.label}</span>
                     {linkedCount > 0 && (
-                        <span className="ml-1 text-xs text-muted-foreground">({linkedCount})</span>
+                        <Badge variant="secondary" className="ml-2 text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
+                            {linkedCount}
+                        </Badge>
                     )}
                 </div>
             );
@@ -350,7 +351,7 @@ export const columns: ColumnDef<Requirement>[] = [
             const externalUrl = row.original.externalUrl;
             const provider = row.original.externalProvider;
 
-            if (!externalId) {
+            if (!externalId && !externalUrl) {
                 return <span className="text-muted-foreground">None</span>;
             }
 
@@ -359,12 +360,13 @@ export const columns: ColumnDef<Requirement>[] = [
                     href={externalUrl || "#"}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-blue-500 hover:text-blue-600 transition-colors"
                     onClick={(e) => e.stopPropagation()}
-                    title={`Open in ${provider || "external system"}`}
+                    title={provider ? `Open in ${provider}` : "Open external link"}
                 >
-                    <ExternalLink className="h-3 w-3" />
-                    <span className="text-xs">{externalId}</span>
+                    <Badge variant="outline" className="flex items-center gap-1.5 hover:bg-muted cursor-pointer font-normal text-xs py-0.5 h-6">
+                        <ExternalLink className="h-3 w-3" />
+                        <span>{provider || "External Link"}</span>
+                    </Badge>
                 </a>
             );
         },
@@ -429,16 +431,6 @@ export const columns: ColumnDef<Requirement>[] = [
                         >
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                meta?.onLinkTests?.(requirement.id);
-                            }}
-                            disabled={!canEdit}
-                        >
-                            <Link2 className="mr-2 h-4 w-4" />
-                            Link Tests
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem

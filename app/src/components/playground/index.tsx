@@ -3,6 +3,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ExternalLink, Video } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import {
@@ -279,12 +281,20 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [isLoadingPrompt, setIsLoadingPrompt] = useState(false);
   const [linkedRequirement, setLinkedRequirement] = useState<{ id: string; title: string; externalUrl?: string | null } | null>(null);
 
+  // Browser recording banner - show for new browser tests (no existing testId)
+  const [showRecordingBanner, setShowRecordingBanner] = useState(true);
+
   useEffect(() => {
     const requirementId = searchParams.get("requirementId");
     if (requirementId) {
-      // Immediately open the dialog and show loading state
-      setAiAutoOpen(true);
-      setIsLoadingPrompt(true);
+      // For browser tests, don't auto-open AI dialog - show recording instructions instead
+      const isBrowserTest = testCase.type === "browser";
+
+      if (!isBrowserTest) {
+        // Immediately open the dialog and show loading state for non-browser tests
+        setAiAutoOpen(true);
+        setIsLoadingPrompt(true);
+      }
 
       getRequirement(requirementId).then((req) => {
         if (req) {
@@ -1421,6 +1431,42 @@ Please generate a robust test script covering the success and error scenarios de
                                 resetTestExecutionState(); // Also clear test execution state
                               }}
                             />
+                          </div>
+                        )}
+
+                        {/* Browser Recording Instructions - shown for all new browser tests */}
+                        {testCase.type === "browser" && !testId && showRecordingBanner && (
+                          <div className="flex items-center justify-between px-4 py-2.5 border-b border-red-500/20 bg-red-500/5">
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center justify-center w-6 h-6 rounded-full bg-red-500/10">
+                                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                              </div>
+                              <div>
+                                <span className="text-sm font-medium text-red-400">Record Browser Test</span>
+                                <span className="text-sm text-muted-foreground ml-2">
+                                  Use Playwright recorder to capture interactions, then paste the code below.
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                onClick={() => window.open("https://chromewebstore.google.com/detail/playwright-crx/jambeljnbnfbkcpnoiaedcabbgmnnlcd", "_blank")}
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                Get Recorder
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                onClick={() => setShowRecordingBanner(false)}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                         )}
 

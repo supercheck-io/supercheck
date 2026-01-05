@@ -73,9 +73,9 @@ const updateRequirementSchema = z.object({
   description: z.string().optional().nullable(),
   priority: z.enum(["low", "medium", "high"]).optional().nullable(),
   tags: z.string().optional().nullable(),
-  externalId: z.string().optional().nullable(),
-  externalUrl: z.string().url().optional().nullable(),
-  externalProvider: z.string().optional().nullable(),
+  externalId: z.string().optional().nullable().or(z.literal("")),
+  externalUrl: z.string().url().optional().nullable().or(z.literal("")),
+  externalProvider: z.string().optional().nullable().or(z.literal("")),
 });
 
 export type CreateRequirementInput = z.infer<typeof createRequirementSchema>;
@@ -342,9 +342,9 @@ export async function updateRequirement(
         description: validatedData.description,
         priority: validatedData.priority as RequirementPriority | null,
         tags: validatedData.tags,
-        externalId: validatedData.externalId,
-        externalUrl: validatedData.externalUrl,
-        externalProvider: validatedData.externalProvider,
+        externalId: validatedData.externalId || null,
+        externalUrl: validatedData.externalUrl || null,
+        externalProvider: validatedData.externalProvider || null,
         updatedAt: new Date(),
       })
       .where(
@@ -1073,3 +1073,126 @@ export async function getAvailableTestsForLinking(
     return [];
   }
 }
+
+// ============================================================================
+// EXPORT REQUIREMENTS TO CSV
+// ============================================================================
+
+/**
+ * Export all requirements to CSV format
+ */
+export async function exportRequirementsCsv(): Promise<{
+  success: boolean;
+  csv?: string;
+  filename?: string;
+  error?: string;
+}> {
+  try {
+    const { project, organizationId, userId } = await requireProjectContext();
+
+    // Check view permission
+    const canView = await hasPermission("requirement", "view", {
+      organizationId,
+      projectId: project.id,
+    });
+
+    if (!canView) {
+      return { success: false, error: "Insufficient permissions" };
+    }
+
+    // Fetch all requirements with coverage (no pagination)
+    const results = await db
+      .select({
+        id: requirements.id,
+        title: requirements.title,
+        description: requirements.description,
+        priority: requirements.priority,
+        tags: requirements.tags,
+        externalId: requirements.externalId,
+        externalUrl: requirements.externalUrl,
+        coverageStatus: requirementCoverageSnapshots.status,
+        linkedTestCount: requirementCoverageSnapshots.linkedTestCount,
+        passedTestCount: requirementCoverageSnapshots.passedTestCount,
+        failedTestCount: requirementCoverageSnapshots.failedTestCount,
+        createdAt: requirements.createdAt,
+      })
+      .from(requirements)
+      .leftJoin(
+        requirementCoverageSnapshots,
+        eq(requirements.id, requirementCoverageSnapshots.requirementId)
+      )
+      .where(eq(requirements.projectId, project.id))
+      .orderBy(desc(requirements.createdAt));
+
+    // CSV header
+    const headers = [
+      "ID",
+      "Title",
+      "Description",
+      "Priority",
+      "Status",
+      "Tags",
+      "Linked Tests",
+      "Passed Tests",
+      "Failed Tests",
+      "External ID",
+      "External URL",
+      "Created At",
+    ];
+
+    // Helper to escape CSV values
+    const escapeCSV = (value: string | null | undefined): string => {
+      if (value === null || value === undefined) return "";
+      const str = String(value);
+      // Escape quotes and wrap in quotes if contains comma, quote, or newline
+      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    // Build CSV rows
+    const rows = results.map((r) => [
+      escapeCSV(r.id),
+      escapeCSV(r.title),
+      escapeCSV(r.description),
+      escapeCSV(r.priority ?? ""),
+      escapeCSV(r.coverageStatus ?? "missing"),
+      escapeCSV(r.tags),
+      String(r.linkedTestCount ?? 0),
+      String(r.passedTestCount ?? 0),
+      String(r.failedTestCount ?? 0),
+      escapeCSV(r.externalId),
+      escapeCSV(r.externalUrl),
+      r.createdAt ? r.createdAt.toISOString() : "",
+    ]);
+
+    // Combine header and rows
+    const csv = [headers.join(","), ...rows.map((row) => row.join(","))].join(
+      "\n"
+    );
+
+    // Generate filename with project name and date
+    const date = new Date().toISOString().split("T")[0];
+    const safeProjectName = project.name
+      .replace(/[^a-zA-Z0-9]/g, "_")
+      .toLowerCase();
+    const filename = `requirements_${safeProjectName}_${date}.csv`;
+
+    // Audit log
+    await logAuditEvent({
+      userId,
+      organizationId,
+      action: "requirement_export",
+      resource: "requirement",
+      metadata: { count: results.length, format: "csv" },
+      success: true,
+    });
+
+    return { success: true, csv, filename };
+  } catch (error) {
+    console.error("Error exporting requirements:", error);
+    return { success: false, error: "Failed to export requirements" };
+  }
+}
+

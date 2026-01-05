@@ -443,7 +443,7 @@ function AlertsPage() {
               open={isCreateDialogOpen}
               onOpenChange={setIsCreateDialogOpen}
             >
-              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogContent className="max-w-4xl max-h-[90vh] min-w-2xl overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Create Notification Channel</DialogTitle>
                   <DialogDescription>

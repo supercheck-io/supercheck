@@ -40,7 +40,7 @@ interface DataTableProps<TData, TValue> {
     onRowClick?: (row: Row<TData>) => void;
     meta?: {
         onDeleteRequirement?: (id: string) => void;
-        onLinkTests?: (id: string) => void;
+        onEditRequirement?: (id: string) => void;
         [key: string]: unknown;
     };
 }
@@ -49,7 +49,7 @@ interface DataTableProps<TData, TValue> {
 interface ExtendedTableMeta<TData> extends TableMeta<TData> {
     globalFilterColumns?: string[];
     onDeleteRequirement?: (id: string) => void;
-    onLinkTests?: (id: string) => void;
+    onEditRequirement?: (id: string) => void;
 }
 
 // Custom global filter function for requirements table

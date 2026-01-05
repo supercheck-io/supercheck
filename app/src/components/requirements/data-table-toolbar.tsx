@@ -1,16 +1,18 @@
 import type { Table } from "@tanstack/react-table";
-import { PlusIcon, X, Search, Upload } from "lucide-react";
+import { PlusIcon, X, Search, Upload, Download, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { priorities, coverageStatuses } from "./data";
 import { DataTableFacetedFilter } from "@/components/tests/data-table-faceted-filter";
 import { DataTableTagFilter } from "@/components/tests/data-table-tag-filter";
 import { DataTableViewOptions } from "@/components/tests/data-table-view-options";
 import { UploadDocumentDialog } from "./upload-document-dialog";
+import { exportRequirementsCsv } from "@/actions/requirements";
 
 interface DataTableToolbarProps<TData> {
     table: Table<TData>;
@@ -23,6 +25,34 @@ export function DataTableToolbar<TData>({
 }: DataTableToolbarProps<TData>) {
     const router = useRouter();
     const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
+
+    const handleExport = async () => {
+        setIsExporting(true);
+        try {
+            const result = await exportRequirementsCsv();
+            if (result.success && result.csv && result.filename) {
+                // Create blob and trigger download
+                const blob = new Blob([result.csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = result.filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                toast.success("Requirements exported successfully");
+            } else {
+                toast.error(result.error || "Failed to export requirements");
+            }
+        } catch (error) {
+            console.error("Export error:", error);
+            toast.error("Failed to export requirements");
+        } finally {
+            setIsExporting(false);
+        }
+    };
 
     return (
         <>
@@ -80,14 +110,28 @@ export function DataTableToolbar<TData>({
                     )}
                     <DataTableViewOptions table={table} />
                     <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleExport}
+                        disabled={isExporting}
+                        data-testid="export-requirements-button"
+                    >
+                        {isExporting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <Download className="h-4 w-4 " />
+                        )}
+
+                    </Button>
+                    <Button
                         variant="secondary"
                         className="border shadow-sm"
                         onClick={() => setUploadDialogOpen(true)}
                         disabled={!canCreateRequirement}
                         data-testid="upload-document-button"
                     >
-                        <Upload className="h-4 w-4 mr-2" />
-                        Upload
+                        <Upload className="h-4 w-4" />
+
                     </Button>
                     <Button
                         onClick={() => router.push("/requirements/new")}
@@ -107,3 +151,4 @@ export function DataTableToolbar<TData>({
         </>
     );
 }
+

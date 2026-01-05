@@ -186,10 +186,12 @@ export default function RequirementsPage() {
     });
 
     const handleRowClick = useCallback((row: Row<Requirement>) => {
+        // Invalidate cache to get fresh data when opening the sheet
+        invalidate();
         const params = new URLSearchParams(searchParams);
         params.set("id", row.original.id);
         router.push(`/requirements?${params.toString()}`, { scroll: false });
-    }, [searchParams, router]);
+    }, [searchParams, router, invalidate]);
 
     // Handle sheet close
     const handleSheetClose = useCallback(() => {
@@ -199,12 +201,38 @@ export default function RequirementsPage() {
         router.push(newUrl, { scroll: false });
     }, [searchParams, router]);
 
-    // Handle delete
-    const handleDelete = useCallback(async (id: string) => {
-        await deleteMutation.mutateAsync(id);
-        toast.success("Requirement deleted");
-        handleSheetClose();
-    }, [deleteMutation, handleSheetClose]);
+    // Delete confirmation dialog state
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [requirementToDelete, setRequirementToDelete] = useState<string | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    // Handle delete - opens confirmation dialog
+    const handleDeleteClick = useCallback((id: string) => {
+        setRequirementToDelete(id);
+        setDeleteDialogOpen(true);
+    }, []);
+
+    // Confirm and execute delete
+    const handleConfirmDelete = useCallback(async () => {
+        if (!requirementToDelete) return;
+        setIsDeleting(true);
+        try {
+            await deleteMutation.mutateAsync(requirementToDelete);
+            toast.success("Requirement deleted");
+            handleSheetClose();
+        } catch (error) {
+            toast.error("Failed to delete requirement");
+        } finally {
+            setIsDeleting(false);
+            setDeleteDialogOpen(false);
+            setRequirementToDelete(null);
+        }
+    }, [requirementToDelete, deleteMutation, handleSheetClose]);
+
+    // Handle edit - navigate to edit page
+    const handleEdit = useCallback((id: string) => {
+        router.push(`/requirements/edit/${id}`);
+    }, [router]);
 
 
 
@@ -266,13 +294,8 @@ export default function RequirementsPage() {
                         isLoading={isLoading}
                         onRowClick={handleRowClick}
                         meta={{
-                            onDeleteRequirement: handleDelete,
-                            onLinkTests: (id: string) => {
-                                const params = new URLSearchParams(searchParams);
-                                params.set("id", id);
-                                router.push(`/requirements?${params.toString()}`, { scroll: false });
-
-                            },
+                            onDeleteRequirement: handleDeleteClick,
+                            onEditRequirement: handleEdit,
                             canEdit: canEditRequirement,
                             canDelete: canDeleteRequirement,
                         }}
@@ -324,7 +347,7 @@ export default function RequirementsPage() {
                                                     <AlertDialogFooter>
                                                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                                                         <AlertDialogAction
-                                                            onClick={() => handleDelete(selectedRequirement.id)}
+                                                            onClick={() => handleDeleteClick(selectedRequirement.id)}
                                                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                                         >
                                                             Delete
@@ -412,21 +435,19 @@ export default function RequirementsPage() {
                                             <div className="space-y-2 bg-card p-4 rounded-lg border border-border/40">
                                                 <h3 className="text-xs font-medium text-muted-foreground">Priority</h3>
                                                 <div className="flex items-center space-x-2">
-                                                    {selectedRequirement.priority ? (
-                                                        <Badge
-                                                            className={cn(
-                                                                "capitalize shadow-none",
-                                                                selectedRequirement.priority === "high" && "bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/40",
-                                                                selectedRequirement.priority === "medium" && "bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/40",
-                                                                selectedRequirement.priority === "low" && "bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/40"
-                                                            )}
-                                                            variant="secondary"
-                                                        >
-                                                            {selectedRequirement.priority}
-                                                        </Badge>
-                                                    ) : (
-                                                        <span className="text-sm text-muted-foreground">Not set</span>
-                                                    )}
+                                                    {(() => {
+                                                        const priority = priorityConfig[selectedRequirement.priority as keyof typeof priorityConfig];
+                                                        if (!priority) {
+                                                            return <span className="text-sm text-muted-foreground">Not set</span>;
+                                                        }
+                                                        const Icon = priority.icon;
+                                                        return (
+                                                            <>
+                                                                <Icon className={`h-5 w-5 ${priority.color}`} />
+                                                                <span className="text-sm font-medium">{priority.label}</span>
+                                                            </>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </div>
 
@@ -476,70 +497,18 @@ export default function RequirementsPage() {
                                                 <div className="space-y-2">
                                                     <p className="text-xs font-medium text-muted-foreground/80">Functional</p>
                                                     <div className="grid grid-cols-2 gap-2">
-                                                        <Popover>
-                                                            <PopoverTrigger asChild>
-                                                                <Button variant="outline" className="h-auto py-3 px-4 justify-start space-x-3">
-                                                                    <div className="p-1.5 rounded-md bg-sky-100 dark:bg-sky-900/30">
-                                                                        <Chrome className="h-4 w-4 text-sky-600 dark:text-sky-400" />
-                                                                    </div>
-                                                                    <div className="text-left">
-                                                                        <div className="text-sm font-medium">Browser</div>
-                                                                    </div>
-                                                                </Button>
-                                                            </PopoverTrigger>
-                                                            <PopoverContent className="w-80 p-0" align="start">
-                                                                <div className="p-4 border-b">
-                                                                    <h4 className="font-semibold leading-none mb-1">Record Browser Test</h4>
-                                                                    <p className="text-xs text-muted-foreground">Follow these steps to generate a test:</p>
-                                                                </div>
-                                                                <div className="p-4 space-y-4">
-                                                                    <div className="flex gap-3">
-                                                                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-medium text-sky-600 dark:bg-sky-900/30 dark:text-sky-400">
-                                                                            1
-                                                                        </div>
-                                                                        <div className="space-y-1">
-                                                                            <p className="text-sm font-medium leading-none">Open Recorder</p>
-                                                                            <p className="text-xs text-muted-foreground">
-                                                                                Launch the Playwright CRX extension.
-                                                                            </p>
-                                                                            <Button
-                                                                                variant="outline"
-                                                                                size="sm"
-                                                                                className="h-7 text-xs mt-1 w-full justify-start gap-2"
-                                                                                onClick={() => window.open("https://chromewebstore.google.com/detail/playwright-crx/jambeljnbnfbkcpnoiaedcabbgmnnlcd", "_blank")}
-                                                                            >
-                                                                                <ExternalLink className="h-3 w-3" />
-                                                                                Open Web Store / Extension
-                                                                            </Button>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    <div className="flex gap-3">
-                                                                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-medium text-sky-600 dark:bg-sky-900/30 dark:text-sky-400">
-                                                                            2
-                                                                        </div>
-                                                                        <div className="space-y-1">
-                                                                            <p className="text-sm font-medium leading-none">Record Scenario</p>
-                                                                            <p className="text-xs text-muted-foreground">
-                                                                                Use the &quot;Record&quot; button in the extension to capture your actions on the target site.
-                                                                            </p>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    <div className="flex gap-3">
-                                                                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-medium text-sky-600 dark:bg-sky-900/30 dark:text-sky-400">
-                                                                            3
-                                                                        </div>
-                                                                        <div className="space-y-1">
-                                                                            <p className="text-sm font-medium leading-none">Link Test</p>
-                                                                            <p className="text-xs text-muted-foreground">
-                                                                                Copy the generated code and create a new Browser test and link it to this requirement.
-                                                                            </p>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            </PopoverContent>
-                                                        </Popover>
+                                                        <Button
+                                                            variant="outline"
+                                                            className="h-auto py-3 px-4 justify-start space-x-3"
+                                                            onClick={() => router.push(`/playground?scriptType=browser&requirementId=${selectedRequirement.id}`)}
+                                                        >
+                                                            <div className="p-1.5 rounded-md bg-sky-100 dark:bg-sky-900/30">
+                                                                <Chrome className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                                                            </div>
+                                                            <div className="text-left">
+                                                                <div className="text-sm font-medium">Browser</div>
+                                                            </div>
+                                                        </Button>
                                                         <Button variant="outline" className="h-auto py-3 px-4 justify-start space-x-3" onClick={() => router.push(`/playground?scriptType=api&requirementId=${selectedRequirement.id}`)}>
                                                             <div className="p-1.5 rounded-md bg-teal-100 dark:bg-teal-900/30">
                                                                 <ArrowLeftRight className="h-4 w-4 text-teal-600 dark:text-teal-400" />
@@ -585,7 +554,8 @@ export default function RequirementsPage() {
 
 
                                         {/* External Link - styled like CI/CD trigger in Jobs */}
-                                        {selectedRequirement.externalId && (
+                                        {/* External Link - styled like CI/CD trigger in Jobs */}
+                                        {(selectedRequirement.externalUrl || selectedRequirement.externalId) && (
                                             <div className="space-y-2 bg-card p-4 rounded-lg border border-border/40">
                                                 <h3 className="text-xs font-medium text-muted-foreground">External Link</h3>
                                                 <div className="flex items-center gap-3">
@@ -601,7 +571,7 @@ export default function RequirementsPage() {
                                                             rel="noopener noreferrer"
                                                             className="text-sm text-blue-500 hover:underline flex items-center gap-1 font-medium"
                                                         >
-                                                            {selectedRequirement.externalId}
+                                                            {selectedRequirement.externalId || "Open Link"}
                                                             <ExternalLink className="h-3 w-3" />
                                                         </a>
                                                     ) : (
@@ -694,6 +664,29 @@ export default function RequirementsPage() {
             </Sheet>
 
             {/* Link Tests Dialog Removed from here */}
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Requirement?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will permanently delete this requirement and unlink all associated tests
+                            This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleConfirmDelete}
+                            disabled={isDeleting}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                            {isDeleting ? "Deleting..." : "Delete"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div >
     );
 }

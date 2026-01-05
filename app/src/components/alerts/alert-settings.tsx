@@ -458,7 +458,7 @@ export function AlertSettings({
                       Add Channel
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                  <DialogContent className="max-w-4xl max-h-[90vh] min-w-2xl overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>Add Notification Channel</DialogTitle>
                       <DialogDescription>
@@ -580,7 +580,7 @@ export function AlertSettings({
                                 </div>
                                 <Checkbox
                                   checked={isSelected}
-                                  onChange={() => {}} // Handled by parent onClick
+                                  onChange={() => { }} // Handled by parent onClick
                                   className="ml-2 shrink-0 data-[state=checked]:bg-blue-500  :border-blue-500 data-[state=checked]:border-blue-500 data-[state=checked]:text-white"
                                   onClick={(e) => e.stopPropagation()} // Prevent double toggle
                                 />

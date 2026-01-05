@@ -163,12 +163,13 @@ export function RequirementForm({
         try {
             const cleanedData = {
                 ...values,
+                externalId: values.externalId && values.externalId.length > 0 ? values.externalId : null,
                 externalUrl: values.externalUrl && values.externalUrl.length > 0 ? values.externalUrl : null,
                 // If provider type is not 'Other', use the type as the provider name.
                 // If it is 'Other', keep the manually entered externalProvider value.
                 externalProvider: values.providerType && values.providerType !== "Other"
                     ? values.providerType
-                    : values.externalProvider,
+                    : (values.externalProvider && values.externalProvider.length > 0 ? values.externalProvider : null),
             };
 
             // Clean un-needed client-side fields
@@ -428,19 +429,7 @@ export function RequirementForm({
                                                         />
                                                     )}
 
-                                                    <FormField
-                                                        control={form.control}
-                                                        name="externalId"
-                                                        render={({ field }) => (
-                                                            <FormItem>
-                                                                <FormLabel className="text-xs">External ID <span className="text-muted-foreground font-normal">(Optional)</span></FormLabel>
-                                                                <FormControl>
-                                                                    <Input {...field} value={field.value ?? ""} placeholder="PROJ-123" disabled={isSubmitting} />
-                                                                </FormControl>
-                                                                <FormMessage />
-                                                            </FormItem>
-                                                        )}
-                                                    />
+
                                                 </div>
                                                 <FormField
                                                     control={form.control}
@@ -467,7 +456,7 @@ export function RequirementForm({
                                         onTestsSelected={setSelectedTests}
                                         buttonLabel="Link Tests"
                                         emptyStateMessage="No tests linked"
-                                        required={true}
+                                        required={false}
                                         hideExecutionOrder={true}
                                         entityName="requirement"
                                         headerActions={

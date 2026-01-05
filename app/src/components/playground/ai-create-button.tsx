@@ -363,13 +363,30 @@ export function AICreateButton({
           <Separator className="my-1" />
 
           <div className="space-y-4">
-            <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-900/50">
-              <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs mt-0.5">
-                For best results, be specific about the actions, verifications,
-                and expected outcomes.
-              </AlertDescription>
-            </Alert>
+            {testType === "browser" ? (
+              <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800/50">
+                <Info className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <AlertDescription className="text-amber-700 dark:text-amber-300 text-xs mt-0.5">
+                  <strong>Recommendation:</strong> For browser tests, consider using the{" "}
+                  <a
+                    href="https://chromewebstore.google.com/detail/playwright-crx/jambeljnbnfbkcpnoiaedcabbgmnnlcd"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-amber-800 dark:hover:text-amber-200"
+                  >
+                    Playwright Recorder
+                  </a>{" "}
+                  to capture real interactions. Recorded tests typically produce more reliable selectors and better reflect actual user behavior.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-900/50">
+                <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs mt-0.5">
+                  <strong>Tip:</strong> For best results, be specific about the actions, verifications, and expected outcomes you want to test.
+                </AlertDescription>
+              </Alert>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="user-request" className="text-sm font-medium">

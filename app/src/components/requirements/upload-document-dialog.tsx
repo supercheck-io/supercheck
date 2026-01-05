@@ -533,9 +533,10 @@ export function UploadDocumentDialog({
                                 </div>
                                 <ol className="text-sm text-muted-foreground space-y-2 mb-4 list-decimal list-inside">
                                     <li>Click on a requirement in the list to open its details</li>
-                                    <li>In the <strong>&quot;Create Test&quot;</strong> section, choose the test type (API, Browser, Database, etc.)</li>
-                                    <li>AI will generate a test script pre-filled with your requirement details</li>
-                                    <li>Review, customize, run the test, and save to automatically link it to your requirement</li>
+                                    <li>In the <strong>&quot;Create Test&quot;</strong> section, choose your test type</li>
+                                    <li><strong>API, Database, Performance:</strong> AI generates a test script from your requirement</li>
+                                    <li><strong>Browser:</strong> Use the Playwright recorder to capture interactions</li>
+                                    <li>Run the test and save to automatically link it to your requirement</li>
                                 </ol>
                                 <div className="flex items-center gap-2 text-xs text-muted-foreground pt-3 border-t border-border/50">
                                     <ArrowRight className="h-3 w-3 flex-shrink-0" />
