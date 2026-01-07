@@ -27,6 +27,9 @@ cp .env.example .env
 docker compose -f deploy/docker/docker-compose.yml up -d
 ```
 
+> [!NOTE]
+> The default configuration sets `SELF_HOSTED=true`, which enables unlimited features. If you are deploying manually or running locally without Docker Compose, ensure you set `SELF_HOSTED=true` in your environment variables.
+
 ## Documentation
 
 Full deployment documentation is available at **[supercheck.io/docs/deployment](https://supercheck.io/docs/deployment)**

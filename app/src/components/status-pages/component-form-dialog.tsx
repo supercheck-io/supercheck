@@ -89,24 +89,24 @@ const statusOptions: {
   label: string;
   color: string;
 }[] = [
-  { value: "operational", label: "Operational", color: "text-green-600" },
-  {
-    value: "degraded_performance",
-    label: "Degraded Performance",
-    color: "text-yellow-600",
-  },
-  {
-    value: "partial_outage",
-    label: "Partial Outage",
-    color: "text-orange-600",
-  },
-  { value: "major_outage", label: "Major Outage", color: "text-red-600" },
-  {
-    value: "under_maintenance",
-    label: "Under Maintenance",
-    color: "text-blue-600",
-  },
-];
+    { value: "operational", label: "Operational", color: "text-green-600" },
+    {
+      value: "degraded_performance",
+      label: "Degraded Performance",
+      color: "text-yellow-600",
+    },
+    {
+      value: "partial_outage",
+      label: "Partial Outage",
+      color: "text-orange-600",
+    },
+    { value: "major_outage", label: "Major Outage", color: "text-red-600" },
+    {
+      value: "under_maintenance",
+      label: "Under Maintenance",
+      color: "text-blue-600",
+    },
+  ];
 
 export function ComponentFormDialog({
   open,
@@ -239,7 +239,7 @@ export function ComponentFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-4xl max-h-[90vh] min-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {component ? "Edit Component" : "Add Component"}

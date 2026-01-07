@@ -66,6 +66,8 @@ services:
       S3_K6_JOB_BUCKET_NAME: ${S3_K6_JOB_BUCKET_NAME:-k6-job-artifacts}
       # Status page bucket
       S3_STATUS_BUCKET_NAME: ${S3_STATUS_BUCKET_NAME:-status-page-artifacts}
+      # Requirements bucket
+      S3_REQUIREMENTS_BUCKET_NAME: ${S3_REQUIREMENTS_BUCKET_NAME:-test-requirement-artifacts}
 
       # Execution configuration
       NODE_ENV: ${NODE_ENV:-production}

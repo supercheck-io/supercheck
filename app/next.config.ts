@@ -4,32 +4,59 @@ import path from "path";
 
 /**
  * Content Security Policy configuration
- * Balanced approach: secure but not overly restrictive
- * Allows common CDNs, cloud storage, and third-party services
+ * Self-hosting friendly: uses existing APP_URL/TRUSTED_ORIGINS for domain configuration
+ * 
+ * Uses existing environment variables:
+ * - APP_URL: Primary application URL (used for frame-ancestors)
+ * - TRUSTED_ORIGINS: Additional trusted domains (comma-separated)
+ * - SELF_HOSTED: When true, skips HSTS to support HTTP deployments
  */
+function buildFrameAncestors(): string {
+  const origins: string[] = ["'self'"];
+  
+  // Add APP_URL domain if set
+  if (process.env.APP_URL) {
+    try {
+      const url = new URL(process.env.APP_URL);
+      origins.push(url.origin);
+    } catch {
+      // Invalid URL, skip
+    }
+  }
+  
+  // Add TRUSTED_ORIGINS if set
+  if (process.env.TRUSTED_ORIGINS) {
+    const trusted = process.env.TRUSTED_ORIGINS.split(",").map(o => o.trim()).filter(Boolean);
+    origins.push(...trusted);
+  }
+  
+  return origins.join(" ");
+}
+
 const ContentSecurityPolicy = `
   default-src 'self';
-  script-src 'self' 'unsafe-eval' 'unsafe-inline' https: http://localhost:* http://127.0.0.1:*;
-  style-src 'self' 'unsafe-inline' https: http://localhost:* http://127.0.0.1:*;
-  img-src 'self' blob: data: https: http://localhost:* http://127.0.0.1:*;
-  font-src 'self' data: https: http://localhost:* http://127.0.0.1:*;
-  connect-src 'self' https: wss: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*;
-  media-src 'self' blob: data: https: http://localhost:* http://127.0.0.1:*;
+  script-src 'self' 'unsafe-eval' 'unsafe-inline' https: http:;
+  style-src 'self' 'unsafe-inline' https: http:;
+  img-src 'self' blob: data: https: http:;
+  font-src 'self' data: https: http:;
+  connect-src 'self' https: wss: http: ws:;
+  media-src 'self' blob: data: https: http:;
   object-src 'none';
-  frame-src 'self' https: http://localhost:* http://127.0.0.1:*;
-  frame-ancestors 'self' https://*.supercheck.io https://supercheck.io http://localhost:* http://127.0.0.1:*;
+  frame-src 'self' https: http:;
+  frame-ancestors ${buildFrameAncestors()};
   worker-src 'self' blob:;
   child-src 'self' blob:;
   base-uri 'self';
-  form-action 'self' https:;
+  form-action 'self' https: http:;
   manifest-src 'self';
-  upgrade-insecure-requests;
 `;
 
 /**
  * Security headers configuration
- * Implements security best practices for production
+ * - HSTS enabled only for non-self-hosted (cloud) deployments with HTTPS
+ * - Self-hosted deployments may use HTTP internally
  */
+const isHttps = process.env.APP_URL?.startsWith("https://");
 const securityHeaders = [
   {
     key: "Content-Security-Policy",
@@ -39,10 +66,15 @@ const securityHeaders = [
     key: "X-DNS-Prefetch-Control",
     value: "on",
   },
-  {
-    key: "Strict-Transport-Security",
-    value: "max-age=63072000; includeSubDomains; preload",
-  },
+  // HSTS only for HTTPS deployments that aren't self-hosted (or self-hosted with HTTPS)
+  ...(isHttps
+    ? [
+        {
+          key: "Strict-Transport-Security",
+          value: "max-age=63072000; includeSubDomains; preload",
+        },
+      ]
+    : []),
   {
     key: "X-Frame-Options",
     value: "SAMEORIGIN",
@@ -71,6 +103,13 @@ const createNextConfig = (phase: string): NextConfig => {
   const baseConfig: NextConfig = {
     /* config options here */
     output: "standalone",
+    // Server Actions configuration - increase body size limit for document uploads
+    // Default is 1MB, we need to support up to MAX_DOCUMENT_SIZE_MB (10MB default)
+    experimental: {
+      serverActions: {
+        bodySizeLimit: "12mb", // Slightly higher than MAX_DOCUMENT_SIZE_MB to account for encoding overhead
+      },
+    },
     serverExternalPackages: [
       "child_process",
       "fs",
@@ -84,6 +123,12 @@ const createNextConfig = (phase: string): NextConfig => {
       "pino-pretty",
       "pino-http",
       "thread-stream",
+      // PDF processing libraries need to be external for server-side usage
+      "unpdf",
+      "@napi-rs/canvas",
+      "canvas",
+      // Document processing
+      "mammoth",
     ],
     images: {
       remotePatterns: [

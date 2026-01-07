@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ExternalLink } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import {
@@ -54,6 +55,7 @@ import { TemplateDialog } from "./template-dialog";
 import type { TestPriority, TestType } from "@/db/schema/types";
 import { notifyExecutionsChanged } from "@/hooks/use-executions";
 import { useSession } from "@/utils/auth-client";
+import { getRequirement } from "@/actions/requirements";
 
 const extractCodeFromResponse = (rawText: string): string => {
   if (!rawText) {
@@ -146,6 +148,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   // This leverages the existing session cache and avoids duplicate API calls
   const { data: session } = useSession();
   const currentUserId = session?.user?.id;
+  const searchParams = useSearchParams();
 
   const initialPerformanceLocation: PerformanceLocation | null =
     initialResolvedType === "performance" && initialTestData
@@ -271,6 +274,93 @@ const Playground: React.FC<PlaygroundProps> = ({
   const [streamingCreateContent, setStreamingCreateContent] =
     useState<string>("");
 
+  // AI Prompt pre-filling from Requirement
+  const [aiPrompt, setAiPrompt] = useState<string | undefined>(undefined);
+  const [aiAutoOpen, setAiAutoOpen] = useState(false);
+  const [isLoadingPrompt, setIsLoadingPrompt] = useState(false);
+  const [linkedRequirement, setLinkedRequirement] = useState<{ id: string; title: string; externalUrl?: string | null } | null>(null);
+
+  // Browser recording banner - show for new browser tests (no existing testId)
+  const [showRecordingBanner, setShowRecordingBanner] = useState(true);
+
+  useEffect(() => {
+    const requirementId = searchParams.get("requirementId");
+    if (requirementId) {
+      // For browser tests, don't auto-open AI dialog - show recording instructions instead
+      const isBrowserTest = testCase.type === "browser";
+
+      if (!isBrowserTest) {
+        // Immediately open the dialog and show loading state for non-browser tests
+        setAiAutoOpen(true);
+        setIsLoadingPrompt(true);
+      }
+
+      getRequirement(requirementId).then((req) => {
+        if (req) {
+          setLinkedRequirement({
+            id: req.id,
+            title: req.title,
+            externalUrl: req.externalUrl
+          });
+
+          // Construct a detailed prompt based on the requirement
+          const type = testCase.type || "test";
+
+          // Build prompt parts conditionally to avoid empty lines
+          const promptParts: string[] = [];
+          
+          // Header
+          promptParts.push(`Create a custom test for the following requirement:`);
+          
+          // Title (always present)
+          promptParts.push(`Title: ${req.title}`);
+          
+          // Description (always include, with fallback)
+          const description = req.description?.trim() || "No description provided.";
+          promptParts.push(`Description: ${description}`);
+          
+          // Optional source document info (only if present)
+          if (req.sourceDocumentName) {
+            promptParts.push(`Source Document: ${req.sourceDocumentName}`);
+          }
+          if (req.sourceSection) {
+            promptParts.push(`Section: ${req.sourceSection}`);
+          }
+
+          // Type-specific required info hints
+          if (type === "api") {
+            promptParts.push(`\nRequired Information (fill in if not in description above):`);
+            promptParts.push(`- Target Endpoint/URL`);
+            promptParts.push(`- HTTP Method (GET/POST/PUT/DELETE)`);
+            promptParts.push(`- Request Payload (if applicable)`);
+            promptParts.push(`- Authentication method`);
+          } else if (type === "database") {
+            promptParts.push(`\nRequired Information (fill in if not in description above):`);
+            promptParts.push(`- Connection configuration`);
+            promptParts.push(`- SQL query to execute`);
+            promptParts.push(`- Expected result schema`);
+          } else if (type === "performance") {
+            promptParts.push(`\nRequired Information (fill in if not in description above):`);
+            promptParts.push(`- Target URL`);
+            promptParts.push(`- Virtual users (VUs) and duration`);
+            promptParts.push(`- Performance thresholds (e.g., p95 < 500ms)`);
+          }
+
+          // Instructions
+          promptParts.push(`\nPlease generate a robust test script covering success and error scenarios. Use standard placeholders (e.g., 'https://api.example.com') for any missing details and add TODO comments indicating where real values are needed.`);
+          
+          const prompt = promptParts.join('\n');
+          setAiPrompt(prompt);
+        }
+      }).catch(err => console.error("Failed to fetch requirement for AI prompt:", err))
+        .finally(() => setIsLoadingPrompt(false));
+    } else {
+      setAiPrompt(undefined);
+      setAiAutoOpen(false);
+      setIsLoadingPrompt(false);
+    }
+  }, [searchParams, testCase.type]); // Update prompt if type changes while requirement is loaded
+
   // Derived state: is current script validated and passed?
   const isCurrentScriptValidated =
     hasValidated && isValid && editorContent === lastValidatedScript;
@@ -320,7 +410,7 @@ const Playground: React.FC<PlaygroundProps> = ({
   // Track the last editor content to prevent spurious onChange events from resetting state
   // Monaco editor sometimes fires onChange during re-renders even when content hasn't changed
   const lastEditorContentRef = useRef<string>(editorContent);
-  const searchParams = useSearchParams();
+
 
   // Manual validation function (called only on run/submit)
   const validateScript = async (
@@ -1356,6 +1446,42 @@ const Playground: React.FC<PlaygroundProps> = ({
                           </div>
                         )}
 
+                        {/* Browser Recording Instructions - shown for all new browser tests */}
+                        {testCase.type === "browser" && !testId && showRecordingBanner && (
+                          <div className="flex items-center justify-between px-4 py-2.5 border-b border-red-500/20 bg-red-500/5">
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center justify-center w-6 h-6 rounded-full bg-red-500/10">
+                                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                              </div>
+                              <div>
+                                <span className="text-sm font-medium text-red-400">Record Browser Test</span>
+                                <span className="text-sm text-muted-foreground ml-2">
+                                  Use Playwright recorder to capture interactions, then paste the code below.
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                onClick={() => window.open("https://chromewebstore.google.com/detail/playwright-crx/jambeljnbnfbkcpnoiaedcabbgmnnlcd", "_blank")}
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                Get Recorder
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                onClick={() => setShowRecordingBanner(false)}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="flex-1">
                           <CodeEditor
                             value={editorContent}
@@ -1482,6 +1608,9 @@ const Playground: React.FC<PlaygroundProps> = ({
                         onStreamingStart={handleAICreateStreamingStart}
                         onStreamingUpdate={handleAICreateStreamingUpdate}
                         onStreamingEnd={handleAICreateStreamingEnd}
+                        initialPrompt={aiPrompt}
+                        initialIsOpen={aiAutoOpen}
+                        isLoadingPrompt={isLoadingPrompt}
                       />
                     )}
                   </div>
@@ -1513,6 +1642,7 @@ const Playground: React.FC<PlaygroundProps> = ({
                           location,
                         }));
                       }}
+                      linkedRequirement={linkedRequirement}
                     />
                   </div>
                 </ScrollArea>

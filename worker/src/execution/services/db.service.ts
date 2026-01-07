@@ -500,4 +500,189 @@ export class DbService implements OnModuleInit {
       return [];
     }
   }
+
+  // ===============================
+  // Requirement Coverage Methods
+  // ===============================
+
+  /**
+   * Get all requirement IDs linked to tests in a job
+   * @param jobId The job ID
+   * @param organizationId For RBAC filtering
+   */
+  async getRequirementsByJobTests(
+    jobId: string,
+    organizationId: string,
+  ): Promise<string[]> {
+    try {
+      // Get tests from job via jobTests, then find linked requirements
+      const result = await this.db
+        .select({ requirementId: schema.testRequirements.requirementId })
+        .from(schema.testRequirements)
+        .innerJoin(
+          schema.jobTests,
+          eq(schema.testRequirements.testId, schema.jobTests.testId),
+        )
+        .innerJoin(
+          schema.requirements,
+          eq(schema.testRequirements.requirementId, schema.requirements.id),
+        )
+        .where(
+          and(
+            eq(schema.jobTests.jobId, jobId),
+            eq(schema.requirements.organizationId, organizationId),
+          ),
+        );
+
+      // Return unique requirement IDs
+      const uniqueIds = [...new Set(result.map((r) => r.requirementId))];
+      this.logger.debug(
+        `Found ${uniqueIds.length} requirements linked to job ${jobId}`,
+      );
+      return uniqueIds;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get requirements for job ${jobId}: ${(error as Error).message}`,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Get all tests linked to a requirement with their latest run status
+   * Determines test status by finding the most recent completed job run containing that test
+   * @param requirementId The requirement ID
+   * @param organizationId For RBAC filtering
+   */
+  async getLinkedTestsWithStatus(
+    requirementId: string,
+    _organizationId: string,
+  ): Promise<Array<{ testId: string; status: 'passed' | 'failed' | null }>> {
+    try {
+      // Get all tests linked to this requirement
+      const linkedTests = await this.db
+        .select({ testId: schema.testRequirements.testId })
+        .from(schema.testRequirements)
+        .where(eq(schema.testRequirements.requirementId, requirementId));
+
+      if (linkedTests.length === 0) {
+        return [];
+      }
+
+      // For each test, find the latest completed job run that includes this test
+      const results: Array<{ testId: string; status: 'passed' | 'failed' | null }> = [];
+
+      for (const { testId } of linkedTests) {
+        // Find jobs that include this test
+        const jobsWithTest = await this.db
+          .select({ jobId: schema.jobTests.jobId })
+          .from(schema.jobTests)
+          .where(eq(schema.jobTests.testId, testId));
+
+        if (jobsWithTest.length === 0) {
+          results.push({ testId, status: null });
+          continue;
+        }
+
+        // Get the latest completed run from any of these jobs
+        const jobIds = jobsWithTest.map((j) => j.jobId);
+        const latestRun = await this.db
+          .select({ status: schema.runs.status })
+          .from(schema.runs)
+          .where(
+            and(
+              sql`${schema.runs.jobId} IN (${sql.join(jobIds.map((id) => sql`${id}`), sql`, `)})`,
+              sql`${schema.runs.status} IN ('passed', 'failed', 'error')`,
+            ),
+          )
+          .orderBy(desc(schema.runs.completedAt))
+          .limit(1);
+
+        const status = latestRun.length > 0 ? latestRun[0].status : null;
+        results.push({
+          testId,
+          status:
+            status === 'passed'
+              ? 'passed'
+              : status === 'failed' || status === 'error'
+                ? 'failed'
+                : null,
+        });
+      }
+
+      return results;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get linked tests for requirement ${requirementId}: ${(error as Error).message}`,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Update requirement coverage snapshot
+   * @param requirementId The requirement to update
+   * @param organizationId For RBAC (used in logging)
+   * @param stats Coverage statistics
+   */
+  async updateRequirementCoverageSnapshot(
+    requirementId: string,
+    _organizationId: string,
+    stats: {
+      status: 'covered' | 'failing' | 'missing';
+      linkedTestCount: number;
+      passedTestCount: number;
+      failedTestCount: number;
+      lastFailedTestId?: string;
+      lastFailedAt?: Date;
+    },
+  ): Promise<void> {
+    try {
+      const now = new Date();
+
+      // Upsert the coverage snapshot
+      const existing = await this.db
+        .select()
+        .from(schema.requirementCoverageSnapshots)
+        .where(eq(schema.requirementCoverageSnapshots.requirementId, requirementId))
+        .limit(1);
+
+      if (existing.length > 0) {
+        await this.db
+          .update(schema.requirementCoverageSnapshots)
+          .set({
+            status: stats.status,
+            linkedTestCount: stats.linkedTestCount,
+            passedTestCount: stats.passedTestCount,
+            failedTestCount: stats.failedTestCount,
+            lastFailedTestId: stats.lastFailedTestId ?? null,
+            lastFailedAt: stats.lastFailedAt ?? null,
+            lastEvaluatedAt: now,
+            updatedAt: now,
+          })
+          .where(eq(schema.requirementCoverageSnapshots.requirementId, requirementId));
+      } else {
+        await this.db.insert(schema.requirementCoverageSnapshots).values({
+          requirementId,
+          status: stats.status,
+          linkedTestCount: stats.linkedTestCount,
+          passedTestCount: stats.passedTestCount,
+          failedTestCount: stats.failedTestCount,
+          lastFailedTestId: stats.lastFailedTestId ?? null,
+          lastFailedAt: stats.lastFailedAt ?? null,
+          lastEvaluatedAt: now,
+          updatedAt: now,
+        });
+      }
+
+      this.logger.debug(
+        `Updated coverage for requirement ${requirementId}: ${stats.status}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to update coverage for requirement ${requirementId}: ${(error as Error).message}`,
+      );
+      // Don't throw - coverage update failures shouldn't break job completion
+    }
+  }
 }

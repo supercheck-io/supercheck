@@ -11,6 +11,7 @@ import { RedisService } from './redis.service';
 import { ReportUploadService } from '../../common/services/report-upload.service';
 import { ContainerExecutorService } from '../../common/security/container-executor.service';
 import { CancellationService } from '../../common/services/cancellation.service';
+import { RequirementCoverageService } from './requirement-coverage.service';
 import { findFirstFileByNames } from '../../common/utils/file-search';
 import {
   TestResult,
@@ -164,6 +165,7 @@ export class ExecutionService implements OnModuleDestroy {
     private reportUploadService: ReportUploadService,
     private containerExecutorService: ContainerExecutorService,
     private cancellationService: CancellationService,
+    private requirementCoverageService: RequirementCoverageService,
   ) {
     // Set timeouts: configurable via env vars with sensible defaults
     // Note: Environment variables are always strings, so we must parse them as numbers
@@ -949,6 +951,18 @@ export class ExecutionService implements OnModuleDestroy {
       this.logger.log(
         `[Playwright Job] ${runId} ${finalStatus} (${durationMs}ms, ${testScripts.length} tests)`,
       );
+
+      // Update requirement coverage snapshots for any linked requirements
+      // This is done asynchronously and errors are logged but don't fail the job
+      if (task.jobId && task.organizationId && task.projectId) {
+        this.requirementCoverageService
+          .updateCoverageAfterJobRun(task.jobId, task.organizationId, task.projectId)
+          .catch((err) => {
+            this.logger.warn(
+              `[${runId}] Failed to update requirement coverage: ${err.message}`,
+            );
+          });
+      }
     } catch (error) {
       const errorMessage = (error as Error).message;
       const isCancellation =

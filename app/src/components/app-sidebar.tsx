@@ -26,6 +26,7 @@ import {
   Tally4,
   type LucideIcon,
   ClipboardList,
+  Target,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -124,6 +125,11 @@ const data = {
       ],
     },
     {
+      title: "Requirements",
+      url: "/requirements",
+      icon: Target,
+    },
+    {
       title: "Tests",
       url: "/tests",
       icon: Code,
@@ -210,7 +216,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs",
       icon: BookOpenText,
-      badge: "v1.2.1-canary.26",
+      badge: "v1.2.2-canary.1",
     },
   ],
   documents: [

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { Test } from "./schema";
+import { Test } from "@/components/jobs/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { types } from "../tests/data";
+import { types } from "@/components/tests/data";
 import {
   Dialog,
   DialogContent,
@@ -68,6 +68,9 @@ interface TestSelectorProps {
   dialogTitle?: string;
   dialogDescription?: string;
   maxSelectionLabel?: React.ReactNode;
+  entityName?: string;
+  hideExecutionOrder?: boolean;
+  headerActions?: React.ReactNode;
 }
 
 export default function TestSelector({
@@ -84,6 +87,9 @@ export default function TestSelector({
   dialogTitle,
   dialogDescription,
   maxSelectionLabel,
+  entityName = "job",
+  hideExecutionOrder = false,
+  headerActions,
 }: TestSelectorProps) {
   const [isSelectTestsDialogOpen, setIsSelectTestsDialogOpen] = useState(false);
   // Track selection order: key = testId, value = sequence number (1-based, 0 = not selected)
@@ -306,23 +312,25 @@ export default function TestSelector({
   const dialogDescriptionText =
     dialogDescription ??
     (testTypeFilter
-      ? "Choose a Playwright test to monitor"
+      ? `Choose a Playwright test to link to this ${entityName}`
       : performanceMode
-        ? "Choose a performance test to run in this job"
+        ? `Choose a performance test to run in this ${entityName}`
         : useSingleSelection
-          ? "Choose the test to include in this job"
-          : "Select tests in the sequence you want them to execute. Tests run one after another in the order shown by the # column.");
+          ? `Choose the test to include in this ${entityName}`
+          : hideExecutionOrder
+            ? `Select tests to link. Use the checkboxes to select multiple tests.`
+            : `Select tests in the sequence you want them to execute. Tests run one after another in the order shown by the # column.`);
 
   const headerNote =
     maxSelectionLabel !== undefined ? (
       maxSelectionLabel
     ) : performanceMode ? (
       <>
-        Max: <span className="font-bold">1</span> performance test per job
+        Max: <span className="font-bold">1</span> performance test per {entityName}
       </>
     ) : !testTypeFilter && !singleSelection ? (
       <>
-        Max: <span className="font-bold">50</span> tests per job
+        Max: <span className="font-bold">50</span> tests per {entityName}
       </>
     ) : undefined;
 
@@ -331,14 +339,16 @@ export default function TestSelector({
     : "Selected Tests";
 
   const selectedTestsDescription = performanceMode
-    ? "Only one performance test can be attached to k6 job."
-    : "Tests execute sequentially in the order shown below.";
+    ? `Only one performance test can be attached to k6 ${entityName}.`
+    : hideExecutionOrder
+      ? "Manage linked tests."
+      : "Tests execute sequentially in the order shown below.";
 
   const pageHeaderNote = performanceMode ? undefined : headerNote;
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center flex-wrap gap-4">
         <div>
           <h3 className="text-lg font-medium">{selectedTestsTitle}</h3>
           <p className="text-sm text-muted-foreground">
@@ -350,39 +360,43 @@ export default function TestSelector({
             </p>
           )}
         </div>
-        {!hideButton && (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setIsSelectTestsDialogOpen(true)}
-            className={cn(
-              required && tests.length === 0 && "border-destructive",
-              "transition-colors"
-            )}
-            size="sm"
-          >
-            <PlusIcon
+        <div className="flex items-center gap-2">
+          {headerActions}
+          {!hideButton && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsSelectTestsDialogOpen(true)}
               className={cn(
-                "mr-2 h-4 w-4",
-                required && tests.length === 0 && "text-destructive"
+                required && tests.length === 0 && "border-destructive",
+                "transition-colors"
               )}
-            />
-            {buttonLabel}
-          </Button>
-        )}
+              size="sm"
+            >
+              <PlusIcon
+                className={cn(
+                  "mr-2 h-4 w-4",
+                  required && tests.length === 0 && "text-destructive"
+                )}
+              />
+              {buttonLabel}
+            </Button>
+          )}
+        </div>
       </div>
 
       {tests.length === 0 ? (
-        <div className="text-center my-8">
-          <p
+        <div className="flex justify-center my-8">
+          <Badge
+            variant="outline"
             className={cn(
-              "text-sm flex items-center justify-center bg-muted/80 p-2 rounded-md w-fit mx-auto",
-              required && "text-destructive"
+              "py-1.5 px-4 text-sm font-normal",
+              required ? "text-red-500 border-red-900/50 bg-red-900/10 hover:bg-red-900/20" : "text-muted-foreground"
             )}
           >
             <AlertCircle className="h-4 w-4 mr-2" />
             {emptyStateMessage}
-          </p>
+          </Badge>
         </div>
       ) : (
         <div
@@ -394,7 +408,7 @@ export default function TestSelector({
           <Table>
             <TableHeader>
               <TableRow>
-                {!useSingleSelection && (
+                {!useSingleSelection && !hideExecutionOrder && (
                   <TableHead className="w-[50px] sticky top-0 text-center">
                     <TooltipProvider>
                       <Tooltip>
@@ -425,7 +439,7 @@ export default function TestSelector({
             <TableBody>
               {tests.map((test, index) => (
                 <TableRow key={test.id} className="hover:bg-transparent">
-                  {!useSingleSelection && (
+                  {!useSingleSelection && !hideExecutionOrder && (
                     <TableCell className="text-center">
                       <Badge
                         variant="secondary"
@@ -626,7 +640,7 @@ export default function TestSelector({
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12"></TableHead>
-                      {!useSingleSelection && (
+                      {!useSingleSelection && !hideExecutionOrder && (
                         <TableHead className="w-[50px] sticky top-0 text-center">
                           <TooltipProvider>
                             <Tooltip>
@@ -699,7 +713,7 @@ export default function TestSelector({
                             />
                           )}
                         </TableCell>
-                        {!useSingleSelection && (
+                        {!useSingleSelection && !hideExecutionOrder && (
                           <TableCell className="text-center">
                             {testSelections[test.id] ? (
                               <Badge
@@ -902,13 +916,13 @@ export default function TestSelector({
         <AlertDialog open={showRemoveDialog} onOpenChange={setShowRemoveDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Remove Test from Job</AlertDialogTitle>
+              <AlertDialogTitle>Remove Test from {entityName}</AlertDialogTitle>
               <AlertDialogDescription>
                 Are you sure you want to remove{" "}
                 <span className="font-semibold">
                   &quot;{testToRemove.name}&quot;
                 </span>{" "}
-                from this job?
+                from this {entityName}?
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

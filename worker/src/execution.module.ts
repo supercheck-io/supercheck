@@ -13,6 +13,7 @@ import { JobNotificationService } from './execution/services/job-notification.se
 import { UsageTrackerService } from './execution/services/usage-tracker.service';
 import { StalledJobHandlerService } from './execution/services/stalled-job-handler.service';
 import { HardStopNotificationService } from './execution/services/hard-stop-notification.service';
+import { RequirementCoverageService } from './execution/services/requirement-coverage.service';
 import { PlaywrightExecutionProcessor } from './execution/processors/playwright-execution.processor';
 import { NotificationModule } from './notification/notification.module';
 import { ReportUploadService } from './common/services/report-upload.service';
@@ -86,6 +87,7 @@ const drizzleProvider: Provider = {
     UsageTrackerService,
     ReportUploadService,
     HardStopNotificationService,
+    RequirementCoverageService,
     // Stalled job handler - monitors for jobs stuck in "running" status
     // and marks them as error to prevent indefinite hanging
     StalledJobHandlerService,

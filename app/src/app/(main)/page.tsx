@@ -27,7 +27,6 @@ import {
   TabsContent,
 } from "@/components/ui/tabs";
 import {
-  ClipboardList,
   Code,
   CalendarClock,
   Activity,
@@ -41,6 +40,7 @@ import {
   TestTube,
   ArrowRightLeft,
   ChevronDown,
+  FileText,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -74,6 +74,7 @@ import { PlaywrightAnalyticsTab } from "@/components/dashboard/playwright-analyt
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { CheckIcon } from "@/components/logo/supercheck-logo";
 import { useDashboard, type DashboardData } from "@/hooks/use-dashboard";
+import { useRequirementsStats } from "@/hooks/use-requirements-stats";
 // Types are now exported from useDashboard hook
 // Re-export for any components that still need them
 export type { DashboardData } from "@/hooks/use-dashboard";
@@ -759,6 +760,9 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
   const [k6Jobs, setK6Jobs] = useState<Array<{ id: string; name: string }>>([]);
   const [pwJobs, setPwJobs] = useState<Array<{ id: string; name: string }>>([]);
 
+  // Fetch requirements stats for dashboard card
+  const { data: requirementsStats } = useRequirementsStats();
+
   // Fetch K6 jobs for filter dropdown
   useEffect(() => {
     if (activeTab === "k6") {
@@ -901,6 +905,51 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
           <div className="space-y-4">
             {/* Key Metrics Grid - 6 cards per row */}
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-4">
+              {/* Requirements Card - First position per spec */}
+              <Card className="relative overflow-hidden">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2 min-w-0 flex-1">
+                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
+                        Requirements
+                        <MetricInfoButton
+                          title="How Coverage is Calculated"
+                          description="Coverage shows the percentage of requirements validated by passing tests."
+                          bullets={[
+                            "Covered: All linked tests passed",
+                            "Failing: At least one linked test failed",
+                            "Missing: No tests linked or none have run",
+                            "Coverage updates when jobs run, not playground tests",
+                          ]}
+                          ariaLabel="Learn how requirements coverage is calculated"
+                        />
+                      </p>
+                      {requirementsStats?.total && requirementsStats.total > 0 ? (
+                        <>
+                          <div className="text-2xl font-bold tracking-tight truncate">
+                            {requirementsStats.coveragePercent}%
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {requirementsStats.atRiskCount > 0 ? (
+                              <span className="text-orange-500">{requirementsStats.atRiskCount} at-risk</span>
+                            ) : (
+                              "Coverage"
+                            )}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-2">
+                          No requirements
+                        </p>
+                      )}
+                    </div>
+                    <div className="rounded-lg bg-purple-500/10 p-2 shrink-0">
+                      <FileText className="h-4 w-4 text-purple-500" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               <Card className="relative overflow-hidden">
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between">
@@ -983,46 +1032,6 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
                     </div>
                     <div className="rounded-lg bg-green-500/10 p-2 shrink-0">
                       <Globe className="h-4 w-4 text-green-500" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="relative overflow-hidden">
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2 min-w-0 flex-1">
-                      <p className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                        Job Runs
-                        <MetricInfoButton
-                          title="What counts as a run?"
-                          description="This number shows completed job executions within the selected project over the last 30 days."
-                          bullets={[
-                            "Covers the last 30 days of activity",
-                            "Includes scheduled and manual job runs only",
-                            "Synthetic monitor checks are excluded",
-                            "Playground executions are excluded",
-                          ]}
-                          ariaLabel="Learn what Total Job Runs includes"
-                        />
-                      </p>
-                      {dashboardData.stats.runs > 0 ? (
-                        <>
-                          <div className="text-2xl font-bold tracking-tight truncate">
-                            {formatCompactNumber(dashboardData.stats.runs)}
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Last 30 days
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-muted-foreground py-2">
-                          No runs available
-                        </p>
-                      )}
-                    </div>
-                    <div className="rounded-lg bg-purple-500/10 p-2 shrink-0">
-                      <ClipboardList className="h-4 w-4 text-purple-500" />
                     </div>
                   </div>
                 </CardContent>

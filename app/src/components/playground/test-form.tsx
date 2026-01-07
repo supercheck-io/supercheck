@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@/components/ui/textarea";  // Ensure this is imported
+import { getLinkedTestRequirement } from "@/actions/get-linked-requirement";
 import {
   Select,
   SelectContent,
@@ -10,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SaveIcon, Trash2, Loader2 } from "lucide-react";
+import { SaveIcon, Trash2, Loader2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { testsInsertSchema, TestPriority, TestType } from "@/db/schema";
 import { saveTest } from "@/actions/save-test";
@@ -20,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { TESTS_QUERY_KEY } from "@/hooks/use-tests";
+import { REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
 import { useTags, useTestTags, useTagMutations, useSaveTestTags } from "@/hooks/use-tags";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import {
@@ -138,6 +140,7 @@ interface TestFormProps {
   isPerformanceMode?: boolean;
   performanceLocation?: PerformanceLocation;
   onPerformanceLocationChange?: (location: PerformanceLocation) => void;
+  linkedRequirement?: { id: string; title: string; externalUrl?: string | null } | null;
 }
 
 export function TestForm({
@@ -159,6 +162,7 @@ export function TestForm({
   isPerformanceMode = false,
   performanceLocation,
   onPerformanceLocationChange,
+  linkedRequirement: initialLinkedRequirement,
 }: TestFormProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -167,6 +171,19 @@ export function TestForm({
   const [formChanged, setFormChanged] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const performanceMode = isPerformanceMode || testCase.type === "performance";
+
+  // Linked Requirement State
+  const [linkedReq, setLinkedReq] = useState<{ id: string; title: string; externalUrl?: string | null } | null>(initialLinkedRequirement || null);
+
+  useEffect(() => {
+    if (testId) {
+      getLinkedTestRequirement(testId).then(req => {
+        if (req) {
+          setLinkedReq(req);
+        }
+      });
+    }
+  }, [testId]);
 
 
   // Tag management - use React Query hooks for efficient caching
@@ -539,6 +556,7 @@ export function TestForm({
           const result = await saveTest({
             id: testId,
             ...updatedTestCase,
+            // Note: requirementId is not passed for updates - the link is already established
           });
 
           if (result.success) {
@@ -563,7 +581,11 @@ export function TestForm({
           }
         } else {
           // Save as a new test
-          const result = await saveTest(updatedTestCase);
+          // Include requirementId if we're creating from a requirement context
+          const result = await saveTest({
+            ...updatedTestCase,
+            requirementId: initialLinkedRequirement?.id,
+          });
 
           if (result.success && result.id) {
             // Save tags after successful test creation
@@ -573,6 +595,11 @@ export function TestForm({
 
             // Invalidate React Query cache to ensure fresh data on tests page
             queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY, refetchType: 'all' });
+            
+            // If linked to a requirement, also invalidate requirements cache for updated counts
+            if (initialLinkedRequirement?.id) {
+              queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
+            }
 
             // Navigate to the tests page with the test ID
             router.push("/tests/");
@@ -734,6 +761,38 @@ export function TestForm({
           </div> */}
         </div>
       )}
+
+      {/* Linked Requirement Display */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-foreground">Requirement</label>
+        {linkedReq ? (
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-center text-sm p-3 rounded-md border bg-muted/30">
+            <a
+              href={`/requirements?id=${linkedReq.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium truncate hover:underline hover:text-primary transition-colors cursor-pointer"
+              title={linkedReq.title}
+            >
+              {linkedReq.title}
+            </a>
+
+            <a
+              href={linkedReq.externalUrl || `/requirements?id=${linkedReq.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-primary transition-colors shrink-0 flex items-center"
+              title={linkedReq.externalUrl ? "Open External Link" : "Open Requirement Details"}
+            >
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </div>
+        ) : (
+          <div className="text-sm text-muted-foreground p-3 rounded-md border border-dashed bg-muted/10">
+            Not Linked
+          </div>
+        )}
+      </div>
 
       {/* Test title */}
       <div className="space-y-2">

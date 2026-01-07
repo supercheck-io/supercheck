@@ -44,6 +44,7 @@ export function hasPermission(
           "notification",
           "tag",
           "status_page",
+          "requirement",
         ].includes(resource)
       ) {
         result = true; // Full access to project resources including 'manage' action
@@ -58,7 +59,7 @@ export function hasPermission(
 
     case Role.PROJECT_EDITOR:
       // Editors can create and edit but cannot delete any resources in assigned projects
-      if (["test", "job", "status_page"].includes(resource)) {
+      if (["test", "job", "status_page", "requirement"].includes(resource)) {
         result = ["view", "create", "update", "run", "trigger"].includes(
           action
         );
@@ -425,4 +426,25 @@ export function canManageStatusPages(role: Role): boolean {
     hasPermission(role, "status_page", "update") ||
     hasPermission(role, "status_page", "delete")
   );
+}
+
+/**
+ * Check if user can create requirements
+ */
+export function canCreateRequirements(role: Role): boolean {
+  return hasPermission(role, "requirement", "create");
+}
+
+/**
+ * Check if user can edit requirements
+ */
+export function canEditRequirements(role: Role): boolean {
+  return hasPermission(role, "requirement", "update");
+}
+
+/**
+ * Check if user can delete requirements
+ */
+export function canDeleteRequirements(role: Role): boolean {
+  return hasPermission(role, "requirement", "delete");
 }

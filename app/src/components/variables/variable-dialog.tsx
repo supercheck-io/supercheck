@@ -146,19 +146,19 @@ export function VariableDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
 
     setLoading(true);
     try {
-      const url = isEditing 
+      const url = isEditing
         ? `/api/projects/${projectId}/variables/${variable.id}`
         : `/api/projects/${projectId}/variables`;
-      
+
       const method = isEditing ? 'PUT' : 'POST';
-      
+
       const response = await fetch(url, {
         method,
         headers: {
@@ -202,7 +202,7 @@ export function VariableDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-w-4xl max-h-[90vh] min-w-2xl overflow-y-auto">
         <form onSubmit={handleSubmit}>
           <DialogHeader className="space-y-3">
             <DialogTitle className="flex items-center gap-2">
@@ -214,13 +214,13 @@ export function VariableDialog({
               {isEditing ? 'Edit Variable' : 'Add Variable'}
             </DialogTitle>
             <DialogDescription className="text-left">
-              {isEditing 
-                ? 'Update the variable details below.' 
+              {isEditing
+                ? 'Update the variable details below.'
                 : 'Variables store configuration values for your tests. Regular variables use getVariable() and secrets use getSecret().'
               }
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-5 py-4">
             <div className="space-y-2">
               <Label htmlFor="key" className="text-sm font-medium">Variable Name *</Label>
@@ -239,7 +239,7 @@ export function VariableDialog({
                 {formData.key.length}/20 characters (4-20 required, uppercase letters, numbers, and underscores only)
               </p>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="value" className="text-sm font-medium">Value *</Label>
               <Input
@@ -274,7 +274,7 @@ export function VariableDialog({
                 {formData.description.length}/300 characters (minimum 20 required)
               </p>
             </div>
-            
+
             <div className="space-y-3">
               <div className="flex items-center space-x-3">
                 <Checkbox
@@ -290,7 +290,7 @@ export function VariableDialog({
                   {formData.isSecret ? "Secret" : "Variable"}
                 </Badge>
               </div>
-              
+
               <Alert>
                 <Info className="h-4 w-4" />
                 <AlertDescription className="text-sm">
@@ -304,8 +304,8 @@ export function VariableDialog({
             </div>
           </div>
 
-  
-          
+
+
           <DialogFooter>
             <Button
               type="button"
@@ -330,8 +330,8 @@ export function VariableDialog({
               {loading
                 ? (isEditing ? 'Updating...' : 'Creating...')
                 : fetchingData
-                ? 'Loading...'
-                : (isEditing ? 'Update Variable' : 'Add Variable')
+                  ? 'Loading...'
+                  : (isEditing ? 'Update Variable' : 'Add Variable')
               }
             </Button>
           </DialogFooter>

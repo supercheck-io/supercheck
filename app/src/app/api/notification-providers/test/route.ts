@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     const { type, config } = await req.json();
 
     // Validate provider type
-    const validTypes = ["email", "slack", "webhook", "telegram", "discord"];
+    const validTypes = ["email", "slack", "webhook", "telegram", "discord", "teams"];
     if (!type || !validTypes.includes(type)) {
       return NextResponse.json(
         { success: false, error: "Unsupported or missing provider type" },
@@ -48,6 +48,8 @@ export async function POST(req: NextRequest) {
         return await testTelegramConnection(config);
       case "discord":
         return await testDiscordConnection(config);
+      case "teams":
+        return await testTeamsConnection(config);
       default:
         return NextResponse.json(
           { success: false, error: "Unsupported provider type" },
@@ -398,6 +400,138 @@ async function testDiscordConnection(config: NotificationProviderConfig) {
       {
         success: false,
         error: `Discord connection failed: ${error instanceof Error ? error.message : String(error)}`,
+      },
+      { status: 400 }
+    );
+  }
+}
+
+async function testTeamsConnection(config: NotificationProviderConfig) {
+  try {
+    const typedConfig = config as Record<string, unknown>;
+    if (!typedConfig.teamsWebhookUrl) {
+      throw new Error("Teams webhook URL is required");
+    }
+
+    const webhookUrl = typedConfig.teamsWebhookUrl as string;
+
+    // Parse URL first for proper validation
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(webhookUrl);
+    } catch {
+      throw new Error("Invalid URL format");
+    }
+
+    // Enforce HTTPS protocol
+    if (parsedUrl.protocol !== "https:") {
+      throw new Error("Teams webhook URL must use HTTPS");
+    }
+
+    const hostname = parsedUrl.hostname.toLowerCase();
+
+    // Block direct IP addresses (IPv4 and IPv6) to prevent SSRF
+    const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+    const ipv6Pattern = /^\[?[0-9a-fA-F:]+\]?$/;
+    if (ipv4Pattern.test(hostname) || ipv6Pattern.test(hostname)) {
+      throw new Error("Invalid Teams webhook URL: IP addresses are not allowed");
+    }
+
+    // Block localhost and loopback addresses
+    if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+      throw new Error("Invalid Teams webhook URL: localhost is not allowed");
+    }
+
+    // Validate hostname - Teams webhooks must be from allowed Microsoft domains
+    // Using allowlist approach to prevent SSRF attacks
+    const allowedHostSuffixes = ["webhook.office.com", "outlook.office.com"];
+    const isValidTeamsHost = allowedHostSuffixes.some((suffix) => 
+      hostname === suffix || hostname.endsWith("." + suffix)
+    );
+    
+    if (!isValidTeamsHost) {
+      throw new Error(
+        "Invalid Teams webhook URL. Must point to a valid Microsoft Teams endpoint"
+      );
+    }
+
+    // Build Adaptive Card test payload
+    const adaptiveCardPayload = {
+      type: "message",
+      attachments: [
+        {
+          contentType: "application/vnd.microsoft.card.adaptive",
+          content: {
+            $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+            type: "AdaptiveCard",
+            version: "1.4",
+            body: [
+              {
+                type: "TextBlock",
+                text: "✅ Supercheck Connection Test",
+                weight: "bolder",
+                size: "large",
+                color: "good",
+                wrap: true,
+              },
+              {
+                type: "TextBlock",
+                text: "This is a test message from Supercheck to verify your Microsoft Teams webhook is configured correctly.",
+                wrap: true,
+                spacing: "medium",
+              },
+              {
+                type: "FactSet",
+                facts: [
+                  { title: "Status", value: "Connected Successfully" },
+                  { title: "Provider", value: "Microsoft Teams" },
+                ],
+                spacing: "medium",
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    // Add timeout to prevent hanging connections
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      // Use parsed URL to ensure consistent normalization after validation
+      const response = await fetch(parsedUrl.toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "Supercheck-Monitor/1.0",
+        },
+        body: JSON.stringify(adaptiveCardPayload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: "Microsoft Teams connection successful",
+      });
+    } catch (fetchError) {
+      clearTimeout(timeout);
+      if (fetchError instanceof Error && fetchError.name === "AbortError") {
+        throw new Error("Request timed out after 10 seconds");
+      }
+      throw fetchError;
+    }
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: `Microsoft Teams connection failed: ${error instanceof Error ? error.message : String(error)}`,
       },
       { status: 400 }
     );

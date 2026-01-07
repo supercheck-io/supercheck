@@ -16,6 +16,9 @@ export * from './organization';
 // Test tables
 export * from './test';
 
+// Requirement tables
+export * from './requirement';
+
 // Job and run tables
 export * from './job';
 

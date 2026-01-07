@@ -86,6 +86,10 @@ x-common-env: &common-env # Database Configuration
   MAX_JOB_NOTIFICATION_CHANNELS: ${MAX_JOB_NOTIFICATION_CHANNELS:-10}
   MAX_MONITOR_NOTIFICATION_CHANNELS: ${MAX_MONITOR_NOTIFICATION_CHANNELS:-10}
 
+  # Document Upload Limits (Requirements System)
+  MAX_DOCUMENT_SIZE_MB: ${MAX_DOCUMENT_SIZE_MB:-10}
+  MAX_DOCUMENTS_PER_PROJECT: ${MAX_DOCUMENTS_PER_PROJECT:-100}
+
   # Playwright Configuration - Optimized for Supercheck execution service
   # PLAYWRIGHT_HEADLESS: ${PLAYWRIGHT_HEADLESS:-true}
   PLAYWRIGHT_WORKERS: ${PLAYWRIGHT_WORKERS:-1} # Single worker for 2GB container memory

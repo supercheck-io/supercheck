@@ -53,6 +53,10 @@ interface DiscordConfig {
   discordWebhookUrl?: string;
 }
 
+interface TeamsConfig {
+  teamsWebhookUrl?: string;
+}
+
 interface WebhookConfig {
   url?: string;
   method?: string;
@@ -168,6 +172,12 @@ export class NotificationService {
           break;
         case 'discord':
           success = await this.sendDiscordNotification(
+            provider.config,
+            formattedNotification,
+          );
+          break;
+        case 'teams':
+          success = await this.sendTeamsNotification(
             provider.config,
             formattedNotification,
           );
@@ -388,6 +398,10 @@ export class NotificationService {
         case 'discord': {
           const discordConfig = provider.config as DiscordConfig;
           return !!discordConfig.discordWebhookUrl;
+        }
+        case 'teams': {
+          const teamsConfig = provider.config as TeamsConfig;
+          return !!teamsConfig.teamsWebhookUrl;
         }
         default:
           return false;
@@ -881,6 +895,149 @@ export class NotificationService {
     } catch (error) {
       this.logger.error(
         `Failed to send Discord notification: ${getErrorMessage(error)}`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Send notification to Microsoft Teams using Incoming Webhook with Adaptive Cards
+   * @see https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook
+   */
+  private async sendTeamsNotification(
+    config: any,
+    formatted: FormattedNotification,
+  ): Promise<boolean> {
+    try {
+      const webhookUrl = config.teamsWebhookUrl;
+
+      // Input validation
+      if (!webhookUrl || typeof webhookUrl !== 'string') {
+        this.logger.error('Teams webhook URL is missing or invalid');
+        return false;
+      }
+
+      // Validate URL format and ensure it's a legitimate Teams webhook
+      // Teams webhooks follow pattern: https://*.webhook.office.com/...
+      const teamsUrlPattern =
+        /^https:\/\/[a-zA-Z0-9-]+\.webhook\.office\.com\//;
+      if (!teamsUrlPattern.test(webhookUrl)) {
+        this.logger.error(
+          'Invalid Teams webhook URL format. Must be a valid https://*.webhook.office.com/ URL',
+        );
+        return false;
+      }
+
+      // Validate URL is parseable
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(webhookUrl);
+      } catch {
+        this.logger.error('Teams webhook URL is not a valid URL');
+        return false;
+      }
+
+      // Security: Ensure HTTPS only
+      if (parsedUrl.protocol !== 'https:') {
+        this.logger.error('Teams webhook URL must use HTTPS');
+        return false;
+      }
+
+      // Map severity color to Teams Adaptive Card color
+      const getTeamsColor = (hexColor: string): string => {
+        switch (hexColor) {
+          case '#ef4444': // Red - error
+            return 'attention';
+          case '#22c55e': // Green - success
+            return 'good';
+          case '#f59e0b': // Amber - warning
+            return 'warning';
+          default:
+            return 'default';
+        }
+      };
+
+      // Sanitize input fields to prevent injection
+      const sanitizeText = (text: string | undefined | null): string => {
+        if (!text) return '';
+        // Remove control characters and limit length
+        return text
+          .replace(/[\x00-\x1F\x7F]/g, '')
+          .substring(0, 5000);
+      };
+
+      // Build Adaptive Card payload for Teams
+      const adaptiveCardPayload = {
+        type: 'message',
+        attachments: [
+          {
+            contentType: 'application/vnd.microsoft.card.adaptive',
+            content: {
+              $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+              type: 'AdaptiveCard',
+              version: '1.4',
+              body: [
+                {
+                  type: 'TextBlock',
+                  text: sanitizeText(formatted.title),
+                  weight: 'bolder',
+                  size: 'large',
+                  color: getTeamsColor(formatted.color),
+                  wrap: true,
+                },
+                {
+                  type: 'TextBlock',
+                  text: sanitizeText(formatted.message),
+                  wrap: true,
+                  spacing: 'medium',
+                },
+                {
+                  type: 'FactSet',
+                  facts: (formatted.fields || [])
+                    .filter((f) => f?.value && typeof f.value === 'string' && f.value.trim() !== '')
+                    .slice(0, 10) // Teams limits FactSet items
+                    .map((f) => ({
+                      title: sanitizeText(f.title),
+                      value: sanitizeText(f.value),
+                    })),
+                  spacing: 'medium',
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      const retryConfig = createRetryConfig();
+
+      const result = await fetchWithRetry(
+        webhookUrl,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Supercheck-Monitor/1.0',
+          },
+          body: JSON.stringify(adaptiveCardPayload),
+        },
+        retryConfig,
+        this.logger,
+      );
+
+      if (result.success) {
+        this.logger.debug(
+          `Teams notification sent successfully after ${result.attempts} attempt(s)`,
+        );
+        return true;
+      }
+
+      this.logger.error(
+        `Failed to send Teams notification after ${result.attempts} attempts: ${result.error}`,
+      );
+      return false;
+    } catch (error) {
+      this.logger.error(
+        `Failed to send Teams notification: ${getErrorMessage(error)}`,
       );
       return false;
     }

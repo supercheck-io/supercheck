@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,6 +27,9 @@ interface AICreateButtonProps {
   onStreamingStart?: () => void;
   onStreamingUpdate?: (text: string) => void;
   onStreamingEnd?: () => void;
+  initialPrompt?: string;
+  initialIsOpen?: boolean;
+  isLoadingPrompt?: boolean;
 }
 
 export function AICreateButton({
@@ -39,14 +42,40 @@ export function AICreateButton({
   onStreamingStart,
   onStreamingUpdate,
   onStreamingEnd,
+  initialPrompt,
+  initialIsOpen,
+  isLoadingPrompt,
 }: AICreateButtonProps) {
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [userRequest, setUserRequest] = useState("");
+  const [isDialogOpen, setIsDialogOpen] = useState(initialIsOpen || false);
+  const [userRequest, setUserRequest] = useState(initialPrompt || "");
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Update userRequest if initialPrompt changes
+  useState(() => {
+    if (initialPrompt) setUserRequest(initialPrompt);
+  });
+
+  // React to prop changes (optional, but good for dynamic updates)
+  useEffect(() => {
+    if (initialIsOpen) {
+      setIsDialogOpen(true);
+    }
+  }, [initialIsOpen]);
+
+  useEffect(() => {
+    if (initialPrompt) {
+      setUserRequest(initialPrompt);
+    }
+  }, [initialPrompt]);
 
   const handleOpenDialog = () => {
     setIsDialogOpen(true);
-    setUserRequest("");
+    // Don't clear userRequest if it was initialized
+    if (!userRequest && initialPrompt) {
+      setUserRequest(initialPrompt);
+    } else if (!userRequest) {
+      setUserRequest("");
+    }
   };
 
   const handleCloseDialog = () => {
@@ -316,7 +345,7 @@ export function AICreateButton({
       </Button>
 
       <Dialog open={isDialogOpen} onOpenChange={handleCloseDialog}>
-        <DialogContent className="sm:max-w-[640px]">
+        <DialogContent className="sm:max-w-[920px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500/20 to-pink-500/20">
@@ -334,28 +363,52 @@ export function AICreateButton({
           <Separator className="my-1" />
 
           <div className="space-y-4">
-            <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-900/50">
-              <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs mt-0.5">
-                For best results, be specific about the actions, verifications,
-                and expected outcomes.
-              </AlertDescription>
-            </Alert>
+            {testType === "browser" ? (
+              <Alert className="bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800/50">
+                <Info className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <AlertDescription className="text-amber-700 dark:text-amber-300 text-xs mt-0.5">
+                  <strong>Recommendation:</strong> For browser tests, consider using the{" "}
+                  <a
+                    href="https://chromewebstore.google.com/detail/playwright-crx/jambeljnbnfbkcpnoiaedcabbgmnnlcd"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-amber-800 dark:hover:text-amber-200"
+                  >
+                    Playwright Recorder
+                  </a>{" "}
+                  to capture real interactions. Recorded tests typically produce more reliable selectors and better reflect actual user behavior.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-900/50">
+                <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <AlertDescription className="text-blue-700 dark:text-blue-300 text-xs mt-0.5">
+                  <strong>Tip:</strong> For best results, be specific about the actions, verifications, and expected outcomes you want to test.
+                </AlertDescription>
+              </Alert>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="user-request" className="text-sm font-medium">
                 What do you want to test?{" "}
                 <span className="text-destructive">*</span>
               </Label>
-              <Textarea
-                id="user-request"
-                placeholder={`Step 1: Select the right template (Browser, API, DB, Performance, etc.)\nStep 2: Describe your test requirements\n\n🌐 Playwright API Test Example:\nGET request to https://jsonplaceholder.typicode.com/todos/1, assert status 200, validate response schema (userId, id, title, completed)\n\n⚡ k6 Performance Test Example:\nGET requests to https://test-api.k6.io/public/crocodiles/, 10 VUs for 30s, verify status 200, response time < 500ms, p95 < 500ms, error rate < 10%`}
-                value={userRequest}
-                onChange={(e) => setUserRequest(e.target.value)}
-                disabled={isProcessing}
-                className="min-h-[160px] resize-none placeholder:text-xs"
-                aria-describedby="request-hint"
-              />
+              {isLoadingPrompt ? (
+                <div className="min-h-[160px] rounded-md border border-input bg-muted/30 flex flex-col items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary mb-2" />
+                  <span className="text-sm text-muted-foreground">Loading requirement details...</span>
+                </div>
+              ) : (
+                <Textarea
+                  id="user-request"
+                  placeholder={`Step 1: Select the right template (Browser, API, DB, Performance, etc.)\nStep 2: Describe your test requirements\n\n🌐 Playwright API Test Example:\nGET request to https://jsonplaceholder.typicode.com/todos/1, assert status 200, validate response schema (userId, id, title, completed)\n\n⚡ k6 Performance Test Example:\nGET requests to https://test-api.k6.io/public/crocodiles/, 10 VUs for 30s, verify status 200, response time < 500ms, p95 < 500ms, error rate < 10%`}
+                  value={userRequest}
+                  onChange={(e) => setUserRequest(e.target.value)}
+                  disabled={isProcessing}
+                  className="min-h-[160px] resize-none placeholder:text-xs"
+                  aria-describedby="request-hint"
+                />
+              )}
               <div className="flex items-center justify-between">
                 <p id="request-hint" className="text-xs text-muted-foreground">
                   Minimum 10 characters required
@@ -391,7 +444,7 @@ export function AICreateButton({
             </Button>
             <Button
               onClick={handleGenerate}
-              disabled={isProcessing || userRequest.trim().length < 10}
+              disabled={isProcessing || isLoadingPrompt || userRequest.trim().length < 10}
               className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
             >
               {isProcessing ? (

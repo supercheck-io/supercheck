@@ -75,6 +75,8 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   S3_K6_JOB_BUCKET_NAME: ${S3_K6_JOB_BUCKET_NAME:-k6-job-artifacts}
   # Status page bucket
   S3_STATUS_BUCKET_NAME: ${S3_STATUS_BUCKET_NAME:-status-page-artifacts}
+  # Requirements bucket
+  S3_REQUIREMENTS_BUCKET_NAME: ${S3_REQUIREMENTS_BUCKET_NAME:-test-requirement-artifacts}
   S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
   S3_OPERATION_TIMEOUT: ${S3_OPERATION_TIMEOUT:-10000}
   S3_MAX_RETRIES: ${S3_MAX_RETRIES:-3}
@@ -83,6 +85,10 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   # Notification channel limits (runtime configurable)
   MAX_JOB_NOTIFICATION_CHANNELS: ${MAX_JOB_NOTIFICATION_CHANNELS:-10}
   MAX_MONITOR_NOTIFICATION_CHANNELS: ${MAX_MONITOR_NOTIFICATION_CHANNELS:-10}
+
+  # Document Upload Limits (Requirements System)
+  MAX_DOCUMENT_SIZE_MB: ${MAX_DOCUMENT_SIZE_MB:-10}
+  MAX_DOCUMENTS_PER_PROJECT: ${MAX_DOCUMENTS_PER_PROJECT:-100}
 
   # Playwright Configuration - Optimized for Supercheck execution service
   # PLAYWRIGHT_HEADLESS: ${PLAYWRIGHT_HEADLESS:-true}

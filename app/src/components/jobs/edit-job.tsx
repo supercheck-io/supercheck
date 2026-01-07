@@ -40,7 +40,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import TestSelector from "./test-selector";
+import TestSelector from "@/components/shared/test-selector";
 import CronScheduler from "./cron-scheduler";
 
 import NextRunDisplay from "./next-run-display";

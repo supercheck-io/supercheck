@@ -49,6 +49,7 @@ export const statement = {
   notification: ["create", "update", "delete", "view"],
   tag: ["create", "update", "delete", "view"],
   variable: ["create", "update", "delete", "view", "view_secrets"],
+  requirement: ["create", "update", "delete", "view"],
 } as const;
 
 // Role permissions as plain objects (client-safe, no Better Auth dependency)
@@ -79,6 +80,7 @@ export const rolePermissions = {
     notification: ["create", "update", "delete", "view"],
     tag: ["create", "update", "delete", "view"],
     variable: ["create", "update", "delete", "view", "view_secrets"],
+    requirement: ["create", "update", "delete", "view"],
   },
   [Role.ORG_OWNER]: {
     system: [],
@@ -95,6 +97,7 @@ export const rolePermissions = {
     notification: ["create", "update", "delete", "view"],
     tag: ["create", "update", "delete", "view"],
     variable: ["create", "update", "delete", "view", "view_secrets"],
+    requirement: ["create", "update", "delete", "view"],
   },
   [Role.ORG_ADMIN]: {
     system: [],
@@ -111,6 +114,7 @@ export const rolePermissions = {
     notification: ["create", "update", "delete", "view"],
     tag: ["create", "update", "delete", "view"],
     variable: ["create", "update", "delete", "view", "view_secrets"],
+    requirement: ["create", "update", "delete", "view"],
   },
   [Role.PROJECT_ADMIN]: {
     system: [],
@@ -127,6 +131,7 @@ export const rolePermissions = {
     notification: ["create", "update", "delete", "view"],
     tag: ["create", "update", "delete", "view"],
     variable: ["create", "update", "delete", "view", "view_secrets"],
+    requirement: ["create", "update", "delete", "view"],
   },
   [Role.PROJECT_EDITOR]: {
     system: [],
@@ -143,6 +148,7 @@ export const rolePermissions = {
     notification: ["create", "update", "view"],
     tag: ["view", "create", "update"],
     variable: ["create", "update", "view", "view_secrets"],
+    requirement: ["create", "update", "view"],
   },
   [Role.PROJECT_VIEWER]: {
     system: [],
@@ -159,6 +165,7 @@ export const rolePermissions = {
     notification: ["view"],
     tag: ["view"],
     variable: ["view"],
+    requirement: ["view"],
   },
 } as const;
 

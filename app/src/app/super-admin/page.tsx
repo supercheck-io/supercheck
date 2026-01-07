@@ -85,7 +85,7 @@ export default function AdminDashboard() {
     role: "project_viewer",
   });
   const [usersPagination, setUsersPagination] = useState({
-    limit: 25,
+    limit: 10000, // Fetch all users for client-side pagination
     offset: 0,
     hasMore: false,
     total: 0,
@@ -95,7 +95,7 @@ export default function AdminDashboard() {
   const [organizations, setOrganizations] = useState<AdminOrganization[]>([]);
   const [orgsLoading, setOrgsLoading] = useState(false);
   const [orgsPagination, setOrgsPagination] = useState({
-    limit: 25,
+    limit: 10000, // Fetch all organizations for client-side pagination
     offset: 0,
     hasMore: false,
     total: 0,
