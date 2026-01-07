@@ -499,7 +499,8 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
     const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const response = await fetch(webhookUrl, {
+      // Use parsed URL to ensure consistent normalization after validation
+      const response = await fetch(parsedUrl.toString(), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

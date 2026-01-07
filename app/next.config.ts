@@ -56,7 +56,6 @@ const ContentSecurityPolicy = `
  * - HSTS enabled only for non-self-hosted (cloud) deployments with HTTPS
  * - Self-hosted deployments may use HTTP internally
  */
-const isSelfHosted = process.env.SELF_HOSTED === "true";
 const isHttps = process.env.APP_URL?.startsWith("https://");
 const securityHeaders = [
   {
