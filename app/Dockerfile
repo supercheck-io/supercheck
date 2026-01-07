@@ -50,7 +50,9 @@ ENV NODE_ENV=production
 # Build with standalone output and static optimization
 # Use a build-time placeholder secret that will be overridden at runtime
 ENV BETTER_AUTH_SECRET=build-time-placeholder-will-be-overridden-at-runtime
-RUN npm run build
+# Use --webpack flag because Next.js 16 defaults to Turbopack, but ARM64 cross-compilation
+# uses WASM fallback which doesn't support turbo.createProject
+RUN npm run build -- --webpack
 
 # Clear the build-time secret for security
 ENV BETTER_AUTH_SECRET=
