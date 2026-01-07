@@ -415,7 +415,14 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
 
     const webhookUrl = typedConfig.teamsWebhookUrl as string;
 
-    // Parse URL first for proper validation
+    // Use centralized SSRF protection validator (blocks private IPs, cloud metadata, etc.)
+    const { validateWebhookUrlString } = await import("@/lib/url-validator");
+    const urlValidation = validateWebhookUrlString(webhookUrl);
+    if (!urlValidation.valid) {
+      throw new Error(urlValidation.error || "Invalid webhook URL");
+    }
+
+    // Parse URL for Teams-specific host validation
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(webhookUrl);
@@ -423,35 +430,26 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
       throw new Error("Invalid URL format");
     }
 
-    // Enforce HTTPS protocol
+    // Enforce HTTPS protocol (redundant with validator but explicit for clarity)
     if (parsedUrl.protocol !== "https:") {
       throw new Error("Teams webhook URL must use HTTPS");
     }
 
     const hostname = parsedUrl.hostname.toLowerCase();
 
-    // Block direct IP addresses (IPv4 and IPv6) to prevent SSRF
-    const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
-    const ipv6Pattern = /^\[?[0-9a-fA-F:]+\]?$/;
-    if (ipv4Pattern.test(hostname) || ipv6Pattern.test(hostname)) {
-      throw new Error("Invalid Teams webhook URL: IP addresses are not allowed");
-    }
-
-    // Block localhost and loopback addresses
-    if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
-      throw new Error("Invalid Teams webhook URL: localhost is not allowed");
-    }
-
     // Validate hostname - Teams webhooks must be from allowed Microsoft domains
-    // Using allowlist approach to prevent SSRF attacks
-    const allowedHostSuffixes = ["webhook.office.com", "outlook.office.com"];
-    const isValidTeamsHost = allowedHostSuffixes.some((suffix) => 
-      hostname === suffix || hostname.endsWith("." + suffix)
+    // Using strict allowlist approach for Teams-specific SSRF protection
+    const allowedTeamsHosts = [
+      "webhook.office.com",
+      "outlook.office.com",
+    ];
+    const isValidTeamsHost = allowedTeamsHosts.some((allowedHost) => 
+      hostname === allowedHost || hostname.endsWith("." + allowedHost)
     );
     
     if (!isValidTeamsHost) {
       throw new Error(
-        "Invalid Teams webhook URL. Must point to a valid Microsoft Teams endpoint"
+        "Invalid Teams webhook URL. Must point to a valid Microsoft Teams endpoint (webhook.office.com or outlook.office.com)"
       );
     }
 
