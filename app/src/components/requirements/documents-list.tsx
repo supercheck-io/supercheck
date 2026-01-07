@@ -20,7 +20,6 @@ import {
     FileUp,
     MoreHorizontal,
     Eye,
-    RefreshCw,
     Trash2,
     Download,
     ArrowUp,
@@ -35,7 +34,6 @@ import { UploadDocumentDialog } from "./upload-document-dialog";
 import {
     getDocuments as getDocumentsAction,
     deleteDocument as deleteDocumentAction,
-    getDocumentDownloadUrl,
     getDocumentRequirements,
     getDocument as getDocumentAction,
 } from "@/actions/documents";
@@ -83,7 +81,7 @@ function EmptyDocumentsState({ onUpload }: { onUpload: () => void }) {
                     <FileUp className="h-8 w-8 text-blue-500" />
                 </div>
                 <h3 className="text-xl font-semibold mb-2">No documents uploaded</h3>
-                <p className="text-muted-foreground text-center max-w-md mb-6">
+                <p className="text-muted-foreground text-sm text-center max-w-md mb-6">
                     Upload your PRD, specs, or requirements documents. Our AI will extract testable
                     requirements automatically.
                 </p>
@@ -283,34 +281,52 @@ function DocumentDetailsDialog({
 function DocumentCard({
     document,
     onView,
-    onReExtract,
     onDelete,
     onDownload,
 }: {
     document: Document;
     onView: () => void;
-    onReExtract: () => void;
     onDelete: () => void;
     onDownload: () => void;
 }) {
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-    const getFileIcon = (type: string) => {
+    const getDocumentStyle = (type: string) => {
         const t = type.toLowerCase();
-        if (t.includes("pdf")) return "text-red-500";
-        if (t.includes("docx") || t.includes("word")) return "text-blue-500";
-        if (t.includes("md") || t.includes("markdown")) return "text-blue-500";
-        return "text-gray-500";
+        if (t.includes("pdf")) {
+            return {
+                icon: FileText,
+                color: "text-red-500",
+                bg: "bg-red-500/10",
+                label: "PDF"
+            };
+        }
+        if (t.includes("docx") || t.includes("word") || t.includes("openxmlformats")) {
+            return {
+                icon: FileText,
+                color: "text-blue-500",
+                bg: "bg-blue-500/10",
+                label: "DOCX"
+            };
+        }
+        if (t.includes("md") || t.includes("markdown")) {
+            return {
+                icon: FileText,
+                color: "text-cyan-500",
+                bg: "bg-cyan-500/10",
+                label: "MD"
+            };
+        }
+        return {
+            icon: FileText,
+            color: "text-slate-500",
+            bg: "bg-slate-500/10",
+            label: "TXT"
+        };
     };
 
-    const getTypeLabel = (type: string) => {
-        const t = type.toLowerCase();
-        if (t.includes("pdf")) return "PDF";
-        if (t.includes("docx") || t.includes("word")) return "DOCX";
-        if (t.includes("md") || t.includes("markdown")) return "MD";
-        if (t.includes("text") || t.includes("plain")) return "TXT";
-        return type.split("/").pop()?.toUpperCase() || "FILE";
-    };
+    const style = getDocumentStyle(document.type);
+    const Icon = style.icon;
 
     const getStatusBadge = (status: Document["status"]) => {
         switch (status) {
@@ -329,14 +345,14 @@ function DocumentCard({
                 <CardContent className="p-4">
                     <div className="flex items-start justify-between">
                         <div className="flex items-start gap-3">
-                            <div className={`w-10 h-10 rounded-lg bg-muted flex items-center justify-center`}>
-                                <FileText className={`h-5 w-5 ${getFileIcon(document.type)}`} />
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${style.bg}`}>
+                                <Icon className={`h-5 w-5 ${style.color}`} />
                             </div>
                             <div>
                                 <h4 className="font-medium text-sm truncate max-w-[150px]" title={document.name}>{document.name}</h4>
                                 <div className="flex items-center gap-2 mt-1">
                                     <Badge variant="outline" className="text-xs">
-                                        {getTypeLabel(document.type)}
+                                        {style.label}
                                     </Badge>
                                     {getStatusBadge(document.status)}
                                 </div>
@@ -356,10 +372,6 @@ function DocumentCard({
                                 <DropdownMenuItem onClick={onDownload}>
                                     <Download className="h-4 w-4 mr-2" />
                                     Download
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={onReExtract}>
-                                    <RefreshCw className="h-4 w-4 mr-2" />
-                                    Re-extract Requirements
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
@@ -456,25 +468,22 @@ export function DocumentsList({ canUpload = false }: DocumentsListProps) {
 
     const handleDownload = async (docId: string) => {
         try {
-            const result = await getDocumentDownloadUrl(docId);
-            if (result.success && result.url) {
-                // Open download in new tab
-                window.open(result.url, "_blank");
-                toast.success("Download started");
-            } else {
-                toast.error(result.error || "Failed to download document");
-            }
+            // Use API proxy route to avoid internal Docker hostname issues with presigned URLs
+            const downloadUrl = `/api/documents/${docId}/download`;
+
+            // Create a temporary link and click it to trigger download
+            const link = document.createElement("a");
+            link.href = downloadUrl;
+            link.download = ""; // Browser will use Content-Disposition filename
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            toast.success("Download started");
         } catch (error) {
+            console.error("Download error:", error);
             toast.error("Failed to download document");
         }
-    };
-
-    const handleReExtract = (docId: string) => {
-        // For re-extract, we need to download the file and re-run extraction
-        // For now, show a toast indicating feature is coming
-        toast.info("Re-extraction feature coming soon", {
-            description: "Delete the document and upload again to re-extract requirements.",
-        });
     };
 
     const handleDelete = async (docId: string) => {
@@ -521,7 +530,6 @@ export function DocumentsList({ canUpload = false }: DocumentsListProps) {
                             key={doc.id}
                             document={doc}
                             onView={() => handleView(doc.id)}
-                            onReExtract={() => handleReExtract(doc.id)}
                             onDelete={() => handleDelete(doc.id)}
                             onDownload={() => handleDownload(doc.id)}
                         />

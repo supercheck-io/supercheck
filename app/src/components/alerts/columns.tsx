@@ -7,12 +7,6 @@ import { DataTableRowActions } from "./data-table-row-actions";
 import { AlertHistory } from "./schema";
 import { UUIDField } from "@/components/ui/uuid-field";
 import { toast } from "sonner";
-import { useState } from "react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { getNotificationProviderConfig } from "./data";
 import { Clock } from "lucide-react";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
@@ -33,16 +27,15 @@ const typeColors = {
 } as const;
 
 // Separate component for notification provider cell to fix React hooks issue
+// Displays provider as plain text with icon (consistent with Notification Channels tab)
 const NotificationProviderCell = ({
   provider,
 }: {
   provider: string | object | null | undefined;
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
-
   // Handle null/undefined provider
   if (!provider) {
-    return <div className="text-muted-foreground text-sm">No providers</div>;
+    return <div className="text-muted-foreground text-sm">No provider</div>;
   }
 
   // Handle case where provider is an object or not a string
@@ -56,122 +49,21 @@ const NotificationProviderCell = ({
     providerString = String(provider);
   }
 
-  // Parse providers from comma-separated string
-  const providers = providerString
-    .split(",")
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
+  // Get the first provider (alerts are sent to one provider at a time)
+  const providerType = providerString.split(",")[0]?.trim();
 
-  if (!providers || providers.length === 0) {
-    return <div className="text-muted-foreground text-sm">No providers</div>;
+  if (!providerType) {
+    return <div className="text-muted-foreground text-sm">No provider</div>;
   }
 
-  // Group providers by type and count them
-  const providerCounts = providers.reduce(
-    (acc, providerType) => {
-      acc[providerType] = (acc[providerType] || 0) + 1;
-      return acc;
-    },
-    {} as Record<string, number>
-  );
-
-  // Convert to array of unique providers with counts
-  const uniqueProviders = Object.entries(providerCounts).map(
-    ([type, count]) => ({
-      type,
-      count,
-      config: getNotificationProviderConfig(type),
-    })
-  );
-
-  const displayProviders = uniqueProviders.slice(0, 2);
-  const remainingCount = uniqueProviders.length - 2;
-
-  // Only show popover if there are more than 2 unique provider types
-  if (uniqueProviders.length <= 2) {
-    return (
-      <div className="flex items-center gap-1 min-h-[24px]">
-        {uniqueProviders.map(({ count, config }, index) => {
-          const IconComponent = config.icon;
-          return (
-            <Badge
-              key={index}
-              variant="outline"
-              className="text-xs whitespace-nowrap flex-shrink-0 flex items-center gap-1 px-2.5 py-1 bg-background border-border"
-            >
-              <IconComponent className={`h-3 w-3 mr-0.5 ${config.color}`} />
-              {config.label}
-              {count > 1 && (
-                <span className="ml-1 px-1 text-xs bg-primary text-primary-foreground rounded-sm">
-                  {count}
-                </span>
-              )}
-            </Badge>
-          );
-        })}
-      </div>
-    );
-  }
+  const config = getNotificationProviderConfig(providerType);
+  const IconComponent = config.icon;
 
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
-      <PopoverTrigger asChild>
-        <div
-          className="flex items-center gap-1 min-h-[24px] cursor-pointer"
-          onMouseEnter={() => setIsOpen(true)}
-          onMouseLeave={() => setIsOpen(false)}
-        >
-          {displayProviders.map(({ count, config }, index) => {
-            const IconComponent = config.icon;
-            return (
-              <Badge
-                key={index}
-                variant="outline"
-                className="text-xs whitespace-nowrap flex-shrink-0 flex items-center gap-1 px-2.5 py-1 bg-background border-border"
-              >
-                <IconComponent className={`h-3 w-3 mr-0.5 ${config.color}`} />
-                {config.label}
-                {count > 1 && (
-                  <span className="ml-1 px-1 text-xs bg-primary text-primary-foreground rounded-sm">
-                    {count}
-                  </span>
-                )}
-              </Badge>
-            );
-          })}
-          {remainingCount > 0 && (
-            <Badge
-              variant="outline"
-              className="text-xs whitespace-nowrap flex-shrink-0 flex items-center gap-1 px-2.5 py-1 bg-background border-border"
-            >
-              +{remainingCount}
-            </Badge>
-          )}
-        </div>
-      </PopoverTrigger>
-      <PopoverContent className="flex justify-center items-center w-auto max-w-[500px]">
-        <div className="flex justify-center flex-wrap gap-1">
-          {uniqueProviders.map(({ count, config }, index) => {
-            const IconComponent = config.icon;
-            return (
-              <Badge
-                key={index}
-                variant="outline"
-                className="text-xs flex items-center gap-1 bg-background border-border"
-              >
-                <IconComponent className={`h-3 w-3 ${config.color}`} />
-                {config.label}
-                {count > 1 && (
-                  <span className="ml-1 px-1 text-xs bg-primary text-primary-foreground rounded-sm">
-                    {count}
-                  </span>
-                )}
-              </Badge>
-            );
-          })}
-        </div>
-      </PopoverContent>
-    </Popover>
+    <div className="flex items-center space-x-2">
+      <IconComponent className={`h-4 w-4 ${config.color}`} />
+      <span className="capitalize">{config.label}</span>
+    </div>
   );
 };
 

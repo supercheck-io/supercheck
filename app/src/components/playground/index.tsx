@@ -306,37 +306,50 @@ const Playground: React.FC<PlaygroundProps> = ({
           // Construct a detailed prompt based on the requirement
           const type = testCase.type || "test";
 
-          let missingInfoPrompt = "";
-          if (type === "api") {
-            missingInfoPrompt = `[REQUIRED_INFO]:
-- Target Endpoint/URL: [ENTER_URL_HERE]
-- HTTP Method: [GET/POST/PUT/DELETE]
-- Request Payload (if applicable): [JSON_SCHEMA_OR_EXAMPLE]
-- Authentication: [AUTH_TYPE_AND_CREDENTIALS]`;
-          } else if (type === "database") {
-            missingInfoPrompt = `[REQUIRED_INFO]:
-- Connection String / Config: [ENTER_DB_CONNECTION]
-- Query to Run: [SQL_QUERY]
-- Expected Result Scheme: [SCHEMA_VALIDATION]`;
-          } else if (type === "performance") {
-            missingInfoPrompt = `[REQUIRED_INFO]:
-- Target URL: [ENTER_URL_HERE]
-- RPS Goal (e.g. 50): [ENTER_RPS]
-- Duration (e.g. 30s): [ENTER_DURATION]
-- Thresholds (e.g. p95 < 500ms): [ENTER_THRESHOLDS]`;
+          // Build prompt parts conditionally to avoid empty lines
+          const promptParts: string[] = [];
+          
+          // Header
+          promptParts.push(`Create a custom test for the following requirement:`);
+          
+          // Title (always present)
+          promptParts.push(`Title: ${req.title}`);
+          
+          // Description (always include, with fallback)
+          const description = req.description?.trim() || "No description provided.";
+          promptParts.push(`Description: ${description}`);
+          
+          // Optional source document info (only if present)
+          if (req.sourceDocumentName) {
+            promptParts.push(`Source Document: ${req.sourceDocumentName}`);
+          }
+          if (req.sourceSection) {
+            promptParts.push(`Section: ${req.sourceSection}`);
           }
 
-          const prompt = `Create a ${type} test for the following requirement:
+          // Type-specific required info hints
+          if (type === "api") {
+            promptParts.push(`\nRequired Information (fill in if not in description above):`);
+            promptParts.push(`- Target Endpoint/URL`);
+            promptParts.push(`- HTTP Method (GET/POST/PUT/DELETE)`);
+            promptParts.push(`- Request Payload (if applicable)`);
+            promptParts.push(`- Authentication method`);
+          } else if (type === "database") {
+            promptParts.push(`\nRequired Information (fill in if not in description above):`);
+            promptParts.push(`- Connection configuration`);
+            promptParts.push(`- SQL query to execute`);
+            promptParts.push(`- Expected result schema`);
+          } else if (type === "performance") {
+            promptParts.push(`\nRequired Information (fill in if not in description above):`);
+            promptParts.push(`- Target URL`);
+            promptParts.push(`- Virtual users (VUs) and duration`);
+            promptParts.push(`- Performance thresholds (e.g., p95 < 500ms)`);
+          }
 
-Title: ${req.title}
-Description:
-${req.description || "No description provided."}
-${req.sourceDocumentName ? `Source Document: ${req.sourceDocumentName}` : ""}
-${req.sourceSection ? `Section: ${req.sourceSection}` : ""}
-
-${missingInfoPrompt}
-
-Please generate a robust test script covering the success and error scenarios described above. If any of the [REQUIRED_INFO] above is missing from the description, please generate the script using standard placeholders (e.g., 'https://api.example.com', 'SELECT * FROM table') but add comments indicating where the user needs to fill in the real values.`;
+          // Instructions
+          promptParts.push(`\nPlease generate a robust test script covering success and error scenarios. Use standard placeholders (e.g., 'https://api.example.com') for any missing details and add TODO comments indicating where real values are needed.`);
+          
+          const prompt = promptParts.join('\n');
           setAiPrompt(prompt);
         }
       }).catch(err => console.error("Failed to fetch requirement for AI prompt:", err))

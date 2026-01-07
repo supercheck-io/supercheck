@@ -50,6 +50,7 @@ import {
     ArrowLeftRight,
     Database,
     SquareFunction,
+    Sparkles,
 } from "lucide-react";
 import {
     Popover,
@@ -456,65 +457,93 @@ export default function RequirementsPage() {
 
 
                                         {/* Create Test Section */}
-                                        <div className="space-y-2 bg-card p-4 rounded-lg border border-border/40">
-                                            <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-2">
-                                                <Plus className="h-3 w-3" /> Create Test
-                                            </h3>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div className="space-y-2">
-                                                    <p className="text-xs font-medium text-muted-foreground/80">Functional</p>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <Button
-                                                            variant="outline"
-                                                            className="h-auto py-3 px-4 justify-start space-x-3"
-                                                            onClick={() => router.push(`/playground?scriptType=browser&requirementId=${selectedRequirement.id}`)}
-                                                        >
-                                                            <div className="p-1.5 rounded-md bg-sky-100 dark:bg-sky-900/30">
-                                                                <Chrome className="h-4 w-4 text-sky-600 dark:text-sky-400" />
-                                                            </div>
-                                                            <div className="text-left">
-                                                                <div className="text-sm font-medium">Browser</div>
-                                                            </div>
+                                        <div className="space-y-3 bg-card p-4 rounded-lg border border-border/40">
+                                            <div className="flex items-center gap-1">
+                                                <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+                                                    <Plus className="h-3 w-3" /> Create Test
+                                                </h3>
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <Button variant="ghost" size="icon" className="h-5 w-5 p-0">
+                                                            <Info className="h-3.5 w-3.5 text-muted-foreground/60 hover:text-muted-foreground transition-colors" />
+                                                            <span className="sr-only">Create test info</span>
                                                         </Button>
-                                                        <Button variant="outline" className="h-auto py-3 px-4 justify-start space-x-3" onClick={() => router.push(`/playground?scriptType=api&requirementId=${selectedRequirement.id}`)}>
-                                                            <div className="p-1.5 rounded-md bg-teal-100 dark:bg-teal-900/30">
-                                                                <ArrowLeftRight className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-80 text-xs space-y-3" align="start">
+                                                        <div>
+                                                            <p className="font-medium text-foreground mb-1">How to Create Tests</p>
+                                                            <p className="text-muted-foreground">
+                                                                Select a test type below to open the Playground with this requirement pre-loaded.
+                                                            </p>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <div className="flex gap-2">
+                                                                <Chrome className="h-4 w-4 text-sky-500 shrink-0 mt-0.5" />
+                                                                <div>
+                                                                    <p className="font-medium text-foreground">Browser Tests</p>
+                                                                    <p className="text-muted-foreground">Use the Playwright Recorder to capture real user interactions for reliable, accurate tests.</p>
+                                                                </div>
                                                             </div>
-                                                            <div className="text-left">
-                                                                <div className="text-sm font-medium">API</div>
+                                                            <div className="flex gap-2">
+                                                                <Sparkles className="h-4 w-4 text-purple-500 shrink-0 mt-0.5" />
+                                                                <div>
+                                                                    <p className="font-medium text-foreground">API, Database, Custom & Performance</p>
+                                                                    <p className="text-muted-foreground">AI generates a prompt from this requirement. Review, customize, and generate your test script.</p>
+                                                                </div>
                                                             </div>
-                                                        </Button>
-                                                        <Button variant="outline" className="h-auto py-3 px-4 justify-start space-x-3" onClick={() => router.push(`/playground?scriptType=database&requirementId=${selectedRequirement.id}`)}>
-                                                            <div className="p-1.5 rounded-md bg-cyan-100 dark:bg-cyan-900/30">
-                                                                <Database className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
-                                                            </div>
-                                                            <div className="text-left">
-                                                                <div className="text-sm font-medium">Database</div>
-                                                            </div>
-                                                        </Button>
-                                                        <Button variant="outline" className="h-auto py-3 px-4 justify-start space-x-3" onClick={() => router.push(`/playground?scriptType=custom&requirementId=${selectedRequirement.id}`)}>
-                                                            <div className="p-1.5 rounded-md bg-blue-100 dark:bg-blue-900/30">
-                                                                <SquareFunction className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                                                            </div>
-                                                            <div className="text-left">
-                                                                <div className="text-sm font-medium">Custom</div>
-                                                            </div>
-                                                        </Button>
+                                                        </div>
+                                                        <p className="text-muted-foreground/80 text-xs border-t pt-2">
+                                                            Tests saved from the Playground are automatically linked to this requirement.
+                                                        </p>
+                                                    </PopoverContent>
+                                                </Popover>
+                                            </div>
+                                            <div className="grid grid-cols-5 gap-2">
+                                                <button
+                                                    onClick={() => router.push(`/playground?scriptType=browser&requirementId=${selectedRequirement.id}`)}
+                                                    className="group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent hover:border-sky-500/50 transition-all duration-200"
+                                                >
+                                                    <div className="p-2.5 rounded-lg bg-sky-100 dark:bg-sky-900/40 group-hover:bg-sky-200 dark:group-hover:bg-sky-900/60 transition-colors">
+                                                        <Chrome className="h-5 w-5 text-sky-600 dark:text-sky-400" />
                                                     </div>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <p className="text-xs font-medium text-muted-foreground/80">Non-Functional</p>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <Button variant="outline" className="h-auto py-3 px-4 justify-start space-x-3" onClick={() => router.push(`/playground?scriptType=performance&requirementId=${selectedRequirement.id}`)}>
-                                                            <div className="p-1.5 rounded-md bg-purple-100 dark:bg-purple-900/30">
-                                                                <K6Logo className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                                                            </div>
-                                                            <div className="text-left">
-                                                                <div className="text-sm font-medium">Performance</div>
-                                                            </div>
-                                                        </Button>
+                                                    <span className="text-xs font-medium text-foreground">Browser</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => router.push(`/playground?scriptType=api&requirementId=${selectedRequirement.id}`)}
+                                                    className="group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent hover:border-teal-500/50 transition-all duration-200"
+                                                >
+                                                    <div className="p-2.5 rounded-lg bg-teal-100 dark:bg-teal-900/40 group-hover:bg-teal-200 dark:group-hover:bg-teal-900/60 transition-colors">
+                                                        <ArrowLeftRight className="h-5 w-5 text-teal-600 dark:text-teal-400" />
                                                     </div>
-                                                </div>
+                                                    <span className="text-xs font-medium text-foreground">API</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => router.push(`/playground?scriptType=database&requirementId=${selectedRequirement.id}`)}
+                                                    className="group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent hover:border-cyan-500/50 transition-all duration-200"
+                                                >
+                                                    <div className="p-2.5 rounded-lg bg-cyan-100 dark:bg-cyan-900/40 group-hover:bg-cyan-200 dark:group-hover:bg-cyan-900/60 transition-colors">
+                                                        <Database className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+                                                    </div>
+                                                    <span className="text-xs font-medium text-foreground">Database</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => router.push(`/playground?scriptType=custom&requirementId=${selectedRequirement.id}`)}
+                                                    className="group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent hover:border-blue-500/50 transition-all duration-200"
+                                                >
+                                                    <div className="p-2.5 rounded-lg bg-blue-100 dark:bg-blue-900/40 group-hover:bg-blue-200 dark:group-hover:bg-blue-900/60 transition-colors">
+                                                        <SquareFunction className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                                                    </div>
+                                                    <span className="text-xs font-medium text-foreground">Custom</span>
+                                                </button>
+                                                <button
+                                                    onClick={() => router.push(`/playground?scriptType=performance&requirementId=${selectedRequirement.id}`)}
+                                                    className="group flex flex-col items-center gap-2 p-4 rounded-lg border border-border/60 bg-background hover:bg-accent hover:border-purple-500/50 transition-all duration-200"
+                                                >
+                                                    <div className="p-2.5 rounded-lg bg-purple-100 dark:bg-purple-900/40 group-hover:bg-purple-200 dark:group-hover:bg-purple-900/60 transition-colors">
+                                                        <K6Logo className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                                                    </div>
+                                                    <span className="text-xs font-medium text-foreground">Performance</span>
+                                                </button>
                                             </div>
                                         </div>
 

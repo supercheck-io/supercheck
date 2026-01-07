@@ -4,10 +4,13 @@
  * Tests for:
  * - RBAC permission checks
  * - File type validation
- * - Input validation
+ * - Input validation (no file, empty file, unsupported type)
+ * - Security validation
  *
- * Note: Full integration tests for S3 upload and AI extraction
- * require end-to-end testing with actual services.
+ * Implementation Note:
+ * FormData in Node.js/Jest serializes File objects differently than browsers.
+ * We use a custom FormData mock that preserves File objects to test the
+ * server action's validation logic properly.
  */
 
 // Mock dependencies before imports
@@ -101,15 +104,43 @@ const mockGetActiveOrganization = getActiveOrganization as jest.Mock;
 const mockEscapeForPrompt = AISecurityService.escapeForPrompt as jest.Mock;
 const mockSanitizeTextOutput = AISecurityService.sanitizeTextOutput as jest.Mock;
 
-// Helper to create mock file that works in Node.js test environment
-function createMockFile(content: string, filename: string, type?: string): File {
-  const mimeType = type || "text/plain";
+/**
+ * Custom FormData class that preserves File mocks when retrieved.
+ * This solves the issue where Node.js FormData transforms File objects
+ * when serializing/deserializing.
+ */
+class MockFormData {
+  private data = new Map<string, File | string>();
+
+  append(key: string, value: File | string): void {
+    this.data.set(key, value);
+  }
+
+  get(key: string): File | string | null {
+    return this.data.get(key) ?? null;
+  }
+
+  has(key: string): boolean {
+    return this.data.has(key);
+  }
+}
+
+/**
+ * Create a mock File object for testing.
+ */
+function createMockFile(
+  content: string,
+  filename: string,
+  options?: { type?: string; size?: number }
+): File {
+  const mimeType = options?.type || "text/plain";
   const buffer = Buffer.from(content);
+  const explicitSize = options?.size ?? buffer.length;
 
   return {
     name: filename,
     type: mimeType,
-    size: buffer.length,
+    size: explicitSize,
     lastModified: Date.now(),
     arrayBuffer: jest.fn().mockResolvedValue(
       buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
@@ -150,7 +181,7 @@ describe("extractRequirementsFromDocument", () => {
     it("should require create permission", async () => {
       mockHasPermission.mockResolvedValue(false);
 
-      const formData = new FormData();
+      const formData = new MockFormData() as unknown as FormData;
       formData.append(
         "file",
         createMockFile("Valid content for testing.".padEnd(100, "."), "test.txt")
@@ -167,7 +198,7 @@ describe("extractRequirementsFromDocument", () => {
     });
 
     it("should check permission with correct context", async () => {
-      const formData = new FormData();
+      const formData = new MockFormData() as unknown as FormData;
       formData.append(
         "file",
         createMockFile("Test content here".padEnd(100, "."), "test.txt")
@@ -192,20 +223,18 @@ describe("extractRequirementsFromDocument", () => {
 
   describe("File Validation", () => {
     it("should reject when no file is provided", async () => {
-      const formData = new FormData();
+      const formData = new MockFormData() as unknown as FormData;
       const result = await extractRequirementsFromDocument(formData);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("No file provided");
     });
 
-    // Note: These tests require complete File API mock with getter interceptors
-    // which is complex in Jest. Testing file validation in E2E tests instead.
-    it.skip("should reject unsupported file types", async () => {
-      const formData = new FormData();
+    it("should reject unsupported file types (HTML)", async () => {
+      const formData = new MockFormData() as unknown as FormData;
       formData.append(
         "file",
-        createMockFile("<html></html>", "test.html", "text/html")
+        createMockFile("<html></html>", "test.html", { type: "text/html" })
       );
 
       const result = await extractRequirementsFromDocument(formData);
@@ -214,14 +243,96 @@ describe("extractRequirementsFromDocument", () => {
       expect(result.error).toContain("Unsupported file type");
     });
 
-    it.skip("should reject empty documents", async () => {
-      const formData = new FormData();
-      formData.append("file", createMockFile("x", "empty.txt"));
+    it("should reject empty files (size = 0)", async () => {
+      const formData = new MockFormData() as unknown as FormData;
+      formData.append(
+        "file", 
+        createMockFile("", "empty.txt", { size: 0 })
+      );
+
+      const result = await extractRequirementsFromDocument(formData);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("empty");
+    });
+
+    it("should reject documents with insufficient text content", async () => {
+      const formData = new MockFormData() as unknown as FormData;
+      // File with some content but less than 50 chars (minimum threshold)
+      formData.append(
+        "file",
+        createMockFile("Short", "short.txt", { type: "text/plain" })
+      );
 
       const result = await extractRequirementsFromDocument(formData);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("empty or unreadable");
+    });
+
+    it("should reject executable file types (.exe)", async () => {
+      const formData = new MockFormData() as unknown as FormData;
+      formData.append(
+        "file",
+        createMockFile("MZ...", "malware.exe", { type: "application/x-msdownload" })
+      );
+
+      const result = await extractRequirementsFromDocument(formData);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Unsupported file type");
+    });
+
+    it("should reject JavaScript files", async () => {
+      const formData = new MockFormData() as unknown as FormData;
+      formData.append(
+        "file",
+        createMockFile("console.log('hello')", "script.js", { type: "application/javascript" })
+      );
+
+      const result = await extractRequirementsFromDocument(formData);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Unsupported file type");
+    });
+
+    it("should reject JSON files", async () => {
+      const formData = new MockFormData() as unknown as FormData;
+      formData.append(
+        "file",
+        createMockFile('{"key": "value"}', "data.json", { type: "application/json" })
+      );
+
+      const result = await extractRequirementsFromDocument(formData);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Unsupported file type");
+    });
+
+    it("should reject XML files", async () => {
+      const formData = new MockFormData() as unknown as FormData;
+      formData.append(
+        "file",
+        createMockFile("<root><item/></root>", "data.xml", { type: "application/xml" })
+      );
+
+      const result = await extractRequirementsFromDocument(formData);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Unsupported file type");
+    });
+
+    it("should reject CSS files", async () => {
+      const formData = new MockFormData() as unknown as FormData;
+      formData.append(
+        "file",
+        createMockFile("body { color: red; }", "styles.css", { type: "text/css" })
+      );
+
+      const result = await extractRequirementsFromDocument(formData);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Unsupported file type");
     });
   });
 
@@ -231,37 +342,170 @@ describe("extractRequirementsFromDocument", () => {
 
   describe("Security Verification", () => {
     it("should use AISecurityService.escapeForPrompt for input sanitization", () => {
-      // Verify the security method is available and works correctly
       expect(mockEscapeForPrompt).toBeDefined();
       expect(typeof AISecurityService.escapeForPrompt).toBe("function");
       
-      // Test the mock behavior to ensure our code would call it correctly
       const result = AISecurityService.escapeForPrompt("test content");
       expect(result).toContain("[ESCAPED]");
     });
 
     it("should use AISecurityService.sanitizeTextOutput for output sanitization", () => {
-      // Verify the security method is available and works correctly
       expect(mockSanitizeTextOutput).toBeDefined();
       expect(typeof AISecurityService.sanitizeTextOutput).toBe("function");
       
-      // Test the mock behavior to ensure our code would sanitize HTML tags
       const sanitized = AISecurityService.sanitizeTextOutput("<script>alert()</script>test");
       expect(sanitized).not.toContain("<script>");
+    });
+
+    it("should sanitize XSS attempts in output", () => {
+      const maliciousInput = '<img src=x onerror="alert(1)">';
+      const sanitized = AISecurityService.sanitizeTextOutput(maliciousInput);
+      expect(sanitized).not.toContain("<");
+      expect(sanitized).not.toContain(">");
     });
   });
 
   // ============================================================================
-  // INTEGRATION TESTS (require full E2E setup)
+  // ALLOWED FILE TYPES TESTS
   // ============================================================================
 
-  describe.skip("Successful Extraction (requires E2E)", () => {
-    // These tests require full E2E setup with:
-    // - Real S3/MinIO instance
-    // - Real database
-    // - Real AI provider
-    // Run these tests in the integration test suite
-    it.todo("should extract requirements from valid file");
-    it.todo("should accept markdown files");
+  describe("Allowed File Types", () => {
+    it("should accept .txt files", async () => {
+      const formData = new MockFormData() as unknown as FormData;
+      const validContent = "This is a valid document with enough content for extraction.".padEnd(100, ".");
+      formData.append(
+        "file",
+        createMockFile(validContent, "test.txt", { type: "text/plain" })
+      );
+
+      const result = await extractRequirementsFromDocument(formData);
+
+      // Type validation passes - extraction succeeds
+      expect(result.success).toBe(true);
+      expect(result.requirements).toBeDefined();
+    });
+
+    it("should accept .md files by extension", async () => {
+      const formData = new MockFormData() as unknown as FormData;
+      const validContent = "# Requirements\n\nThis is a markdown document with requirements.".padEnd(100, ".");
+      formData.append(
+        "file",
+        createMockFile(validContent, "requirements.md")
+      );
+
+      const result = await extractRequirementsFromDocument(formData);
+
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept files with text/markdown MIME type", async () => {
+      const formData = new MockFormData() as unknown as FormData;
+      const validContent = "# PRD\n\nUser should be able to login with email and password.".padEnd(100, ".");
+      formData.append(
+        "file",
+        createMockFile(validContent, "prd.md", { type: "text/markdown" })
+      );
+
+      const result = await extractRequirementsFromDocument(formData);
+
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept .pdf files by MIME type", async () => {
+      const formData = new MockFormData() as unknown as FormData;
+      formData.append(
+        "file",
+        createMockFile("%PDF-1.4...", "test.pdf", { type: "application/pdf" })
+      );
+
+      const result = await extractRequirementsFromDocument(formData);
+
+      // PDF passes type validation (fails in text extraction - expected)
+      expect(result.error).not.toContain("Unsupported file type");
+    });
+
+    it("should accept .docx files by MIME type", async () => {
+      const formData = new MockFormData() as unknown as FormData;
+      formData.append(
+        "file",
+        createMockFile("PK...", "test.docx", { 
+          type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" 
+        })
+      );
+
+      const result = await extractRequirementsFromDocument(formData);
+
+      // DOCX passes type validation (fails in text extraction - expected)
+      expect(result.error).not.toContain("Unsupported file type");
+    });
+  });
+
+  // ============================================================================
+  // RATE LIMITING TESTS
+  // ============================================================================
+
+  describe("Rate Limiting", () => {
+    it("should check rate limits before AI extraction", async () => {
+      const { AuthService } = require("@/lib/ai/ai-security");
+      
+      const formData = new MockFormData() as unknown as FormData;
+      const validContent = "This is valid content for testing rate limiting.".padEnd(100, ".");
+      formData.append("file", createMockFile(validContent, "test.txt"));
+
+      await extractRequirementsFromDocument(formData);
+
+      expect(AuthService.checkRateLimit).toHaveBeenCalledWith({
+        userId: testUserId,
+        orgId: testOrgId,
+        tier: "plus",
+      });
+    });
+
+    it("should reject when rate limited", async () => {
+      const { AuthService } = require("@/lib/ai/ai-security");
+      AuthService.checkRateLimit.mockRejectedValueOnce(
+        new Error("AI rate limit exceeded. Please try again in 1 minute.")
+      );
+
+      const formData = new MockFormData() as unknown as FormData;
+      const validContent = "This is valid content for testing rate limit rejection.".padEnd(100, ".");
+      formData.append("file", createMockFile(validContent, "test.txt"));
+
+      const result = await extractRequirementsFromDocument(formData);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("rate limit");
+    });
+  });
+
+  // ============================================================================
+  // AUDIT LOGGING TESTS
+  // ============================================================================
+
+  describe("Audit Logging", () => {
+    it("should log audit event on successful extraction", async () => {
+      const { logAuditEvent } = require("@/lib/audit-logger");
+
+      const formData = new MockFormData() as unknown as FormData;
+      const validContent = "This is a valid document for testing audit logging.".padEnd(100, ".");
+      formData.append("file", createMockFile(validContent, "audit-test.txt"));
+
+      await extractRequirementsFromDocument(formData);
+
+      expect(logAuditEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: testUserId,
+          action: "requirements_extracted",
+          resource: "requirement",
+          success: true,
+          metadata: expect.objectContaining({
+            organizationId: testOrgId,
+            projectId: testProjectId,
+            documentName: "audit-test.txt",
+            extractedCount: expect.any(Number),
+          }),
+        })
+      );
+    });
   });
 });

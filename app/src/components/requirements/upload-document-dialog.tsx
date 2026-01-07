@@ -63,6 +63,63 @@ const ACCEPTED_FILE_TYPES = {
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
+/**
+ * Convert technical error messages to user-friendly messages
+ * Never expose raw technical errors, URLs, or stack traces to users
+ */
+function getUserFriendlyError(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error);
+    const lowerMessage = message.toLowerCase();
+
+    // Body size limit errors
+    if (lowerMessage.includes("body exceeded") || lowerMessage.includes("body size limit")) {
+        return "The file is too large to process. Please try a smaller document (under 10MB).";
+    }
+
+    // Network/timeout errors
+    if (lowerMessage.includes("timeout") || lowerMessage.includes("timed out")) {
+        return "The request took too long. Please try again or use a smaller document.";
+    }
+    if (lowerMessage.includes("network") || lowerMessage.includes("fetch failed")) {
+        return "Network error. Please check your connection and try again.";
+    }
+
+    // AI/extraction errors
+    if (lowerMessage.includes("rate limit")) {
+        return "Too many requests. Please wait a moment and try again.";
+    }
+    if (lowerMessage.includes("ai") && lowerMessage.includes("unavailable")) {
+        return "AI service is temporarily unavailable. Please try again later.";
+    }
+
+    // File type errors
+    if (lowerMessage.includes("unsupported file") || lowerMessage.includes("invalid file")) {
+        return "Unsupported file type. Please upload a PDF, DOCX, Markdown, or TXT file.";
+    }
+
+    // Permission errors
+    if (lowerMessage.includes("permission") || lowerMessage.includes("unauthorized")) {
+        return "You don't have permission to perform this action.";
+    }
+
+    // Document processing errors - keep these as they're already user-friendly
+    if (lowerMessage.includes("pdf") || lowerMessage.includes("docx") || lowerMessage.includes("document")) {
+        // If it's already a reasonably friendly message about documents, use it
+        if (!lowerMessage.includes("http") && !lowerMessage.includes("stack") && message.length < 150) {
+            return message;
+        }
+        return "Failed to process the document. Please ensure it's a valid, readable file.";
+    }
+
+    // Generic fallback - never show technical details
+    if (message.includes("http") || message.includes("://") || message.length > 150) {
+        return "Something went wrong while processing your document. Please try again.";
+    }
+
+    // If the message looks reasonably user-friendly, use it
+    return message.length > 0 ? message : "An unexpected error occurred. Please try again.";
+}
+
 // Step indicator component
 function StepIndicator({ currentStep }: { currentStep: number }) {
     const steps = [
@@ -85,16 +142,12 @@ function StepIndicator({ currentStep }: { currentStep: number }) {
                             <div
                                 className={cn(
                                     "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300",
-                                    isCompleted && "bg-green-500/20 text-green-500",
-                                    isActive && "bg-primary/20 text-primary ring-2 ring-primary/30",
+                                    isCompleted && "bg-green-500/10 text-green-500",
+                                    isActive && "bg-primary/10 text-primary ring-2 ring-primary/30",
                                     !isCompleted && !isActive && "bg-muted text-muted-foreground"
                                 )}
                             >
-                                {isCompleted ? (
-                                    <CheckCircle2 className="h-5 w-5" />
-                                ) : (
-                                    <Icon className="h-5 w-5" />
-                                )}
+                                <Icon className="h-5 w-5" />
                             </div>
                             <span
                                 className={cn(
@@ -227,7 +280,7 @@ export function UploadDocumentDialog({
             setState("review");
         } catch (err) {
             console.error("Error extracting requirements:", err);
-            setError(err instanceof Error ? err.message : "Failed to extract requirements");
+            setError(getUserFriendlyError(err));
             setState("error");
         }
     }, []);
@@ -290,7 +343,7 @@ export function UploadDocumentDialog({
             onComplete?.();
         } catch (err) {
             console.error("Error creating requirements:", err);
-            setError(err instanceof Error ? err.message : "Failed to create requirements");
+            setError(getUserFriendlyError(err));
             setState("error");
         }
     };
@@ -354,43 +407,43 @@ export function UploadDocumentDialog({
                             </div>
 
                             {/* How it works section */}
-                            <div className="border rounded-lg p-5 bg-muted/40">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <Lightbulb className="h-5 w-5 text-muted-foreground" />
-                                    <span className="font-semibold">How it works</span>
+                            <div className="border rounded-lg p-4 bg-muted/30">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Lightbulb className="h-4 w-4 text-amber-500" />
+                                    <span className="font-medium text-sm">How it works</span>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                                    <div className="flex items-start gap-3">
-                                        <div className="w-6 h-6 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs font-bold shrink-0 border">1</div>
+                                <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                                    <div className="flex items-start gap-2.5">
+                                        <div className="w-5 h-5 rounded-full bg-muted text-muted-foreground border flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">1</div>
                                         <div>
-                                            <p className="font-medium">Upload your document</p>
-                                            <p className="text-muted-foreground">PRD, spec, or requirements doc</p>
+                                            <p className="font-medium text-foreground">Upload your document</p>
+                                            <p className="text-xs text-muted-foreground">PRD, spec, or requirements doc</p>
                                         </div>
                                     </div>
-                                    <div className="flex items-start gap-3">
-                                        <div className="w-6 h-6 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs font-bold shrink-0 border">2</div>
+                                    <div className="flex items-start gap-2.5">
+                                        <div className="w-5 h-5 rounded-full bg-muted text-muted-foreground border flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">2</div>
                                         <div>
-                                            <p className="font-medium">AI extracts requirements</p>
-                                            <p className="text-muted-foreground">&quot;User should be able to...&quot; statements</p>
+                                            <p className="font-medium text-foreground">AI extracts requirements</p>
+                                            <p className="text-xs text-muted-foreground">&quot;User should be able to...&quot; statements</p>
                                         </div>
                                     </div>
-                                    <div className="flex items-start gap-3">
-                                        <div className="w-6 h-6 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs font-bold shrink-0 border">3</div>
+                                    <div className="flex items-start gap-2.5">
+                                        <div className="w-5 h-5 rounded-full bg-muted text-muted-foreground border flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">3</div>
                                         <div>
-                                            <p className="font-medium">Review and select</p>
-                                            <p className="text-muted-foreground">Choose which to create</p>
+                                            <p className="font-medium text-foreground">Review and select</p>
+                                            <p className="text-xs text-muted-foreground">Choose which to create</p>
                                         </div>
                                     </div>
-                                    <div className="flex items-start gap-3">
-                                        <div className="w-6 h-6 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs font-bold shrink-0 border">4</div>
+                                    <div className="flex items-start gap-2.5">
+                                        <div className="w-5 h-5 rounded-full bg-muted text-muted-foreground border flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">4</div>
                                         <div>
-                                            <p className="font-medium">Requirements created</p>
-                                            <p className="text-muted-foreground">Tagged as AI-generated</p>
+                                            <p className="font-medium text-foreground">Requirements created</p>
+                                            <p className="text-xs text-muted-foreground">Tagged as AI-generated</p>
                                         </div>
                                     </div>
                                 </div>
-                                <div className="mt-4 pt-4 border-t flex items-start gap-2 text-xs text-muted-foreground">
-                                    <Info className="h-3 w-3 mt-0.5 shrink-0" />
+                                <div className="mt-3 pt-3 border-t flex items-center gap-2 text-xs text-muted-foreground">
+                                    <Info className="h-3 w-3 shrink-0" />
                                     <span>Documents are processed securely. Only testable requirements are extracted.</span>
                                 </div>
                             </div>
@@ -399,18 +452,18 @@ export function UploadDocumentDialog({
 
                     {/* Processing State */}
                     {(state === "uploading" || state === "extracting") && (
-                        <div className="py-12 text-center">
-                            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
-                                <Loader2 className="h-10 w-10 text-primary animate-spin" />
+                        <div className="py-10 text-center">
+                            <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-primary/10 flex items-center justify-center">
+                                <Loader2 className="h-8 w-8 text-primary animate-spin" />
                             </div>
-                            <p className="text-xl font-semibold mb-2">
+                            <p className="text-lg font-semibold text-foreground mb-2">
                                 {state === "uploading" ? "Uploading document..." : "Extracting requirements with AI..."}
                             </p>
-                            <p className="text-muted-foreground mb-6">
+                            <p className="text-sm text-muted-foreground mb-5">
                                 {file?.name}
                             </p>
                             <Progress value={progress} className="max-w-sm mx-auto h-2" />
-                            <p className="text-sm text-muted-foreground mt-3">
+                            <p className="text-xs text-muted-foreground mt-3">
                                 {state === "extracting" && "This may take a few seconds depending on document size"}
                             </p>
                         </div>
@@ -421,8 +474,14 @@ export function UploadDocumentDialog({
                         <div className="space-y-4">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-                                        <FileText className="h-5 w-5 text-green-500" />
+                                    <div className={cn(
+                                        "w-10 h-10 rounded-lg flex items-center justify-center",
+                                        extractedRequirements.length > 0 ? "bg-green-500/10" : "bg-amber-500/10"
+                                    )}>
+                                        <FileText className={cn(
+                                            "h-5 w-5",
+                                            extractedRequirements.length > 0 ? "text-green-500" : "text-amber-500"
+                                        )} />
                                     </div>
                                     <div>
                                         <p className="font-medium">{file?.name}</p>
@@ -431,11 +490,33 @@ export function UploadDocumentDialog({
                                         </p>
                                     </div>
                                 </div>
-                                <Button variant="ghost" size="sm" onClick={toggleAll}>
-                                    {extractedRequirements.every((r) => r.selected) ? "Deselect All" : "Select All"}
-                                </Button>
+                                {extractedRequirements.length > 0 && (
+                                    <Button variant="ghost" size="sm" onClick={toggleAll}>
+                                        {extractedRequirements.every((r) => r.selected) ? "Deselect All" : "Select All"}
+                                    </Button>
+                                )}
                             </div>
 
+                            {extractedRequirements.length === 0 ? (
+                                <div className="border rounded-lg p-6 bg-muted/20 text-center">
+                                    <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-amber-500/10 flex items-center justify-center">
+                                        <AlertCircle className="h-6 w-6 text-amber-500" />
+                                    </div>
+                                    <p className="font-medium text-foreground mb-2">No testable requirements found</p>
+                                    <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
+                                        The AI couldn&apos;t identify specific, testable requirements from this document. This might happen if the document:
+                                    </p>
+                                    <ul className="text-sm text-muted-foreground text-left max-w-sm mx-auto space-y-1 mb-4">
+                                        <li>• Contains mostly high-level or marketing content</li>
+                                        <li>• Lacks specific feature descriptions or API specs</li>
+                                        <li>• Uses vague language without concrete acceptance criteria</li>
+                                        <li>• Is an image-based PDF without extractable text</li>
+                                    </ul>
+                                    <p className="text-xs text-muted-foreground">
+                                        Try uploading a more detailed PRD, API documentation, or technical specification.
+                                    </p>
+                                </div>
+                            ) : (
                             <ScrollArea className="h-[320px] border rounded-lg">
                                 <div className="p-3 space-y-2">
                                     {extractedRequirements.map((req) => (
@@ -474,7 +555,9 @@ export function UploadDocumentDialog({
                                     ))}
                                 </div>
                             </ScrollArea>
+                            )}
 
+                            {extractedRequirements.length > 0 && (
                             <div className="flex items-center justify-between pt-2 border-t">
                                 <span className="text-sm text-muted-foreground">
                                     {selectedCount} of {extractedRequirements.length} selected
@@ -493,17 +576,26 @@ export function UploadDocumentDialog({
                                     </Button>
                                 </div>
                             </div>
+                            )}
+
+                            {extractedRequirements.length === 0 && (
+                            <div className="flex justify-center pt-4">
+                                <Button variant="outline" onClick={resetState}>
+                                    Try Another Document
+                                </Button>
+                            </div>
+                            )}
                         </div>
                     )}
 
                     {/* Creating State */}
                     {state === "creating" && (
-                        <div className="py-12 text-center">
-                            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
-                                <Loader2 className="h-10 w-10 text-primary animate-spin" />
+                        <div className="py-10 text-center">
+                            <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-primary/10 flex items-center justify-center">
+                                <Loader2 className="h-8 w-8 text-primary animate-spin" />
                             </div>
-                            <p className="text-xl font-semibold mb-2">Creating requirements...</p>
-                            <p className="text-muted-foreground mb-6">
+                            <p className="text-lg font-semibold text-foreground mb-2">Creating requirements...</p>
+                            <p className="text-sm text-muted-foreground mb-5">
                                 {Math.round((progress / 100) * selectedCount)} of {selectedCount} created
                             </p>
                             <Progress value={progress} className="max-w-sm mx-auto h-2" />
@@ -512,37 +604,63 @@ export function UploadDocumentDialog({
 
                     {/* Done State */}
                     {state === "done" && (
-                        <div className="py-8 text-center">
-                            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-green-500/10 flex items-center justify-center">
-                                <CheckCircle2 className="h-10 w-10 text-green-500" />
+                        <div className="py-6 text-center">
+                            <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-green-500/10 flex items-center justify-center">
+                                <CheckCircle2 className="h-7 w-7 text-green-500" />
                             </div>
-                            <p className="text-xl font-semibold text-green-600 mb-2">
+                            
+                            <p className="text-lg font-semibold text-green-500 mb-1">
                                 Requirements created successfully!
                             </p>
-                            <p className="text-muted-foreground mb-6">
+                            <p className="text-sm text-muted-foreground mb-5">
                                 {selectedCount} requirements are now ready for test coverage
                             </p>
 
-                            {/* What's Next Guidance */}
-                            <div className="max-w-lg mx-auto bg-muted/30 rounded-lg p-5 border border-border/50 text-left">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <Lightbulb className="h-5 w-5 text-amber-500" />
-                                    <span className="font-medium">What&apos;s Next?</span>
+                            {/* What's Next Section - matching How it works style */}
+                            <div className="border rounded-lg p-4 bg-muted/30 text-left">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Lightbulb className="h-4 w-4 text-amber-500" />
+                                    <span className="font-medium text-sm">What&apos;s Next?</span>
                                 </div>
-                                <ol className="text-sm text-muted-foreground space-y-2 mb-4 list-decimal list-inside">
-                                    <li>Click on a requirement in the list to open its details</li>
-                                    <li>In the <strong>&quot;Create Test&quot;</strong> section, choose your test type</li>
-                                    <li><strong>API, Database, Performance:</strong> AI generates a test script from your requirement</li>
-                                    <li><strong>Browser:</strong> Use the Playwright recorder to capture interactions</li>
-                                    <li>Run the test and save to automatically link it to your requirement</li>
-                                </ol>
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground pt-3 border-t border-border/50">
-                                    <ArrowRight className="h-3 w-3 flex-shrink-0" />
-                                    <span>Coverage status updates automatically when linked tests run in jobs</span>
+                                
+                                <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+                                    <div className="flex items-start gap-2.5">
+                                        <div className="w-5 h-5 rounded-full bg-muted text-muted-foreground border flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">1</div>
+                                        <div>
+                                            <p className="font-medium text-foreground">Select a requirement</p>
+                                            <p className="text-xs text-muted-foreground">Click to view details and context</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start gap-2.5">
+                                        <div className="w-5 h-5 rounded-full bg-muted text-muted-foreground border flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">2</div>
+                                        <div>
+                                            <p className="font-medium text-foreground">Choose test type</p>
+                                            <p className="text-xs text-muted-foreground">Browser, API, Database, or Performance</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start gap-2.5">
+                                        <div className="w-5 h-5 rounded-full bg-muted text-muted-foreground border flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">3</div>
+                                        <div>
+                                            <p className="font-medium text-foreground">Create your test</p>
+                                            <p className="text-xs text-muted-foreground">AI generates script or use recorder</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start gap-2.5">
+                                        <div className="w-5 h-5 rounded-full bg-muted text-muted-foreground border flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">4</div>
+                                        <div>
+                                            <p className="font-medium text-foreground">Save & Link</p>
+                                            <p className="text-xs text-muted-foreground">Auto-links test to requirement</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-3 pt-3 border-t flex items-center gap-2 text-xs text-muted-foreground">
+                                    <Info className="h-3 w-3 shrink-0" />
+                                    <span>Coverage status updates automatically when linked tests run in jobs.</span>
                                 </div>
                             </div>
 
-                            <div className="mt-8">
+                            <div className="mt-5 flex justify-center">
                                 <Button onClick={handleClose} size="lg" className="min-w-[120px]">
                                     Close
                                 </Button>
@@ -552,14 +670,14 @@ export function UploadDocumentDialog({
 
                     {/* Error State */}
                     {state === "error" && (
-                        <div className="py-12 text-center">
-                            <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-red-500/10 flex items-center justify-center">
-                                <AlertCircle className="h-10 w-10 text-red-500" />
+                        <div className="py-10 text-center">
+                            <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-red-500/10 flex items-center justify-center">
+                                <AlertCircle className="h-8 w-8 text-red-500" />
                             </div>
-                            <p className="text-xl font-semibold text-red-600 mb-2">
+                            <p className="text-lg font-semibold text-red-500 mb-2">
                                 Something went wrong
                             </p>
-                            <p className="text-muted-foreground mb-6 max-w-md mx-auto">{error}</p>
+                            <p className="text-sm text-muted-foreground mb-5 max-w-md mx-auto">{error}</p>
                             <Button variant="outline" onClick={resetState} className="gap-2">
                                 <X className="h-4 w-4" />
                                 Try Again

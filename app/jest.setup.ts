@@ -93,6 +93,12 @@ beforeAll(() => {
       'No test cases found',
       '[AI Security]',
       'Error checking impersonation state',
+      'Error creating requirement:',
+      'Error deleting from S3:',
+      'Error fetching documents:',
+      'PDF appears to be image-based',
+      'Error extracting DOCX text:',
+      '[PDF Extraction]',
     ];
     if (suppressedPatterns.some(pattern => message.includes(pattern))) {
       return;
@@ -109,6 +115,8 @@ beforeAll(() => {
       'Resolved .* variables and .* secrets',
       'pre-resolved test scripts',
       '\\[JobScheduler\\]',
+      '\\[AI Extraction\\]',
+      '\\[PDF Extraction\\]',
     ];
     if (suppressedPatterns.some(pattern => new RegExp(pattern).test(message))) {
       return;
@@ -126,6 +134,9 @@ beforeAll(() => {
       'Plan limits not found',
       '[AI Security]',
       'AI-generated code failed validation',
+      'attempted to create requirement without permission',
+      'attempted to update requirement',
+      'attempted to delete requirement',
     ];
     if (suppressedPatterns.some(pattern => message.includes(pattern) || secondArg.includes(pattern))) {
       return;

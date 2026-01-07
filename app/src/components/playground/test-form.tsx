@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { TESTS_QUERY_KEY } from "@/hooks/use-tests";
+import { REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
 import { useTags, useTestTags, useTagMutations, useSaveTestTags } from "@/hooks/use-tags";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import {
@@ -594,6 +595,11 @@ export function TestForm({
 
             // Invalidate React Query cache to ensure fresh data on tests page
             queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY, refetchType: 'all' });
+            
+            // If linked to a requirement, also invalidate requirements cache for updated counts
+            if (initialLinkedRequirement?.id) {
+              queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
+            }
 
             // Navigate to the tests page with the test ID
             router.push("/tests/");
