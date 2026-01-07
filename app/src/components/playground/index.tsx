@@ -56,6 +56,7 @@ import type { TestPriority, TestType } from "@/db/schema/types";
 import { notifyExecutionsChanged } from "@/hooks/use-executions";
 import { useSession } from "@/utils/auth-client";
 import { getRequirement } from "@/actions/requirements";
+import { RecordButton } from "@/components/recorder";
 
 const extractCodeFromResponse = (rawText: string): string => {
   if (!rawText) {
@@ -621,6 +622,25 @@ const Playground: React.FC<PlaygroundProps> = ({
         return () => disposable.dispose();
       }
     }
+  }, []);
+
+  // Listen for recorded code from SuperCheck Recorder extension
+  useEffect(() => {
+    const handleRecordedCode = (event: MessageEvent) => {
+      if (event.data?.source !== "supercheck-recorder") return;
+      if (event.data?.type !== "SUPERCHECK_RECORDED_CODE") return;
+      
+      const { code } = event.data.payload || {};
+      if (code) {
+        setEditorContent(code);
+        setTestCase((prev) => ({ ...prev, script: code }));
+        setShowRecordingBanner(false);
+        toast.success("Recording saved to editor");
+      }
+    };
+
+    window.addEventListener("message", handleRecordedCode);
+    return () => window.removeEventListener("message", handleRecordedCode);
   }, []);
 
   const validateForm = () => {
@@ -1450,35 +1470,35 @@ const Playground: React.FC<PlaygroundProps> = ({
                         {testCase.type === "browser" && !testId && showRecordingBanner && (
                           <div className="flex items-center justify-between px-4 py-2.5 border-b border-red-500/20 bg-red-500/5">
                             <div className="flex items-center gap-3">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                onClick={() => setShowRecordingBanner(false)}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
                               <div className="flex items-center justify-center w-6 h-6 rounded-full bg-red-500/10">
                                 <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                               </div>
                               <div>
                                 <span className="text-sm font-medium text-red-400">Record Browser Test</span>
                                 <span className="text-sm text-muted-foreground ml-2">
-                                  Use Playwright recorder to capture interactions, then paste the code below.
+                                  Use SuperCheck Recorder to capture interactions, then save directly to Playground.
                                 </span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="gap-2 text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                                onClick={() => window.open("https://chromewebstore.google.com/detail/playwright-crx/jambeljnbnfbkcpnoiaedcabbgmnnlcd", "_blank")}
-                              >
-                                <ExternalLink className="h-3.5 w-3.5" />
-                                Get Recorder
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                                onClick={() => setShowRecordingBanner(false)}
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
+                            <RecordButton
+                              projectId={currentProject?.id || ""}
+                              requirementId={linkedRequirement?.id}
+                              testName={linkedRequirement ? `Test for: ${linkedRequirement.title}` : undefined}
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-400 hover:text-red-300 hover:bg-red-500/10 font-medium gap-1.5"
+                            >
+                              Start Recording
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </RecordButton>
                           </div>
                         )}
 

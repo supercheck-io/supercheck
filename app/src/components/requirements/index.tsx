@@ -64,6 +64,7 @@ import { formatDistanceToNow } from "date-fns";
 import { useRequirements, useRequirementMutations } from "@/hooks/use-requirements";
 import { useTags } from "@/hooks/use-tags";
 import { useRequirementPermissions } from "@/hooks/use-rbac-permissions";
+import { useProjectContext } from "@/hooks/use-project-context";
 
 import { getLinkedTests } from "@/actions/requirements";
 import { useQuery } from "@tanstack/react-query";
@@ -72,6 +73,7 @@ import { RequirementWithCoverage } from "@/actions/requirements";
 import { RequirementTestDataTable } from "./requirement-test-data-table";
 import { createRequirementTestColumns } from "./requirement-test-columns";
 import { DocumentsList } from "./documents-list";
+
 
 // ============================================================================
 // CONFIG
@@ -97,6 +99,7 @@ export default function RequirementsPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { canCreateRequirement, canEditRequirement, canDeleteRequirement } = useRequirementPermissions();
+    const { currentProject } = useProjectContext();
 
 
 

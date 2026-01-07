@@ -18,6 +18,7 @@ import { SubscriptionGuard } from "@/components/subscription-guard";
 import { AuthGuard } from "@/components/auth-guard";
 import { DataPrefetcher } from "@/components/data-prefetcher";
 import { MonacoPrefetcher } from "@/components/monaco-prefetcher";
+import { RecorderAutoConnect } from "@/components/recorder/RecorderAutoConnect";
 
 /**
  * Main Layout - SYNCHRONOUS (no async)
@@ -41,6 +42,8 @@ export default function MainLayout({
     <AuthGuard>
       {/* PERFORMANCE: Preload Monaco editor assets in background */}
       <MonacoPrefetcher />
+      {/* SEAMLESS: Auto-connect recorder extension when user is logged in */}
+      <RecorderAutoConnect />
       <BreadcrumbProvider>
         <ProjectContextProvider>
           {/* PERFORMANCE: Prefetch all critical data in parallel immediately */}
