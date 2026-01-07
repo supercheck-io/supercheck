@@ -148,15 +148,15 @@ jobs:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/app
           tags: |
-            # Full version for releases (e.g. 1.2.3)
+            # Full version for releases (e.g. 1.2.3 or 1.2.3-canary.1)
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            # Major.minor for releases (e.g. 1.2)
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            # Major.minor for stable releases only (e.g. 1.2)
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
             # Custom version from manual workflow input
             type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event.inputs.version != '' }}
-            # Latest tag for version releases
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            # Latest tag override for manual builds
+            # Latest tag ONLY for stable releases (no prerelease suffix like -canary, -beta, -alpha, -rc)
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-canary') && !contains(github.ref, '-beta') && !contains(github.ref, '-alpha') && !contains(github.ref, '-rc') }}
+            # Latest tag override for manual builds (use with caution)
             type=raw,value=latest,enable=${{ github.event.inputs.push_latest == 'true' }}
             # Fallback tag using git SHA for manual builds without custom version
             type=sha,prefix={{branch}}-,suffix=-${{ github.run_number }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version == '' }}
@@ -168,15 +168,15 @@ jobs:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/worker
           tags: |
-            # Full version for releases (e.g. 1.2.3)
+            # Full version for releases (e.g. 1.2.3 or 1.2.3-canary.1)
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            # Major.minor for releases (e.g. 1.2)
-            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            # Major.minor for stable releases only (e.g. 1.2)
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
             # Custom version from manual workflow input
             type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event.inputs.version != '' }}
-            # Latest tag for version releases
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-            # Latest tag override for manual builds
+            # Latest tag ONLY for stable releases (no prerelease suffix like -canary, -beta, -alpha, -rc)
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-canary') && !contains(github.ref, '-beta') && !contains(github.ref, '-alpha') && !contains(github.ref, '-rc') }}
+            # Latest tag override for manual builds (use with caution)
             type=raw,value=latest,enable=${{ github.event.inputs.push_latest == 'true' }}
             # Fallback tag using git SHA for manual builds without custom version
             type=sha,prefix={{branch}}-,suffix=-${{ github.run_number }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version == '' }}
