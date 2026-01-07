@@ -33,7 +33,6 @@ interface SuperCheckRecorderAPI {
 
 // Get the extension API from window (set by content script)
 function getExtensionAPI(): SuperCheckRecorderAPI | null {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (window as any).__SUPERCHECK_RECORDER__ || null;
 }
 
