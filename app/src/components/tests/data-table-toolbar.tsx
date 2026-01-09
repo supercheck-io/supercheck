@@ -11,7 +11,6 @@ import { types, priorities } from "./data";
 import { DataTableFacetedFilter } from "./data-table-faceted-filter";
 import { DataTableTagFilter } from "./data-table-tag-filter";
 import { useTestPermissions } from "@/hooks/use-rbac-permissions";
-import { useProjectContext } from "@/hooks/use-project-context";
 
 
 
@@ -24,7 +23,6 @@ export function DataTableToolbar<TData>({
 }: DataTableToolbarProps<TData>) {
   const router = useRouter();
   const { canCreateTest } = useTestPermissions();
-  const { currentProject } = useProjectContext();
 
   return (
     <div className="flex items-center justify-between mb-4 -mt-2">

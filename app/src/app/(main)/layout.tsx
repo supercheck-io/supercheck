@@ -106,17 +106,15 @@ export default async function MainLayout({
       // Reset to trigger client-side fetching
       initialProjects = [];
       initialCurrentProject = null;
-      // Keep initialSession if user is valid - AuthGuard will revalidate
-      if (user) {
-        initialSession = {
-          user: {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            image: user.image,
-          }
-        };
-      }
+      // Keep initialSession - user is guaranteed to be defined in this branch; AuthGuard will revalidate
+      initialSession = {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          image: user.image,
+        }
+      };
     }
   }
 

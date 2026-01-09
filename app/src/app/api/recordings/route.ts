@@ -5,7 +5,7 @@ import { tests, projects, apikey } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { subscriptionService } from "@/lib/services/subscription-service";
-import { buildPermissionContext, getUserRole, getUserAssignedProjects } from "@/lib/rbac/middleware";
+import { getUserRole, getUserAssignedProjects } from "@/lib/rbac/middleware";
 import { hasPermission as checkPermission } from "@/lib/rbac/permissions";
 import { verifyApiKey } from "@/lib/security/api-key-hash";
 import { createLogger } from "@/lib/logger/pino-config";
