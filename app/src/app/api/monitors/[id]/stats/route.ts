@@ -8,11 +8,20 @@ import {
   getUserOrgRole,
 } from "@/lib/rbac/middleware";
 import { isSuperAdmin } from "@/lib/admin";
-import { calculatePercentile } from "@/lib/monitor-aggregation-service";
+import {
+  monitorAggregationService,
+  calculatePercentile,
+} from "@/lib/monitor-aggregation-service";
 
 /**
  * GET /api/monitors/[id]/stats
  * Returns aggregated statistics for 24h and 30d periods.
+ * 
+ * PERFORMANCE OPTIMIZATION:
+ * - For 30d stats: Uses pre-computed daily aggregates from `monitor_aggregates` table
+ * - For 24h stats: Uses pre-computed hourly aggregates from `monitor_aggregates` table
+ * - Falls back to raw query only if aggregates don't exist (new monitors)
+ * 
  * Query params:
  *  - location: optional location filter
  */
@@ -83,7 +92,72 @@ export async function GET(
     const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Build base conditions
+    // Convert location filter for aggregate queries
+    const locationParam = locationFilter as MonitoringLocation | null;
+
+    // Try to use pre-computed aggregates first (O(1) performance)
+    // This is the performance-optimized path for monitors with aggregated data
+    const [aggregates24h, aggregates30d] = await Promise.all([
+      monitorAggregationService.getAggregatedMetrics(
+        id,
+        "hourly",
+        last24Hours,
+        now,
+        locationParam
+      ),
+      monitorAggregationService.getAggregatedMetrics(
+        id,
+        "daily",
+        last30Days,
+        now,
+        locationParam
+      ),
+    ]);
+
+    // Check if we have valid aggregated data
+    const hasAggregates24h = aggregates24h.totalChecks > 0;
+    const hasAggregates30d = aggregates30d.totalChecks > 0;
+
+    // If aggregates exist, use them directly (fast path)
+    if (hasAggregates24h && hasAggregates30d) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          period24h: {
+            totalChecks: aggregates24h.totalChecks,
+            upChecks: Math.round(
+              (aggregates24h.uptimePercentage / 100) * aggregates24h.totalChecks
+            ),
+            uptimePercentage: aggregates24h.uptimePercentage,
+            avgResponseTimeMs: aggregates24h.avgResponseMs,
+            p95ResponseTimeMs: aggregates24h.p95ResponseMs,
+          },
+          period30d: {
+            totalChecks: aggregates30d.totalChecks,
+            upChecks: Math.round(
+              (aggregates30d.uptimePercentage / 100) * aggregates30d.totalChecks
+            ),
+            uptimePercentage: aggregates30d.uptimePercentage,
+            avgResponseTimeMs: aggregates30d.avgResponseMs,
+            p95ResponseTimeMs: aggregates30d.p95ResponseMs,
+          },
+        },
+        meta: {
+          monitorId: id,
+          location: locationFilter || "all",
+          calculatedAt: now.toISOString(),
+          source: "aggregates", // Indicates data came from pre-computed aggregates
+        },
+      });
+    }
+
+    // Fallback: Query raw data for new monitors without aggregates
+    // This ensures new monitors still show stats before the first aggregation run
+    console.log(
+      `[STATS] Monitor ${id.substring(0, 8)}: No aggregates found, falling back to raw query`
+    );
+
+    // Build base conditions for raw queries
     const baseConditions24h = locationFilter
       ? and(
           eq(monitorResults.monitorId, id),
@@ -107,7 +181,6 @@ export async function GET(
         );
 
     // Run all 4 statistics queries in parallel for better performance
-    // This reduces response time by ~50-75% compared to sequential execution
     const [stats24h, stats30d, responseTimes24h, responseTimes30d] =
       await Promise.all([
         // Get 24h statistics
@@ -209,6 +282,7 @@ export async function GET(
         monitorId: id,
         location: locationFilter || "all",
         calculatedAt: now.toISOString(),
+        source: "raw", // Indicates data came from raw query (fallback)
       },
     });
   } catch (error) {

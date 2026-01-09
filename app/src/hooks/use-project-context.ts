@@ -71,17 +71,57 @@ export function useProjectContextSafe(): ProjectContextState | null {
 }
 
 /**
+ * Props for server-side hydration of project context
+ */
+export interface ProjectContextHydrationProps {
+  /** Pre-fetched projects from server */
+  initialProjects?: ProjectContext[];
+  /** Pre-fetched current project from server */
+  initialCurrentProject?: ProjectContext | null;
+}
+
+/**
  * Project context state management
  * PERFORMANCE OPTIMIZATION: Uses module-level cache to prevent
  * duplicate API calls when navigating between pages.
  * Also prefetches dashboard data as soon as project is available.
+ * 
+ * SERVER-SIDE HYDRATION:
+ * When initialProjects and initialCurrentProject are provided (from server),
+ * the state initializes immediately without loading state, eliminating
+ * the client-side waterfall.
  */
-export function useProjectContextState(): ProjectContextState {
-  const [currentProject, setCurrentProject] = useState<ProjectContext | null>(projectsCache?.currentProject || null);
-  const [projects, setProjects] = useState<ProjectContext[]>(projectsCache?.projects || []);
-  const [loading, setLoading] = useState(!projectsCache);
+export function useProjectContextState(
+  hydrationProps?: ProjectContextHydrationProps
+): ProjectContextState {
+  // PERFORMANCE: Use server-provided data if available, else fall back to cache
+  const hasServerData = hydrationProps?.initialProjects !== undefined;
+  const initialProjectsValue = hasServerData 
+    ? hydrationProps.initialProjects 
+    : (projectsCache?.projects || []);
+  const initialCurrentProjectValue = hasServerData
+    ? (hydrationProps.initialCurrentProject ?? null)
+    : (projectsCache?.currentProject || null);
+  
+  const [currentProject, setCurrentProject] = useState<ProjectContext | null>(initialCurrentProjectValue);
+  const [projects, setProjects] = useState<ProjectContext[]>(initialProjectsValue!);
+  // PERFORMANCE: If server provided data, skip loading state entirely
+  const [loading, setLoading] = useState(!hasServerData && !projectsCache);
   const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  
+  // Populate module cache with server data for subsequent navigations
+  // Only run once when server data is first available
+  useEffect(() => {
+    if (hasServerData && !projectsCache && initialProjectsValue && initialProjectsValue.length >= 0) {
+      projectsCache = {
+        projects: initialProjectsValue,
+        currentProject: initialCurrentProjectValue,
+        timestamp: Date.now(),
+      };
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only run on mount with server data
+  }, [hasServerData]);
 
   const fetchProjects = useCallback(async (forceRefresh = false) => {
     // Use cache if available and not expired (unless force refresh)
@@ -223,11 +263,30 @@ export function useProjectContextState(): ProjectContextState {
   };
 }
 
+interface ProjectContextProviderProps {
+  children: React.ReactNode;
+  /** Pre-fetched projects from server for instant hydration */
+  initialProjects?: ProjectContext[];
+  /** Pre-fetched current project from server for instant hydration */
+  initialCurrentProject?: ProjectContext | null;
+}
+
 /**
  * Provider component for project context
+ * 
+ * PERFORMANCE OPTIMIZATION:
+ * Pass initialProjects and initialCurrentProject from server-side rendering
+ * to eliminate the client-side loading state and project fetch waterfall.
  */
-export function ProjectContextProvider({ children }: { children: React.ReactNode }): React.ReactElement {
-  const contextState = useProjectContextState();
+export function ProjectContextProvider({ 
+  children, 
+  initialProjects,
+  initialCurrentProject 
+}: ProjectContextProviderProps): React.ReactElement {
+  const contextState = useProjectContextState({ 
+    initialProjects, 
+    initialCurrentProject 
+  });
   return React.createElement(
     ProjectContextContext.Provider,
     { value: contextState },

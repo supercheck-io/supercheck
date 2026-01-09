@@ -6,6 +6,8 @@ import {
   requirementsInsertSchema,
   requirementCoverageSnapshots,
   testRequirements,
+  tags,
+  requirementTags,
   type RequirementPriority,
   type RequirementCreatedBy,
   type RequirementCoverageStatus,
@@ -22,12 +24,19 @@ import { logAuditEvent } from "@/lib/audit-logger";
 // TYPES
 // ============================================================================
 
+// Tag type for requirements (matching tests pattern)
+export type RequirementTag = {
+  id: string;
+  name: string;
+  color: string | null;
+};
+
 export type RequirementWithCoverage = {
   id: string;
   title: string;
   description: string | null;
   priority: RequirementPriority | null;
-  tags: string | null;
+  tags: RequirementTag[];
   externalId: string | null;
   externalUrl: string | null;
   externalProvider: string | null;
@@ -72,7 +81,7 @@ const updateRequirementSchema = z.object({
   title: z.string().min(1).max(500),
   description: z.string().optional().nullable(),
   priority: z.enum(["low", "medium", "high"]).optional().nullable(),
-  tags: z.string().optional().nullable(),
+  tagIds: z.array(z.string().uuid()).optional(), // Array of tag IDs
   externalId: z.string().optional().nullable().or(z.literal("")),
   externalUrl: z.string().url().optional().nullable().or(z.literal("")),
   externalProvider: z.string().optional().nullable().or(z.literal("")),
@@ -80,6 +89,102 @@ const updateRequirementSchema = z.object({
 
 export type CreateRequirementInput = z.infer<typeof createRequirementSchema>;
 export type UpdateRequirementInput = z.infer<typeof updateRequirementSchema>;
+
+// ============================================================================
+// TAG SYNC HELPERS
+// ============================================================================
+
+/**
+ * Sync tags for a requirement by replacing all existing tag associations.
+ * Creates new tags in the centralized tags table if they don't exist.
+ */
+export async function syncRequirementTags(
+  requirementId: string,
+  tagIds: string[]
+): Promise<void> {
+  // Delete existing tags for this requirement
+  await db
+    .delete(requirementTags)
+    .where(eq(requirementTags.requirementId, requirementId));
+
+  // Insert new tags if any
+  if (tagIds.length > 0) {
+    await db
+      .insert(requirementTags)
+      .values(
+        tagIds.map((tagId) => ({
+          requirementId,
+          tagId,
+          assignedAt: new Date(),
+        }))
+      )
+      .onConflictDoNothing();
+  }
+}
+
+/**
+ * Sync tags from tag names (used by AI extraction).
+ * Creates tags in centralized table if they don't exist,
+ * then associates them with the requirement.
+ */
+export async function syncRequirementTagsByName(
+  requirementId: string,
+  tagNames: string[],
+  organizationId: string,
+  projectId: string,
+  userId: string | null
+): Promise<void> {
+  if (tagNames.length === 0) return;
+
+  const normalizedNames = tagNames.map((name) => name.trim().toLowerCase());
+
+  // Find existing tags
+  const existingTags = await db
+    .select({ id: tags.id, name: tags.name })
+    .from(tags)
+    .where(
+      and(
+        eq(tags.projectId, projectId),
+        inArray(tags.name, normalizedNames)
+      )
+    );
+
+  const existingTagNames = new Set(existingTags.map((t) => t.name.toLowerCase()));
+  const tagsToCreate = normalizedNames.filter((name) => !existingTagNames.has(name));
+
+  // Create missing tags
+  const newTags: { id: string; name: string }[] = [];
+  if (tagsToCreate.length > 0) {
+    const defaultColors = [
+      "#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6",
+      "#06B6D4", "#84CC16", "#F97316", "#EC4899", "#6B7280",
+    ];
+    
+    const createdTags = await db
+      .insert(tags)
+      .values(
+        tagsToCreate.map((name, i) => ({
+          name,
+          organizationId,
+          projectId,
+          createdByUserId: userId,
+          color: defaultColors[i % defaultColors.length],
+        }))
+      )
+      .returning({ id: tags.id, name: tags.name });
+    
+    newTags.push(...createdTags);
+  }
+
+  // Combine all tag IDs
+  const allTagIds = [
+    ...existingTags.map((t) => t.id),
+    ...newTags.map((t) => t.id),
+  ];
+
+  // Sync requirement tags
+  await syncRequirementTags(requirementId, allTagIds);
+}
 
 // ============================================================================
 // LIST REQUIREMENTS
@@ -134,7 +239,6 @@ export async function getRequirements(options?: {
       title: requirements.title,
       description: requirements.description,
       priority: requirements.priority,
-      tags: requirements.tags,
       sourceDocumentId: requirements.sourceDocumentId,
       sourceSection: requirements.sourceSection,
       externalId: requirements.externalId,
@@ -181,6 +285,38 @@ export async function getRequirements(options?: {
 
   const total = Number(countResult[0]?.count ?? 0);
 
+  // Fetch tags for all requirements using the join table
+  const requirementIds = filteredResults.map((r) => r.id);
+  const requirementTagsData =
+    requirementIds.length > 0
+      ? await db
+          .select({
+            requirementId: requirementTags.requirementId,
+            tagId: tags.id,
+            tagName: tags.name,
+            tagColor: tags.color,
+          })
+          .from(requirementTags)
+          .innerJoin(tags, eq(requirementTags.tagId, tags.id))
+          .where(inArray(requirementTags.requirementId, requirementIds))
+      : [];
+
+  // Build a map of requirementId -> tags
+  const requirementTagsMap = new Map<
+    string,
+    Array<{ id: string; name: string; color: string | null }>
+  >();
+  requirementTagsData.forEach(({ requirementId, tagId, tagName, tagColor }) => {
+    if (!requirementTagsMap.has(requirementId)) {
+      requirementTagsMap.set(requirementId, []);
+    }
+    requirementTagsMap.get(requirementId)!.push({
+      id: tagId,
+      name: tagName,
+      color: tagColor,
+    });
+  });
+
   // Transform results with default coverage values
   const requirementsWithCoverage: RequirementWithCoverage[] =
     filteredResults.map((r) => ({
@@ -188,7 +324,7 @@ export async function getRequirements(options?: {
       title: r.title,
       description: r.description,
       priority: r.priority,
-      tags: r.tags,
+      tags: requirementTagsMap.get(r.id) || [],
       sourceDocumentId: r.sourceDocumentId,
       sourceDocumentName: r.sourceDocumentName,
       sourceSection: r.sourceSection,
@@ -245,7 +381,7 @@ export async function createRequirement(
     const validatedData = createRequirementSchema.parse(data);
     const newId = crypto.randomUUID();
 
-    // Insert requirement
+    // Insert requirement (without tags - those go in join table)
     await db.insert(requirements).values({
       id: newId,
       organizationId,
@@ -253,7 +389,6 @@ export async function createRequirement(
       title: validatedData.title,
       description: validatedData.description,
       priority: validatedData.priority as RequirementPriority,
-      tags: validatedData.tags,
       sourceDocumentId: validatedData.sourceDocumentId,
       sourceSection: validatedData.sourceSection,
       externalId: validatedData.externalId,
@@ -263,6 +398,20 @@ export async function createRequirement(
       createdByUserId: userId,
       createdAt: new Date(),
     });
+
+    // Sync tags if provided (parse comma-separated string for backward compatibility)
+    if (validatedData.tags) {
+      const tagNames = validatedData.tags.split(",").map((t) => t.trim()).filter(Boolean);
+      if (tagNames.length > 0) {
+        await syncRequirementTagsByName(
+          newId,
+          tagNames,
+          organizationId,
+          project.id,
+          userId
+        );
+      }
+    }
 
     // Create initial coverage snapshot (status: missing)
     await db.insert(requirementCoverageSnapshots).values({
@@ -341,7 +490,6 @@ export async function updateRequirement(
         title: validatedData.title,
         description: validatedData.description,
         priority: validatedData.priority as RequirementPriority | null,
-        tags: validatedData.tags,
         externalId: validatedData.externalId || null,
         externalUrl: validatedData.externalUrl || null,
         externalProvider: validatedData.externalProvider || null,
@@ -353,6 +501,11 @@ export async function updateRequirement(
           eq(requirements.projectId, project.id)
         )
       );
+
+    // Sync tags if provided
+    if (validatedData.tagIds !== undefined) {
+      await syncRequirementTags(validatedData.id, validatedData.tagIds);
+    }
 
     // Log audit event
     await logAuditEvent({
@@ -853,7 +1006,6 @@ export async function getRequirement(
         title: requirements.title,
         description: requirements.description,
         priority: requirements.priority,
-        tags: requirements.tags,
         sourceDocumentId: requirements.sourceDocumentId,
         sourceSection: requirements.sourceSection,
         externalId: requirements.externalId,
@@ -885,13 +1037,28 @@ export async function getRequirement(
       return null;
     }
 
+    // Fetch tags for this requirement
+    const requirementTagsData = await db
+      .select({
+        tagId: tags.id,
+        tagName: tags.name,
+        tagColor: tags.color,
+      })
+      .from(requirementTags)
+      .innerJoin(tags, eq(requirementTags.tagId, tags.id))
+      .where(eq(requirementTags.requirementId, id));
+
     const r = result[0];
     return {
       id: r.id,
       title: r.title,
       description: r.description,
       priority: r.priority,
-      tags: r.tags,
+      tags: requirementTagsData.map((t) => ({
+        id: t.tagId,
+        name: t.tagName,
+        color: t.tagColor,
+      })),
       sourceDocumentId: r.sourceDocumentId,
       sourceDocumentName: r.sourceDocumentName,
       sourceSection: r.sourceSection,
@@ -1107,7 +1274,6 @@ export async function exportRequirementsCsv(): Promise<{
         title: requirements.title,
         description: requirements.description,
         priority: requirements.priority,
-        tags: requirements.tags,
         externalId: requirements.externalId,
         externalUrl: requirements.externalUrl,
         coverageStatus: requirementCoverageSnapshots.status,
@@ -1123,6 +1289,27 @@ export async function exportRequirementsCsv(): Promise<{
       )
       .where(eq(requirements.projectId, project.id))
       .orderBy(desc(requirements.createdAt));
+
+    // Fetch tags for all requirements
+    const requirementIds = results.map((r) => r.id);
+    const allTags =
+      requirementIds.length > 0
+        ? await db
+            .select({
+              requirementId: requirementTags.requirementId,
+              tagName: tags.name,
+            })
+            .from(requirementTags)
+            .innerJoin(tags, eq(requirementTags.tagId, tags.id))
+            .where(inArray(requirementTags.requirementId, requirementIds))
+        : [];
+
+    // Build a map of requirementId -> comma-separated tag names
+    const tagsMap = new Map<string, string>();
+    allTags.forEach(({ requirementId, tagName }) => {
+      const existing = tagsMap.get(requirementId);
+      tagsMap.set(requirementId, existing ? `${existing}, ${tagName}` : tagName);
+    });
 
     // CSV header
     const headers = [
@@ -1158,7 +1345,7 @@ export async function exportRequirementsCsv(): Promise<{
       escapeCSV(r.description),
       escapeCSV(r.priority ?? ""),
       escapeCSV(r.coverageStatus ?? "missing"),
-      escapeCSV(r.tags),
+      escapeCSV(tagsMap.get(r.id) ?? ""),
       String(r.linkedTestCount ?? 0),
       String(r.passedTestCount ?? 0),
       String(r.failedTestCount ?? 0),

@@ -48,6 +48,7 @@ export async function GET(
         id: tags.id,
         name: tags.name,
         color: tags.color,
+        createdByUserId: tags.createdByUserId,
       })
       .from(testTags)
       .innerJoin(tags, eq(testTags.tagId, tags.id))
@@ -127,6 +128,7 @@ export async function POST(
         id: tags.id,
         name: tags.name,
         color: tags.color,
+        createdByUserId: tags.createdByUserId,
       })
       .from(testTags)
       .innerJoin(tags, eq(testTags.tagId, tags.id))

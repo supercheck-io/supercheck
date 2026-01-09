@@ -46,7 +46,9 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   REDIS_TLS_REJECT_UNAUTHORIZED: ${REDIS_TLS_REJECT_UNAUTHORIZED:-true}
 
   # App Configuration
+  APP_URL: ${APP_URL}
   NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN}
   BETTER_AUTH_URL: ${BETTER_AUTH_URL}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
@@ -305,21 +307,45 @@ services:
       start_period: 120s # Increased to allow for migrations
     labels:
       - "traefik.enable=true"
+
+      # Main app router
       - "traefik.http.routers.app.rule=Host(`${APP_DOMAIN}`)"
+      - "traefik.http.routers.app.priority=100"
       - "traefik.http.routers.app.entrypoints=websecure"
       - "traefik.http.routers.app.tls.certresolver=myresolver"
-      - "traefik.http.routers.app-web.rule=Host(`${APP_DOMAIN}`)"
-      - "traefik.http.routers.app-web.entrypoints=web"
-      - "traefik.http.routers.app-web.middlewares=app-https-redirect"
+      - "traefik.http.routers.app.service=app"
+
+      # Status pages — wildcard subdomain
+      - "traefik.http.routers.status-pages.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN}`)"
+      - "traefik.http.routers.status-pages.priority=50"
+      - "traefik.http.routers.status-pages.entrypoints=websecure"
+      - "traefik.http.routers.status-pages.tls.certresolver=myresolver"
+      - "traefik.http.routers.status-pages.service=app"
+
+      # HTTP → HTTPS redirect for main app
+      - "traefik.http.routers.app-http.rule=Host(`${APP_DOMAIN}`)"
+      - "traefik.http.routers.app-http.entrypoints=web"
+      - "traefik.http.routers.app-http.middlewares=app-https-redirect"
+      - "traefik.http.routers.app-http.service=app"
+
+      # HTTP → HTTPS redirect for status pages
+      - "traefik.http.routers.status-pages-http.rule=HostRegexp(`[a-zA-Z0-9-]+\\.${STATUS_PAGE_DOMAIN}`)"
+      - "traefik.http.routers.status-pages-http.entrypoints=web"
+      - "traefik.http.routers.status-pages-http.middlewares=app-https-redirect"
+      - "traefik.http.routers.status-pages-http.service=app"
+
+      # Redirect middleware & service config
       - "traefik.http.middlewares.app-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.services.app.loadbalancer.server.port=3000"
+      - "traefik.http.services.app.loadbalancer.healthCheck.path=/api/health"
     networks:
       - supercheck-network
     deploy:
+      replicas: ${APP_REPLICAS:-2}
       resources:
         limits:
-          cpus: "1.0"
-          memory: 2G
+          cpus: "1.5"
+          memory: 3G
         reservations:
           cpus: "0.5"
           memory: 1G

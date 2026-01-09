@@ -5,7 +5,8 @@ import { tests, projects, apikey } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { logAuditEvent } from "@/lib/audit-logger";
 import { subscriptionService } from "@/lib/services/subscription-service";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { buildPermissionContext, getUserRole, getUserAssignedProjects } from "@/lib/rbac/middleware";
+import { hasPermission as checkPermission } from "@/lib/rbac/permissions";
 import { verifyApiKey } from "@/lib/security/api-key-hash";
 import { createLogger } from "@/lib/logger/pino-config";
 
@@ -146,10 +147,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const canCreate = await hasPermission("test", "create", {
+    // Build permission context for the API key user (not session-based)
+    // This is required because this endpoint uses API key authentication
+    const userRole = await getUserRole(userId, project[0].organizationId || undefined);
+    const assignedProjects = await getUserAssignedProjects(userId);
+    
+    const permissionContext = {
+      userId,
+      role: userRole,
       organizationId: project[0].organizationId || undefined,
       projectId: data.projectId,
-    });
+      assignedProjectIds: assignedProjects,
+    };
+
+    const canCreate = checkPermission(permissionContext, "test", "create");
 
     if (!canCreate) {
       return NextResponse.json(

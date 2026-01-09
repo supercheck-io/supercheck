@@ -501,9 +501,9 @@ export function DocumentsList({ canUpload = false }: DocumentsListProps) {
     };
 
     return (
-        <div className="space-y-4 pt-4">
+        <div className="space-y-4 pt-4 max-h-[calc(100vh-210px)] flex flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between shrink-0">
                 <div>
                     <h2 className="text-2xl font-semibold text-foreground/90">Documents</h2>
                     <p className="text-muted-foreground text-sm">
@@ -520,20 +520,26 @@ export function DocumentsList({ canUpload = false }: DocumentsListProps) {
 
             {/* Documents Grid or Empty State */}
             {isLoading ? (
-                <SuperCheckLoading className="h-[200px]" />
+                <div className="flex-1 overflow-y-auto">
+                    <SuperCheckLoading className="h-[200px]" />
+                </div>
             ) : documents.length === 0 ? (
-                <EmptyDocumentsState onUpload={() => setUploadDialogOpen(true)} />
+                <div className="flex-1 overflow-y-auto">
+                    <EmptyDocumentsState onUpload={() => setUploadDialogOpen(true)} />
+                </div>
             ) : (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {documents.map((doc) => (
-                        <DocumentCard
-                            key={doc.id}
-                            document={doc}
-                            onView={() => handleView(doc.id)}
-                            onDelete={() => handleDelete(doc.id)}
-                            onDownload={() => handleDownload(doc.id)}
-                        />
-                    ))}
+                <div className="flex-1 overflow-y-auto min-h-0 pr-2 -mr-2">
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 pb-4">
+                        {documents.map((doc) => (
+                            <DocumentCard
+                                key={doc.id}
+                                document={doc}
+                                onView={() => handleView(doc.id)}
+                                onDelete={() => handleDelete(doc.id)}
+                                onDownload={() => handleDownload(doc.id)}
+                            />
+                        ))}
+                    </div>
                 </div>
             )}
 

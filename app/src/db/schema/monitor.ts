@@ -123,6 +123,9 @@ export const monitorResults = pgTable(
     // For synthetic monitors - store test execution metadata
     testExecutionId: text("test_execution_id"), // Unique execution ID (for accessing reports)
     testReportS3Url: text("test_report_s3_url"), // Full S3 URL to the report
+    // PERFORMANCE: First-class column for multi-location aggregation
+    // Used by distributed workers to group results from the same execution cycle
+    executionGroupId: text("execution_group_id"),
   },
   (table) => ({
     // Composite index for efficient location-based queries
@@ -135,8 +138,14 @@ export const monitorResults = pgTable(
       table.monitorId,
       table.checkedAt
     ),
+    // PERFORMANCE: Index for multi-location aggregation queries
+    executionGroupIdx: index("monitor_results_execution_group_idx").on(
+      table.monitorId,
+      table.executionGroupId
+    ),
   })
 );
+
 
 // Zod schemas for monitors
 export const monitorsInsertSchema = createInsertSchema(monitors);

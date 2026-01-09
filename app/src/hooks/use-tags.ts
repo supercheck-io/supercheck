@@ -188,3 +188,69 @@ export function useSaveTestTags() {
     },
   });
 }
+
+// ============================================================================
+// REQUIREMENT TAG HOOKS
+// ============================================================================
+
+export const REQUIREMENT_TAGS_QUERY_KEY = ["requirement-tags"] as const;
+
+async function fetchRequirementTags(requirementId: string): Promise<Tag[]> {
+  const response = await fetch(`/api/requirements/${requirementId}/tags`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch requirement tags");
+  }
+  return response.json();
+}
+
+async function saveRequirementTagsApi(requirementId: string, tagIds: string[]): Promise<void> {
+  const response = await fetch(`/api/requirements/${requirementId}/tags`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tagIds }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to save requirement tags");
+  }
+}
+
+/**
+ * Hook to fetch tags for a specific requirement with React Query caching.
+ * Mirrors useTestTags for consistency.
+ */
+export function useRequirementTags(requirementId: string | null): UseQueryResult<Tag[], Error> & { requirementTags: Tag[] } {
+  const result = useQuery({
+    queryKey: [...REQUIREMENT_TAGS_QUERY_KEY, requirementId],
+    queryFn: () => fetchRequirementTags(requirementId!),
+    enabled: !!requirementId,
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  return {
+    ...result,
+    requirementTags: result.data ?? EMPTY_TAGS_ARRAY,
+  };
+}
+
+/**
+ * Hook for saving requirement tags with automatic cache invalidation.
+ * Mirrors useSaveTestTags for consistency.
+ */
+export function useSaveRequirementTags() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ requirementId, tagIds }: { requirementId: string; tagIds: string[] }) => {
+      if (!requirementId) throw new Error("Requirement ID is required");
+      return saveRequirementTagsApi(requirementId, tagIds);
+    },
+    onSuccess: () => {
+      // Invalidate requirement tags queries and requirements list
+      queryClient.invalidateQueries({ queryKey: REQUIREMENT_TAGS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["requirements"] });
+    },
+  });
+}
+

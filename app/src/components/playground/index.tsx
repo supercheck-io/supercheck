@@ -627,16 +627,24 @@ const Playground: React.FC<PlaygroundProps> = ({
   // Listen for recorded code from SuperCheck Recorder extension
   useEffect(() => {
     const handleRecordedCode = (event: MessageEvent) => {
+      // Security: Validate origin to prevent cross-origin attacks
+      if (event.origin !== window.location.origin) return;
       if (event.data?.source !== "supercheck-recorder") return;
       if (event.data?.type !== "SUPERCHECK_RECORDED_CODE") return;
       
-      const { code } = event.data.payload || {};
-      if (code) {
-        setEditorContent(code);
-        setTestCase((prev) => ({ ...prev, script: code }));
-        setShowRecordingBanner(false);
-        toast.success("Recording saved to editor");
+      const payload = event.data?.payload;
+      const code = payload?.code;
+      
+      // Validate that code is a string before using it
+      if (typeof code !== "string" || code.length === 0) {
+        console.warn("[Playground] Invalid recorder payload received");
+        return;
       }
+      
+      setEditorContent(code);
+      setTestCase((prev) => ({ ...prev, script: code }));
+      setShowRecordingBanner(false);
+      toast.success("Recording saved to editor");
     };
 
     window.addEventListener("message", handleRecordedCode);

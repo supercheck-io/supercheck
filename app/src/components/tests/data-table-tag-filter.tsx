@@ -43,21 +43,25 @@ export function DataTableTagFilter<TData, TValue>({
 
   const selectedValues = new Set(column?.getFilterValue() as string[]);
 
+  // Get faceted row model for counting - need to include this in the dependency
+  const facetedRows = column?.getFacetedRowModel()?.rows;
+
   const facets = React.useMemo(() => {
     const newFacets = new Map<string, number>();
-    const rows = column?.getFacetedRowModel().rows;
-    if (rows && column) {
-      rows.forEach((row) => {
+    if (facetedRows && column) {
+      facetedRows.forEach((row) => {
         const tags = row.getValue(column.id) as Tag[] | undefined;
-        if (tags) {
+        if (tags && Array.isArray(tags)) {
           tags.forEach((tag) => {
-            newFacets.set(tag.name, (newFacets.get(tag.name) || 0) + 1);
+            if (tag.name) {
+              newFacets.set(tag.name, (newFacets.get(tag.name) || 0) + 1);
+            }
           });
         }
       });
     }
     return newFacets;
-  }, [column]);
+  }, [column, facetedRows]);
 
   const selectedTags = availableTags.filter((tag) => selectedValues.has(tag.name));
 

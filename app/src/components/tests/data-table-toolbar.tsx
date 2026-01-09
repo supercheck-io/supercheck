@@ -1,5 +1,5 @@
 import type { Table } from "@tanstack/react-table";
-import { PlusIcon, X, Search, Video, ChevronDown } from "lucide-react";
+import { PlusIcon, X, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,14 +12,8 @@ import { DataTableFacetedFilter } from "./data-table-faceted-filter";
 import { DataTableTagFilter } from "./data-table-tag-filter";
 import { useTestPermissions } from "@/hooks/use-rbac-permissions";
 import { useProjectContext } from "@/hooks/use-project-context";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { RecordButton } from "@/components/recorder";
+
+
 
 interface DataTableToolbarProps<TData> {
   table: Table<TData>;
@@ -87,49 +81,18 @@ export function DataTableToolbar<TData>({
           />
         )}
         <DataTableViewOptions table={table} />
-        
-        {/* Record Browser Test Button */}
-        <RecordButton
-          projectId={currentProject?.id || ""}
-          variant="outline"
-          size="default"
-          className="gap-2"
-        >
-          <Video className="h-4 w-4" />
-          Record
-        </RecordButton>
+
+
 
         {/* Create Test Dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              disabled={!canCreateTest}
-              data-testid="create-test-button"
-            >
-              <PlusIcon className="h-4 w-4 mr-2" />
-              Create Test
-              <ChevronDown className="h-4 w-4 ml-2" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => router.push("/playground?scriptType=browser")}>
-              Browser Test
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/playground?scriptType=api")}>
-              API Test
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/playground?scriptType=database")}>
-              Database Test
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/playground?scriptType=custom")}>
-              Custom Test
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => router.push("/playground?scriptType=performance")}>
-              Performance Test (k6)
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Button
+          disabled={!canCreateTest}
+          data-testid="create-test-button"
+          onClick={() => router.push("/tests/create")}
+        >
+          <PlusIcon className="h-4 w-4 mr-2" />
+          Create Test
+        </Button>
       </div>
     </div>
   );

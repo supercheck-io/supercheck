@@ -52,7 +52,10 @@ export default function EditRequirementPage({ params }: { params: Promise<{ id: 
                     title: requirement.title,
                     description: requirement.description ?? undefined,
                     priority: requirement.priority ?? undefined,
-                    tags: requirement.tags,
+                    // Convert tag objects to comma-separated string for form
+                    tags: Array.isArray(requirement.tags)
+                        ? requirement.tags.map(t => t.name).join(", ")
+                        : (requirement.tags ?? undefined),
                     externalId: requirement.externalId,
                     externalUrl: requirement.externalUrl,
                     externalProvider: requirement.externalProvider,

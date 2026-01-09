@@ -64,7 +64,6 @@ import { formatDistanceToNow } from "date-fns";
 import { useRequirements, useRequirementMutations } from "@/hooks/use-requirements";
 import { useTags } from "@/hooks/use-tags";
 import { useRequirementPermissions } from "@/hooks/use-rbac-permissions";
-import { useProjectContext } from "@/hooks/use-project-context";
 
 import { getLinkedTests } from "@/actions/requirements";
 import { useQuery } from "@tanstack/react-query";
@@ -99,7 +98,6 @@ export default function RequirementsPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { canCreateRequirement, canEditRequirement, canDeleteRequirement } = useRequirementPermissions();
-    const { currentProject } = useProjectContext();
 
 
 
@@ -113,28 +111,20 @@ export default function RequirementsPage() {
     const { requirements: rawRequirements, isLoading, invalidate } = useRequirements();
     const { deleteRequirement: deleteMutation } = useRequirementMutations();
 
-    // Fetch available tags for coloring
+    // Fetch available tags for coloring (used for fallback if tag doesn't have color)
     const { tags: availableTags } = useTags();
 
-    // Transform to UI format
+    // Transform to UI format - tags now come as proper objects from API
     const requirements = useMemo<Requirement[]>(() => {
         if (!rawRequirements) return [];
         return rawRequirements.map((r: RequirementWithCoverage) => ({
             ...r,
-            tags: r.tags
-                ? r.tags.split(",").map((name, index) => {
-                    const tagName = name.trim().toLowerCase();
-                    // Find actual tag from DB to get color
-                    const dbTag = availableTags.find(t => t.name.toLowerCase() === tagName);
-
-                    return {
-                        id: `tag-${r.id}-${index}`,
-                        name: tagName,
-                        // Priority: "ai" override > DB color > null
-                        color: tagName === "ai" ? "#a855f7" : (dbTag?.color || null),
-                    };
-                })
-                : [],
+            // Tags are now proper objects from the API
+            // Apply "ai" tag special color if needed
+            tags: (r.tags || []).map((tag) => ({
+                ...tag,
+                color: tag.name === "ai" ? "#a855f7" : (tag.color || availableTags.find(t => t.id === tag.id)?.color || null),
+            })),
         }));
     }, [rawRequirements, availableTags]);
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
-import { tags, testTags } from '@/db/schema';
+import { tags, testTags, requirementTags } from '@/db/schema';
 import { eq, count, and } from 'drizzle-orm';
 import { hasPermission } from '@/lib/rbac/middleware';
 import { requireProjectContext } from '@/lib/project-context';
@@ -50,17 +50,36 @@ export async function DELETE(
       .from(testTags)
       .where(eq(testTags.tagId, tagId));
 
-    const usageCount = testUsageCount[0]?.count ?? 0;
+    // Check if the tag is being used in any requirements
+    const requirementUsageCount = await db
+      .select({ count: count() })
+      .from(requirementTags)
+      .where(eq(requirementTags.tagId, tagId));
 
-    if (usageCount > 0) {
+    const testCount = testUsageCount[0]?.count ?? 0;
+    const requirementCount = requirementUsageCount[0]?.count ?? 0;
+    const totalUsageCount = testCount + requirementCount;
+
+    if (totalUsageCount > 0) {
+      // Build a descriptive error message
+      const usageDetails: string[] = [];
+      if (testCount > 0) {
+        usageDetails.push(`${testCount} test${testCount === 1 ? '' : 's'}`);
+      }
+      if (requirementCount > 0) {
+        usageDetails.push(`${requirementCount} requirement${requirementCount === 1 ? '' : 's'}`);
+      }
+      
       return NextResponse.json({ 
-        error: `Cannot delete tag "${existingTag[0].name}" because it is currently used in ${usageCount} test${usageCount === 1 ? '' : 's'}. Please remove the tag from all tests before deleting it.`,
-        usageCount,
+        error: `Cannot delete tag "${existingTag[0].name}" because it is currently used in ${usageDetails.join(' and ')}. Please remove the tag from all resources before deleting it.`,
+        usageCount: totalUsageCount,
+        testCount,
+        requirementCount,
         tagName: existingTag[0].name
       }, { status: 409 });
     }
 
-    // Delete the tag (cascading deletes will handle testTags and monitorTags)
+    // Delete the tag
     await db
       .delete(tags)
       .where(eq(tags.id, tagId));

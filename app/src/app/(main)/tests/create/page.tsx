@@ -5,9 +5,7 @@ import { SelectionCard } from "@/components/create/selection-card";
 import { types } from "@/components/tests/data";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { Card, CardContent } from "@/components/ui/card";
-import { Video } from "lucide-react";
-import { RecordButton } from "@/components/recorder";
-import { useProjectContext } from "@/hooks/use-project-context";
+
 
 const breadcrumbs = [
   { label: "Home", href: "/" },
@@ -27,7 +25,7 @@ const testDescriptions: Record<string, string> = {
 
 export default function CreateTestPage() {
   const router = useRouter();
-  const { currentProject } = useProjectContext();
+
 
   const testTypes = types.map((type) => ({
     icon: <type.icon size={32} className={type.color} />,
@@ -50,24 +48,7 @@ export default function CreateTestPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {/* Record Browser Test - First Option */}
-            <div className="min-h-[180px] group relative cursor-pointer rounded-lg border border-border/60 bg-card p-6 transition-all hover:border-red-500/50 hover:shadow-md">
-              <RecordButton
-                projectId={currentProject?.id || ""}
-                variant="ghost"
-                className="absolute inset-0 w-full h-full flex flex-col items-start justify-start p-6 hover:bg-transparent"
-              >
-                <div className="mb-4">
-                  <Video size={32} className="text-red-500" />
-                </div>
-                <h3 className="text-lg font-semibold mb-2 group-hover:text-red-500 transition-colors">
-                  Record Browser Test
-                </h3>
-                <p className="text-sm text-muted-foreground text-left">
-                  Record browser interactions with SuperCheck Recorder and save directly.
-                </p>
-              </RecordButton>
-            </div>
+
 
             {testTypes.map((test) => (
               <SelectionCard

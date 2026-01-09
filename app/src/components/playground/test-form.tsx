@@ -265,14 +265,14 @@ export function TestForm({
       return;
     }
 
-    // Only initialize once when fetchedTestTags is available (even if empty array)
+    // Only initialize once when fetchedTestTags is available AND loading is complete
     // Using !== undefined to handle tests with zero tags properly
-    if (!hasInitializedTagsRef.current && fetchedTestTags !== undefined) {
+    if (!hasInitializedTagsRef.current && !isLoadingTestTags && fetchedTestTags !== undefined) {
       hasInitializedTagsRef.current = true;
       setSelectedTags(fetchedTestTags);
       setInitialTags(fetchedTestTags);
     }
-  }, [fetchedTestTags, testId]);
+  }, [fetchedTestTags, testId, isLoadingTestTags]);
 
   // Handle tag creation - uses mutation hook with automatic cache invalidation
   const handleCreateTag = async (
@@ -595,7 +595,7 @@ export function TestForm({
 
             // Invalidate React Query cache to ensure fresh data on tests page
             queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY, refetchType: 'all' });
-            
+
             // If linked to a requirement, also invalidate requirements cache for updated counts
             if (initialLinkedRequirement?.id) {
               queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });

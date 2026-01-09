@@ -18,6 +18,7 @@ import { organization, projects } from "./organization";
 import { user } from "./auth";
 import { monitors } from "./monitor";
 import { tests } from "./test";
+import { requirements } from "./requirement";
 
 /**
  * A table for tags that can be applied to monitors for organization and filtering.
@@ -88,6 +89,25 @@ export const testTags = pgTable(
   })
 );
 
+/**
+ * A join table linking requirements to tags.
+ */
+export const requirementTags = pgTable(
+  "requirement_tags",
+  {
+    requirementId: uuid("requirement_id")
+      .notNull()
+      .references(() => requirements.id, { onDelete: "cascade" }),
+    tagId: uuid("tag_id")
+      .notNull()
+      .references(() => tags.id, { onDelete: "cascade" }),
+    assignedAt: timestamp("assigned_at").defaultNow(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.requirementId, table.tagId] }),
+  })
+);
+
 // Zod schemas for tags
 export const tagsInsertSchema = createInsertSchema(tags);
 export const tagsSelectSchema = createSelectSchema(tags);
@@ -95,3 +115,7 @@ export const tagsSelectSchema = createSelectSchema(tags);
 // Zod schemas for tag associations
 export const testTagsInsertSchema = createInsertSchema(testTags);
 export const testTagsSelectSchema = createSelectSchema(testTags);
+
+// Zod schemas for requirement tag associations
+export const requirementTagsInsertSchema = createInsertSchema(requirementTags);
+export const requirementTagsSelectSchema = createSelectSchema(requirementTags);

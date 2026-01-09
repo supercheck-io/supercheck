@@ -48,19 +48,24 @@ export function RecorderAutoConnect() {
         }),
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        // If already connected, that's fine
-        if (error.message === "Extension already connected") {
-          extensionConnectedRef.current = true;
-          return;
-        }
-        throw new Error(error.error || "Failed to generate API key");
-      }
-
       const data = await response.json();
 
-      // Send credentials to extension
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to generate API key");
+      }
+
+      // If extension already connected, no new key was generated
+      if (data.data?.message === "Extension already connected") {
+        extensionConnectedRef.current = true;
+        return;
+      }
+
+      // Only send credentials when we have a new API key
+      if (!data.data?.apiKey) {
+        throw new Error("No API key returned");
+      }
+
+      // Send credentials to extension (same-origin for security)
       window.postMessage(
         {
           type: MESSAGE_TYPES.AUTO_CONNECT,
@@ -71,7 +76,7 @@ export function RecorderAutoConnect() {
             userEmail: session.user.email,
           },
         },
-        "*"
+        window.location.origin
       );
     } catch (error) {
       console.error("[SuperCheck] Failed to auto-connect extension:", error);
@@ -115,8 +120,8 @@ export function RecorderAutoConnect() {
 
     window.addEventListener("message", handleMessage);
 
-    // Check if extension is already installed
-    window.postMessage({ type: MESSAGE_TYPES.CHECK_EXTENSION }, "*");
+    // Check if extension is already installed (same-origin for security)
+    window.postMessage({ type: MESSAGE_TYPES.CHECK_EXTENSION }, window.location.origin);
 
     return () => {
       window.removeEventListener("message", handleMessage);
