@@ -15,7 +15,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { useSearchParams } from "next/navigation";
 import {
@@ -32,7 +31,7 @@ import { NotificationProviderForm } from "@/components/alerts/notification-provi
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, BellRing, Mail } from "lucide-react";
 import { DataTable } from "@/components/alerts/data-table";
-import { columns, type AlertHistory } from "@/components/alerts/columns";
+import { columns } from "@/components/alerts/columns";
 
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { toast } from "sonner";
@@ -46,25 +45,26 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { canCreateNotifications } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
+import {
+  useNotificationProviders,
+  useAlertHistory,
+  useNotificationProviderMutations,
+  type NotificationProvider,
+} from "@/hooks/use-alerts";
 
-type NotificationProvider = {
-  id: string;
-  name: string;
-  type: NotificationProviderType;
-  config: NotificationProviderConfig;
-  isEnabled: boolean;
-  createdAt: string;
-  updatedAt?: string;
-  lastUsed?: string;
-  isInUse?: boolean;
-  maskedFields?: string[];
-};
-
+/**
+ * AlertsPage - Notification channel management and alert history
+ * 
+ * PERFORMANCE: Uses React Query hooks (useNotificationProviders, useAlertHistory)
+ * which are prefetched by DataPrefetcher for instant loading.
+ */
 function AlertsPage() {
-  const [providers, setProviders] = useState<NotificationProvider[]>([]);
-  const [alertHistory, setAlertHistory] = useState<AlertHistory[]>([]);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // PERFORMANCE: Use React Query hooks - data is prefetched by DataPrefetcher
+  const { providers, isLoading: providersLoading, invalidate: invalidateProviders } = useNotificationProviders();
+  const { alertHistory, isLoading: historyLoading } = useAlertHistory();
+  const { createProvider, updateProvider, deleteProvider } = useNotificationProviderMutations();
 
   // Get user permissions
   const { currentProject } = useProjectContext();
@@ -76,7 +76,6 @@ function AlertsPage() {
     useState<NotificationProvider | null>(null);
   const [deletingProvider, setDeletingProvider] =
     useState<NotificationProvider | null>(null);
-  const [loading, setLoading] = useState(true);
   const searchParams = useSearchParams();
   const [preselectedType, setPreselectedType] = useState<
     NotificationProviderType | undefined
@@ -102,91 +101,13 @@ function AlertsPage() {
     { label: "Alerts", isCurrentPage: true },
   ];
 
-  useEffect(() => {
-    // Load providers from API and alert history
-    const loadData = async () => {
-      try {
-        const [providersResponse, historyResponse] = await Promise.all([
-          fetch("/api/notification-providers"),
-          fetch("/api/alerts/history"),
-        ]);
-
-        if (providersResponse.ok) {
-          const data = await providersResponse.json();
-          // Transform the data to match our interface
-          const transformedData: NotificationProvider[] = data.map(
-            (provider: NotificationProvider) => ({
-              id: provider.id,
-              name: provider.name,
-              type: provider.type,
-              config: provider.config,
-              isEnabled: provider.isEnabled,
-              createdAt: provider.createdAt,
-              updatedAt: provider.updatedAt,
-              lastUsed: provider.lastUsed,
-              maskedFields: provider.maskedFields || [],
-            })
-          );
-          setProviders(transformedData);
-        } else {
-          console.error("Failed to fetch notification providers");
-          setProviders([]);
-        }
-
-        if (historyResponse.ok) {
-          const historyData = await historyResponse.json();
-          setAlertHistory(historyData);
-        } else {
-          const errorText = await historyResponse.text();
-          console.error(
-            "Failed to fetch alert history:",
-            historyResponse.status,
-            errorText
-          );
-          setAlertHistory([]);
-        }
-      } catch (error) {
-        console.error("Error loading data:", error);
-        setProviders([]);
-        setAlertHistory([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadData();
-  }, []);
-
   const handleCreateProvider = async (newProvider: {
     type: string;
     config: Record<string, unknown>;
   }) => {
-    const response = await fetch("/api/notification-providers", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name:
-          (newProvider.config as Record<string, unknown>)?.name ||
-          `New ${newProvider.type} Channel`,
-        type: newProvider.type,
-        config: newProvider.config,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (response.ok) {
-      setProviders((prev) => [...prev, data]);
-      setIsCreateDialogOpen(false);
-      setRefreshTrigger((prev) => prev + 1);
-      toast.success("Notification channel created successfully");
-    } else {
-      console.error("Failed to create notification provider:", data);
-      // Throw error so the form knows the operation failed
-      throw new Error(data.error || "Failed to create notification channel");
-    }
+    await createProvider.mutateAsync(newProvider);
+    setIsCreateDialogOpen(false);
+    toast.success("Notification channel created successfully");
   };
 
   const handleEditProvider = (provider: NotificationProvider) => {
@@ -199,72 +120,14 @@ function AlertsPage() {
     config: Record<string, unknown>;
   }) => {
     if (editingProvider) {
-      const response = await fetch(
-        `/api/notification-providers/${editingProvider.id}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name:
-              (updatedProvider.config as Record<string, unknown>)?.name ||
-              editingProvider.name,
-            type: updatedProvider.type,
-            config: updatedProvider.config,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setProviders((prev) =>
-          prev.map((p) => (p.id === editingProvider.id ? data : p))
-        );
-        setIsEditDialogOpen(false);
-        setEditingProvider(null);
-        setRefreshTrigger((prev) => prev + 1);
-        toast.success("Notification channel updated successfully");
-      } else {
-        console.error("Failed to update notification provider:", data);
-        // Throw error so the form knows the operation failed
-        throw new Error(data.error || "Failed to update notification channel");
-      }
-    }
-  };
-
-  const handleDeleteProvider = async (providerId: string) => {
-    try {
-      const response = await fetch(
-        `/api/notification-providers/${providerId}`,
-        {
-          method: "DELETE",
-        }
-      );
-
-      if (response.ok) {
-        setProviders((prev) => prev.filter((p) => p.id !== providerId));
-        setIsDeleteDialogOpen(false);
-        setDeletingProvider(null);
-        setRefreshTrigger((prev) => prev + 1);
-        toast.success("Notification channel deleted successfully");
-      } else {
-        const errorData = await response.json();
-        console.error(
-          "Failed to delete notification provider:",
-          errorData.error || response.statusText
-        );
-        toast.error("Failed to delete notification channel", {
-          description:
-            errorData.error || errorData.details || "Please try again",
-        });
-      }
-    } catch (error) {
-      console.error("Error deleting notification provider:", error);
-      toast.error("Failed to delete notification channel", {
-        description: "An unexpected error occurred",
+      await updateProvider.mutateAsync({
+        id: editingProvider.id,
+        type: updatedProvider.type,
+        config: updatedProvider.config,
       });
+      setIsEditDialogOpen(false);
+      setEditingProvider(null);
+      toast.success("Notification channel updated successfully");
     }
   };
 
@@ -306,7 +169,16 @@ function AlertsPage() {
         return;
       }
 
-      await handleDeleteProvider(deletingProvider.id);
+      try {
+        await deleteProvider.mutateAsync(deletingProvider.id);
+        toast.success("Notification channel deleted successfully");
+      } catch (error) {
+        console.error("Error deleting provider:", error);
+        toast.error("Failed to delete notification channel");
+      } finally {
+        setIsDeleteDialogOpen(false);
+        setDeletingProvider(null);
+      }
     }
   };
 
@@ -337,6 +209,9 @@ function AlertsPage() {
     };
     handleDeleteProviderWithConfirmation(provider);
   };
+
+  // Combined loading state - show loading only if both are loading
+  const isLoading = providersLoading && historyLoading;
 
   return (
     <div className="">
@@ -375,7 +250,7 @@ function AlertsPage() {
                   </Button>
                 </div>
 
-                {providers.length === 0 ? (
+                {providers.length === 0 && !providersLoading ? (
                   <DashboardEmptyState
                     className="min-h-[60vh]"
                     title="No notification channels"
@@ -405,14 +280,14 @@ function AlertsPage() {
                       updatedAt: p.updatedAt || p.createdAt,
                       lastUsed: p.lastUsed,
                     }))}
-                    refreshTrigger={refreshTrigger}
+                    refreshTrigger={0}
                   />
                 )}
               </TabsContent>
 
               <TabsContent value="history" className="space-y-4">
                 <div className="h-full flex-1 flex-col md:flex">
-                  {alertHistory.length === 0 && !loading ? (
+                  {alertHistory.length === 0 && !historyLoading ? (
                     <DashboardEmptyState
                       className="min-h-[60vh]"
                       title="No alerts found"
@@ -432,7 +307,7 @@ function AlertsPage() {
                     <DataTable
                       columns={columns}
                       data={alertHistory}
-                      isLoading={loading}
+                      isLoading={historyLoading}
                     />
                   )}
                 </div>

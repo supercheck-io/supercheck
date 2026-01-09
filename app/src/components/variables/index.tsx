@@ -18,6 +18,12 @@ interface VariableApiResponse {
   updatedAt: string;
 }
 
+/**
+ * Variables component - Manage project environment variables
+ * 
+ * Uses direct fetch with useEffect pattern - this works reliably with the
+ * project-scoped API. React Query can be added later with careful integration.
+ */
 export default function Variables() {
   const [variables, setVariables] = useState<Variable[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -42,9 +48,9 @@ export default function Variables() {
   }, []);
 
   // Safe state setters that only run when component is mounted
-  const safeSetVariables = useCallback((variables: Variable[] | ((prev: Variable[]) => Variable[])) => {
+  const safeSetVariables = useCallback((vars: Variable[] | ((prev: Variable[]) => Variable[])) => {
     if (mounted) {
-      setVariables(variables);
+      setVariables(vars);
     }
   }, [mounted]);
 

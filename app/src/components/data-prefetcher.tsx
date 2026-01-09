@@ -9,7 +9,11 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { TESTS_QUERY_KEY } from "@/hooks/use-tests";
 import { JOBS_QUERY_KEY } from "@/hooks/use-jobs";
 import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
-import { getStatusPages } from "@/actions/get-status-pages";
+import { STATUS_PAGES_QUERY_KEY } from "@/hooks/use-status-pages";
+import { NOTIFICATION_PROVIDERS_QUERY_KEY, ALERTS_HISTORY_QUERY_KEY } from "@/hooks/use-alerts";
+
+// Variables query key - inline since hook is not used by Variables component
+const VARIABLES_QUERY_KEY = ["variables"] as const;
 
 /**
  * DataPrefetcher - Parallel data prefetching for critical app data
@@ -23,15 +27,17 @@ import { getStatusPages } from "@/actions/get-status-pages";
  * - Admin status (super admin, org admin)
  * - Subscription status (for cloud mode)
  *
- * Phase 2 - After project context is available:
+ * Phase 2 - Immediately when project context is available:
  * - Tests list (for Tests page and sidebar)
  * - Jobs list (for Jobs page and sidebar)
  * - Monitors list (for Monitors page and sidebar)
  * - Variables (for Variables page)
  * - Status Pages (for Status Pages page)
+ * - Notification Providers (for Alerts page)
+ * - Alert History (for Alerts page)
  *
- * This doesn't block rendering - it just warms the React Query cache
- * so that when components need this data, it's already available.
+ * CRITICAL: Phase 2 runs IMMEDIATELY (no delay) to ensure data is prefetched
+ * BEFORE page components mount and start their own fetches.
  */
 export function DataPrefetcher() {
   const queryClient = useQueryClient();
@@ -73,8 +79,8 @@ export function DataPrefetcher() {
     prefetchPhase1();
   }, [queryClient]);
 
-  // Phase 2: Prefetch entity lists after project context is available
-  // This runs once per project to warm the cache for sidebar navigation
+  // Phase 2: Prefetch entity lists IMMEDIATELY when project context is available
+  // CRITICAL: No delay - this must run BEFORE page components start their own fetches
   useEffect(() => {
     if (!projectId) return;
 
@@ -95,6 +101,9 @@ export function DataPrefetcher() {
       return response.json();
     };
 
+    // PERFORMANCE FIX: Run prefetch IMMEDIATELY - no requestIdleCallback or setTimeout
+    // The previous implementation delayed prefetching by up to 3 seconds, which allowed
+    // page components to mount and start their own fetches first, causing loading spinners.
     const prefetchPhase2 = async () => {
       const entityPrefetches = [
         // Tests list - warm cache for Tests page
@@ -120,24 +129,30 @@ export function DataPrefetcher() {
 
         // Variables - warm cache for Variables page
         queryClient.prefetchQuery({
-          queryKey: ["variables", projectId],
+          queryKey: [...VARIABLES_QUERY_KEY, projectId],
           queryFn: () => safeFetch(`/api/projects/${projectId}/variables`),
           staleTime: 60 * 1000,
         }),
 
         // Status Pages - warm cache for Status Pages page
-        // Uses server action directly since there's no API endpoint
+        // FIXED: Use correct query key that matches useStatusPages hook
         queryClient.prefetchQuery({
-          queryKey: ["status-pages", projectId],
-          queryFn: () => getStatusPages(),
+          queryKey: [...STATUS_PAGES_QUERY_KEY, projectId, {}],
+          queryFn: () => safeFetch("/api/status-pages"),
           staleTime: 60 * 1000,
         }),
 
-        // Notification Providers - warm cache for Monitor/Job create forms
-        // This makes the Alert Settings step load instantly
+        // Notification Providers - warm cache for Alerts page and Monitor/Job create forms
         queryClient.prefetchQuery({
-          queryKey: ["notification-providers", projectId],
+          queryKey: [...NOTIFICATION_PROVIDERS_QUERY_KEY, projectId],
           queryFn: () => safeFetch("/api/notification-providers"),
+          staleTime: 60 * 1000,
+        }),
+
+        // Alert History - warm cache for Alerts page
+        queryClient.prefetchQuery({
+          queryKey: [...ALERTS_HISTORY_QUERY_KEY, projectId],
+          queryFn: () => safeFetch("/api/alerts/history"),
           staleTime: 60 * 1000,
         }),
 
@@ -152,25 +167,10 @@ export function DataPrefetcher() {
       await Promise.allSettled(entityPrefetches);
     };
 
-    /**
-     * Use requestIdleCallback to run prefetch during browser idle time.
-     * This ensures prefetching doesn't compete with critical page rendering.
-     * Falls back to setTimeout for browsers without requestIdleCallback support.
-     */
-    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      const idleCallbackId = window.requestIdleCallback(
-        () => prefetchPhase2(),
-        { timeout: 3000 } // Run within 3 seconds even if browser is busy
-      );
-      return () => window.cancelIdleCallback(idleCallbackId);
-    } else {
-      // Fallback: 500ms delay for browsers without requestIdleCallback
-      const timerId = setTimeout(() => prefetchPhase2(), 500);
-      return () => clearTimeout(timerId);
-    }
+    // Execute immediately - no delay!
+    prefetchPhase2();
   }, [queryClient, projectId]);
 
   // This component doesn't render anything - it's just for side effects
   return null;
 }
-
