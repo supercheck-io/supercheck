@@ -79,7 +79,6 @@ export function RecordButton({
     try {
       // Check if browser is supported
       if (browser === 'unsupported') {
-        console.log("[RecordButton] Unsupported browser detected");
         setShowUnsupportedDialog(true);
         setIsStarting(false);
         return;
@@ -89,8 +88,6 @@ export function RecordButton({
       const api = getExtensionAPI();
 
       if (!api) {
-        // Extension not installed or content script not loaded
-        console.log("[RecordButton] Extension API not found on window");
         setShowInstallDialog(true);
         setIsStarting(false);
         return;
@@ -100,16 +97,12 @@ export function RecordButton({
       const isConnected = await api.isConnected();
 
       if (!isConnected) {
-        // Extension is installed but orphaned (needs page refresh)
-        console.log("[RecordButton] Extension API found but disconnected from background");
         setShowRefreshDialog(true);
         setIsStarting(false);
         return;
       }
 
       // Store recording context in extension
-      // User will then click extension icon to start recording (required for side panel)
-      console.log("[RecordButton] Storing recording context in extension");
       await api.storeRecordingContext({
         projectId,
         requirementId,
@@ -120,10 +113,11 @@ export function RecordButton({
 
       // Show the instruction modal telling user to click extension icon
       setShowClickExtensionDialog(true);
-      console.log("[RecordButton] Recording context stored, showing instruction modal");
+
+      // Keep button disabled for a bit longer to prevent rapid re-clicks
+      await new Promise(resolve => setTimeout(resolve, 500));
     } catch (error) {
       console.error("[RecordButton] Failed to prepare recording:", error);
-      // If we got an error, show install dialog as fallback
       setShowInstallDialog(true);
     } finally {
       setIsStarting(false);
