@@ -62,7 +62,7 @@ function AlertsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
   // PERFORMANCE: Use React Query hooks - data is prefetched by DataPrefetcher
-  const { providers, isLoading: providersLoading, invalidate: invalidateProviders } = useNotificationProviders();
+  const { providers, isLoading: providersLoading } = useNotificationProviders();
   const { alertHistory, isLoading: historyLoading } = useAlertHistory();
   const { createProvider, updateProvider, deleteProvider } = useNotificationProviderMutations();
 
@@ -210,8 +210,7 @@ function AlertsPage() {
     handleDeleteProviderWithConfirmation(provider);
   };
 
-  // Combined loading state - show loading only if both are loading
-  const isLoading = providersLoading && historyLoading;
+
 
   return (
     <div className="">
