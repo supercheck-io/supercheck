@@ -33,6 +33,10 @@ export const TAGS_QUERY_KEY = ["tags"] as const;
 export const TEST_TAGS_QUERY_KEY = ["test-tags"] as const;
 export const REQUIREMENT_TAGS_QUERY_KEY = ["requirement-tags"] as const;
 
+export function getTagsListQueryKey(projectId: string | null) {
+  return [...TAGS_QUERY_KEY, projectId] as const;
+}
+
 // Constant empty array to avoid creating new references on each render
 const EMPTY_TAGS_ARRAY: Tag[] = [];
 

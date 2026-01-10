@@ -52,7 +52,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-// import { getTests } from "@/actions/get-tests"; // Replaced with API call
+import { useTests } from "@/hooks/use-tests";
+
 
 interface TestSelectorProps {
   selectedTests?: Test[];
@@ -118,98 +119,70 @@ export default function TestSelector({
     [selectedTests]
   );
 
-  // Define the structure expected from the API
-  interface ActionTest {
-    id: string;
-    title: string;
-    description: string | null;
-    type: "browser" | "api" | "custom" | "database" | "performance";
-    updatedAt: string | null;
-    script?: string;
-    priority?: string;
-    createdAt?: string | null;
-    tags?: Array<{ id: string; name: string; color: string | null }>;
-  }
+  // Use React Query hook instead of manual useEffect fetch
+  // This uses the cached data from DataPrefetcher => No duplicate network call
+  const { tests: fetchedTests, loading: isHookLoading } = useTests({
+    enabled: true, // Always enable, let the hook handle caching
+  });
 
-  // Fetch tests from database on component mount
+  // Effect to process fetched tests into component state
   useEffect(() => {
-    async function fetchTests() {
-      setIsLoadingTests(true);
-      try {
-        const response = await fetch("/api/tests");
-        const result = await response.json();
-
-        // API returns { data, pagination } format - extract tests array
-        const testsArray = result?.data ?? result;
-
-        if (response.ok && testsArray) {
-          // Map the API response to the Test type
-          let formattedTests: Test[] = (testsArray as ActionTest[]).map(
-            (test: ActionTest) => {
-              let mappedType: Test["type"];
-              switch (test.type) {
-                case "browser":
-                case "api":
-                case "custom":
-                case "database":
-                case "performance":
-                  mappedType = test.type;
-                  break;
-                default:
-                  mappedType = "browser";
-                  break;
-              }
-              return {
-                id: test.id,
-                name: test.title,
-                description: test.description || null,
-                type: mappedType,
-                status: "running" as const,
-                lastRunAt: test.updatedAt,
-                duration: null as number | null,
-                tags: test.tags || [],
-              };
-            }
-          );
-
-          // Filter tests based on mode
-          if (testTypeFilter) {
-            // Filter by specific test type (e.g., "browser" for synthetic monitors, "performance" for k6 jobs)
-            formattedTests = formattedTests.filter(
-              (test) => test.type === testTypeFilter
-            );
-          } else if (performanceMode) {
-            // Performance mode: show only performance tests
-            formattedTests = formattedTests.filter(
-              (test) => test.type === "performance"
-            );
-          } else {
-            // Regular mode: exclude performance tests, show all other types
-            formattedTests = formattedTests.filter(
-              (test) => test.type !== "performance"
-            );
-          }
-
-          if (excludeTypesKey.length > 0) {
-            const excludeTypesSet = new Set(excludeTypesKey.split("|"));
-            formattedTests = formattedTests.filter((test) => {
-              return !excludeTypesSet.has(test.type);
-            });
-          }
-
-          setAvailableTests(formattedTests);
-        } else {
-          console.error("Failed to fetch tests:", result?.error);
+    if (fetchedTests) {
+      // Map the API response to the Test type
+      let formattedTests: Test[] = fetchedTests.map((test) => {
+        // Ensure type consistency
+        let mappedType: Test["type"];
+        // The hook returns properly typed Test objects, but we ensure safety
+        switch (test.type) {
+          case "browser":
+          case "api":
+          case "custom":
+          case "database":
+          case "performance":
+            mappedType = test.type;
+            break;
+          default:
+            mappedType = "browser";
+            break;
         }
-      } catch (error) {
-        console.error("Error fetching tests:", error);
-      } finally {
-        setIsLoadingTests(false);
-      }
-    }
+        return {
+          ...test,
+          name: test.name || "Unnamed Test",
+          description: test.description ?? null,
+          type: mappedType,
+          status: "running" as const,
+        };
+      });
 
-    fetchTests();
-  }, [performanceMode, testTypeFilter, excludeTypesKey]);
+      // Filter tests based on mode
+      if (testTypeFilter) {
+        formattedTests = formattedTests.filter(
+          (test) => test.type === testTypeFilter
+        );
+      } else if (performanceMode) {
+        formattedTests = formattedTests.filter(
+          (test) => test.type === "performance"
+        );
+      } else {
+        formattedTests = formattedTests.filter(
+          (test) => test.type !== "performance"
+        );
+      }
+
+      if (excludeTypesKey.length > 0) {
+        const excludeTypesSet = new Set(excludeTypesKey.split("|"));
+        formattedTests = formattedTests.filter((test) => {
+          return !excludeTypesSet.has(test.type);
+        });
+      }
+
+      setAvailableTests(formattedTests);
+      setIsLoadingTests(false);
+    } else if (!isHookLoading) {
+      // If not loading and no data, stop spinner
+      setIsLoadingTests(false);
+    }
+  }, [fetchedTests, isHookLoading, performanceMode, testTypeFilter, excludeTypesKey]);
 
   const useSingleSelection =
     performanceMode || !!testTypeFilter || singleSelection;

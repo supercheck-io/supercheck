@@ -309,17 +309,17 @@ const Playground: React.FC<PlaygroundProps> = ({
 
           // Build prompt parts conditionally to avoid empty lines
           const promptParts: string[] = [];
-          
+
           // Header
           promptParts.push(`Create a custom test for the following requirement:`);
-          
+
           // Title (always present)
           promptParts.push(`Title: ${req.title}`);
-          
+
           // Description (always include, with fallback)
           const description = req.description?.trim() || "No description provided.";
           promptParts.push(`Description: ${description}`);
-          
+
           // Optional source document info (only if present)
           if (req.sourceDocumentName) {
             promptParts.push(`Source Document: ${req.sourceDocumentName}`);
@@ -349,7 +349,7 @@ const Playground: React.FC<PlaygroundProps> = ({
 
           // Instructions
           promptParts.push(`\nPlease generate a robust test script covering success and error scenarios. Use standard placeholders (e.g., 'https://api.example.com') for any missing details and add TODO comments indicating where real values are needed.`);
-          
+
           const prompt = promptParts.join('\n');
           setAiPrompt(prompt);
         }
@@ -517,6 +517,13 @@ const Playground: React.FC<PlaygroundProps> = ({
         resetTestExecutionState();
       }
 
+      // ALWAYS reset recording banner when loading a browser test
+      // This ensures it appears every time, even after recording is complete
+      // or when navigating away and back to the same browser test
+      if (typeToSet === "browser") {
+        setShowRecordingBanner(true);
+      }
+
       // Track if type is actually changing (used by loadScriptForType)
       const isTypeChanging = typeToSet !== testCase.type;
 
@@ -631,16 +638,16 @@ const Playground: React.FC<PlaygroundProps> = ({
       if (event.origin !== window.location.origin) return;
       if (event.data?.source !== "supercheck-recorder") return;
       if (event.data?.type !== "SUPERCHECK_RECORDED_CODE") return;
-      
+
       const payload = event.data?.payload;
       const code = payload?.code;
-      
+
       // Validate that code is a string before using it
       if (typeof code !== "string" || code.length === 0) {
         console.warn("[Playground] Invalid recorder payload received");
         return;
       }
-      
+
       setEditorContent(code);
       setTestCase((prev) => ({ ...prev, script: code }));
       setShowRecordingBanner(false);

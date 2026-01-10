@@ -85,6 +85,10 @@ interface UpdateMonitorData {
 export const MONITORS_QUERY_KEY = ["monitors"] as const;
 export const MONITOR_QUERY_KEY = ["monitor"] as const;
 
+export function getMonitorsListQueryKey(projectId: string | null) {
+  return [...MONITORS_QUERY_KEY, projectId, {}] as const;
+}
+
 // ============================================================================
 // HOOK FACTORY
 // ============================================================================

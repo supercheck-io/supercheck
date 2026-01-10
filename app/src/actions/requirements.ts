@@ -102,6 +102,11 @@ export async function syncRequirementTags(
   requirementId: string,
   tagIds: string[]
 ): Promise<void> {
+  // Enforce maximum 10 tags per requirement (consistent with API route)
+  if (tagIds.length > 10) {
+    throw new Error("Maximum of 10 tags allowed per requirement");
+  }
+
   // Delete existing tags for this requirement
   await db
     .delete(requirementTags)
@@ -498,7 +503,8 @@ export async function updateRequirement(
       .where(
         and(
           eq(requirements.id, validatedData.id),
-          eq(requirements.projectId, project.id)
+          eq(requirements.projectId, project.id),
+          eq(requirements.organizationId, organizationId)
         )
       );
 
@@ -569,7 +575,11 @@ export async function deleteRequirement(
       .select({ id: requirements.id, title: requirements.title })
       .from(requirements)
       .where(
-        and(eq(requirements.id, id), eq(requirements.projectId, project.id))
+        and(
+          eq(requirements.id, id),
+          eq(requirements.projectId, project.id),
+          eq(requirements.organizationId, organizationId)
+        )
       )
       .limit(1);
 

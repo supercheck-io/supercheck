@@ -6,14 +6,14 @@ import { APP_CONFIG_QUERY_KEY, fetchAppConfig } from "@/hooks/use-app-config";
 import { ADMIN_STATUS_QUERY_KEY, fetchAdminStatus } from "@/hooks/use-admin-status";
 import { SUBSCRIPTION_STATUS_QUERY_KEY, fetchSubscriptionStatus } from "@/components/subscription-guard";
 import { useProjectContext } from "@/hooks/use-project-context";
-import { TESTS_QUERY_KEY } from "@/hooks/use-tests";
-import { JOBS_QUERY_KEY } from "@/hooks/use-jobs";
-import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
-import { RUNS_QUERY_KEY } from "@/hooks/use-runs";
-import { STATUS_PAGES_QUERY_KEY } from "@/hooks/use-status-pages";
-import { NOTIFICATION_PROVIDERS_QUERY_KEY, ALERTS_HISTORY_QUERY_KEY } from "@/hooks/use-alerts";
-import { TAGS_QUERY_KEY } from "@/hooks/use-tags";
-import { REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
+import { getMonitorsListQueryKey } from "@/hooks/use-monitors";
+import { getRunsListQueryKey } from "@/hooks/use-runs";
+import { getStatusPagesListQueryKey } from "@/hooks/use-status-pages";
+import { getNotificationProvidersQueryKey, getAlertsHistoryQueryKey } from "@/hooks/use-alerts";
+import { getTagsListQueryKey } from "@/hooks/use-tags";
+import { getRequirementsListQueryKey } from "@/hooks/use-requirements";
+import { getTestsListQueryKey } from "@/hooks/use-tests";
+import { getJobsListQueryKey } from "@/hooks/use-jobs";
 
 // NOTE: Variables component uses manual fetch, not React Query.
 // Prefetch removed - would warm a cache that's never read.
@@ -113,43 +113,43 @@ export function DataPrefetcher() {
         // Runs list - warm cache for Runs page
         // Uses short staleTime for stale-while-revalidate pattern
         queryClient.prefetchQuery({
-          queryKey: [...RUNS_QUERY_KEY, projectId, {}],
+          queryKey: getRunsListQueryKey(projectId),
           queryFn: () => safeFetch("/api/runs"),
           staleTime: 5 * 1000, // 5 seconds - matches useRuns
         }),
 
         // Requirements list - warm cache for Requirements page
         queryClient.prefetchQuery({
-          queryKey: [...REQUIREMENTS_QUERY_KEY, projectId, {}],
+          queryKey: getRequirementsListQueryKey(projectId),
           queryFn: () => safeFetch("/api/requirements"),
           staleTime: 60 * 1000,
         }),
 
         // Tests list - warm cache for Tests page
         queryClient.prefetchQuery({
-          queryKey: [...TESTS_QUERY_KEY, projectId, {}],
+          queryKey: getTestsListQueryKey(projectId),
           queryFn: () => safeFetch("/api/tests"),
           staleTime: 60 * 1000,
         }),
 
         // Jobs list - warm cache for Jobs page
         queryClient.prefetchQuery({
-          queryKey: [...JOBS_QUERY_KEY, projectId, {}],
+          queryKey: getJobsListQueryKey(projectId),
           queryFn: () => safeFetch("/api/jobs"),
           staleTime: 60 * 1000,
         }),
 
         // Monitors list - warm cache for Monitors page
         queryClient.prefetchQuery({
-          queryKey: [...MONITORS_QUERY_KEY, projectId, {}],
+          queryKey: getMonitorsListQueryKey(projectId),
           queryFn: () => safeFetch("/api/monitors"),
           staleTime: 30 * 1000,
         }),
 
         // Status Pages - warm cache for Status Pages page
-        // FIXED: Use correct query key that matches useStatusPages hook
+        // FIXED: Use correct query key via helper to ensure 100% match with hook
         queryClient.prefetchQuery({
-          queryKey: [...STATUS_PAGES_QUERY_KEY, projectId, {}],
+          queryKey: getStatusPagesListQueryKey(projectId),
           queryFn: () => safeFetch("/api/status-pages"),
           staleTime: 60 * 1000,
         }),
@@ -160,14 +160,14 @@ export function DataPrefetcher() {
 
         // Notification Providers - warm cache for Alerts page and Monitor/Job create forms
         queryClient.prefetchQuery({
-          queryKey: [...NOTIFICATION_PROVIDERS_QUERY_KEY, projectId],
+          queryKey: getNotificationProvidersQueryKey(projectId),
           queryFn: () => safeFetch("/api/notification-providers"),
           staleTime: 60 * 1000,
         }),
 
         // Alert History - warm cache for Alerts page
         queryClient.prefetchQuery({
-          queryKey: [...ALERTS_HISTORY_QUERY_KEY, projectId],
+          queryKey: getAlertsHistoryQueryKey(projectId),
           queryFn: () => safeFetch("/api/alerts/history"),
           staleTime: 60 * 1000,
         }),
@@ -175,7 +175,7 @@ export function DataPrefetcher() {
         // Tags - warm cache for Test creation and tagging
         // CONSISTENCY: Uses project-scoped query key matching useTags hook
         queryClient.prefetchQuery({
-          queryKey: [...TAGS_QUERY_KEY, projectId],
+          queryKey: getTagsListQueryKey(projectId),
           queryFn: () => safeFetch("/api/tags"),
           staleTime: 60 * 1000,
         }),

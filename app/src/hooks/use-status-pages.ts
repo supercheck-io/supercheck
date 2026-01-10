@@ -57,6 +57,16 @@ interface UpdateStatusPageData {
 export const STATUS_PAGES_QUERY_KEY = ["statusPages"] as const;
 export const STATUS_PAGE_QUERY_KEY = ["statusPage"] as const;
 
+/**
+ * Helper to generate the exact query key used by the list hook.
+ * This ensures DataPrefetcher and other consumers match the internal key logic.
+ */
+export function getStatusPagesListQueryKey(projectId: string | null) {
+  // Matches createDataHook's getListQueryKey logic: [...key, projectId, filters]
+  // Filters default to {} when clean
+  return [...STATUS_PAGES_QUERY_KEY, projectId, {}] as const;
+}
+
 // ============================================================================
 // HOOK FACTORY
 // ============================================================================

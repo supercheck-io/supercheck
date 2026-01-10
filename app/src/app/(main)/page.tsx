@@ -42,7 +42,7 @@ import {
   ChevronDown,
   FileText,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
@@ -763,39 +763,38 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
   // Fetch requirements stats for dashboard card
   const { data: requirementsStats } = useRequirementsStats();
 
-  // Fetch K6 jobs for filter dropdown
-  useEffect(() => {
-    if (activeTab === "k6") {
-      fetch("/api/analytics/k6?period=30")
-        .then(res => res.json())
-        .then(data => {
-          const jobs = data.jobs || [];
-          setK6Jobs(jobs);
-          // Auto-select first job if not already selected
-          if (!k6SelectedJob && jobs.length > 0) {
-            setK6SelectedJob(jobs[0].id);
-          }
-        })
-        .catch(() => { });
-    }
-  }, [activeTab, k6SelectedJob]);
+  // Refs to track if jobs were already loaded for each tab (prevents redundant callbacks)
+  const k6JobsLoadedRef = useRef(false);
+  const pwJobsLoadedRef = useRef(false);
 
-  // Fetch Playwright jobs for filter dropdown
-  useEffect(() => {
-    if (activeTab === "playwright") {
-      fetch("/api/analytics/playwright?period=30")
-        .then(res => res.json())
-        .then(data => {
-          const jobs = data.jobs || [];
-          setPwJobs(jobs);
-          // Auto-select first job if not already selected
-          if (!pwSelectedJob && jobs.length > 0) {
-            setPwSelectedJob(jobs[0].id);
-          }
-        })
-        .catch(() => { });
+  // Jobs are now loaded by the child tab components and lifted up via onJobsLoaded callback
+  // This eliminates the duplicate fetches that were happening before
+
+  // Auto-select first K6 job when jobs are loaded by the child component
+  // Only fires once per tab visit to prevent cascading state updates
+  const handleK6JobsLoaded = useCallback((jobs: Array<{ id: string; name: string }>) => {
+    // Guard: Only process if jobs not already loaded
+    if (k6JobsLoadedRef.current) return;
+    k6JobsLoadedRef.current = true;
+
+    setK6Jobs(jobs);
+    if (jobs.length > 0) {
+      setK6SelectedJob(jobs[0].id);
     }
-  }, [activeTab, pwSelectedJob]);
+  }, []);
+
+  // Auto-select first Playwright job when jobs are loaded by the child component
+  // Only fires once per tab visit to prevent cascading state updates
+  const handlePwJobsLoaded = useCallback((jobs: Array<{ id: string; name: string }>) => {
+    // Guard: Only process if jobs not already loaded
+    if (pwJobsLoadedRef.current) return;
+    pwJobsLoadedRef.current = true;
+
+    setPwJobs(jobs);
+    if (jobs.length > 0) {
+      setPwSelectedJob(jobs[0].id);
+    }
+  }, []);
 
   return (
     <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
@@ -1480,6 +1479,7 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
           onPeriodChange={setK6Period}
           isComparingOpen={k6CompareOpen}
           onCompareOpenChange={setK6CompareOpen}
+          onJobsLoaded={handleK6JobsLoaded}
         />
       </TabsContent>
 
@@ -1489,6 +1489,7 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
           onJobChange={setPwSelectedJob}
           period={pwPeriod}
           onPeriodChange={setPwPeriod}
+          onJobsLoaded={handlePwJobsLoaded}
         />
       </TabsContent>
     </Tabs>

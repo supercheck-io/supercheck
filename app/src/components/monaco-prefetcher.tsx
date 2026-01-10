@@ -203,14 +203,10 @@ export function MonacoPrefetcher(): null {
         if (hasTriggeredRef.current) return;
         hasTriggeredRef.current = true;
 
-        // 1 second delay to let critical resources load first
-        const timer = setTimeout(() => {
-            triggerMonacoPreload();
-        }, 1000);
-
-        return () => {
-            clearTimeout(timer);
-        };
+        // PERFORMANCE: Start preloading IMMEDIATELY after authentication
+        // Previous 1-second delay caused loading spinners when navigating to playground
+        // The requestIdleCallback in triggerMonacoPreload ensures non-blocking behavior
+        triggerMonacoPreload();
     }, [session]);
 
     // This component renders nothing

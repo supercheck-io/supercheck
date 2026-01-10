@@ -59,6 +59,10 @@ export interface RequirementsResponse extends PaginatedResponse<Requirement> {
 export const REQUIREMENTS_QUERY_KEY = ["requirements"] as const;
 export const REQUIREMENT_QUERY_KEY = ["requirement"] as const;
 
+export function getRequirementsListQueryKey(projectId: string | null) {
+  return [...REQUIREMENTS_QUERY_KEY, projectId, {}] as const;
+}
+
 // ============================================================================
 // HOOK FACTORY
 // ============================================================================

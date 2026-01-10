@@ -94,6 +94,10 @@ interface UpdateJobData {
 export const JOBS_QUERY_KEY = ["jobs"] as const;
 export const JOB_QUERY_KEY = ["job"] as const;
 
+export function getJobsListQueryKey(projectId: string | null) {
+  return [...JOBS_QUERY_KEY, projectId, {}] as const;
+}
+
 // ============================================================================
 // HOOK FACTORY
 // ============================================================================

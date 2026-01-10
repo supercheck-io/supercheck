@@ -163,30 +163,26 @@ export function RecordButton({
           </DialogHeader>
 
           <div className="py-4 space-y-4">
-            {/* Supported browsers notice */}
-            <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-              <Chrome className="h-4 w-4 text-green-600" />
-              <span className="text-sm text-green-700 dark:text-green-400">
-                ✓ Supported in <strong>Chrome</strong> and <strong>Edge</strong>
-              </span>
-            </div>
-
-            <div className="rounded-lg border bg-muted/50 p-4">
-              <ol className="text-sm space-y-2">
+            <div className="rounded-lg border bg-muted/30 p-4">
+              <ol className="text-sm space-y-3">
                 <li className="flex items-start gap-3">
                   <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs font-medium shrink-0">1</span>
-                  <span>Install the {browser === 'edge' ? 'Edge' : 'Chrome'} extension</span>
+                  <span className="text-muted-foreground">Install the <strong className="text-foreground">{browser === 'edge' ? 'Edge' : 'Chrome'}</strong> extension from the store</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs font-medium shrink-0">2</span>
-                  <span>Refresh this page</span>
+                  <span className="text-muted-foreground">Refresh this page after installation</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs font-medium shrink-0">3</span>
-                  <span>Click the record button to start</span>
+                  <span className="text-muted-foreground">Click the <strong className="text-foreground">Record</strong> button to start</span>
                 </li>
               </ol>
             </div>
+
+            <p className="text-xs text-muted-foreground text-center">
+              Works with Chrome and Microsoft Edge
+            </p>
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
@@ -280,7 +276,7 @@ export function RecordButton({
               <div className="flex items-start gap-3">
                 <span className="flex items-center justify-center w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs font-medium shrink-0 mt-0.5">3</span>
                 <span className="text-sm text-muted-foreground">
-                  Click <strong className="text-foreground">Save to Playground</strong> when done
+                  Click <strong className="text-foreground">Save</strong> when done
                 </span>
               </div>
             </div>

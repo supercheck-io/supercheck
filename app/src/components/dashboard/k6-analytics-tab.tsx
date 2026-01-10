@@ -229,6 +229,8 @@ interface K6AnalyticsTabProps {
     onPeriodChange: (period: number) => void;
     isComparingOpen?: boolean;
     onCompareOpenChange?: (open: boolean) => void;
+    /** Callback to lift jobs data to parent - eliminates duplicate fetches */
+    onJobsLoaded?: (jobs: Array<{ id: string; name: string }>) => void;
 }
 
 export function K6AnalyticsTab({
@@ -238,6 +240,7 @@ export function K6AnalyticsTab({
     onPeriodChange,
     isComparingOpen,
     onCompareOpenChange,
+    onJobsLoaded,
 }: K6AnalyticsTabProps) {
     const [data, setData] = useState<K6AnalyticsResponse | null>(null);
     const [loading, setLoading] = useState(true);
@@ -293,6 +296,10 @@ export function K6AnalyticsTab({
             if (!signal?.aborted) {
                 setData(result);
                 setError(null);
+                // Lift jobs data to parent to eliminate duplicate fetches
+                if (result.jobs && onJobsLoaded) {
+                    onJobsLoaded(result.jobs);
+                }
             }
         } catch (err: unknown) {
             if (err instanceof Error && err.name === 'AbortError') return;

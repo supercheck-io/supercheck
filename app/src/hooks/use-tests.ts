@@ -50,6 +50,10 @@ interface UpdateTestData {
 export const TESTS_QUERY_KEY = ["tests"] as const;
 export const TEST_QUERY_KEY = ["test"] as const;
 
+export function getTestsListQueryKey(projectId: string | null) {
+  return [...TESTS_QUERY_KEY, projectId, {}] as const;
+}
+
 // ============================================================================
 // HOOK FACTORY
 // ============================================================================

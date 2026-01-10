@@ -40,6 +40,14 @@ export type AlertHistory = AlertHistorySchema;
 export const NOTIFICATION_PROVIDERS_QUERY_KEY = ["notification-providers"] as const;
 export const ALERTS_HISTORY_QUERY_KEY = ["alerts-history"] as const;
 
+export function getNotificationProvidersQueryKey(projectId: string | null) {
+  return [...NOTIFICATION_PROVIDERS_QUERY_KEY, projectId] as const;
+}
+
+export function getAlertsHistoryQueryKey(projectId: string | null) {
+  return [...ALERTS_HISTORY_QUERY_KEY, projectId] as const;
+}
+
 // ============================================================================
 // FETCH FUNCTIONS (exported for prefetching)
 // ============================================================================

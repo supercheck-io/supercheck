@@ -176,7 +176,7 @@ export function prefetchRunPage(
       const data = await response.json();
       return data.run || data;
     },
-    staleTime: 0, // Always fresh - runs change frequently
+    staleTime: 5000, // Match useRuns configuration (5s)
   });
 }
 

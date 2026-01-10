@@ -53,6 +53,10 @@ export interface RunsResponse extends PaginatedResponse<Run> {}
 export const RUNS_QUERY_KEY = ["runs"] as const;
 export const RUN_QUERY_KEY = ["run"] as const;
 
+export function getRunsListQueryKey(projectId: string | null) {
+  return [...RUNS_QUERY_KEY, projectId, {}] as const;
+}
+
 // ============================================================================
 // HOOK FACTORY
 // ============================================================================
