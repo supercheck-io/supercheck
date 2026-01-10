@@ -387,6 +387,7 @@ export function RequirementForm({
                                                                 {...field}
                                                                 placeholder="User should be able to..."
                                                                 disabled={isSubmitting}
+                                                                className="text-muted-foreground"
                                                             />
                                                         </FormControl>
                                                         <FormMessage />
@@ -405,7 +406,7 @@ export function RequirementForm({
                                                                 {...field}
                                                                 value={field.value ?? ""}
                                                                 placeholder="Detailed description of the requirement..."
-                                                                className="min-h-[120px]"
+                                                                className="min-h-[120px] text-muted-foreground"
                                                                 disabled={isSubmitting}
                                                             />
                                                         </FormControl>

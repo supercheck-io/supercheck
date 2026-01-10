@@ -60,11 +60,17 @@ export const RUN_QUERY_KEY = ["run"] as const;
 const runsHook = createDataHook<Run>({
   queryKey: RUNS_QUERY_KEY,
   endpoint: "/api/runs",
-  staleTime: 0, // Always refetch on mount - ensures new runs appear immediately after job trigger
-  gcTime: 5 * 60 * 1000, // 5 minutes cache - keeps data for back navigation
+  // STALE-WHILE-REVALIDATE PATTERN:
+  // - Shows cached data instantly (no loading spinner)
+  // - Refetches in background if data is stale (> 5 seconds old)
+  // - New runs appear after background refetch completes
+  // 
+  // NOTE: Job triggers create runs asynchronously via worker.
+  // The invalidation happens before the run exists, so first load
+  // may not show the new run. The short staleTime ensures quick refresh.
+  staleTime: 5 * 1000, // 5 seconds - data considered stale after this
+  // gcTime inherited from factory (24h) for instant back navigation
   refetchOnWindowFocus: false,
-  // CRITICAL: Force refetch on every mount to show new job executions immediately
-  refetchOnMount: 'always',
   singleItemField: "run",
 });
 

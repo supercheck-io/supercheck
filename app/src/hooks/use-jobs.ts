@@ -8,6 +8,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
+import { RUNS_QUERY_KEY } from "./use-runs";
 
 // ============================================================================
 // TYPES
@@ -160,6 +161,8 @@ export function useJobMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY, refetchType: 'all' });
+      // Also invalidate runs cache so new run appears immediately
+      queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY, refetchType: 'all' });
     },
   });
 

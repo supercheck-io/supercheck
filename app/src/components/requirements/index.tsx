@@ -68,7 +68,6 @@ import { useRequirementPermissions } from "@/hooks/use-rbac-permissions";
 import { getLinkedTests } from "@/actions/requirements";
 import { useQuery } from "@tanstack/react-query";
 import { Requirement } from "./schema";
-import { RequirementWithCoverage } from "@/actions/requirements";
 import { RequirementTestDataTable } from "./requirement-test-data-table";
 import { createRequirementTestColumns } from "./requirement-test-columns";
 import { DocumentsList } from "./documents-list";
@@ -117,7 +116,7 @@ export default function RequirementsPage() {
     // Transform to UI format - tags now come as proper objects from API
     const requirements = useMemo<Requirement[]>(() => {
         if (!rawRequirements) return [];
-        return rawRequirements.map((r: RequirementWithCoverage) => ({
+        return rawRequirements.map((r) => ({
             ...r,
             // Tags are now proper objects from the API
             // Apply "ai" tag special color if needed

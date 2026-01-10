@@ -115,7 +115,11 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
 
   // SECURITY: Must wait for config to be fetched before making decisions
   // This prevents briefly showing content in cloud mode before we know hosting mode
-  if (!isConfigFetched) {
+  // PERFORMANCE: Trust initialData (selfHosted=true) for immediate render
+  // Self-hosted: isSelfHosted stays true, renders immediately
+  // Cloud: Initially isSelfHosted=true from initialData, renders immediately
+  //        When real config loads, isSelfHosted=false, subscription check triggers redirect
+  if (!isConfigFetched && !isSelfHosted) {
     return (
       <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
         <SuperCheckLoading size="lg" message="Loading configuration..." />

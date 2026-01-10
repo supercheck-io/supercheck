@@ -44,9 +44,9 @@ export interface DataHookConfig<T, CreateData, UpdateData> {
   queryKey: readonly string[];
   /** API endpoint (e.g., "/api/jobs") */
   endpoint: string;
-  /** Stale time in ms (default: 60000 = 1 minute) */
+  /** Stale time in ms (default: 300000 = 5 minutes) */
   staleTime?: number;
-  /** Garbage collection time in ms (default: 300000 = 5 minutes) */
+  /** Garbage collection time in ms (default: 86400000 = 24 hours) */
   gcTime?: number;
   /** Whether to refetch on window focus (default: true) */
   refetchOnWindowFocus?: boolean;
@@ -291,8 +291,8 @@ export function createDataHook<
   const {
     queryKey,
     endpoint,
-    staleTime = 60 * 1000,
-    gcTime = 5 * 60 * 1000,
+    staleTime = 5 * 60 * 1000, // 5 minutes - prevents aggressive background refetching
+    gcTime = 24 * 60 * 60 * 1000, // 24 hours - keeps data in memory for entire session (instant load)
     refetchOnWindowFocus = true,
     refetchOnMount,
     singleItemField,

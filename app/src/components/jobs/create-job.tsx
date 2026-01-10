@@ -161,7 +161,7 @@ export function CreateJob({
                       <FormItem>
                         <FormLabel>Job Name</FormLabel>
                         <FormControl>
-                          <Input {...field} placeholder="Enter job name" />
+                          <Input {...field} placeholder="Enter job name" className="text-muted-foreground" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -178,7 +178,7 @@ export function CreateJob({
                           <Textarea
                             {...field}
                             placeholder="Enter job description"
-                            className="min-h-[100px]"
+                            className="min-h-[100px] text-muted-foreground"
                           />
                         </FormControl>
                         <FormMessage />

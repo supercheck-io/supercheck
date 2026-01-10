@@ -2,15 +2,16 @@
  * Tags Data Hook
  *
  * React Query hook for fetching and managing tags with efficient caching.
- * Caches data for 60 seconds to prevent duplicate API calls.
+ * Uses project-scoped query keys for proper cache isolation between projects.
  * 
  * PERFORMANCE OPTIMIZATION:
- * - Module-level cache prevents refetch on every component mount
+ * - Project-scoped cache prevents cross-project tag leakage
  * - staleTime: 60 seconds
  * - refetchOnWindowFocus: false to prevent aggressive re-fetching
  */
 
 import { useQuery, useMutation, useQueryClient, UseQueryResult } from "@tanstack/react-query";
+import { useProjectContext } from "./use-project-context";
 
 // ============================================================================
 // TYPES
@@ -30,6 +31,7 @@ export interface Tag {
 
 export const TAGS_QUERY_KEY = ["tags"] as const;
 export const TEST_TAGS_QUERY_KEY = ["test-tags"] as const;
+export const REQUIREMENT_TAGS_QUERY_KEY = ["requirement-tags"] as const;
 
 // Constant empty array to avoid creating new references on each render
 const EMPTY_TAGS_ARRAY: Tag[] = [];
@@ -98,15 +100,22 @@ async function saveTestTagsApi(testId: string, tagIds: string[]): Promise<void> 
 
 /**
  * Hook to fetch all available tags with React Query caching.
- * Data is cached for 60 seconds and shared across all components.
+ * Data is cached for 60 seconds and project-scoped.
+ * 
+ * CONSISTENCY: Uses project-scoped query key like other hooks.
  */
 export function useTags(): UseQueryResult<Tag[], Error> & { tags: Tag[] } {
+  const { currentProject } = useProjectContext();
+  const projectId = currentProject?.id ?? null;
+
   const result = useQuery({
-    queryKey: TAGS_QUERY_KEY,
+    // CONSISTENCY: Project-scoped query key to prevent cross-project cache pollution
+    queryKey: [...TAGS_QUERY_KEY, projectId],
     queryFn: fetchTags,
     staleTime: 60 * 1000, // 60 seconds - match other data hooks
     gcTime: 5 * 60 * 1000, // 5 minutes cache
     refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching
+    enabled: !!projectId,
   });
 
   return {
@@ -120,10 +129,13 @@ export function useTags(): UseQueryResult<Tag[], Error> & { tags: Tag[] } {
  * Data is cached per test ID.
  */
 export function useTestTags(testId: string | null): UseQueryResult<Tag[], Error> & { testTags: Tag[] } {
+  const { currentProject } = useProjectContext();
+  const projectId = currentProject?.id ?? null;
+
   const result = useQuery({
-    queryKey: [...TEST_TAGS_QUERY_KEY, testId],
+    queryKey: [...TEST_TAGS_QUERY_KEY, projectId, testId],
     queryFn: () => fetchTestTags(testId!),
-    enabled: !!testId, // Only fetch when testId is available
+    enabled: !!testId && !!projectId,
     staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -143,21 +155,17 @@ export function useTagMutations() {
 
   const createTag = useMutation({
     mutationFn: createTagApi,
-    onSuccess: (newTag) => {
-      // Add new tag to cache immediately (optimistic update)
-      queryClient.setQueryData<Tag[]>(TAGS_QUERY_KEY, (old) => 
-        old ? [...old, newTag] : [newTag]
-      );
+    onSuccess: () => {
+      // Invalidate all tags queries to ensure fresh data
+      queryClient.invalidateQueries({ queryKey: TAGS_QUERY_KEY, refetchType: 'all' });
     },
   });
 
   const deleteTag = useMutation({
     mutationFn: deleteTagApi,
-    onSuccess: (_result, tagId) => {
-      // Remove tag from cache immediately (optimistic update)
-      queryClient.setQueryData<Tag[]>(TAGS_QUERY_KEY, (old) =>
-        old ? old.filter((tag) => tag.id !== tagId) : []
-      );
+    onSuccess: () => {
+      // Invalidate all tags queries
+      queryClient.invalidateQueries({ queryKey: TAGS_QUERY_KEY, refetchType: 'all' });
     },
   });
 
@@ -184,7 +192,7 @@ export function useSaveTestTags() {
     },
     onSuccess: () => {
       // Invalidate all test tags queries to ensure consistency
-      queryClient.invalidateQueries({ queryKey: TEST_TAGS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: TEST_TAGS_QUERY_KEY, refetchType: 'all' });
     },
   });
 }
@@ -192,8 +200,6 @@ export function useSaveTestTags() {
 // ============================================================================
 // REQUIREMENT TAG HOOKS
 // ============================================================================
-
-export const REQUIREMENT_TAGS_QUERY_KEY = ["requirement-tags"] as const;
 
 async function fetchRequirementTags(requirementId: string): Promise<Tag[]> {
   const response = await fetch(`/api/requirements/${requirementId}/tags`);
@@ -219,10 +225,13 @@ async function saveRequirementTagsApi(requirementId: string, tagIds: string[]): 
  * Mirrors useTestTags for consistency.
  */
 export function useRequirementTags(requirementId: string | null): UseQueryResult<Tag[], Error> & { requirementTags: Tag[] } {
+  const { currentProject } = useProjectContext();
+  const projectId = currentProject?.id ?? null;
+
   const result = useQuery({
-    queryKey: [...REQUIREMENT_TAGS_QUERY_KEY, requirementId],
+    queryKey: [...REQUIREMENT_TAGS_QUERY_KEY, projectId, requirementId],
     queryFn: () => fetchRequirementTags(requirementId!),
-    enabled: !!requirementId,
+    enabled: !!requirementId && !!projectId,
     staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -248,9 +257,8 @@ export function useSaveRequirementTags() {
     },
     onSuccess: () => {
       // Invalidate requirement tags queries and requirements list
-      queryClient.invalidateQueries({ queryKey: REQUIREMENT_TAGS_QUERY_KEY });
-      queryClient.invalidateQueries({ queryKey: ["requirements"] });
+      queryClient.invalidateQueries({ queryKey: REQUIREMENT_TAGS_QUERY_KEY, refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ["requirements"], refetchType: 'all' });
     },
   });
 }
-

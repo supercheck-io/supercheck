@@ -9,11 +9,15 @@ import { useProjectContext } from "@/hooks/use-project-context";
 import { TESTS_QUERY_KEY } from "@/hooks/use-tests";
 import { JOBS_QUERY_KEY } from "@/hooks/use-jobs";
 import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
+import { RUNS_QUERY_KEY } from "@/hooks/use-runs";
 import { STATUS_PAGES_QUERY_KEY } from "@/hooks/use-status-pages";
 import { NOTIFICATION_PROVIDERS_QUERY_KEY, ALERTS_HISTORY_QUERY_KEY } from "@/hooks/use-alerts";
+import { TAGS_QUERY_KEY } from "@/hooks/use-tags";
+import { REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
 
-// Variables query key - inline since hook is not used by Variables component
-const VARIABLES_QUERY_KEY = ["variables"] as const;
+// NOTE: Variables component uses manual fetch, not React Query.
+// Prefetch removed - would warm a cache that's never read.
+// TODO: Refactor Variables to use React Query for full prefetch benefit.
 
 /**
  * DataPrefetcher - Parallel data prefetching for critical app data
@@ -106,6 +110,21 @@ export function DataPrefetcher() {
     // page components to mount and start their own fetches first, causing loading spinners.
     const prefetchPhase2 = async () => {
       const entityPrefetches = [
+        // Runs list - warm cache for Runs page
+        // Uses short staleTime for stale-while-revalidate pattern
+        queryClient.prefetchQuery({
+          queryKey: [...RUNS_QUERY_KEY, projectId, {}],
+          queryFn: () => safeFetch("/api/runs"),
+          staleTime: 5 * 1000, // 5 seconds - matches useRuns
+        }),
+
+        // Requirements list - warm cache for Requirements page
+        queryClient.prefetchQuery({
+          queryKey: [...REQUIREMENTS_QUERY_KEY, projectId, {}],
+          queryFn: () => safeFetch("/api/requirements"),
+          staleTime: 60 * 1000,
+        }),
+
         // Tests list - warm cache for Tests page
         queryClient.prefetchQuery({
           queryKey: [...TESTS_QUERY_KEY, projectId, {}],
@@ -127,13 +146,6 @@ export function DataPrefetcher() {
           staleTime: 30 * 1000,
         }),
 
-        // Variables - warm cache for Variables page
-        queryClient.prefetchQuery({
-          queryKey: [...VARIABLES_QUERY_KEY, projectId],
-          queryFn: () => safeFetch(`/api/projects/${projectId}/variables`),
-          staleTime: 60 * 1000,
-        }),
-
         // Status Pages - warm cache for Status Pages page
         // FIXED: Use correct query key that matches useStatusPages hook
         queryClient.prefetchQuery({
@@ -141,6 +153,10 @@ export function DataPrefetcher() {
           queryFn: () => safeFetch("/api/status-pages"),
           staleTime: 60 * 1000,
         }),
+
+        // NOTE: Variables prefetch removed - component uses manual fetch, not React Query.
+        // TODO: Add back when Variables is refactored to use React Query.
+
 
         // Notification Providers - warm cache for Alerts page and Monitor/Job create forms
         queryClient.prefetchQuery({
@@ -157,8 +173,9 @@ export function DataPrefetcher() {
         }),
 
         // Tags - warm cache for Test creation and tagging
+        // CONSISTENCY: Uses project-scoped query key matching useTags hook
         queryClient.prefetchQuery({
-          queryKey: ["tags", projectId],
+          queryKey: [...TAGS_QUERY_KEY, projectId],
           queryFn: () => safeFetch("/api/tags"),
           staleTime: 60 * 1000,
         }),
