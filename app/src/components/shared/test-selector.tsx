@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { Test } from "@/components/jobs/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -97,8 +97,6 @@ export default function TestSelector({
   const [testSelections, setTestSelections] = useState<Record<string, number>>(
     {}
   );
-  const [availableTests, setAvailableTests] = useState<Test[]>([]);
-  const [isLoadingTests, setIsLoadingTests] = useState(true);
   const [testFilter, setTestFilter] = useState("");
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -125,64 +123,64 @@ export default function TestSelector({
     enabled: true, // Always enable, let the hook handle caching
   });
 
-  // Effect to process fetched tests into component state
-  useEffect(() => {
-    if (fetchedTests) {
-      // Map the API response to the Test type
-      let formattedTests: Test[] = fetchedTests.map((test) => {
-        // Ensure type consistency
-        let mappedType: Test["type"];
-        // The hook returns properly typed Test objects, but we ensure safety
-        switch (test.type) {
-          case "browser":
-          case "api":
-          case "custom":
-          case "database":
-          case "performance":
-            mappedType = test.type;
-            break;
-          default:
-            mappedType = "browser";
-            break;
-        }
-        return {
-          ...test,
-          name: test.name || "Unnamed Test",
-          description: test.description ?? null,
-          type: mappedType,
-          status: "running" as const,
-        };
-      });
+  // Derive availableTests using useMemo instead of useEffect + setState
+  // This avoids the cascading render issue flagged by ESLint
+  const availableTests = useMemo(() => {
+    if (!fetchedTests) return [];
 
-      // Filter tests based on mode
-      if (testTypeFilter) {
-        formattedTests = formattedTests.filter(
-          (test) => test.type === testTypeFilter
-        );
-      } else if (performanceMode) {
-        formattedTests = formattedTests.filter(
-          (test) => test.type === "performance"
-        );
-      } else {
-        formattedTests = formattedTests.filter(
-          (test) => test.type !== "performance"
-        );
+    // Map the API response to the Test type
+    let formattedTests: Test[] = fetchedTests.map((test) => {
+      // Ensure type consistency
+      let mappedType: Test["type"];
+      // The hook returns properly typed Test objects, but we ensure safety
+      switch (test.type) {
+        case "browser":
+        case "api":
+        case "custom":
+        case "database":
+        case "performance":
+          mappedType = test.type;
+          break;
+        default:
+          mappedType = "browser";
+          break;
       }
+      return {
+        ...test,
+        name: test.name || "Unnamed Test",
+        description: test.description ?? null,
+        type: mappedType,
+        status: "running" as const,
+      };
+    });
 
-      if (excludeTypesKey.length > 0) {
-        const excludeTypesSet = new Set(excludeTypesKey.split("|"));
-        formattedTests = formattedTests.filter((test) => {
-          return !excludeTypesSet.has(test.type);
-        });
-      }
-
-      setAvailableTests(formattedTests);
-      setIsLoadingTests(false);
-    } else if (!isHookLoading) {
-      // If not loading and no data, stop spinner
-      setIsLoadingTests(false);
+    // Filter tests based on mode
+    if (testTypeFilter) {
+      formattedTests = formattedTests.filter(
+        (test) => test.type === testTypeFilter
+      );
+    } else if (performanceMode) {
+      formattedTests = formattedTests.filter(
+        (test) => test.type === "performance"
+      );
+    } else {
+      formattedTests = formattedTests.filter(
+        (test) => test.type !== "performance"
+      );
     }
-  }, [fetchedTests, isHookLoading, performanceMode, testTypeFilter, excludeTypesKey]);
+
+    if (excludeTypesKey.length > 0) {
+      const excludeTypesSet = new Set(excludeTypesKey.split("|"));
+      formattedTests = formattedTests.filter((test) => {
+        return !excludeTypesSet.has(test.type);
+      });
+    }
+
+    return formattedTests;
+  }, [fetchedTests, performanceMode, testTypeFilter, excludeTypesKey]);
+
+  // Derive loading state from hook loading state
+  const isLoadingTests = isHookLoading;
 
   const useSingleSelection =
     performanceMode || !!testTypeFilter || singleSelection;
@@ -225,17 +223,17 @@ export default function TestSelector({
     setIsSelectTestsDialogOpen(false);
   };
 
-  // Initialize test selections when dialog opens - preserve existing order
-  useEffect(() => {
-    if (isSelectTestsDialogOpen) {
-      const initialSelections: Record<string, number> = {};
-      // Preserve the order from the existing tests array (index + 1 for 1-based)
-      tests.forEach((test, index) => {
-        initialSelections[test.id] = index + 1;
-      });
-      setTestSelections(initialSelections);
-    }
-  }, [isSelectTestsDialogOpen, tests]);
+  // Open dialog and initialize test selections - moved from useEffect to event handler
+  // This avoids the cascading render issue flagged by ESLint
+  const openTestSelectionDialog = () => {
+    const initialSelections: Record<string, number> = {};
+    // Preserve the order from the existing tests array (index + 1 for 1-based)
+    tests.forEach((test, index) => {
+      initialSelections[test.id] = index + 1;
+    });
+    setTestSelections(initialSelections);
+    setIsSelectTestsDialogOpen(true);
+  };
 
   // Remove a test from selection - using safe array
   const removeTest = (testId: string, testName: string) => {
@@ -339,7 +337,7 @@ export default function TestSelector({
             <Button
               type="button"
               variant="outline"
-              onClick={() => setIsSelectTestsDialogOpen(true)}
+              onClick={openTestSelectionDialog}
               className={cn(
                 required && tests.length === 0 && "border-destructive",
                 "transition-colors"

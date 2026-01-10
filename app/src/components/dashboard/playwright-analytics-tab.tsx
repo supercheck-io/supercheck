@@ -178,7 +178,7 @@ export function PlaywrightAnalyticsTab({
                 setLoading(false);
             }
         }
-    }, [period, selectedJob]);
+    }, [period, selectedJob, onJobsLoaded]);
 
     useEffect(() => {
         const controller = new AbortController();

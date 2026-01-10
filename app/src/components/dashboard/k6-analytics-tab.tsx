@@ -309,7 +309,7 @@ export function K6AnalyticsTab({
                 setLoading(false);
             }
         }
-    }, [period, selectedJob]);
+    }, [period, selectedJob, onJobsLoaded]);
 
     // Separate comparison fetch - updates only comparison data without re-rendering charts
     const fetchComparison = useCallback(async (signal?: AbortSignal) => {
