@@ -57,8 +57,7 @@ export const TEST_QUERY_KEY = ["test"] as const;
 const testsHook = createDataHook<Test, CreateTestData, UpdateTestData>({
   queryKey: TESTS_QUERY_KEY,
   endpoint: "/api/tests",
-  staleTime: 60 * 1000, // 60 seconds - cache invalidated after mutations
-  gcTime: 5 * 60 * 1000, // 5 minutes cache
+  // Inherits staleTime (5min) and gcTime (24h) from factory defaults
   refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
   singleItemField: "test",
 });

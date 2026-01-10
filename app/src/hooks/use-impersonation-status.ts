@@ -56,7 +56,7 @@ export function useImpersonationStatus() {
     queryKey: IMPERSONATION_STATUS_QUERY_KEY,
     queryFn: fetchImpersonationStatus,
     staleTime: 60 * 1000,     // 1 minute - needs to be responsive to changes
-    gcTime: 5 * 60 * 1000,    // 5 minutes cache
+    // gcTime inherited (24h) for session-long caching
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     retry: 1,

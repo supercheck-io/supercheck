@@ -21,6 +21,7 @@ import type { LocationConfig } from "@/lib/location-service";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useQueryClient } from "@tanstack/react-query";
 import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
+import { Loader2 } from "lucide-react";
 
 type WizardStep = "monitor" | "location" | "alerts";
 
@@ -124,6 +125,7 @@ export function MonitorCreationWizard() {
   const [alertConfig, setAlertConfig] = useState<AlertConfig>(
     getInitialAlertConfig
   );
+  const [isCreating, setIsCreating] = useState(false);
 
   // Cleanup on unmount - only if not creating
   useEffect(() => {
@@ -258,6 +260,10 @@ export function MonitorCreationWizard() {
   };
 
   const handleCreateMonitor = async () => {
+    // Prevent multiple submissions
+    if (isCreating) return;
+    setIsCreating(true);
+
     // Mark that we're creating to prevent premature cleanup
     isCreatingRef.current = true;
 
@@ -273,6 +279,7 @@ export function MonitorCreationWizard() {
             "At least one notification channel must be selected when alerts are enabled",
         });
         isCreatingRef.current = false;
+        setIsCreating(false);
         return;
       }
 
@@ -285,6 +292,7 @@ export function MonitorCreationWizard() {
           description: `You can only select up to ${maxMonitorNotificationChannels} notification channels`,
         });
         isCreatingRef.current = false;
+        setIsCreating(false);
         return;
       }
 
@@ -301,6 +309,7 @@ export function MonitorCreationWizard() {
             "At least one alert type must be selected when alerts are enabled",
         });
         isCreatingRef.current = false;
+        setIsCreating(false);
         return;
       }
     }
@@ -348,6 +357,7 @@ export function MonitorCreationWizard() {
           description: errorData.error || "An unknown error occurred",
         });
         isCreatingRef.current = false;
+        setIsCreating(false);
       }
     } catch (error) {
       console.error("Failed to create monitor:", error);
@@ -358,6 +368,7 @@ export function MonitorCreationWizard() {
           error instanceof Error ? error.message : "An unknown error occurred",
       });
       isCreatingRef.current = false;
+      setIsCreating(false);
     }
   };
 
@@ -451,10 +462,13 @@ export function MonitorCreationWizard() {
             }
           />
           <div className="flex justify-end gap-4 pt-4">
-            <Button variant="outline" onClick={handleBackFromAlerts}>
+            <Button variant="outline" onClick={handleBackFromAlerts} disabled={isCreating}>
               Back
             </Button>
-            <Button onClick={handleCreateMonitor}>Create Monitor</Button>
+            <Button onClick={handleCreateMonitor} disabled={isCreating}>
+              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isCreating ? "Creating..." : "Create Monitor"}
+            </Button>
           </div>
         </CardContent>
       </Card>

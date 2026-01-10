@@ -15,9 +15,10 @@ export function QueryProvider({ children }: { children: ReactNode }) {
         defaultOptions: {
           queries: {
             // Default options for all queries
-            // PERFORMANCE: Conservative defaults to prevent excessive refetching
-            staleTime: 60 * 1000, // 1 minute
-            gcTime: 5 * 60 * 1000, // 5 minutes (formerly cacheTime)
+            // PERFORMANCE: Session-long caching - data stays in memory
+            // Individual hooks can override these defaults as needed
+            staleTime: 5 * 60 * 1000, // 5 minutes - prevents aggressive background refetching
+            gcTime: 24 * 60 * 60 * 1000, // 24 hours - keeps data in memory for entire session
             retry: 2,
             refetchOnWindowFocus: false,
             // CRITICAL: Don't refetch on mount if data exists - prevents duplicate calls on navigation

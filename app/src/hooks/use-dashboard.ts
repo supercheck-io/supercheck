@@ -355,7 +355,7 @@ export function useDashboard() {
     // PERFORMANCE: No polling - data refreshes on page visit or manual refresh
     // Dashboard makes 25+ DB queries per request - polling is too expensive
     staleTime: 60 * 1000,  // 60 seconds
-    gcTime: 10 * 60 * 1000,    // 10 minutes - keep in memory
+    gcTime: 60 * 60 * 1000,    // 60 minutes - keep in memory for session
     refetchOnWindowFocus: false,
     retry: 2,
   });

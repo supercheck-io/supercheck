@@ -92,8 +92,8 @@ export const MONITOR_QUERY_KEY = ["monitor"] as const;
 const monitorsHook = createDataHook<Monitor, CreateMonitorData, UpdateMonitorData>({
   queryKey: MONITORS_QUERY_KEY,
   endpoint: "/api/monitors",
-  staleTime: 30 * 1000, // 30 seconds - cache is invalidated after mutations
-  gcTime: 5 * 60 * 1000, // 5 minutes cache
+  staleTime: 30 * 1000, // 30 seconds - tuned for active status monitoring
+  // gcTime inherited from factory (24h) for instant back navigation
   refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
   singleItemField: "monitor",
 });

@@ -78,7 +78,7 @@ export function useNotificationProviders() {
     queryFn: fetchNotificationProviders,
     enabled: !!projectId,
     staleTime: 60 * 1000,
-    gcTime: 5 * 60 * 1000,
+    // gcTime inherited (24h) for instant back navigation
     refetchOnWindowFocus: false,
   });
 
@@ -111,7 +111,7 @@ export function useAlertHistory() {
     queryFn: fetchAlertHistory,
     enabled: !!projectId,
     staleTime: 60 * 1000,
-    gcTime: 5 * 60 * 1000,
+    // gcTime inherited (24h) for instant back navigation
     refetchOnWindowFocus: false,
   });
 

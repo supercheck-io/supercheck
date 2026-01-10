@@ -74,7 +74,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
     queryFn: fetchSubscriptionStatus,
     // Long stale time - subscription status rarely changes mid-session
     staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000,   // 10 minutes cache
+    gcTime: 60 * 60 * 1000,  // 60 minutes - subscription rarely changes during session
     // CRITICAL: Don't refetch on mount if we have cached data
     refetchOnMount: false,
     refetchOnWindowFocus: false,

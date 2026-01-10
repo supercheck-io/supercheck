@@ -26,7 +26,7 @@ export function useRequirementsStats() {
     queryKey: REQUIREMENTS_STATS_QUERY_KEY,
     queryFn: getRequirementsDashboardStats,
     staleTime: 60 * 1000, // 60 seconds
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 60 * 60 * 1000, // 60 minutes - stats rarely change during session
     refetchOnWindowFocus: false,
   });
 }

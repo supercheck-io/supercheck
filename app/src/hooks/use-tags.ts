@@ -113,7 +113,7 @@ export function useTags(): UseQueryResult<Tag[], Error> & { tags: Tag[] } {
     queryKey: [...TAGS_QUERY_KEY, projectId],
     queryFn: fetchTags,
     staleTime: 60 * 1000, // 60 seconds - match other data hooks
-    gcTime: 5 * 60 * 1000, // 5 minutes cache
+    // gcTime inherited from factory (24h) for instant back navigation
     refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching
     enabled: !!projectId,
   });
@@ -137,7 +137,7 @@ export function useTestTags(testId: string | null): UseQueryResult<Tag[], Error>
     queryFn: () => fetchTestTags(testId!),
     enabled: !!testId && !!projectId,
     staleTime: 60 * 1000,
-    gcTime: 5 * 60 * 1000,
+    // gcTime inherited (effectively 24h session-long cache)
     refetchOnWindowFocus: false,
   });
 
@@ -233,7 +233,7 @@ export function useRequirementTags(requirementId: string | null): UseQueryResult
     queryFn: () => fetchRequirementTags(requirementId!),
     enabled: !!requirementId && !!projectId,
     staleTime: 60 * 1000,
-    gcTime: 5 * 60 * 1000,
+    // gcTime inherited (effectively 24h session-long cache)
     refetchOnWindowFocus: false,
   });
 

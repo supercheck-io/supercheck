@@ -3,7 +3,7 @@
 import { columns } from "./columns";
 import { DataTable } from "./data-table";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { Variable } from "./schema";
 
@@ -22,13 +22,12 @@ interface VariableApiResponse {
  * Variables component - Manage project environment variables
  * 
  * Uses direct fetch with useEffect pattern - this works reliably with the
- * project-scoped API. React Query can be added later with careful integration.
+ * project-scoped API.
  */
 export default function Variables() {
   const [variables, setVariables] = useState<Variable[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [mounted, setMounted] = useState(false);
   const [canManage, setCanManage] = useState(false);
   const [canCreateEdit, setCanCreateEdit] = useState(false);
   const [canDelete, setCanDelete] = useState(false);
@@ -39,37 +38,34 @@ export default function Variables() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const { projectId: currentProjectId, loading: projectLoading } = useProjectContext();
 
-  // Set mounted to true after initial render
+  // Use refs to avoid dependency chain issues with useCallback
+  const mountedRef = useRef(true);
+  const fetchingRef = useRef(false);
+
+  // Set mounted ref on mount/unmount
   useEffect(() => {
-    setMounted(true);
+    mountedRef.current = true;
     return () => {
-      setMounted(false);
+      mountedRef.current = false;
     };
   }, []);
 
-  // Safe state setters that only run when component is mounted
-  const safeSetVariables = useCallback((vars: Variable[] | ((prev: Variable[]) => Variable[])) => {
-    if (mounted) {
-      setVariables(vars);
-    }
-  }, [mounted]);
-
-  const safeSetIsLoading = useCallback((loading: boolean) => {
-    if (mounted) {
-      setIsLoading(loading);
-    }
-  }, [mounted]);
-
   // Fetch variables from the database
   const fetchVariables = useCallback(async () => {
-    if (!currentProjectId || projectLoading) {
+    // Guard: skip if no project, still loading project, or already fetching
+    if (!currentProjectId || projectLoading || fetchingRef.current) {
       return;
     }
 
-    safeSetIsLoading(true);
+    fetchingRef.current = true;
+    setIsLoading(true);
+
     try {
       const response = await fetch(`/api/projects/${currentProjectId}/variables`);
       const data = await response.json();
+
+      // Only update state if still mounted
+      if (!mountedRef.current) return;
 
       if (response.ok && data.success) {
         // Transform data to ensure faceted filtering works correctly
@@ -77,31 +73,45 @@ export default function Variables() {
           ...variable,
           isSecret: String(variable.isSecret) // Convert boolean to string for faceted filtering
         }));
-        safeSetVariables(transformedVariables);
+        // Sort by createdAt descending (newest first)
+        transformedVariables.sort((a: Variable, b: Variable) => {
+          const dateA = new Date(a.createdAt || 0).getTime();
+          const dateB = new Date(b.createdAt || 0).getTime();
+          return dateB - dateA;
+        });
+        setVariables(transformedVariables);
         setCanManage(data.canManage || false);
         setCanCreateEdit(data.canCreateEdit || false);
         setCanDelete(data.canDelete || false);
         setCanViewSecrets(data.canViewSecrets || false);
       } else {
         console.error("Failed to fetch variables:", data.error);
-        safeSetVariables([]);
+        setVariables([]);
       }
     } catch (error) {
       console.error("Error fetching variables:", error);
-      safeSetVariables([]);
+      if (mountedRef.current) {
+        setVariables([]);
+      }
     } finally {
-      safeSetIsLoading(false);
-      setIsInitialLoad(false);
+      if (mountedRef.current) {
+        setIsLoading(false);
+        setIsInitialLoad(false);
+      }
+      fetchingRef.current = false;
     }
-  }, [currentProjectId, projectLoading, safeSetVariables, safeSetIsLoading]);
+  }, [currentProjectId, projectLoading]);
 
+  // Fetch when project changes or refresh is triggered
   useEffect(() => {
-    fetchVariables();
-  }, [fetchVariables, refreshTrigger]);
+    if (currentProjectId && !projectLoading) {
+      fetchVariables();
+    }
+  }, [currentProjectId, projectLoading, refreshTrigger, fetchVariables]);
 
 
   const handleDeleteVariable = (variableId: string) => {
-    safeSetVariables((prevVariables) => prevVariables.filter((variable) => variable.id !== variableId));
+    setVariables((prevVariables: Variable[]) => prevVariables.filter((variable: Variable) => variable.id !== variableId));
   };
 
   const handleToggleSecretVisibility = async (variableId: string) => {
@@ -151,7 +161,7 @@ export default function Variables() {
   }, []);
 
   // Show skeleton only on initial load
-  if ((!mounted || projectLoading) && isInitialLoad) {
+  if ((!mountedRef.current || projectLoading) && isInitialLoad) {
     return (
       <div className="flex h-full flex-col p-2 mt-6">
         <DataTableSkeleton columns={5} rows={2} />

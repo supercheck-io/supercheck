@@ -301,10 +301,20 @@ export function createDataHook<
   const singleQueryKey = [queryKey[0].replace(/s$/, "")] as const; // "jobs" -> "job"
 
   // Helper to create project-scoped query key
+  // IMPORTANT: Strips undefined values to ensure consistent cache matching
+  // This allows prefetcher's {} to match hooks' { type: undefined, search: undefined }
   const getListQueryKey = (
     projectId: string | null,
     filters?: Record<string, unknown>
-  ) => [...queryKey, projectId, filters] as const;
+  ) => {
+    // Remove undefined values from filters for consistent cache matching
+    const cleanFilters = filters
+      ? Object.fromEntries(
+          Object.entries(filters).filter(([, v]) => v !== undefined)
+        )
+      : {};
+    return [...queryKey, projectId, cleanFilters] as const;
+  };
 
   /**
    * Hook to fetch paginated list of entities

@@ -66,8 +66,7 @@ export const REQUIREMENT_QUERY_KEY = ["requirement"] as const;
 const requirementsHook = createDataHook<Requirement>({
   queryKey: REQUIREMENTS_QUERY_KEY,
   endpoint: "/api/requirements",
-  staleTime: 60 * 1000, // 60 seconds
-  gcTime: 5 * 60 * 1000, // 5 minutes cache
+  // Inherits staleTime (5min) and gcTime (24h) from factory defaults
   refetchOnWindowFocus: false,
   singleItemField: "requirement",
 });

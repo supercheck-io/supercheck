@@ -64,8 +64,7 @@ export const STATUS_PAGE_QUERY_KEY = ["statusPage"] as const;
 const statusPagesHook = createDataHook<StatusPage, CreateStatusPageData, UpdateStatusPageData>({
   queryKey: STATUS_PAGES_QUERY_KEY,
   endpoint: "/api/status-pages",
-  staleTime: 60 * 1000, // 60 seconds - cache invalidated after mutations
-  gcTime: 5 * 60 * 1000, // 5 minutes cache
+  // Inherits staleTime (5min) and gcTime (24h) from factory defaults
   refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
   singleItemField: "statusPage",
 });
@@ -194,8 +193,7 @@ export function useStatusPageDetail(statusPageId: string | null) {
       return response.json();
     },
     enabled: !!statusPageId && !!projectId,
-    staleTime: 60 * 1000, // 60 seconds
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 60 * 1000, // 60 seconds\n    // gcTime inherited (24h) for instant back navigation
     refetchOnWindowFocus: false,
   });
 

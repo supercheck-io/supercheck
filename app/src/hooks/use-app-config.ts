@@ -90,7 +90,7 @@ export function useAppConfig() {
     queryKey: APP_CONFIG_QUERY_KEY,
     queryFn: fetchAppConfig,
     staleTime: 5 * 60 * 1000, // 5 minutes - config rarely changes
-    gcTime: 10 * 60 * 1000,   // 10 minutes cache
+    gcTime: 60 * 60 * 1000,  // 60 minutes - config rarely changes during session
     refetchOnWindowFocus: false,
     refetchOnMount: false,    // Use cached data across components
     refetchOnReconnect: false,

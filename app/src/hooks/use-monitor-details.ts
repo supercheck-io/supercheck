@@ -152,7 +152,7 @@ export function useMonitorStats(monitorId: string, location: string = "all") {
     queryFn: () => fetchMonitorStats(monitorId, location),
     enabled: !!monitorId,
     staleTime: 30 * 1000, // 30 seconds - stats update frequently
-    gcTime: 5 * 60 * 1000, // 5 minutes cache
+    // gcTime inherited (24h) for instant back navigation
     refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
   });
 
@@ -205,7 +205,7 @@ export function useMonitorResults(
       }),
     enabled: !!monitorId,
     staleTime: 30 * 1000, // 30 seconds - results change with new checks
-    gcTime: 5 * 60 * 1000, // 5 minutes cache
+    // gcTime inherited (24h) for instant back navigation
     refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
     placeholderData: (previousData) => previousData, // Keep previous data while fetching
   });
@@ -237,7 +237,7 @@ export function useMonitorPermissions(monitorId: string) {
     queryFn: () => fetchMonitorPermissions(monitorId),
     enabled: !!monitorId,
     staleTime: 5 * 60 * 1000, // 5 minutes - permissions rarely change
-    gcTime: 10 * 60 * 1000, // 10 minutes cache
+    gcTime: 60 * 60 * 1000, // 60 minutes - permissions rarely change during session
     refetchOnWindowFocus: false, // Don't refetch on focus for permissions
   });
 

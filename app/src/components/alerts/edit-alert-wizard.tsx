@@ -12,7 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Save } from "lucide-react";
+import { ChevronLeft, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -62,6 +62,7 @@ export function EditAlertWizard({
     recoveryThreshold: 1,
     customMessage: "",
   });
+  const [isSaving, setIsSaving] = useState(false);
 
   const steps = [
     {
@@ -101,13 +102,18 @@ export function EditAlertWizard({
               type="button"
               variant="outline"
               onClick={() => setCurrentStep(0)}
+              disabled={isSaving}
             >
               <ChevronLeft className="h-4 w-4 mr-2" />
               Back
             </Button>
-            <Button onClick={handleFinalSave}>
-              <Save className="h-4 w-4 mr-2" />
-              Save Changes
+            <Button onClick={handleFinalSave} disabled={isSaving}>
+              {isSaving ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              {isSaving ? "Saving..." : "Save Changes"}
             </Button>
           </div>
         </div>
@@ -145,6 +151,8 @@ export function EditAlertWizard({
   }
 
   async function handleFinalSave() {
+    if (isSaving) return;
+    setIsSaving(true);
     try {
       // Here you would save the alert configuration
       // For now, just show success and redirect
@@ -153,6 +161,8 @@ export function EditAlertWizard({
     } catch (error) {
       console.error("Error saving alert settings:", error);
       toast.error("Failed to save alert settings");
+    } finally {
+      setIsSaving(false);
     }
   }
 
