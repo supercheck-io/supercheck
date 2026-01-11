@@ -383,7 +383,7 @@ export async function POST(request: NextRequest) {
       try {
         nextRunAt = getNextRunDate(jobData.cronSchedule);
       } catch (error) {
-        console.error(`Failed to calculate next run date for cron "${jobData.cronSchedule}":`, error);
+        console.error('Failed to calculate next run date for cron "%s":', jobData.cronSchedule, error);
         // Continue without nextRunAt - the schedule can still be set up
       }
     }

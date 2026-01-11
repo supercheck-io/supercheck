@@ -135,15 +135,6 @@ export function JobCreationWizard() {
       // sessionStorage survives refresh, which is intentional
     };
 
-    // Handle client-side navigation
-    const handleRouteChange = () => {
-      const currentPath = window.location.pathname + window.location.search;
-      // If navigating away from the wizard, clear the draft
-      if (!isWithinWizard(currentPath)) {
-        clearDraft();
-      }
-    };
-
     window.addEventListener('beforeunload', handleBeforeUnload);
     
     // Cleanup function runs when component unmounts
