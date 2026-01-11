@@ -17,7 +17,14 @@ export interface Test {
   name: string;
   title?: string;
   description?: string;
-  type: "playwright" | "k6" | "api" | "browser" | "database" | "custom" | "performance";
+  type:
+    | "playwright"
+    | "k6"
+    | "api"
+    | "browser"
+    | "database"
+    | "custom"
+    | "performance";
   priority?: "low" | "medium" | "high";
   script?: string;
   createdAt: string;
@@ -71,17 +78,49 @@ const testsHook = createDataHook<Test, CreateTestData, UpdateTestData>({
 // ============================================================================
 
 export interface UseTestsOptions {
+  /** Filter by test type (e.g., "playwright", "k6", "browser") */
   type?: string;
+  /** Search query to filter tests by title */
   search?: string;
+  /** Whether to enable the query (default: true) */
   enabled?: boolean;
+  /**
+   * Whether to include script content in the response.
+   * Default: false - Scripts are excluded to optimize payload size.
+   * Set to true only when script content is needed (e.g., Playground).
+   */
+  includeScript?: boolean;
+  /**
+   * Maximum number of tests to return.
+   * Default: 200, Max: 1000
+   */
+  limit?: number;
+  /**
+   * Page number for pagination (1-based).
+   * Default: 1
+   */
+  page?: number;
 }
 
 /**
  * Hook to fetch tests list with React Query caching.
- * Data is cached for 60 seconds and shared across components.
+ *
+ * PERFORMANCE OPTIMIZATION:
+ * By default, script content is excluded from the response.
+ * This significantly reduces payload size for list views (KB vs MB).
+ * Use includeScript: true only when script content is needed.
+ *
+ * @example
+ * // For test selectors (no script needed)
+ * const { tests } = useTests({ limit: 500 });
+ *
+ * // For playground (needs script)
+ * const { tests } = useTests({ includeScript: true, limit: 50 });
  */
 export function useTests(options: UseTestsOptions = {}) {
-  const result = testsHook.useList(options as UseTestsOptions & { [key: string]: unknown });
+  const result = testsHook.useList(
+    options as UseTestsOptions & { [key: string]: unknown }
+  );
 
   return {
     ...result,

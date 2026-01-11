@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { tests, testTags, tags } from "@/db/schema";
-import { desc, eq, and, inArray } from "drizzle-orm";
+import { desc, eq, and, inArray, like, count } from "drizzle-orm";
 import { hasPermission } from "@/lib/rbac/middleware";
 import { requireProjectContext } from "@/lib/project-context";
 import { subscriptionService } from "@/lib/services/subscription-service";
+import type { TestType } from "@/db/schema/types";
 
 declare const Buffer: {
   from(data: string, encoding: string): { toString(encoding: string): string };
@@ -40,7 +41,24 @@ async function decodeTestScript(base64Script: string): Promise<string> {
   }
 }
 
-export async function GET() {
+/**
+ * GET /api/tests
+ *
+ * Fetches tests with optional pagination and filtering.
+ *
+ * Query Parameters:
+ * - includeScript: boolean (default: false) - Include decoded script content in response
+ * - limit: number (default: 200, max: 1000) - Number of tests to return
+ * - page: number (default: 1) - Page number for pagination
+ * - search: string (optional) - Search filter for test title
+ * - type: string (optional) - Filter by test type
+ *
+ * PERFORMANCE OPTIMIZATION:
+ * By default, script content is excluded from the response to reduce payload size.
+ * For 200 tests with scripts, this can reduce response size from several MB to ~50KB.
+ * Use ?includeScript=true only when script content is needed (e.g., Playground).
+ */
+export async function GET(request: NextRequest) {
   try {
     const { project, organizationId } = await requireProjectContext();
 
@@ -60,21 +78,53 @@ export async function GET() {
       );
     }
 
-    // Fetch tests scoped to the project
-    // OPTIMIZED: Added default limit to prevent fetching unlimited records
-    // Ordered by createdAt desc so newest tests appear first
-    const DEFAULT_LIMIT = 200;
-    const allTests = await db
-      .select()
-      .from(tests)
-      .where(
-        and(
-          eq(tests.projectId, targetProjectId),
-          eq(tests.organizationId, organizationId)
-        )
-      )
-      .orderBy(desc(tests.createdAt))
-      .limit(DEFAULT_LIMIT);
+    // Parse query parameters for pagination and filtering
+    const { searchParams } = new URL(request.url);
+    const includeScript = searchParams.get("includeScript") === "true";
+    const limitParam = parseInt(searchParams.get("limit") || "200", 10);
+    const pageParam = parseInt(searchParams.get("page") || "1", 10);
+    const searchQuery = searchParams.get("search") || "";
+    const typeFilter = searchParams.get("type") || "";
+
+    // Validate and constrain pagination params
+    const limit = Math.min(Math.max(1, limitParam), 1000); // 1-1000
+    const page = Math.max(1, pageParam);
+    const offset = (page - 1) * limit;
+
+    // Build where conditions
+    const whereConditions = [
+      eq(tests.projectId, targetProjectId),
+      eq(tests.organizationId, organizationId),
+    ];
+
+    // Add search filter if provided (search by title)
+    if (searchQuery.trim()) {
+      whereConditions.push(like(tests.title, `%${searchQuery.trim()}%`));
+    }
+
+    // Add type filter if provided
+    if (typeFilter.trim()) {
+      // Cast to TestType - the API will just return empty results for invalid types
+      whereConditions.push(eq(tests.type, typeFilter.trim() as TestType));
+    }
+
+    // Get total count for pagination (parallel with main query)
+    const [countResult, allTests] = await Promise.all([
+      db
+        .select({ count: count() })
+        .from(tests)
+        .where(and(...whereConditions)),
+      db
+        .select()
+        .from(tests)
+        .where(and(...whereConditions))
+        .orderBy(desc(tests.createdAt))
+        .limit(limit)
+        .offset(offset),
+    ]);
+
+    const totalCount = countResult[0]?.count || 0;
+    const totalPages = Math.ceil(totalCount / limit);
 
     // Get tags for tests in this project only
     const testIds = allTests.map((test) => test.id);
@@ -109,12 +159,15 @@ export async function GET() {
     });
 
     // Map the database results to the expected format
+    // PERFORMANCE OPTIMIZATION: Only decode scripts when explicitly requested
+    // This significantly reduces payload size for list views (KB vs MB)
     const formattedTests = await Promise.all(
       allTests.map(async (test) => {
-        // Decode the script if it exists
-        const decodedScript = test.script
-          ? await decodeTestScript(test.script)
-          : "";
+        // Only decode and include script if explicitly requested
+        const script =
+          includeScript && test.script
+            ? await decodeTestScript(test.script)
+            : undefined;
 
         return {
           id: test.id,
@@ -122,7 +175,8 @@ export async function GET() {
           description: test.description,
           priority: test.priority,
           type: test.type,
-          script: decodedScript, // Include the decoded script
+          // Only include script field when requested (reduces payload significantly)
+          ...(includeScript && { script }),
           tags: testTagsMap.get(test.id) || [], // Include tags
           createdAt: test.createdAt
             ? new Date(test.createdAt).toISOString()
@@ -138,10 +192,12 @@ export async function GET() {
     return NextResponse.json({
       data: formattedTests,
       pagination: {
-        total: formattedTests.length,
-        page: 1,
-        limit: formattedTests.length,
-        totalPages: 1,
+        total: totalCount,
+        page,
+        limit,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
       },
     });
   } catch (error) {

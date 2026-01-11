@@ -17,6 +17,8 @@ import { desc, eq, inArray, and, asc } from "drizzle-orm";
 import { hasPermission } from "@/lib/rbac/middleware";
 import { requireProjectContext } from "@/lib/project-context";
 import { subscriptionService } from "@/lib/services/subscription-service";
+import { getNextRunDate } from "@/lib/cron-utils";
+import { scheduleJob } from "@/lib/job-scheduler";
 
 import { randomUUID } from "crypto";
 
@@ -160,7 +162,7 @@ export async function GET(request: Request) {
           eq(jobs.organizationId, organizationId)
         )
       )
-      .orderBy(desc(jobs.id)) // UUIDv7 is time-ordered
+      .orderBy(desc(jobs.createdAt)) // Sort by latest created first
       .limit(limit)
       .offset(offset);
 
@@ -375,6 +377,17 @@ export async function POST(request: NextRequest) {
     // Generate a unique ID for the job
     const jobId = randomUUID();
 
+    // Calculate next run date if cron schedule is provided
+    let nextRunAt: Date | null = null;
+    if (jobData.cronSchedule && jobData.cronSchedule.trim() !== "") {
+      try {
+        nextRunAt = getNextRunDate(jobData.cronSchedule);
+      } catch (error) {
+        console.error(`Failed to calculate next run date for cron "${jobData.cronSchedule}":`, error);
+        // Continue without nextRunAt - the schedule can still be set up
+      }
+    }
+
     // Insert the job into the database with default values for nullable fields
     const [insertedJob] = await db
       .insert(jobs)
@@ -383,6 +396,7 @@ export async function POST(request: NextRequest) {
         name: jobData.name,
         description: jobData.description || null,
         cronSchedule: jobData.cronSchedule || null,
+        nextRunAt: nextRunAt,
         status: jobData.status || "pending",
         alertConfig: jobData.alertConfig
           ? {
@@ -494,6 +508,33 @@ export async function POST(request: NextRequest) {
       await db.insert(jobTests).values(jobTestValues);
     }
 
+    // If a cronSchedule is provided, set up the job scheduler
+    let scheduledJobId = null;
+    if (jobData.cronSchedule && jobData.cronSchedule.trim() !== "") {
+      try {
+        scheduledJobId = await scheduleJob({
+          name: jobData.name,
+          cron: jobData.cronSchedule,
+          jobId,
+          retryLimit: 3,
+        });
+
+        // Update the job with the scheduler ID
+        if (scheduledJobId) {
+          await db
+            .update(jobs)
+            .set({ scheduledJobId })
+            .where(eq(jobs.id, jobId));
+        }
+
+        console.log(`Job ${jobId} scheduled with scheduler ID ${scheduledJobId}`);
+      } catch (scheduleError) {
+        console.error("Failed to schedule job:", scheduleError);
+        // Continue anyway - the job exists but without background scheduling
+        // Manual execution will still work
+      }
+    }
+
     return NextResponse.json({
       success: true,
       job: {
@@ -501,6 +542,8 @@ export async function POST(request: NextRequest) {
         name: jobData.name,
         description: jobData.description || "",
         cronSchedule: jobData.cronSchedule,
+        nextRunAt: nextRunAt ? nextRunAt.toISOString() : null,
+        scheduledJobId,
         jobType: jobData.jobType === "k6" ? "k6" : "playwright",
       },
     });

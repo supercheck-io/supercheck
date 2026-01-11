@@ -45,6 +45,9 @@ export function JobCreationWizard() {
   const stepFromUrl = searchParams.get('step') as "job" | "alerts" | null;
   const { maxJobNotificationChannels } = useAppConfig();
 
+  // Default cron schedule: weekly on Sunday at midnight UTC
+  const DEFAULT_CRON_SCHEDULE = "";
+
   // Restore form data from sessionStorage if available (survives page refresh)
   const getInitialFormData = () => {
     if (typeof window !== 'undefined') {
@@ -53,11 +56,11 @@ export function JobCreationWizard() {
         try {
           return JSON.parse(saved);
         } catch {
-          return { name: "", description: "", cronSchedule: "", tests: [] as Test[] };
+          return { name: "", description: "", cronSchedule: DEFAULT_CRON_SCHEDULE, tests: [] as Test[] };
         }
       }
     }
-    return { name: "", description: "", cronSchedule: "", tests: [] as Test[] };
+    return { name: "", description: "", cronSchedule: DEFAULT_CRON_SCHEDULE, tests: [] as Test[] };
   };
 
   const getInitialAlertConfig = () => {
@@ -109,13 +112,53 @@ export function JobCreationWizard() {
     }
   }, [alertConfig]);
 
-  // Clear sessionStorage on successful submission
+  // Clear sessionStorage on successful submission or navigation away
   const clearDraft = () => {
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('playwright-job-draft');
       sessionStorage.removeItem('playwright-job-alert-draft');
     }
   };
+
+  // Clear draft when navigating away from the job creation flow
+  // This uses beforeunload for full page navigations and a cleanup effect
+  // for client-side navigations away from /jobs/create
+  useEffect(() => {
+    // Track if we're staying within the wizard flow
+    const isWithinWizard = (url: string) => {
+      return url.includes('/jobs/create/playwright') || url.includes('step=alerts');
+    };
+
+    // Handle browser back/forward or full page navigation
+    const handleBeforeUnload = () => {
+      // Don't clear on page refresh or wizard navigation
+      // sessionStorage survives refresh, which is intentional
+    };
+
+    // Handle client-side navigation
+    const handleRouteChange = () => {
+      const currentPath = window.location.pathname + window.location.search;
+      // If navigating away from the wizard, clear the draft
+      if (!isWithinWizard(currentPath)) {
+        clearDraft();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    // Cleanup function runs when component unmounts
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Check if we're navigating away from the wizard
+      // Use setTimeout to let the navigation complete first
+      setTimeout(() => {
+        const currentPath = window.location.pathname + window.location.search;
+        if (!isWithinWizard(currentPath)) {
+          clearDraft();
+        }
+      }, 0);
+    };
+  }, []);
 
   // Sync URL with current step
   useEffect(() => {

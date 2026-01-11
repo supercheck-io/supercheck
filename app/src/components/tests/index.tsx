@@ -21,8 +21,14 @@ export default function Tests() {
   const router = useRouter();
 
   // Use React Query hook for tests data (cached, handles loading/error)
-  const { tests: rawTests, isLoading, invalidate } = useTests();
-
+  // PERFORMANCE OPTIMIZATION: Don't include scripts - they're not needed for the list view
+  const {
+    tests: rawTests,
+    isLoading,
+    invalidate,
+  } = useTests({
+    includeScript: false,
+  });
 
   // Transform tests data with memoization to match local Test schema
   const tests = useMemo<Test[]>(() => {
@@ -31,17 +37,20 @@ export default function Tests() {
     return rawTests.map((test) => ({
       ...test,
       title: test.title || test.name,
-      priority: ((test as unknown) as { priority?: string }).priority || "medium",
+      priority: (test as unknown as { priority?: string }).priority || "medium",
       description: test.description || null,
       createdAt: test.createdAt ?? undefined,
       updatedAt: test.updatedAt ?? undefined,
     })) as Test[];
   }, [rawTests]);
 
-  const handleRowClick = useCallback((row: Row<Test>) => {
-    const test = row.original;
-    router.push(`/playground/${test.id}`);
-  }, [router]);
+  const handleRowClick = useCallback(
+    (row: Row<Test>) => {
+      const test = row.original;
+      router.push(`/playground/${test.id}`);
+    },
+    [router]
+  );
 
   const onTestDeleted = useCallback(() => {
     // Invalidate React Query cache to refresh tests list after deletion

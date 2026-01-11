@@ -5,8 +5,7 @@ import { Cron, OnError } from "react-js-cron";
 import "react-js-cron/dist/styles.css"; // Import base styles
 import { Input } from "@/components/ui/input"; // Import shadcn Input
 import { Button } from "@/components/ui/button"; // Import shadcn Button
-import { X } from "lucide-react"; // Import icons
-import { toast } from "sonner"; // Import toast
+import { X, Clock, CalendarClock } from "lucide-react"; // Import icons
 
 interface CronSchedulerProps {
   value: string;
@@ -16,9 +15,8 @@ interface CronSchedulerProps {
   readOnly?: boolean;
 }
 
-// Define custom locale if needed, or use defaults
-// import { Locale } from 'react-js-cron'
-// const customLocale: Partial<Locale> = { ... }
+// Default cron expression when user enables scheduling
+const DEFAULT_CRON = "0 0 * * 0"; // Weekly on Sunday at midnight UTC
 
 const CronScheduler: React.FC<CronSchedulerProps> = ({
   value,
@@ -28,6 +26,10 @@ const CronScheduler: React.FC<CronSchedulerProps> = ({
   readOnly = false,
 }) => {
   const originalConsoleWarn = useRef<typeof console.warn>(console.warn);
+
+  // Whether to show the scheduler is simply derived from whether there's a value
+  // No need for separate state since handleEnableScheduling immediately sets a default value
+  const isSchedulerVisible = !!value;
 
   useEffect(() => {
     // Store original console.warn
@@ -59,11 +61,48 @@ const CronScheduler: React.FC<CronSchedulerProps> = ({
     };
   }, []);
 
+  // Handle enabling scheduling
+  const handleEnableScheduling = () => {
+    onChange(DEFAULT_CRON); // Set default schedule when enabling
+  };
+
+  // Handle disabling scheduling
+  const handleDisableScheduling = () => {
+    onChange(""); // Clear the schedule
+  };
+
+  // Show "Not Scheduled" state when scheduler is not visible
+  if (!isSchedulerVisible) {
+    return (
+      <div className="cron-widget-container space-y-2">
+        <div className="flex items-center gap-3 p-3 rounded-md border border-dashed border-muted-foreground/30 bg-muted/30">
+          <Clock className="h-5 w-5 text-muted-foreground" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-muted-foreground">Not Scheduled</p>
+            <p className="text-xs text-muted-foreground/70">Job will only run when manually triggered</p>
+          </div>
+          {!readOnly && !disabled && (
+            <Button 
+              type="button" 
+              variant="outline" 
+              size="sm"
+              onClick={handleEnableScheduling}
+              className="shrink-0"
+            >
+              <CalendarClock className="h-4 w-4 mr-2" />
+              Add Schedule
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="cron-widget-container space-y-2"> 
       {/* The Cron component for visual editing */}
       <Cron
-        value={value || "0 0 * * 0"} // Default to "every week" (Sunday at midnight) if no value
+        value={value || DEFAULT_CRON}
         setValue={onChange}
         leadingZero // Use leading zeros for hours/minutes (e.g., 01 instead of 1)
         clearButton={false} // Hide the default clear button if desired
@@ -89,16 +128,13 @@ const CronScheduler: React.FC<CronSchedulerProps> = ({
           className="flex-grow"
           style={{ maxWidth: '250px' }} // Limit width of the read-only input
         />
-        {/* Button to clear the schedule */}
+        {/* Button to remove the schedule */}
         {value && !readOnly && !disabled && (
           <Button 
             type="button" 
-            variant="secondary" // Make the clear button red
+            variant="secondary"
             size="sm"
-            onClick={() => {
-              onChange(""); // Clear the value
-              toast.success("Cron schedule will be removed after job update"); // Show success toast message
-            }}
+            onClick={handleDisableScheduling}
             aria-label="Remove schedule"
           >
             <X className="h-4 w-4 text-destructive" />
