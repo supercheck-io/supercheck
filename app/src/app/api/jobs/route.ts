@@ -169,26 +169,46 @@ export async function GET(request: Request) {
 
     const jobIds = jobsResult.map((job) => job.id);
 
-    // Query 2: Batch fetch all tests for all jobs in one query
-    const allJobTests = await db
-      .select({
-        jobId: jobTests.jobId,
-        testId: testsTable.id,
-        title: testsTable.title,
-        description: testsTable.description,
-        type: testsTable.type,
-        priority: testsTable.priority,
-        script: testsTable.script,
-        createdAt: testsTable.createdAt,
-        updatedAt: testsTable.updatedAt,
-        orderPosition: jobTests.orderPosition,
-      })
-      .from(jobTests)
-      .innerJoin(testsTable, eq(testsTable.id, jobTests.testId))
-      .where(inArray(jobTests.jobId, jobIds))
-      .orderBy(asc(jobTests.orderPosition));
+    // PERFORMANCE: Run independent queries in parallel
+    // Query 2 (tests) and Query 4 (last runs) both depend only on jobIds
+    const [allJobTests, allLastRuns] = await Promise.all([
+      // Query 2: Batch fetch all tests for all jobs in one query
+      db
+        .select({
+          jobId: jobTests.jobId,
+          testId: testsTable.id,
+          title: testsTable.title,
+          description: testsTable.description,
+          type: testsTable.type,
+          priority: testsTable.priority,
+          script: testsTable.script,
+          createdAt: testsTable.createdAt,
+          updatedAt: testsTable.updatedAt,
+          orderPosition: jobTests.orderPosition,
+        })
+        .from(jobTests)
+        .innerJoin(testsTable, eq(testsTable.id, jobTests.testId))
+        .where(inArray(jobTests.jobId, jobIds))
+        .orderBy(asc(jobTests.orderPosition)),
 
-    // Query 3: Batch fetch all tags for all tests in one query
+      // Query 4: Batch fetch last run for all jobs
+      // This gets the most recent run for each job in a single query
+      db
+        .select({
+          jobId: runs.jobId,
+          id: runs.id,
+          status: runs.status,
+          startedAt: runs.startedAt,
+          completedAt: runs.completedAt,
+          durationMs: runs.durationMs,
+          errorDetails: runs.errorDetails,
+        })
+        .from(runs)
+        .where(inArray(runs.jobId, jobIds))
+        .orderBy(runs.jobId, desc(runs.startedAt)),
+    ]);
+
+    // Query 3: Batch fetch all tags for all tests (depends on Query 2 results)
     const allTestIds = [...new Set(allJobTests.map((t) => t.testId))];
     const allTestTags =
       allTestIds.length > 0
@@ -203,22 +223,6 @@ export async function GET(request: Request) {
             .innerJoin(tags, eq(testTags.tagId, tags.id))
             .where(inArray(testTags.testId, allTestIds))
         : [];
-
-    // Query 4: Batch fetch last run for all jobs using a subquery with DISTINCT ON
-    // This gets the most recent run for each job in a single query
-    const allLastRuns = await db
-      .select({
-        jobId: runs.jobId,
-        id: runs.id,
-        status: runs.status,
-        startedAt: runs.startedAt,
-        completedAt: runs.completedAt,
-        durationMs: runs.durationMs,
-        errorDetails: runs.errorDetails,
-      })
-      .from(runs)
-      .where(inArray(runs.jobId, jobIds))
-      .orderBy(runs.jobId, desc(runs.startedAt));
 
     // Build lookup maps for O(1) access
     // Map: jobId -> tests[]

@@ -125,7 +125,7 @@ export function useStatusPageMutations() {
 // DETAIL PAGE HOOK (custom, returns related data)
 // ============================================================================
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useIsRestoring } from "@tanstack/react-query";
 import { useProjectContext } from "./use-project-context";
 
 export interface StatusPageMonitor {
@@ -182,11 +182,15 @@ export interface StatusPageDetailResponse {
 /**
  * Hook to fetch a single status page with all related data (components, monitors, permissions).
  * Uses a custom query since the response format differs from the generic factory pattern.
+ * 
+ * LOADING STATE OPTIMIZATION:
+ * - isLoading: true only when actually fetching (not during cache restoration)
  */
 export function useStatusPageDetail(statusPageId: string | null) {
   const queryClient = useQueryClient();
   const { currentProject } = useProjectContext();
   const projectId = currentProject?.id ?? null;
+  const isRestoring = useIsRestoring();
 
   const query = useQuery<StatusPageDetailResponse>({
     queryKey: [...STATUS_PAGE_QUERY_KEY, statusPageId, "detail"],
@@ -210,13 +214,16 @@ export function useStatusPageDetail(statusPageId: string | null) {
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: [...STATUS_PAGE_QUERY_KEY, statusPageId, "detail"], refetchType: 'all' });
 
+  // PERFORMANCE: Smart loading state - don't show loading during cache restoration
+  const isActuallyLoading = query.isLoading && !isRestoring;
+
   return {
     data: query.data,
     statusPage: query.data?.statusPage ?? null,
     components: query.data?.components ?? [],
     monitors: query.data?.monitors ?? [],
     canUpdate: query.data?.canUpdate ?? false,
-    isLoading: query.isLoading,
+    isLoading: isActuallyLoading,
     error: query.error as Error | null,
     refetch: query.refetch,
     invalidate,

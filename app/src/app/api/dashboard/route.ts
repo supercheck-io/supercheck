@@ -225,9 +225,15 @@ export async function GET() {
         ))
     ]);
 
+    // PERFORMANCE: Run all remaining queries in parallel instead of sequential awaits
+    // This batch includes: monitor aggregation, playground aggregation, uptime, availability trend, response time stats, playground trend
     const [
       monitorExecutionAggregated,
-      playgroundExecutionAggregated
+      playgroundExecutionAggregated,
+      uptimeResult,
+      availabilityTrend,
+      responseTimeStats,
+      playgroundExecutionsTrend
     ] = await Promise.all([
       // OPTIMIZED: Synthetic monitor executions - SQL aggregation instead of fetching all rows
       // This was causing CPU spikes by fetching 4000+ rows and looping in JS
@@ -272,68 +278,68 @@ export async function GET() {
           eq(auditLogs.organizationId, context.organizationId),
           gte(auditLogs.createdAt, last30Days),
           sql`${auditLogs.details}->'metadata'->>'projectId' = ${targetProjectId}`
-        ))
-    ]);
+        )),
 
-    // OPTIMIZED: Calculate uptime percentage using SQL aggregation instead of fetching all rows
-    const uptimeResult = await dbInstance.select({
-      totalChecks: count(),
-      successfulChecks: sql<number>`count(*) filter (where ${monitorResults.isUp} = true)`,
-    }).from(monitorResults)
-      .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
-      .where(and(
-        gte(monitorResults.checkedAt, last24Hours),
-        eq(monitors.projectId, targetProjectId),
-        eq(monitors.organizationId, context.organizationId)
-      ));
+      // OPTIMIZED: Calculate uptime percentage using SQL aggregation instead of fetching all rows
+      dbInstance.select({
+        totalChecks: count(),
+        successfulChecks: sql<number>`count(*) filter (where ${monitorResults.isUp} = true)`,
+      }).from(monitorResults)
+        .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
+        .where(and(
+          gte(monitorResults.checkedAt, last24Hours),
+          eq(monitors.projectId, targetProjectId),
+          eq(monitors.organizationId, context.organizationId)
+        )),
+
+      // Monitor availability trend (last 30 days) - only for monitors in this project
+      dbInstance.select({
+        date: sql<string>`DATE(${monitorResults.checkedAt})`,
+        upCount: sql<number>`SUM(CASE WHEN ${monitorResults.isUp} THEN 1 ELSE 0 END)`,
+        totalCount: count()
+      }).from(monitorResults)
+        .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
+        .where(and(
+          gte(monitorResults.checkedAt, last30Days),
+          eq(monitors.projectId, targetProjectId),
+          eq(monitors.organizationId, context.organizationId)
+        ))
+        .groupBy(sql`DATE(${monitorResults.checkedAt})`)
+        .orderBy(sql`DATE(${monitorResults.checkedAt})`),
+
+      // Response time statistics - only for monitors in this project
+      dbInstance.select({
+        avgResponseTime: sql<number>`AVG(${monitorResults.responseTimeMs})`,
+        minResponseTime: sql<number>`MIN(${monitorResults.responseTimeMs})`,
+        maxResponseTime: sql<number>`MAX(${monitorResults.responseTimeMs})`
+      }).from(monitorResults)
+        .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
+        .where(and(
+          gte(monitorResults.checkedAt, last24Hours),
+          eq(monitorResults.isUp, true),
+          eq(monitors.projectId, targetProjectId),
+          eq(monitors.organizationId, context.organizationId)
+        )),
+
+      // Daily playground executions breakdown (last 30 days)
+      dbInstance.select({
+        date: sql<string>`DATE(${auditLogs.createdAt})`,
+        count: count()
+      }).from(auditLogs)
+        .where(and(
+          eq(auditLogs.action, 'playground_test_executed'),
+          eq(auditLogs.organizationId, context.organizationId),
+          gte(auditLogs.createdAt, last30Days),
+          sql`${auditLogs.details}->'metadata'->>'projectId' = ${targetProjectId}`
+        ))
+        .groupBy(sql`DATE(${auditLogs.createdAt})`)
+        .orderBy(sql`DATE(${auditLogs.createdAt})`)
+    ]);
 
     // Calculate overall uptime percentage from aggregated result
     const totalChecks = uptimeResult[0]?.totalChecks ?? 0;
     const successfulChecks = uptimeResult[0]?.successfulChecks ?? 0;
     const overallUptime = totalChecks > 0 ? (successfulChecks / totalChecks) * 100 : 100;
-
-    // Monitor availability trend (last 30 days) - only for monitors in this project
-    const availabilityTrend = await dbInstance.select({
-      date: sql<string>`DATE(${monitorResults.checkedAt})`,
-      upCount: sql<number>`SUM(CASE WHEN ${monitorResults.isUp} THEN 1 ELSE 0 END)`,
-      totalCount: count()
-    }).from(monitorResults)
-      .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
-      .where(and(
-        gte(monitorResults.checkedAt, last30Days),
-        eq(monitors.projectId, targetProjectId),
-        eq(monitors.organizationId, context.organizationId)
-      ))
-      .groupBy(sql`DATE(${monitorResults.checkedAt})`)
-      .orderBy(sql`DATE(${monitorResults.checkedAt})`);
-
-    // Response time statistics - only for monitors in this project
-    const responseTimeStats = await dbInstance.select({
-      avgResponseTime: sql<number>`AVG(${monitorResults.responseTimeMs})`,
-      minResponseTime: sql<number>`MIN(${monitorResults.responseTimeMs})`,
-      maxResponseTime: sql<number>`MAX(${monitorResults.responseTimeMs})`
-    }).from(monitorResults)
-      .innerJoin(monitors, eq(monitorResults.monitorId, monitors.id))
-      .where(and(
-        gte(monitorResults.checkedAt, last24Hours),
-        eq(monitorResults.isUp, true),
-        eq(monitors.projectId, targetProjectId),
-        eq(monitors.organizationId, context.organizationId)
-      ));
-
-    // Daily playground executions breakdown (last 30 days)
-    const playgroundExecutionsTrend = await dbInstance.select({
-      date: sql<string>`DATE(${auditLogs.createdAt})`,
-      count: count()
-    }).from(auditLogs)
-      .where(and(
-        eq(auditLogs.action, 'playground_test_executed'),
-        eq(auditLogs.organizationId, context.organizationId),
-        gte(auditLogs.createdAt, last30Days),
-        sql`${auditLogs.details}->'metadata'->>'projectId' = ${targetProjectId}`
-      ))
-      .groupBy(sql`DATE(${auditLogs.createdAt})`)
-      .orderBy(sql`DATE(${auditLogs.createdAt})`);
 
     // OPTIMIZED: Calculate total execution time using pre-aggregated SQL data
     // This eliminates CPU spikes from looping over 5000+ records in JavaScript

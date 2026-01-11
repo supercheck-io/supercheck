@@ -21,14 +21,13 @@ export default function Tests() {
   const router = useRouter();
 
   // Use React Query hook for tests data (cached, handles loading/error)
-  // PERFORMANCE OPTIMIZATION: Don't include scripts - they're not needed for the list view
+  // PERFORMANCE: Scripts excluded by default (API default) - no need to pass includeScript: false
+  // This ensures cache key matches DataPrefetcher for instant renders
   const {
     tests: rawTests,
     isLoading,
     invalidate,
-  } = useTests({
-    includeScript: false,
-  });
+  } = useTests();
 
   // Transform tests data with memoization to match local Test schema
   const tests = useMemo<Test[]>(() => {

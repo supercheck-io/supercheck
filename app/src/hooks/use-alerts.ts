@@ -5,7 +5,7 @@
  * Uses React Query for caching and prefetch compatibility.
  */
 
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation, useIsRestoring } from "@tanstack/react-query";
 import { useProjectContext } from "./use-project-context";
 import type {
   NotificationProviderType,
@@ -75,11 +75,15 @@ export async function fetchAlertHistory(): Promise<AlertHistory[]> {
 /**
  * Hook to fetch notification providers with React Query caching.
  * Data is cached for 60 seconds and shared across components.
+ * 
+ * LOADING STATE OPTIMIZATION:
+ * - isLoading: true only when actually fetching (not during cache restoration)
  */
 export function useNotificationProviders() {
   const { currentProject } = useProjectContext();
   const projectId = currentProject?.id ?? null;
   const queryClient = useQueryClient();
+  const isRestoring = useIsRestoring();
 
   const query = useQuery({
     queryKey: [...NOTIFICATION_PROVIDERS_QUERY_KEY, projectId],
@@ -96,9 +100,12 @@ export function useNotificationProviders() {
       refetchType: 'all' 
     });
 
+  // PERFORMANCE: Smart loading state - don't show loading during cache restoration
+  const isActuallyLoading = query.isLoading && !isRestoring;
+
   return {
     providers: query.data ?? [],
-    isLoading: query.isLoading,
+    isLoading: isActuallyLoading,
     error: query.error as Error | null,
     refetch: query.refetch,
     invalidate,
@@ -108,11 +115,15 @@ export function useNotificationProviders() {
 /**
  * Hook to fetch alert history with React Query caching.
  * Data is cached for 60 seconds.
+ * 
+ * LOADING STATE OPTIMIZATION:
+ * - isLoading: true only when actually fetching (not during cache restoration)
  */
 export function useAlertHistory() {
   const { currentProject } = useProjectContext();
   const projectId = currentProject?.id ?? null;
   const queryClient = useQueryClient();
+  const isRestoring = useIsRestoring();
 
   const query = useQuery({
     queryKey: [...ALERTS_HISTORY_QUERY_KEY, projectId],
@@ -129,9 +140,12 @@ export function useAlertHistory() {
       refetchType: 'all' 
     });
 
+  // PERFORMANCE: Smart loading state - don't show loading during cache restoration
+  const isActuallyLoading = query.isLoading && !isRestoring;
+
   return {
     alertHistory: query.data ?? [],
-    isLoading: query.isLoading,
+    isLoading: isActuallyLoading,
     error: query.error as Error | null,
     refetch: query.refetch,
     invalidate,

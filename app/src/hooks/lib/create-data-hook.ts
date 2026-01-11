@@ -17,7 +17,7 @@ import {
   useQueryClient,
   useMutation,
   QueryClient,
-
+  useIsRestoring,
 } from "@tanstack/react-query";
 import { useProjectContext } from "../use-project-context";
 
@@ -318,11 +318,17 @@ export function createDataHook<
 
   /**
    * Hook to fetch paginated list of entities
+   * 
+   * LOADING STATE OPTIMIZATION:
+   * - isLoading: true only when actually fetching (not during cache restoration)
+   * - isRestoring: true during cache hydration from localStorage
+   * - Use isPending for "no data yet" state (includes both loading and restoring)
    */
   function useList(options: ListQueryOptions & { [key: string]: unknown } = {}) {
     const { currentProject } = useProjectContext();
     const projectId = currentProject?.id ?? null;
     const queryClient = useQueryClient();
+    const isRestoring = useIsRestoring();
 
     const { enabled = true, ...filters } = options;
 
@@ -341,12 +347,20 @@ export function createDataHook<
     const invalidate = () =>
       queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
 
+    // PERFORMANCE: Smart loading state
+    // - Don't show loading spinner during cache restoration (isRestoring=true)
+    // - Only show loading when actually fetching from network
+    // - This prevents flash of loading state when data is about to be restored from cache
+    const isActuallyLoading = query.isLoading && !isRestoring;
+
     return {
       data: query.data,
       items: query.data?.data ?? [],
       total: query.data?.pagination?.total ?? 0,
       pagination: query.data?.pagination,
-      isLoading: query.isLoading,
+      isLoading: isActuallyLoading,
+      isPending: query.isPending,
+      isRestoring,
       isRefetching: query.isRefetching,
       error: query.error as Error | null,
       refetch: query.refetch,
@@ -356,9 +370,14 @@ export function createDataHook<
 
   /**
    * Hook to fetch a single entity by ID
+   * 
+   * LOADING STATE OPTIMIZATION:
+   * - isLoading: true only when actually fetching (not during cache restoration)
+   * - isRestoring: true during cache hydration from localStorage  
    */
   function useSingle(id: string | null, options: SingleQueryOptions = {}) {
     const queryClient = useQueryClient();
+    const isRestoring = useIsRestoring();
     const { enabled = true } = options;
 
     const query = useQuery({
@@ -373,9 +392,14 @@ export function createDataHook<
     const invalidate = () =>
       queryClient.invalidateQueries({ queryKey: [...singleQueryKey, id], refetchType: 'all' });
 
+    // PERFORMANCE: Smart loading state - don't show loading during cache restoration
+    const isActuallyLoading = query.isLoading && !isRestoring;
+
     return {
       data: query.data,
-      isLoading: query.isLoading,
+      isLoading: isActuallyLoading,
+      isPending: query.isPending,
+      isRestoring,
       error: query.error as Error | null,
       refetch: query.refetch,
       invalidate,

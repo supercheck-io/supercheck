@@ -6,7 +6,7 @@
  * No auto-refresh - data refreshes on page visit or manual action.
  */
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useIsRestoring } from "@tanstack/react-query";
 import { useProjectContext } from "./use-project-context";
 
 // ============================================================================
@@ -342,11 +342,13 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
  * - Automatic background refresh every 60 seconds
  * - Request deduplication if multiple components need same data
  * - Project switch invalidates cache automatically via queryKey
+ * - Smart loading state that doesn't flash during cache restoration
  */
 export function useDashboard() {
   const { currentProject } = useProjectContext();
   const projectId = currentProject?.id ?? null;
   const queryClient = useQueryClient();
+  const isRestoring = useIsRestoring();
 
   const query = useQuery({
     queryKey: getDashboardQueryKey(projectId),
@@ -367,9 +369,12 @@ export function useDashboard() {
   const invalidate = () => 
     queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
 
+  // PERFORMANCE: Smart loading state - don't show loading during cache restoration
+  const isActuallyLoading = query.isLoading && !isRestoring;
+
   return {
     data: query.data,
-    isLoading: query.isLoading,
+    isLoading: isActuallyLoading,
     isRefetching: query.isRefetching,
     error: query.error as Error | null,
     refetch,
