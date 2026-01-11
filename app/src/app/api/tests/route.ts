@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { tests, testTags, tags } from "@/db/schema";
 import { desc, eq, and, inArray, like, count } from "drizzle-orm";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireProjectContext } from "@/lib/project-context";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import type { TestType } from "@/db/schema/types";
@@ -60,16 +60,13 @@ async function decodeTestScript(base64Script: string): Promise<string> {
  */
 export async function GET(request: NextRequest) {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireProjectContext();
 
     // Use current project context - no need for query params or fallbacks
-    const targetProjectId = project.id;
+    const targetProjectId = context.project.id;
 
-    // Check permission to view tests
-    const canView = await hasPermission("test", "view", {
-      organizationId,
-      projectId: targetProjectId,
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
+    const canView = checkPermissionWithContext("test", "view", context);
 
     if (!canView) {
       return NextResponse.json(
@@ -94,7 +91,7 @@ export async function GET(request: NextRequest) {
     // Build where conditions
     const whereConditions = [
       eq(tests.projectId, targetProjectId),
-      eq(tests.organizationId, organizationId),
+      eq(tests.organizationId, context.organizationId),
     ];
 
     // Add search filter if provided (search by title)
@@ -218,11 +215,11 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const context = await requireProjectContext();
 
     // SECURITY: Validate subscription before allowing test creation
-    await subscriptionService.blockUntilSubscribed(organizationId);
-    await subscriptionService.requireValidPolarCustomer(organizationId);
+    await subscriptionService.blockUntilSubscribed(context.organizationId);
+    await subscriptionService.requireValidPolarCustomer(context.organizationId);
 
     const body = await request.json();
     const { title, description, priority, type, script } = body;
@@ -236,13 +233,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Use current project context
-    const targetProjectId = project.id;
+    const targetProjectId = context.project.id;
 
-    // Check permission to create tests
-    const canCreate = await hasPermission("test", "create", {
-      organizationId,
-      projectId: targetProjectId,
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid duplicate DB queries
+    const canCreate = checkPermissionWithContext("test", "create", context);
 
     if (!canCreate) {
       return NextResponse.json(
@@ -261,8 +255,8 @@ export async function POST(request: NextRequest) {
         type: type || "e2e",
         script: script || null,
         projectId: targetProjectId,
-        organizationId: organizationId,
-        createdByUserId: userId,
+        organizationId: context.organizationId,
+        createdByUserId: context.userId,
         createdAt: new Date(),
         updatedAt: new Date(),
       })

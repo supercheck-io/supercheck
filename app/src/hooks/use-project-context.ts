@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
-import { getDashboardQueryKey, fetchDashboard } from './use-dashboard';
 
 export interface ProjectContext {
   id: string;
@@ -108,7 +106,6 @@ export function useProjectContextState(
   // PERFORMANCE: If server provided data, skip loading state entirely
   const [loading, setLoading] = useState(!hasServerData && !projectsCache);
   const [error, setError] = useState<string | null>(null);
-  const queryClient = useQueryClient();
   
   // Populate module cache with server data for subsequent navigations
   // Only run once when server data is first available
@@ -237,18 +234,8 @@ export function useProjectContextState(
     fetchProjects();
   }, [fetchProjects]);
 
-  // PERFORMANCE: Prefetch dashboard data as soon as we have a project
-  // This starts the slow dashboard fetch in parallel with other initializations
-  useEffect(() => {
-    if (currentProject?.id) {
-      // Prefetch dashboard data - doesn't block, just warms the cache
-      queryClient.prefetchQuery({
-        queryKey: getDashboardQueryKey(currentProject.id),
-        queryFn: fetchDashboard,
-        staleTime: 60 * 1000, // Same as useDashboard
-      });
-    }
-  }, [currentProject?.id, queryClient]);
+  // NOTE: Dashboard prefetch moved to DataPrefetcher for consistency
+  // All entity prefetching is now centralized there
 
   return {
     currentProject,

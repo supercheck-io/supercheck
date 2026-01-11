@@ -9,19 +9,16 @@ import {
   type RequirementCoverageStatus,
 } from "@/db/schema";
 import { desc, eq, and, sql, like, or, inArray } from "drizzle-orm";
-import { hasPermission } from '@/lib/rbac/middleware';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireProjectContext } from '@/lib/project-context';
 
 export async function GET(request: NextRequest) {
   try {
     // Require authentication and project context
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireProjectContext();
 
-    // Check permission to view requirements
-    const canView = await hasPermission('requirement', 'view', {
-      organizationId,
-      projectId: project.id
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
+    const canView = checkPermissionWithContext('requirement', 'view', context);
 
     if (!canView) {
       return NextResponse.json(
@@ -48,7 +45,7 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * pageSize;
 
     // Build where conditions - SECURITY: Always filter by project
-    const conditions = [eq(requirements.projectId, project.id)];
+    const conditions = [eq(requirements.projectId, context.project.id)];
 
     if (search) {
       conditions.push(
@@ -65,47 +62,49 @@ export async function GET(request: NextRequest) {
 
     const whereCondition = and(...conditions);
 
-    // Get total count
-    const countResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(requirements)
-      .where(whereCondition);
+    // PERFORMANCE: Run count and data queries in parallel
+    const [countResult, results] = await Promise.all([
+      // Count query
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(requirements)
+        .where(whereCondition),
+      // Data query with coverage join
+      db
+        .select({
+          id: requirements.id,
+          title: requirements.title,
+          description: requirements.description,
+          priority: requirements.priority,
+          sourceDocumentId: requirements.sourceDocumentId,
+          sourceSection: requirements.sourceSection,
+          externalId: requirements.externalId,
+          externalUrl: requirements.externalUrl,
+          externalProvider: requirements.externalProvider,
+          createdBy: requirements.createdBy,
+          createdAt: requirements.createdAt,
+          updatedAt: requirements.updatedAt,
+          coverageStatus: requirementCoverageSnapshots.status,
+          linkedTestCount: requirementCoverageSnapshots.linkedTestCount,
+          passedTestCount: requirementCoverageSnapshots.passedTestCount,
+          failedTestCount: requirementCoverageSnapshots.failedTestCount,
+          sourceDocumentName: sql<string | null>`(
+            SELECT name FROM requirement_documents 
+            WHERE id = ${requirements.sourceDocumentId}
+          )`.as("source_document_name"),
+        })
+        .from(requirements)
+        .leftJoin(
+          requirementCoverageSnapshots,
+          eq(requirements.id, requirementCoverageSnapshots.requirementId)
+        )
+        .where(whereCondition)
+        .orderBy(desc(requirements.createdAt))
+        .offset(offset)
+        .limit(pageSize),
+    ]);
 
     const total = Number(countResult[0]?.count ?? 0);
-
-    // Query with coverage join
-    const results = await db
-      .select({
-        id: requirements.id,
-        title: requirements.title,
-        description: requirements.description,
-        priority: requirements.priority,
-        sourceDocumentId: requirements.sourceDocumentId,
-        sourceSection: requirements.sourceSection,
-        externalId: requirements.externalId,
-        externalUrl: requirements.externalUrl,
-        externalProvider: requirements.externalProvider,
-        createdBy: requirements.createdBy,
-        createdAt: requirements.createdAt,
-        updatedAt: requirements.updatedAt,
-        coverageStatus: requirementCoverageSnapshots.status,
-        linkedTestCount: requirementCoverageSnapshots.linkedTestCount,
-        passedTestCount: requirementCoverageSnapshots.passedTestCount,
-        failedTestCount: requirementCoverageSnapshots.failedTestCount,
-        sourceDocumentName: sql<string | null>`(
-          SELECT name FROM requirement_documents 
-          WHERE id = ${requirements.sourceDocumentId}
-        )`.as("source_document_name"),
-      })
-      .from(requirements)
-      .leftJoin(
-        requirementCoverageSnapshots,
-        eq(requirements.id, requirementCoverageSnapshots.requirementId)
-      )
-      .where(whereCondition)
-      .orderBy(desc(requirements.createdAt))
-      .offset(offset)
-      .limit(pageSize);
 
     // Filter by status if specified (done in JS since it's a post-join filter)
     let filteredResults = results;

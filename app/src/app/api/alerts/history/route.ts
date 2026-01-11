@@ -2,27 +2,24 @@ import { NextResponse, NextRequest } from "next/server";
 import { db } from "@/utils/db";
 import { alertHistory } from "@/db/schema";
 import { sql } from "drizzle-orm";
-import { hasPermission } from '@/lib/rbac/middleware';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireProjectContext } from '@/lib/project-context';
 
 export async function GET() {
   try {
-    let userId: string, project: { id: string; name: string; organizationId: string }, organizationId: string;
+    let context: { userId: string; project: { id: string; name: string; organizationId: string; userRole: string }; organizationId: string };
     
     try {
-      const context = await requireProjectContext();
-      userId = context.userId;
-      project = context.project;
-      organizationId = context.organizationId;
+      context = await requireProjectContext();
     } catch (contextError) {
       console.error('Project context error:', contextError);
       // Return empty array if no project context available or authentication failed
       return NextResponse.json([]);
     }
     
-    // Build permission context and check access
+    // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
     try {
-      const canView = await hasPermission('monitor', 'view', { organizationId, projectId: project.id });
+      const canView = checkPermissionWithContext('monitor', 'view', context);
       
       if (!canView) {
         return NextResponse.json([]);
@@ -77,8 +74,8 @@ export async function GET() {
           FROM alert_history ah
           INNER JOIN jobs j ON ah.job_id = j.id
           LEFT JOIN notification_providers np ON np.id::text = ah.provider
-          WHERE j.organization_id = ${organizationId}
-            AND j.project_id = ${project.id}
+          WHERE j.organization_id = ${context.organizationId}
+            AND j.project_id = ${context.project.id}
         )
         UNION ALL
         (
@@ -101,8 +98,8 @@ export async function GET() {
           FROM alert_history ah
           INNER JOIN monitors m ON ah.monitor_id = m.id
           LEFT JOIN notification_providers np ON np.id::text = ah.provider
-          WHERE m.organization_id = ${organizationId}
-            AND m.project_id = ${project.id}
+          WHERE m.organization_id = ${context.organizationId}
+            AND m.project_id = ${context.project.id}
         )
         ORDER BY "timestamp" DESC
         LIMIT 50
@@ -150,7 +147,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     // Require authentication and project context
-    let projectContext;
+    let projectContext: { userId: string; project: { id: string; name: string; organizationId: string; userRole: string }; organizationId: string };
     try {
       projectContext = await requireProjectContext();
     } catch {
@@ -160,13 +157,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { project, organizationId } = projectContext;
-
-    // Check permission to manage monitors/jobs (alert creation requires manage permission)
-    const canManage = await hasPermission('monitor', 'manage', {
-      organizationId,
-      projectId: project.id,
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
+    const canManage = checkPermissionWithContext('monitor', 'manage', projectContext);
 
     if (!canManage) {
       return NextResponse.json(

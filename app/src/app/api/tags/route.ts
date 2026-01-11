@@ -2,18 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { tags } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { hasPermission } from '@/lib/rbac/middleware';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireProjectContext } from '@/lib/project-context';
 
 export async function GET() {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireProjectContext();
     
-    // Check permission to view tags
-    const canView = await hasPermission('tag', 'view', {
-      organizationId,
-      projectId: project.id
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
+    const canView = checkPermissionWithContext('tag', 'view', context);
     
     if (!canView) {
       return NextResponse.json(
@@ -27,8 +24,8 @@ export async function GET() {
       .select()
       .from(tags)
       .where(and(
-        eq(tags.organizationId, organizationId),
-        eq(tags.projectId, project.id)
+        eq(tags.organizationId, context.organizationId),
+        eq(tags.projectId, context.project.id)
       ))
       .orderBy(tags.name);
 
@@ -41,15 +38,12 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { project, organizationId, userId } = await requireProjectContext();
+    const context = await requireProjectContext();
 
     const { name, color } = await request.json();
     
-    // Check permission to create tags
-    const canCreate = await hasPermission('tag', 'create', {
-      organizationId,
-      projectId: project.id
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
+    const canCreate = checkPermissionWithContext('tag', 'create', context);
     
     if (!canCreate) {
       return NextResponse.json(
@@ -89,8 +83,8 @@ export async function POST(request: NextRequest) {
       .from(tags)
       .where(and(
         eq(tags.name, trimmedName),
-        eq(tags.organizationId, organizationId),
-        eq(tags.projectId, project.id)
+        eq(tags.organizationId, context.organizationId),
+        eq(tags.projectId, context.project.id)
       ))
       .limit(1);
 
@@ -103,8 +97,8 @@ export async function POST(request: NextRequest) {
       .select({ count: tags.id })
       .from(tags)
       .where(and(
-        eq(tags.organizationId, organizationId),
-        eq(tags.projectId, project.id)
+        eq(tags.organizationId, context.organizationId),
+        eq(tags.projectId, context.project.id)
       ));
 
     if (totalTags.length >= 50) {
@@ -125,9 +119,9 @@ export async function POST(request: NextRequest) {
       .values({
         name: trimmedName,
         color: tagColor,
-        organizationId: organizationId,
-        projectId: project.id,
-        createdByUserId: userId,
+        organizationId: context.organizationId,
+        projectId: context.project.id,
+        createdByUserId: context.userId,
       })
       .returning();
 

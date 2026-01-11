@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, monitorNotificationSettings } from "@/db/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
-import { requireAuth, hasPermission } from "@/lib/rbac/middleware";
+import { requireAuth, hasPermission, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireProjectContext } from "@/lib/project-context";
 import {
   createMonitorHandler,
@@ -20,13 +20,10 @@ import { subscriptionService } from "@/lib/services/subscription-service";
 export async function GET(request: Request) {
   try {
     // Require authentication and project context
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireProjectContext();
 
-    // Check permission to view monitors
-    const canView = await hasPermission('monitor', 'view', {
-      organizationId,
-      projectId: project.id
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
+    const canView = checkPermissionWithContext('monitor', 'view', context);
 
     if (!canView) {
       return NextResponse.json(
@@ -49,8 +46,8 @@ export async function GET(request: Request) {
 
     // SECURITY: Always filter by org/project from session, never trust client params
     const whereCondition = and(
-      eq(monitors.projectId, project.id),
-      eq(monitors.organizationId, organizationId)
+      eq(monitors.projectId, context.project.id),
+      eq(monitors.organizationId, context.organizationId)
     );
 
     if (usePagination) {

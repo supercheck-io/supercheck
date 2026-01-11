@@ -150,13 +150,13 @@ export async function PUT(
   try {
     const { project, organizationId } = await requireProjectContext();
 
-    // Check permission to manage tags
-    const canManage = await hasPermission('tag', 'manage', {
+    // Check permission to update tags (using 'update' action, not 'manage')
+    const canUpdate = await hasPermission('tag', 'update', {
       organizationId,
       projectId: project.id
     });
 
-    if (!canManage) {
+    if (!canUpdate) {
       return NextResponse.json(
         { error: 'Insufficient permissions to update tags' },
         { status: 403 }

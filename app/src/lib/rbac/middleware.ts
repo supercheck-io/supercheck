@@ -30,6 +30,57 @@ import { getCachedAuthSession } from "@/lib/session-cache";
 // getCachedAuthSession imported from session-cache.ts (DRY principle)
 
 // ============================================================================
+// OPTIMIZED PERMISSION CHECK - Uses context from requireProjectContext
+// ============================================================================
+
+/**
+ * Optimized permission check that uses context already fetched by requireProjectContext.
+ * 
+ * This avoids 5-8 duplicate database queries that happen when using hasPermission()
+ * after requireProjectContext(), since both functions query the same data.
+ * 
+ * PERFORMANCE: Use this instead of hasPermission() in API routes that already
+ * call requireProjectContext(), reducing DB round-trips from ~12 to ~2 per request.
+ * 
+ * @param resource - The resource type (e.g., 'test', 'job', 'monitor')
+ * @param action - The action to check (e.g., 'view', 'create', 'update', 'delete')
+ * @param context - Context from requireProjectContext: { userId, project, organizationId }
+ * @param assignedProjectIds - Optional: User's assigned project IDs (for PROJECT_EDITOR/ADMIN)
+ *                             If not provided, assumes user is assigned to current project
+ * @returns true if user has permission
+ */
+export function checkPermissionWithContext(
+  resource: keyof typeof statement,
+  action: string,
+  context: {
+    userId: string;
+    organizationId: string;
+    project: {
+      id: string;
+      userRole: string;
+    };
+  },
+  assignedProjectIds?: string[]
+): boolean {
+  // Convert role string to Role enum using existing normalizeRole
+  const role = normalizeRole(context.project.userRole);
+  
+  // Build permission context
+  const permissionContext: PermissionContext = {
+    userId: context.userId,
+    role,
+    organizationId: context.organizationId,
+    projectId: context.project.id,
+    // If assignedProjectIds not provided, assume user is assigned to current project
+    // This is a safe assumption for org-level roles (OWNER/ADMIN) as they have full access
+    // For project-level roles, they wouldn't have access without being assigned
+    assignedProjectIds: assignedProjectIds ?? [context.project.id],
+  };
+
+  return checkPermission(permissionContext, resource, action);
+}
+
+// ============================================================================
 // PERMISSION CHECKING - Core Functions
 // ============================================================================
 

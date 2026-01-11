@@ -14,6 +14,7 @@ import { getTagsListQueryKey } from "@/hooks/use-tags";
 import { getRequirementsListQueryKey } from "@/hooks/use-requirements";
 import { getTestsListQueryKey } from "@/hooks/use-tests";
 import { getJobsListQueryKey } from "@/hooks/use-jobs";
+import { getDashboardQueryKey, fetchDashboard } from "@/hooks/use-dashboard";
 
 // NOTE: Variables component uses manual fetch, not React Query.
 // Prefetch removed - would warm a cache that's never read.
@@ -42,6 +43,11 @@ import { getJobsListQueryKey } from "@/hooks/use-jobs";
  *
  * CRITICAL: Phase 2 runs IMMEDIATELY (no delay) to ensure data is prefetched
  * BEFORE page components mount and start their own fetches.
+ * 
+ * CACHE CONSISTENCY:
+ * Query keys MUST match exactly what hooks use to ensure cache hits.
+ * - Factory hooks use: [...baseKey, projectId, cleanFilters] where cleanFilters strips undefined
+ * - Custom hooks use: [...baseKey, projectId]
  */
 export function DataPrefetcher() {
   const queryClient = useQueryClient();
@@ -110,8 +116,18 @@ export function DataPrefetcher() {
     // page components to mount and start their own fetches first, causing loading spinners.
     const prefetchPhase2 = async () => {
       const entityPrefetches = [
+        // Dashboard - HIGHEST PRIORITY - warm cache for home page (25+ DB queries)
+        // Moved from use-project-context.ts for centralized prefetch management
+        // KEY CONSISTENCY: Uses getDashboardQueryKey to match useDashboard hook
+        queryClient.prefetchQuery({
+          queryKey: getDashboardQueryKey(projectId),
+          queryFn: fetchDashboard,
+          staleTime: 60 * 1000, // 60 seconds - matches useDashboard
+        }),
+
         // Runs list - warm cache for Runs page
         // Uses short staleTime for stale-while-revalidate pattern
+        // KEY CONSISTENCY: Uses getRunsListQueryKey to match useRuns hook exactly
         queryClient.prefetchQuery({
           queryKey: getRunsListQueryKey(projectId),
           queryFn: () => safeFetch("/api/runs"),
@@ -119,27 +135,35 @@ export function DataPrefetcher() {
         }),
 
         // Requirements list - warm cache for Requirements page
+        // KEY CONSISTENCY: Uses getRequirementsListQueryKey to match useRequirements hook
+        // STALE TIME: 5 minutes - matches factory defaults
         queryClient.prefetchQuery({
           queryKey: getRequirementsListQueryKey(projectId),
           queryFn: () => safeFetch("/api/requirements"),
-          staleTime: 60 * 1000,
+          staleTime: 5 * 60 * 1000,
         }),
 
         // Tests list - warm cache for Tests page
+        // KEY CONSISTENCY: Uses getTestsListQueryKey to match useTests hook
+        // STALE TIME: 5 minutes - matches factory defaults
         queryClient.prefetchQuery({
           queryKey: getTestsListQueryKey(projectId),
           queryFn: () => safeFetch("/api/tests"),
-          staleTime: 60 * 1000,
+          staleTime: 5 * 60 * 1000,
         }),
 
         // Jobs list - warm cache for Jobs page
+        // KEY CONSISTENCY: Uses getJobsListQueryKey to match useJobs hook
+        // STALE TIME: 5 minutes - matches factory defaults
         queryClient.prefetchQuery({
           queryKey: getJobsListQueryKey(projectId),
           queryFn: () => safeFetch("/api/jobs"),
-          staleTime: 60 * 1000,
+          staleTime: 5 * 60 * 1000,
         }),
 
         // Monitors list - warm cache for Monitors page
+        // KEY CONSISTENCY: Uses getMonitorsListQueryKey to match useMonitors hook
+        // STALE TIME: 30 seconds - matches hook definition for active monitoring
         queryClient.prefetchQuery({
           queryKey: getMonitorsListQueryKey(projectId),
           queryFn: () => safeFetch("/api/monitors"),
@@ -147,11 +171,12 @@ export function DataPrefetcher() {
         }),
 
         // Status Pages - warm cache for Status Pages page
-        // FIXED: Use correct query key via helper to ensure 100% match with hook
+        // KEY CONSISTENCY: Uses getStatusPagesListQueryKey to match useStatusPages hook
+        // STALE TIME: 5 minutes - matches factory defaults
         queryClient.prefetchQuery({
           queryKey: getStatusPagesListQueryKey(projectId),
           queryFn: () => safeFetch("/api/status-pages"),
-          staleTime: 60 * 1000,
+          staleTime: 5 * 60 * 1000,
         }),
 
         // NOTE: Variables prefetch removed - component uses manual fetch, not React Query.
@@ -159,6 +184,7 @@ export function DataPrefetcher() {
 
 
         // Notification Providers - warm cache for Alerts page and Monitor/Job create forms
+        // KEY CONSISTENCY: Uses getNotificationProvidersQueryKey helper to match useNotificationProviders hook
         queryClient.prefetchQuery({
           queryKey: getNotificationProvidersQueryKey(projectId),
           queryFn: () => safeFetch("/api/notification-providers"),
@@ -166,6 +192,7 @@ export function DataPrefetcher() {
         }),
 
         // Alert History - warm cache for Alerts page
+        // KEY CONSISTENCY: Uses getAlertsHistoryQueryKey helper to match useAlertHistory hook
         queryClient.prefetchQuery({
           queryKey: getAlertsHistoryQueryKey(projectId),
           queryFn: () => safeFetch("/api/alerts/history"),
@@ -173,7 +200,7 @@ export function DataPrefetcher() {
         }),
 
         // Tags - warm cache for Test creation and tagging
-        // CONSISTENCY: Uses project-scoped query key matching useTags hook
+        // KEY CONSISTENCY: Uses getTagsListQueryKey helper to match useTags hook
         queryClient.prefetchQuery({
           queryKey: getTagsListQueryKey(projectId),
           queryFn: () => safeFetch("/api/tags"),

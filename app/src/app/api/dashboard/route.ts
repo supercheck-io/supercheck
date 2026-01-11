@@ -4,18 +4,18 @@ import { monitors, monitorResults, jobs, runs, tests, auditLogs, reports, k6Perf
 import { eq, desc, gte, and, count, sql, sum } from "drizzle-orm";
 import { subDays, subHours } from "date-fns";
 import { getQueueStats } from "@/lib/queue-stats";
-import { hasPermission } from '@/lib/rbac/middleware';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireProjectContext } from '@/lib/project-context';
 
 export async function GET() {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireProjectContext();
     
     // Use current project context - no need for query params
-    const targetProjectId = project.id;
+    const targetProjectId = context.project.id;
     
-    // Build permission context and check access
-    const canView = await hasPermission('project', 'view', { organizationId, projectId: targetProjectId });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
+    const canView = checkPermissionWithContext('project', 'view', context);
     
     if (!canView) {
       return NextResponse.json(
@@ -36,7 +36,7 @@ export async function GET() {
     // OPTIMIZED: Consolidated 4 separate count queries into 1 using PostgreSQL FILTER clause
     const monitorBaseCondition = and(
       eq(monitors.projectId, targetProjectId),
-      eq(monitors.organizationId, organizationId)
+      eq(monitors.organizationId, context.organizationId)
     );
     
     const [
@@ -62,7 +62,7 @@ export async function GET() {
         .where(and(
           gte(monitorResults.checkedAt, last24Hours),
           eq(monitors.projectId, targetProjectId),
-          eq(monitors.organizationId, organizationId)
+          eq(monitors.organizationId, context.organizationId)
         )),
       
       // Monitor count by type
@@ -81,7 +81,7 @@ export async function GET() {
         status: monitors.status,
         lastCheckAt: monitors.lastCheckAt
       }).from(monitors)
-        .where(and(eq(monitors.status, "down"), eq(monitors.projectId, targetProjectId), eq(monitors.organizationId, organizationId)))
+        .where(and(eq(monitors.status, "down"), eq(monitors.projectId, targetProjectId), eq(monitors.organizationId, context.organizationId)))
         .limit(5)
     ]);
 
@@ -89,7 +89,7 @@ export async function GET() {
     // OPTIMIZED: Consolidated count queries using PostgreSQL FILTER clause
     const jobBaseCondition = and(
       eq(jobs.projectId, targetProjectId),
-      eq(jobs.organizationId, organizationId)
+      eq(jobs.organizationId, context.organizationId)
     );
     
     const [
@@ -114,7 +114,7 @@ export async function GET() {
         .where(and(
           gte(runs.startedAt, last30Days),
           eq(jobs.projectId, targetProjectId),
-          eq(jobs.organizationId, organizationId)
+          eq(jobs.organizationId, context.organizationId)
         )),
       
       // OPTIMIZED: Single query for successful and failed runs in last 24h
@@ -128,7 +128,7 @@ export async function GET() {
         .where(and(
           gte(runs.startedAt, last24Hours),
           eq(jobs.projectId, targetProjectId),
-          eq(jobs.organizationId, organizationId)
+          eq(jobs.organizationId, context.organizationId)
         )),
       
       // Jobs by status
@@ -154,7 +154,7 @@ export async function GET() {
         .where(and(
           gte(runs.startedAt, last30Days),
           eq(jobs.projectId, targetProjectId),
-          eq(jobs.organizationId, organizationId)
+          eq(jobs.organizationId, context.organizationId)
         ))
         .orderBy(desc(runs.startedAt)),
       
@@ -169,7 +169,7 @@ export async function GET() {
         .where(and(
           gte(runs.startedAt, last30Days),
           eq(jobs.projectId, targetProjectId), 
-          eq(jobs.organizationId, organizationId),
+          eq(jobs.organizationId, context.organizationId),
           // Only include completed runs with valid duration
           sql`${runs.completedAt} IS NOT NULL`,
           sql`${runs.durationMs} IS NOT NULL`,
@@ -187,14 +187,14 @@ export async function GET() {
     ] = await Promise.all([
       // Total tests
       dbInstance.select({ count: count() }).from(tests)
-        .where(and(eq(tests.projectId, targetProjectId), eq(tests.organizationId, organizationId))),
+        .where(and(eq(tests.projectId, targetProjectId), eq(tests.organizationId, context.organizationId))),
       
       // Tests by type
       dbInstance.select({
         type: tests.type,
         count: count()
       }).from(tests)
-        .where(and(eq(tests.projectId, targetProjectId), eq(tests.organizationId, organizationId)))
+        .where(and(eq(tests.projectId, targetProjectId), eq(tests.organizationId, context.organizationId)))
         .groupBy(tests.type),
       
       // Playground test executions (last 30 days) from audit logs
@@ -202,7 +202,7 @@ export async function GET() {
         .from(auditLogs)
         .where(and(
           eq(auditLogs.action, 'playground_test_executed'),
-          eq(auditLogs.organizationId, organizationId),
+          eq(auditLogs.organizationId, context.organizationId),
           gte(auditLogs.createdAt, last30Days),
           sql`${auditLogs.details}->'metadata'->>'projectId' = ${targetProjectId}`
         )),
@@ -220,7 +220,7 @@ export async function GET() {
         .where(and(
           gte(k6PerformanceRuns.startedAt, last30Days),
           eq(k6PerformanceRuns.projectId, targetProjectId),
-          eq(k6PerformanceRuns.organizationId, organizationId),
+          eq(k6PerformanceRuns.organizationId, context.organizationId),
           sql`${k6PerformanceRuns.completedAt} IS NOT NULL`
         ))
     ]);
@@ -240,7 +240,7 @@ export async function GET() {
         .where(and(
           gte(monitorResults.checkedAt, last30Days),
           eq(monitors.projectId, targetProjectId),
-          eq(monitors.organizationId, organizationId),
+          eq(monitors.organizationId, context.organizationId),
           eq(monitors.type, 'synthetic_test')
         )),
 
@@ -269,7 +269,7 @@ export async function GET() {
         )
         .where(and(
           eq(auditLogs.action, 'playground_test_executed'),
-          eq(auditLogs.organizationId, organizationId),
+          eq(auditLogs.organizationId, context.organizationId),
           gte(auditLogs.createdAt, last30Days),
           sql`${auditLogs.details}->'metadata'->>'projectId' = ${targetProjectId}`
         ))
@@ -284,7 +284,7 @@ export async function GET() {
       .where(and(
         gte(monitorResults.checkedAt, last24Hours),
         eq(monitors.projectId, targetProjectId),
-        eq(monitors.organizationId, organizationId)
+        eq(monitors.organizationId, context.organizationId)
       ));
 
     // Calculate overall uptime percentage from aggregated result
@@ -302,7 +302,7 @@ export async function GET() {
       .where(and(
         gte(monitorResults.checkedAt, last30Days),
         eq(monitors.projectId, targetProjectId),
-        eq(monitors.organizationId, organizationId)
+        eq(monitors.organizationId, context.organizationId)
       ))
       .groupBy(sql`DATE(${monitorResults.checkedAt})`)
       .orderBy(sql`DATE(${monitorResults.checkedAt})`);
@@ -318,7 +318,7 @@ export async function GET() {
         gte(monitorResults.checkedAt, last24Hours),
         eq(monitorResults.isUp, true),
         eq(monitors.projectId, targetProjectId),
-        eq(monitors.organizationId, organizationId)
+        eq(monitors.organizationId, context.organizationId)
       ));
 
     // Daily playground executions breakdown (last 30 days)
@@ -328,7 +328,7 @@ export async function GET() {
     }).from(auditLogs)
       .where(and(
         eq(auditLogs.action, 'playground_test_executed'),
-        eq(auditLogs.organizationId, organizationId),
+        eq(auditLogs.organizationId, context.organizationId),
         gte(auditLogs.createdAt, last30Days),
         sql`${auditLogs.details}->'metadata'->>'projectId' = ${targetProjectId}`
       ))

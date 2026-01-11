@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
 import { desc, eq, and } from "drizzle-orm";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireProjectContext } from "@/lib/project-context";
 
 /**
@@ -12,16 +12,13 @@ import { requireProjectContext } from "@/lib/project-context";
  */
 export async function GET() {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireProjectContext();
 
     // Use current project context
-    const targetProjectId = project.id;
+    const targetProjectId = context.project.id;
 
-    // Check permission to view status pages
-    const canView = await hasPermission("status_page", "view", {
-      organizationId,
-      projectId: targetProjectId,
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
+    const canView = checkPermissionWithContext("status_page", "view", context);
 
     if (!canView) {
       return NextResponse.json(
@@ -38,7 +35,7 @@ export async function GET() {
       .from(statusPages)
       .where(
         and(
-          eq(statusPages.organizationId, organizationId),
+          eq(statusPages.organizationId, context.organizationId),
           eq(statusPages.projectId, targetProjectId)
         )
       )

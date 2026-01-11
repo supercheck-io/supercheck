@@ -14,7 +14,7 @@ import {
   JobType,
 } from "@/db/schema";
 import { desc, eq, inArray, and, asc } from "drizzle-orm";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { hasPermission, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireProjectContext } from "@/lib/project-context";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { getNextRunDate } from "@/lib/cron-utils";
@@ -113,16 +113,13 @@ interface TestResult {
 // SECURITY: Added default pagination to prevent fetching unlimited records
 export async function GET(request: Request) {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireProjectContext();
 
     // Use current project context
-    const targetProjectId = project.id;
+    const targetProjectId = context.project.id;
 
-    // Check permission to view jobs
-    const canView = await hasPermission("job", "view", {
-      organizationId,
-      projectId: targetProjectId,
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid duplicate DB queries
+    const canView = checkPermissionWithContext("job", "view", context);
 
     if (!canView) {
       return NextResponse.json(
@@ -159,7 +156,7 @@ export async function GET(request: Request) {
       .where(
         and(
           eq(jobs.projectId, targetProjectId),
-          eq(jobs.organizationId, organizationId)
+          eq(jobs.organizationId, context.organizationId)
         )
       )
       .orderBy(desc(jobs.createdAt)) // Sort by latest created first
