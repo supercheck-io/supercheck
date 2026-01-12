@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { monitors, monitorNotificationSettings } from "@/db/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
-import { requireAuth, hasPermission, checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { hasPermission, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireProjectContext } from "@/lib/project-context";
 import {
   createMonitorHandler,

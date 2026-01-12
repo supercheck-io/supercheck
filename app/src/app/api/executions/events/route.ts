@@ -3,7 +3,7 @@ import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
 import { requireProjectContext } from "@/lib/project-context";
 import { db } from "@/utils/db";
 import { runs, jobs, tests, projects } from "@/db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 const encoder = new TextEncoder();
 

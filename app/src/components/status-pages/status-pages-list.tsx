@@ -84,7 +84,7 @@ type StatusPage = {
 
 export default function StatusPagesList() {
   // Use React Query hook for status pages data (cached, handles loading/error)
-  const { statusPages: rawStatusPages, isLoading, isPending, invalidate } = useStatusPages();
+  const { statusPages: rawStatusPages, isPending } = useStatusPages();
   const queryClient = useQueryClient();
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -293,7 +293,6 @@ export default function StatusPagesList() {
 
   // Show loading state only when actually fetching (not during cache restoration)
   // isPending = true when no cached data AND fetching
-  // isLoading = true only during actual network fetch (not cache restore)
   if (isPending && !rawStatusPages?.length) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
