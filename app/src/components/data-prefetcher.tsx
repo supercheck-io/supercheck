@@ -16,6 +16,10 @@ import { getTestsListQueryKey } from "@/hooks/use-tests";
 import { getJobsListQueryKey } from "@/hooks/use-jobs";
 import { getDashboardQueryKey, fetchDashboard } from "@/hooks/use-dashboard";
 
+// NOTE: Organization admin data (stats, details, members) is NOT prefetched here
+// because these APIs require org_admin permissions and return 403 for regular users.
+// The org-admin page will fetch on-demand via useOrgStats/useOrgDetails/useOrgMembers hooks.
+
 // NOTE: Variables component uses manual fetch, not React Query.
 // Prefetch removed - would warm a cache that's never read.
 // TODO: Refactor Variables to use React Query for full prefetch benefit.
@@ -81,6 +85,11 @@ export function DataPrefetcher() {
           queryFn: fetchSubscriptionStatus,
           staleTime: 5 * 60 * 1000,
         }),
+
+        // NOTE: Organization admin data (stats, details, members) is NOT prefetched here
+        // because these APIs require org_admin permissions and return 403 for regular users.
+        // The org-admin page will fetch on-demand via useOrgStats/useOrgDetails/useOrgMembers hooks.
+        // This prevents unnecessary 403 errors for non-admin users.
       ];
 
       await Promise.allSettled(prefetches);

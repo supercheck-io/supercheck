@@ -51,6 +51,7 @@ import {
   useNotificationProviderMutations,
   type NotificationProvider,
 } from "@/hooks/use-alerts";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 
 /**
  * AlertsPage - Notification channel management and alert history
@@ -399,7 +400,13 @@ function AlertsPage() {
 
 export default function AlertsPageWrapper() {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense
+      fallback={
+        <div className="flex min-h-[400px] items-center justify-center">
+          <SuperCheckLoading size="md" message="Loading alerts..." />
+        </div>
+      }
+    >
       <AlertsPage />
     </Suspense>
   );

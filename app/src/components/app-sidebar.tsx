@@ -216,7 +216,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs",
       icon: BookOpenText,
-      badge: "v1.2.2-canary.13",
+      badge: "v1.2.2-canary.14",
     },
   ],
   documents: [
@@ -239,11 +239,21 @@ const data = {
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  // HYDRATION FIX: Track if we're mounted on client to prevent hydration mismatch
+  // Server renders with no admin items, client may have cached admin status
+  const [isMounted, setIsMounted] = React.useState(false);
+  
+  React.useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   // Use cached admin status hook (React Query cached for 5 minutes)
   const { isAdmin, isOrgAdmin, isLoading: isAdminStatusLoading } = useAdminStatus();
 
-  // Status is loaded when not loading
-  const isAdminStatusLoaded = !isAdminStatusLoading;
+  // Status is loaded when mounted AND not loading
+  // On server/initial render: isMounted=false, so isAdminStatusLoaded=false
+  // After hydration: isMounted=true, isAdminStatusLoaded depends on cache
+  const isAdminStatusLoaded = isMounted && !isAdminStatusLoading;
 
   // Create combined admin items based on admin status
   const adminItems = React.useMemo(() => {

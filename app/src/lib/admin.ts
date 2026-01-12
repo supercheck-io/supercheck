@@ -9,7 +9,7 @@ import {
   runs,
   member,
 } from "@/db/schema";
-import { count, eq, desc, or, isNull, gte, and } from "drizzle-orm";
+import { count, eq, desc, or, isNull, gte, and, sql } from "drizzle-orm";
 import { getCurrentUser, getActiveOrganization } from "./session";
 import { getUserRole, getUserOrgRole } from "./rbac/middleware";
 import { Role } from "./rbac/permissions";
@@ -183,33 +183,76 @@ export async function getAllUsers(limit = 50, offset = 0) {
     .limit(limit)
     .offset(offset);
 
-  // Enrich with actual RBAC roles (highest role across all orgs), org count, and organizations
-  const enrichedUsers = await Promise.all(
-    users.map(async (u) => {
-      try {
-        const [highestRole, userOrganizations] = await Promise.all([
-          getUserHighestRole(u.id),
-          getUserOrganizations(u.id),
-        ]);
+  if (users.length === 0) {
+    return [];
+  }
 
-        return {
-          ...u,
-          role: highestRole,
-          organizations: userOrganizations,
-        };
-      } catch (error) {
-        console.error(`Error getting role for user ${u.id}:`, error);
-        // Fallback to database role or default
-        return {
-          ...u,
-          role: u.role || "project_viewer",
-          organizations: [],
-        };
-      }
+  const userIds = users.map((u) => u.id);
+
+  // PERFORMANCE: Batch fetch all memberships in one query
+  // This replaces N+1 queries (2 queries per user) with 1 total query
+  const allMemberships = await db
+    .select({
+      userId: member.userId,
+      organizationId: member.organizationId,
+      organizationName: organization.name,
+      role: member.role,
     })
-  );
+    .from(member)
+    .innerJoin(organization, eq(member.organizationId, organization.id))
+    .where(sql`${member.userId} IN ${userIds}`);
 
-  return enrichedUsers;
+  // Build lookup map: userId -> { highestRole, organizations[] }
+  const userMembershipMap = new Map<
+    string,
+    {
+      highestRole: string;
+      organizations: { organizationId: string; organizationName: string; role: string }[];
+    }
+  >();
+
+  // Role hierarchy (highest to lowest)
+  const roleHierarchy = [
+    "super_admin",
+    "org_owner",
+    "org_admin",
+    "project_admin",
+    "project_editor",
+    "project_viewer",
+  ];
+
+  // Group memberships by user and calculate highest role
+  for (const m of allMemberships) {
+    if (!userMembershipMap.has(m.userId)) {
+      userMembershipMap.set(m.userId, {
+        highestRole: "project_viewer",
+        organizations: [],
+      });
+    }
+    const userData = userMembershipMap.get(m.userId)!;
+    userData.organizations.push({
+      organizationId: m.organizationId,
+      organizationName: m.organizationName,
+      role: m.role,
+    });
+
+    // Update highest role if this membership has a higher role
+    const currentIdx = roleHierarchy.indexOf(userData.highestRole);
+    const newIdx = roleHierarchy.indexOf(m.role);
+    if (newIdx !== -1 && (currentIdx === -1 || newIdx < currentIdx)) {
+      userData.highestRole = m.role;
+    }
+  }
+
+  // Enrich users with membership data
+  return users.map((u) => {
+    const membershipData = userMembershipMap.get(u.id);
+    return {
+      ...u,
+      role: membershipData?.highestRole ?? u.role ?? "project_viewer",
+      organizations: membershipData?.organizations ?? [],
+    };
+  });
 }
 
 /**
@@ -302,39 +345,37 @@ export async function getAllOrganizations(limit = 50, offset = 0) {
     .limit(limit)
     .offset(offset);
 
-  // Enrich with owner information
-  const enrichedOrganizations = await Promise.all(
-    organizations.map(async (org) => {
-      try {
-        // Find the organization owner
-        const ownerResult = await db
-          .select({
-            ownerEmail: user.email,
-            ownerName: user.name,
-          })
-          .from(member)
-          .innerJoin(user, eq(member.userId, user.id))
-          .where(
-            and(eq(member.organizationId, org.id), eq(member.role, "org_owner"))
-          )
-          .limit(1);
+  if (organizations.length === 0) {
+    return [];
+  }
 
-        const ownerEmail =
-          ownerResult.length > 0 ? ownerResult[0].ownerEmail : null;
+  const orgIds = organizations.map((org) => org.id);
 
-        return {
-          ...org,
-          ownerEmail,
-        };
-      } catch (error) {
-        console.error(`Error getting owner for organization ${org.id}:`, error);
-        return {
-          ...org,
-          ownerEmail: null,
-        };
-      }
+  // PERFORMANCE: Batch fetch all owner emails in one query
+  // This replaces N+1 queries (1 query per org) with 1 total query
+  const ownerEmails = await db
+    .select({
+      organizationId: member.organizationId,
+      ownerEmail: user.email,
+      ownerName: user.name,
     })
+    .from(member)
+    .innerJoin(user, eq(member.userId, user.id))
+    .where(
+      and(
+        sql`${member.organizationId} IN ${orgIds}`,
+        eq(member.role, "org_owner")
+      )
+    );
+
+  // Build lookup map for O(1) access
+  const ownerMap = new Map(
+    ownerEmails.map((o) => [o.organizationId, o.ownerEmail])
   );
 
-  return enrichedOrganizations;
+  // Enrich organizations with owner email
+  return organizations.map((org) => ({
+    ...org,
+    ownerEmail: ownerMap.get(org.id) ?? null,
+  }));
 }

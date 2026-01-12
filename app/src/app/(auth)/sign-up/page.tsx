@@ -1,9 +1,10 @@
 "use client";
 import { signUp, signIn } from "@/utils/auth-client";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { SignupForm } from "@/components/auth/signup-form";
 import { useAppConfig } from "@/hooks/use-app-config";
+import { Loader2 } from "lucide-react";
 
 interface InviteData {
   organizationName: string;
@@ -19,6 +20,20 @@ interface InviteData {
  * (GitHub/Google), which automatically creates accounts.
  */
 export default function SignUpPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-[300px]">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <SignUpPageContent />
+    </Suspense>
+  );
+}
+
+function SignUpPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);

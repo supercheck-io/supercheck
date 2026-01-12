@@ -4,6 +4,18 @@
  * Checks if the current user has admin privileges (super admin or org admin).
  * Uses React Query for efficient caching - status is fetched once and cached
  * for 5 minutes per session.
+ * 
+ * IMPORTANT HYDRATION NOTE:
+ * This hook does NOT have initialData, so cached data may be available on the
+ * client but not on the server. Components using this hook's isLoading state
+ * for conditional rendering MUST use the isMounted pattern to prevent hydration
+ * mismatches. See app-sidebar.tsx for an example.
+ * 
+ * Why isMounted pattern is needed:
+ * - Server always has isLoading=true (no cache)
+ * - Client may have isLoading=false (restored from localStorage)
+ * - This difference causes hydration mismatch
+ * - Solution: Wait for client mount before rendering based on cached state
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -62,9 +74,17 @@ export async function fetchAdminStatus(): Promise<AdminStatus> {
  * 
  * Uses React Query for caching with staleTime of 5 minutes.
  * Admin status rarely changes during a session.
+ * 
+ * NOTE: This hook does NOT have initialData for a good reason:
+ * - We can't default to "is admin" (security risk)
+ * - We can't default to "not admin" (would hide menus on first load)
+ * - We let the query determine the actual state
+ * 
+ * Components using isLoading for conditional rendering should use
+ * the isMounted pattern. See app-sidebar.tsx for an example.
  */
 export function useAdminStatus() {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, isFetched } = useQuery({
     queryKey: ADMIN_STATUS_QUERY_KEY,
     queryFn: fetchAdminStatus,
     staleTime: 5 * 60 * 1000, // 5 minutes - status rarely changes
@@ -79,6 +99,7 @@ export function useAdminStatus() {
     isAdmin: data?.isAdmin ?? false,
     isOrgAdmin: data?.isOrgAdmin ?? false,
     isLoading,
+    isFetched,
     error: error as Error | null,
     // Combined check for showing any admin menu
     hasAdminAccess: (data?.isAdmin || data?.isOrgAdmin) ?? false,
