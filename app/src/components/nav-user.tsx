@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession, signOut } from "@/utils/auth-client";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,35 +15,35 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useTheme } from "next-themes";
 import { Moon, Sun, User, Monitor } from "lucide-react";
 import { useProjectContextSafe, clearProjectsCache } from "@/hooks/use-project-context";
+import { clearQueryCache } from "@/lib/query-provider";
 
 export function NavUser() {
   const { data: session, isPending } = useSession();
-  const [isClient, setIsClient] = useState(false);
   const user = session?.user;
   const { theme, setTheme } = useTheme();
+
+  // HYDRATION FIX: Track client mount state to prevent hydration errors
+  // with synchronous localStorage restoration.
+  const isMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   // Use safe hook that returns null if outside provider (no try-catch needed)
   const projectContext = useProjectContextSafe();
   const currentProject = projectContext?.currentProject ?? null;
 
-  useEffect(() => {
-    // Defer state update to avoid cascading renders
-    const timer = setTimeout(() => {
-      setIsClient(true);
-    }, 0);
-    
-    return () => clearTimeout(timer);
-  }, []);
-
   const handleLogout = async () => {
-    // Clear module-level caches to prevent data leakage between sessions
+    // Clear all caches to prevent data leakage between sessions
     clearProjectsCache();
+    clearQueryCache(); // Clear React Query cache and localStorage
     await signOut();
     window.location.href = "/sign-in";
   };
 
   // Always show skeleton during SSR and initial client render to prevent hydration mismatch
-  if (!isClient || isPending) {
+  if (!isMounted || isPending) {
     return <Skeleton className="h-8 w-8 rounded-lg" />;
   }
 

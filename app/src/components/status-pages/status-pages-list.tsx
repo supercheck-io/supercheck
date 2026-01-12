@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useSyncExternalStore } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Card,
   CardDescription,
@@ -50,6 +50,7 @@ import {
 import { toast } from "sonner";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { deleteStatusPage } from "@/actions/delete-status-page";
 import { CreateStatusPageForm } from "./create-status-page-form";
 import { useProjectContext } from "@/hooks/use-project-context";
@@ -60,8 +61,9 @@ import {
 } from "@/lib/rbac/client-permissions";
 import { getStatusPageUrl, getBaseDomain } from "@/lib/domain-utils";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
-import { useStatusPages } from "@/hooks/use-status-pages";
+import { useStatusPages, getStatusPagesListQueryKey } from "@/hooks/use-status-pages";
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
+import type { PaginatedResponse } from "@/hooks/lib/create-data-hook";
 
 /**
  * Status page type for display purposes.
@@ -82,14 +84,8 @@ type StatusPage = {
 
 export default function StatusPagesList() {
   // Use React Query hook for status pages data (cached, handles loading/error)
-  const { statusPages: rawStatusPages, isLoading, invalidate } = useStatusPages();
-
-  // Track mount state to prevent hydration mismatch
-  const isMounted = useSyncExternalStore(
-    () => () => { },
-    () => true,
-    () => false
-  );
+  const { statusPages: rawStatusPages, isLoading, isPending, invalidate } = useStatusPages();
+  const queryClient = useQueryClient();
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -98,6 +94,7 @@ export default function StatusPagesList() {
 
   // Get user permissions
   const { currentProject } = useProjectContext();
+  const projectId = currentProject?.id ?? null;
   const normalizedRole = normalizeRole(currentProject?.userRole);
   const canCreate = canCreateStatusPages(normalizedRole);
   const canDelete = canDeleteStatusPages(normalizedRole);
@@ -109,24 +106,83 @@ export default function StatusPagesList() {
     updatedAt: page.updatedAt ? new Date(page.updatedAt) : null,
   }));
 
+  // Track if we've already processed the create query param to avoid re-opening dialog
+  const hasProcessedCreateParam = useRef(false);
+
   useEffect(() => {
     const create = searchParams.get("create");
-    if (create === "true" && canCreate) {
-      setIsCreateDialogOpen(true);
+    // Only process once per mount and if not already processed
+    if (create === "true" && canCreate && !hasProcessedCreateParam.current) {
+      hasProcessedCreateParam.current = true;
+      // Use queueMicrotask to defer state update to avoid synchronous setState in effect
+      queueMicrotask(() => {
+        setIsCreateDialogOpen(true);
+      });
     }
   }, [searchParams, canCreate]);
 
   /**
-   * Handle successful status page creation.
-   * Note: We use server actions for mutations (create/delete) while reads use React Query.
-   * This is intentional - server actions provide better error handling and revalidation,
-   * while React Query provides caching for reads. After mutation, we invalidate the cache.
+   * Handle successful status page creation with optimistic cache update.
+   * 
+   * PERFORMANCE: Instead of invalidating and refetching (which causes flicker),
+   * we optimistically add the new item to the cache immediately.
+   * Then invalidate in the background to ensure data consistency.
    */
-  const handleCreateSuccess = () => {
-    // Invalidate React Query cache to refresh the list
-    invalidate();
+  const handleCreateSuccess = (newStatusPageResult: {
+    id: string;
+    name: string;
+    subdomain: string;
+    status: string;
+    headline: string | null;
+    pageDescription: string | null;
+    createdAt: Date | null;
+    updatedAt: Date | null;
+    createdByUserId?: string;
+  }) => {
+    // OPTIMISTIC UPDATE: Add the new status page to cache immediately (no flicker)
+    const queryKey = getStatusPagesListQueryKey(projectId);
+    
+    // Convert Date objects to ISO strings to match the API response format
+    // The cache expects strings for dates, not Date objects
+    const newStatusPage = {
+      ...newStatusPageResult,
+      createdAt: newStatusPageResult.createdAt?.toISOString() ?? null,
+      updatedAt: newStatusPageResult.updatedAt?.toISOString() ?? null,
+      organizationId: currentProject?.organizationId ?? '',
+      projectId: projectId,
+    };
+    
+    queryClient.setQueryData(queryKey, (oldData: PaginatedResponse<StatusPage> | undefined) => {
+      if (!oldData) {
+        // If no existing data, create a new response structure
+        return {
+          data: [newStatusPage],
+          pagination: { total: 1, page: 1, limit: 20, totalPages: 1 },
+        };
+      }
+      
+      // Add new item to the beginning of the list
+      return {
+        ...oldData,
+        data: [newStatusPage, ...oldData.data],
+        pagination: {
+          ...oldData.pagination,
+          total: oldData.pagination.total + 1,
+        },
+      };
+    });
+    
+    // Close dialog immediately (UI feels instant)
     setIsCreateDialogOpen(false);
     toast.success("Status page created successfully");
+    
+    // Background revalidation: Ensure server data is in sync
+    // Uses 'none' refetchType to just mark as stale without immediate refetch
+    // Next navigation or window focus will get fresh data
+    queryClient.invalidateQueries({ 
+      queryKey,
+      refetchType: 'none' // Don't refetch immediately, just mark stale
+    });
   };
 
   const handleDeleteClick = (page: StatusPage) => {
@@ -136,27 +192,54 @@ export default function StatusPagesList() {
 
   const confirmDelete = async () => {
     if (!deletingPage) return;
+    const deletingId = deletingPage.id;
+    const queryKey = getStatusPagesListQueryKey(projectId);
+    
+    // OPTIMISTIC UPDATE: Remove the item from cache immediately
+    // Snapshot previous value for rollback on error
+    const previousData = queryClient.getQueryData(queryKey);
+    
+    queryClient.setQueryData(queryKey, (oldData: PaginatedResponse<StatusPage> | undefined) => {
+      if (!oldData) return oldData;
+      return {
+        ...oldData,
+        data: oldData.data.filter((page) => page.id !== deletingId),
+        pagination: {
+          ...oldData.pagination,
+          total: Math.max(0, oldData.pagination.total - 1),
+        },
+      };
+    });
+    
+    // Close dialog immediately for instant UI feedback
+    setIsDeleteDialogOpen(false);
+    setDeletingPage(null);
 
     try {
-      const result = await deleteStatusPage(deletingPage.id);
+      const result = await deleteStatusPage(deletingId);
 
       if (result.success) {
-        // Invalidate React Query cache to refresh the list
-        invalidate();
         toast.success("Status page deleted successfully");
+        // Mark as stale for next navigation/focus
+        queryClient.invalidateQueries({ queryKey, refetchType: 'none' });
       } else {
+        // ROLLBACK: Restore previous data on failure
+        if (previousData) {
+          queryClient.setQueryData(queryKey, previousData);
+        }
         toast.error("Failed to delete status page", {
           description: result.message,
         });
       }
     } catch (error) {
+      // ROLLBACK: Restore previous data on error
+      if (previousData) {
+        queryClient.setQueryData(queryKey, previousData);
+      }
       console.error("Error deleting status page:", error);
       toast.error("Failed to delete status page", {
         description: "An unexpected error occurred",
       });
-    } finally {
-      setIsDeleteDialogOpen(false);
-      setDeletingPage(null);
     }
   };
 
@@ -208,8 +291,10 @@ export default function StatusPagesList() {
     }
   };
 
-  // Show loading state while data is being fetched
-  if (!isMounted || isLoading) {
+  // Show loading state only when actually fetching (not during cache restoration)
+  // isPending = true when no cached data AND fetching
+  // isLoading = true only during actual network fetch (not cache restore)
+  if (isPending && !rawStatusPages?.length) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <SuperCheckLoading size="lg" message="Loading status pages..." />
@@ -218,7 +303,7 @@ export default function StatusPagesList() {
   }
 
   return (
-    <div className="p-6 max-h-[calc(100vh-210px)] flex flex-col">
+    <div className="p-6 max-h-[calc(100vh-130px)] flex flex-col">
       <CardHeader className="px-0 pt-0 shrink-0">
         <div className="flex items-center justify-between">
           <div>

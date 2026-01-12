@@ -1,7 +1,14 @@
 import { AppSidebar } from "@/components/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 
-export const dynamic = "force-dynamic";
+// REMOVED: export const dynamic = "force-dynamic";
+// Previously, this caused EVERY navigation to re-run all server-side database queries
+// (getCurrentUser, getActiveOrganization, getUserProjects, getCurrentProjectContext).
+// This added 30+ seconds latency on each page navigation.
+// 
+// Now: Next.js can cache the layout. Client components (AuthGuard, useSession)
+// still validate session client-side, so security is maintained.
+// The server-fetched data is used for initial hydration only.
 
 import {
   SidebarInset,

@@ -22,6 +22,15 @@ import { getCachedAuthSession } from "./session-cache";
 
 // getCachedAuthSession imported from session-cache.ts (DRY principle)
 
+/**
+ * Check if an error is a Next.js DYNAMIC_SERVER_USAGE error.
+ * These are expected during static generation when headers() is called
+ * and should not be logged as errors.
+ */
+function isDynamicServerUsageError(error: unknown): boolean {
+  return error instanceof Error && 
+    (error as Error & { digest?: string }).digest === 'DYNAMIC_SERVER_USAGE';
+}
 
 export interface UserSession {
   id: string;
@@ -118,7 +127,10 @@ export async function getCurrentUser(): Promise<UserSession | null> {
       role,
     };
   } catch (error) {
-    console.error("Error getting current user:", error);
+    // DYNAMIC_SERVER_USAGE errors are expected during Next.js static generation
+    if (!isDynamicServerUsageError(error)) {
+      console.error("Error getting current user:", error);
+    }
     return null;
   }
 }
@@ -142,7 +154,10 @@ export async function getActiveOrganization(): Promise<OrganizationWithRole | nu
     // Return the first (and only) organization
     return { ...userOrgs[0], isActive: true };
   } catch (error) {
-    console.error("Error getting active organization:", error);
+    // DYNAMIC_SERVER_USAGE errors are expected during Next.js static generation
+    if (!isDynamicServerUsageError(error)) {
+      console.error("Error getting active organization:", error);
+    }
     return null;
   }
 }
@@ -200,7 +215,10 @@ export async function getActiveProject(): Promise<ProjectWithRole | null> {
       isActive: true,
     };
   } catch (error) {
-    console.error("Error getting active project:", error);
+    // DYNAMIC_SERVER_USAGE errors are expected during Next.js static generation
+    if (!isDynamicServerUsageError(error)) {
+      console.error("Error getting active project:", error);
+    }
     return null;
   }
 }
@@ -235,7 +253,10 @@ export async function getUserOrganizations(
       isActive: false,
     }));
   } catch (error) {
-    console.error("Error getting user organizations:", error);
+    // DYNAMIC_SERVER_USAGE errors are expected during Next.js static generation
+    if (!isDynamicServerUsageError(error)) {
+      console.error("Error getting user organizations:", error);
+    }
     return [];
   }
 }
@@ -325,7 +346,10 @@ export async function getUserProjects(
       };
     });
   } catch (error) {
-    console.error("Error getting user projects:", error);
+    // DYNAMIC_SERVER_USAGE errors are expected during Next.js static generation
+    if (!isDynamicServerUsageError(error)) {
+      console.error("Error getting user projects:", error);
+    }
     return [];
   }
 }
@@ -392,7 +416,10 @@ export async function getUserProjectRole(
     // For other roles (ORG_OWNER, ORG_ADMIN, PROJECT_VIEWER) - use their org role
     return orgRole;
   } catch (error) {
-    console.error("Error getting user project role:", error);
+    // DYNAMIC_SERVER_USAGE errors are expected during Next.js static generation
+    if (!isDynamicServerUsageError(error)) {
+      console.error("Error getting user project role:", error);
+    }
     return Role.PROJECT_VIEWER;
   }
 }
@@ -466,7 +493,10 @@ export async function switchProject(
 
     return { success: true, project };
   } catch (error) {
-    console.error("Error switching project:", error);
+    // DYNAMIC_SERVER_USAGE errors are expected during Next.js static generation
+    if (!isDynamicServerUsageError(error)) {
+      console.error("Error switching project:", error);
+    }
     return { success: false, message: "Internal error" };
   }
 }

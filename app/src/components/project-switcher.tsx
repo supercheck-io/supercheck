@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSyncExternalStore } from "react";
 import { ChevronsUpDown, Search, Loader2 } from "lucide-react";
 import { CheckIcon } from "@/components/logo/supercheck-logo";
 import { useProjectContext } from "@/hooks/use-project-context";
@@ -25,6 +26,16 @@ export function ProjectSwitcher() {
   const { isMobile } = useSidebar();
   const { currentProject, projects, loading, switchProject } =
     useProjectContext();
+
+  // HYDRATION FIX: Track client mount state to prevent hydration errors
+  // with synchronous localStorage restoration.
+  // By defaulting to loading/skeleton branch during initial hydration,
+  // we ensure the client render matches the server perfectly.
+  const isMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   const [searchQuery, setSearchQuery] = React.useState("");
   const [isOpen, setIsOpen] = React.useState(false);
@@ -78,7 +89,7 @@ export function ProjectSwitcher() {
     }
   };
 
-  if (loading) {
+  if (!isMounted || loading) {
     return (
       <SidebarMenu>
         <SidebarMenuItem>

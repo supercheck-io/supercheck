@@ -9,8 +9,16 @@
  * 
  * ARCHITECTURE:
  * - Uses module-level singleton for browser QueryClient
- * - Restores cache from localStorage synchronously on initial load
- * - Subscribes to cache changes for persistence
+ * - Restores cache synchronously on first browser render
+ * - Subscribes to cache changes for persistence after mount
+ * 
+ * HYDRATION FIX (2025):
+ * We use standard QueryClientProvider (not PersistQueryClientProvider) to avoid
+ * hydration mismatches. PersistQueryClientProvider sets isRestoring=true on client
+ * during restoration, which differs from server (always false), causing hydration errors.
+ * 
+ * Instead, we restore cache synchronously BEFORE React renders using module-level
+ * initialization, then subscribe to changes in useEffect AFTER hydration completes.
  */
 
 "use client";
@@ -21,7 +29,7 @@ import {
   persistQueryClientSubscribe 
 } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
-import { ReactNode, useRef, useEffect } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 
 // ============================================================================
 // QUERY CLIENT CONFIGURATION
@@ -49,8 +57,14 @@ function makeQueryClient() {
 }
 
 // ============================================================================
-// BROWSER SINGLETON
+// BROWSER SINGLETON WITH SYNCHRONOUS CACHE RESTORATION
 // ============================================================================
+
+/**
+ * Storage key for React Query cache in localStorage
+ * Used for both storing and clearing cache data
+ */
+const CACHE_STORAGE_KEY = "supercheck-query-cache";
 
 /**
  * Browser-side QueryClient singleton
@@ -68,6 +82,13 @@ let browserQueryClient: QueryClient | undefined = undefined;
  */
 let cacheRestored = false;
 
+/**
+ * Get or create the QueryClient singleton
+ * 
+ * CRITICAL: On browser, this restores cache from localStorage SYNCHRONOUSLY
+ * before returning the client. This ensures cached data is available
+ * immediately when components render, preventing loading spinners.
+ */
 function getQueryClient() {
   if (isServer) {
     // Server: always make a new query client to prevent data leakage between requests
@@ -83,10 +104,11 @@ function getQueryClient() {
         try {
           const persister = createSyncStoragePersister({
             storage: window.localStorage,
-            key: "supercheck-query-cache",
+            key: CACHE_STORAGE_KEY,
           });
           
           // Synchronously restore cache from localStorage
+          // This populates the QueryClient cache before React renders
           persistQueryClientRestore({
             queryClient: browserQueryClient,
             persister,
@@ -104,18 +126,20 @@ function getQueryClient() {
 }
 
 // ============================================================================
-// PERSISTER SETUP
+// PERSISTER FOR SAVING CHANGES
 // ============================================================================
 
 /**
  * Create persister for saving cache changes to localStorage
+ * 
+ * This is separate from the restore persister to allow independent configuration.
  */
 function createPersister() {
   if (typeof window === "undefined") return null;
   
   return createSyncStoragePersister({
     storage: window.localStorage,
-    key: "supercheck-query-cache",
+    key: CACHE_STORAGE_KEY,
     // Throttle writes to localStorage to prevent performance issues
     throttleTime: 1000,
     // Serialize/deserialize functions handle Date objects and other types
@@ -125,14 +149,59 @@ function createPersister() {
 }
 
 // ============================================================================
+// CACHE CLEARING FOR SIGN OUT
+// ============================================================================
+
+/**
+ * Clear all React Query cache data from memory and localStorage
+ * 
+ * SECURITY: Must be called on sign out to prevent data leakage between users.
+ * Clears both:
+ * - In-memory QueryClient cache
+ * - localStorage persisted cache
+ */
+export function clearQueryCache() {
+  if (typeof window === "undefined") return;
+  
+  try {
+    // Clear in-memory cache
+    if (browserQueryClient) {
+      browserQueryClient.clear();
+    }
+    
+    // Clear localStorage cache
+    window.localStorage.removeItem(CACHE_STORAGE_KEY);
+    
+    // Reset restoration flag so next user can restore their cache
+    cacheRestored = false;
+  } catch (error) {
+    console.warn("[QueryProvider] Failed to clear cache:", error);
+  }
+}
+
+// ============================================================================
 // PROVIDER COMPONENT
 // ============================================================================
 
+/**
+ * React Query Provider with localStorage persistence
+ * 
+ * HYDRATION-SAFE IMPLEMENTATION:
+ * - Uses standard QueryClientProvider (not PersistQueryClientProvider)
+ * - Cache is restored SYNCHRONOUSLY in getQueryClient() BEFORE React renders
+ * - Subscription for saving changes happens in useEffect AFTER hydration
+ * 
+ * This approach ensures:
+ * 1. Server and client render the same content (no isRestoring difference)
+ * 2. Cached data is available immediately on first render
+ * 3. No hydration mismatches from conditional rendering
+ */
 export function QueryProvider({ children }: { children: ReactNode }) {
   const queryClient = getQueryClient();
   const subscriptionRef = useRef<(() => void) | null>(null);
   
-  // Subscribe to cache changes for persistence (only once per mount)
+  // Subscribe to cache changes for persistence AFTER hydration
+  // This runs only on client, after React has hydrated
   useEffect(() => {
     if (typeof window === "undefined") return;
     
@@ -140,7 +209,7 @@ export function QueryProvider({ children }: { children: ReactNode }) {
     if (!persister) return;
     
     // Subscribe to cache changes and persist them to localStorage
-    // This runs AFTER initial hydration, so it won't cause hydration mismatch
+    // This runs AFTER hydration, so it won't cause hydration mismatch
     subscriptionRef.current = persistQueryClientSubscribe({
       queryClient,
       persister,

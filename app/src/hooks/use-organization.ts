@@ -13,7 +13,7 @@
  * - Eliminates duplicate fetches across components
  */
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useIsRestoring } from "@tanstack/react-query";
 
 // ============================================================================
 // TYPES
@@ -154,8 +154,13 @@ export async function fetchOrgProjects(): Promise<OrgProject[]> {
 
 /**
  * Hook to get organization stats
+ * 
+ * LOADING STATE OPTIMIZATION:
+ * - isLoading: true only when actually fetching (not during cache restoration)
  */
 export function useOrgStats() {
+  const isRestoring = useIsRestoring();
+  
   const query = useQuery({
     queryKey: ORG_STATS_QUERY_KEY,
     queryFn: fetchOrgStats,
@@ -166,9 +171,12 @@ export function useOrgStats() {
     refetchOnReconnect: false,
   });
 
+  // PERFORMANCE: Smart loading state - don't show loading during cache restoration
+  const isActuallyLoading = query.isLoading && !isRestoring;
+
   return {
     stats: query.data ?? null,
-    isLoading: query.isLoading,
+    isLoading: isActuallyLoading,
     isFetching: query.isFetching,
     error: query.error as Error | null,
     refetch: query.refetch,
@@ -177,8 +185,13 @@ export function useOrgStats() {
 
 /**
  * Hook to get organization details
+ * 
+ * LOADING STATE OPTIMIZATION:
+ * - isLoading: true only when actually fetching (not during cache restoration)
  */
 export function useOrgDetails() {
+  const isRestoring = useIsRestoring();
+  
   const query = useQuery({
     queryKey: ORG_DETAILS_QUERY_KEY,
     queryFn: fetchOrgDetails,
@@ -189,9 +202,12 @@ export function useOrgDetails() {
     refetchOnReconnect: false,
   });
 
+  // PERFORMANCE: Smart loading state - don't show loading during cache restoration
+  const isActuallyLoading = query.isLoading && !isRestoring;
+
   return {
     details: query.data ?? null,
-    isLoading: query.isLoading,
+    isLoading: isActuallyLoading,
     isFetching: query.isFetching,
     error: query.error as Error | null,
     refetch: query.refetch,
@@ -200,8 +216,13 @@ export function useOrgDetails() {
 
 /**
  * Hook to get organization members (includes invitations and current user role)
+ * 
+ * LOADING STATE OPTIMIZATION:
+ * - isLoading: true only when actually fetching (not during cache restoration)
  */
 export function useOrgMembers() {
+  const isRestoring = useIsRestoring();
+  
   const query = useQuery({
     queryKey: ORG_MEMBERS_QUERY_KEY,
     queryFn: fetchOrgMembers,
@@ -212,11 +233,14 @@ export function useOrgMembers() {
     refetchOnReconnect: false,
   });
 
+  // PERFORMANCE: Smart loading state - don't show loading during cache restoration
+  const isActuallyLoading = query.isLoading && !isRestoring;
+
   return {
     members: query.data?.members ?? [],
     invitations: query.data?.invitations ?? [],
     currentUserRole: query.data?.currentUserRole ?? "project_viewer",
-    isLoading: query.isLoading,
+    isLoading: isActuallyLoading,
     isFetching: query.isFetching,
     error: query.error as Error | null,
     refetch: query.refetch,
@@ -227,8 +251,13 @@ export function useOrgMembers() {
 
 /**
  * Hook to get organization projects
+ * 
+ * LOADING STATE OPTIMIZATION:
+ * - isLoading: true only when actually fetching (not during cache restoration)
  */
 export function useOrgProjects() {
+  const isRestoring = useIsRestoring();
+  
   const query = useQuery({
     queryKey: ORG_PROJECTS_QUERY_KEY,
     queryFn: fetchOrgProjects,
@@ -239,9 +268,12 @@ export function useOrgProjects() {
     refetchOnReconnect: false,
   });
 
+  // PERFORMANCE: Smart loading state - don't show loading during cache restoration
+  const isActuallyLoading = query.isLoading && !isRestoring;
+
   return {
     projects: query.data ?? [],
-    isLoading: query.isLoading,
+    isLoading: isActuallyLoading,
     isFetching: query.isFetching,
     error: query.error as Error | null,
     refetch: query.refetch,
