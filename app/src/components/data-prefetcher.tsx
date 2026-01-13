@@ -2,59 +2,73 @@
 
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { usePathname } from "next/navigation";
 import { APP_CONFIG_QUERY_KEY, fetchAppConfig } from "@/hooks/use-app-config";
 import { ADMIN_STATUS_QUERY_KEY, fetchAdminStatus } from "@/hooks/use-admin-status";
 import { SUBSCRIPTION_STATUS_QUERY_KEY, fetchSubscriptionStatus } from "@/components/subscription-guard";
-import { useProjectContext } from "@/hooks/use-project-context";
-import { getMonitorsListQueryKey } from "@/hooks/use-monitors";
-import { getRunsListQueryKey } from "@/hooks/use-runs";
-import { getStatusPagesListQueryKey } from "@/hooks/use-status-pages";
-import { getNotificationProvidersQueryKey, getAlertsHistoryQueryKey } from "@/hooks/use-alerts";
-import { getTagsListQueryKey } from "@/hooks/use-tags";
-import { getRequirementsListQueryKey } from "@/hooks/use-requirements";
-import { getTestsListQueryKey } from "@/hooks/use-tests";
-import { getJobsListQueryKey } from "@/hooks/use-jobs";
 import { getDashboardQueryKey, fetchDashboard } from "@/hooks/use-dashboard";
+import { useProjectContext } from "@/hooks/use-project-context";
 
-async function fetchJson(url: string) {
-  const res = await fetch(url, { headers: { "Content-Type": "application/json" } });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-
+/**
+ * DataPrefetcher - Minimal prefetch for essential data
+ * 
+ * Strategy:
+ * - Phase 1: Auth/Config (needed everywhere)
+ * - Phase 2: Landing Page Data (only if on landing page)
+ * 
+ * This approach avoids overwhelming the browser while ensuring
+ * the most critical "first paint" data is ready.
+ */
 export function DataPrefetcher() {
   const queryClient = useQueryClient();
+  const pathname = usePathname();
   const { currentProject } = useProjectContext();
-  const projectId = currentProject?.id ?? null;
   const didPrefetchAuth = useRef(false);
-  const didPrefetchProject = useRef<string | null>(null);
+  const didPrefetchDashboard = useRef(false);
 
+  // Phase 1: Essential Auth/Config (runs once on mount)
   useEffect(() => {
     if (didPrefetchAuth.current) return;
     didPrefetchAuth.current = true;
 
-    queryClient.prefetchQuery({ queryKey: APP_CONFIG_QUERY_KEY, queryFn: fetchAppConfig, staleTime: Infinity });
-    queryClient.prefetchQuery({ queryKey: ADMIN_STATUS_QUERY_KEY, queryFn: fetchAdminStatus, staleTime: 5 * 60 * 1000 });
-    queryClient.prefetchQuery({ queryKey: SUBSCRIPTION_STATUS_QUERY_KEY, queryFn: fetchSubscriptionStatus, staleTime: 5 * 60 * 1000 });
+    queryClient.prefetchQuery({
+      queryKey: APP_CONFIG_QUERY_KEY,
+      queryFn: fetchAppConfig,
+      staleTime: Infinity
+    });
+    queryClient.prefetchQuery({
+      queryKey: ADMIN_STATUS_QUERY_KEY,
+      queryFn: fetchAdminStatus,
+      staleTime: 5 * 60 * 1000
+    });
+    queryClient.prefetchQuery({
+      queryKey: SUBSCRIPTION_STATUS_QUERY_KEY,
+      queryFn: fetchSubscriptionStatus,
+      staleTime: 5 * 60 * 1000
+    });
   }, [queryClient]);
 
+  // Phase 2: Smart Dashboard Prefetch
+  // Only runs if:
+  // 1. We have a project context
+  // 2. We are on the dashboard page ("/")
+  // 3. We haven't prefetched yet
   useEffect(() => {
-    if (!projectId || didPrefetchProject.current === projectId) return;
-    didPrefetchProject.current = projectId;
+    if (!currentProject || didPrefetchDashboard.current) return;
 
-    const staleTime = 5 * 60 * 1000;
-    
-    queryClient.prefetchQuery({ queryKey: getDashboardQueryKey(projectId), queryFn: fetchDashboard, staleTime });
-    queryClient.prefetchQuery({ queryKey: getRunsListQueryKey(projectId), queryFn: () => fetchJson("/api/runs"), staleTime });
-    queryClient.prefetchQuery({ queryKey: getTestsListQueryKey(projectId), queryFn: () => fetchJson("/api/tests"), staleTime });
-    queryClient.prefetchQuery({ queryKey: getJobsListQueryKey(projectId), queryFn: () => fetchJson("/api/jobs"), staleTime });
-    queryClient.prefetchQuery({ queryKey: getMonitorsListQueryKey(projectId), queryFn: () => fetchJson("/api/monitors"), staleTime });
-    queryClient.prefetchQuery({ queryKey: getRequirementsListQueryKey(projectId), queryFn: () => fetchJson("/api/requirements"), staleTime });
-    queryClient.prefetchQuery({ queryKey: getStatusPagesListQueryKey(projectId), queryFn: () => fetchJson("/api/status-pages"), staleTime });
-    queryClient.prefetchQuery({ queryKey: getNotificationProvidersQueryKey(projectId), queryFn: () => fetchJson("/api/notification-providers"), staleTime });
-    queryClient.prefetchQuery({ queryKey: getAlertsHistoryQueryKey(projectId), queryFn: () => fetchJson("/api/alerts/history"), staleTime });
-    queryClient.prefetchQuery({ queryKey: getTagsListQueryKey(projectId), queryFn: () => fetchJson("/api/tags"), staleTime });
-  }, [queryClient, projectId]);
+    // SMART PREFETCH: Only prefetch dashboard data if we are actually ON the dashboard
+    // This prevents "overwhelming" the browser on other pages (e.g. while testing)
+    // but ensures the landing page loads instantly.
+    if (pathname === "/" || pathname === `/project/${currentProject.slug}`) {
+      didPrefetchDashboard.current = true;
+
+      queryClient.prefetchQuery({
+        queryKey: getDashboardQueryKey(currentProject.id),
+        queryFn: fetchDashboard,
+        staleTime: 60 * 1000 // Match useDashboard staleTime
+      });
+    }
+  }, [queryClient, currentProject, pathname]);
 
   return null;
 }

@@ -9,6 +9,7 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useProjectContext } from "@/hooks/use-project-context";
 
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -133,6 +134,7 @@ export function PlaywrightAnalyticsTab({
     onPeriodChange,
     onJobsLoaded,
 }: PlaywrightAnalyticsTabProps) {
+    const { currentProject, loading: isProjectLoading } = useProjectContext();
     const [data, setData] = useState<PlaywrightAnalyticsResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -150,15 +152,24 @@ export function PlaywrightAnalyticsTab({
     }, []);
 
     const fetchData = useCallback(async (signal?: AbortSignal) => {
+        if (isProjectLoading || !currentProject?.id) return;
         try {
             setLoading(true);
             const params = new URLSearchParams();
             params.set("period", period.toString());
-            if (selectedJob !== "all" && selectedJob !== "") {
+            if (selectedJob && selectedJob !== "all") {
                 params.set("jobId", selectedJob);
             }
 
-            const response = await fetch(`/api/analytics/playwright?${params.toString()}`, { signal });
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (currentProject?.id) {
+                headers["x-project-id"] = currentProject.id;
+            }
+
+            const response = await fetch(`/api/analytics/playwright?${params.toString()}`, {
+                headers,
+                signal
+            });
             if (!response.ok) throw new Error("Failed to fetch Playwright analytics");
             const result = await response.json();
 
@@ -178,7 +189,7 @@ export function PlaywrightAnalyticsTab({
                 setLoading(false);
             }
         }
-    }, [period, selectedJob, onJobsLoaded]);
+    }, [period, selectedJob, onJobsLoaded, currentProject?.id, isProjectLoading]);
 
     useEffect(() => {
         const controller = new AbortController();

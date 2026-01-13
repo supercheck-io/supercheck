@@ -19,7 +19,7 @@ export default function RequirementsPage() {
                     <Suspense
                         fallback={
                             <div className="flex min-h-[400px] items-center justify-center">
-                                <SuperCheckLoading size="md" message="Loading requirements..." />
+                                <SuperCheckLoading size="lg" message="Loading requirements..." />
                             </div>
                         }
                     >

@@ -32,16 +32,32 @@ export function getAlertsHistoryQueryKey(projectId: string | null) {
   return [...ALERTS_HISTORY_QUERY_KEY, projectId] as const;
 }
 
-export async function fetchNotificationProviders(): Promise<NotificationProvider[]> {
-  const response = await fetch("/api/notification-providers");
+export async function fetchNotificationProviders(projectId?: string | null): Promise<NotificationProvider[]> {
+  const headers: Record<string, string> = {};
+  if (projectId) {
+    headers["x-project-id"] = projectId;
+  }
+  
+  const response = await fetch("/api/notification-providers", {
+    headers
+  });
+
   if (!response.ok) {
     throw new Error("Failed to fetch notification providers");
   }
   return response.json();
 }
 
-export async function fetchAlertHistory(): Promise<AlertHistory[]> {
-  const response = await fetch("/api/alerts/history");
+export async function fetchAlertHistory(projectId?: string | null): Promise<AlertHistory[]> {
+  const headers: Record<string, string> = {};
+  if (projectId) {
+    headers["x-project-id"] = projectId;
+  }
+
+  const response = await fetch("/api/alerts/history", {
+    headers
+  });
+
   if (!response.ok) {
     throw new Error("Failed to fetch alert history");
   }
@@ -49,7 +65,7 @@ export async function fetchAlertHistory(): Promise<AlertHistory[]> {
 }
 
 export function useNotificationProviders() {
-  const { currentProject } = useProjectContext();
+  const { currentProject, loading: isProjectLoading } = useProjectContext();
   const projectId = currentProject?.id ?? null;
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
@@ -58,12 +74,10 @@ export function useNotificationProviders() {
 
   const query = useQuery({
     queryKey,
-    queryFn: fetchNotificationProviders,
+    queryFn: () => fetchNotificationProviders(projectId),
     enabled: !!projectId,
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
-    initialData: () => queryClient.getQueryData(queryKey) as NotificationProvider[] | undefined,
-    initialDataUpdatedAt: () => queryClient.getQueryState(queryKey)?.dataUpdatedAt,
   });
 
   const invalidate = () =>
@@ -72,9 +86,11 @@ export function useNotificationProviders() {
       refetchType: 'all' 
     });
 
-  const cachedData = queryClient.getQueryData(queryKey);
-  const hasData = query.data !== undefined || cachedData !== undefined;
-  const isInitialLoading = !hasData && query.isFetching && !isRestoring;
+  // Loading if:
+  // 1. Project context is still loading
+  // 2. Project ID is not yet available (unless context loaded and gave us null, but here we assume we wait for a valid project)
+  // 3. The query itself is loading (initial fetch)
+  const isInitialLoading = isProjectLoading || (!projectId && isProjectLoading) || (query.isPending && query.isFetching && !isRestoring);
 
   return {
     providers: query.data ?? [],
@@ -86,7 +102,7 @@ export function useNotificationProviders() {
 }
 
 export function useAlertHistory() {
-  const { currentProject } = useProjectContext();
+  const { currentProject, loading: isProjectLoading } = useProjectContext();
   const projectId = currentProject?.id ?? null;
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
@@ -95,12 +111,10 @@ export function useAlertHistory() {
 
   const query = useQuery({
     queryKey,
-    queryFn: fetchAlertHistory,
+    queryFn: () => fetchAlertHistory(projectId),
     enabled: !!projectId,
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
-    initialData: () => queryClient.getQueryData(queryKey) as AlertHistorySchema[] | undefined,
-    initialDataUpdatedAt: () => queryClient.getQueryState(queryKey)?.dataUpdatedAt,
   });
 
   const invalidate = () =>
@@ -109,9 +123,8 @@ export function useAlertHistory() {
       refetchType: 'all' 
     });
 
-  const cachedData = queryClient.getQueryData(queryKey);
-  const hasData = query.data !== undefined || cachedData !== undefined;
-  const isInitialLoading = !hasData && query.isFetching && !isRestoring;
+  // Ensure we show loading state while waiting for project context
+  const isInitialLoading = isProjectLoading || (!projectId && isProjectLoading) || (query.isPending && query.isFetching && !isRestoring);
 
   return {
     alertHistory: query.data ?? [],

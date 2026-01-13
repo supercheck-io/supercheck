@@ -203,7 +203,7 @@ export function SubscriptionTab({ currentUserRole }: SubscriptionTabProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <SuperCheckLoading size="md" message="Loading subscription..." />
+        <SuperCheckLoading size="lg" message="Loading subscription..." />
       </div>
     );
   }

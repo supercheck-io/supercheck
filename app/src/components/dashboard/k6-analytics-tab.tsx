@@ -16,6 +16,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import { useProjectContext } from "@/hooks/use-project-context";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -242,6 +243,7 @@ export function K6AnalyticsTab({
     onCompareOpenChange,
     onJobsLoaded,
 }: K6AnalyticsTabProps) {
+    const { currentProject, loading: isProjectLoading } = useProjectContext();
     const [data, setData] = useState<K6AnalyticsResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -280,15 +282,24 @@ export function K6AnalyticsTab({
 
     // Main data fetch - does NOT include comparison run IDs
     const fetchData = useCallback(async (signal?: AbortSignal) => {
+        if (isProjectLoading || !currentProject?.id) return;
         try {
             setLoading(true);
             const params = new URLSearchParams();
             params.set("period", period.toString());
-            if (selectedJob !== "all" && selectedJob !== "") {
+            if (selectedJob && selectedJob !== "all") {
                 params.set("jobId", selectedJob);
             }
 
-            const response = await fetch(`/api/analytics/k6?${params.toString()}`, { signal });
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (currentProject?.id) {
+                headers["x-project-id"] = currentProject.id;
+            }
+
+            const response = await fetch(`/api/analytics/k6?${params.toString()}`, {
+                headers,
+                signal
+            });
             if (!response.ok) throw new Error("Failed to fetch K6 analytics");
             const result = await response.json();
 
@@ -309,20 +320,30 @@ export function K6AnalyticsTab({
                 setLoading(false);
             }
         }
-    }, [period, selectedJob, onJobsLoaded]);
+    }, [period, selectedJob, onJobsLoaded, currentProject?.id, isProjectLoading]);
 
     // Separate comparison fetch - updates only comparison data without re-rendering charts
     const fetchComparison = useCallback(async (signal?: AbortSignal) => {
-        if (!leftRunId || !rightRunId || selectedJob === "all" || selectedJob === "") return;
+        if (isProjectLoading || !currentProject?.id || !leftRunId || !rightRunId || selectedJob === "all" || selectedJob === "") return;
 
         try {
             const params = new URLSearchParams();
             params.set("period", period.toString());
-            params.set("jobId", selectedJob);
+            if (selectedJob) { // Updated condition
+                params.set("jobId", selectedJob);
+            }
             params.set("leftRunId", leftRunId);
             params.set("rightRunId", rightRunId);
 
-            const response = await fetch(`/api/analytics/k6?${params.toString()}`, { signal });
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (currentProject?.id) {
+                headers["x-project-id"] = currentProject.id;
+            }
+
+            const response = await fetch(`/api/analytics/k6?${params.toString()}`, {
+                headers,
+                signal
+            });
             if (!response.ok) return;
             const result = await response.json();
 
@@ -334,7 +355,7 @@ export function K6AnalyticsTab({
             if (err instanceof Error && err.name === 'AbortError') return;
             console.error("Failed to fetch comparison:", err);
         }
-    }, [period, selectedJob, leftRunId, rightRunId]);
+    }, [period, selectedJob, leftRunId, rightRunId, currentProject?.id, isProjectLoading]);
 
     useEffect(() => {
         const controller = new AbortController();

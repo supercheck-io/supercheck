@@ -41,23 +41,36 @@ function getPersister(): Persister | null {
 
 function restoreCache(client: QueryClient) {
   if (restored || typeof window === "undefined") return;
-  
+
   try {
     const p = getPersister() as { restoreClient?: () => PersistedClient | undefined };
     if (!p?.restoreClient) return;
-    
-    const data = p.restoreClient();
+
+    // Safety check for corrupted localStorage
+    let data;
+    try {
+      data = p.restoreClient();
+    } catch (e) {
+      console.error("Failed to restore cache from localStorage:", e);
+      window.localStorage.removeItem(CACHE_KEY);
+      return;
+    }
+
     if (!data?.clientState) return;
-    
+
     const age = data.timestamp ? Date.now() - data.timestamp : Infinity;
     if (age > MAX_AGE) {
       window.localStorage.removeItem(CACHE_KEY);
       return;
     }
-    
+
     hydrate(client, data.clientState);
-  } catch {
-    // Ignore
+  } catch (err) {
+    console.error("Critical error restoring cache:", err);
+    // Ensure we don't start with a broken state
+    try {
+      window.localStorage.removeItem(CACHE_KEY);
+    } catch { /* ignore */ }
   } finally {
     restored = true;
   }
@@ -65,12 +78,12 @@ function restoreCache(client: QueryClient) {
 
 function getClient() {
   if (isServer) return createClient();
-  
+
   if (!browserClient) {
     browserClient = createClient();
     restoreCache(browserClient);
   }
-  
+
   return browserClient;
 }
 

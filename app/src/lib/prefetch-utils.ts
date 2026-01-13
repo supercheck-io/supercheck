@@ -237,6 +237,11 @@ type RouteConfig = {
 
 function getRouteConfigs(projectId: string): Record<string, RouteConfig> {
   return {
+    "/": {
+      queryKey: ["dashboard", projectId],
+      queryFn: () => fetchJson("/api/dashboard"),
+      staleTime: 60000,
+    },
     "/tests": {
       queryKey: ["tests", projectId, "{}"],
       queryFn: () => fetchJson("/api/tests"),
@@ -250,12 +255,12 @@ function getRouteConfigs(projectId: string): Record<string, RouteConfig> {
     "/runs": {
       queryKey: ["runs", projectId, "{}"],
       queryFn: () => fetchJson("/api/runs"),
-      staleTime: 5000,
+      staleTime: STALE_TIME,
     },
     "/monitors": {
       queryKey: ["monitors", projectId, "{}"],
       queryFn: () => fetchJson("/api/monitors"),
-      staleTime: 30000,
+      staleTime: STALE_TIME,
     },
     "/requirements": {
       queryKey: ["requirements", projectId, "{}"],
@@ -270,7 +275,12 @@ function getRouteConfigs(projectId: string): Record<string, RouteConfig> {
     "/alerts": {
       queryKey: ["notification-providers", projectId],
       queryFn: () => fetchJson("/api/notification-providers"),
-      staleTime: 60000,
+      staleTime: STALE_TIME,
+    },
+    "/variables": {
+      queryKey: ["variables", projectId],
+      queryFn: () => fetchJson(`/api/projects/${projectId}/variables`),
+      staleTime: STALE_TIME,
     },
   };
 }

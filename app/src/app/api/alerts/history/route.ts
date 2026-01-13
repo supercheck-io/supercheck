@@ -104,7 +104,7 @@ export async function GET() {
         ORDER BY "timestamp" DESC
         LIMIT 50
       `);
-
+      
       const history = historyResult as unknown as AlertHistoryRow[];
 
       // Transform the data to match the expected format
@@ -129,14 +129,14 @@ export async function GET() {
 
       return NextResponse.json(transformedHistory);
     } catch (dbError) {
-      console.error('Database query error:', dbError);
+      console.error('[AlertHistory] Database query error:', dbError);
       return NextResponse.json(
         { error: "Database query failed", details: dbError instanceof Error ? dbError.message : String(dbError) },
         { status: 500 }
       );
     }
   } catch (error) {
-    console.error("Error fetching alert history:", error);
+    console.error("[AlertHistory] Error fetching alert history:", error);
     return NextResponse.json(
       { error: "Failed to fetch alert history", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }

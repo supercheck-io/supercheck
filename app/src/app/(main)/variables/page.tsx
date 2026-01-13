@@ -18,7 +18,7 @@ export default function VariablesPage() {
           <Suspense
             fallback={
               <div className="flex min-h-[400px] items-center justify-center">
-                <SuperCheckLoading size="md" message="Loading variables..." />
+                <SuperCheckLoading size="lg" message="Loading variables..." />
               </div>
             }
           >

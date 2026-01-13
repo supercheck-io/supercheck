@@ -15,6 +15,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { jobStatuses } from "./data";
 import { RUNS_QUERY_KEY } from "@/hooks/use-runs";
 import { getExecutionsData } from "@/hooks/use-executions";
+import { useProjectContext } from "@/hooks/use-project-context";
 interface JobStatusSSEPayload {
   status: string;
   jobId?: string;
@@ -113,6 +114,8 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const queryClient = useQueryClient();
+  const { currentProject } = useProjectContext();
+  const projectId = currentProject?.id;
 
   // Check if a specific job is running
   const isJobRunning = useCallback(
@@ -323,7 +326,7 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
     // will share the same cached data within 5 seconds
     const fetchRunningJobs = async () => {
       try {
-        const data = await getExecutionsData();
+        const data = await getExecutionsData(projectId);
         if (!data) {
           return;
         }
@@ -415,7 +418,7 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
       isMounted = false;
       cleanupGlobalEventSource();
     };
-  }, [handleGlobalJobEvent, setJobStatus, startJobRun]);
+  }, [handleGlobalJobEvent, setJobStatus, startJobRun, projectId]);
 
   // Clean up event sources on unmount
   useEffect(() => {

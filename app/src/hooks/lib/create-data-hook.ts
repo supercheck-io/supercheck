@@ -54,10 +54,16 @@ function buildSearchParams(options: Record<string, unknown>, pageParamName = "li
   return params;
 }
 
-async function fetchList<T>(endpoint: string, options: Record<string, unknown>): Promise<PaginatedResponse<T>> {
+async function fetchList<T>(endpoint: string, options: Record<string, unknown>, projectId?: string | null): Promise<PaginatedResponse<T>> {
   const params = buildSearchParams(options);
   const url = params.toString() ? `${endpoint}?${params}` : endpoint;
-  const response = await fetch(url, { headers: { "Content-Type": "application/json" } });
+  
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (projectId) {
+    headers["x-project-id"] = projectId;
+  }
+
+  const response = await fetch(url, { headers });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
@@ -65,8 +71,13 @@ async function fetchList<T>(endpoint: string, options: Record<string, unknown>):
   return response.json();
 }
 
-async function fetchSingle<T>(endpoint: string, id: string, singleItemField?: string): Promise<T> {
-  const response = await fetch(`${endpoint}/${id}`, { headers: { "Content-Type": "application/json" } });
+async function fetchSingle<T>(endpoint: string, id: string, singleItemField?: string, projectId?: string | null): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (projectId) {
+    headers["x-project-id"] = projectId;
+  }
+
+  const response = await fetch(`${endpoint}/${id}`, { headers });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
@@ -156,7 +167,7 @@ export function createDataHook<
     endpoint,
     staleTime = 5 * 60 * 1000,
     gcTime = 24 * 60 * 60 * 1000,
-    refetchOnWindowFocus = true,
+    refetchOnWindowFocus = false,
     refetchOnMount,
     singleItemField,
   } = config;
@@ -181,22 +192,21 @@ export function createDataHook<
 
     const query = useQuery({
       queryKey: fullQueryKey,
-      queryFn: () => fetchList<T>(endpoint, filters),
+      queryFn: () => fetchList<T>(endpoint, filters, projectId),
       enabled: enabled && !!projectId,
       staleTime,
       gcTime,
       refetchOnWindowFocus,
       ...(refetchOnMount !== undefined && { refetchOnMount }),
-      initialData: () => queryClient.getQueryData(fullQueryKey) as PaginatedResponse<T> | undefined,
-      initialDataUpdatedAt: () => queryClient.getQueryState(fullQueryKey)?.dataUpdatedAt,
     });
 
     const invalidate = () =>
       queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
 
-    const cachedData = queryClient.getQueryData(fullQueryKey);
-    const hasData = query.data !== undefined || cachedData !== undefined;
-    const isInitialLoading = !hasData && query.isFetching && !isRestoring;
+    // Simple loading state: only true when no data AND actively fetching
+    // React Query handles cache lookup automatically - if data exists, query.data is set
+    const hasData = query.data !== undefined;
+    const isInitialLoading = query.isPending && query.isFetching && !isRestoring;
 
     return {
       data: query.data,
@@ -221,22 +231,21 @@ export function createDataHook<
     const { enabled = true } = options;
     const singleKey = [...singleQueryKey, id];
 
+    const { currentProject } = useProjectContext();
+    const projectId = currentProject?.id ?? null;
+
     const query = useQuery({
       queryKey: singleKey,
-      queryFn: () => fetchSingle<T>(endpoint, id!, singleItemField),
+      queryFn: () => fetchSingle<T>(endpoint, id!, singleItemField, projectId),
       enabled: enabled && !!id,
       staleTime: staleTime / 2,
       gcTime,
-      initialData: () => queryClient.getQueryData(singleKey) as T | undefined,
-      initialDataUpdatedAt: () => queryClient.getQueryState(singleKey)?.dataUpdatedAt,
     });
 
     const invalidate = () =>
       queryClient.invalidateQueries({ queryKey: singleKey, refetchType: 'all' });
 
-    const cachedData = queryClient.getQueryData(singleKey);
-    const hasData = query.data !== undefined || cachedData !== undefined;
-    const isInitialLoading = !hasData && query.isFetching && !isRestoring;
+    const isInitialLoading = query.isPending && query.isFetching && !isRestoring;
 
     return {
       data: query.data,
@@ -251,12 +260,17 @@ export function createDataHook<
 
   function useMutations() {
     const queryClient = useQueryClient();
+    const { currentProject } = useProjectContext();
+    const projectId = currentProject?.id ?? null;
 
     const create = useMutation({
       mutationFn: async (data: CreateData) => {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (projectId) headers["x-project-id"] = projectId;
+
         const response = await fetch(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(data),
         });
         if (!response.ok) {
@@ -273,9 +287,13 @@ export function createDataHook<
     const update = useMutation({
       mutationFn: async (data: UpdateData) => {
         const { id, ...updateData } = data as unknown as { id: string; [key: string]: unknown };
+        
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (projectId) headers["x-project-id"] = projectId;
+
         const response = await fetch(`${endpoint}/${id}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(updateData),
         });
         if (!response.ok) {
@@ -289,8 +307,12 @@ export function createDataHook<
 
     const remove = useMutation({
       mutationFn: async (id: string) => {
+        const headers: Record<string, string> = {};
+        if (projectId) headers["x-project-id"] = projectId;
+
         const response = await fetch(`${endpoint}/${id}`, {
           method: "DELETE",
+          headers,
         });
         if (!response.ok) {
           const error = await response.json().catch(() => ({}));

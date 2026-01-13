@@ -79,7 +79,6 @@ export function useTags() {
   const isRestoring = useIsRestoring();
 
   const queryKey = [...TAGS_QUERY_KEY, projectId];
-  const queryClient = useQueryClient();
 
   const result = useQuery({
     queryKey,
@@ -87,13 +86,9 @@ export function useTags() {
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
     enabled: !!projectId,
-    initialData: () => queryClient.getQueryData(queryKey) as Tag[] | undefined,
-    initialDataUpdatedAt: () => queryClient.getQueryState(queryKey)?.dataUpdatedAt,
   });
 
-  const cachedData = queryClient.getQueryData(queryKey);
-  const hasData = result.data !== undefined || cachedData !== undefined;
-  const isInitialLoading = !hasData && result.isFetching && !isRestoring;
+  const isInitialLoading = result.isPending && result.isFetching && !isRestoring;
 
   return {
     tags: result.data ?? EMPTY_TAGS_ARRAY,

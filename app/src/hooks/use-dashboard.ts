@@ -116,12 +116,11 @@ export async function fetchDashboard(): Promise<DashboardData> {
 
   try {
     const [dashboardResponse, alertsResponse] = await Promise.all([
-      fetch(`/api/dashboard?t=${Date.now()}`, {
+      fetch("/api/dashboard", {
         signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          Pragma: "no-cache",
+          // Removed manual cache busting. Browser/Proxy should respect server Cache-Control headers.
         },
       }),
       fetch("/api/alerts/history", {
@@ -314,8 +313,6 @@ export function useDashboard() {
     gcTime: 60 * 60 * 1000,
     refetchOnWindowFocus: false,
     retry: 2,
-    initialData: () => queryClient.getQueryData(queryKey) as DashboardData | undefined,
-    initialDataUpdatedAt: () => queryClient.getQueryState(queryKey)?.dataUpdatedAt,
   });
 
   const refetch = () => query.refetch();
@@ -323,9 +320,7 @@ export function useDashboard() {
   const invalidate = () => 
     queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
 
-  const cachedData = queryClient.getQueryData(queryKey);
-  const hasData = query.data !== undefined || cachedData !== undefined;
-  const isInitialLoading = !hasData && query.isFetching && !isRestoring;
+  const isInitialLoading = query.isPending && query.isFetching && !isRestoring;
 
   return {
     data: query.data,

@@ -460,11 +460,59 @@ export async function GET() {
         period: 'last 30 days'
       },
 
-      // System Health
-      system: {
-        timestamp: now.toISOString(),
-        healthy: monitorCounts[0].down === 0 && queueStats.running < queueStats.runningCapacity
-      }
+      // System Health - Build issues array with actual details
+      system: (() => {
+        const issues: Array<{ type: 'monitor' | 'job' | 'queue'; message: string; severity: 'low' | 'medium' | 'high' | 'critical' }> = [];
+        
+        // Check for down monitors
+        if (monitorCounts[0].down > 0) {
+          const downCount = monitorCounts[0].down;
+          issues.push({
+            type: 'monitor',
+            message: `${downCount} monitor${downCount > 1 ? 's' : ''} currently down`,
+            severity: downCount >= 3 ? 'critical' : downCount >= 2 ? 'high' : 'medium'
+          });
+          
+          // Add specific monitor names if we have critical alerts
+          criticalAlerts.slice(0, 3).forEach(alert => {
+            issues.push({
+              type: 'monitor',
+              message: `${alert.name} (${alert.type}) is down`,
+              severity: 'high'
+            });
+          });
+        }
+        
+        // Check for queue capacity issues
+        if (queueStats.running >= queueStats.runningCapacity) {
+          issues.push({
+            type: 'queue',
+            message: `Execution queue at capacity (${queueStats.running}/${queueStats.runningCapacity} running)`,
+            severity: 'high'
+          });
+        } else if (queueStats.running >= queueStats.runningCapacity * 0.8) {
+          issues.push({
+            type: 'queue',
+            message: `Execution queue nearing capacity (${queueStats.running}/${queueStats.runningCapacity} running)`,
+            severity: 'medium'
+          });
+        }
+        
+        // Check for high queue backlog
+        if (queueStats.queued > 10) {
+          issues.push({
+            type: 'queue',
+            message: `${queueStats.queued} jobs queued waiting for execution`,
+            severity: queueStats.queued > 20 ? 'high' : 'medium'
+          });
+        }
+        
+        return {
+          timestamp: now.toISOString(),
+          healthy: issues.length === 0,
+          issues
+        };
+      })()
     });
 
     // Enable short-term caching (30s) to reduce CPU load from repeated dashboard requests

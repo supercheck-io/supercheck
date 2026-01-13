@@ -83,7 +83,7 @@ export default function EditJobPage() {
       <Suspense
         fallback={
           <div className="flex min-h-[400px] items-center justify-center">
-            <SuperCheckLoading size="md" message="Loading job editor..." />
+            <SuperCheckLoading size="lg" message="Loading job editor..." />
           </div>
         }
       >

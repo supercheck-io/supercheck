@@ -403,8 +403,12 @@ export async function requireProjectContext(): Promise<{
     throw new Error("Authentication required");
   }
 
+  // Check for project override header
+  const headersList = await headers();
+  const requestedProjectId = headersList.get("x-project-id");
+
   // Use optimization unified query (1 DB call instead of 6-10)
-  const ctx = await getUnifiedAuthContext(sessionData.session.token);
+  const ctx = await getUnifiedAuthContext(sessionData.session.token, requestedProjectId);
 
   if (!ctx.isValid) {
      throw new Error(ctx.error || "Authentication failed");

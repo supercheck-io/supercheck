@@ -18,7 +18,7 @@ export default function CreateK6JobPage() {
       <Suspense
         fallback={
           <div className="flex min-h-[400px] items-center justify-center">
-            <SuperCheckLoading size="md" message="Loading job wizard..." />
+            <SuperCheckLoading size="lg" message="Loading job wizard..." />
           </div>
         }
       >

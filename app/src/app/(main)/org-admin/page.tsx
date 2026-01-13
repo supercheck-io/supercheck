@@ -116,7 +116,7 @@ export default function OrgAdminDashboard() {
     <Suspense
       fallback={
         <div className="flex min-h-[400px] items-center justify-center">
-          <SuperCheckLoading size="md" message="Loading organization..." />
+          <SuperCheckLoading size="lg" message="Loading organization..." />
         </div>
       }
     >

@@ -271,14 +271,14 @@ export default function Home() {
   // To prevent hydration mismatch, we render loading on first client render too
   // useSyncExternalStore ensures consistent behavior: server returns false, client returns true
   const isMounted = useSyncExternalStore(
-    () => () => {},  // subscribe - no-op
+    () => () => { },  // subscribe - no-op
     () => true,      // getSnapshot (client) - always mounted
     () => false      // getServerSnapshot - never mounted on server
   );
-  
+
   // Use React Query hook for dashboard data (cached, auto-refreshes)
   const { data: dashboardData, isLoading: queryLoading, error: queryError, refetch } = useDashboard();
-  
+
   // HYDRATION FIX: Show loading on server AND first client render
   // After mount, use actual loading state from query
   const loading = !isMounted || queryLoading;
@@ -289,23 +289,7 @@ export default function Home() {
     { label: "Dashboard", isCurrentPage: true },
   ];
 
-  // Check for project switch success and refresh data
-  useEffect(() => {
-    const projectName = sessionStorage.getItem("projectSwitchSuccess");
-    if (projectName) {
-      sessionStorage.removeItem("projectSwitchSuccess");
 
-      // Force refresh dashboard data when project is switched
-      // Add a small delay to ensure session has propagated
-      setTimeout(() => {
-        refetch();
-      }, 100);
-
-      setTimeout(() => {
-        toast.success(`Switched to ${projectName}`);
-      }, 500);
-    }
-  }, [refetch]);
 
   // Memoized chart data to prevent unnecessary recalculations
   const chartData = useMemo(() => {
@@ -602,6 +586,7 @@ export default function Home() {
     );
   }
 
+  // Handle error state
   if (error) {
     return (
       <div>
@@ -643,7 +628,23 @@ export default function Home() {
     );
   }
 
-  if (!dashboardData || !chartData) return null;
+  // Handle missing data or system check
+  // Shows empty state for:
+  // 1. Missing dashboard data (should be loading instead if fetching)
+  // 2. Missing system status
+  // 3. No project context (should ideally not happen due to AuthGuard but acts as safety net)
+  if (!dashboardData || !chartData || !dashboardData.system) {
+    return (
+      <div className="overflow-hidden">
+        <PageBreadcrumbs items={breadcrumbs} />
+        <DashboardEmptyState
+          title="Welcome to your Dashboard"
+          description="Your project overview will appear here once data is available. Get started by creating a monitor or running a test."
+          icon={<LayoutDashboard className="h-10 w-10 text-muted-foreground" />}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="overflow-hidden">
@@ -723,7 +724,7 @@ export default function Home() {
                     </p>
                   ) : (
                     <div className="space-y-2">
-                      {dashboardData.system.issues.map((issue, i) => (
+                      {(dashboardData.system.issues ?? []).map((issue, i) => (
                         <div
                           key={i}
                           className="flex items-start gap-2 text-sm"
@@ -776,6 +777,12 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
 
   // Fetch requirements stats for dashboard card
   const { data: requirementsStats } = useRequirementsStats();
+
+  // Safe defaults for dashboardData properties
+  const stats = dashboardData?.stats ?? { runs: 0, tests: 0, jobs: 0, monitors: 0 };
+  const monitors = dashboardData?.monitors ?? { total: 0, active: 0, up: 0, down: 0, uptime: 0 };
+  const jobs = dashboardData?.jobs ?? { executionTime: { totalMinutes: 0, totalSeconds: 0, processedRuns: 0 }, recentRuns: [] };
+  const tests = dashboardData?.tests ?? { playgroundExecutionsTrend: [] };
 
   // Refs to track if jobs were already loaded for each tab (prevents redundant callbacks)
   const k6JobsLoadedRef = useRef(false);
@@ -903,7 +910,7 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
       </div>
 
       <TabsContent value="overview">
-        {dashboardData.stats.runs === 0 && dashboardData.stats.monitors === 0 ? (
+        {stats.runs === 0 && stats.monitors === 0 && (dashboardData?.k6?.totalRuns ?? 0) === 0 ? (
           <DashboardEmptyState
             title="No Project Activity"
             description="Your project dashboard is currently empty. Head over to the Quick Create section to set up your project resources."
@@ -970,10 +977,10 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
                       <p className="text-sm font-medium text-muted-foreground">
                         Total Tests
                       </p>
-                      {dashboardData.stats.tests > 0 ? (
+                      {stats.tests > 0 ? (
                         <>
                           <div className="text-2xl font-bold tracking-tight truncate">
-                            {formatCompactNumber(dashboardData.stats.tests)}
+                            {formatCompactNumber(stats.tests)}
                           </div>
                           <p className="text-xs text-muted-foreground">
                             Available test cases
@@ -999,10 +1006,10 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
                       <p className="text-sm font-medium text-muted-foreground">
                         Active Jobs
                       </p>
-                      {dashboardData.stats.jobs > 0 ? (
+                      {stats.jobs > 0 ? (
                         <>
                           <div className="text-2xl font-bold tracking-tight truncate">
-                            {formatCompactNumber(dashboardData.stats.jobs)}
+                            {formatCompactNumber(stats.jobs)}
                           </div>
                           <p className="text-xs text-muted-foreground">
                             Scheduled jobs
@@ -1028,13 +1035,13 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
                       <p className="text-sm font-medium text-muted-foreground">
                         Active Monitors
                       </p>
-                      {dashboardData.monitors.total > 0 ? (
+                      {monitors.total > 0 ? (
                         <>
                           <div className="text-2xl font-bold tracking-tight truncate">
-                            {formatCompactNumber(dashboardData.monitors.active)}
+                            {formatCompactNumber(monitors.active)}
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            of {formatCompactNumber(dashboardData.monitors.total)} total
+                            of {formatCompactNumber(monitors.total)} total
                           </p>
                         </>
                       ) : (
@@ -1069,24 +1076,19 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
                           align="end"
                         />
                       </p>
-                      {dashboardData.jobs.executionTime.totalMinutes > 0 ? (
+                      {jobs.executionTime.totalMinutes > 0 ? (
                         <>
                           <div className="text-2xl font-bold tracking-tight truncate">
                             {formatExecutionTime(
-                              dashboardData.jobs.executionTime.totalMinutes,
-                              dashboardData.jobs.executionTime.totalSeconds
+                              jobs.executionTime.totalMinutes,
+                              jobs.executionTime.totalSeconds
                             )}
                           </div>
                           <p className="text-xs text-muted-foreground truncate">
-                            {formatCompactNumber(dashboardData.jobs.executionTime.processedRuns)}{" "}
+                            {formatCompactNumber(jobs.executionTime.processedRuns)}{" "}
                             runs • Last 30 days
                           </p>
-                          {dashboardData.jobs.executionTime.errors > 0 && (
-                            <p className="text-xs text-yellow-600">
-                              {dashboardData.jobs.executionTime.errors} parsing
-                              errors
-                            </p>
-                          )}
+                         
                         </>
                       ) : (
                         <p className="text-sm text-muted-foreground py-2">
@@ -1206,7 +1208,7 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-4 pt-4">
-                  {dashboardData.monitors.total > 0 ? (
+                  {monitors.total > 0 ? (
                     <ChartContainer config={chartConfig} className="h-40 w-full">
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={chartData.monitorStatusData}>
@@ -1248,15 +1250,15 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-4 pt-0">
-                  {dashboardData.tests.byType &&
-                    dashboardData.tests.byType.length > 0 ? (
+                  {tests.byType &&
+                    tests.byType.length > 0 ? (
                     <div className="flex flex-col items-center">
                       {/* Centered Chart */}
                       <ChartContainer config={chartConfig} className="h-28 w-28">
                         <ResponsiveContainer width="100%" height="100%">
                           <PieChart>
                             <Pie
-                              data={dashboardData.tests.byType.map((item) => {
+                              data={tests.byType?.map((item) => {
                                 const typeColorMap: Record<string, string> = {
                                   browser: "#0ea5e9",
                                   api: "#0d9488",
@@ -1284,7 +1286,7 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
                       </ChartContainer>
                       {/* Legend as compact pills grid */}
                       <div className="flex flex-wrap justify-center gap-1.5 mt-2">
-                        {dashboardData.tests.byType.map((item) => {
+                        {tests.byType?.map((item) => {
                           const typeColorMap: Record<string, string> = {
                             browser: "#0ea5e9",
                             api: "#0d9488",
@@ -1342,7 +1344,7 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-4 pt-4">
-                  {dashboardData.tests.playgroundExecutions30d > 0 ? (
+                  {(tests as { playgroundExecutions30d?: number }).playgroundExecutions30d && (tests as { playgroundExecutions30d?: number }).playgroundExecutions30d! > 0 ? (
                     <ChartContainer config={chartConfig} className="h-43 w-full">
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={chartData.testActivityData}>
@@ -1387,7 +1389,7 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="p-4 pt-4">
-                  {dashboardData.jobs.total > 0 ? (
+                  {(jobs as { total?: number }).total && (jobs as { total?: number }).total! > 0 ? (
                     <ChartContainer config={chartConfig} className="h-43 w-full">
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={chartData.jobActivityData}>

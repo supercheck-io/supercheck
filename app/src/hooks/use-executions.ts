@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useProjectContext } from "./use-project-context";
 
 const DEFAULT_RUNNING_CAPACITY = 1;
 const DEFAULT_QUEUED_CAPACITY = 10;
@@ -36,7 +37,7 @@ export interface UseExecutionsReturn {
   refresh: () => Promise<void>;
 }
 
-interface ExecutionsCache {
+interface ExecutionsCacheEntry {
   running: ExecutionItem[];
   queued: ExecutionItem[];
   runningCapacity: number;
@@ -44,7 +45,8 @@ interface ExecutionsCache {
   timestamp: number;
 }
 
-let executionsCache: ExecutionsCache | null = null;
+// Cache keyed by projectId
+const executionsCache: Record<string, ExecutionsCacheEntry> = {};
 const CACHE_TTL = 5000;
 
 let pendingFetch: Promise<{
@@ -54,7 +56,7 @@ let pendingFetch: Promise<{
   queuedCapacity: number;
 } | null> | null = null;
 
-export async function getExecutionsData(): Promise<{
+export async function getExecutionsData(projectId?: string | null): Promise<{
   running: ExecutionItem[];
   queued: ExecutionItem[];
   runningCapacity: number;
@@ -62,12 +64,15 @@ export async function getExecutionsData(): Promise<{
 } | null> {
   const now = Date.now();
   
-  if (executionsCache && (now - executionsCache.timestamp) < CACHE_TTL) {
+  // Use a default key if no projectId provided (though caller should provide it)
+  const cacheKey = projectId || "unknown";
+
+  if (executionsCache[cacheKey] && (now - executionsCache[cacheKey].timestamp) < CACHE_TTL) {
     return {
-      running: executionsCache.running,
-      queued: executionsCache.queued,
-      runningCapacity: executionsCache.runningCapacity,
-      queuedCapacity: executionsCache.queuedCapacity,
+      running: executionsCache[cacheKey].running,
+      queued: executionsCache[cacheKey].queued,
+      runningCapacity: executionsCache[cacheKey].runningCapacity,
+      queuedCapacity: executionsCache[cacheKey].queuedCapacity,
     };
   }
 
@@ -79,9 +84,19 @@ export async function getExecutionsData(): Promise<{
   // Start a new fetch and store the promise
   pendingFetch = (async () => {
     try {
+      // Pass projectId in header if available to ensure correct context
+      // Although server likely infers from session, explicit is better
+      const headers: Record<string, string> = {
+        "Cache-Control": "no-cache"
+      };
+      
+      if (projectId) {
+         headers["x-project-id"] = projectId;
+      }
+      
       const res = await fetch("/api/executions/running", {
         cache: "no-store",
-        headers: { "Cache-Control": "no-cache" },
+        headers,
       });
 
       if (!res.ok) {
@@ -103,13 +118,24 @@ export async function getExecutionsData(): Promise<{
       const queuedCapacity = typeof data.queuedCapacity === 'number' ? data.queuedCapacity : 10;
 
       // Update cache
-      executionsCache = {
-        running,
-        queued,
-        runningCapacity,
-        queuedCapacity,
-        timestamp: Date.now(),
-      };
+      if (projectId) {
+        executionsCache[projectId] = {
+          running,
+          queued,
+          runningCapacity,
+          queuedCapacity,
+          timestamp: Date.now(),
+        };
+      } else {
+         // Fallback for when projectId is missing (should be rare)
+         executionsCache["unknown"] = {
+           running,
+           queued,
+           runningCapacity,
+           queuedCapacity,
+           timestamp: Date.now(),
+         };
+      }
 
       return { running, queued, runningCapacity, queuedCapacity };
     } catch (error) {
@@ -123,12 +149,16 @@ export async function getExecutionsData(): Promise<{
   return pendingFetch;
 }
 
-export function useExecutions(): UseExecutionsReturn {
-  const [running, setRunning] = useState<ExecutionItem[]>(executionsCache?.running || []);
-  const [queued, setQueued] = useState<ExecutionItem[]>(executionsCache?.queued || []);
-  const [runningCapacity, setRunningCapacity] = useState(executionsCache?.runningCapacity || DEFAULT_RUNNING_CAPACITY);
-  const [queuedCapacity, setQueuedCapacity] = useState(executionsCache?.queuedCapacity || DEFAULT_QUEUED_CAPACITY);
-  const [loading, setLoading] = useState(!executionsCache);
+  export function useExecutions(): UseExecutionsReturn {
+  const { currentProject } = useProjectContext();
+  const projectId = currentProject?.id ?? null;
+  const cacheKey = projectId || "unknown";
+
+  const [running, setRunning] = useState<ExecutionItem[]>(executionsCache[cacheKey]?.running || []);
+  const [queued, setQueued] = useState<ExecutionItem[]>(executionsCache[cacheKey]?.queued || []);
+  const [runningCapacity, setRunningCapacity] = useState(executionsCache[cacheKey]?.runningCapacity || DEFAULT_RUNNING_CAPACITY);
+  const [queuedCapacity, setQueuedCapacity] = useState(executionsCache[cacheKey]?.queuedCapacity || DEFAULT_QUEUED_CAPACITY);
+  const [loading, setLoading] = useState(!executionsCache[cacheKey]);
   
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -139,12 +169,13 @@ export function useExecutions(): UseExecutionsReturn {
   const fetchExecutions = useCallback(async (forceRefresh = false) => {
     if (!mountedRef.current) return;
 
-    if (forceRefresh && executionsCache) {
-      executionsCache.timestamp = 0;
+    if (forceRefresh && executionsCache[cacheKey]) {
+      executionsCache[cacheKey].timestamp = 0;
     }
 
     try {
-      const data = await getExecutionsData();
+      // Pass projectId to ensure we get data for the correct project
+      const data = await getExecutionsData(projectId);
       
       if (!mountedRef.current) return;
       
@@ -159,7 +190,7 @@ export function useExecutions(): UseExecutionsReturn {
       console.error("Error fetching executions:", error);
       setLoading(false);
     }
-  }, []);
+  }, [projectId, cacheKey]);
 
   const debouncedRefresh = useCallback(() => {
     if (debounceRef.current) {

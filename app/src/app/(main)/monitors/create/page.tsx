@@ -47,7 +47,7 @@ export default async function CreateMonitorPage({ searchParams }: CreateMonitorP
         <Suspense
           fallback={
             <div className="flex min-h-[400px] items-center justify-center">
-              <SuperCheckLoading size="md" message="Loading monitor wizard..." />
+              <SuperCheckLoading size="lg" message="Loading monitor wizard..." />
             </div>
           }
         >
@@ -119,7 +119,7 @@ export default async function CreateMonitorPage({ searchParams }: CreateMonitorP
       <Suspense
         fallback={
           <div className="flex min-h-[400px] items-center justify-center">
-            <SuperCheckLoading size="md" message="Loading monitor wizard..." />
+            <SuperCheckLoading size="lg" message="Loading monitor wizard..." />
           </div>
         }
       >

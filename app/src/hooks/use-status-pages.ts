@@ -161,16 +161,12 @@ export function useStatusPageDetail(statusPageId: string | null) {
     enabled: !!statusPageId && !!projectId,
     staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
-    initialData: () => queryClient.getQueryData(queryKey) as StatusPageDetailResponse | undefined,
-    initialDataUpdatedAt: () => queryClient.getQueryState(queryKey)?.dataUpdatedAt,
   });
 
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
 
-  const cachedData = queryClient.getQueryData(queryKey);
-  const hasData = query.data !== undefined || cachedData !== undefined;
-  const isInitialLoading = !hasData && query.isFetching && !isRestoring;
+  const isInitialLoading = query.isPending && query.isFetching && !isRestoring;
 
   return {
     data: query.data,
