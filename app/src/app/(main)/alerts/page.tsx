@@ -62,7 +62,6 @@ import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 function AlertsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
-  // PERFORMANCE: Use React Query hooks - data is prefetched by DataPrefetcher
   const { providers, isLoading: providersLoading } = useNotificationProviders();
   const { alertHistory, isLoading: historyLoading } = useAlertHistory();
   const { createProvider, updateProvider, deleteProvider } = useNotificationProviderMutations();

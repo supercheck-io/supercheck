@@ -1,16 +1,4 @@
-/**
- * Status Pages Data Hook
- *
- * React Query hook for fetching status pages list with efficient caching.
- * Uses the generic data hook factory for DRY, consistent behavior.
- * Caches data for 60 seconds.
- */
-
 import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
-
-// ============================================================================
-// TYPES
-// ============================================================================
 
 export interface StatusPage {
   id: string;
@@ -50,67 +38,40 @@ interface UpdateStatusPageData {
   status?: string;
 }
 
-// ============================================================================
-// QUERY KEYS (exported for external cache invalidation)
-// ============================================================================
-
 export const STATUS_PAGES_QUERY_KEY = ["statusPages"] as const;
 export const STATUS_PAGE_QUERY_KEY = ["statusPage"] as const;
 
-/**
- * Helper to generate the exact query key used by the list hook.
- * This ensures DataPrefetcher and other consumers match the internal key logic.
- */
 export function getStatusPagesListQueryKey(projectId: string | null) {
-  // Matches createDataHook's getListQueryKey logic: [...key, projectId, filters]
-  // Filters default to {} when clean
-  return [...STATUS_PAGES_QUERY_KEY, projectId, {}] as const;
+  // Matches createDataHook's getListQueryKey logic: [...key, projectId, filtersJson]
+  // Uses JSON string "{}" for empty filters to ensure cache key matching
+  return [...STATUS_PAGES_QUERY_KEY, projectId, "{}"] as const;
 }
-
-// ============================================================================
-// HOOK FACTORY
-// ============================================================================
 
 const statusPagesHook = createDataHook<StatusPage, CreateStatusPageData, UpdateStatusPageData>({
   queryKey: STATUS_PAGES_QUERY_KEY,
   endpoint: "/api/status-pages",
-  // Inherits staleTime (5min) and gcTime (24h) from factory defaults
-  refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
+  refetchOnWindowFocus: false,
   singleItemField: "statusPage",
 });
-
-// ============================================================================
-// HOOKS
-// ============================================================================
 
 export interface UseStatusPagesOptions {
   enabled?: boolean;
 }
 
-/**
- * Hook to fetch status pages list with React Query caching.
- * Data is cached for 60 seconds and shared across components.
- */
 export function useStatusPages(options: UseStatusPagesOptions = {}) {
   const result = statusPagesHook.useList(options as UseStatusPagesOptions & { [key: string]: unknown });
 
   return {
     ...result,
-    statusPages: result.items, // Alias for component usage
-    loading: result.isLoading, // Alias for component usage
+    statusPages: result.items,
+    loading: result.isLoading,
   };
 }
 
-/**
- * Hook to fetch a single status page by ID with React Query caching.
- */
 export function useStatusPage(statusPageId: string | null) {
   return statusPagesHook.useSingle(statusPageId);
 }
 
-/**
- * Hook for status page mutations (create, update, delete) with optimistic updates.
- */
 export function useStatusPageMutations() {
   const baseMutations = statusPagesHook.useMutations();
 
@@ -120,10 +81,6 @@ export function useStatusPageMutations() {
     deleteStatusPage: baseMutations.remove,
   };
 }
-
-// ============================================================================
-// DETAIL PAGE HOOK (custom, returns related data)
-// ============================================================================
 
 import { useQuery, useQueryClient, useIsRestoring } from "@tanstack/react-query";
 import { useProjectContext } from "./use-project-context";
@@ -179,21 +136,16 @@ export interface StatusPageDetailResponse {
   canUpdate: boolean;
 }
 
-/**
- * Hook to fetch a single status page with all related data (components, monitors, permissions).
- * Uses a custom query since the response format differs from the generic factory pattern.
- * 
- * LOADING STATE OPTIMIZATION:
- * - isLoading: true only when actually fetching (not during cache restoration)
- */
 export function useStatusPageDetail(statusPageId: string | null) {
   const queryClient = useQueryClient();
   const { currentProject } = useProjectContext();
   const projectId = currentProject?.id ?? null;
   const isRestoring = useIsRestoring();
 
+  const queryKey = [...STATUS_PAGE_QUERY_KEY, statusPageId, "detail"];
+
   const query = useQuery<StatusPageDetailResponse>({
-    queryKey: [...STATUS_PAGE_QUERY_KEY, statusPageId, "detail"],
+    queryKey,
     queryFn: async () => {
       const response = await fetch(`/api/status-pages/${statusPageId}`, {
         headers: { "Content-Type": "application/json" },
@@ -207,15 +159,18 @@ export function useStatusPageDetail(statusPageId: string | null) {
       return response.json();
     },
     enabled: !!statusPageId && !!projectId,
-    staleTime: 60 * 1000, // 60 seconds\n    // gcTime inherited (24h) for instant back navigation
+    staleTime: 60 * 1000,
     refetchOnWindowFocus: false,
+    initialData: () => queryClient.getQueryData(queryKey) as StatusPageDetailResponse | undefined,
+    initialDataUpdatedAt: () => queryClient.getQueryState(queryKey)?.dataUpdatedAt,
   });
 
   const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: [...STATUS_PAGE_QUERY_KEY, statusPageId, "detail"], refetchType: 'all' });
+    queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
 
-  // PERFORMANCE: Smart loading state - don't show loading during cache restoration
-  const isActuallyLoading = query.isLoading && !isRestoring;
+  const cachedData = queryClient.getQueryData(queryKey);
+  const hasData = query.data !== undefined || cachedData !== undefined;
+  const isInitialLoading = !hasData && query.isFetching && !isRestoring;
 
   return {
     data: query.data,
@@ -223,7 +178,7 @@ export function useStatusPageDetail(statusPageId: string | null) {
     components: query.data?.components ?? [],
     monitors: query.data?.monitors ?? [],
     canUpdate: query.data?.canUpdate ?? false,
-    isLoading: isActuallyLoading,
+    isLoading: isInitialLoading,
     error: query.error as Error | null,
     refetch: query.refetch,
     invalidate,

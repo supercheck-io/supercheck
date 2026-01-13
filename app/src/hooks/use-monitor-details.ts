@@ -1,17 +1,6 @@
-/**
- * Monitor Details Hooks
- *
- * React Query hooks for monitor detail page data fetching.
- * Provides cached access to monitor stats, paginated results, and permissions.
- */
-
 import { useQuery, useQueryClient, useIsRestoring } from "@tanstack/react-query";
 import type { MonitorResultItem } from "@/components/monitors/monitor-detail-client";
 import { Role } from "@/lib/rbac/permissions-client";
-
-// ============================================================================
-// TYPES
-// ============================================================================
 
 export interface MonitorStats {
   period24h: {
@@ -51,17 +40,9 @@ export interface MonitorPermissions {
   canToggle: boolean;
 }
 
-// ============================================================================
-// QUERY KEYS
-// ============================================================================
-
 export const MONITOR_STATS_KEY = ["monitor-stats"] as const;
 export const MONITOR_RESULTS_KEY = ["monitor-results"] as const;
 export const MONITOR_PERMISSIONS_KEY = ["monitor-permissions"] as const;
-
-// ============================================================================
-// FETCH FUNCTIONS
-// ============================================================================
 
 async function fetchMonitorStats(
   monitorId: string,
@@ -136,17 +117,6 @@ async function fetchMonitorPermissions(
   };
 }
 
-// ============================================================================
-// HOOKS
-// ============================================================================
-
-/**
- * Hook to fetch monitor stats (24h and 30d metrics) with caching.
- * Cached for 30 seconds to balance freshness and performance.
- * 
- * LOADING STATE OPTIMIZATION:
- * - isLoading: true only when actually fetching (not during cache restoration)
- */
 export function useMonitorStats(monitorId: string, location: string = "all") {
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
@@ -155,9 +125,8 @@ export function useMonitorStats(monitorId: string, location: string = "all") {
     queryKey: [...MONITOR_STATS_KEY, monitorId, location],
     queryFn: () => fetchMonitorStats(monitorId, location),
     enabled: !!monitorId,
-    staleTime: 30 * 1000, // 30 seconds - stats update frequently
-    // gcTime inherited (24h) for instant back navigation
-    refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const invalidate = () =>
@@ -166,7 +135,6 @@ export function useMonitorStats(monitorId: string, location: string = "all") {
       refetchType: 'all',
     });
 
-  // PERFORMANCE: Smart loading state - don't show loading during cache restoration
   const isActuallyLoading = query.isLoading && !isRestoring;
 
   return {
@@ -178,13 +146,6 @@ export function useMonitorStats(monitorId: string, location: string = "all") {
   };
 }
 
-/**
- * Hook to fetch paginated monitor results with caching.
- * Each page/filter combination is cached separately.
- * 
- * LOADING STATE OPTIMIZATION:
- * - isLoading: true only when actually fetching (not during cache restoration)
- */
 export function useMonitorResults(
   monitorId: string,
   options: {
@@ -215,10 +176,9 @@ export function useMonitorResults(
         location: options.location,
       }),
     enabled: !!monitorId,
-    staleTime: 30 * 1000, // 30 seconds - results change with new checks
-    // gcTime inherited (24h) for instant back navigation
-    refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
-    placeholderData: (previousData) => previousData, // Keep previous data while fetching
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData,
   });
 
   const invalidate = () =>
@@ -227,39 +187,30 @@ export function useMonitorResults(
       refetchType: 'all',
     });
 
-  // PERFORMANCE: Smart loading state - don't show loading during cache restoration
   const isActuallyLoading = query.isLoading && !isRestoring;
 
   return {
     results: query.data?.data ?? [],
     pagination: query.data?.pagination ?? null,
     isLoading: isActuallyLoading,
-    isFetching: query.isFetching, // True when refetching with existing data
+    isFetching: query.isFetching,
     error: query.error as Error | null,
     refetch: query.refetch,
     invalidate,
   };
 }
 
-/**
- * Hook to fetch user permissions for a monitor.
- * Cached for 5 minutes since permissions rarely change.
- * 
- * LOADING STATE OPTIMIZATION:
- * - isLoading: true only when actually fetching (not during cache restoration)
- */
 export function useMonitorPermissions(monitorId: string) {
   const isRestoring = useIsRestoring();
   const query = useQuery({
     queryKey: [...MONITOR_PERMISSIONS_KEY, monitorId],
     queryFn: () => fetchMonitorPermissions(monitorId),
     enabled: !!monitorId,
-    staleTime: 5 * 60 * 1000, // 5 minutes - permissions rarely change
-    gcTime: 60 * 60 * 1000, // 60 minutes - permissions rarely change during session
-    refetchOnWindowFocus: false, // Don't refetch on focus for permissions
+    staleTime: 5 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
-  // PERFORMANCE: Smart loading state - don't show loading during cache restoration
   const isActuallyLoading = query.isLoading && !isRestoring;
 
   return {

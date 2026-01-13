@@ -319,7 +319,6 @@ export function JobProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    // PERFORMANCE: Use shared getExecutionsData() to prevent duplicate API calls
     // This function uses module-level cache, so multiple components calling it
     // will share the same cached data within 5 seconds
     const fetchRunningJobs = async () => {

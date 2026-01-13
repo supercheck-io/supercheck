@@ -1,17 +1,5 @@
-/**
- * Monitors Data Hook
- *
- * React Query hook for fetching monitors list with efficient caching.
- * Uses the generic data hook factory for DRY, consistent behavior.
- * Caches data for 60 seconds.
- */
-
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
-
-// ============================================================================
-// TYPES
-// ============================================================================
 
 export interface MonitorAlertConfig {
   enabled: boolean;
@@ -78,33 +66,20 @@ interface UpdateMonitorData {
   config?: Record<string, unknown>;
 }
 
-// ============================================================================
-// QUERY KEYS (exported for external cache invalidation)
-// ============================================================================
-
 export const MONITORS_QUERY_KEY = ["monitors"] as const;
 export const MONITOR_QUERY_KEY = ["monitor"] as const;
 
 export function getMonitorsListQueryKey(projectId: string | null) {
-  return [...MONITORS_QUERY_KEY, projectId, {}] as const;
+  return [...MONITORS_QUERY_KEY, projectId, "{}"] as const;
 }
-
-// ============================================================================
-// HOOK FACTORY
-// ============================================================================
 
 const monitorsHook = createDataHook<Monitor, CreateMonitorData, UpdateMonitorData>({
   queryKey: MONITORS_QUERY_KEY,
   endpoint: "/api/monitors",
-  staleTime: 30 * 1000, // 30 seconds - tuned for active status monitoring
-  // gcTime inherited from factory (24h) for instant back navigation
-  refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
+  staleTime: 30 * 1000,
+  refetchOnWindowFocus: false,
   singleItemField: "monitor",
 });
-
-// ============================================================================
-// HOOKS
-// ============================================================================
 
 export interface UseMonitorsOptions {
   page?: number;
@@ -115,32 +90,21 @@ export interface UseMonitorsOptions {
   queryEnabled?: boolean;
 }
 
-/**
- * Hook to fetch monitors list with React Query caching.
- * Data is cached for 60 seconds and shared across components.
- */
 export function useMonitors(options: UseMonitorsOptions = {}) {
   const { queryEnabled = true, ...filters } = options;
   const listOptions = { ...filters, enabled: queryEnabled } as UseMonitorsOptions & { [key: string]: unknown };
   const result = monitorsHook.useList(listOptions);
 
-  // Maintain backward compatible return shape
   return {
     ...result,
-    monitors: result.items, // Alias for backward compatibility
+    monitors: result.items,
   };
 }
 
-/**
- * Hook to fetch a single monitor by ID with React Query caching.
- */
 export function useMonitor(monitorId: string | null) {
   return monitorsHook.useSingle(monitorId);
 }
 
-/**
- * Hook for monitor mutations (create, update, delete, toggle) with optimistic updates.
- */
 export function useMonitorMutations() {
   const queryClient = useQueryClient();
   const baseMutations = monitorsHook.useMutations();

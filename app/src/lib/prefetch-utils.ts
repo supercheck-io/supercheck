@@ -216,3 +216,93 @@ export function prefetchMonitorPage(
 export function clearPrefetchState(): void {
   activePrefetches.clear();
 }
+
+// ============================================================================
+// SIDEBAR NAVIGATION PREFETCH
+// ============================================================================
+
+const STALE_TIME = 5 * 60 * 1000; // 5 minutes
+
+async function fetchJson(url: string) {
+  const res = await fetch(url, { headers: { "Content-Type": "application/json" } });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+type RouteConfig = {
+  queryKey: readonly unknown[];
+  queryFn: () => Promise<unknown>;
+  staleTime?: number;
+};
+
+function getRouteConfigs(projectId: string): Record<string, RouteConfig> {
+  return {
+    "/tests": {
+      queryKey: ["tests", projectId, "{}"],
+      queryFn: () => fetchJson("/api/tests"),
+      staleTime: STALE_TIME,
+    },
+    "/jobs": {
+      queryKey: ["jobs", projectId, "{}"],
+      queryFn: () => fetchJson("/api/jobs"),
+      staleTime: STALE_TIME,
+    },
+    "/runs": {
+      queryKey: ["runs", projectId, "{}"],
+      queryFn: () => fetchJson("/api/runs"),
+      staleTime: 5000,
+    },
+    "/monitors": {
+      queryKey: ["monitors", projectId, "{}"],
+      queryFn: () => fetchJson("/api/monitors"),
+      staleTime: 30000,
+    },
+    "/requirements": {
+      queryKey: ["requirements", projectId, "{}"],
+      queryFn: () => fetchJson("/api/requirements"),
+      staleTime: STALE_TIME,
+    },
+    "/status-pages": {
+      queryKey: ["statusPages", projectId, "{}"],
+      queryFn: () => fetchJson("/api/status-pages"),
+      staleTime: STALE_TIME,
+    },
+    "/alerts": {
+      queryKey: ["notification-providers", projectId],
+      queryFn: () => fetchJson("/api/notification-providers"),
+      staleTime: 60000,
+    },
+  };
+}
+
+/**
+ * Prefetch data for a sidebar navigation route.
+ * Call this on hover to warm the cache before navigation.
+ */
+export function prefetchSidebarRoute(
+  href: string,
+  projectId: string | null,
+  queryClient: QueryClient
+): void {
+  if (!projectId) return;
+
+  const key = `sidebar-${href}-${projectId}`;
+  if (shouldSkipPrefetch(key)) return;
+  markPrefetchActive(key);
+
+  const configs = getRouteConfigs(projectId);
+  const config = configs[href];
+
+  if (config) {
+    void queryClient.prefetchQuery({
+      queryKey: config.queryKey as unknown[],
+      queryFn: config.queryFn,
+      staleTime: config.staleTime ?? STALE_TIME,
+    });
+  }
+
+  // Prefetch playground routes trigger Monaco preload
+  if (href.startsWith("/playground")) {
+    triggerMonacoPreload();
+  }
+}

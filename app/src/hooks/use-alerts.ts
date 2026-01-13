@@ -1,10 +1,3 @@
-/**
- * Alerts Data Hook
- *
- * React Query hooks for fetching notification providers and alert history.
- * Uses React Query for caching and prefetch compatibility.
- */
-
 import { useQuery, useQueryClient, useMutation, useIsRestoring } from "@tanstack/react-query";
 import { useProjectContext } from "./use-project-context";
 import type {
@@ -12,10 +5,6 @@ import type {
   NotificationProviderConfig,
 } from "@/db/schema";
 import type { AlertHistory as AlertHistorySchema } from "@/components/alerts/schema";
-
-// ============================================================================
-// TYPES
-// ============================================================================
 
 export interface NotificationProvider {
   id: string;
@@ -30,12 +19,7 @@ export interface NotificationProvider {
   maskedFields?: string[];
 }
 
-// Re-export AlertHistory type from schema for consistency
 export type AlertHistory = AlertHistorySchema;
-
-// ============================================================================
-// QUERY KEYS (exported for prefetching)
-// ============================================================================
 
 export const NOTIFICATION_PROVIDERS_QUERY_KEY = ["notification-providers"] as const;
 export const ALERTS_HISTORY_QUERY_KEY = ["alerts-history"] as const;
@@ -47,10 +31,6 @@ export function getNotificationProvidersQueryKey(projectId: string | null) {
 export function getAlertsHistoryQueryKey(projectId: string | null) {
   return [...ALERTS_HISTORY_QUERY_KEY, projectId] as const;
 }
-
-// ============================================================================
-// FETCH FUNCTIONS (exported for prefetching)
-// ============================================================================
 
 export async function fetchNotificationProviders(): Promise<NotificationProvider[]> {
   const response = await fetch("/api/notification-providers");
@@ -68,30 +48,22 @@ export async function fetchAlertHistory(): Promise<AlertHistory[]> {
   return response.json();
 }
 
-// ============================================================================
-// HOOKS
-// ============================================================================
-
-/**
- * Hook to fetch notification providers with React Query caching.
- * Data is cached for 60 seconds and shared across components.
- * 
- * LOADING STATE OPTIMIZATION:
- * - isLoading: true only when actually fetching (not during cache restoration)
- */
 export function useNotificationProviders() {
   const { currentProject } = useProjectContext();
   const projectId = currentProject?.id ?? null;
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
 
+  const queryKey = [...NOTIFICATION_PROVIDERS_QUERY_KEY, projectId];
+
   const query = useQuery({
-    queryKey: [...NOTIFICATION_PROVIDERS_QUERY_KEY, projectId],
+    queryKey,
     queryFn: fetchNotificationProviders,
     enabled: !!projectId,
     staleTime: 60 * 1000,
-    // gcTime inherited (24h) for instant back navigation
     refetchOnWindowFocus: false,
+    initialData: () => queryClient.getQueryData(queryKey) as NotificationProvider[] | undefined,
+    initialDataUpdatedAt: () => queryClient.getQueryState(queryKey)?.dataUpdatedAt,
   });
 
   const invalidate = () =>
@@ -100,38 +72,35 @@ export function useNotificationProviders() {
       refetchType: 'all' 
     });
 
-  // PERFORMANCE: Smart loading state - don't show loading during cache restoration
-  const isActuallyLoading = query.isLoading && !isRestoring;
+  const cachedData = queryClient.getQueryData(queryKey);
+  const hasData = query.data !== undefined || cachedData !== undefined;
+  const isInitialLoading = !hasData && query.isFetching && !isRestoring;
 
   return {
     providers: query.data ?? [],
-    isLoading: isActuallyLoading,
+    isLoading: isInitialLoading,
     error: query.error as Error | null,
     refetch: query.refetch,
     invalidate,
   };
 }
 
-/**
- * Hook to fetch alert history with React Query caching.
- * Data is cached for 60 seconds.
- * 
- * LOADING STATE OPTIMIZATION:
- * - isLoading: true only when actually fetching (not during cache restoration)
- */
 export function useAlertHistory() {
   const { currentProject } = useProjectContext();
   const projectId = currentProject?.id ?? null;
   const queryClient = useQueryClient();
   const isRestoring = useIsRestoring();
 
+  const queryKey = [...ALERTS_HISTORY_QUERY_KEY, projectId];
+
   const query = useQuery({
-    queryKey: [...ALERTS_HISTORY_QUERY_KEY, projectId],
+    queryKey,
     queryFn: fetchAlertHistory,
     enabled: !!projectId,
     staleTime: 60 * 1000,
-    // gcTime inherited (24h) for instant back navigation
     refetchOnWindowFocus: false,
+    initialData: () => queryClient.getQueryData(queryKey) as AlertHistorySchema[] | undefined,
+    initialDataUpdatedAt: () => queryClient.getQueryState(queryKey)?.dataUpdatedAt,
   });
 
   const invalidate = () =>
@@ -140,21 +109,19 @@ export function useAlertHistory() {
       refetchType: 'all' 
     });
 
-  // PERFORMANCE: Smart loading state - don't show loading during cache restoration
-  const isActuallyLoading = query.isLoading && !isRestoring;
+  const cachedData = queryClient.getQueryData(queryKey);
+  const hasData = query.data !== undefined || cachedData !== undefined;
+  const isInitialLoading = !hasData && query.isFetching && !isRestoring;
 
   return {
     alertHistory: query.data ?? [],
-    isLoading: isActuallyLoading,
+    isLoading: isInitialLoading,
     error: query.error as Error | null,
     refetch: query.refetch,
     invalidate,
   };
 }
 
-/**
- * Hook for notification provider mutations (create, update, delete).
- */
 export function useNotificationProviderMutations() {
   const queryClient = useQueryClient();
 

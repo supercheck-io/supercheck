@@ -74,7 +74,6 @@ export function DataTable<TData, TValue>({
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [mounted, setMounted] = React.useState(false);
 
-  // PERFORMANCE: Get query client for hover prefetching
   const queryClient = useQueryClient();
 
   // Track hover timers for debouncing
@@ -261,7 +260,6 @@ export function DataTable<TData, TValue>({
                     data-state={row.getIsSelected() && "selected"}
                     onClick={() => onRowClick && onRowClick(row)}
                     className={cn(onRowClick && "cursor-pointer")}
-                    // PERFORMANCE: Prefetch job data on hover intent
                     onMouseEnter={() => {
                       if (rowId && onRowClick) {
                         const existingTimer = hoverTimersRef.current.get(rowId);

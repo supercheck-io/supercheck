@@ -21,7 +21,6 @@ export default function Tests() {
   const router = useRouter();
 
   // Use React Query hook for tests data (cached, handles loading/error)
-  // PERFORMANCE: Scripts excluded by default (API default) - no need to pass includeScript: false
   // This ensures cache key matches DataPrefetcher for instant renders
   const {
     tests: rawTests,

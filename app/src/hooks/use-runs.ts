@@ -1,16 +1,4 @@
-/**
- * Runs Data Hook
- *
- * React Query hook for fetching runs list.
- * Uses the generic data hook factory for DRY, consistent behavior.
- * Data always refetches on page visit to ensure new runs appear immediately.
- */
-
 import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
-
-// ============================================================================
-// TYPES
-// ============================================================================
 
 export interface Run {
   id: string;
@@ -46,41 +34,20 @@ export interface Run {
 
 export interface RunsResponse extends PaginatedResponse<Run> {}
 
-// ============================================================================
-// QUERY KEYS (exported for external cache invalidation)
-// ============================================================================
-
 export const RUNS_QUERY_KEY = ["runs"] as const;
 export const RUN_QUERY_KEY = ["run"] as const;
 
 export function getRunsListQueryKey(projectId: string | null) {
-  return [...RUNS_QUERY_KEY, projectId, {}] as const;
+  return [...RUNS_QUERY_KEY, projectId, "{}"] as const;
 }
-
-// ============================================================================
-// HOOK FACTORY
-// ============================================================================
 
 const runsHook = createDataHook<Run>({
   queryKey: RUNS_QUERY_KEY,
   endpoint: "/api/runs",
-  // STALE-WHILE-REVALIDATE PATTERN:
-  // - Shows cached data instantly (no loading spinner)
-  // - Refetches in background if data is stale (> 5 seconds old)
-  // - New runs appear after background refetch completes
-  // 
-  // NOTE: Job triggers create runs asynchronously via worker.
-  // The invalidation happens before the run exists, so first load
-  // may not show the new run. The short staleTime ensures quick refresh.
-  staleTime: 5 * 1000, // 5 seconds - data considered stale after this
-  // gcTime inherited from factory (24h) for instant back navigation
+  staleTime: 5 * 1000,
   refetchOnWindowFocus: false,
   singleItemField: "run",
 });
-
-// ============================================================================
-// HOOKS
-// ============================================================================
 
 export interface UseRunsOptions {
   page?: number;
@@ -92,27 +59,15 @@ export interface UseRunsOptions {
   enabled?: boolean;
 }
 
-/**
- * Hook to fetch runs list with React Query.
- * Data always refetches on page mount to show new runs immediately.
- */
 export function useRuns(options: UseRunsOptions = {}) {
   const result = runsHook.useList(options as UseRunsOptions & { [key: string]: unknown });
 
-  // Maintain backward compatible return shape
   return {
     ...result,
-    runs: result.items, // Alias for backward compatibility
+    runs: result.items,
   };
 }
 
-/**
- * Hook to fetch a single run by ID with React Query.
- * 
- * @param runId - The ID of the run to fetch. If `null`, the query will be disabled.
- * @param options - Additional query options.
- * @param options.enabled - Whether the query should be enabled. Defaults to `true`.
- */
 export function useRun(runId: string | null, options: { enabled?: boolean } = {}) {
   return runsHook.useSingle(runId, options);
 }

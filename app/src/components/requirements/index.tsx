@@ -73,10 +73,6 @@ import { createRequirementTestColumns } from "./requirement-test-columns";
 import { DocumentsList } from "./documents-list";
 
 
-// ============================================================================
-// CONFIG
-// ============================================================================
-
 const statusConfig = {
     covered: { label: "Covered", icon: CheckCircle, color: "text-green-500", bgColor: "bg-green-500/10" },
     failing: { label: "Failing", icon: XCircle, color: "text-red-500", bgColor: "bg-red-500/10" },
@@ -88,10 +84,6 @@ const priorityConfig = {
     medium: { label: "Medium", icon: ArrowRight, color: "text-yellow-500", bgColor: "bg-yellow-500/10" },
     low: { label: "Low", icon: ArrowDown, color: "text-gray-400", bgColor: "bg-gray-400/10" },
 } as const;
-
-// ============================================================================
-// MAIN COMPONENT
-// ============================================================================
 
 export default function RequirementsPage() {
     const router = useRouter();

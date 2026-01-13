@@ -1,11 +1,3 @@
-/**
- * Requirements Data Hook
- *
- * React Query hook for fetching requirements list with efficient caching.
- * Uses the generic data hook factory for DRY, consistent behavior.
- * Cache is invalidated after mutations to ensure fresh data.
- */
-
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
 import { 
@@ -16,10 +8,6 @@ import {
   type UpdateRequirementInput,
 } from "@/actions/requirements";
 import type { RequirementPriority, RequirementCoverageStatus, RequirementCreatedBy } from "@/db/schema/types";
-
-// ============================================================================
-// TYPES
-// ============================================================================
 
 export interface RequirementTag {
   id: string;
@@ -49,23 +37,15 @@ export interface Requirement {
 }
 
 export interface RequirementsResponse extends PaginatedResponse<Requirement> {
-  requirements?: Requirement[]; // Alias for backward compatibility
+  requirements?: Requirement[];
 }
-
-// ============================================================================
-// QUERY KEYS (exported for external cache invalidation and prefetching)
-// ============================================================================
 
 export const REQUIREMENTS_QUERY_KEY = ["requirements"] as const;
 export const REQUIREMENT_QUERY_KEY = ["requirement"] as const;
 
 export function getRequirementsListQueryKey(projectId: string | null) {
-  return [...REQUIREMENTS_QUERY_KEY, projectId, {}] as const;
+  return [...REQUIREMENTS_QUERY_KEY, projectId, "{}"] as const;
 }
-
-// ============================================================================
-// HOOK FACTORY
-// ============================================================================
 
 const requirementsHook = createDataHook<Requirement>({
   queryKey: REQUIREMENTS_QUERY_KEY,
@@ -74,10 +54,6 @@ const requirementsHook = createDataHook<Requirement>({
   refetchOnWindowFocus: false,
   singleItemField: "requirement",
 });
-
-// ============================================================================
-// HOOKS
-// ============================================================================
 
 export interface UseRequirementsOptions {
   page?: number;
@@ -88,37 +64,22 @@ export interface UseRequirementsOptions {
   enabled?: boolean;
 }
 
-/**
- * Hook to fetch requirements list with React Query caching.
- * Data is cached for 60 seconds and shared across components.
- * 
- * CONSISTENCY: Uses createDataHook factory like other hooks (runs, tests, jobs).
- */
 export function useRequirements(options: UseRequirementsOptions = {}) {
   const result = requirementsHook.useList(options as UseRequirementsOptions & { [key: string]: unknown });
 
-  // Maintain backward compatible return shape
   return {
     ...result,
-    requirements: result.items, // Alias for backward compatibility
+    requirements: result.items,
     total: result.pagination?.total ?? 0,
     page: result.pagination?.page ?? 1,
     pageSize: result.pagination?.limit ?? 20,
   };
 }
 
-/**
- * Hook to fetch a single requirement by ID with React Query caching.
- */
 export function useRequirement(requirementId: string | null, options: { enabled?: boolean } = {}) {
   return requirementsHook.useSingle(requirementId, options);
 }
 
-/**
- * Hook for requirement mutations (create, update, delete) with cache invalidation.
- * 
- * NOTE: Mutations use server actions for form handling consistency and validation.
- */
 export function useRequirementMutations() {
   const queryClient = useQueryClient();
 

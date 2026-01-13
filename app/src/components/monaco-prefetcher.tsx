@@ -19,10 +19,6 @@
 import { useEffect, useRef } from "react";
 import { useSession } from "@/utils/auth-client";
 
-// ============================================================================
-// MODULE-LEVEL STATE (survives component re-renders)
-// ============================================================================
-
 /** Flag to prevent duplicate Monaco library preload requests */
 let monacoPreloadStarted = false;
 
@@ -34,10 +30,6 @@ let cachedTypeDefs: string | null = null;
 
 /** Flag indicating type definitions are fully loaded */
 let typeDefsLoaded = false;
-
-// ============================================================================
-// INTERNAL HELPERS
-// ============================================================================
 
 /**
  * Polyfill for requestIdleCallback
@@ -102,10 +94,6 @@ async function preloadTypeDefinitions(): Promise<void> {
     }
 }
 
-// ============================================================================
-// EXPORTED UTILITIES
-// ============================================================================
-
 /**
  * Get cached type definitions if available
  *
@@ -167,10 +155,6 @@ export function triggerMonacoPreload(): void {
     }
 }
 
-// ============================================================================
-// COMPONENT
-// ============================================================================
-
 /**
  * MonacoPrefetcher Component
  *
@@ -203,8 +187,6 @@ export function MonacoPrefetcher(): null {
         if (hasTriggeredRef.current) return;
         hasTriggeredRef.current = true;
 
-        // PERFORMANCE: Start preloading IMMEDIATELY after authentication
-        // Previous 1-second delay caused loading spinners when navigating to playground
         // The requestIdleCallback in triggerMonacoPreload ensures non-blocking behavior
         triggerMonacoPreload();
     }, [session]);

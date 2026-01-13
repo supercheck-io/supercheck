@@ -1,15 +1,5 @@
 import { AppSidebar } from "@/components/app-sidebar";
 import { Separator } from "@/components/ui/separator";
-
-// REMOVED: export const dynamic = "force-dynamic";
-// Previously, this caused EVERY navigation to re-run all server-side database queries
-// (getCurrentUser, getActiveOrganization, getUserProjects, getCurrentProjectContext).
-// This added 30+ seconds latency on each page navigation.
-// 
-// Now: Next.js can cache the layout. Client components (AuthGuard, useSession)
-// still validate session client-side, so security is maintained.
-// The server-fetched data is used for initial hydration only.
-
 import {
   SidebarInset,
   SidebarProvider,
@@ -32,32 +22,11 @@ import { RecorderAutoConnect } from "@/components/recorder/RecorderAutoConnect";
 import { getCurrentUser, getActiveOrganization, getUserProjects } from "@/lib/session";
 import { getCurrentProjectContext } from "@/lib/project-context";
 
-/**
- * Main Layout - ASYNC Server Component for Performance
- * 
- * PERFORMANCE OPTIMIZATION:
- * - Layout is async - fetches critical data (session, projects) on the server
- * - Pre-fetched data is passed to client components for instant hydration
- * - Eliminates the "checking authentication" and "loading projects" spinners
- * - All providers persist across navigations
- * 
- * SECURITY:
- * - Server-side data fetching uses the same secure getCachedAuthSession()
- * - API routes still enforce authorization independently
- * - This is a performance optimization, not a security bypass
- * 
- * Why this matters:
- * - Client-side waterfall: session check (300ms) -> project fetch (200ms) -> data fetch
- * - Server-side: all fetched in parallel, hydrated instantly on client
- */
 export default async function MainLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // PERFORMANCE: Fetch all critical data in parallel on the server
-  // This eliminates the client-side waterfall (auth -> projects -> data)
-  // RESILIENCE: Wrapped in try-catch to gracefully degrade to client-side fetching on errors
   let user = null;
   let org = null;
 
@@ -67,25 +36,20 @@ export default async function MainLayout({
       getActiveOrganization(),
     ]);
   } catch (error) {
-    // Log error but don't throw - gracefully degrade to client-side fetching
-    console.error('[MainLayout] Server-side session fetch failed, falling back to client-side:', error);
+    console.error('[MainLayout] Server-side session fetch failed:', error);
   }
 
-  // Prepare hydration data for client components
   let initialProjects: ProjectContext[] = [];
   let initialCurrentProject: ProjectContext | null = null;
   let initialSession: { user: { id: string; name: string; email: string; image?: string | null } } | null = null;
 
-  // Only fetch projects if user is authenticated
   if (user && org) {
     try {
-      // Fetch projects and current project context in parallel
       const [projectsResult, currentProjectResult] = await Promise.all([
         getUserProjects(user.id, org.id),
         getCurrentProjectContext(),
       ]);
 
-      // Convert ProjectWithRole[] to ProjectContext[] for hydration
       initialProjects = projectsResult.map(p => ({
         id: p.id,
         name: p.name,
@@ -98,7 +62,6 @@ export default async function MainLayout({
 
       initialCurrentProject = currentProjectResult;
 
-      // Prepare session for AuthGuard hydration
       initialSession = {
         user: {
           id: user.id,
@@ -108,12 +71,9 @@ export default async function MainLayout({
         }
       };
     } catch (error) {
-      // Log error but don't throw - gracefully degrade to client-side fetching
-      console.error('[MainLayout] Server-side project fetch failed, falling back to client-side:', error);
-      // Reset to trigger client-side fetching
+      console.error('[MainLayout] Server-side project fetch failed:', error);
       initialProjects = [];
       initialCurrentProject = null;
-      // Keep initialSession - user is guaranteed to be defined in this branch; AuthGuard will revalidate
       initialSession = {
         user: {
           id: user.id,
@@ -127,21 +87,16 @@ export default async function MainLayout({
 
   return (
     <AuthGuard initialSession={initialSession}>
-      {/* PERFORMANCE: Preload Monaco editor assets in background */}
       <MonacoPrefetcher />
-      {/* SEAMLESS: Auto-connect recorder extension when user is logged in */}
       <RecorderAutoConnect />
       <BreadcrumbProvider>
         <ProjectContextProvider
           initialProjects={initialProjects}
           initialCurrentProject={initialCurrentProject}
         >
-          {/* PERFORMANCE: Prefetch all critical data in parallel immediately */}
-          {/* Placed inside ProjectContextProvider to enable Phase 2 entity prefetching */}
           <DataPrefetcher />
           <SidebarProvider>
             <JobProvider>
-              {/* Check and setup defaults for new users */}
               <SetupChecker />
               <AppSidebar />
               <SidebarInset>
@@ -159,7 +114,6 @@ export default async function MainLayout({
                     <CommandSearch />
                     <ParallelThreads />
                     <NavUser />
-
                   </div>
                 </header>
                 <main className="flex-1 flex-col gap-4 overflow-y-auto">
