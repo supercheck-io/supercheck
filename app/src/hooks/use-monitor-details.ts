@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient, useIsRestoring } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
 import type { MonitorResultItem } from "@/components/monitors/monitor-detail-client";
 import { Role } from "@/lib/rbac/permissions-client";
 
@@ -125,8 +125,12 @@ export function useMonitorStats(monitorId: string, location: string = "all") {
     queryKey: [...MONITOR_STATS_KEY, monitorId, location],
     queryFn: () => fetchMonitorStats(monitorId, location),
     enabled: !!monitorId,
-    staleTime: 30 * 1000,
+    staleTime: 30 * 1000,  // Monitor stats update frequently (30s)
+    // gcTime uses global default (24h)
     refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    placeholderData: keepPreviousData,
   });
 
   const invalidate = () =>
@@ -135,7 +139,7 @@ export function useMonitorStats(monitorId: string, location: string = "all") {
       refetchType: 'all',
     });
 
-  const isActuallyLoading = query.isLoading && !isRestoring;
+  const isActuallyLoading = query.isPending && query.isFetching && !isRestoring;
 
   return {
     stats: query.data,
@@ -176,9 +180,12 @@ export function useMonitorResults(
         location: options.location,
       }),
     enabled: !!monitorId,
-    staleTime: 30 * 1000,
+    staleTime: 30 * 1000,  // Monitor results update frequently (30s)
+    // gcTime uses global default (24h)
     refetchOnWindowFocus: false,
-    placeholderData: (previousData) => previousData,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    placeholderData: keepPreviousData,
   });
 
   const invalidate = () =>
@@ -187,7 +194,7 @@ export function useMonitorResults(
       refetchType: 'all',
     });
 
-  const isActuallyLoading = query.isLoading && !isRestoring;
+  const isActuallyLoading = query.isPending && query.isFetching && !isRestoring;
 
   return {
     results: query.data?.data ?? [],
@@ -206,12 +213,13 @@ export function useMonitorPermissions(monitorId: string) {
     queryKey: [...MONITOR_PERMISSIONS_KEY, monitorId],
     queryFn: () => fetchMonitorPermissions(monitorId),
     enabled: !!monitorId,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
   });
 
-  const isActuallyLoading = query.isLoading && !isRestoring;
+  const isActuallyLoading = query.isPending && query.isFetching && !isRestoring;
 
   return {
     permissions: query.data,

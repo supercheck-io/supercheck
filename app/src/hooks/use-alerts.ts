@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient, useMutation, useIsRestoring } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
 import { useProjectContext } from "./use-project-context";
 import type {
   NotificationProviderType,
@@ -76,8 +76,11 @@ export function useNotificationProviders() {
     queryKey,
     queryFn: () => fetchNotificationProviders(projectId),
     enabled: !!projectId,
-    staleTime: 60 * 1000,
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    placeholderData: keepPreviousData,
   });
 
   const invalidate = () =>
@@ -113,8 +116,11 @@ export function useAlertHistory() {
     queryKey,
     queryFn: () => fetchAlertHistory(projectId),
     enabled: !!projectId,
-    staleTime: 60 * 1000,
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    placeholderData: keepPreviousData,
   });
 
   const invalidate = () =>

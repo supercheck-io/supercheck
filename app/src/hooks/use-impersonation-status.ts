@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useIsRestoring } from "@tanstack/react-query";
 
 export interface ImpersonationInfo {
   isImpersonating: boolean;
@@ -22,13 +22,15 @@ async function fetchImpersonationStatus(): Promise<ImpersonationInfo> {
 
 export function useImpersonationStatus() {
   const queryClient = useQueryClient();
+  const isRestoring = useIsRestoring();
   
-  const { data, isLoading, error } = useQuery({
+  const { data, isPending, isFetching, error } = useQuery({
     queryKey: IMPERSONATION_STATUS_QUERY_KEY,
     queryFn: fetchImpersonationStatus,
-    staleTime: 60 * 1000,
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
     refetchOnMount: false,
+    refetchOnReconnect: false,
     retry: 1,
   });
 
@@ -37,10 +39,13 @@ export function useImpersonationStatus() {
     queryClient.invalidateQueries({ queryKey: IMPERSONATION_STATUS_QUERY_KEY, refetchType: 'all' });
   };
 
+  // Only show loading when actually fetching initial data, not when cache is being restored
+  const isInitialLoading = isPending && isFetching && !isRestoring;
+
   return {
     isImpersonating: data?.isImpersonating ?? false,
     impersonatedUser: data?.impersonatedUser,
-    isLoading,
+    isLoading: isInitialLoading,
     error: error as Error | null,
     invalidate,
   };

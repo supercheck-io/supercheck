@@ -4,6 +4,7 @@ import {
   useMutation,
   QueryClient,
   useIsRestoring,
+  keepPreviousData,
 } from "@tanstack/react-query";
 import { useProjectContext } from "../use-project-context";
 
@@ -165,10 +166,10 @@ export function createDataHook<
   const {
     queryKey,
     endpoint,
-    staleTime = 5 * 60 * 1000,
-    gcTime = 24 * 60 * 60 * 1000,
+    staleTime,  // Use global default from QueryClient if not specified
+    gcTime,     // Use global default from QueryClient if not specified
     refetchOnWindowFocus = false,
-    refetchOnMount,
+    refetchOnMount = false,
     singleItemField,
   } = config;
 
@@ -194,10 +195,13 @@ export function createDataHook<
       queryKey: fullQueryKey,
       queryFn: () => fetchList<T>(endpoint, filters, projectId),
       enabled: enabled && !!projectId,
-      staleTime,
-      gcTime,
+      // Only override if explicitly specified, otherwise use global defaults
+      ...(staleTime !== undefined && { staleTime }),
+      ...(gcTime !== undefined && { gcTime }),
       refetchOnWindowFocus,
-      ...(refetchOnMount !== undefined && { refetchOnMount }),
+      refetchOnMount,
+      refetchOnReconnect: false,
+      placeholderData: keepPreviousData,
     });
 
     const invalidate = () =>
@@ -238,8 +242,13 @@ export function createDataHook<
       queryKey: singleKey,
       queryFn: () => fetchSingle<T>(endpoint, id!, singleItemField, projectId),
       enabled: enabled && !!id,
-      staleTime: staleTime / 2,
-      gcTime,
+      // Only override if explicitly specified, otherwise use global defaults
+      ...(staleTime !== undefined && { staleTime }),
+      ...(gcTime !== undefined && { gcTime }),
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      refetchOnReconnect: false,
+      placeholderData: keepPreviousData,
     });
 
     const invalidate = () =>

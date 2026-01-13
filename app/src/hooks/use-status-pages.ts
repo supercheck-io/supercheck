@@ -1,4 +1,6 @@
 import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
+import { useQuery, useQueryClient, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
+import { useProjectContext } from "./use-project-context";
 
 export interface StatusPage {
   id: string;
@@ -82,9 +84,6 @@ export function useStatusPageMutations() {
   };
 }
 
-import { useQuery, useQueryClient, useIsRestoring } from "@tanstack/react-query";
-import { useProjectContext } from "./use-project-context";
-
 export interface StatusPageMonitor {
   id: string;
   name: string;
@@ -159,8 +158,11 @@ export function useStatusPageDetail(statusPageId: string | null) {
       return response.json();
     },
     enabled: !!statusPageId && !!projectId,
-    staleTime: 60 * 1000,
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    placeholderData: keepPreviousData,
   });
 
   const invalidate = () =>

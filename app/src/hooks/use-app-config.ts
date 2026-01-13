@@ -51,8 +51,7 @@ export function useAppConfig() {
   const { data: config, isLoading, error, isFetched } = useQuery({
     queryKey: APP_CONFIG_QUERY_KEY,
     queryFn: fetchAppConfig,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,

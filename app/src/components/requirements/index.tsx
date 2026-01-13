@@ -66,7 +66,7 @@ import { useTags } from "@/hooks/use-tags";
 import { useRequirementPermissions } from "@/hooks/use-rbac-permissions";
 
 import { getLinkedTests } from "@/actions/requirements";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useIsRestoring } from "@tanstack/react-query";
 import { Requirement } from "./schema";
 import { RequirementTestDataTable } from "./requirement-test-data-table";
 import { createRequirementTestColumns } from "./requirement-test-columns";
@@ -128,11 +128,18 @@ export default function RequirementsPage() {
     const isSheetOpen = !!selectedRequirement;
 
     // Fetch linked tests for selected requirement
-    const { data: linkedTests = [], isLoading: testsLoading } = useQuery({
+    const isRestoring = useIsRestoring();
+    const linkedTestsQuery = useQuery({
         queryKey: ["requirement-tests", selectedRequirement?.id],
         queryFn: () => selectedRequirement ? getLinkedTests(selectedRequirement.id) : [],
         enabled: !!selectedRequirement,
+        // Uses global defaults: staleTime (30min), gcTime (24h)
+        refetchOnWindowFocus: false,
+        refetchOnMount: false,
+        refetchOnReconnect: false,
     });
+    const linkedTests = linkedTestsQuery.data ?? [];
+    const testsLoading = linkedTestsQuery.isPending && linkedTestsQuery.isFetching && !isRestoring;
 
 
 

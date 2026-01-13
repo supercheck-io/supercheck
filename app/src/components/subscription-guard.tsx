@@ -70,15 +70,10 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   const { data: subscriptionStatus, isLoading: isSubscriptionLoading, isFetched } = useQuery({
     queryKey: SUBSCRIPTION_STATUS_QUERY_KEY,
     queryFn: fetchSubscriptionStatus,
-    // Long stale time - subscription status rarely changes mid-session
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 60 * 60 * 1000,  // 60 minutes - subscription rarely changes during session
-    // CRITICAL: Don't refetch on mount if we have cached data
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnMount: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
-    // We check isSelfHosted in the render logic, not here
-    // This allows the query to start immediately via prefetch
     enabled: !isAllowedRoute,
     retry: 2,
   });

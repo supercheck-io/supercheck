@@ -1,116 +1,96 @@
 "use client";
 
-import { QueryClient, QueryClientProvider, isServer, hydrate } from "@tanstack/react-query";
-import { persistQueryClientSubscribe, type PersistedClient, type Persister } from "@tanstack/react-query-persist-client";
+import { QueryClient, QueryClientProvider, isServer } from "@tanstack/react-query";
+import { persistQueryClient } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
 import { ReactNode, useEffect, useRef } from "react";
 
 const CACHE_KEY = "supercheck-cache-v1";
-const MAX_AGE = 24 * 60 * 60 * 1000;
+const MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
+const STALE_TIME = 30 * 60 * 1000;  // 30 minutes - data is fresh for this long
 
+// Module-level singleton for browser
 let browserClient: QueryClient | undefined;
-let restored = false;
-let persister: Persister | null = null;
+let persistenceInitialized = false;
 
 function createClient() {
   return new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 5 * 60 * 1000,
-        gcTime: MAX_AGE,
-        retry: 2,
-        refetchOnWindowFocus: false,
-        refetchOnMount: false,
-        refetchOnReconnect: false,
+        // GLOBAL DEFAULTS - consistent across all hooks
+        staleTime: STALE_TIME,           // 30 minutes - data considered fresh
+        gcTime: MAX_AGE,                 // 24 hours - cache garbage collection
+        retry: 2,                        // Retry failed requests twice
+        refetchOnWindowFocus: false,     // Don't refetch on tab focus
+        refetchOnMount: false,           // Use cached data on mount
+        refetchOnReconnect: false,       // Don't refetch on network reconnect
       },
     },
   });
 }
 
-function getPersister(): Persister | null {
-  if (typeof window === "undefined") return null;
-  if (!persister) {
-    persister = createSyncStoragePersister({
-      storage: window.localStorage,
-      key: CACHE_KEY,
-      throttleTime: 1000,
-    });
+function getClient() {
+  if (isServer) return createClient();
+  if (!browserClient) {
+    browserClient = createClient();
   }
-  return persister;
+  return browserClient;
 }
 
-function restoreCache(client: QueryClient) {
-  if (restored || typeof window === "undefined") return;
-
+// Initialize persistence - called once on client
+function initPersistence(client: QueryClient) {
+  if (typeof window === "undefined" || persistenceInitialized) return;
+  
   try {
-    const p = getPersister() as { restoreClient?: () => PersistedClient | undefined };
-    if (!p?.restoreClient) return;
+    const persister = createSyncStoragePersister({
+      storage: window.localStorage,
+      key: CACHE_KEY,
+      throttleTime: 500,
+    });
 
-    // Safety check for corrupted localStorage
-    let data;
-    try {
-      data = p.restoreClient();
-    } catch (e) {
-      console.error("Failed to restore cache from localStorage:", e);
-      window.localStorage.removeItem(CACHE_KEY);
-      return;
-    }
+    // persistQueryClient handles both restoration and subscription
+    // For sync persisters, restoration happens immediately (synchronously)
+    persistQueryClient({
+      queryClient: client,
+      persister,
+      maxAge: MAX_AGE,
+      dehydrateOptions: {
+        shouldDehydrateQuery: (query) => {
+          // Only persist successful queries with data
+          return query.state.status === "success" && query.state.data !== undefined;
+        },
+      },
+    });
 
-    if (!data?.clientState) return;
-
-    const age = data.timestamp ? Date.now() - data.timestamp : Infinity;
-    if (age > MAX_AGE) {
-      window.localStorage.removeItem(CACHE_KEY);
-      return;
-    }
-
-    hydrate(client, data.clientState);
-  } catch (err) {
-    console.error("Critical error restoring cache:", err);
-    // Ensure we don't start with a broken state
+    persistenceInitialized = true;
+  } catch (error) {
+    console.error("Failed to initialize query persistence:", error);
+    // Clear potentially corrupted cache
     try {
       window.localStorage.removeItem(CACHE_KEY);
     } catch { /* ignore */ }
-  } finally {
-    restored = true;
   }
-}
-
-function getClient() {
-  if (isServer) return createClient();
-
-  if (!browserClient) {
-    browserClient = createClient();
-    restoreCache(browserClient);
-  }
-
-  return browserClient;
 }
 
 export function clearQueryCache() {
   if (typeof window === "undefined") return;
   browserClient?.clear();
-  window.localStorage.removeItem(CACHE_KEY);
-  restored = false;
+  try {
+    window.localStorage.removeItem(CACHE_KEY);
+  } catch { /* ignore */ }
+  persistenceInitialized = false;
 }
 
 export function QueryProvider({ children }: { children: ReactNode }) {
   const client = getClient();
-  const unsubRef = useRef<(() => void) | null>(null);
+  const initialized = useRef(false);
 
+  // Initialize persistence on mount (client-side only)
   useEffect(() => {
-    const p = getPersister();
-    if (!p) return;
-
-    unsubRef.current = persistQueryClientSubscribe({
-      queryClient: client,
-      persister: p,
-      dehydrateOptions: {
-        shouldDehydrateQuery: (q) => q.state.status === "success",
-      },
-    });
-
-    return () => unsubRef.current?.();
+    if (!initialized.current) {
+      initialized.current = true;
+      initPersistence(client);
+    }
   }, [client]);
 
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;

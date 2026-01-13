@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient, useIsRestoring } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
 import { useProjectContext } from "./use-project-context";
 
 interface ProjectStats {
@@ -309,10 +309,13 @@ export function useDashboard() {
     queryKey,
     queryFn: fetchDashboard,
     enabled: !!projectId,
-    staleTime: 60 * 1000,
-    gcTime: 60 * 60 * 1000,
+    staleTime: 60 * 1000,  // Dashboard data refreshes more frequently (60s)
+    // gcTime uses global default (24h)
     refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
     retry: 2,
+    placeholderData: keepPreviousData,
   });
 
   const refetch = () => query.refetch();

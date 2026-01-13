@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient, UseQueryResult, useIsRestoring } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, UseQueryResult, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
 import { useProjectContext } from "./use-project-context";
 
 export interface Tag {
@@ -83,9 +83,12 @@ export function useTags() {
   const result = useQuery({
     queryKey,
     queryFn: fetchTags,
-    staleTime: 60 * 1000,
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
     enabled: !!projectId,
+    placeholderData: keepPreviousData,
   });
 
   const isInitialLoading = result.isPending && result.isFetching && !isRestoring;
@@ -106,8 +109,11 @@ export function useTestTags(testId: string | null): UseQueryResult<Tag[], Error>
     queryKey: [...TEST_TAGS_QUERY_KEY, projectId, testId],
     queryFn: () => fetchTestTags(testId!),
     enabled: !!testId && !!projectId,
-    staleTime: 60 * 1000,
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    placeholderData: keepPreviousData,
   });
 
   return {
@@ -183,8 +189,11 @@ export function useRequirementTags(requirementId: string | null): UseQueryResult
     queryKey: [...REQUIREMENT_TAGS_QUERY_KEY, projectId, requirementId],
     queryFn: () => fetchRequirementTags(requirementId!),
     enabled: !!requirementId && !!projectId,
-    staleTime: 60 * 1000,
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    placeholderData: keepPreviousData,
   });
 
   return {

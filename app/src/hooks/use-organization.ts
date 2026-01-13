@@ -121,14 +121,13 @@ export function useOrgStats() {
   const query = useQuery({
     queryKey: ORG_STATS_QUERY_KEY,
     queryFn: fetchOrgStats,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
   });
 
-  const isActuallyLoading = query.isLoading && !isRestoring;
+  const isActuallyLoading = query.isPending && query.isFetching && !isRestoring;
 
   return {
     stats: query.data ?? null,
@@ -145,14 +144,13 @@ export function useOrgDetails() {
   const query = useQuery({
     queryKey: ORG_DETAILS_QUERY_KEY,
     queryFn: fetchOrgDetails,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
   });
 
-  const isActuallyLoading = query.isLoading && !isRestoring;
+  const isActuallyLoading = query.isPending && query.isFetching && !isRestoring;
 
   return {
     details: query.data ?? null,
@@ -169,14 +167,13 @@ export function useOrgMembers() {
   const query = useQuery({
     queryKey: ORG_MEMBERS_QUERY_KEY,
     queryFn: fetchOrgMembers,
-    staleTime: 2 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
   });
 
-  const isActuallyLoading = query.isLoading && !isRestoring;
+  const isActuallyLoading = query.isPending && query.isFetching && !isRestoring;
 
   return {
     members: query.data?.members ?? [],
@@ -195,14 +192,13 @@ export function useOrgProjects() {
   const query = useQuery({
     queryKey: ORG_PROJECTS_QUERY_KEY,
     queryFn: fetchOrgProjects,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
   });
 
-  const isActuallyLoading = query.isLoading && !isRestoring;
+  const isActuallyLoading = query.isPending && query.isFetching && !isRestoring;
 
   return {
     projects: query.data ?? [],

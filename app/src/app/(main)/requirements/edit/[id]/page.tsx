@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useIsRestoring } from "@tanstack/react-query";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { RequirementForm } from "@/components/requirements/requirement-form";
 import { getRequirement } from "@/actions/requirements";
@@ -17,11 +17,17 @@ export default function EditRequirementPage({ params }: { params: Promise<{ id: 
     const id = resolvedParams.id;
 
     // Fetch requirement
-    const { data: requirement, isLoading } = useQuery({
+    const isRestoring = useIsRestoring();
+    const { data: requirement, isPending, isFetching } = useQuery({
         queryKey: ["requirement", id],
         queryFn: () => getRequirement(id),
         enabled: !!id,
+        // Uses global defaults: staleTime (30min), gcTime (24h)
+        refetchOnWindowFocus: false,
+        refetchOnMount: false,
+        refetchOnReconnect: false,
     });
+    const isLoading = isPending && isFetching && !isRestoring;
 
     const breadcrumbs = [
         { label: "Home", href: "/" },
