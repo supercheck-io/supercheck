@@ -14,9 +14,11 @@ import {
   JobType,
 } from "@/db/schema";
 import { desc, eq, inArray, and, asc } from "drizzle-orm";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { hasPermission, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireProjectContext } from "@/lib/project-context";
 import { subscriptionService } from "@/lib/services/subscription-service";
+import { getNextRunDate } from "@/lib/cron-utils";
+import { scheduleJob } from "@/lib/job-scheduler";
 
 import { randomUUID } from "crypto";
 
@@ -111,16 +113,13 @@ interface TestResult {
 // SECURITY: Added default pagination to prevent fetching unlimited records
 export async function GET(request: Request) {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireProjectContext();
 
     // Use current project context
-    const targetProjectId = project.id;
+    const targetProjectId = context.project.id;
 
-    // Check permission to view jobs
-    const canView = await hasPermission("job", "view", {
-      organizationId,
-      projectId: targetProjectId,
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid duplicate DB queries
+    const canView = checkPermissionWithContext("job", "view", context);
 
     if (!canView) {
       return NextResponse.json(
@@ -157,10 +156,10 @@ export async function GET(request: Request) {
       .where(
         and(
           eq(jobs.projectId, targetProjectId),
-          eq(jobs.organizationId, organizationId)
+          eq(jobs.organizationId, context.organizationId)
         )
       )
-      .orderBy(desc(jobs.id)) // UUIDv7 is time-ordered
+      .orderBy(desc(jobs.createdAt)) // Sort by latest created first
       .limit(limit)
       .offset(offset);
 
@@ -170,26 +169,46 @@ export async function GET(request: Request) {
 
     const jobIds = jobsResult.map((job) => job.id);
 
-    // Query 2: Batch fetch all tests for all jobs in one query
-    const allJobTests = await db
-      .select({
-        jobId: jobTests.jobId,
-        testId: testsTable.id,
-        title: testsTable.title,
-        description: testsTable.description,
-        type: testsTable.type,
-        priority: testsTable.priority,
-        script: testsTable.script,
-        createdAt: testsTable.createdAt,
-        updatedAt: testsTable.updatedAt,
-        orderPosition: jobTests.orderPosition,
-      })
-      .from(jobTests)
-      .innerJoin(testsTable, eq(testsTable.id, jobTests.testId))
-      .where(inArray(jobTests.jobId, jobIds))
-      .orderBy(asc(jobTests.orderPosition));
+    // PERFORMANCE: Run independent queries in parallel
+    // Query 2 (tests) and Query 4 (last runs) both depend only on jobIds
+    const [allJobTests, allLastRuns] = await Promise.all([
+      // Query 2: Batch fetch all tests for all jobs in one query
+      db
+        .select({
+          jobId: jobTests.jobId,
+          testId: testsTable.id,
+          title: testsTable.title,
+          description: testsTable.description,
+          type: testsTable.type,
+          priority: testsTable.priority,
+          script: testsTable.script,
+          createdAt: testsTable.createdAt,
+          updatedAt: testsTable.updatedAt,
+          orderPosition: jobTests.orderPosition,
+        })
+        .from(jobTests)
+        .innerJoin(testsTable, eq(testsTable.id, jobTests.testId))
+        .where(inArray(jobTests.jobId, jobIds))
+        .orderBy(asc(jobTests.orderPosition)),
 
-    // Query 3: Batch fetch all tags for all tests in one query
+      // Query 4: Batch fetch last run for all jobs
+      // This gets the most recent run for each job in a single query
+      db
+        .select({
+          jobId: runs.jobId,
+          id: runs.id,
+          status: runs.status,
+          startedAt: runs.startedAt,
+          completedAt: runs.completedAt,
+          durationMs: runs.durationMs,
+          errorDetails: runs.errorDetails,
+        })
+        .from(runs)
+        .where(inArray(runs.jobId, jobIds))
+        .orderBy(runs.jobId, desc(runs.startedAt)),
+    ]);
+
+    // Query 3: Batch fetch all tags for all tests (depends on Query 2 results)
     const allTestIds = [...new Set(allJobTests.map((t) => t.testId))];
     const allTestTags =
       allTestIds.length > 0
@@ -204,22 +223,6 @@ export async function GET(request: Request) {
             .innerJoin(tags, eq(testTags.tagId, tags.id))
             .where(inArray(testTags.testId, allTestIds))
         : [];
-
-    // Query 4: Batch fetch last run for all jobs using a subquery with DISTINCT ON
-    // This gets the most recent run for each job in a single query
-    const allLastRuns = await db
-      .select({
-        jobId: runs.jobId,
-        id: runs.id,
-        status: runs.status,
-        startedAt: runs.startedAt,
-        completedAt: runs.completedAt,
-        durationMs: runs.durationMs,
-        errorDetails: runs.errorDetails,
-      })
-      .from(runs)
-      .where(inArray(runs.jobId, jobIds))
-      .orderBy(runs.jobId, desc(runs.startedAt));
 
     // Build lookup maps for O(1) access
     // Map: jobId -> tests[]
@@ -375,6 +378,17 @@ export async function POST(request: NextRequest) {
     // Generate a unique ID for the job
     const jobId = randomUUID();
 
+    // Calculate next run date if cron schedule is provided
+    let nextRunAt: Date | null = null;
+    if (jobData.cronSchedule && jobData.cronSchedule.trim() !== "") {
+      try {
+        nextRunAt = getNextRunDate(jobData.cronSchedule);
+      } catch (error) {
+        console.error('Failed to calculate next run date for cron "%s":', jobData.cronSchedule, error);
+        // Continue without nextRunAt - the schedule can still be set up
+      }
+    }
+
     // Insert the job into the database with default values for nullable fields
     const [insertedJob] = await db
       .insert(jobs)
@@ -383,6 +397,7 @@ export async function POST(request: NextRequest) {
         name: jobData.name,
         description: jobData.description || null,
         cronSchedule: jobData.cronSchedule || null,
+        nextRunAt: nextRunAt,
         status: jobData.status || "pending",
         alertConfig: jobData.alertConfig
           ? {
@@ -494,6 +509,33 @@ export async function POST(request: NextRequest) {
       await db.insert(jobTests).values(jobTestValues);
     }
 
+    // If a cronSchedule is provided, set up the job scheduler
+    let scheduledJobId = null;
+    if (jobData.cronSchedule && jobData.cronSchedule.trim() !== "") {
+      try {
+        scheduledJobId = await scheduleJob({
+          name: jobData.name,
+          cron: jobData.cronSchedule,
+          jobId,
+          retryLimit: 3,
+        });
+
+        // Update the job with the scheduler ID
+        if (scheduledJobId) {
+          await db
+            .update(jobs)
+            .set({ scheduledJobId })
+            .where(eq(jobs.id, jobId));
+        }
+
+        console.log(`Job ${jobId} scheduled with scheduler ID ${scheduledJobId}`);
+      } catch (scheduleError) {
+        console.error("Failed to schedule job:", scheduleError);
+        // Continue anyway - the job exists but without background scheduling
+        // Manual execution will still work
+      }
+    }
+
     return NextResponse.json({
       success: true,
       job: {
@@ -501,6 +543,8 @@ export async function POST(request: NextRequest) {
         name: jobData.name,
         description: jobData.description || "",
         cronSchedule: jobData.cronSchedule,
+        nextRunAt: nextRunAt ? nextRunAt.toISOString() : null,
+        scheduledJobId,
         jobType: jobData.jobType === "k6" ? "k6" : "playwright",
       },
     });

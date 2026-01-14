@@ -66,16 +66,12 @@ import { useTags } from "@/hooks/use-tags";
 import { useRequirementPermissions } from "@/hooks/use-rbac-permissions";
 
 import { getLinkedTests } from "@/actions/requirements";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useIsRestoring } from "@tanstack/react-query";
 import { Requirement } from "./schema";
-import { RequirementWithCoverage } from "@/actions/requirements";
 import { RequirementTestDataTable } from "./requirement-test-data-table";
 import { createRequirementTestColumns } from "./requirement-test-columns";
 import { DocumentsList } from "./documents-list";
 
-// ============================================================================
-// CONFIG
-// ============================================================================
 
 const statusConfig = {
     covered: { label: "Covered", icon: CheckCircle, color: "text-green-500", bgColor: "bg-green-500/10" },
@@ -88,10 +84,6 @@ const priorityConfig = {
     medium: { label: "Medium", icon: ArrowRight, color: "text-yellow-500", bgColor: "bg-yellow-500/10" },
     low: { label: "Low", icon: ArrowDown, color: "text-gray-400", bgColor: "bg-gray-400/10" },
 } as const;
-
-// ============================================================================
-// MAIN COMPONENT
-// ============================================================================
 
 export default function RequirementsPage() {
     const router = useRouter();
@@ -110,28 +102,20 @@ export default function RequirementsPage() {
     const { requirements: rawRequirements, isLoading, invalidate } = useRequirements();
     const { deleteRequirement: deleteMutation } = useRequirementMutations();
 
-    // Fetch available tags for coloring
+    // Fetch available tags for coloring (used for fallback if tag doesn't have color)
     const { tags: availableTags } = useTags();
 
-    // Transform to UI format
+    // Transform to UI format - tags now come as proper objects from API
     const requirements = useMemo<Requirement[]>(() => {
         if (!rawRequirements) return [];
-        return rawRequirements.map((r: RequirementWithCoverage) => ({
+        return rawRequirements.map((r) => ({
             ...r,
-            tags: r.tags
-                ? r.tags.split(",").map((name, index) => {
-                    const tagName = name.trim().toLowerCase();
-                    // Find actual tag from DB to get color
-                    const dbTag = availableTags.find(t => t.name.toLowerCase() === tagName);
-
-                    return {
-                        id: `tag-${r.id}-${index}`,
-                        name: tagName,
-                        // Priority: "ai" override > DB color > null
-                        color: tagName === "ai" ? "#a855f7" : (dbTag?.color || null),
-                    };
-                })
-                : [],
+            // Tags are now proper objects from the API
+            // Apply "ai" tag special color if needed
+            tags: (r.tags || []).map((tag) => ({
+                ...tag,
+                color: tag.name === "ai" ? "#a855f7" : (tag.color || availableTags.find(t => t.id === tag.id)?.color || null),
+            })),
         }));
     }, [rawRequirements, availableTags]);
 
@@ -144,11 +128,18 @@ export default function RequirementsPage() {
     const isSheetOpen = !!selectedRequirement;
 
     // Fetch linked tests for selected requirement
-    const { data: linkedTests = [], isLoading: testsLoading } = useQuery({
+    const isRestoring = useIsRestoring();
+    const linkedTestsQuery = useQuery({
         queryKey: ["requirement-tests", selectedRequirement?.id],
         queryFn: () => selectedRequirement ? getLinkedTests(selectedRequirement.id) : [],
         enabled: !!selectedRequirement,
+        // Uses global defaults: staleTime (30min), gcTime (24h)
+        refetchOnWindowFocus: false,
+        refetchOnMount: false,
+        refetchOnReconnect: false,
     });
+    const linkedTests = linkedTestsQuery.data ?? [];
+    const testsLoading = linkedTestsQuery.isPending && linkedTestsQuery.isFetching && !isRestoring;
 
 
 

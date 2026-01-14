@@ -1,31 +1,13 @@
-/**
- * Generic Data Hook Factory
- *
- * Creates standardized React Query hooks for entity CRUD operations.
- * Eliminates repeated code patterns across entity hooks (jobs, runs, monitors, tests).
- *
- * Features:
- * - Standardized query keys with project scoping
- * - Consistent response format handling ({ data, pagination })
- * - Optimistic updates for mutations
- * - Automatic cache invalidation
- * - Type-safe with generics
- */
-
 import {
   useQuery,
   useQueryClient,
   useMutation,
   QueryClient,
-
+  useIsRestoring,
+  keepPreviousData,
 } from "@tanstack/react-query";
 import { useProjectContext } from "../use-project-context";
 
-// ============================================================================
-// TYPES
-// ============================================================================
-
-/** Standard paginated response format from APIs */
 export interface PaginatedResponse<T> {
   data: T[];
   pagination: {
@@ -38,155 +20,92 @@ export interface PaginatedResponse<T> {
   };
 }
 
-/** Configuration for creating a data hook */
 export interface DataHookConfig<T, CreateData, UpdateData> {
-  /** Base query key (e.g., ["jobs"]) */
   queryKey: readonly string[];
-  /** API endpoint (e.g., "/api/jobs") */
   endpoint: string;
-  /** Stale time in ms (default: 60000 = 1 minute) */
   staleTime?: number;
-  /** Garbage collection time in ms (default: 300000 = 5 minutes) */
   gcTime?: number;
-  /** Whether to refetch on window focus (default: true) */
   refetchOnWindowFocus?: boolean;
-  /** Whether to refetch on mount - 'always' forces refetch regardless of stale state */
   refetchOnMount?: boolean | 'always';
-  /** Function to generate optimistic item for create (optional) */
   generateOptimisticItem?: (data: CreateData) => Partial<T>;
-  /** Field name in single item response (e.g., "job" for { job: {...} }) */
   singleItemField?: string;
 }
 
-/** Base options for list queries */
 export interface ListQueryOptions {
   page?: number;
   pageSize?: number;
   enabled?: boolean;
 }
 
-/** Options for single item queries */
 export interface SingleQueryOptions {
   enabled?: boolean;
 }
 
-// ============================================================================
-// FETCH UTILITIES
-// ============================================================================
-
-/**
- * Build URL search params from an options object
- */
-function buildSearchParams(
-  options: Record<string, unknown>,
-  pageParamName = "limit"
-): URLSearchParams {
+function buildSearchParams(options: Record<string, unknown>, pageParamName = "limit"): URLSearchParams {
   const params = new URLSearchParams();
-
   Object.entries(options).forEach(([key, value]) => {
     if (value === undefined || value === null) return;
-    if (key === "enabled") return; // Skip hook options
-
-    // Map pageSize to limit for API compatibility
+    if (key === "enabled") return;
     if (key === "pageSize") {
       params.set(pageParamName, String(value));
     } else {
       params.set(key, String(value));
     }
   });
-
   return params;
 }
 
-/**
- * Generic fetch function for list endpoints
- * Expects standardized { data, pagination } response format from all APIs.
- */
-async function fetchList<T>(
-  endpoint: string,
-  options: Record<string, unknown>
-): Promise<PaginatedResponse<T>> {
+async function fetchList<T>(endpoint: string, options: Record<string, unknown>, projectId?: string | null): Promise<PaginatedResponse<T>> {
   const params = buildSearchParams(options);
   const url = params.toString() ? `${endpoint}?${params}` : endpoint;
+  
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (projectId) {
+    headers["x-project-id"] = projectId;
+  }
 
-  const response = await fetch(url, {
-    headers: { "Content-Type": "application/json" },
-  });
-
+  const response = await fetch(url, { headers });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
   }
-
   return response.json();
 }
 
-/**
- * Generic fetch function for single item endpoints
- */
-async function fetchSingle<T>(
-  endpoint: string,
-  id: string,
-  singleItemField?: string
-): Promise<T> {
-  const response = await fetch(`${endpoint}/${id}`, {
-    headers: { "Content-Type": "application/json" },
-  });
+async function fetchSingle<T>(endpoint: string, id: string, singleItemField?: string, projectId?: string | null): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (projectId) {
+    headers["x-project-id"] = projectId;
+  }
 
+  const response = await fetch(`${endpoint}/${id}`, { headers });
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
   }
-
   const data = await response.json();
-
-  // Extract item from response if field specified (e.g., { job: {...} } -> {...})
   if (singleItemField && data[singleItemField]) {
     return data[singleItemField];
   }
-
   return data;
 }
 
-// ============================================================================
-// OPTIMISTIC UPDATE UTILITIES
-// ============================================================================
-
-/**
- * Create optimistic update handlers for delete mutation
- */
-function createDeleteOptimisticHandlers<T extends { id: string }>(
-  queryClient: QueryClient,
-  queryKey: readonly string[]
-) {
+function createDeleteOptimisticHandlers<T extends { id: string }>(queryClient: QueryClient, queryKey: readonly string[]) {
   return {
     onMutate: async (id: string) => {
-      // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey });
-
-      // Snapshot previous value
       const previous = queryClient.getQueriesData({ queryKey });
-
-      // Optimistically remove item from all matching queries
-      queryClient.setQueriesData<PaginatedResponse<T>>(
-        { queryKey },
-        (old) => {
-          if (!old) return old;
-          return {
-            ...old,
-            data: old.data.filter((item) => item.id !== id),
-            pagination: {
-              ...old.pagination,
-              total: Math.max(0, old.pagination.total - 1),
-            },
-          };
-        }
-      );
-
+      queryClient.setQueriesData<PaginatedResponse<T>>({ queryKey }, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          data: old.data.filter((item) => item.id !== id),
+          pagination: { ...old.pagination, total: Math.max(0, old.pagination.total - 1) },
+        };
+      });
       return { previous };
     },
     onError: (_err: unknown, _id: string, context: { previous?: unknown } | undefined) => {
-      // Rollback on error
       if (context?.previous) {
         (context.previous as [readonly unknown[], unknown][]).forEach(([key, value]) => {
           queryClient.setQueryData(key, value);
@@ -194,16 +113,11 @@ function createDeleteOptimisticHandlers<T extends { id: string }>(
       }
     },
     onSettled: () => {
-      // Always refetch after mutation with refetchType: 'all' to ensure data freshness
-      // across all matching queries, even if they are currently inactive.
       queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
     },
   };
 }
 
-/**
- * Create optimistic update handlers for update mutation
- */
 function createUpdateOptimisticHandlers<T extends { id: string }>(
   queryClient: QueryClient,
   queryKey: readonly string[],
@@ -212,35 +126,15 @@ function createUpdateOptimisticHandlers<T extends { id: string }>(
   return {
     onMutate: async (data: { id: string; [key: string]: unknown }) => {
       const { id, ...updates } = data;
-
-      // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey });
       await queryClient.cancelQueries({ queryKey: [...singleQueryKey, id] });
-
-      // Snapshot previous values
       const previousList = queryClient.getQueriesData({ queryKey });
       const previousSingle = queryClient.getQueryData([...singleQueryKey, id]);
-
-      // Optimistically update item in list queries
-      queryClient.setQueriesData<PaginatedResponse<T>>(
-        { queryKey },
-        (old) => {
-          if (!old) return old;
-          return {
-            ...old,
-            data: old.data.map((item) =>
-              item.id === id ? { ...item, ...updates } : item
-            ),
-          };
-        }
-      );
-
-      // Optimistically update single item query
-      queryClient.setQueryData<T>([...singleQueryKey, id], (old) => {
+      queryClient.setQueriesData<PaginatedResponse<T>>({ queryKey }, (old) => {
         if (!old) return old;
-        return { ...old, ...updates };
+        return { ...old, data: old.data.map((item) => item.id === id ? { ...item, ...updates } : item) };
       });
-
+      queryClient.setQueryData<T>([...singleQueryKey, id], (old) => old ? { ...old, ...updates } : old);
       return { previousList, previousSingle, id };
     },
     onError: (
@@ -248,41 +142,22 @@ function createUpdateOptimisticHandlers<T extends { id: string }>(
       _data: { id: string; [key: string]: unknown },
       context: { previousList?: unknown; previousSingle?: unknown; id?: string } | undefined
     ) => {
-      // Rollback list queries
       if (context?.previousList) {
         (context.previousList as [readonly unknown[], unknown][]).forEach(([key, value]) => {
           queryClient.setQueryData(key, value);
         });
       }
-      // Rollback single item query
       if (context?.previousSingle && context?.id) {
         queryClient.setQueryData([...singleQueryKey, context.id], context.previousSingle);
       }
     },
     onSettled: (_data: unknown, _err: unknown, variables: { id: string }) => {
-      // Use refetchType: 'all' for both list and single item queries to ensure consistency
       queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
       queryClient.invalidateQueries({ queryKey: [...singleQueryKey, variables.id], refetchType: 'all' });
     },
   };
 }
 
-// ============================================================================
-// HOOK FACTORY
-// ============================================================================
-
-/**
- * Creates a set of React Query hooks for an entity type.
- *
- * @example
- * ```typescript
- * const { useList: useJobs, useSingle: useJob, useMutations: useJobMutations } = createDataHook<Job>({
- *   queryKey: ["jobs"],
- *   endpoint: "/api/jobs",
- *   staleTime: 60000,
- * });
- * ```
- */
 export function createDataHook<
   T extends { id: string },
   CreateData = Partial<T>,
@@ -291,98 +166,120 @@ export function createDataHook<
   const {
     queryKey,
     endpoint,
-    staleTime = 60 * 1000,
-    gcTime = 5 * 60 * 1000,
-    refetchOnWindowFocus = true,
-    refetchOnMount,
+    staleTime,  // Use global default from QueryClient if not specified
+    gcTime,     // Use global default from QueryClient if not specified
+    refetchOnWindowFocus = false,
+    refetchOnMount = false,
     singleItemField,
   } = config;
 
-  const singleQueryKey = [queryKey[0].replace(/s$/, "")] as const; // "jobs" -> "job"
+  const singleQueryKey = [queryKey[0].replace(/s$/, "")] as const;
 
-  // Helper to create project-scoped query key
-  const getListQueryKey = (
-    projectId: string | null,
-    filters?: Record<string, unknown>
-  ) => [...queryKey, projectId, filters] as const;
+  const getListQueryKey = (projectId: string | null, filters?: Record<string, unknown>) => {
+    const cleanFilters = filters
+      ? Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined))
+      : {};
+    const filtersKey = JSON.stringify(cleanFilters);
+    return [...queryKey, projectId, filtersKey] as const;
+  };
 
-  /**
-   * Hook to fetch paginated list of entities
-   */
   function useList(options: ListQueryOptions & { [key: string]: unknown } = {}) {
     const { currentProject } = useProjectContext();
     const projectId = currentProject?.id ?? null;
     const queryClient = useQueryClient();
-
+    const isRestoring = useIsRestoring();
     const { enabled = true, ...filters } = options;
+    const fullQueryKey = getListQueryKey(projectId, filters);
 
     const query = useQuery({
-      queryKey: getListQueryKey(projectId, filters),
-      queryFn: () => fetchList<T>(endpoint, filters),
+      queryKey: fullQueryKey,
+      queryFn: () => fetchList<T>(endpoint, filters, projectId),
       enabled: enabled && !!projectId,
-      staleTime,
-      gcTime,
+      // Only override if explicitly specified, otherwise use global defaults
+      ...(staleTime !== undefined && { staleTime }),
+      ...(gcTime !== undefined && { gcTime }),
       refetchOnWindowFocus,
-      // PERFORMANCE: Allow specific hooks to override refetchOnMount behavior
-      // Runs uses 'always' to ensure fresh data after job execution
-      ...(refetchOnMount !== undefined && { refetchOnMount }),
+      refetchOnMount,
+      refetchOnReconnect: false,
+      placeholderData: keepPreviousData,
     });
 
     const invalidate = () =>
       queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
+
+    // Simple loading state: only true when no data AND actively fetching
+    // React Query handles cache lookup automatically - if data exists, query.data is set
+    const hasData = query.data !== undefined;
+    const isInitialLoading = query.isPending && query.isFetching && !isRestoring;
 
     return {
       data: query.data,
       items: query.data?.data ?? [],
       total: query.data?.pagination?.total ?? 0,
       pagination: query.data?.pagination,
-      isLoading: query.isLoading,
+      isLoading: isInitialLoading,
+      isPending: query.isPending,
+      isRestoring,
       isRefetching: query.isRefetching,
+      isFetching: query.isFetching,
+      hasData,
       error: query.error as Error | null,
       refetch: query.refetch,
       invalidate,
     };
   }
 
-  /**
-   * Hook to fetch a single entity by ID
-   */
   function useSingle(id: string | null, options: SingleQueryOptions = {}) {
     const queryClient = useQueryClient();
+    const isRestoring = useIsRestoring();
     const { enabled = true } = options;
+    const singleKey = [...singleQueryKey, id];
+
+    const { currentProject } = useProjectContext();
+    const projectId = currentProject?.id ?? null;
 
     const query = useQuery({
-      queryKey: [...singleQueryKey, id],
-      queryFn: () => fetchSingle<T>(endpoint, id!, singleItemField),
+      queryKey: singleKey,
+      queryFn: () => fetchSingle<T>(endpoint, id!, singleItemField, projectId),
       enabled: enabled && !!id,
-      staleTime: staleTime / 2, // Single items have shorter stale time
-      gcTime,
-      // No polling - data refreshes on page visit or manual refresh
+      // Only override if explicitly specified, otherwise use global defaults
+      ...(staleTime !== undefined && { staleTime }),
+      ...(gcTime !== undefined && { gcTime }),
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      refetchOnReconnect: false,
+      placeholderData: keepPreviousData,
     });
 
     const invalidate = () =>
-      queryClient.invalidateQueries({ queryKey: [...singleQueryKey, id], refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: singleKey, refetchType: 'all' });
+
+    const isInitialLoading = query.isPending && query.isFetching && !isRestoring;
 
     return {
       data: query.data,
-      isLoading: query.isLoading,
+      isLoading: isInitialLoading,
+      isPending: query.isPending,
+      isRestoring,
       error: query.error as Error | null,
       refetch: query.refetch,
       invalidate,
     };
   }
 
-  /**
-   * Hook for entity mutations with optimistic updates
-   */
   function useMutations() {
     const queryClient = useQueryClient();
+    const { currentProject } = useProjectContext();
+    const projectId = currentProject?.id ?? null;
 
     const create = useMutation({
       mutationFn: async (data: CreateData) => {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (projectId) headers["x-project-id"] = projectId;
+
         const response = await fetch(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(data),
         });
         if (!response.ok) {
@@ -392,8 +289,6 @@ export function createDataHook<
         return response.json();
       },
       onSuccess: () => {
-        // Use refetchType: 'all' to force immediate refetch of all matching queries
-        // This ensures new items appear even when navigating to a new page
         queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
       },
     });
@@ -401,9 +296,13 @@ export function createDataHook<
     const update = useMutation({
       mutationFn: async (data: UpdateData) => {
         const { id, ...updateData } = data as unknown as { id: string; [key: string]: unknown };
+        
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (projectId) headers["x-project-id"] = projectId;
+
         const response = await fetch(`${endpoint}/${id}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(updateData),
         });
         if (!response.ok) {
@@ -417,8 +316,12 @@ export function createDataHook<
 
     const remove = useMutation({
       mutationFn: async (id: string) => {
+        const headers: Record<string, string> = {};
+        if (projectId) headers["x-project-id"] = projectId;
+
         const response = await fetch(`${endpoint}/${id}`, {
           method: "DELETE",
+          headers,
         });
         if (!response.ok) {
           const error = await response.json().catch(() => ({}));
@@ -442,20 +345,12 @@ export function createDataHook<
     useList,
     useSingle,
     useMutations,
-    // Export query keys for external cache invalidation
     queryKey,
     singleQueryKey,
     getListQueryKey,
   };
 }
 
-// ============================================================================
-// TYPE GUARDS
-// ============================================================================
-
-/**
- * Type guard to check if response is a valid paginated response
- */
 export function isPaginatedResponse<T>(
   data: unknown
 ): data is PaginatedResponse<T> {

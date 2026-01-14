@@ -31,47 +31,48 @@ export async function GET() {
       );
     }
 
-    // Get organization members
-    const members = await db
-      .select({
-        id: userTable.id,
-        name: userTable.name,
-        email: userTable.email,
-        role: member.role,
-        joinedAt: member.createdAt
-      })
-      .from(member)
-      .innerJoin(userTable, eq(member.userId, userTable.id))
-      .where(eq(member.organizationId, activeOrg.id))
-      .orderBy(desc(member.id)); // UUIDv7 is time-ordered (PostgreSQL 18+)
+    // PERFORMANCE: Run all queries in parallel to avoid sequential DB round trips
+    const [members, invitations, currentUserRole] = await Promise.all([
+      // Get organization members
+      db
+        .select({
+          id: userTable.id,
+          name: userTable.name,
+          email: userTable.email,
+          role: member.role,
+          joinedAt: member.createdAt
+        })
+        .from(member)
+        .innerJoin(userTable, eq(member.userId, userTable.id))
+        .where(eq(member.organizationId, activeOrg.id))
+        .orderBy(desc(member.id)), // UUIDv7 is time-ordered (PostgreSQL 18+)
 
-    // Members fetched successfully
+      // Get pending invitations for this organization
+      db
+        .select({
+          id: invitation.id,
+          email: invitation.email,
+          role: invitation.role,
+          status: invitation.status,
+          expiresAt: invitation.expiresAt,
+          inviterName: userTable.name,
+          inviterEmail: userTable.email
+        })
+        .from(invitation)
+        .innerJoin(userTable, eq(invitation.inviterId, userTable.id))
+        .where(eq(invitation.organizationId, activeOrg.id))
+        .orderBy(desc(invitation.expiresAt)),
 
-    // Get pending invitations for this organization
-    const invitations = await db
-      .select({
-        id: invitation.id,
-        email: invitation.email,
-        role: invitation.role,
-        status: invitation.status,
-        expiresAt: invitation.expiresAt,
-        inviterName: userTable.name,
-        inviterEmail: userTable.email
-      })
-      .from(invitation)
-      .innerJoin(userTable, eq(invitation.inviterId, userTable.id))
-      .where(eq(invitation.organizationId, activeOrg.id))
-      .orderBy(desc(invitation.expiresAt));
-
-    // Get current user's role in the organization
-    const currentUserRole = await db
-      .select({ role: member.role })
-      .from(member)
-      .where(and(
-        eq(member.userId, currentUser.id),
-        eq(member.organizationId, activeOrg.id)
-      ))
-      .limit(1);
+      // Get current user's role in the organization
+      db
+        .select({ role: member.role })
+        .from(member)
+        .where(and(
+          eq(member.userId, currentUser.id),
+          eq(member.organizationId, activeOrg.id)
+        ))
+        .limit(1),
+    ]);
 
     return NextResponse.json({
       success: true,

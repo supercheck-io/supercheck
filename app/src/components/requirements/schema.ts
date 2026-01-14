@@ -8,6 +8,7 @@ const tagSchema = z.object({
 });
 
 // Schema for requirements matching the database schema and server action types
+// Note: API routes return ISO strings, server actions return Date objects
 export const requirementSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -17,8 +18,9 @@ export const requirementSchema = z.object({
   externalId: z.string().nullable(),
   externalUrl: z.string().nullable(),
   externalProvider: z.string().nullable(),
-  createdAt: z.date().nullable(),
-  updatedAt: z.date().nullable(),
+  createdBy: z.string().optional(), // May be present from API
+  createdAt: z.union([z.date(), z.string()]).nullable(),
+  updatedAt: z.union([z.date(), z.string()]).nullable(),
   // Source document reference
   sourceDocumentId: z.string().nullable().optional(),
   sourceDocumentName: z.string().nullable().optional(),

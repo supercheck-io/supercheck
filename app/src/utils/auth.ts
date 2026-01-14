@@ -7,6 +7,7 @@ import { ac, roles, Role } from "@/lib/rbac/permissions";
 import { EmailService } from "@/lib/email-service";
 import {
   checkPasswordResetRateLimit,
+  checkEmailVerificationRateLimit,
   getClientIP,
 } from "@/lib/session-security";
 import {
@@ -313,7 +314,36 @@ export const auth = betterAuth({
   // Email verification - only required in cloud mode
   emailVerification: isCloudHosted()
     ? {
-        sendVerificationEmail: async ({ user, url }) => {
+        sendVerificationEmail: async ({ user, url }, request) => {
+          // Rate limit by email address to prevent abuse
+          const emailRateLimit = await checkEmailVerificationRateLimit(user.email);
+          if (!emailRateLimit.allowed) {
+            const resetTime = emailRateLimit.resetTime
+              ? new Date(emailRateLimit.resetTime)
+              : new Date();
+            const remainingTime = Math.ceil(
+              (resetTime.getTime() - Date.now()) / 1000 / 60
+            );
+            throw new Error(
+              `Too many verification email requests. Please try again in ${remainingTime} minutes.`
+            );
+          }
+
+          // Rate limit by IP address as additional protection
+          const clientIP = request ? getClientIP(request.headers) : "unknown";
+          const ipRateLimit = await checkEmailVerificationRateLimit(clientIP);
+          if (!ipRateLimit.allowed) {
+            const resetTime = ipRateLimit.resetTime
+              ? new Date(ipRateLimit.resetTime)
+              : new Date();
+            const remainingTime = Math.ceil(
+              (resetTime.getTime() - Date.now()) / 1000 / 60
+            );
+            throw new Error(
+              `Too many verification email requests from this location. Please try again in ${remainingTime} minutes.`
+            );
+          }
+
           const emailService = EmailService.getInstance();
 
           // Modify the verification URL to redirect to sign-in with verified flag

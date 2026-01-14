@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 
 import {
   Form,
@@ -696,13 +697,15 @@ export function NotificationProviderForm({
             onClick={testConnection}
             disabled={isTesting || isSubmitting}
           >
+            {isTesting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {isTesting ? "Testing..." : "Test Connection"}
           </Button>
           <div className="space-x-2">
-            <Button type="button" variant="outline" onClick={onCancel}>
+            <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting || isTesting}>
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting || isTesting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {isSubmitting
                 ? initialData
                   ? "Updating..."

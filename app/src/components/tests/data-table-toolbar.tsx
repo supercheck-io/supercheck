@@ -12,6 +12,8 @@ import { DataTableFacetedFilter } from "./data-table-faceted-filter";
 import { DataTableTagFilter } from "./data-table-tag-filter";
 import { useTestPermissions } from "@/hooks/use-rbac-permissions";
 
+
+
 interface DataTableToolbarProps<TData> {
   table: Table<TData>;
 }
@@ -77,10 +79,14 @@ export function DataTableToolbar<TData>({
           />
         )}
         <DataTableViewOptions table={table} />
+
+
+
+        {/* Create Test Dropdown */}
         <Button
-          onClick={() => router.push("/tests/create")}
           disabled={!canCreateTest}
           data-testid="create-test-button"
+          onClick={() => router.push("/tests/create")}
         >
           <PlusIcon className="h-4 w-4 mr-2" />
           Create Test

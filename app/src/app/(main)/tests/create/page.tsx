@@ -6,6 +6,7 @@ import { types } from "@/components/tests/data";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import { Card, CardContent } from "@/components/ui/card";
 
+
 const breadcrumbs = [
   { label: "Home", href: "/" },
   { label: "Tests", href: "/tests" },
@@ -25,11 +26,13 @@ const testDescriptions: Record<string, string> = {
 export default function CreateTestPage() {
   const router = useRouter();
 
+
   const testTypes = types.map((type) => ({
     icon: <type.icon size={32} className={type.color} />,
     title: type.label,
     description: testDescriptions[type.value],
     onClick: () => router.push(`/playground?scriptType=${type.value}`),
+    value: type.value,
   }));
 
   return (
@@ -45,6 +48,8 @@ export default function CreateTestPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+
+
             {testTypes.map((test) => (
               <SelectionCard
                 key={test.title}

@@ -1,34 +1,59 @@
-/**
- * Requirements Data Hook
- *
- * React Query hook for fetching requirements list with efficient caching.
- * Uses the same pattern as useJobs for consistency.
- * Cache is invalidated after mutations to ensure fresh data.
- */
-
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
 import { 
-  getRequirements, 
-  getRequirement,
   createRequirement, 
   updateRequirement, 
   deleteRequirement,
-  type RequirementWithCoverage,
   type CreateRequirementInput,
   type UpdateRequirementInput,
 } from "@/actions/requirements";
-import type { RequirementPriority, RequirementCoverageStatus } from "@/db/schema/types";
+import type { RequirementPriority, RequirementCoverageStatus, RequirementCreatedBy } from "@/db/schema/types";
 
-// ============================================================================
-// QUERY KEYS (exported for external cache invalidation)
-// ============================================================================
+export interface RequirementTag {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+export interface Requirement {
+  id: string;
+  title: string;
+  description: string | null;
+  priority: RequirementPriority | null;
+  tags: RequirementTag[];
+  externalId: string | null;
+  externalUrl: string | null;
+  externalProvider: string | null;
+  createdBy: RequirementCreatedBy;
+  createdAt: string | null;
+  updatedAt: string | null;
+  sourceDocumentId: string | null;
+  sourceDocumentName: string | null;
+  sourceSection: string | null;
+  coverageStatus: RequirementCoverageStatus;
+  linkedTestCount: number;
+  passedTestCount: number;
+  failedTestCount: number;
+}
+
+export interface RequirementsResponse extends PaginatedResponse<Requirement> {
+  requirements?: Requirement[];
+}
 
 export const REQUIREMENTS_QUERY_KEY = ["requirements"] as const;
 export const REQUIREMENT_QUERY_KEY = ["requirement"] as const;
 
-// ============================================================================
-// TYPES
-// ============================================================================
+export function getRequirementsListQueryKey(projectId: string | null) {
+  return [...REQUIREMENTS_QUERY_KEY, projectId, "{}"] as const;
+}
+
+const requirementsHook = createDataHook<Requirement>({
+  queryKey: REQUIREMENTS_QUERY_KEY,
+  endpoint: "/api/requirements",
+  // Inherits staleTime (5min) and gcTime (24h) from factory defaults
+  refetchOnWindowFocus: false,
+  singleItemField: "requirement",
+});
 
 export interface UseRequirementsOptions {
   page?: number;
@@ -39,53 +64,22 @@ export interface UseRequirementsOptions {
   enabled?: boolean;
 }
 
-// ============================================================================
-// HOOKS
-// ============================================================================
-
-/**
- * Hook to fetch requirements list with React Query caching.
- * Data is cached for 60 seconds and shared across components.
- */
 export function useRequirements(options: UseRequirementsOptions = {}) {
-  const { enabled = true, ...queryOptions } = options;
-  const queryClient = useQueryClient();
-
-  const query = useQuery({
-    queryKey: [...REQUIREMENTS_QUERY_KEY, queryOptions],
-    queryFn: () => getRequirements(queryOptions),
-    staleTime: 60 * 1000, // 60 seconds
-    gcTime: 5 * 60 * 1000, // 5 minutes cache
-    refetchOnWindowFocus: false,
-    enabled,
-  });
+  const result = requirementsHook.useList(options as UseRequirementsOptions & { [key: string]: unknown });
 
   return {
-    ...query,
-    requirements: query.data?.requirements ?? [],
-    total: query.data?.total ?? 0,
-    page: query.data?.page ?? 1,
-    pageSize: query.data?.pageSize ?? 20,
-    invalidate: () => queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' }),
+    ...result,
+    requirements: result.items,
+    total: result.pagination?.total ?? 0,
+    page: result.pagination?.page ?? 1,
+    pageSize: result.pagination?.limit ?? 20,
   };
 }
 
-/**
- * Hook to fetch a single requirement by ID with React Query caching.
- */
-export function useRequirement(requirementId: string | null) {
-  return useQuery({
-    queryKey: [...REQUIREMENT_QUERY_KEY, requirementId],
-    queryFn: () => requirementId ? getRequirement(requirementId) : null,
-    staleTime: 60 * 1000,
-    gcTime: 5 * 60 * 1000,
-    enabled: !!requirementId,
-  });
+export function useRequirement(requirementId: string | null, options: { enabled?: boolean } = {}) {
+  return requirementsHook.useSingle(requirementId, options);
 }
 
-/**
- * Hook for requirement mutations (create, update, delete) with cache invalidation.
- */
 export function useRequirementMutations() {
   const queryClient = useQueryClient();
 

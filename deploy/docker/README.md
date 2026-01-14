@@ -2,45 +2,30 @@
 
 Production-ready Docker Compose files for self-hosting SuperCheck.
 
+## Recommended Setup
+
+For production deployments, we recommend using **external managed services** for PostgreSQL, Redis, and S3. This provides automatic backups, high availability, and easier maintenance.
+
+| Configuration | Use Case | Database |
+|---------------|----------|----------|
+| `docker-compose-external.yml` | **Production (Recommended)** | External managed services |
+| `docker-compose-secure.yml` | Production (Self-contained) | Local containers |
+| `docker-compose.yml` | Development/Testing | Local containers |
+
+---
+
 ## Available Configurations
 
-### `docker-compose.yml` (Development with Pre-built Images)
+### `docker-compose-external.yml` (Recommended for Production)
 
-Full stack using pre-built Docker images from GitHub Container Registry:
+Uses external managed services for reliability and automatic backups:
 
-- **App**: Next.js frontend (port 3000)
-- **Worker**: Job execution service
-- **PostgreSQL**: Primary database (port 5432)
-- **Redis**: Queue and cache (port 6379)
-- **MinIO**: S3-compatible storage (ports 9000/9001)
+- Connects to external **PostgreSQL** (Neon, Supabase, AWS RDS)
+- Connects to external **Redis** (Upstash, Redis Cloud)
+- Connects to external **S3** (AWS S3, Cloudflare R2)
+- Includes Traefik with Let's Encrypt for HTTPS
 
-```bash
-docker compose -f docker-compose.yml up -d
-```
-
-### `docker-compose-local.yml` (Local Development)
-
-Builds images from source with hot-reload for development:
-
-- Builds app and worker from local `../../app` and `../../worker` directories
-- Mounts source code for live changes
-- Exposes all ports for debugging
-- Best for active development
-
-```bash
-docker compose -f docker-compose-local.yml up -d
-```
-
-### `docker-compose-external.yml` (Managed Services)
-
-Uses external managed services instead of local containers:
-
-- **No PostgreSQL container** - connects to external PostgreSQL (Neon, Supabase, PlanetScale)
-- **No Redis container** - connects to external Redis (Upstash, Redis Cloud)
-- **No MinIO container** - connects to external S3 (AWS S3, Cloudflare R2)
-- Includes Traefik for HTTPS
-
-**Required environment variables** (no defaults):
+**Required environment variables:**
 
 ```bash
 DATABASE_URL=postgresql://user:pass@host:5432/supercheck
@@ -55,44 +40,41 @@ ACME_EMAIL=admin@yourdomain.com
 docker compose -f docker-compose-external.yml up -d
 ```
 
-### `docker-compose-secure.yml` (Production)
+### `docker-compose-secure.yml` (Self-Contained Production)
 
-Production-hardened deployment with HTTPS:
+All-in-one deployment with HTTPS:
 
-- **Traefik** reverse proxy with SSL/TLS
-- All services included (PostgreSQL, Redis, MinIO)
-- Security hardening (capability drops, no-new-privileges)
-- Resource limits configured
-- Health checks enabled
-- Status page wildcard subdomain support
+- **Traefik** reverse proxy with Let's Encrypt SSL
+- **PostgreSQL**, **Redis**, **MinIO** included
+- Security hardening and health checks enabled
+
+> **⚠️ Cloudflare Users:** If using Cloudflare proxy, set SSL mode to **"Full"** or **"Full (strict)"** to avoid redirect loops.
 
 ```bash
-# Configure your domain
-export APP_DOMAIN=supercheck.yourdomain.com
-
 docker compose -f docker-compose-secure.yml up -d
+```
+
+### `docker-compose.yml` (Development)
+
+For local development and testing:
+
+- **App**: Next.js frontend (port 3000)
+- **Worker**: Job execution service
+- **PostgreSQL**, **Redis**, **MinIO** included
+
+```bash
+docker compose up -d
 ```
 
 ### `docker-compose-worker.yml` (Multi-Location Workers)
 
-Deploy workers in remote geographic regions connecting to your main Supercheck instance:
+Deploy workers in remote geographic regions:
 
 - Connects to central PostgreSQL, Redis, and MinIO
 - Set `WORKER_LOCATION` to target region (us-east, eu-central, asia-pacific)
-- True multi-location monitoring and performance testing
-- Minimal resource requirements (~2 vCPU / 4GB RAM)
 
-```bash
-# On remote VPS in US East
-export DATABASE_URL=postgresql://user:pass@main-server:5432/supercheck
-export REDIS_URL=redis://:password@main-server:6379
-export S3_ENDPOINT=http://main-server:9000
-export WORKER_LOCATION=us-east
+See [Multi-Location Workers Guide](https://supercheck.io/docs/deployment/multi-location) for setup instructions.
 
-docker compose -f docker-compose-worker.yml up -d
-```
-
-See [Multi-Location Workers Guide](https://supercheck.io/docs/deployment/multi-location) for complete setup instructions.
 
 ---
 
@@ -180,24 +162,44 @@ See the docker-compose files for detailed configuration comments.
 <details>
 <summary><strong>⚠️ Important: Backup Your Data</strong></summary>
 
-When using local PostgreSQL (`docker-compose.yml`, `docker-compose-secure.yml`, `docker-compose-local.yml`), data is stored in Docker named volumes. **Take regular backups:**
+When using local PostgreSQL, data is stored in Docker named volumes. **Take regular backups:**
+
+### Create a Backup
 
 ```bash
-# Backup (creates dated file, e.g., backup-20260104.sql)
-docker compose exec postgres pg_dump -U postgres supercheck > backup-$(date +%Y%m%d).sql
-
-# Restore from a specific backup
-cat backup-20260104.sql | docker compose exec -T postgres psql -U postgres supercheck
+docker compose -f docker-compose-secure.yml exec postgres pg_dump -U postgres supercheck > backup-$(date +%Y%m%d).sql
 ```
 
-Data can be lost if:
-- Docker is reinstalled or storage is reset
-- You run `docker compose down -v` (removes volumes)
-- Docker storage location changes during OS upgrades
+### Restore from Backup
 
-**For maximum safety**, use `docker-compose-external.yml` with managed PostgreSQL (Neon, Supabase, AWS RDS).
+```bash
+# 1. Stop app and worker
+docker compose -f docker-compose-secure.yml stop app worker
+
+# 2. Terminate active database connections
+docker compose -f docker-compose-secure.yml exec -T postgres psql -U postgres -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='supercheck';"
+
+# 3. Drop and recreate the database
+docker compose -f docker-compose-secure.yml exec -T postgres psql -U postgres -d postgres -c "DROP DATABASE IF EXISTS supercheck;"
+docker compose -f docker-compose-secure.yml exec -T postgres psql -U postgres -d postgres -c "CREATE DATABASE supercheck;"
+
+# 4. Restore the backup
+cat backup-20260104.sql | docker compose -f docker-compose-secure.yml exec -T postgres psql -U postgres supercheck
+
+# 5. Restart all services
+docker compose -f docker-compose-secure.yml up -d
+```
+
+### Data Loss Risks
+
+- Running `docker compose down -v` removes volumes
+- Docker reinstallation or storage reset
+- OS upgrades changing Docker storage location
+
+**For maximum safety**, use `docker-compose-external.yml` with managed PostgreSQL.
 
 </details>
+
 
 ---
 

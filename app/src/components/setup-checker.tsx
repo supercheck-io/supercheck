@@ -52,7 +52,6 @@ export function SetupChecker() {
           if (setupResponse.ok) {
             console.log("✅ Default organization and project created");
 
-            // PERFORMANCE: Reduced delay - modern DBs have immediate consistency
             await new Promise((resolve) => setTimeout(resolve, 500));
 
             try {
@@ -82,7 +81,6 @@ export function SetupChecker() {
 
     // Only run setup check if not already complete
     if (!isSetupComplete) {
-      // PERFORMANCE: Reduced delay - auth is now checked via useSession which is fast
       // Only need minimal delay for React state to settle
       const timer = setTimeout(checkAndSetupDefaults, 100);
       return () => clearTimeout(timer);

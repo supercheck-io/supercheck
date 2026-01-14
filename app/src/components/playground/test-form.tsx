@@ -265,14 +265,14 @@ export function TestForm({
       return;
     }
 
-    // Only initialize once when fetchedTestTags is available (even if empty array)
+    // Only initialize once when fetchedTestTags is available AND loading is complete
     // Using !== undefined to handle tests with zero tags properly
-    if (!hasInitializedTagsRef.current && fetchedTestTags !== undefined) {
+    if (!hasInitializedTagsRef.current && !isLoadingTestTags && fetchedTestTags !== undefined) {
       hasInitializedTagsRef.current = true;
       setSelectedTags(fetchedTestTags);
       setInitialTags(fetchedTestTags);
     }
-  }, [fetchedTestTags, testId]);
+  }, [fetchedTestTags, testId, isLoadingTestTags]);
 
   // Handle tag creation - uses mutation hook with automatic cache invalidation
   const handleCreateTag = async (
@@ -595,7 +595,7 @@ export function TestForm({
 
             // Invalidate React Query cache to ensure fresh data on tests page
             queryClient.invalidateQueries({ queryKey: TESTS_QUERY_KEY, refetchType: 'all' });
-            
+
             // If linked to a requirement, also invalidate requirements cache for updated counts
             if (initialLinkedRequirement?.id) {
               queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
@@ -771,7 +771,7 @@ export function TestForm({
               href={`/requirements?id=${linkedReq.id}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-medium truncate hover:underline hover:text-primary transition-colors cursor-pointer"
+              className="font-medium truncate hover:underline hover:text-primary transition-colors cursor-pointer text-muted-foreground"
               title={linkedReq.title}
             >
               {linkedReq.title}
@@ -812,7 +812,7 @@ export function TestForm({
               setTestCase({ ...testCase, title: e.target.value.slice(0, 255) })
             }
             placeholder="Enter test title"
-            className={cn("h-10")}
+            className={cn("h-10 text-muted-foreground")}
             disabled={isRunning}
           />
         </div>
@@ -850,7 +850,7 @@ export function TestForm({
           maxLength={1000}
           style={{ overflowY: "auto", minHeight: 100, maxHeight: 150 }}
           className={cn(
-            "min-h-[100px]",
+            "min-h-[100px] text-muted-foreground",
             isRunning ? "opacity-70 cursor-not-allowed" : ""
           )}
           disabled={isRunning}

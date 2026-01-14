@@ -2,19 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, jobs, reports, TestRunStatus } from "@/db/schema";
 import { desc, eq, and, sql } from "drizzle-orm";
-import { hasPermission } from '@/lib/rbac/middleware';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireProjectContext } from '@/lib/project-context';
 
 export async function GET(request: NextRequest) {
   try {
     // Require authentication and project context
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireProjectContext();
 
-    // Check permission to view runs
-    const canView = await hasPermission('job', 'view', {
-      organizationId,
-      projectId: project.id
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
+    // that would happen with hasPermission() after requireProjectContext()
+    const canView = checkPermissionWithContext('job', 'view', context);
 
     if (!canView) {
       return NextResponse.json(
@@ -46,8 +44,8 @@ export async function GET(request: NextRequest) {
 
     // SECURITY: Always filter by org/project from session, never trust client params
     const filters = [
-      eq(runs.projectId, project.id),
-      eq(jobs.organizationId, organizationId)
+      eq(runs.projectId, context.project.id),
+      eq(jobs.organizationId, context.organizationId)
     ];
     
     // Optional additional filters
@@ -66,47 +64,47 @@ export async function GET(request: NextRequest) {
 
     const whereCondition = and(...filters);
 
-    // Get total count
-    const countQuery = db
-      .select({ count: sql<number>`count(*)` })
-      .from(runs)
-      .leftJoin(jobs, eq(runs.jobId, jobs.id))
-      .where(whereCondition);
-
-    const [{ count: totalCount }] = await countQuery;
-
-    const total = Number(totalCount);
-
-    // Get paginated results with all details
-    const result = await db
-      .select({
-        id: runs.id,
-        jobId: runs.jobId,
-        jobName: jobs.name,
-        jobType: jobs.jobType,
-        status: runs.status,
-        durationMs: runs.durationMs,
-        startedAt: runs.startedAt,
-        completedAt: runs.completedAt,
-        // logs: runs.logs, // OPTIMIZED: Exclude logs from list view to reduce payload size
-        // errorDetails: runs.errorDetails, // OPTIMIZED: Exclude full error details from list view
-        reportUrl: reports.s3Url,
-        trigger: runs.trigger,
-        location: runs.location,
-      })
-      .from(runs)
-      .leftJoin(jobs, eq(runs.jobId, jobs.id))
-      .leftJoin(
-        reports,
-        and(
-          sql`${reports.entityId} = ${runs.id}::text`,
-          eq(reports.entityType, 'job')
+    // PERFORMANCE: Run count and data queries in parallel
+    const [countResult, result] = await Promise.all([
+      // Count query
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(runs)
+        .leftJoin(jobs, eq(runs.jobId, jobs.id))
+        .where(whereCondition),
+      // Data query with all details
+      db
+        .select({
+          id: runs.id,
+          jobId: runs.jobId,
+          jobName: jobs.name,
+          jobType: jobs.jobType,
+          status: runs.status,
+          durationMs: runs.durationMs,
+          startedAt: runs.startedAt,
+          completedAt: runs.completedAt,
+          // logs: runs.logs, // OPTIMIZED: Exclude logs from list view to reduce payload size
+          // errorDetails: runs.errorDetails, // OPTIMIZED: Exclude full error details from list view
+          reportUrl: reports.s3Url,
+          trigger: runs.trigger,
+          location: runs.location,
+        })
+        .from(runs)
+        .leftJoin(jobs, eq(runs.jobId, jobs.id))
+        .leftJoin(
+          reports,
+          and(
+            sql`${reports.entityId} = ${runs.id}::text`,
+            eq(reports.entityType, 'job')
+          )
         )
-      )
-      .where(whereCondition)
-      .orderBy(desc(runs.startedAt))
-      .limit(limit)
-      .offset(offset);
+        .where(whereCondition)
+        .orderBy(desc(runs.startedAt))
+        .limit(limit)
+        .offset(offset),
+    ]);
+
+    const total = Number(countResult[0]?.count ?? 0);
 
     // Convert dates to ISO strings and format duration
     const formattedRuns = result.map(run => {

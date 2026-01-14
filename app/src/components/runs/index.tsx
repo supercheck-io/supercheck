@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useSyncExternalStore } from "react";
 import { createColumns } from "./columns";
 import { DataTable } from "./data-table";
+import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
 import { TestRun } from "./schema";
 import { useRouter } from "next/navigation";
 import { Row } from "@tanstack/react-table";
@@ -50,6 +51,14 @@ export function Runs() {
   // Use lazy initialization to avoid impure function during render
   const [tableKey, setTableKey] = useState(() => Date.now());
   const { currentProject } = useProjectContext();
+  
+  // Hydration-safe mounted state - prevents mismatch between server and client
+  // Server returns false, client returns true after hydration
+  const isMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   // Check if user can delete runs
   const normalizedRole = normalizeRole(currentProject?.userRole);
@@ -90,6 +99,15 @@ export function Runs() {
 
   // Create columns with the delete handler and permissions
   const columns = createColumns(handleDeleteRun, canDelete);
+
+  // Don't render until component is mounted (prevents hydration mismatch)
+  if (!isMounted) {
+    return (
+      <div className="flex h-full flex-col space-y-4 p-2 mt-6 w-full max-w-full overflow-x-hidden">
+        <DataTableSkeleton columns={6} rows={3} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col space-y-4 p-2 mt-6 w-full max-w-full overflow-x-hidden">

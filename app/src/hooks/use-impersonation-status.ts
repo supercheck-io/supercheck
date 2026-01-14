@@ -1,15 +1,4 @@
-/**
- * Impersonation Status Hook
- * 
- * Checks if the current user is impersonating another user.
- * Uses React Query for efficient caching - status is fetched once per session.
- */
-
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-
-// ============================================================================
-// TYPES
-// ============================================================================
+import { useQuery, useQueryClient, useIsRestoring } from "@tanstack/react-query";
 
 export interface ImpersonationInfo {
   isImpersonating: boolean;
@@ -20,15 +9,7 @@ export interface ImpersonationInfo {
   };
 }
 
-// ============================================================================
-// QUERY KEY (exported for cache invalidation)
-// ============================================================================
-
 export const IMPERSONATION_STATUS_QUERY_KEY = ["impersonation-status"] as const;
-
-// ============================================================================
-// FETCH FUNCTION
-// ============================================================================
 
 async function fetchImpersonationStatus(): Promise<ImpersonationInfo> {
   const response = await fetch('/api/auth/impersonation-status');
@@ -39,26 +20,17 @@ async function fetchImpersonationStatus(): Promise<ImpersonationInfo> {
   return response.json();
 }
 
-// ============================================================================
-// HOOK
-// ============================================================================
-
-/**
- * Hook to check impersonation status
- * 
- * Uses React Query for caching. Most users are not impersonating,
- * so we cache this to avoid repeated calls.
- */
 export function useImpersonationStatus() {
   const queryClient = useQueryClient();
+  const isRestoring = useIsRestoring();
   
-  const { data, isLoading, error } = useQuery({
+  const { data, isPending, isFetching, error } = useQuery({
     queryKey: IMPERSONATION_STATUS_QUERY_KEY,
     queryFn: fetchImpersonationStatus,
-    staleTime: 60 * 1000,     // 1 minute - needs to be responsive to changes
-    gcTime: 5 * 60 * 1000,    // 5 minutes cache
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
     refetchOnMount: false,
+    refetchOnReconnect: false,
     retry: 1,
   });
 
@@ -67,10 +39,13 @@ export function useImpersonationStatus() {
     queryClient.invalidateQueries({ queryKey: IMPERSONATION_STATUS_QUERY_KEY, refetchType: 'all' });
   };
 
+  // Only show loading when actually fetching initial data, not when cache is being restored
+  const isInitialLoading = isPending && isFetching && !isRestoring;
+
   return {
     isImpersonating: data?.isImpersonating ?? false,
     impersonatedUser: data?.impersonatedUser,
-    isLoading,
+    isLoading: isInitialLoading,
     error: error as Error | null,
     invalidate,
   };

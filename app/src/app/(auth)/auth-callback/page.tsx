@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "@/utils/auth-client";
 import { Loader2 } from "lucide-react";
@@ -12,6 +12,21 @@ import { Loader2 } from "lucide-react";
  * It checks if the user is new and creates default organization/project if needed.
  */
 export default function AuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-col items-center justify-center gap-4 p-8">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      }
+    >
+      <AuthCallbackPageContent />
+    </Suspense>
+  );
+}
+
+function AuthCallbackPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: session, isPending } = useSession();

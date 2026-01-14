@@ -1,18 +1,4 @@
-/**
- * Unified Application Configuration Hook
- * 
- * Uses React Query for efficient caching - config is fetched once and cached
- * for 5 minutes per session. This prevents excessive API calls on navigation.
- * 
- * All other config hooks (useHostingMode, useAuthProviders) should use this
- * hook internally to share the same cached data.
- */
-
 import { useQuery } from "@tanstack/react-query";
-
-// ============================================================================
-// TYPES
-// ============================================================================
 
 export interface AppConfig {
   hosting: {
@@ -34,10 +20,6 @@ export interface AppConfig {
   };
 }
 
-// ============================================================================
-// DEFAULTS
-// ============================================================================
-
 const DEFAULT_CONFIG: AppConfig = {
   hosting: { selfHosted: true, cloudHosted: false },
   authProviders: {
@@ -55,15 +37,7 @@ const DEFAULT_CONFIG: AppConfig = {
   },
 };
 
-// ============================================================================
-// QUERY KEY (exported for cache invalidation if needed)
-// ============================================================================
-
 export const APP_CONFIG_QUERY_KEY = ["app-config"] as const;
-
-// ============================================================================
-// FETCH FUNCTION (exported for prefetching)
-// ============================================================================
 
 export async function fetchAppConfig(): Promise<AppConfig> {
   const response = await fetch("/api/config/app");
@@ -73,46 +47,26 @@ export async function fetchAppConfig(): Promise<AppConfig> {
   return response.json();
 }
 
-// ============================================================================
-// HOOK
-// ============================================================================
-
-/**
- * Hook to fetch unified application configuration at runtime.
- * 
- * Uses React Query for caching with long staleTime (5 minutes).
- * Config rarely changes during a session, so we minimize refetches.
- * 
- * On error, returns safe defaults (self-hosted mode) to avoid blocking users.
- */
 export function useAppConfig() {
   const { data: config, isLoading, error, isFetched } = useQuery({
     queryKey: APP_CONFIG_QUERY_KEY,
     queryFn: fetchAppConfig,
-    staleTime: 5 * 60 * 1000, // 5 minutes - config rarely changes
-    gcTime: 10 * 60 * 1000,   // 10 minutes cache
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
-    refetchOnMount: false,    // Use cached data across components
+    refetchOnMount: false,
     refetchOnReconnect: false,
     retry: 2,
-    // PERFORMANCE: Use initialData for instant render with safe defaults
-    // Self-hosted is the safe default (no subscription checks needed)
     initialData: DEFAULT_CONFIG,
-    // Mark initial data as stale so it gets refetched
     initialDataUpdatedAt: 0,
   });
 
-  // Use config or defaults
   const effectiveConfig = config ?? DEFAULT_CONFIG;
 
   return {
     config: effectiveConfig,
-    // PERFORMANCE: isLoading is false when we have initialData
-    // Use isFetched to know when real data is available
     isLoading: isLoading && !config,
     isFetched,
     error: error as Error | null,
-    // Convenience accessors with safe defaults
     isSelfHosted: effectiveConfig.hosting?.selfHosted ?? true,
     isCloudHosted: effectiveConfig.hosting?.cloudHosted ?? false,
     isDemoMode: effectiveConfig.demoMode ?? false,

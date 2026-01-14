@@ -1,17 +1,5 @@
-/**
- * Dashboard Data Hook
- * 
- * React Query hook for fetching dashboard data with efficient caching.
- * Data is cached for 60 seconds to prevent re-fetches on navigation.
- * No auto-refresh - data refreshes on page visit or manual action.
- */
-
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
 import { useProjectContext } from "./use-project-context";
-
-// ============================================================================
-// TYPES (imported from dashboard page to ensure type consistency)
-// ============================================================================
 
 interface ProjectStats {
   tests: number;
@@ -117,33 +105,22 @@ export interface DashboardData {
   system: SystemHealth;
 }
 
-// ============================================================================
-// QUERY KEY
-// ============================================================================
-
 export const DASHBOARD_QUERY_KEY = ["dashboard"] as const;
 
-// Helper to create project-scoped key
 export const getDashboardQueryKey = (projectId: string | null) => 
   [...DASHBOARD_QUERY_KEY, projectId] as const;
 
-// ============================================================================
-// FETCH FUNCTION (exported for prefetching)
-// ============================================================================
-
 export async function fetchDashboard(): Promise<DashboardData> {
   const controller = new AbortController();
-  // Increased timeout to 30s for cold starts when database connections are warming up
   const timeoutId = setTimeout(() => controller.abort('Dashboard request timeout'), 30000);
 
   try {
     const [dashboardResponse, alertsResponse] = await Promise.all([
-      fetch(`/api/dashboard?t=${Date.now()}`, {
+      fetch("/api/dashboard", {
         signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          Pragma: "no-cache",
+          // Removed manual cache busting. Browser/Proxy should respect server Cache-Control headers.
         },
       }),
       fetch("/api/alerts/history", {
@@ -163,11 +140,9 @@ export async function fetchDashboard(): Promise<DashboardData> {
     const data = await dashboardResponse.json();
     const alertsData = alertsResponse.ok ? await alertsResponse.json() : [];
 
-    // Transform and validate data (same logic as original)
     return transformDashboardData(data, alertsData);
   } catch (error) {
     clearTimeout(timeoutId);
-    // Provide more descriptive error message for abort
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('Dashboard request timed out. Please try again.');
     }
@@ -175,14 +150,9 @@ export async function fetchDashboard(): Promise<DashboardData> {
   }
 }
 
-// ============================================================================
-// DATA TRANSFORMATION (moved from page.tsx for reusability)
-// ============================================================================
-
 const LOOKBACK_DAYS = 30;
 
 function transformDashboardData(data: Record<string, unknown>, alertsData: unknown[]): DashboardData {
-  // Analyze system health
   const systemIssues: SystemHealth["issues"] = [];
 
   const monitorsDown = Number(data.monitors && typeof data.monitors === 'object' ? (data.monitors as Record<string, unknown>).down : 0) || 0;
@@ -203,9 +173,6 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
       severity: failedJobs > 5 ? ("high" as const) : ("medium" as const),
     });
   }
-
-  // Queue capacity checks removed as per user request
-  // Only showing Monitor and Job issues derived from specific failure counts
 
   const monitorsData = data.monitors as Record<string, unknown> | undefined;
   const testsData = data.tests as Record<string, unknown> | undefined;
@@ -330,46 +297,37 @@ function transformDashboardData(data: Record<string, unknown>, alertsData: unkno
   };
 }
 
-// ============================================================================
-// HOOK
-// ============================================================================
-
-/**
- * Hook to fetch dashboard data with React Query caching.
- * 
- * Benefits:
- * - Cached across navigations (no re-fetch when returning to dashboard)
- * - Automatic background refresh every 60 seconds
- * - Request deduplication if multiple components need same data
- * - Project switch invalidates cache automatically via queryKey
- */
 export function useDashboard() {
   const { currentProject } = useProjectContext();
   const projectId = currentProject?.id ?? null;
   const queryClient = useQueryClient();
+  const isRestoring = useIsRestoring();
+
+  const queryKey = getDashboardQueryKey(projectId);
 
   const query = useQuery({
-    queryKey: getDashboardQueryKey(projectId),
+    queryKey,
     queryFn: fetchDashboard,
-    enabled: !!projectId, // Only fetch when we have a project
-    // PERFORMANCE: No polling - data refreshes on page visit or manual refresh
-    // Dashboard makes 25+ DB queries per request - polling is too expensive
-    staleTime: 60 * 1000,  // 60 seconds
-    gcTime: 10 * 60 * 1000,    // 10 minutes - keep in memory
+    enabled: !!projectId,
+    staleTime: 60 * 1000,  // Dashboard data refreshes more frequently (60s)
+    // gcTime uses global default (24h)
     refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
     retry: 2,
+    placeholderData: keepPreviousData,
   });
 
-  // Function to manually refetch (e.g., after project switch)
   const refetch = () => query.refetch();
 
-  // Function to invalidate cache (e.g., after data mutation)
   const invalidate = () => 
     queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
 
+  const isInitialLoading = query.isPending && query.isFetching && !isRestoring;
+
   return {
     data: query.data,
-    isLoading: query.isLoading,
+    isLoading: isInitialLoading,
     isRefetching: query.isRefetching,
     error: query.error as Error | null,
     refetch,

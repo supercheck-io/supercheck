@@ -1,17 +1,6 @@
-/**
- * Monitor Details Hooks
- *
- * React Query hooks for monitor detail page data fetching.
- * Provides cached access to monitor stats, paginated results, and permissions.
- */
-
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
 import type { MonitorResultItem } from "@/components/monitors/monitor-detail-client";
 import { Role } from "@/lib/rbac/permissions-client";
-
-// ============================================================================
-// TYPES
-// ============================================================================
 
 export interface MonitorStats {
   period24h: {
@@ -51,17 +40,9 @@ export interface MonitorPermissions {
   canToggle: boolean;
 }
 
-// ============================================================================
-// QUERY KEYS
-// ============================================================================
-
 export const MONITOR_STATS_KEY = ["monitor-stats"] as const;
 export const MONITOR_RESULTS_KEY = ["monitor-results"] as const;
 export const MONITOR_PERMISSIONS_KEY = ["monitor-permissions"] as const;
-
-// ============================================================================
-// FETCH FUNCTIONS
-// ============================================================================
 
 async function fetchMonitorStats(
   monitorId: string,
@@ -136,24 +117,20 @@ async function fetchMonitorPermissions(
   };
 }
 
-// ============================================================================
-// HOOKS
-// ============================================================================
-
-/**
- * Hook to fetch monitor stats (24h and 30d metrics) with caching.
- * Cached for 30 seconds to balance freshness and performance.
- */
 export function useMonitorStats(monitorId: string, location: string = "all") {
   const queryClient = useQueryClient();
+  const isRestoring = useIsRestoring();
 
   const query = useQuery({
     queryKey: [...MONITOR_STATS_KEY, monitorId, location],
     queryFn: () => fetchMonitorStats(monitorId, location),
     enabled: !!monitorId,
-    staleTime: 30 * 1000, // 30 seconds - stats update frequently
-    gcTime: 5 * 60 * 1000, // 5 minutes cache
-    refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
+    staleTime: 30 * 1000,  // Monitor stats update frequently (30s)
+    // gcTime uses global default (24h)
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    placeholderData: keepPreviousData,
   });
 
   const invalidate = () =>
@@ -162,19 +139,17 @@ export function useMonitorStats(monitorId: string, location: string = "all") {
       refetchType: 'all',
     });
 
+  const isActuallyLoading = query.isPending && query.isFetching && !isRestoring;
+
   return {
     stats: query.data,
-    isLoading: query.isLoading,
+    isLoading: isActuallyLoading,
     error: query.error as Error | null,
     refetch: query.refetch,
     invalidate,
   };
 }
 
-/**
- * Hook to fetch paginated monitor results with caching.
- * Each page/filter combination is cached separately.
- */
 export function useMonitorResults(
   monitorId: string,
   options: {
@@ -185,6 +160,7 @@ export function useMonitorResults(
   }
 ) {
   const queryClient = useQueryClient();
+  const isRestoring = useIsRestoring();
   const dateString = options.date?.toISOString().split("T")[0];
 
   const query = useQuery({
@@ -204,10 +180,12 @@ export function useMonitorResults(
         location: options.location,
       }),
     enabled: !!monitorId,
-    staleTime: 30 * 1000, // 30 seconds - results change with new checks
-    gcTime: 5 * 60 * 1000, // 5 minutes cache
-    refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
-    placeholderData: (previousData) => previousData, // Keep previous data while fetching
+    staleTime: 30 * 1000,  // Monitor results update frequently (30s)
+    // gcTime uses global default (24h)
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    placeholderData: keepPreviousData,
   });
 
   const invalidate = () =>
@@ -216,30 +194,32 @@ export function useMonitorResults(
       refetchType: 'all',
     });
 
+  const isActuallyLoading = query.isPending && query.isFetching && !isRestoring;
+
   return {
     results: query.data?.data ?? [],
     pagination: query.data?.pagination ?? null,
-    isLoading: query.isLoading,
-    isFetching: query.isFetching, // True when refetching with existing data
+    isLoading: isActuallyLoading,
+    isFetching: query.isFetching,
     error: query.error as Error | null,
     refetch: query.refetch,
     invalidate,
   };
 }
 
-/**
- * Hook to fetch user permissions for a monitor.
- * Cached for 5 minutes since permissions rarely change.
- */
 export function useMonitorPermissions(monitorId: string) {
+  const isRestoring = useIsRestoring();
   const query = useQuery({
     queryKey: [...MONITOR_PERMISSIONS_KEY, monitorId],
     queryFn: () => fetchMonitorPermissions(monitorId),
     enabled: !!monitorId,
-    staleTime: 5 * 60 * 1000, // 5 minutes - permissions rarely change
-    gcTime: 10 * 60 * 1000, // 10 minutes cache
-    refetchOnWindowFocus: false, // Don't refetch on focus for permissions
+    // Uses global defaults: staleTime (30min), gcTime (24h)
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
   });
+
+  const isActuallyLoading = query.isPending && query.isFetching && !isRestoring;
 
   return {
     permissions: query.data,
@@ -247,7 +227,7 @@ export function useMonitorPermissions(monitorId: string) {
     canEdit: query.data?.canEdit ?? false,
     canDelete: query.data?.canDelete ?? false,
     canToggle: query.data?.canToggle ?? false,
-    isLoading: query.isLoading,
+    isLoading: isActuallyLoading,
     error: query.error as Error | null,
   };
 }

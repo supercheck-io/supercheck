@@ -21,6 +21,7 @@ import { getUserOrgRole } from "./rbac/middleware";
 import { Role } from "./rbac/permissions";
 import { roleToString } from "./rbac/role-normalizer";
 import { getCachedAuthSession } from "./session-cache";
+import { getUnifiedAuthContext } from "./rbac/unified-auth";
 
 // getCachedAuthSession imported from session-cache.ts (DRY principle)
 
@@ -395,22 +396,57 @@ export async function requireProjectContext(): Promise<{
   project: ProjectContext;
   organizationId: string;
 }> {
-  // Get current user (handles impersonation)
-  const currentUser = await getCurrentUser();
-  if (!currentUser) {
+  // Use cached session to avoid duplicate DB round-trips
+  const sessionData = await getCachedAuthSession();
+  
+  if (!sessionData?.session?.token) {
     throw new Error("Authentication required");
   }
 
-  const project = await getCurrentProjectContext();
-  if (!project) {
-    throw new Error(
-      "No active project found. Please ensure you have access to at least one project."
-    );
+  // Check for project override header
+  const headersList = await headers();
+  const requestedProjectId = headersList.get("x-project-id");
+
+  // Use optimization unified query (1 DB call instead of 6-10)
+  const ctx = await getUnifiedAuthContext(sessionData.session.token, requestedProjectId);
+
+  if (!ctx.isValid) {
+     throw new Error(ctx.error || "Authentication failed");
+  }
+
+  if (!ctx.projectId || !ctx.organizationId) {
+     // Fallback: If unified query didn't find project, try the old (slow) way 
+     // which handles default project creation logic
+     // This ensures we don't break "first login" flow while optimizing standard flow
+     const slowProject = await getCurrentProjectContext();
+     if (!slowProject) {
+        throw new Error(
+          "No active project found. Please ensure you have access to at least one project."
+        );
+     }
+     
+     // Get session again to be safe about user ID (impersonation)
+     // getCurrentUser() was called inside old flow potentially, but let's just use what we have
+     // We know validity from ctx.isValid check above basically
+     const userId = ctx.userId; // unified auth handles impersonation
+     
+     return {
+        userId,
+        project: slowProject,
+        organizationId: slowProject.organizationId
+     };
   }
 
   return {
-    userId: currentUser.id,
-    project,
-    organizationId: project.organizationId,
+    userId: ctx.userId,
+    organizationId: ctx.organizationId,
+    project: {
+        id: ctx.projectId,
+        name: ctx.projectName || "Unknown Project",
+        slug: undefined, // slug not strictly required for API context usually, adds query overhead
+        organizationId: ctx.organizationId,
+        isDefault: ctx.isDefaultProject || false,
+        userRole: ctx.projectRole || "project_viewer", 
+    },
   };
 }

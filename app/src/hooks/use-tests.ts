@@ -1,23 +1,18 @@
-/**
- * Tests Data Hook
- *
- * React Query hook for fetching tests list with efficient caching.
- * Uses the generic data hook factory for DRY, consistent behavior.
- * Caches data for 60 seconds.
- */
-
 import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
-
-// ============================================================================
-// TYPES
-// ============================================================================
 
 export interface Test {
   id: string;
   name: string;
   title?: string;
   description?: string;
-  type: "playwright" | "k6" | "api" | "browser" | "database" | "custom" | "performance";
+  type:
+    | "playwright"
+    | "k6"
+    | "api"
+    | "browser"
+    | "database"
+    | "custom"
+    | "performance";
   priority?: "low" | "medium" | "high";
   script?: string;
   createdAt: string;
@@ -43,60 +38,45 @@ interface UpdateTestData {
   description?: string;
 }
 
-// ============================================================================
-// QUERY KEYS (exported for external cache invalidation)
-// ============================================================================
-
 export const TESTS_QUERY_KEY = ["tests"] as const;
 export const TEST_QUERY_KEY = ["test"] as const;
 
-// ============================================================================
-// HOOK FACTORY
-// ============================================================================
+export function getTestsListQueryKey(projectId: string | null) {
+  return [...TESTS_QUERY_KEY, projectId, "{}"] as const;
+}
 
 const testsHook = createDataHook<Test, CreateTestData, UpdateTestData>({
   queryKey: TESTS_QUERY_KEY,
   endpoint: "/api/tests",
-  staleTime: 60 * 1000, // 60 seconds - cache invalidated after mutations
-  gcTime: 5 * 60 * 1000, // 5 minutes cache
-  refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
+  refetchOnWindowFocus: false,
   singleItemField: "test",
 });
-
-// ============================================================================
-// HOOKS
-// ============================================================================
 
 export interface UseTestsOptions {
   type?: string;
   search?: string;
   enabled?: boolean;
+  includeScript?: boolean;
+  limit?: number;
+  page?: number;
 }
 
-/**
- * Hook to fetch tests list with React Query caching.
- * Data is cached for 60 seconds and shared across components.
- */
 export function useTests(options: UseTestsOptions = {}) {
-  const result = testsHook.useList(options as UseTestsOptions & { [key: string]: unknown });
+  const result = testsHook.useList(
+    options as UseTestsOptions & { [key: string]: unknown }
+  );
 
   return {
     ...result,
-    tests: result.items, // Alias for component usage
-    loading: result.isLoading, // Alias for component usage
+    tests: result.items,
+    loading: result.isLoading,
   };
 }
 
-/**
- * Hook to fetch a single test by ID with React Query caching.
- */
 export function useTest(testId: string | null) {
   return testsHook.useSingle(testId);
 }
 
-/**
- * Hook for test mutations (create, update, delete) with optimistic updates.
- */
 export function useTestMutations() {
   const baseMutations = testsHook.useMutations();
 

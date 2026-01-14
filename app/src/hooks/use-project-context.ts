@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
-import { getDashboardQueryKey, fetchDashboard } from './use-dashboard';
 
 export interface ProjectContext {
   id: string;
@@ -22,16 +20,12 @@ interface ProjectContextState {
   error: string | null;
   switchProject: (projectId: string) => Promise<boolean>;
   refreshProjects: () => Promise<void>;
-  // Backward compatibility
   projectId: string | null;
   projectName: string | null;
 }
 
 const ProjectContextContext = createContext<ProjectContextState | null>(null);
 
-// ============================================================================
-// MODULE-LEVEL CACHE (prevents refetch on every component mount)
-// ============================================================================
 interface ProjectsCache {
   currentProject: ProjectContext | null;
   projects: ProjectContext[];
@@ -39,20 +33,12 @@ interface ProjectsCache {
 }
 
 let projectsCache: ProjectsCache | null = null;
-const CACHE_TTL = 30000; // 30 seconds - projects rarely change
+const CACHE_TTL = 30000;
 
-/**
- * Clear the module-level projects cache
- * Call this on sign-out to prevent data leakage between sessions
- */
 export function clearProjectsCache(): void {
   projectsCache = null;
 }
 
-/**
- * Hook to access project context
- * @throws Error if used outside ProjectContextProvider
- */
 export function useProjectContext(): ProjectContextState {
   const context = useContext(ProjectContextContext);
   if (!context) {
@@ -61,33 +47,45 @@ export function useProjectContext(): ProjectContextState {
   return context;
 }
 
-/**
- * Safe hook to access project context without throwing
- * Returns null if used outside ProjectContextProvider
- * Use this for components that may render outside the provider
- */
 export function useProjectContextSafe(): ProjectContextState | null {
   return useContext(ProjectContextContext);
 }
 
-/**
- * Project context state management
- * PERFORMANCE OPTIMIZATION: Uses module-level cache to prevent
- * duplicate API calls when navigating between pages.
- * Also prefetches dashboard data as soon as project is available.
- */
-export function useProjectContextState(): ProjectContextState {
-  const [currentProject, setCurrentProject] = useState<ProjectContext | null>(projectsCache?.currentProject || null);
-  const [projects, setProjects] = useState<ProjectContext[]>(projectsCache?.projects || []);
-  const [loading, setLoading] = useState(!projectsCache);
+export interface ProjectContextHydrationProps {
+  initialProjects?: ProjectContext[];
+  initialCurrentProject?: ProjectContext | null;
+}
+
+export function useProjectContextState(
+  hydrationProps?: ProjectContextHydrationProps
+): ProjectContextState {
+  const hasServerData = hydrationProps?.initialProjects !== undefined;
+  const initialProjectsValue = hasServerData 
+    ? hydrationProps.initialProjects 
+    : (projectsCache?.projects || []);
+  const initialCurrentProjectValue = hasServerData
+    ? (hydrationProps.initialCurrentProject ?? null)
+    : (projectsCache?.currentProject || null);
+  
+  const [currentProject, setCurrentProject] = useState<ProjectContext | null>(initialCurrentProjectValue);
+  const [projects, setProjects] = useState<ProjectContext[]>(initialProjectsValue!);
+  const [loading, setLoading] = useState(!hasServerData && !projectsCache);
   const [error, setError] = useState<string | null>(null);
-  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (hasServerData && !projectsCache && initialProjectsValue && initialProjectsValue.length >= 0) {
+      projectsCache = {
+        projects: initialProjectsValue,
+        currentProject: initialCurrentProjectValue,
+        timestamp: Date.now(),
+      };
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasServerData]);
 
   const fetchProjects = useCallback(async (forceRefresh = false) => {
-    // Use cache if available and not expired (unless force refresh)
     const now = Date.now();
     if (!forceRefresh && projectsCache && (now - projectsCache.timestamp) < CACHE_TTL) {
-      // Use cached data - no API call needed
       setProjects(projectsCache.projects);
       setCurrentProject(projectsCache.currentProject);
       setLoading(false);
@@ -100,10 +98,7 @@ export function useProjectContextState(): ProjectContextState {
       const data = await response.json();
 
       if (!response.ok) {
-        // Handle specific permission errors more gracefully during user setup
         if (response.status === 403 && data.error?.includes('Insufficient permissions')) {
-          console.log('Permission error during project fetch - likely new user setup issue');
-          // Don't throw error, just set empty projects to allow setup flow to continue
           setProjects([]);
           setCurrentProject(null);
           projectsCache = { projects: [], currentProject: null, timestamp: Date.now() };
@@ -115,15 +110,12 @@ export function useProjectContextState(): ProjectContextState {
       if (data.success && Array.isArray(data.data)) {
         let newCurrentProject: ProjectContext | null = null;
         
-        // Set current project from API response
         if (data.currentProject) {
           newCurrentProject = data.currentProject;
         } else if (data.data.length > 0) {
-          // Fallback to default or first project
           newCurrentProject = data.data.find((p: ProjectContext) => p.isDefault) || data.data[0];
         }
         
-        // Update module-level cache
         projectsCache = {
           projects: data.data,
           currentProject: newCurrentProject,
@@ -151,9 +143,7 @@ export function useProjectContextState(): ProjectContextState {
     try {
       const response = await fetch(`/api/projects/switch`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId }),
       });
 
@@ -165,15 +155,8 @@ export function useProjectContextState(): ProjectContextState {
 
       if (data.success && data.project) {
         setCurrentProject(data.project);
-        
-        // Store project name for toast after redirect
         sessionStorage.setItem('projectSwitchSuccess', data.project.name);
-        
-        // Add a small delay to ensure database transaction is committed before redirect
-        // This prevents race conditions where the redirect happens before session is updated
         await new Promise(resolve => setTimeout(resolve, 200));
-        
-        // Redirect to root URL to prevent access to resources that don't belong to the new project
         window.location.href = '/';
         return true;
       } else {
@@ -189,26 +172,12 @@ export function useProjectContextState(): ProjectContextState {
 
   const refreshProjects = useCallback(async () => {
     setLoading(true);
-    await fetchProjects(true); // Force refresh - bypass cache
+    await fetchProjects(true);
   }, [fetchProjects]);
 
-  // Load projects on mount
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
-
-  // PERFORMANCE: Prefetch dashboard data as soon as we have a project
-  // This starts the slow dashboard fetch in parallel with other initializations
-  useEffect(() => {
-    if (currentProject?.id) {
-      // Prefetch dashboard data - doesn't block, just warms the cache
-      queryClient.prefetchQuery({
-        queryKey: getDashboardQueryKey(currentProject.id),
-        queryFn: fetchDashboard,
-        staleTime: 60 * 1000, // Same as useDashboard
-      });
-    }
-  }, [currentProject?.id, queryClient]);
 
   return {
     currentProject,
@@ -217,17 +186,26 @@ export function useProjectContextState(): ProjectContextState {
     error,
     switchProject,
     refreshProjects,
-    // Backward compatibility
     projectId: currentProject?.id || null,
     projectName: currentProject?.name || null,
   };
 }
 
-/**
- * Provider component for project context
- */
-export function ProjectContextProvider({ children }: { children: React.ReactNode }): React.ReactElement {
-  const contextState = useProjectContextState();
+interface ProjectContextProviderProps {
+  children: React.ReactNode;
+  initialProjects?: ProjectContext[];
+  initialCurrentProject?: ProjectContext | null;
+}
+
+export function ProjectContextProvider({ 
+  children, 
+  initialProjects,
+  initialCurrentProject 
+}: ProjectContextProviderProps): React.ReactElement {
+  const contextState = useProjectContextState({ 
+    initialProjects, 
+    initialCurrentProject 
+  });
   return React.createElement(
     ProjectContextContext.Provider,
     { value: contextState },

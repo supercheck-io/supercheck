@@ -28,7 +28,7 @@ export function TabLoadingSpinner({
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-16">
-      <SuperCheckLoading size="md" message={message} />
+      <SuperCheckLoading size="lg" message={message} />
     </div>
   );
 }

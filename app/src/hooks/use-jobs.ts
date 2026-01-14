@@ -1,17 +1,6 @@
-/**
- * Jobs Data Hook
- *
- * React Query hook for fetching jobs list with efficient caching.
- * Uses the generic data hook factory for DRY, consistent behavior.
- * Cache is invalidated after mutations to ensure fresh data.
- */
-
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
-
-// ============================================================================
-// TYPES
-// ============================================================================
+import { RUNS_QUERY_KEY } from "./use-runs";
 
 export interface JobTest {
   id: string;
@@ -86,29 +75,19 @@ interface UpdateJobData {
   status?: string;
 }
 
-// ============================================================================
-// QUERY KEYS (exported for external cache invalidation)
-// ============================================================================
-
 export const JOBS_QUERY_KEY = ["jobs"] as const;
 export const JOB_QUERY_KEY = ["job"] as const;
 
-// ============================================================================
-// HOOK FACTORY
-// ============================================================================
+export function getJobsListQueryKey(projectId: string | null) {
+  return [...JOBS_QUERY_KEY, projectId, "{}"] as const;
+}
 
 const jobsHook = createDataHook<Job, CreateJobData, UpdateJobData>({
   queryKey: JOBS_QUERY_KEY,
   endpoint: "/api/jobs",
-  staleTime: 60 * 1000, // 60 seconds - cache invalidated after mutations
-  gcTime: 5 * 60 * 1000, // 5 minutes cache for background display
-  refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
+  refetchOnWindowFocus: false,
   singleItemField: "job",
 });
-
-// ============================================================================
-// HOOKS
-// ============================================================================
 
 export interface UseJobsOptions {
   page?: number;
@@ -118,30 +97,19 @@ export interface UseJobsOptions {
   enabled?: boolean;
 }
 
-/**
- * Hook to fetch jobs list with React Query caching.
- * Data is cached for 60 seconds and shared across components.
- */
 export function useJobs(options: UseJobsOptions = {}) {
   const result = jobsHook.useList(options as UseJobsOptions & { [key: string]: unknown });
 
-  // Maintain backward compatible return shape
   return {
     ...result,
-    jobs: result.items, // Alias for backward compatibility
+    jobs: result.items,
   };
 }
 
-/**
- * Hook to fetch a single job by ID with React Query caching.
- */
 export function useJob(jobId: string | null) {
   return jobsHook.useSingle(jobId);
 }
 
-/**
- * Hook for job mutations (create, update, delete, trigger) with optimistic updates.
- */
 export function useJobMutations() {
   const queryClient = useQueryClient();
   const baseMutations = jobsHook.useMutations();
@@ -160,6 +128,8 @@ export function useJobMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY, refetchType: 'all' });
+      // Also invalidate runs cache so new run appears immediately
+      queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY, refetchType: 'all' });
     },
   });
 

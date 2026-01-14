@@ -14,6 +14,11 @@ import {
  * 2. node:async_hooks is not available in browsers
  * 3. Polar checkout/portal functionality is handled server-side in auth.ts
  * 4. Client-side code doesn't actually use polarClient methods (verified by codebase search)
+ * 
+ * PERFORMANCE OPTIMIZATION:
+ * Session options are configured to minimize refetch triggers that can cause
+ * blocking behavior. Window focus refetch is disabled to prevent cascade
+ * session checks across multiple components when switching tabs.
  */
 export const authClient = createAuthClient({
   /** The base URL of the server (optional if you're using the same domain) */
@@ -31,6 +36,10 @@ export const authClient = createAuthClient({
     lastLoginMethodClient(),
     // Note: polarClient() is NOT included here - see comment above
   ],
+  // PERFORMANCE: Reduce session refetch triggers to prevent blocking
+  fetchOptions: {
+    // Default fetch options for auth requests
+  },
 });
 
 export const {

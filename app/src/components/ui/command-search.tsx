@@ -20,6 +20,7 @@ import {
   Variable,
   Tally4,
   RefreshCw,
+  Target,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -57,6 +58,7 @@ export function CommandSearch({ className }: CommandSearchProps) {
         // Navigation
         home: "/",
         dashboard: "/",
+        requirements: "/requirements",
         monitors: "/monitors",
         tests: "/tests",
         jobs: "/jobs",
@@ -85,7 +87,6 @@ export function CommandSearch({ className }: CommandSearchProps) {
         "view-failed-tests": "/tests?status=failed",
 
         // System
-        "queue-stats": "/api/queue-stats",
         "system-health": "/api/dashboard",
       };
 
@@ -161,6 +162,10 @@ export function CommandSearch({ className }: CommandSearchProps) {
                 <CommandItem onSelect={() => handleCommand("status-pages")}>
                   <Tally4 className="mr-2 h-4 w-4 !text-green-600" />
                   <span>Status Pages</span>
+                </CommandItem>
+                <CommandItem onSelect={() => handleCommand("requirements")}>
+                  <Target className="mr-2 h-4 w-4 !text-indigo-500" />
+                  <span>Requirements</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("tests")}>
                   <Code className="mr-2 h-4 w-4 !text-blue-600" />

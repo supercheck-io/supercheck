@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Loader2, Mail, CheckCircle, ArrowLeft, Clock } from "lucide-react";
@@ -45,6 +45,20 @@ function formatCooldownTime(ms: number): string {
 }
 
 export default function VerifyEmailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-[300px]">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <VerifyEmailPageContent />
+    </Suspense>
+  );
+}
+
+function VerifyEmailPageContent() {
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [isResending, setIsResending] = useState(false);

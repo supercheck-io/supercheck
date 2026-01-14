@@ -580,7 +580,7 @@ export class MonitorService {
       .where(
         and(
           eq(schema.monitorResults.monitorId, result.monitorId),
-          sql`(${schema.monitorResults.details} ->>'executionGroupId') = ${executionGroupId}`,
+          eq(schema.monitorResults.executionGroupId, executionGroupId),
         ),
       )
       .orderBy(desc(schema.monitorResults.checkedAt));
@@ -2137,6 +2137,9 @@ export class MonitorService {
         // Store test execution metadata for synthetic monitors
         testExecutionId: resultData.testExecutionId || null,
         testReportS3Url: resultData.testReportS3Url || null,
+        // PERFORMANCE: Store executionGroupId as first-class column for indexed lookups
+        executionGroupId:
+          (resultData.details as { executionGroupId?: string })?.executionGroupId || null,
       });
     } catch (error) {
       this.logger.error(

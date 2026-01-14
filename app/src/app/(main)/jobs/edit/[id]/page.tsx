@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import EditJob from "@/components/jobs/edit-job";
@@ -7,6 +8,7 @@ import { useEffect } from "react";
 import { EditJobSkeleton } from "@/components/jobs/edit-job-skeleton";
 import { toast } from "sonner";
 import { useJob } from "@/hooks/use-jobs";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 
 export default function EditJobPage() {
   const params = useParams();
@@ -77,7 +79,16 @@ export default function EditJobPage() {
   return (
     <div className=" mx-auto p-4 space-y-4">
       <PageBreadcrumbs items={breadcrumbs} />
-      <EditJob jobId={jobId} initialJobData={jobData} />
+      {/* Suspense boundary required because EditJob uses useSearchParams() */}
+      <Suspense
+        fallback={
+          <div className="flex min-h-[400px] items-center justify-center">
+            <SuperCheckLoading size="lg" message="Loading job editor..." />
+          </div>
+        }
+      >
+        <EditJob jobId={jobId} initialJobData={jobData} />
+      </Suspense>
     </div>
   );
 }

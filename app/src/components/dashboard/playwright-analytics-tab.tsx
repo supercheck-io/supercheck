@@ -9,6 +9,7 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useProjectContext } from "@/hooks/use-project-context";
 
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -122,6 +123,8 @@ interface PlaywrightAnalyticsTabProps {
     onJobChange: (jobId: string) => void;
     period: number;
     onPeriodChange: (period: number) => void;
+    /** Callback to lift jobs data to parent - eliminates duplicate fetches */
+    onJobsLoaded?: (jobs: Array<{ id: string; name: string }>) => void;
 }
 
 export function PlaywrightAnalyticsTab({
@@ -129,7 +132,9 @@ export function PlaywrightAnalyticsTab({
     onJobChange,
     period,
     onPeriodChange,
+    onJobsLoaded,
 }: PlaywrightAnalyticsTabProps) {
+    const { currentProject, loading: isProjectLoading } = useProjectContext();
     const [data, setData] = useState<PlaywrightAnalyticsResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -146,29 +151,50 @@ export function PlaywrightAnalyticsTab({
         return () => cancelAnimationFrame(rafId);
     }, []);
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (signal?: AbortSignal) => {
+        if (isProjectLoading || !currentProject?.id) return;
         try {
             setLoading(true);
             const params = new URLSearchParams();
             params.set("period", period.toString());
-            if (selectedJob !== "all" && selectedJob !== "") {
+            if (selectedJob && selectedJob !== "all") {
                 params.set("jobId", selectedJob);
             }
 
-            const response = await fetch(`/api/analytics/playwright?${params.toString()}`);
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (currentProject?.id) {
+                headers["x-project-id"] = currentProject.id;
+            }
+
+            const response = await fetch(`/api/analytics/playwright?${params.toString()}`, {
+                headers,
+                signal
+            });
             if (!response.ok) throw new Error("Failed to fetch Playwright analytics");
             const result = await response.json();
-            setData(result);
-            setError(null);
+
+            if (!signal?.aborted) {
+                setData(result);
+                setError(null);
+                // Lift jobs data to parent to eliminate duplicate fetches
+                if (result.jobs && onJobsLoaded) {
+                    onJobsLoaded(result.jobs);
+                }
+            }
         } catch (err) {
+            if (err instanceof Error && err.name === 'AbortError') return;
             setError(err instanceof Error ? err.message : "Unknown error");
         } finally {
-            setLoading(false);
+            if (!signal?.aborted) {
+                setLoading(false);
+            }
         }
-    }, [period, selectedJob]);
+    }, [period, selectedJob, onJobsLoaded, currentProject?.id, isProjectLoading]);
 
     useEffect(() => {
-        fetchData();
+        const controller = new AbortController();
+        fetchData(controller.signal);
+        return () => controller.abort();
     }, [fetchData]);
 
     if (loading) {
@@ -219,7 +245,7 @@ export function PlaywrightAnalyticsTab({
                     <div className="text-center py-12">
                         <XCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
                         <p className="text-destructive mb-4">Error: {error}</p>
-                        <Button variant="outline" onClick={fetchData}>Retry</Button>
+                        <Button variant="outline" onClick={() => fetchData()}>Retry</Button>
                     </div>
                 </CardContent>
             </Card>

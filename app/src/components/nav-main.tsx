@@ -1,6 +1,11 @@
 "use client";
 
 import { ChevronRight, type LucideIcon } from "lucide-react";
+import { useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { useProjectContext } from "@/hooks/use-project-context";
+import { prefetchSidebarRoute } from "@/lib/prefetch-utils";
 
 import {
   Collapsible,
@@ -20,7 +25,40 @@ import {
 import Link from "next/link";
 import React from "react";
 
-// Type for icon that accepts both LucideIcon and custom React components
+function HoverPrefetchLink({
+  href,
+  children,
+  className,
+}: {
+  href: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { currentProject } = useProjectContext();
+  const prefetchedRef = useRef(false);
+
+  const handleMouseEnter = useCallback(() => {
+    if (!prefetchedRef.current) {
+      prefetchedRef.current = true;
+      router.prefetch(href);
+      prefetchSidebarRoute(href, currentProject?.id ?? null, queryClient);
+    }
+  }, [router, href, queryClient, currentProject?.id]);
+
+  return (
+    <Link
+      href={href}
+      prefetch={false}
+      onMouseEnter={handleMouseEnter}
+      className={className}
+    >
+      {children}
+    </Link>
+  );
+}
+
 type IconComponent = LucideIcon | React.ComponentType<{ className?: string }>;
 
 export type SubItem = {
@@ -86,7 +124,7 @@ export function NavMain({
                       )}
                     </a>
                   ) : (
-                    <Link href={item.url}>
+                    <HoverPrefetchLink href={item.url}>
                       {item.icon && <item.icon />}
                       <span>{item.title}</span>
                       {item.badge && (
@@ -94,7 +132,7 @@ export function NavMain({
                           {item.badge}
                         </span>
                       )}
-                    </Link>
+                    </HoverPrefetchLink>
                   )}
                 </SidebarMenuButton>
               )}
@@ -102,7 +140,6 @@ export function NavMain({
               <CollapsibleContent>
                 <SidebarMenuSub>
                   {item.items?.map((subItem, idx) => {
-                    // Check if this is a group label item
                     if ("groupLabel" in subItem && !("title" in subItem)) {
                       return (
                         <div
@@ -114,7 +151,6 @@ export function NavMain({
                       );
                     }
 
-                    // Handle group items
                     if ("items" in subItem && !("url" in subItem)) {
                       return (
                         <React.Fragment key={`group-items-${idx}`}>
@@ -123,7 +159,7 @@ export function NavMain({
                             return (
                               <SidebarMenuSubItem key={item.title}>
                                 <SidebarMenuSubButton asChild>
-                                  <Link href={item.url}>
+                                  <HoverPrefetchLink href={item.url}>
                                     {ItemIcon && (
                                       <ItemIcon
                                         className={`h-4 w-4 ${item.color || ""
@@ -131,7 +167,7 @@ export function NavMain({
                                       />
                                     )}
                                     <span>{item.title}</span>
-                                  </Link>
+                                  </HoverPrefetchLink>
                                 </SidebarMenuSubButton>
                               </SidebarMenuSubItem>
                             );
@@ -140,20 +176,19 @@ export function NavMain({
                       );
                     }
 
-                    // Regular sub item
                     const regularItem = subItem as SubItem;
                     const IconComponent = regularItem.icon;
                     return (
                       <SidebarMenuSubItem key={regularItem.title}>
                         <SidebarMenuSubButton asChild>
-                          <Link href={regularItem.url}>
+                          <HoverPrefetchLink href={regularItem.url}>
                             {IconComponent && (
                               <IconComponent
                                 className={`h-4 w-4 ${regularItem.color || ""}`}
                               />
                             )}
                             <span>{regularItem.title}</span>
-                          </Link>
+                          </HoverPrefetchLink>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
                     );

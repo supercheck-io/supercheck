@@ -48,11 +48,16 @@ import { createRequirement, updateRequirement, linkTestsToRequirement, unlinkTes
 import { REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
 import type { CreateRequirementInput, UpdateRequirementInput } from "@/actions/requirements";
 import { TagSelector, type Tag } from "@/components/ui/tag-selector";
-import { useTags, useTagMutations } from "@/hooks/use-tags";
+import { useTags, useTagMutations, useRequirementTags, useSaveRequirementTags } from "@/hooks/use-tags";
 import { getLinkedTests, type LinkedTest } from "@/actions/requirements";
 import { useQuery } from "@tanstack/react-query";
 import TestSelector from "@/components/shared/test-selector";
 import { Test } from "@/components/jobs/schema";
+import React from "react";
+import { normalizeRole } from "@/lib/rbac/role-normalizer";
+import { canCreateTags, canDeleteTags } from "@/lib/rbac/client-permissions";
+import { useProjectContext } from "@/hooks/use-project-context";
+import { useSession } from "@/utils/auth-client";
 
 // Form schema - following best practices like job form
 const requirementFormSchema = z.object({
@@ -95,24 +100,72 @@ export function RequirementForm({
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    // Tag management
-    const { tags: availableTags, isLoading: isLoadingTags } = useTags();
-    const { createTag, deleteTag } = useTagMutations();
+    // Define requirementId early so hooks can use it
+    const requirementId = defaultValues?.id;
 
-    // Helper: Convert comma-separated string to Tag[]
-    const stringToTags = (tagsString: string | null | undefined): Tag[] => {
-        if (!tagsString) return [];
-        return tagsString.split(",")
-            .map(t => t.trim())
-            .filter(t => t.length > 0)
-            .map(name => {
-                const existing = availableTags.find(t => t.name.toLowerCase() === name.toLowerCase());
-                return existing || {
-                    id: `temp-${name}`,
-                    name,
-                    color: name.toLowerCase() === "ai" ? "#a855f7" : null
-                };
+    // Get user context for RBAC (matching test-form.tsx pattern)
+    const { currentProject } = useProjectContext();
+    const { data: session } = useSession();
+    const userRole = currentProject?.userRole;
+    const userId = session?.user?.id;
+
+    // Permission checks for tags (same pattern as test-form.tsx)
+    const role = userRole ? normalizeRole(userRole) : null;
+    const canUserCreateTags = role ? canCreateTags(role) : false;
+    const canUserDeleteTags = role ? canDeleteTags(role) : false;
+
+    // Function to check if specific tag can be deleted by current user
+    const canDeleteSpecificTag = (tag: Tag): boolean => {
+        if (!canUserDeleteTags || !role) return false;
+        // PROJECT_EDITOR can only delete tags they created
+        if (role.toString() === "project_editor") {
+            return tag.createdByUserId === userId;
+        }
+        // PROJECT_ADMIN+ can delete any tag
+        return ["project_admin", "org_admin", "org_owner", "super_admin"].includes(role.toString());
+    };
+
+    // Tag management - using proper hooks like test form
+    const { tags: availableTags, isLoading: isLoadingAvailableTags } = useTags();
+    const { requirementTags: fetchedTags, isLoading: isLoadingFetchedTags } = useRequirementTags(requirementId ?? null);
+    const { createTag, deleteTag } = useTagMutations();
+    const saveRequirementTagsMutation = useSaveRequirementTags();
+    const isLoadingTags = isLoadingAvailableTags || isLoadingFetchedTags;
+
+    // Track selected tags as proper Tag objects (like test form)
+    const [selectedTags, setSelectedTags] = React.useState<Tag[]>([]);
+    const hasInitializedTagsRef = React.useRef(false);
+
+    // Initialize selected tags when fetched from API (edit mode)
+    React.useEffect(() => {
+        if (!requirementId) {
+            hasInitializedTagsRef.current = false;
+            setSelectedTags([]);
+            return;
+        }
+        // Wait for loading to complete before initializing
+        if (!hasInitializedTagsRef.current && !isLoadingFetchedTags && fetchedTags !== undefined) {
+            hasInitializedTagsRef.current = true;
+            setSelectedTags(fetchedTags);
+        }
+    }, [fetchedTags, requirementId, isLoadingFetchedTags]);
+
+    // Save tags after requirement is created/updated
+    const saveRequirementTags = async (targetId: string) => {
+        if (!targetId) return;
+        try {
+            await saveRequirementTagsMutation.mutateAsync({
+                requirementId: targetId,
+                tagIds: selectedTags.map((tag) => tag.id),
             });
+        } catch (error) {
+            console.error("Error saving requirement tags:", error);
+        }
+    };
+
+    // Handle tag change from TagSelector
+    const handleTagChange = (tags: Tag[]) => {
+        setSelectedTags(tags);
     };
 
     const form = useForm<FormData>({
@@ -133,7 +186,6 @@ export function RequirementForm({
     });
 
     // Fetch linked tests if in edit mode
-    const requirementId = defaultValues?.id;
     const { data: linkedTests = [] } = useQuery<LinkedTest[]>({
         queryKey: ["requirement-linked-tests", requirementId],
         queryFn: async () => requirementId ? getLinkedTests(requirementId) : [],
@@ -205,14 +257,16 @@ export function RequirementForm({
                 const toLink = currentIds.filter(id => !originalIds.includes(id));
                 const toUnlink = originalIds.filter(id => !currentIds.includes(id));
 
+                // Sync linked test changes
                 if (toLink.length > 0) {
                     await linkTestsToRequirement(targetId, toLink);
                 }
+                await Promise.all(
+                    toUnlink.map(testId => unlinkTestFromRequirement(targetId!, testId))
+                );
 
-                // Unlink one by one (since we don't have bulk unlink exposed yet)
-                if (toUnlink.length > 0) {
-                    await Promise.all(toUnlink.map(id => unlinkTestFromRequirement(targetId!, id)));
-                }
+                // Save tags (like test form pattern)
+                await saveRequirementTags(targetId);
             }
 
             queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
@@ -333,6 +387,7 @@ export function RequirementForm({
                                                                 {...field}
                                                                 placeholder="User should be able to..."
                                                                 disabled={isSubmitting}
+                                                                className="text-muted-foreground"
                                                             />
                                                         </FormControl>
                                                         <FormMessage />
@@ -351,7 +406,7 @@ export function RequirementForm({
                                                                 {...field}
                                                                 value={field.value ?? ""}
                                                                 placeholder="Detailed description of the requirement..."
-                                                                className="min-h-[120px]"
+                                                                className="min-h-[120px] text-muted-foreground"
                                                                 disabled={isSubmitting}
                                                             />
                                                         </FormControl>
@@ -464,29 +519,28 @@ export function RequirementForm({
                                                 <FormField
                                                     control={form.control}
                                                     name="tags"
-                                                    render={({ field }) => (
-                                                        <FormItem className="space-y-0 w-[400px]">
+                                                    render={() => (
+                                                        <FormItem className="space-y-0 max-w-[800px] min-w-[200px]">
                                                             <FormControl>
                                                                 <div className="[&>div]:min-h-[36px] [&>div]:h-9">
                                                                     <TagSelector
-                                                                        value={stringToTags(field.value)}
-                                                                        onChange={(newTags) => {
-                                                                            const tagString = newTags.map(t => t.name).join(", ");
-                                                                            field.onChange(tagString);
-                                                                        }}
+                                                                        value={selectedTags}
+                                                                        onChange={handleTagChange}
                                                                         availableTags={availableTags}
-                                                                        onCreateTag={async (name, color) => {
-                                                                            return createTag.mutateAsync({ name, color });
-                                                                        }}
-                                                                        onDeleteTag={async (tagId) => {
-                                                                            if (!tagId.startsWith("temp-")) {
-                                                                                await deleteTag.mutateAsync(tagId);
-                                                                            }
-                                                                        }}
+                                                                        onCreateTag={canUserCreateTags ? async (name, color) => {
+                                                                            const newTag = await createTag.mutateAsync({ name, color });
+                                                                            // Add to selected tags immediately
+                                                                            setSelectedTags(prev => [...prev, newTag]);
+                                                                            return newTag;
+                                                                        } : undefined}
+                                                                        onDeleteTag={canUserDeleteTags ? async (tagId) => {
+                                                                            await deleteTag.mutateAsync(tagId);
+                                                                            // Remove from selected tags if present
+                                                                            setSelectedTags(prev => prev.filter(t => t.id !== tagId));
+                                                                        } : undefined}
+                                                                        canDeleteTag={canDeleteSpecificTag}
                                                                         placeholder="Tags..."
                                                                         disabled={isSubmitting || isLoadingTags}
-                                                                        maxTags={5}
-
                                                                     />
                                                                 </div>
                                                             </FormControl>

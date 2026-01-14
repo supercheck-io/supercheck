@@ -1,16 +1,6 @@
-/**
- * Status Pages Data Hook
- *
- * React Query hook for fetching status pages list with efficient caching.
- * Uses the generic data hook factory for DRY, consistent behavior.
- * Caches data for 60 seconds.
- */
-
 import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
-
-// ============================================================================
-// TYPES
-// ============================================================================
+import { useQuery, useQueryClient, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
+import { useProjectContext } from "./use-project-context";
 
 export interface StatusPage {
   id: string;
@@ -50,58 +40,40 @@ interface UpdateStatusPageData {
   status?: string;
 }
 
-// ============================================================================
-// QUERY KEYS (exported for external cache invalidation)
-// ============================================================================
-
 export const STATUS_PAGES_QUERY_KEY = ["statusPages"] as const;
 export const STATUS_PAGE_QUERY_KEY = ["statusPage"] as const;
 
-// ============================================================================
-// HOOK FACTORY
-// ============================================================================
+export function getStatusPagesListQueryKey(projectId: string | null) {
+  // Matches createDataHook's getListQueryKey logic: [...key, projectId, filtersJson]
+  // Uses JSON string "{}" for empty filters to ensure cache key matching
+  return [...STATUS_PAGES_QUERY_KEY, projectId, "{}"] as const;
+}
 
 const statusPagesHook = createDataHook<StatusPage, CreateStatusPageData, UpdateStatusPageData>({
   queryKey: STATUS_PAGES_QUERY_KEY,
   endpoint: "/api/status-pages",
-  staleTime: 60 * 1000, // 60 seconds - cache invalidated after mutations
-  gcTime: 5 * 60 * 1000, // 5 minutes cache
-  refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching on tab switch
+  refetchOnWindowFocus: false,
   singleItemField: "statusPage",
 });
-
-// ============================================================================
-// HOOKS
-// ============================================================================
 
 export interface UseStatusPagesOptions {
   enabled?: boolean;
 }
 
-/**
- * Hook to fetch status pages list with React Query caching.
- * Data is cached for 60 seconds and shared across components.
- */
 export function useStatusPages(options: UseStatusPagesOptions = {}) {
   const result = statusPagesHook.useList(options as UseStatusPagesOptions & { [key: string]: unknown });
 
   return {
     ...result,
-    statusPages: result.items, // Alias for component usage
-    loading: result.isLoading, // Alias for component usage
+    statusPages: result.items,
+    loading: result.isLoading,
   };
 }
 
-/**
- * Hook to fetch a single status page by ID with React Query caching.
- */
 export function useStatusPage(statusPageId: string | null) {
   return statusPagesHook.useSingle(statusPageId);
 }
 
-/**
- * Hook for status page mutations (create, update, delete) with optimistic updates.
- */
 export function useStatusPageMutations() {
   const baseMutations = statusPagesHook.useMutations();
 
@@ -111,13 +83,6 @@ export function useStatusPageMutations() {
     deleteStatusPage: baseMutations.remove,
   };
 }
-
-// ============================================================================
-// DETAIL PAGE HOOK (custom, returns related data)
-// ============================================================================
-
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useProjectContext } from "./use-project-context";
 
 export interface StatusPageMonitor {
   id: string;
@@ -170,17 +135,16 @@ export interface StatusPageDetailResponse {
   canUpdate: boolean;
 }
 
-/**
- * Hook to fetch a single status page with all related data (components, monitors, permissions).
- * Uses a custom query since the response format differs from the generic factory pattern.
- */
 export function useStatusPageDetail(statusPageId: string | null) {
   const queryClient = useQueryClient();
   const { currentProject } = useProjectContext();
   const projectId = currentProject?.id ?? null;
+  const isRestoring = useIsRestoring();
+
+  const queryKey = [...STATUS_PAGE_QUERY_KEY, statusPageId, "detail"];
 
   const query = useQuery<StatusPageDetailResponse>({
-    queryKey: [...STATUS_PAGE_QUERY_KEY, statusPageId, "detail"],
+    queryKey,
     queryFn: async () => {
       const response = await fetch(`/api/status-pages/${statusPageId}`, {
         headers: { "Content-Type": "application/json" },
@@ -194,13 +158,17 @@ export function useStatusPageDetail(statusPageId: string | null) {
       return response.json();
     },
     enabled: !!statusPageId && !!projectId,
-    staleTime: 60 * 1000, // 60 seconds
-    gcTime: 5 * 60 * 1000, // 5 minutes
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    placeholderData: keepPreviousData,
   });
 
   const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: [...STATUS_PAGE_QUERY_KEY, statusPageId, "detail"], refetchType: 'all' });
+    queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
+
+  const isInitialLoading = query.isPending && query.isFetching && !isRestoring;
 
   return {
     data: query.data,
@@ -208,7 +176,7 @@ export function useStatusPageDetail(statusPageId: string | null) {
     components: query.data?.components ?? [],
     monitors: query.data?.monitors ?? [],
     canUpdate: query.data?.canUpdate ?? false,
-    isLoading: query.isLoading,
+    isLoading: isInitialLoading,
     error: query.error as Error | null,
     refetch: query.refetch,
     invalidate,

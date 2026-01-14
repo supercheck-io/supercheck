@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { StatsCard } from "@/components/admin/stats-card";
 import { Card, CardContent } from "@/components/ui/card";
@@ -112,6 +112,20 @@ interface ProjectMember {
 }
 
 export default function OrgAdminDashboard() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[400px] items-center justify-center">
+          <SuperCheckLoading size="lg" message="Loading organization..." />
+        </div>
+      }
+    >
+      <OrgAdminDashboardContent />
+    </Suspense>
+  );
+}
+
+function OrgAdminDashboardContent() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const searchParams = useSearchParams();
   const defaultTab = searchParams.get("tab") || "overview";

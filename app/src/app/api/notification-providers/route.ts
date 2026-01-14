@@ -7,7 +7,7 @@ import {
   type PlainNotificationProviderConfig,
 } from "@/db/schema";
 import { desc, eq, and, sql, inArray } from "drizzle-orm";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { hasPermission, checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireProjectContext } from "@/lib/project-context";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
@@ -20,17 +20,14 @@ import type { NotificationProviderType } from "@/db/schema";
 
 export async function GET() {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireProjectContext();
 
     // Use current project and organization context
-    const targetProjectId = project.id;
-    const targetOrganizationId = organizationId;
+    const targetProjectId = context.project.id;
+    const targetOrganizationId = context.organizationId;
 
-    // Check permission to view notification providers
-    const canView = await hasPermission("monitor", "view", {
-      organizationId: targetOrganizationId,
-      projectId: targetProjectId,
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
+    const canView = checkPermissionWithContext("monitor", "view", context);
 
     if (!canView) {
       return NextResponse.json(

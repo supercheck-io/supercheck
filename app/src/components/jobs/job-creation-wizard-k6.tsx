@@ -28,6 +28,9 @@ export function JobCreationWizardK6() {
   const stepFromUrl = searchParams.get('step') as "job" | "alerts" | null;
   const { maxJobNotificationChannels } = useAppConfig();
 
+  // Default cron schedule: weekly on Sunday at midnight UTC
+  const DEFAULT_CRON_SCHEDULE = "";
+
   // Restore form data from sessionStorage if available (survives page refresh)
   const getInitialFormData = () => {
     if (typeof window !== 'undefined') {
@@ -36,11 +39,11 @@ export function JobCreationWizardK6() {
         try {
           return JSON.parse(saved);
         } catch {
-          return { name: "", description: "", cronSchedule: "", tests: [] as Test[] };
+          return { name: "", description: "", cronSchedule: DEFAULT_CRON_SCHEDULE, tests: [] as Test[] };
         }
       }
     }
-    return { name: "", description: "", cronSchedule: "", tests: [] as Test[] };
+    return { name: "", description: "", cronSchedule: DEFAULT_CRON_SCHEDULE, tests: [] as Test[] };
   };
 
   const getInitialTest = () => {
@@ -119,7 +122,7 @@ export function JobCreationWizardK6() {
     }
   }, [alertConfig]);
 
-  // Clear sessionStorage on successful submission
+  // Clear sessionStorage on successful submission or navigation away
   const clearDraft = () => {
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('k6-job-draft');
@@ -127,6 +130,26 @@ export function JobCreationWizardK6() {
       sessionStorage.removeItem('k6-job-alert-draft');
     }
   };
+
+  // Clear draft when navigating away from the job creation flow
+  useEffect(() => {
+    // Track if we're staying within the wizard flow
+    const isWithinWizard = (url: string) => {
+      return url.includes('/jobs/create/k6') || url.includes('step=alerts');
+    };
+
+    // Cleanup function runs when component unmounts
+    return () => {
+      // Check if we're navigating away from the wizard
+      // Use setTimeout to let the navigation complete first
+      setTimeout(() => {
+        const currentPath = window.location.pathname + window.location.search;
+        if (!isWithinWizard(currentPath)) {
+          clearDraft();
+        }
+      }, 0);
+    };
+  }, []);
 
   // Sync URL with current step
   useEffect(() => {

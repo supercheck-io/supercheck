@@ -413,44 +413,39 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
       throw new Error("Teams webhook URL is required");
     }
 
-    const webhookUrl = typedConfig.teamsWebhookUrl as string;
-
-    // Use centralized SSRF protection validator (blocks private IPs, cloud metadata, etc.)
+    // Validate URL to prevent SSRF attacks
     const { validateWebhookUrlString } = await import("@/lib/url-validator");
+    const webhookUrl = typedConfig.teamsWebhookUrl as string;
+    
+    // Validate URL format and ensure it's not targeting internal networks
     const urlValidation = validateWebhookUrlString(webhookUrl);
     if (!urlValidation.valid) {
       throw new Error(urlValidation.error || "Invalid webhook URL");
     }
 
-    // Parse URL for Teams-specific host validation
-    let parsedUrl: URL;
+    // Validate that the URL is a Teams webhook URL
     try {
-      parsedUrl = new URL(webhookUrl);
-    } catch {
+      const parsedUrl = new URL(webhookUrl);
+      const hostname = parsedUrl.hostname.toLowerCase();
+      // Allowed Teams webhook hosts - exact match or legitimate subdomains
+      const allowedTeamsHosts = [
+        'webhook.office.com',
+        'outlook.office.com',
+      ];
+      if (!allowedTeamsHosts.includes(hostname) && 
+          !hostname.endsWith('.webhook.office.com') && 
+          !hostname.endsWith('.outlook.office.com')) {
+        throw new Error("URL must be a valid Teams webhook URL (webhook.office.com or outlook.office.com)");
+      }
+      // Enforce HTTPS protocol
+      if (parsedUrl.protocol !== 'https:') {
+        throw new Error("Teams webhook URL must use HTTPS");
+      }
+    } catch (parseError) {
+      if (parseError instanceof Error && parseError.message.includes('Teams')) {
+        throw parseError;
+      }
       throw new Error("Invalid URL format");
-    }
-
-    // Enforce HTTPS protocol (redundant with validator but explicit for clarity)
-    if (parsedUrl.protocol !== "https:") {
-      throw new Error("Teams webhook URL must use HTTPS");
-    }
-
-    const hostname = parsedUrl.hostname.toLowerCase();
-
-    // Validate hostname - Teams webhooks must be from allowed Microsoft domains
-    // Using strict allowlist approach for Teams-specific SSRF protection
-    const allowedTeamsHosts = [
-      "webhook.office.com",
-      "outlook.office.com",
-    ];
-    const isValidTeamsHost = allowedTeamsHosts.some((allowedHost) => 
-      hostname === allowedHost || hostname.endsWith("." + allowedHost)
-    );
-    
-    if (!isValidTeamsHost) {
-      throw new Error(
-        "Invalid Teams webhook URL. Must point to a valid Microsoft Teams endpoint (webhook.office.com or outlook.office.com)"
-      );
     }
 
     // Build Adaptive Card test payload
@@ -497,8 +492,7 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
     const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
-      // Use parsed URL to ensure consistent normalization after validation
-      const response = await fetch(parsedUrl.toString(), {
+      const response = await fetch(webhookUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -236,6 +236,42 @@ export async function checkPasswordResetRateLimit(
 }
 
 /**
+ * Rate limiting for email verification requests
+ * Prevents abuse of verification email endpoint
+ * Uses same limits as password reset for consistency
+ */
+export async function checkEmailVerificationRateLimit(
+  identifier: string, // email or IP address
+  maxAttempts = 3,
+  windowMs = 5 * 60 * 1000 // 5 minutes (matches client-side cooldown)
+): Promise<{ allowed: boolean; resetTime?: number; attemptsLeft?: number }> {
+  const result = await checkRateLimit(
+    `email-verification:${identifier}`,
+    maxAttempts,
+    windowMs
+  );
+
+  if (!result.allowed) {
+    return result;
+  }
+
+  // Get current count from Redis for attemptsLeft calculation
+  try {
+    const redis = await getRedisConnection();
+    if (redis) {
+      const key = `${RATE_LIMIT_KEY_PREFIX}:email-verification:${identifier}`;
+      const count = await redis.zcard(key);
+      const attemptsLeft = Math.max(0, maxAttempts - count);
+      return { ...result, attemptsLeft };
+    }
+  } catch {
+    // Fall through to default
+  }
+
+  return { ...result, attemptsLeft: maxAttempts - 1 };
+}
+
+/**
  * Redis-based sliding window rate limiting
  * Supports multi-instance deployments and fails open on Redis unavailability
  */

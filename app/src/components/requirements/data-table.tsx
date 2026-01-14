@@ -56,12 +56,18 @@ interface ExtendedTableMeta<TData> extends TableMeta<TData> {
 function requirementGlobalFilterFn(row: Row<unknown>, _columnId: string, filterValue: string) {
     if (!filterValue) return true;
     const search = String(filterValue).toLowerCase();
-    // Use default columns for filtering
-    const columns = ["id", "title", "description", "priority", "coverageStatus", "externalId"];
+    // Use default columns for filtering (matching tests approach)
+    const columns = ["id", "title", "description", "priority", "coverageStatus", "externalId", "tags"];
     return columns.some((id: string) => {
         const value = row.getValue(id);
         if (typeof value === "string" || typeof value === "number") {
             return String(value).toLowerCase().includes(search);
+        }
+        // Handle tags array specially
+        if (id === "tags" && Array.isArray(value)) {
+            return value.some((tag: { name?: string }) =>
+                tag.name && tag.name.toLowerCase().includes(search)
+            );
         }
         return false;
     });
@@ -185,7 +191,7 @@ export function DataTable<TData, TValue>({
         getFacetedUniqueValues: getFacetedUniqueValues(),
         globalFilterFn: requirementGlobalFilterFn,
         meta: {
-            globalFilterColumns: ["id", "title", "description", "priority", "coverageStatus", "externalId"],
+            globalFilterColumns: ["id", "title", "description", "priority", "coverageStatus", "externalId", "tags"],
             ...meta,
         } as ExtendedTableMeta<TData>,
     });

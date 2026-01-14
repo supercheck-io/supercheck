@@ -57,8 +57,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // PERFORMANCE: useAppConfig now has initialData (self-hosted=true)
-  // This means isSelfHosted starts as true, allowing immediate render
+  // isSelfHosted starts as true, allowing immediate render
   // When real config loads, if cloud mode, subscription check triggers
   const { isSelfHosted, isFetched: isConfigFetched } = useAppConfig();
 
@@ -67,21 +66,14 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
     route => pathname.startsWith(route)
   );
 
-  // PERFORMANCE: Use React Query with aggressive caching
   // DataPrefetcher may have already populated this cache
   const { data: subscriptionStatus, isLoading: isSubscriptionLoading, isFetched } = useQuery({
     queryKey: SUBSCRIPTION_STATUS_QUERY_KEY,
     queryFn: fetchSubscriptionStatus,
-    // Long stale time - subscription status rarely changes mid-session
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000,   // 10 minutes cache
-    // CRITICAL: Don't refetch on mount if we have cached data
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnMount: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
-    // PERFORMANCE: Enable immediately - DataPrefetcher starts this in parallel
-    // We check isSelfHosted in the render logic, not here
-    // This allows the query to start immediately via prefetch
     enabled: !isAllowedRoute,
     retry: 2,
   });
@@ -91,7 +83,6 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
     // Skip if allowed route
     if (isAllowedRoute) return;
 
-    // PERFORMANCE: Wait for config to be fetched (not just loaded)
     // initialData gives us self-hosted=true, but we need real config
     if (!isConfigFetched) return;
 
@@ -115,7 +106,10 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
 
   // SECURITY: Must wait for config to be fetched before making decisions
   // This prevents briefly showing content in cloud mode before we know hosting mode
-  if (!isConfigFetched) {
+  // Self-hosted: isSelfHosted stays true, renders immediately
+  // Cloud: Initially isSelfHosted=true from initialData, renders immediately
+  //        When real config loads, isSelfHosted=false, subscription check triggers redirect
+  if (!isConfigFetched && !isSelfHosted) {
     return (
       <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
         <SuperCheckLoading size="lg" message="Loading configuration..." />
@@ -132,7 +126,6 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
 
   // Cloud mode: Need to verify subscription
 
-  // PERFORMANCE: If we have cached subscription data, use it immediately
   if (subscriptionStatus?.isActive) {
     return <>{children}</>;
   }

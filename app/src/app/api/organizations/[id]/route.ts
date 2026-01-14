@@ -124,11 +124,11 @@ export async function PUT(
     await requireAuth();
     const organizationId = resolvedParams.id;
     
-    // Check permission
-    const canManage = await hasPermission('organization', 'manage', {
+    // Check permission (using 'update' action - 'manage' doesn't exist for organization)
+    const canUpdate = await hasPermission('organization', 'update', {
       organizationId
     });
-    if (!canManage) {
+    if (!canUpdate) {
       return NextResponse.json(
         { error: 'Insufficient permissions' },
         { status: 403 }

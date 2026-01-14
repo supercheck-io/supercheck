@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useSyncExternalStore } from "react";
 import {
   CalendarClock,
   ChartColumn,
@@ -216,7 +217,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs",
       icon: BookOpenText,
-      badge: "v1.2.2",
+      badge: "v1.2.2-canary.19",
     },
   ],
   documents: [
@@ -239,11 +240,22 @@ const data = {
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  // HYDRATION FIX: Track client mount state to prevent hydration errors
+  // with synchronous localStorage restoration.
+  // Server will return false, Client will return true after mounting.
+  const isMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+
   // Use cached admin status hook (React Query cached for 5 minutes)
   const { isAdmin, isOrgAdmin, isLoading: isAdminStatusLoading } = useAdminStatus();
 
-  // Status is loaded when not loading
-  const isAdminStatusLoaded = !isAdminStatusLoading;
+  // Status is loaded when mounted AND not loading
+  // On server/initial render: isMounted=false, so isAdminStatusLoaded=false
+  // After hydration: isMounted=true, isAdminStatusLoaded depends on cache
+  const isAdminStatusLoaded = isMounted && !isAdminStatusLoading;
 
   // Create combined admin items based on admin status
   const adminItems = React.useMemo(() => {

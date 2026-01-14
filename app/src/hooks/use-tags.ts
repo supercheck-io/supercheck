@@ -1,20 +1,5 @@
-/**
- * Tags Data Hook
- *
- * React Query hook for fetching and managing tags with efficient caching.
- * Caches data for 60 seconds to prevent duplicate API calls.
- * 
- * PERFORMANCE OPTIMIZATION:
- * - Module-level cache prevents refetch on every component mount
- * - staleTime: 60 seconds
- * - refetchOnWindowFocus: false to prevent aggressive re-fetching
- */
-
-import { useQuery, useMutation, useQueryClient, UseQueryResult } from "@tanstack/react-query";
-
-// ============================================================================
-// TYPES
-// ============================================================================
+import { useQuery, useMutation, useQueryClient, UseQueryResult, useIsRestoring, keepPreviousData } from "@tanstack/react-query";
+import { useProjectContext } from "./use-project-context";
 
 export interface Tag {
   id: string;
@@ -24,19 +9,15 @@ export interface Tag {
   createdByUserId?: string;
 }
 
-// ============================================================================
-// QUERY KEYS (exported for external cache invalidation)
-// ============================================================================
-
 export const TAGS_QUERY_KEY = ["tags"] as const;
 export const TEST_TAGS_QUERY_KEY = ["test-tags"] as const;
+export const REQUIREMENT_TAGS_QUERY_KEY = ["requirement-tags"] as const;
 
-// Constant empty array to avoid creating new references on each render
+export function getTagsListQueryKey(projectId: string | null) {
+  return [...TAGS_QUERY_KEY, projectId] as const;
+}
+
 const EMPTY_TAGS_ARRAY: Tag[] = [];
-
-// ============================================================================
-// API FUNCTIONS
-// ============================================================================
 
 async function fetchTags(): Promise<Tag[]> {
   const response = await fetch("/api/tags");
@@ -92,41 +73,47 @@ async function saveTestTagsApi(testId: string, tagIds: string[]): Promise<void> 
   }
 }
 
-// ============================================================================
-// HOOKS
-// ============================================================================
+export function useTags() {
+  const { currentProject } = useProjectContext();
+  const projectId = currentProject?.id ?? null;
+  const isRestoring = useIsRestoring();
 
-/**
- * Hook to fetch all available tags with React Query caching.
- * Data is cached for 60 seconds and shared across all components.
- */
-export function useTags(): UseQueryResult<Tag[], Error> & { tags: Tag[] } {
+  const queryKey = [...TAGS_QUERY_KEY, projectId];
+
   const result = useQuery({
-    queryKey: TAGS_QUERY_KEY,
+    queryKey,
     queryFn: fetchTags,
-    staleTime: 60 * 1000, // 60 seconds - match other data hooks
-    gcTime: 5 * 60 * 1000, // 5 minutes cache
-    refetchOnWindowFocus: false, // OPTIMIZED: Prevent aggressive re-fetching
+    // Uses global defaults: staleTime (30min), gcTime (24h)
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    enabled: !!projectId,
+    placeholderData: keepPreviousData,
   });
 
+  const isInitialLoading = result.isPending && result.isFetching && !isRestoring;
+
   return {
-    ...result,
     tags: result.data ?? EMPTY_TAGS_ARRAY,
+    isLoading: isInitialLoading,
+    error: result.error as Error | null,
+    refetch: result.refetch,
   };
 }
 
-/**
- * Hook to fetch tags for a specific test with React Query caching.
- * Data is cached per test ID.
- */
 export function useTestTags(testId: string | null): UseQueryResult<Tag[], Error> & { testTags: Tag[] } {
+  const { currentProject } = useProjectContext();
+  const projectId = currentProject?.id ?? null;
+
   const result = useQuery({
-    queryKey: [...TEST_TAGS_QUERY_KEY, testId],
+    queryKey: [...TEST_TAGS_QUERY_KEY, projectId, testId],
     queryFn: () => fetchTestTags(testId!),
-    enabled: !!testId, // Only fetch when testId is available
-    staleTime: 60 * 1000,
-    gcTime: 5 * 60 * 1000,
+    enabled: !!testId && !!projectId,
+    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    placeholderData: keepPreviousData,
   });
 
   return {
@@ -135,29 +122,22 @@ export function useTestTags(testId: string | null): UseQueryResult<Tag[], Error>
   };
 }
 
-/**
- * Hook for tag mutations (create, delete) with automatic cache invalidation.
- */
 export function useTagMutations() {
   const queryClient = useQueryClient();
 
   const createTag = useMutation({
     mutationFn: createTagApi,
-    onSuccess: (newTag) => {
-      // Add new tag to cache immediately (optimistic update)
-      queryClient.setQueryData<Tag[]>(TAGS_QUERY_KEY, (old) => 
-        old ? [...old, newTag] : [newTag]
-      );
+    onSuccess: () => {
+      // Invalidate all tags queries to ensure fresh data
+      queryClient.invalidateQueries({ queryKey: TAGS_QUERY_KEY, refetchType: 'all' });
     },
   });
 
   const deleteTag = useMutation({
     mutationFn: deleteTagApi,
-    onSuccess: (_result, tagId) => {
-      // Remove tag from cache immediately (optimistic update)
-      queryClient.setQueryData<Tag[]>(TAGS_QUERY_KEY, (old) =>
-        old ? old.filter((tag) => tag.id !== tagId) : []
-      );
+    onSuccess: () => {
+      // Invalidate all tags queries
+      queryClient.invalidateQueries({ queryKey: TAGS_QUERY_KEY, refetchType: 'all' });
     },
   });
 
@@ -167,13 +147,6 @@ export function useTagMutations() {
   };
 }
 
-/**
- * Hook for saving test tags with automatic cache invalidation.
- *
- * Accepts testId as a mutation parameter to support both:
- * - Existing tests (testId available at mount)
- * - New tests (testId available only after creation)
- */
 export function useSaveTestTags() {
   const queryClient = useQueryClient();
 
@@ -184,7 +157,63 @@ export function useSaveTestTags() {
     },
     onSuccess: () => {
       // Invalidate all test tags queries to ensure consistency
-      queryClient.invalidateQueries({ queryKey: TEST_TAGS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: TEST_TAGS_QUERY_KEY, refetchType: 'all' });
+    },
+  });
+}
+
+async function fetchRequirementTags(requirementId: string): Promise<Tag[]> {
+  const response = await fetch(`/api/requirements/${requirementId}/tags`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch requirement tags");
+  }
+  return response.json();
+}
+
+async function saveRequirementTagsApi(requirementId: string, tagIds: string[]): Promise<void> {
+  const response = await fetch(`/api/requirements/${requirementId}/tags`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tagIds }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to save requirement tags");
+  }
+}
+
+export function useRequirementTags(requirementId: string | null): UseQueryResult<Tag[], Error> & { requirementTags: Tag[] } {
+  const { currentProject } = useProjectContext();
+  const projectId = currentProject?.id ?? null;
+
+  const result = useQuery({
+    queryKey: [...REQUIREMENT_TAGS_QUERY_KEY, projectId, requirementId],
+    queryFn: () => fetchRequirementTags(requirementId!),
+    enabled: !!requirementId && !!projectId,
+    // Uses global defaults: staleTime (30min), gcTime (24h)
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    placeholderData: keepPreviousData,
+  });
+
+  return {
+    ...result,
+    requirementTags: result.data ?? EMPTY_TAGS_ARRAY,
+  };
+}
+
+export function useSaveRequirementTags() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ requirementId, tagIds }: { requirementId: string; tagIds: string[] }) => {
+      if (!requirementId) throw new Error("Requirement ID is required");
+      return saveRequirementTagsApi(requirementId, tagIds);
+    },
+    onSuccess: () => {
+      // Invalidate requirement tags queries and requirements list
+      queryClient.invalidateQueries({ queryKey: REQUIREMENT_TAGS_QUERY_KEY, refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: ["requirements"], refetchType: 'all' });
     },
   });
 }

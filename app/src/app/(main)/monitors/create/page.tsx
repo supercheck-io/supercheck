@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Metadata } from "next";
 import { MonitorCreationWizard } from "@/components/monitors/monitor-creation-wizard";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
@@ -6,6 +7,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { MonitorTypesPopover } from "@/components/monitors/monitor-types-popover";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 
 export const metadata: Metadata = {
   title: "Create Monitor | Supercheck",
@@ -41,7 +43,16 @@ export default async function CreateMonitorPage({ searchParams }: CreateMonitorP
     return (
       <div>
         <PageBreadcrumbs items={breadcrumbs} />
-        <MonitorCreationWizard />
+        {/* Suspense boundary required because MonitorCreationWizard uses useSearchParams() */}
+        <Suspense
+          fallback={
+            <div className="flex min-h-[400px] items-center justify-center">
+              <SuperCheckLoading size="lg" message="Loading monitor wizard..." />
+            </div>
+          }
+        >
+          <MonitorCreationWizard />
+        </Suspense>
       </div>
     );
   }
@@ -104,7 +115,16 @@ export default async function CreateMonitorPage({ searchParams }: CreateMonitorP
   return (
     <div>
       <PageBreadcrumbs items={breadcrumbs} />
-      <MonitorCreationWizard />
+      {/* Suspense boundary required because MonitorCreationWizard uses useSearchParams() */}
+      <Suspense
+        fallback={
+          <div className="flex min-h-[400px] items-center justify-center">
+            <SuperCheckLoading size="lg" message="Loading monitor wizard..." />
+          </div>
+        }
+      >
+        <MonitorCreationWizard />
+      </Suspense>
     </div>
   );
 } 

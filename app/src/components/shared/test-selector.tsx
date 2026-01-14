@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Test } from "@/components/jobs/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import { types } from "@/components/tests/data";
 import {
@@ -52,7 +53,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-// import { getTests } from "@/actions/get-tests"; // Replaced with API call
+import { useTests } from "@/hooks/use-tests";
 
 interface TestSelectorProps {
   selectedTests?: Test[];
@@ -96,9 +97,11 @@ export default function TestSelector({
   const [testSelections, setTestSelections] = useState<Record<string, number>>(
     {}
   );
-  const [availableTests, setAvailableTests] = useState<Test[]>([]);
-  const [isLoadingTests, setIsLoadingTests] = useState(true);
   const [testFilter, setTestFilter] = useState("");
+  // Debounced search query for server-side filtering
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  // Track if search is pending (user typed but debounce hasn't fired yet)
+  const isSearchPending = testFilter !== debouncedSearch;
 
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -107,6 +110,16 @@ export default function TestSelector({
     id: string;
     name: string;
   } | null>(null);
+
+  // Debounce search input to avoid excessive API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(testFilter);
+      // Reset to page 1 when search changes
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [testFilter]);
 
   const excludeTypesKey = excludeTypes.length
     ? [...excludeTypes].sort().join("|")
@@ -118,98 +131,80 @@ export default function TestSelector({
     [selectedTests]
   );
 
-  // Define the structure expected from the API
-  interface ActionTest {
-    id: string;
-    title: string;
-    description: string | null;
-    type: "browser" | "api" | "custom" | "database" | "performance";
-    updatedAt: string | null;
-    script?: string;
-    priority?: string;
-    createdAt?: string | null;
-    tags?: Array<{ id: string; name: string; color: string | null }>;
-  }
+  // Determine the type filter for the API based on mode
+  const apiTypeFilter = useMemo(() => {
+    if (testTypeFilter) return testTypeFilter;
+    if (performanceMode) return "performance";
+    return undefined;
+  }, [testTypeFilter, performanceMode]);
 
-  // Fetch tests from database on component mount
-  useEffect(() => {
-    async function fetchTests() {
-      setIsLoadingTests(true);
-      try {
-        const response = await fetch("/api/tests");
-        const result = await response.json();
+  // Use React Query hook with server-side search and pagination
+  // PERFORMANCE OPTIMIZATION:
+  // 1. Exclude script content (reduces payload from MB to KB)
+  // 2. Use server-side search for large datasets
+  // 3. Fetch reasonable page size for the dialog (200 items)
+  const { tests: fetchedTests, loading: isHookLoading } = useTests({
+    enabled: true,
+    limit: 200, // Fetch 200 tests per request (lightweight without scripts)
+    includeScript: false,
+    search: debouncedSearch || undefined, // Server-side search
+    type: apiTypeFilter, // Server-side type filter
+  });
 
-        // API returns { data, pagination } format - extract tests array
-        const testsArray = result?.data ?? result;
+  // Derive availableTests using useMemo instead of useEffect + setState
+  // This avoids the cascading render issue flagged by ESLint
+  // NOTE: Type filtering is now done server-side via apiTypeFilter
+  // We only need to handle excludeTypes and format the data here
+  const availableTests = useMemo(() => {
+    if (!fetchedTests) return [];
 
-        if (response.ok && testsArray) {
-          // Map the API response to the Test type
-          let formattedTests: Test[] = (testsArray as ActionTest[]).map(
-            (test: ActionTest) => {
-              let mappedType: Test["type"];
-              switch (test.type) {
-                case "browser":
-                case "api":
-                case "custom":
-                case "database":
-                case "performance":
-                  mappedType = test.type;
-                  break;
-                default:
-                  mappedType = "browser";
-                  break;
-              }
-              return {
-                id: test.id,
-                name: test.title,
-                description: test.description || null,
-                type: mappedType,
-                status: "running" as const,
-                lastRunAt: test.updatedAt,
-                duration: null as number | null,
-                tags: test.tags || [],
-              };
-            }
-          );
-
-          // Filter tests based on mode
-          if (testTypeFilter) {
-            // Filter by specific test type (e.g., "browser" for synthetic monitors, "performance" for k6 jobs)
-            formattedTests = formattedTests.filter(
-              (test) => test.type === testTypeFilter
-            );
-          } else if (performanceMode) {
-            // Performance mode: show only performance tests
-            formattedTests = formattedTests.filter(
-              (test) => test.type === "performance"
-            );
-          } else {
-            // Regular mode: exclude performance tests, show all other types
-            formattedTests = formattedTests.filter(
-              (test) => test.type !== "performance"
-            );
-          }
-
-          if (excludeTypesKey.length > 0) {
-            const excludeTypesSet = new Set(excludeTypesKey.split("|"));
-            formattedTests = formattedTests.filter((test) => {
-              return !excludeTypesSet.has(test.type);
-            });
-          }
-
-          setAvailableTests(formattedTests);
-        } else {
-          console.error("Failed to fetch tests:", result?.error);
-        }
-      } catch (error) {
-        console.error("Error fetching tests:", error);
-      } finally {
-        setIsLoadingTests(false);
+    // Map the API response to the Test type
+    let formattedTests: Test[] = fetchedTests.map((test) => {
+      // Ensure type consistency
+      let mappedType: Test["type"];
+      // The hook returns properly typed Test objects, but we ensure safety
+      switch (test.type) {
+        case "browser":
+        case "api":
+        case "custom":
+        case "database":
+        case "performance":
+          mappedType = test.type;
+          break;
+        default:
+          mappedType = "browser";
+          break;
       }
+      return {
+        ...test,
+        name: test.name || "Unnamed Test",
+        description: test.description ?? null,
+        type: mappedType,
+        status: "running" as const,
+      };
+    });
+
+    // For non-performance mode without specific type filter, exclude performance tests
+    // This is a client-side filter for the default case where we want all types except performance
+    if (!testTypeFilter && !performanceMode) {
+      formattedTests = formattedTests.filter(
+        (test) => test.type !== "performance"
+      );
     }
 
-    fetchTests();
-  }, [performanceMode, testTypeFilter, excludeTypesKey]);
+    // Apply excludeTypes filter (client-side, since API doesn't support exclude)
+    if (excludeTypesKey.length > 0) {
+      const excludeTypesSet = new Set(excludeTypesKey.split("|"));
+      formattedTests = formattedTests.filter((test) => {
+        return !excludeTypesSet.has(test.type);
+      });
+    }
+
+    return formattedTests;
+  }, [fetchedTests, performanceMode, testTypeFilter, excludeTypesKey]);
+
+  // Derive loading state from hook loading state
+  const isLoadingTests = isHookLoading;
 
   const useSingleSelection =
     performanceMode || !!testTypeFilter || singleSelection;
@@ -224,7 +219,10 @@ export default function TestSelector({
       setTestSelections((prev) => {
         if (checked) {
           // Add with next sequence number
-          const currentMax = Math.max(0, ...Object.values(prev).filter(v => v > 0));
+          const currentMax = Math.max(
+            0,
+            ...Object.values(prev).filter((v) => v > 0)
+          );
           return { ...prev, [testId]: currentMax + 1 };
         } else {
           // Remove and resequence remaining selections
@@ -252,17 +250,17 @@ export default function TestSelector({
     setIsSelectTestsDialogOpen(false);
   };
 
-  // Initialize test selections when dialog opens - preserve existing order
-  useEffect(() => {
-    if (isSelectTestsDialogOpen) {
-      const initialSelections: Record<string, number> = {};
-      // Preserve the order from the existing tests array (index + 1 for 1-based)
-      tests.forEach((test, index) => {
-        initialSelections[test.id] = index + 1;
-      });
-      setTestSelections(initialSelections);
-    }
-  }, [isSelectTestsDialogOpen, tests]);
+  // Open dialog and initialize test selections - moved from useEffect to event handler
+  // This avoids the cascading render issue flagged by ESLint
+  const openTestSelectionDialog = () => {
+    const initialSelections: Record<string, number> = {};
+    // Preserve the order from the existing tests array (index + 1 for 1-based)
+    tests.forEach((test, index) => {
+      initialSelections[test.id] = index + 1;
+    });
+    setTestSelections(initialSelections);
+    setIsSelectTestsDialogOpen(true);
+  };
 
   // Remove a test from selection - using safe array
   const removeTest = (testId: string, testName: string) => {
@@ -270,22 +268,37 @@ export default function TestSelector({
     onTestsSelected(tests.filter((test) => test.id !== testId));
   };
 
-  // Filter the tests based on search input
-  const filteredTests = availableTests.filter((test) => {
-    const matchesTextFilter =
-      testFilter === "" ||
-      test.name.toLowerCase().includes(testFilter.toLowerCase()) ||
-      test.id.toLowerCase().includes(testFilter.toLowerCase()) ||
-      test.type.toLowerCase().includes(testFilter.toLowerCase()) ||
-      (test.description &&
-        test.description.toLowerCase().includes(testFilter.toLowerCase())) ||
-      (test.tags &&
-        test.tags.some((tag) =>
-          tag.name.toLowerCase().includes(testFilter.toLowerCase())
-        ));
+  // With server-side search, availableTests is already filtered by title
+  // We keep a lightweight client-side filter for additional fields (ID, type, tags, description)
+  // This provides instant feedback while the server search covers the main use case
+  const filteredTests = useMemo(() => {
+    // If no filter or search is already server-side (matches title), use availableTests directly
+    if (!testFilter) return availableTests;
 
-    return matchesTextFilter;
-  });
+    // For non-title searches (ID, type, tags), do client-side filtering
+    // The server already filtered by title, so this catches edge cases
+    const lowerFilter = testFilter.toLowerCase();
+    return availableTests.filter((test) => {
+      // Title is already filtered server-side, but include for instant local matching
+      const matchesName = test.name.toLowerCase().includes(lowerFilter);
+      const matchesId = test.id.toLowerCase().includes(lowerFilter);
+      const matchesType = test.type.toLowerCase().includes(lowerFilter);
+      const matchesDescription = test.description
+        ?.toLowerCase()
+        .includes(lowerFilter);
+      const matchesTags = test.tags?.some((tag) =>
+        tag.name.toLowerCase().includes(lowerFilter)
+      );
+
+      return (
+        matchesName ||
+        matchesId ||
+        matchesType ||
+        matchesDescription ||
+        matchesTags
+      );
+    });
+  }, [availableTests, testFilter]);
 
   // Get the current page of tests
   const currentTests = filteredTests.slice(
@@ -326,7 +339,8 @@ export default function TestSelector({
       maxSelectionLabel
     ) : performanceMode ? (
       <>
-        Max: <span className="font-bold">1</span> performance test per {entityName}
+        Max: <span className="font-bold">1</span> performance test per{" "}
+        {entityName}
       </>
     ) : !testTypeFilter && !singleSelection ? (
       <>
@@ -366,7 +380,7 @@ export default function TestSelector({
             <Button
               type="button"
               variant="outline"
-              onClick={() => setIsSelectTestsDialogOpen(true)}
+              onClick={openTestSelectionDialog}
               className={cn(
                 required && tests.length === 0 && "border-destructive",
                 "transition-colors"
@@ -391,7 +405,9 @@ export default function TestSelector({
             variant="outline"
             className={cn(
               "py-1.5 px-4 text-sm font-normal",
-              required ? "text-red-500 border-red-900/50 bg-red-900/10 hover:bg-red-900/20" : "text-muted-foreground"
+              required
+                ? "text-red-500 border-red-900/50 bg-red-900/10 hover:bg-red-900/20"
+                : "text-muted-foreground"
             )}
           >
             <AlertCircle className="h-4 w-4 mr-2" />
@@ -431,9 +447,7 @@ export default function TestSelector({
                 <TableHead className="w-[150px]  sticky top-0">
                   Description
                 </TableHead>
-                <TableHead className="w-[80px] sticky top-0">
-                  Actions
-                </TableHead>
+                <TableHead className="w-[80px] sticky top-0">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -495,10 +509,10 @@ export default function TestSelector({
                                   style={
                                     tag.color
                                       ? {
-                                        backgroundColor: tag.color + "20",
-                                        color: tag.color,
-                                        borderColor: tag.color + "40",
-                                      }
+                                          backgroundColor: tag.color + "20",
+                                          color: tag.color,
+                                          borderColor: tag.color + "40",
+                                        }
                                       : {}
                                   }
                                 >
@@ -525,10 +539,10 @@ export default function TestSelector({
                                   style={
                                     tag.color
                                       ? {
-                                        backgroundColor: tag.color + "20",
-                                        color: tag.color,
-                                        borderColor: tag.color + "40",
-                                      }
+                                          backgroundColor: tag.color + "20",
+                                          color: tag.color,
+                                          borderColor: tag.color + "40",
+                                        }
                                       : {}
                                   }
                                 >
@@ -609,12 +623,16 @@ export default function TestSelector({
             <>
               <div className="mb-4">
                 <div className="relative w-full">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  {isSearchPending || isHookLoading ? (
+                    <Loader2 className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground animate-spin" />
+                  ) : (
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  )}
                   <Input
                     placeholder={
                       performanceMode
-                        ? "Filter by test name or description..."
-                        : "Filter by test name, ID, type, tags, or description..."
+                        ? "Search by test name..."
+                        : "Search by test name, ID, type, tags..."
                     }
                     className="pl-8"
                     value={testFilter}
@@ -645,10 +663,15 @@ export default function TestSelector({
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="cursor-help font-medium">#</span>
+                                <span className="cursor-help font-medium">
+                                  #
+                                </span>
                               </TooltipTrigger>
                               <TooltipContent side="top">
-                                <p>Execution order - tests run sequentially in this order</p>
+                                <p>
+                                  Execution order - tests run sequentially in
+                                  this order
+                                </p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
@@ -777,11 +800,11 @@ export default function TestSelector({
                                         style={
                                           tag.color
                                             ? {
-                                              backgroundColor:
-                                                tag.color + "20",
-                                              color: tag.color,
-                                              borderColor: tag.color + "40",
-                                            }
+                                                backgroundColor:
+                                                  tag.color + "20",
+                                                color: tag.color,
+                                                borderColor: tag.color + "40",
+                                              }
                                             : {}
                                         }
                                       >
@@ -811,11 +834,11 @@ export default function TestSelector({
                                         style={
                                           tag.color
                                             ? {
-                                              backgroundColor:
-                                                tag.color + "20",
-                                              color: tag.color,
-                                              borderColor: tag.color + "40",
-                                            }
+                                                backgroundColor:
+                                                  tag.color + "20",
+                                                color: tag.color,
+                                                borderColor: tag.color + "40",
+                                              }
                                             : {}
                                         }
                                       >

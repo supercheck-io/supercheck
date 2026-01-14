@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
 import Variables from "@/components/variables";
 import { Card, CardContent } from "@/components/ui/card";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 
 export default function VariablesPage() {
   const breadcrumbs = [
@@ -12,7 +14,16 @@ export default function VariablesPage() {
       <PageBreadcrumbs items={breadcrumbs} />
       <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
         <CardContent>
-          <Variables />
+          {/* Suspense boundary required because Variables DataTable toolbar uses useSearchParams() */}
+          <Suspense
+            fallback={
+              <div className="flex min-h-[400px] items-center justify-center">
+                <SuperCheckLoading size="lg" message="Loading variables..." />
+              </div>
+            }
+          >
+            <Variables />
+          </Suspense>
         </CardContent>
       </Card>
     </div>

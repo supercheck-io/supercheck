@@ -89,8 +89,8 @@ const PLAN_LIMITS_SEED = [
     maxStatusPages: 15,
     customDomains: true,
     ssoEnabled: true,
-    dataRetentionDays: 30,
-    aggregatedDataRetentionDays: 365,
+    dataRetentionDays: 7,
+    aggregatedDataRetentionDays: 90,
     jobDataRetentionDays: 90, // Matches GitHub Actions
   },
   {
@@ -108,9 +108,9 @@ const PLAN_LIMITS_SEED = [
     maxStatusPages: 999,
     customDomains: true,
     ssoEnabled: true,
-    dataRetentionDays: 30, // Raw monitor data: 30 days (high frequency, keep lean)
-    aggregatedDataRetentionDays: 180, // Aggregated metrics: 6 months max
-    jobDataRetentionDays: 180, // Job runs: 6 months max for self-hosted
+    dataRetentionDays: 7, // Raw monitor data: 7 days (high frequency, keep lean)
+    aggregatedDataRetentionDays: 90, // Aggregated metrics: 3 months max
+    jobDataRetentionDays: 90, // Job runs: 3 months max
   },
 ];
 
