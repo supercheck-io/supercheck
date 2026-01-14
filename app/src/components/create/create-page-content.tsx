@@ -1,8 +1,17 @@
 "use client";
-import React from "react";
+import React, { useState, useCallback } from "react";
 import { CreateCard } from "./create-card";
 import { useRouter } from "next/navigation";
-import { Video, Variable, Shield, Tally4 } from "lucide-react";
+import { Video, Variable, Shield, Tally4, Chrome } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { monitorTypes } from "@/components/monitors/data";
 import { types } from "@/components/tests/data";
 import { K6Logo } from "@/components/logo/k6-logo";
@@ -11,8 +20,30 @@ import { notificationProviders } from "@/components/alerts/data";
 
 type ScriptType = "browser" | "api" | "custom" | "database" | "performance" | "record";
 
+// Extension URLs
+const CHROME_WEB_STORE_URL = "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe";
+const EDGE_ADDONS_URL = "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9";
+
+// Detect browser type
+function detectBrowser(): 'chrome' | 'edge' | 'unsupported' {
+  if (typeof navigator === 'undefined') return 'unsupported';
+
+  const userAgent = navigator.userAgent.toLowerCase();
+
+  // Edge uses "edg" in user agent
+  if (userAgent.includes('edg')) return 'edge';
+
+  // Chrome - must check after Edge since Edge also contains Chrome
+  // Most Chromium browsers (Brave, Vivaldi, etc.) include "Chrome" in UA
+  if (userAgent.includes('chrome') && !userAgent.includes('edg')) return 'chrome';
+
+  // All other browsers (Safari, Firefox, etc.) are unsupported
+  return 'unsupported';
+}
+
 export function CreatePageContent() {
   const router = useRouter();
+  const [showUnsupportedDialog, setShowUnsupportedDialog] = useState(false);
 
   const testTypes = [
     ...types.map((type) => ({
@@ -24,10 +55,22 @@ export function CreatePageContent() {
     {
       icon: <Video size={20} className="text-red-500" />,
       title: "Record",
-      path: "https://chromewebstore.google.com/detail/playwright-crx/jambeljnbnfbkcpnoiaedcabbgmnnlcd",
+      path: "", // Handled by custom onClick
       scriptType: "record" as ScriptType,
     },
   ];
+
+  const handleRecordClick = useCallback(() => {
+    const browser = detectBrowser();
+
+    if (browser === 'unsupported') {
+      setShowUnsupportedDialog(true);
+      return;
+    }
+
+    const url = browser === 'edge' ? EDGE_ADDONS_URL : CHROME_WEB_STORE_URL;
+    window.open(url, '_blank');
+  }, []);
 
   const jobTypes = [
     {
@@ -89,13 +132,59 @@ export function CreatePageContent() {
             title={testType.title}
             onClick={() =>
               testType.title === "Record"
-                ? window.open(testType.path, "_blank")
+                ? handleRecordClick()
                 : router.push(testType.path)
             }
             className={testType.title === "Record" ? "border-dashed" : ""}
           />
         ))}
       </div>
+
+      {/* Unsupported Browser Dialog */}
+      <Dialog open={showUnsupportedDialog} onOpenChange={setShowUnsupportedDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/40">
+                <Chrome className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              </div>
+              <span>Browser Not Supported</span>
+            </DialogTitle>
+            <DialogDescription>
+              The Supercheck Recorder extension requires a Chromium-based browser
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-4">
+            <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
+              <p className="text-sm font-medium">Supported Browsers:</p>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Chrome className="h-5 w-5 text-sky-500" />
+                  <span className="text-sm">Google Chrome</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Chrome className="h-5 w-5 text-blue-500" />
+                  <span className="text-sm">Microsoft Edge</span>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Also compatible with Brave, Opera, Vivaldi, and other Chromium-based browsers.
+              </p>
+            </div>
+
+            <p className="text-sm text-muted-foreground">
+              Please open Supercheck in a Chromium-based browser to use the browser recording feature.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUnsupportedDialog(false)} className="w-full">
+              Got it
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="mt-6 mb-3 pl-1">
         <h2 className="text-md font-semibold">Create New Job</h2>

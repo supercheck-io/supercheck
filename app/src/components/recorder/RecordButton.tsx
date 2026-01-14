@@ -53,8 +53,8 @@ function detectBrowser(): 'chrome' | 'edge' | 'unsupported' {
 }
 
 // Extension URLs
-const CHROME_WEB_STORE_URL = "https://chrome.google.com/webstore/detail/supercheck-recorder";
-const EDGE_ADDONS_URL = "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder";
+const CHROME_WEB_STORE_URL = "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe";
+const EDGE_ADDONS_URL = "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9";
 
 export function RecordButton({
   projectId,
@@ -158,7 +158,7 @@ export function RecordButton({
               <span>Install Supercheck Recorder</span>
             </DialogTitle>
             <DialogDescription>
-              Record browser interactions directly from {browser === 'edge' ? 'Edge' : 'Chrome'}
+              Record browser interactions directly from {browser === 'edge' ? 'Edge' : 'Chrome'} (or any Chromium browser)
             </DialogDescription>
           </DialogHeader>
 
@@ -181,7 +181,7 @@ export function RecordButton({
             </div>
 
             <p className="text-xs text-muted-foreground text-center">
-              Works with Chrome and Microsoft Edge
+              Works with Chrome, Microsoft Edge, and other Chromium browsers
             </p>
           </div>
 
@@ -318,10 +318,13 @@ export function RecordButton({
                   <span className="text-sm">Microsoft Edge</span>
                 </div>
               </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Also compatible with Brave, Opera, Vivaldi, and other Chromium-based browsers.
+              </p>
             </div>
 
             <p className="text-sm text-muted-foreground">
-              Please open SuperCheck in Chrome or Edge to use the browser recording feature.
+              Please open Supercheck in a Chromium-based browser to use the browser recording feature.
             </p>
           </div>
 

@@ -217,7 +217,7 @@ const data = {
       title: "Docs",
       url: "https://supercheck.io/docs",
       icon: BookOpenText,
-      badge: "v1.2.2-canary.19",
+      badge: "v1.2.2-canary.20",
     },
   ],
   documents: [
@@ -244,7 +244,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // with synchronous localStorage restoration.
   // Server will return false, Client will return true after mounting.
   const isMounted = useSyncExternalStore(
-    () => () => {},
+    () => () => { },
     () => true,
     () => false
   );
