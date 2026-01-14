@@ -27,9 +27,12 @@ export function useImpersonationStatus() {
   const { data, isPending, isFetching, error } = useQuery({
     queryKey: IMPERSONATION_STATUS_QUERY_KEY,
     queryFn: fetchImpersonationStatus,
-    // Uses global defaults: staleTime (30min), gcTime (24h)
+    // Security-sensitive: always refetch on mount to detect impersonation changes
+    // Cannot use staleTime since impersonation state changes on page reload after redirect
+    staleTime: 0,
+    gcTime: 5 * 60 * 1000, // 5 minutes - short cache for security
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: true, // Always refetch on mount to catch impersonation state changes
     refetchOnReconnect: false,
     retry: 1,
   });
