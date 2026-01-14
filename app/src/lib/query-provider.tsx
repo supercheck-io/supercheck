@@ -3,15 +3,15 @@
 import { QueryClient, QueryClientProvider, isServer } from "@tanstack/react-query";
 import { persistQueryClient } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
-import { ReactNode, useEffect, useRef } from "react";
+import { ReactNode } from "react";
 
 const CACHE_KEY = "supercheck-cache-v1";
 const MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
 const STALE_TIME = 30 * 60 * 1000;  // 30 minutes - data is fresh for this long
 
-// Module-level singleton for browser
+// Module-level singleton for browser - initialized ONCE with persistence
 let browserClient: QueryClient | undefined;
-let persistenceInitialized = false;
+let unsubscribePersistence: (() => void) | undefined;
 
 function createClient() {
   return new QueryClient({
@@ -29,17 +29,12 @@ function createClient() {
   });
 }
 
-function getClient() {
-  if (isServer) return createClient();
-  if (!browserClient) {
-    browserClient = createClient();
-  }
-  return browserClient;
-}
-
-// Initialize persistence - called once on client
-function initPersistence(client: QueryClient) {
-  if (typeof window === "undefined" || persistenceInitialized) return;
+// Initialize persistence SYNCHRONOUSLY when client is created
+// This ensures cache is restored BEFORE any queries run
+function initializeClientWithPersistence(): QueryClient {
+  const client = createClient();
+  
+  if (typeof window === "undefined") return client;
   
   try {
     const persister = createSyncStoragePersister({
@@ -48,9 +43,11 @@ function initPersistence(client: QueryClient) {
       throttleTime: 500,
     });
 
-    // persistQueryClient handles both restoration and subscription
-    // For sync persisters, restoration happens immediately (synchronously)
-    persistQueryClient({
+    // For sync storage persisters, persistQueryClient:
+    // 1. Synchronously restores cache from localStorage IMMEDIATELY
+    // 2. Sets up subscription to persist future changes
+    // 3. Returns unsubscribe function
+    const [unsubscribe] = persistQueryClient({
       queryClient: client,
       persister,
       maxAge: MAX_AGE,
@@ -62,7 +59,7 @@ function initPersistence(client: QueryClient) {
       },
     });
 
-    persistenceInitialized = true;
+    unsubscribePersistence = unsubscribe;
   } catch (error) {
     console.error("Failed to initialize query persistence:", error);
     // Clear potentially corrupted cache
@@ -70,28 +67,42 @@ function initPersistence(client: QueryClient) {
       window.localStorage.removeItem(CACHE_KEY);
     } catch { /* ignore */ }
   }
+  
+  return client;
+}
+
+function getClient() {
+  if (isServer) return createClient();
+  
+  // Create client with persistence ONCE - cache is restored synchronously
+  if (!browserClient) {
+    browserClient = initializeClientWithPersistence();
+  }
+  return browserClient;
 }
 
 export function clearQueryCache() {
   if (typeof window === "undefined") return;
+  
+  // Unsubscribe from persistence to prevent re-persisting cleared cache
+  if (unsubscribePersistence) {
+    unsubscribePersistence();
+    unsubscribePersistence = undefined;
+  }
+  
   browserClient?.clear();
+  
   try {
     window.localStorage.removeItem(CACHE_KEY);
   } catch { /* ignore */ }
-  persistenceInitialized = false;
+  
+  // Reset client so next getClient() creates fresh one with persistence
+  browserClient = undefined;
 }
 
 export function QueryProvider({ children }: { children: ReactNode }) {
+  // getClient() returns singleton with cache already restored from localStorage
+  // No useEffect needed - persistence is initialized synchronously
   const client = getClient();
-  const initialized = useRef(false);
-
-  // Initialize persistence on mount (client-side only)
-  useEffect(() => {
-    if (!initialized.current) {
-      initialized.current = true;
-      initPersistence(client);
-    }
-  }, [client]);
-
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
