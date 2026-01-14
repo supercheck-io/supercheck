@@ -42,7 +42,7 @@ import {
   ChevronDown,
   FileText,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { PageBreadcrumbs } from "@/components/page-breadcrumbs";
@@ -277,7 +277,7 @@ export default function Home() {
   );
 
   // Use React Query hook for dashboard data (cached, auto-refreshes)
-  const { data: dashboardData, isLoading: queryLoading, error: queryError, refetch } = useDashboard();
+  const { data: dashboardData, isLoading: queryLoading, error: queryError } = useDashboard();
 
   // HYDRATION FIX: Show loading on server AND first client render
   // After mount, use actual loading state from query

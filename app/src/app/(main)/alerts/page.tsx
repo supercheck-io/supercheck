@@ -292,7 +292,7 @@ function AlertsPage() {
 
                 <TabsContent value="history" className="space-y-4">
                   <div className="h-full flex-1 flex-col md:flex">
-                    {(isMounted && alertHistory.length === 0 && !historyLoading) ? (
+                    {(alertHistory.length === 0 && !historyLoading) ? (
                       <DashboardEmptyState
                         className="min-h-[60vh]"
                         title="No alerts found"
