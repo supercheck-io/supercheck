@@ -164,6 +164,10 @@ function OrgAdminDashboardContent() {
     members: orgStats.memberCount,
   } : null;
 
+  // Note: membersCount is not available from the API currently.
+  // The Project interface requires it, but the /api/projects endpoint
+  // doesn't return per-project member counts. Setting to 0 for now.
+  // TODO: Add members count to /api/projects response if needed.
   const projects: Project[] = orgProjects.map(p => ({
     id: p.id,
     name: p.name,
@@ -172,7 +176,7 @@ function OrgAdminDashboardContent() {
     isDefault: p.isDefault,
     status: "active" as const,
     createdAt: p.createdAt,
-    membersCount: p._count?.tests || 0,
+    membersCount: 0,
   }));
 
   const [showInviteDialog, setShowInviteDialog] = useState(false);

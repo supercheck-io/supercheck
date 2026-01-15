@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense, useSyncExternalStore } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import {
   Card,
   CardContent,
@@ -55,12 +55,6 @@ import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 
 function AlertsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  
-  const isMounted = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false
-  );
 
   const { providers, isLoading: providersLoading } = useNotificationProviders();
   const { alertHistory, isLoading: historyLoading } = useAlertHistory();

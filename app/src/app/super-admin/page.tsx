@@ -508,7 +508,7 @@ export default function AdminDashboard() {
                 </DialogContent>
               </Dialog>
 
-              {usersLoading ? (
+              {usersLoading && users.length === 0 ? (
                 <TabLoadingSpinner message="Loading users..." />
               ) : (
                 <UserTable
@@ -522,7 +522,7 @@ export default function AdminDashboard() {
             </TabsContent>
 
             <TabsContent value="organizations" className="space-y-4">
-              {orgsLoading ? (
+              {orgsLoading && organizations.length === 0 ? (
                 <TabLoadingSpinner message="Loading organizations..." />
               ) : (
                 <OrgTable organizations={organizations} />
