@@ -87,7 +87,7 @@ export default function Jobs() {
   const { currentProject } = useProjectContext();
 
   // Use React Query hook for jobs data (cached, handles loading/error)
-  const { jobs: rawJobs, isLoading, isRestoring, invalidate } = useJobs();
+  const { jobs: rawJobs, isLoading, isRestoring } = useJobs();
 
   // Check permissions
   const userRole = currentProject?.userRole ? normalizeRole(currentProject.userRole) : null;
