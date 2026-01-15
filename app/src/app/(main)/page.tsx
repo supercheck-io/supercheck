@@ -266,21 +266,13 @@ const formatCompactNumber = (value: number): string => {
 };
 
 export default function Home() {
-  // HYDRATION FIX: Track if component has mounted on client
-  // Server always renders loading state (no cache), client may have cached data
-  // To prevent hydration mismatch, we render loading on first client render too
-  // useSyncExternalStore ensures consistent behavior: server returns false, client returns true
   const isMounted = useSyncExternalStore(
-    () => () => { },  // subscribe - no-op
-    () => true,      // getSnapshot (client) - always mounted
-    () => false      // getServerSnapshot - never mounted on server
+    () => () => {},
+    () => true,
+    () => false
   );
 
-  // Use React Query hook for dashboard data (cached, auto-refreshes)
   const { data: dashboardData, isLoading: queryLoading, error: queryError } = useDashboard();
-
-  // HYDRATION FIX: Show loading on server AND first client render
-  // After mount, use actual loading state from query
   const loading = !isMounted || queryLoading;
   const error = queryError?.message ?? null;
 

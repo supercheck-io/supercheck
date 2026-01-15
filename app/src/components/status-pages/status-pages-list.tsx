@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useSyncExternalStore } from "react";
 import {
   Card,
   CardDescription,
@@ -83,8 +83,13 @@ type StatusPage = {
 };
 
 export default function StatusPagesList() {
-  // Use React Query hook for status pages data (cached, handles loading/error)
-  const { statusPages: rawStatusPages, isPending } = useStatusPages();
+  const isMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+
+  const { statusPages: rawStatusPages, isLoading } = useStatusPages();
   const queryClient = useQueryClient();
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -291,9 +296,7 @@ export default function StatusPagesList() {
     }
   };
 
-  // Show loading state only when actually fetching (not during cache restoration)
-  // isPending = true when no cached data AND fetching
-  if (isPending && !rawStatusPages?.length) {
+  if (!isMounted || isLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <SuperCheckLoading size="lg" message="Loading status pages..." />

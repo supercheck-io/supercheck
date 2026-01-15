@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useSyncExternalStore } from "react";
 import { columns } from "./columns";
 import { DataTable } from "./data-table";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
@@ -10,29 +10,37 @@ import { useProjectContext } from "@/hooks/use-project-context";
 export function AlertsComponent() {
   const [alerts, setAlerts] = useState<AlertHistory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [mounted, setMounted] = useState(false);
   const { projectId } = useProjectContext();
 
-  // Set mounted to true after initial render
+  // Hydration-safe mounted state - prevents mismatch between server and client
+  // Server returns false, client returns true after hydration
+  const isMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+
+  // Use a ref to track mount state for async callbacks
+  const mountedRef = React.useRef(true);
   useEffect(() => {
-    setMounted(true);
+    mountedRef.current = true;
     return () => {
-      setMounted(false);
+      mountedRef.current = false;
     };
   }, []);
 
   // Safe state setters that only run when component is mounted
   const safeSetAlerts = useCallback((alerts: AlertHistory[] | ((prev: AlertHistory[]) => AlertHistory[])) => {
-    if (mounted) {
+    if (mountedRef.current) {
       setAlerts(alerts);
     }
-  }, [mounted]);
+  }, []);
 
   const safeSetIsLoading = useCallback((loading: boolean) => {
-    if (mounted) {
+    if (mountedRef.current) {
       setIsLoading(loading);
     }
-  }, [mounted]);
+  }, []);
 
   const fetchAlerts = useCallback(async () => {
     safeSetIsLoading(true);
@@ -64,8 +72,8 @@ export function AlertsComponent() {
     fetchAlerts();
   }, [fetchAlerts]);
 
-  // Don't render until component is mounted
-  if (!mounted) {
+  // Don't render until component is mounted (prevents hydration mismatch)
+  if (!isMounted) {
     return (
       <div className="h-full flex-1 flex-col p-2 mt-6">
         <DataTableSkeleton columns={4} rows={3} />

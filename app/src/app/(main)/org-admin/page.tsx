@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { StatsCard } from "@/components/admin/stats-card";
 import { Card, CardContent } from "@/components/ui/card";
@@ -36,7 +36,6 @@ import {
   createProjectSchema,
   type CreateProjectFormData,
 } from "@/lib/validations/project";
-// import { useFormValidation } from "@/hooks/use-form-validation";
 import { useBreadcrumbs } from "@/components/breadcrumb-context";
 import { TabLoadingSpinner } from "@/components/ui/table-skeleton";
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
@@ -49,6 +48,14 @@ import {
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
 import { z } from "zod";
 import { useAppConfig } from "@/hooks/use-app-config";
+// Use React Query hooks for cached data fetching
+import {
+  useOrgStats,
+  useOrgDetails,
+  useOrgMembers,
+  useOrgProjects,
+  useOrgDataInvalidation,
+} from "@/hooks/use-organization";
 
 interface OrgStats {
   projects: number;
@@ -130,179 +137,66 @@ function OrgAdminDashboardContent() {
   const searchParams = useSearchParams();
   const defaultTab = searchParams.get("tab") || "overview";
   const [activeTab, setActiveTab] = useState(defaultTab);
-  const [stats, setStats] = useState<OrgStats | null>(null);
-  const [orgDetails, setOrgDetails] = useState<OrgDetails | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [currentUserRole, setCurrentUserRole] =
-    useState<string>("project_viewer");
 
-  // Use cached hosting mode from useAppConfig (React Query cached)
+  const isMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+
   const { isCloudHosted } = useAppConfig();
 
-  // Members tab state
-  const [members, setMembers] = useState<OrgMember[]>([]);
-  const [invitations, setInvitations] = useState<PendingInvitation[]>([]);
-  const [membersLoading, setMembersLoading] = useState(false);
+  const { stats: orgStats, isLoading: statsLoading } = useOrgStats();
+  const { details: orgDetails, isLoading: detailsLoading } = useOrgDetails();
+  const { members, invitations, currentUserRole, isLoading: membersLoading } = useOrgMembers();
+  const { projects: orgProjects, isLoading: projectsLoading } = useOrgProjects();
+  const { invalidateStats, invalidateMembers, invalidateProjects } = useOrgDataInvalidation();
+
+  const hasData = orgStats !== null && orgDetails !== null;
+  const isInitialLoading = !isMounted || (!hasData && (statsLoading || detailsLoading));
+
+  const stats: OrgStats | null = orgStats ? {
+    projects: orgStats.projectCount,
+    jobs: orgStats.jobCount || 0,
+    tests: orgStats.testCount || 0,
+    monitors: orgStats.monitorCount || 0,
+    runs: orgStats.runCount || 0,
+    members: orgStats.memberCount,
+  } : null;
+
+  // Note: membersCount is not available from the API currently.
+  // The Project interface requires it, but the /api/projects endpoint
+  // doesn't return per-project member counts. Setting to 0 for now.
+  // TODO: Add members count to /api/projects response if needed.
+  const projects: Project[] = orgProjects.map(p => ({
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    description: p.description,
+    isDefault: p.isDefault,
+    status: "active" as const,
+    createdAt: p.createdAt,
+    membersCount: 0,
+  }));
+
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [inviting, setInviting] = useState(false);
-
-  // Projects tab state
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectsLoading, setProjectsLoading] = useState(false);
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
   const [showEditProjectDialog, setShowEditProjectDialog] = useState(false);
   const [creatingProject, setCreatingProject] = useState(false);
   const [updatingProject, setUpdatingProject] = useState(false);
-  const [newProject, setNewProject] = useState({
-    name: "",
-    description: "",
-    isDefault: false,
-  });
+  const [newProject, setNewProject] = useState({ name: "", description: "", isDefault: false });
   const [editingProject, setEditingProject] = useState<Project | null>(null);
 
-  useEffect(() => {
-    fetchOrgData();
-    // Also fetch members and invitations data on mount
-    fetchMembers();
-    fetchInvitations();
-    // Hosting mode now comes from useAppConfig (cached)
-  }, []);
-
-  // Set breadcrumbs
   useEffect(() => {
     setBreadcrumbs([
       { label: "Home", href: "/", isCurrentPage: false },
       { label: "Organization Admin", href: "/org-admin", isCurrentPage: true },
     ]);
-
-    // Cleanup breadcrumbs on unmount
-    return () => {
-      setBreadcrumbs([]);
-    };
+    return () => setBreadcrumbs([]);
   }, [setBreadcrumbs]);
 
-  const handleTabChange = (value: string) => {
-    if (value === "projects" && projects.length === 0) {
-      fetchProjects();
-    }
-    // Note: Audit tab handles its own data fetching
-    // Members data is now fetched on mount
-  };
-
-  const fetchOrgData = async () => {
-    try {
-      // Fetch organization stats and details
-      const [statsResponse, detailsResponse] = await Promise.all([
-        fetch("/api/organizations/stats"),
-        fetch("/api/organizations/current"),
-      ]);
-
-      const [statsData, detailsData] = await Promise.all([
-        statsResponse.json(),
-        detailsResponse.json(),
-      ]);
-
-      if (statsData.success) {
-        setStats(statsData.data);
-      }
-
-      if (detailsData.success) {
-        setOrgDetails(detailsData.data);
-      }
-    } catch (error) {
-      console.error("Error fetching organization data:", error);
-      toast.error("Failed to load organization data");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchMembers = async () => {
-    setMembersLoading(true);
-    try {
-      const response = await fetch("/api/organizations/members");
-      const data = await response.json();
-
-      if (data.success) {
-        setMembers(data.data.members);
-        setInvitations(data.data.invitations);
-        setCurrentUserRole(data.data.currentUserRole || "project_viewer");
-      } else {
-        console.error("Failed to fetch members:", data.error);
-      }
-    } catch (error) {
-      console.error("Error fetching members:", error);
-    } finally {
-      setMembersLoading(false);
-    }
-  };
-
-  const fetchInvitations = async () => {
-    try {
-      const response = await fetch("/api/organizations/invitations");
-      const data = await response.json();
-
-      if (data.success) {
-        setInvitations(data.data);
-      } else {
-        console.error("Failed to load invitations:", data.error);
-      }
-    } catch (error) {
-      console.error("Error fetching invitations:", error);
-    }
-  };
-
-  const fetchProjects = async () => {
-    setProjectsLoading(true);
-    try {
-      const response = await fetch("/api/projects");
-      const data = await response.json();
-
-      if (data.success) {
-        // Fetch member details for each project
-        const projectsWithMembers = await Promise.all(
-          data.data.map(async (project: Project) => {
-            try {
-              const membersResponse = await fetch(
-                `/api/projects/${project.id}/members`
-              );
-              const membersData = await membersResponse.json();
-
-              if (membersData.success) {
-                return {
-                  ...project,
-                  membersCount: membersData.members.length,
-                  members: membersData.members.map((member: ProjectMember) => ({
-                    id: member.user.id,
-                    name: member.user.name,
-                    email: member.user.email,
-                    role: member.role,
-                    avatar: member.user.image,
-                  })),
-                };
-              }
-              return project;
-            } catch (error) {
-              console.error(
-                `Error fetching members for project ${project.id}:`,
-                error
-              );
-              return project;
-            }
-          })
-        );
-
-        setProjects(projectsWithMembers);
-      } else {
-        toast.error("Failed to load projects");
-      }
-    } catch (error) {
-      console.error("Error fetching projects:", error);
-      toast.error("Failed to load projects");
-    } finally {
-      setProjectsLoading(false);
-    }
-  };
+  const handleTabChange = (_value: string) => {};
 
   const handleCreateProject = async (formData?: CreateProjectFormData) => {
     const projectData = formData || {
@@ -348,7 +242,8 @@ function OrgAdminDashboardContent() {
           description: "",
           isDefault: false,
         });
-        fetchProjects();
+        invalidateProjects();
+        invalidateStats();
       } else {
         toast.error(data.error || "Failed to create project");
       }
@@ -412,12 +307,8 @@ function OrgAdminDashboardContent() {
         toast.success("Project updated successfully");
         setShowEditProjectDialog(false);
         setEditingProject(null);
-        setNewProject({
-          name: "",
-          description: "",
-          isDefault: false,
-        });
-        fetchProjects();
+        setNewProject({ name: "", description: "", isDefault: false });
+        invalidateProjects();
       } else {
         toast.error(data.error || "Failed to update project");
       }
@@ -429,7 +320,7 @@ function OrgAdminDashboardContent() {
     }
   };
 
-  if (loading) {
+  if (isInitialLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <SuperCheckLoading size="lg" message="Loading organization..." />
@@ -746,16 +637,10 @@ function OrgAdminDashboardContent() {
                       })),
                   ]}
                   onMemberUpdate={() => {
-                    fetchMembers();
-                    fetchInvitations();
-                    fetchOrgData();
+                    invalidateMembers();
+                    invalidateStats();
                   }}
-                  onInviteMember={() => {
-                    setShowInviteDialog(true);
-                    if (projects.length === 0) {
-                      fetchProjects();
-                    }
-                  }}
+                  onInviteMember={() => setShowInviteDialog(true)}
                   canInviteMembers={canInviteMembers(
                     normalizeRole(currentUserRole)
                   )}
@@ -766,12 +651,7 @@ function OrgAdminDashboardContent() {
               {/* Member Access Dialog - Invite Mode */}
               <MemberAccessDialog
                 open={showInviteDialog}
-                onOpenChange={(open) => {
-                  setShowInviteDialog(open);
-                  if (open && projects.length === 0) {
-                    fetchProjects();
-                  }
-                }}
+                onOpenChange={setShowInviteDialog}
                 mode="invite"
                 projects={projects.filter((p) => p.status === "active")}
                 onSubmit={async (memberData) => {
@@ -795,8 +675,7 @@ function OrgAdminDashboardContent() {
                     const data = await response.json();
 
                     if (data.success) {
-                      fetchMembers();
-                      fetchInvitations();
+                      invalidateMembers();
                     } else {
                       throw new Error(
                         data.error || "Failed to send invitation"

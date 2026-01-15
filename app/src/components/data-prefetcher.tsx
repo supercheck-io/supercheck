@@ -3,72 +3,87 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
+import { useProjectContext } from "@/hooks/use-project-context";
 import { APP_CONFIG_QUERY_KEY, fetchAppConfig } from "@/hooks/use-app-config";
 import { ADMIN_STATUS_QUERY_KEY, fetchAdminStatus } from "@/hooks/use-admin-status";
 import { SUBSCRIPTION_STATUS_QUERY_KEY, fetchSubscriptionStatus } from "@/components/subscription-guard";
 import { getDashboardQueryKey, fetchDashboard } from "@/hooks/use-dashboard";
-import { useProjectContext } from "@/hooks/use-project-context";
+import { getTestsListQueryKey } from "@/hooks/use-tests";
+import { getJobsListQueryKey } from "@/hooks/use-jobs";
+import { getRunsListQueryKey } from "@/hooks/use-runs";
+import { getMonitorsListQueryKey } from "@/hooks/use-monitors";
+import { getRequirementsListQueryKey } from "@/hooks/use-requirements";
+import { getStatusPagesListQueryKey } from "@/hooks/use-status-pages";
+import { getNotificationProvidersQueryKey, fetchNotificationProviders } from "@/hooks/use-alerts";
+import {
+  ORG_STATS_QUERY_KEY, ORG_DETAILS_QUERY_KEY, ORG_MEMBERS_QUERY_KEY, ORG_PROJECTS_QUERY_KEY,
+  fetchOrgStats, fetchOrgDetails, fetchOrgMembers, fetchOrgProjects,
+} from "@/hooks/use-organization";
+const STALE_TIME = {
+  INFINITE: Infinity,
+  LONG: 5 * 60 * 1000,    // 5 min
+  MEDIUM: 60 * 1000,      // 1 min
+  SHORT: 30 * 1000,       // 30 sec
+  REALTIME: 5 * 1000,     // 5 sec
+};
 
-/**
- * DataPrefetcher - Minimal prefetch for essential data
- * 
- * Strategy:
- * - Phase 1: Auth/Config (needed everywhere)
- * - Phase 2: Landing Page Data (only if on landing page)
- * 
- * This approach avoids overwhelming the browser while ensuring
- * the most critical "first paint" data is ready.
- */
 export function DataPrefetcher() {
   const queryClient = useQueryClient();
   const pathname = usePathname();
   const { currentProject } = useProjectContext();
-  const didPrefetchAuth = useRef(false);
-  const didPrefetchDashboard = useRef(false);
+  const didPrefetch = useRef({ auth: false, dashboard: false, sidebar: false });
 
-  // Phase 1: Essential Auth/Config (runs once on mount)
   useEffect(() => {
-    if (didPrefetchAuth.current) return;
-    didPrefetchAuth.current = true;
+    if (didPrefetch.current.auth) return;
+    didPrefetch.current.auth = true;
 
-    queryClient.prefetchQuery({
-      queryKey: APP_CONFIG_QUERY_KEY,
-      queryFn: fetchAppConfig,
-      staleTime: Infinity
-    });
-    queryClient.prefetchQuery({
-      queryKey: ADMIN_STATUS_QUERY_KEY,
-      queryFn: fetchAdminStatus,
-      staleTime: 5 * 60 * 1000
-    });
-    queryClient.prefetchQuery({
-      queryKey: SUBSCRIPTION_STATUS_QUERY_KEY,
-      queryFn: fetchSubscriptionStatus,
-      staleTime: 5 * 60 * 1000
-    });
+    const prefetch = (qk: readonly unknown[], fn: () => Promise<unknown>, st: number) =>
+      queryClient.prefetchQuery({ queryKey: qk, queryFn: fn, staleTime: st });
+
+    prefetch(APP_CONFIG_QUERY_KEY, fetchAppConfig, STALE_TIME.INFINITE);
+    prefetch(ADMIN_STATUS_QUERY_KEY, fetchAdminStatus, STALE_TIME.LONG);
+    prefetch(SUBSCRIPTION_STATUS_QUERY_KEY, fetchSubscriptionStatus, STALE_TIME.LONG);
   }, [queryClient]);
 
-  // Phase 2: Smart Dashboard Prefetch
-  // Only runs if:
-  // 1. We have a project context
-  // 2. We are on the dashboard page ("/")
-  // 3. We haven't prefetched yet
   useEffect(() => {
-    if (!currentProject || didPrefetchDashboard.current) return;
-
-    // SMART PREFETCH: Only prefetch dashboard data if we are actually ON the dashboard
-    // This prevents "overwhelming" the browser on other pages (e.g. while testing)
-    // but ensures the landing page loads instantly.
+    if (!currentProject || didPrefetch.current.dashboard) return;
     if (pathname === "/" || pathname === `/project/${currentProject.slug}`) {
-      didPrefetchDashboard.current = true;
-
+      didPrefetch.current.dashboard = true;
       queryClient.prefetchQuery({
         queryKey: getDashboardQueryKey(currentProject.id),
         queryFn: fetchDashboard,
-        staleTime: 60 * 1000 // Match useDashboard staleTime
+        staleTime: STALE_TIME.MEDIUM,
       });
     }
   }, [queryClient, currentProject, pathname]);
+
+  useEffect(() => {
+    if (!currentProject || didPrefetch.current.sidebar) return;
+    didPrefetch.current.sidebar = true;
+
+    const projectId = currentProject.id;
+    const prefetch = (qk: readonly unknown[], fn: () => Promise<unknown>, st: number) =>
+      queryClient.prefetchQuery({ queryKey: qk, queryFn: fn, staleTime: st });
+    const fetchWithProject = (endpoint: string) => async () => {
+      const res = await fetch(endpoint, {
+        headers: { "Content-Type": "application/json", "x-project-id": projectId },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    };
+
+    prefetch(getTestsListQueryKey(projectId), fetchWithProject("/api/tests"), STALE_TIME.LONG);
+    prefetch(getJobsListQueryKey(projectId), fetchWithProject("/api/jobs"), STALE_TIME.LONG);
+    prefetch(getRunsListQueryKey(projectId), fetchWithProject("/api/runs"), STALE_TIME.REALTIME);
+    prefetch(getMonitorsListQueryKey(projectId), fetchWithProject("/api/monitors"), STALE_TIME.SHORT);
+    prefetch(getRequirementsListQueryKey(projectId), fetchWithProject("/api/requirements"), STALE_TIME.LONG);
+    prefetch(getStatusPagesListQueryKey(projectId), fetchWithProject("/api/status-pages"), STALE_TIME.LONG);
+    prefetch(getNotificationProvidersQueryKey(projectId), () => fetchNotificationProviders(projectId), STALE_TIME.LONG);
+    prefetch(ORG_STATS_QUERY_KEY, fetchOrgStats, STALE_TIME.LONG);
+    prefetch(ORG_DETAILS_QUERY_KEY, fetchOrgDetails, STALE_TIME.LONG);
+    prefetch(ORG_MEMBERS_QUERY_KEY, fetchOrgMembers, STALE_TIME.LONG);
+    prefetch(ORG_PROJECTS_QUERY_KEY, fetchOrgProjects, STALE_TIME.LONG);
+  }, [queryClient, currentProject]);
 
   return null;
 }

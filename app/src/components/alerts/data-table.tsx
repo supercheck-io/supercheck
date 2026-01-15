@@ -142,12 +142,8 @@ export function DataTable<TData extends AlertHistory, TValue>({
 
   // Set mounted to true after initial render
   React.useEffect(() => {
-    const timer = setTimeout(() => {
-      setMounted(true);
-    }, 0);
-    
+    setMounted(true);
     return () => {
-      clearTimeout(timer);
       setMounted(false);
     };
   }, []);

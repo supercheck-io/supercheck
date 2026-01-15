@@ -1,11 +1,17 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useSyncExternalStore } from "react";
 import { StatsCard } from "@/components/admin/stats-card";
 import { UserTable } from "@/components/admin/user-table";
 import { OrgTable } from "@/components/admin/org-table";
 import type { AdminUser } from "@/components/admin/user-columns";
 import type { AdminOrganization } from "@/components/admin/org-columns";
+import {
+  useSuperAdminStats,
+  useSuperAdminUsers,
+  useSuperAdminOrganizations,
+  useSuperAdminDataInvalidation,
+} from "@/hooks/use-super-admin";
 import {
   Card,
   CardContent,
@@ -51,55 +57,26 @@ import {
 } from "@/lib/validations/user";
 import { z } from "zod";
 
-interface SystemStats {
-  users: {
-    totalUsers: number;
-    newUsersThisMonth: number;
-    activeUsers: number;
-    bannedUsers: number;
-  };
-  organizations: {
-    totalOrganizations: number;
-    totalProjects: number;
-    totalJobs: number;
-    totalTests: number;
-    totalMonitors: number;
-    totalRuns: number;
-  };
-}
-
 export default function AdminDashboard() {
   const { setBreadcrumbs } = useBreadcrumbs();
-  const [stats, setStats] = useState<SystemStats | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  // Users tab state
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [usersLoading, setUsersLoading] = useState(false);
+  const isMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+
+  const { stats, isLoading: statsLoading } = useSuperAdminStats();
+  const { users, isLoading: usersLoading } = useSuperAdminUsers();
+  const { organizations, isLoading: orgsLoading } = useSuperAdminOrganizations();
+  const { invalidateStats, invalidateUsers } = useSuperAdminDataInvalidation();
+
+  const hasData = stats !== null;
+  const isInitialLoading = !isMounted || (!hasData && statsLoading);
+
   const [showCreateUserDialog, setShowCreateUserDialog] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
-  const [newUser, setNewUser] = useState({
-    name: "",
-    email: "",
-    password: "",
-    role: "project_viewer",
-  });
-  const [usersPagination, setUsersPagination] = useState({
-    limit: 10000, // Fetch all users for client-side pagination
-    offset: 0,
-    hasMore: false,
-    total: 0,
-  });
-
-  // Organizations tab state
-  const [organizations, setOrganizations] = useState<AdminOrganization[]>([]);
-  const [orgsLoading, setOrgsLoading] = useState(false);
-  const [orgsPagination, setOrgsPagination] = useState({
-    limit: 10000, // Fetch all organizations for client-side pagination
-    offset: 0,
-    hasMore: false,
-    total: 0,
-  });
+  const [newUser, setNewUser] = useState({ name: "", email: "", password: "", role: "project_viewer" });
 
   // Bull Dashboard iframe state
   const [iframeLoaded, setIframeLoaded] = useState(false);
@@ -107,57 +84,33 @@ export default function AdminDashboard() {
   const iframeTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
 
-  // Cleanup iframe timeout on unmount
   React.useEffect(() => {
     return () => {
-      if (iframeTimeoutRef.current) {
-        clearTimeout(iframeTimeoutRef.current);
-      }
+      if (iframeTimeoutRef.current) clearTimeout(iframeTimeoutRef.current);
     };
   }, []);
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
-
-  // Set breadcrumbs
   useEffect(() => {
     setBreadcrumbs([
       { label: "Home", href: "/", isCurrentPage: false },
       { label: "Super Admin", href: "/super-admin", isCurrentPage: true },
     ]);
-
-    // Cleanup breadcrumbs on unmount
-    return () => {
-      setBreadcrumbs([]);
-    };
+    return () => setBreadcrumbs([]);
   }, [setBreadcrumbs]);
 
   const handleTabChange = (value: string) => {
-    if (value === "users" && users.length === 0) {
-      fetchUsers();
-    } else if (value === "organizations" && organizations.length === 0) {
-      fetchOrganizations();
-    } else if (value === "queues") {
-      // Reset iframe states when switching to queues tab
+    if (value === "queues") {
       setIframeLoaded(false);
       setIframeError(false);
-      // Set a timeout to detect if iframe fails to load
-      if (iframeTimeoutRef.current) {
-        clearTimeout(iframeTimeoutRef.current);
-      }
+      if (iframeTimeoutRef.current) clearTimeout(iframeTimeoutRef.current);
       iframeTimeoutRef.current = setTimeout(() => {
-        if (!iframeLoaded) {
-          setIframeError(true);
-        }
-      }, 15000); // 15 second timeout
+        if (!iframeLoaded) setIframeError(true);
+      }, 15000);
     }
   };
 
   const handleIframeLoad = () => {
-    if (iframeTimeoutRef.current) {
-      clearTimeout(iframeTimeoutRef.current);
-    }
+    if (iframeTimeoutRef.current) clearTimeout(iframeTimeoutRef.current);
     setIframeLoaded(true);
     setIframeError(false);
   };
@@ -165,100 +118,11 @@ export default function AdminDashboard() {
   const handleIframeRefresh = () => {
     setIframeLoaded(false);
     setIframeError(false);
-    if (iframeRef.current) {
-      iframeRef.current.src = "/api/admin/queues/";
-    }
-    // Reset timeout
-    if (iframeTimeoutRef.current) {
-      clearTimeout(iframeTimeoutRef.current);
-    }
+    if (iframeRef.current) iframeRef.current.src = "/api/admin/queues/";
+    if (iframeTimeoutRef.current) clearTimeout(iframeTimeoutRef.current);
     iframeTimeoutRef.current = setTimeout(() => {
-      if (!iframeLoaded) {
-        setIframeError(true);
-      }
+      if (!iframeLoaded) setIframeError(true);
     }, 15000);
-  };
-
-  const fetchStats = async () => {
-    try {
-      const response = await fetch("/api/admin/stats");
-      const data = await response.json();
-
-      if (data.success) {
-        setStats(data.data);
-      } else {
-        toast.error("Failed to load statistics");
-      }
-    } catch (error) {
-      console.error("Error fetching stats:", error);
-      toast.error("Failed to load statistics");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchUsers = async (page = 0, reset = true) => {
-    setUsersLoading(true);
-    try {
-      const offset = page * usersPagination.limit;
-      const response = await fetch(
-        `/api/admin/users?limit=${usersPagination.limit}&offset=${offset}`
-      );
-      const data = await response.json();
-
-      if (data.success) {
-        if (reset || page === 0) {
-          setUsers(data.data);
-        } else {
-          setUsers((prev) => [...prev, ...data.data]);
-        }
-        setUsersPagination((prev) => ({
-          ...prev,
-          offset: offset,
-          hasMore: data.pagination?.hasMore || false,
-          total: offset + data.data.length,
-        }));
-      } else {
-        toast.error("Failed to load users");
-      }
-    } catch (error) {
-      console.error("Error fetching users:", error);
-      toast.error("Failed to load users");
-    } finally {
-      setUsersLoading(false);
-    }
-  };
-
-  const fetchOrganizations = async (page = 0, reset = true) => {
-    setOrgsLoading(true);
-    try {
-      const offset = page * orgsPagination.limit;
-      const response = await fetch(
-        `/api/admin/organizations?limit=${orgsPagination.limit}&offset=${offset}&stats=true`
-      );
-      const data = await response.json();
-
-      if (data.success) {
-        if (reset || page === 0) {
-          setOrganizations(data.data);
-        } else {
-          setOrganizations((prev) => [...prev, ...data.data]);
-        }
-        setOrgsPagination((prev) => ({
-          ...prev,
-          offset: offset,
-          hasMore: data.pagination?.hasMore || false,
-          total: offset + data.data.length,
-        }));
-      } else {
-        toast.error("Failed to load organizations");
-      }
-    } catch (error) {
-      console.error("Error fetching organizations:", error);
-      toast.error("Failed to load organizations");
-    } finally {
-      setOrgsLoading(false);
-    }
   };
 
   const handleCreateUser = async () => {
@@ -302,14 +166,9 @@ export default function AdminDashboard() {
       if (data.success) {
         toast.success("User created successfully");
         setShowCreateUserDialog(false);
-        setNewUser({
-          name: "",
-          email: "",
-          password: "",
-          role: "project_viewer",
-        });
-        fetchUsers();
-        fetchStats(); // Refresh stats
+        setNewUser({ name: "", email: "", password: "", role: "project_viewer" });
+        invalidateUsers();
+        invalidateStats();
       } else {
         toast.error(data.error || "Failed to create user");
       }
@@ -321,7 +180,7 @@ export default function AdminDashboard() {
     }
   };
 
-  if (loading) {
+  if (isInitialLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <SuperCheckLoading size="lg" message="Loading admin dashboard..." />
@@ -655,8 +514,8 @@ export default function AdminDashboard() {
                 <UserTable
                   users={users}
                   onUserUpdate={() => {
-                    fetchUsers();
-                    fetchStats();
+                    invalidateUsers();
+                    invalidateStats();
                   }}
                 />
               )}

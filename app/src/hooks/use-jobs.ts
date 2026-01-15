@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
 import { RUNS_QUERY_KEY } from "./use-runs";
+import { DASHBOARD_QUERY_KEY } from "./use-dashboard";
 
 export interface JobTest {
   id: string;
@@ -130,6 +131,8 @@ export function useJobMutations() {
       queryClient.invalidateQueries({ queryKey: JOBS_QUERY_KEY, refetchType: 'all' });
       // Also invalidate runs cache so new run appears immediately
       queryClient.invalidateQueries({ queryKey: RUNS_QUERY_KEY, refetchType: 'all' });
+      // Invalidate dashboard cache to update stats and recent runs
+      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
     },
   });
 
