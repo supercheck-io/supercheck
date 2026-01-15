@@ -87,7 +87,7 @@ export default function Jobs() {
   const { currentProject } = useProjectContext();
 
   // Use React Query hook for jobs data (cached, handles loading/error)
-  const { jobs: rawJobs, isLoading, invalidate } = useJobs();
+  const { jobs: rawJobs, isLoading, isRestoring, invalidate } = useJobs();
 
   // Check permissions
   const userRole = currentProject?.userRole ? normalizeRole(currentProject.userRole) : null;
@@ -335,8 +335,8 @@ export default function Jobs() {
     return job.updatedAt;
   };
 
-  // Don't render until component is mounted
-  if (!isMounted) {
+  // Don't render until mounted and cache is restored
+  if (!isMounted || isRestoring) {
     return (
       <div className="flex h-full flex-col space-y-4 p-2 mt-6 w-full max-w-full overflow-x-hidden">
         <DataTableSkeleton columns={6} rows={3} />

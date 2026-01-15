@@ -177,6 +177,7 @@ export function useStatusPageDetail(statusPageId: string | null) {
     monitors: query.data?.monitors ?? [],
     canUpdate: query.data?.canUpdate ?? false,
     isLoading: isInitialLoading,
+    isRestoring,
     error: query.error as Error | null,
     refetch: query.refetch,
     invalidate,

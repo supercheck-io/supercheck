@@ -89,7 +89,7 @@ export default function StatusPagesList() {
     () => false
   );
 
-  const { statusPages: rawStatusPages, isLoading } = useStatusPages();
+  const { statusPages: rawStatusPages, isLoading, isRestoring } = useStatusPages();
   const hasData = rawStatusPages !== undefined && rawStatusPages.length >= 0;
   const queryClient = useQueryClient();
 
@@ -297,7 +297,7 @@ export default function StatusPagesList() {
     }
   };
 
-  if (!isMounted || (!hasData && isLoading)) {
+  if (!isMounted || isRestoring || (!hasData && isLoading)) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <SuperCheckLoading size="lg" message="Loading status pages..." />

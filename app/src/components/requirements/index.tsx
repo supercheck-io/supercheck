@@ -99,7 +99,7 @@ export default function RequirementsPage() {
     );
 
     // Fetch requirements with React Query
-    const { requirements: rawRequirements, isLoading, invalidate } = useRequirements();
+    const { requirements: rawRequirements, isLoading, isRestoring: reqIsRestoring, invalidate } = useRequirements();
     const { deleteRequirement: deleteMutation } = useRequirementMutations();
 
     // Fetch available tags for coloring (used for fallback if tag doesn't have color)
@@ -223,8 +223,8 @@ export default function RequirementsPage() {
         onView: (testId) => window.open(`/playground/${testId}`, '_blank'),
     }), []);
 
-    // Don't render until mounted
-    if (!isMounted) {
+    // Don't render until mounted and cache is restored
+    if (!isMounted || reqIsRestoring) {
         return (
             <div className="flex h-full flex-col space-y-2 p-2 w-full max-w-full overflow-x-hidden">
                 <DataTableSkeleton columns={6} rows={3} />

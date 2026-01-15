@@ -20,7 +20,7 @@ export default function MonitorsList() {
 
   // Use React Query hook for monitors data (cached, handles loading/error)
   // No pagination params = API returns all monitors for client-side filtering
-  const { monitors, isLoading, invalidate } = useMonitors();
+  const { monitors, isLoading, isRestoring, invalidate } = useMonitors();
   
 
   // Handle row click to navigate to monitor detail
@@ -38,8 +38,8 @@ export default function MonitorsList() {
     setTableKey(prev => prev + 1);
   }, [isMounted, invalidate]);
 
-  // Don't render until mounted
-  if (!isMounted) {
+  // Don't render until mounted and cache is restored
+  if (!isMounted || isRestoring) {
     return (
       <div className="flex h-full flex-col space-y-4 p-2 mt-6">
         <DataTableSkeleton columns={5} rows={3} />

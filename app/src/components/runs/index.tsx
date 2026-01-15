@@ -66,7 +66,7 @@ export function Runs() {
 
   // Use React Query hook for runs data (cached, handles loading/error)
   // No pageSize specified = API returns all runs for client-side filtering
-  const { runs: rawRuns, isLoading, invalidate } = useRuns();
+  const { runs: rawRuns, isLoading, isRestoring, invalidate } = useRuns();
 
   // Transform runs data with memoization
   const runs = useMemo<TestRun[]>(() => {
@@ -100,8 +100,8 @@ export function Runs() {
   // Create columns with the delete handler and permissions
   const columns = createColumns(handleDeleteRun, canDelete);
 
-  // Don't render until component is mounted (prevents hydration mismatch)
-  if (!isMounted) {
+  // Don't render until mounted and cache is restored
+  if (!isMounted || isRestoring) {
     return (
       <div className="flex h-full flex-col space-y-4 p-2 mt-6 w-full max-w-full overflow-x-hidden">
         <DataTableSkeleton columns={6} rows={3} />

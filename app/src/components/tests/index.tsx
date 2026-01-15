@@ -25,6 +25,7 @@ export default function Tests() {
   const {
     tests: rawTests,
     isLoading,
+    isRestoring,
     invalidate,
   } = useTests();
 
@@ -55,8 +56,8 @@ export default function Tests() {
     invalidate();
   }, [invalidate]);
 
-  // Don't render until component is mounted
-  if (!isMounted) {
+  // Don't render until mounted and cache is restored
+  if (!isMounted || isRestoring) {
     return (
       <div className="flex h-full flex-col p-2 mt-6">
         <DataTableSkeleton columns={5} rows={3} />

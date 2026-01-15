@@ -328,6 +328,7 @@ export function useDashboard() {
   return {
     data: query.data,
     isLoading: isInitialLoading,
+    isRestoring,
     isRefetching: query.isRefetching,
     error: query.error as Error | null,
     refetch,

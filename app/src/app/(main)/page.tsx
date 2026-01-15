@@ -272,9 +272,9 @@ export default function Home() {
     () => false
   );
 
-  const { data: dashboardData, isLoading: queryLoading, error: queryError } = useDashboard();
+  const { data: dashboardData, isLoading: queryLoading, isRestoring, error: queryError } = useDashboard();
   const hasData = dashboardData !== undefined && dashboardData !== null;
-  const loading = !isMounted || (!hasData && queryLoading);
+  const loading = !isMounted || isRestoring || (!hasData && queryLoading);
   const error = queryError?.message ?? null;
 
   const breadcrumbs = [
