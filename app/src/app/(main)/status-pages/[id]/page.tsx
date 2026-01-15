@@ -24,7 +24,7 @@ export default function StatusPagePage() {
   );
 
   // Use React Query hook for status page data (cached, handles loading/error)
-  const { statusPage, components, monitors, canUpdate, isLoading, error } =
+  const { statusPage, components, monitors, canUpdate, isLoading, isRestoring, error } =
     useStatusPageDetail(statusPageId);
   const hasData = statusPage !== undefined && statusPage !== null;
 
@@ -38,8 +38,8 @@ export default function StatusPagePage() {
     }
   }, [error, router]);
 
-  // Show loading state only when no cached data exists
-  if (!isMounted || (!hasData && isLoading)) {
+  // Show loading state during hydration, cache restoration, or when no data exists
+  if (!isMounted || isRestoring || (!hasData && isLoading)) {
     return (
       <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">
         <SuperCheckLoading size="lg" message="Loading status page..." />
