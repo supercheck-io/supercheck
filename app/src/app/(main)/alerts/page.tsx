@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, Suspense, useSyncExternalStore } from "react";
 import {
   Card,
   CardContent,
@@ -53,19 +53,14 @@ import {
 } from "@/hooks/use-alerts";
 import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 
-/**
- * AlertsPage - Notification channel management and alert history
- * 
- * PERFORMANCE: Uses React Query hooks (useNotificationProviders, useAlertHistory)
- * which are prefetched by DataPrefetcher for instant loading.
- */
 function AlertsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  
+  const isMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   const { providers, isLoading: providersLoading } = useNotificationProviders();
   const { alertHistory, isLoading: historyLoading } = useAlertHistory();
@@ -223,8 +218,7 @@ function AlertsPage() {
       <div className="">
         <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
           <CardContent className="p-6">
-            {isMounted ? (
-              <Tabs defaultValue="history" className="space-y-4">
+            <Tabs defaultValue="history" className="space-y-4">
                 <TabsList>
                   <TabsTrigger value="providers">
                     <Mail className="h-4 w-4 mr-2" />
@@ -303,17 +297,12 @@ function AlertsPage() {
                       <DataTable
                         columns={columns}
                         data={alertHistory}
-                        isLoading={historyLoading || !isMounted}
+                        isLoading={historyLoading}
                       />
                     )}
                   </div>
                 </TabsContent>
               </Tabs>
-            ) : (
-              <div className="flex min-h-[400px] items-center justify-center">
-                <SuperCheckLoading size="lg" message="Loading alerts..." />
-              </div>
-            )}
 
             <Dialog
               open={isCreateDialogOpen}

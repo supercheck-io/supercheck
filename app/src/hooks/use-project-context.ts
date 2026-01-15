@@ -175,9 +175,14 @@ export function useProjectContextState(
     await fetchProjects(true);
   }, [fetchProjects]);
 
+  // PERFORMANCE FIX: Only fetch projects if we don't have server-provided data
+  // When server provides initialProjects via layout.tsx, we skip this fetch
+  // to avoid redundant API calls and data flash
   useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
+    if (!hasServerData) {
+      fetchProjects();
+    }
+  }, [fetchProjects, hasServerData]);
 
   return {
     currentProject,

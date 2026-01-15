@@ -223,8 +223,17 @@ export function clearPrefetchState(): void {
 
 const STALE_TIME = 5 * 60 * 1000; // 5 minutes
 
-async function fetchJson(url: string) {
-  const res = await fetch(url, { headers: { "Content-Type": "application/json" } });
+/**
+ * Fetch JSON with project context header for multi-tenancy support.
+ * All API calls must include x-project-id for proper data isolation.
+ */
+async function fetchJsonWithProject(url: string, projectId: string) {
+  const res = await fetch(url, { 
+    headers: { 
+      "Content-Type": "application/json",
+      "x-project-id": projectId,
+    } 
+  });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
@@ -239,51 +248,66 @@ function getRouteConfigs(projectId: string): Record<string, RouteConfig> {
   return {
     "/": {
       queryKey: ["dashboard", projectId],
-      queryFn: () => fetchJson("/api/dashboard"),
+      queryFn: () => fetchJsonWithProject("/api/dashboard", projectId),
       staleTime: 60000,
     },
     "/tests": {
       queryKey: ["tests", projectId, "{}"],
-      queryFn: () => fetchJson("/api/tests"),
+      queryFn: () => fetchJsonWithProject("/api/tests", projectId),
       staleTime: STALE_TIME,
     },
     "/jobs": {
       queryKey: ["jobs", projectId, "{}"],
-      queryFn: () => fetchJson("/api/jobs"),
+      queryFn: () => fetchJsonWithProject("/api/jobs", projectId),
       staleTime: STALE_TIME,
     },
     "/runs": {
       queryKey: ["runs", projectId, "{}"],
-      queryFn: () => fetchJson("/api/runs"),
+      queryFn: () => fetchJsonWithProject("/api/runs", projectId),
       staleTime: STALE_TIME,
     },
     "/monitors": {
       queryKey: ["monitors", projectId, "{}"],
-      queryFn: () => fetchJson("/api/monitors"),
+      queryFn: () => fetchJsonWithProject("/api/monitors", projectId),
       staleTime: STALE_TIME,
     },
     "/requirements": {
       queryKey: ["requirements", projectId, "{}"],
-      queryFn: () => fetchJson("/api/requirements"),
+      queryFn: () => fetchJsonWithProject("/api/requirements", projectId),
       staleTime: STALE_TIME,
     },
     "/status-pages": {
       queryKey: ["statusPages", projectId, "{}"],
-      queryFn: () => fetchJson("/api/status-pages"),
+      queryFn: () => fetchJsonWithProject("/api/status-pages", projectId),
       staleTime: STALE_TIME,
     },
     "/alerts": {
       queryKey: ["notification-providers", projectId],
-      queryFn: () => fetchJson("/api/notification-providers"),
+      queryFn: () => fetchJsonWithProject("/api/notification-providers", projectId),
       staleTime: STALE_TIME,
     },
     "/variables": {
       queryKey: ["variables", projectId],
-      queryFn: () => fetchJson(`/api/projects/${projectId}/variables`),
+      queryFn: () => fetchJsonWithProject(`/api/projects/${projectId}/variables`, projectId),
       staleTime: STALE_TIME,
     },
   };
 }
+
+// Organization-scoped routes (not project-scoped)
+const ORG_ROUTES: Record<string, RouteConfig> = {
+  "/org-admin": {
+    queryKey: ["organization", "stats"],
+    queryFn: async () => {
+      const res = await fetch("/api/organizations/stats", {
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    staleTime: STALE_TIME,
+  },
+};
 
 /**
  * Prefetch data for a sidebar navigation route.
@@ -294,11 +318,23 @@ export function prefetchSidebarRoute(
   projectId: string | null,
   queryClient: QueryClient
 ): void {
-  if (!projectId) return;
-
-  const key = `sidebar-${href}-${projectId}`;
+  const key = `sidebar-${href}-${projectId || 'org'}`;
   if (shouldSkipPrefetch(key)) return;
   markPrefetchActive(key);
+
+  // Check organization-scoped routes first (don't require projectId)
+  const orgConfig = ORG_ROUTES[href];
+  if (orgConfig) {
+    void queryClient.prefetchQuery({
+      queryKey: orgConfig.queryKey as unknown[],
+      queryFn: orgConfig.queryFn,
+      staleTime: orgConfig.staleTime ?? STALE_TIME,
+    });
+    return;
+  }
+
+  // Project-scoped routes require projectId
+  if (!projectId) return;
 
   const configs = getRouteConfigs(projectId);
   const config = configs[href];

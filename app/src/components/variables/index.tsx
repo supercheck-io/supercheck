@@ -3,7 +3,7 @@
 import { columns } from "./columns";
 import { DataTable } from "./data-table";
 import { DataTableSkeleton } from "@/components/ui/data-table-skeleton";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from "react";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { Variable } from "./schema";
 
@@ -38,11 +38,20 @@ export default function Variables() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const { projectId: currentProjectId, loading: projectLoading } = useProjectContext();
 
+  // Hydration-safe mounted state - prevents mismatch between server and client
+  // Server returns false, client returns true after hydration
+  const isMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+
   // Use refs to avoid dependency chain issues with useCallback
+  // mountedRef is used for async callbacks to prevent state updates after unmount
   const mountedRef = useRef(true);
   const fetchingRef = useRef(false);
 
-  // Set mounted ref on mount/unmount
+  // Set mounted ref on mount/unmount (for async callback safety)
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -160,8 +169,8 @@ export default function Variables() {
     setRefreshTrigger(prev => prev + 1);
   }, []);
 
-  // Show skeleton only on initial load
-  if ((!mountedRef.current || projectLoading) && isInitialLoad) {
+  // Don't render until component is mounted (prevents hydration mismatch)
+  if (!isMounted) {
     return (
       <div className="flex h-full flex-col p-2 mt-6">
         <DataTableSkeleton columns={5} rows={2} />

@@ -980,19 +980,19 @@ export class MonitorService {
     // Use high-resolution timer for more accurate timing
     const startTime = process.hrtime.bigint();
 
+    // 🟡 Get connection pool for better resource management
+    const url = new URL(target);
+    const connectionPool = await this.resourceManager.getConnectionPool(
+      url.hostname,
+      parseInt(url.port) || (url.protocol === 'https:' ? 443 : 80),
+      url.protocol as 'http:' | 'https:',
+    );
+
+    const connection = await this.resourceManager.acquireConnection(
+      connectionPool.id,
+    );
+
     try {
-      // 🟡 Get connection pool for better resource management
-      const url = new URL(target);
-      const connectionPool = await this.resourceManager.getConnectionPool(
-        url.hostname,
-        parseInt(url.port) || (url.protocol === 'https:' ? 443 : 80),
-        url.protocol as 'http:' | 'https:',
-      );
-
-      const connection = await this.resourceManager.acquireConnection(
-        connectionPool.id,
-      );
-
       // Build request configuration
       const requestConfig: any = {
         method: httpMethod,
@@ -1259,6 +1259,9 @@ export class MonitorService {
         // Keep the actual measured time for unexpected errors
         // responseTimeMs already calculated above from startTime
       }
+    } finally {
+      // 🔴 CRITICAL: Always release the connection to prevent connection leaks
+      await this.resourceManager.releaseConnection(connectionPool.id, connection);
     }
 
     this.logger.debug(

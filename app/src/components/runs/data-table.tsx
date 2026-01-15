@@ -73,15 +73,12 @@ export function DataTable<TData, TValue>({
 
   // Set mounted to true after initial render
   React.useEffect(() => {
-    const timer = setTimeout(() => {
-      setMounted(true);
-    }, 0);
+    setMounted(true);
 
     // Copy ref value to local variable for cleanup
     const hoverTimers = hoverTimersRef.current;
 
     return () => {
-      clearTimeout(timer);
       setMounted(false);
       // Clear all hover timers on unmount
       hoverTimers.forEach(t => clearTimeout(t));

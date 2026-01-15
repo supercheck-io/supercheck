@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { UserX, User } from 'lucide-react';
@@ -14,14 +15,8 @@ import {
 } from '@/components/ui/sidebar';
 import { useImpersonationStatus } from '@/hooks/use-impersonation-status';
 
-/**
- * ImpersonationCard - Shows impersonation status in sidebar
- * 
- * PERFORMANCE OPTIMIZATION:
- * - Uses cached useImpersonationStatus hook (React Query)
- * - Status is fetched once and cached, not on every sidebar mount
- */
 export function ImpersonationCard() {
+  const queryClient = useQueryClient();
   const { isImpersonating, impersonatedUser, invalidate } = useImpersonationStatus();
   const [stopping, setStopping] = useState(false);
   const { state } = useSidebar();
@@ -38,12 +33,14 @@ export function ImpersonationCard() {
 
       if (data.success) {
         toast.success('Returned to admin account');
-        // Invalidate the cache so it refetches after stopping
+        // Clear ALL React Query cache - critical for user context switch
+        // This ensures dashboard and all pages fetch fresh data for the admin user
+        queryClient.clear();
         invalidate();
         router.push('/');
         setTimeout(() => {
           window.location.reload();
-        }, 500);
+        }, 300);
       } else {
         toast.error(data.error || 'Failed to stop impersonation');
       }

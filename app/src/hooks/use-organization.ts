@@ -121,7 +121,6 @@ export function useOrgStats() {
   const query = useQuery({
     queryKey: ORG_STATS_QUERY_KEY,
     queryFn: fetchOrgStats,
-    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
@@ -144,7 +143,6 @@ export function useOrgDetails() {
   const query = useQuery({
     queryKey: ORG_DETAILS_QUERY_KEY,
     queryFn: fetchOrgDetails,
-    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
@@ -167,7 +165,6 @@ export function useOrgMembers() {
   const query = useQuery({
     queryKey: ORG_MEMBERS_QUERY_KEY,
     queryFn: fetchOrgMembers,
-    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
@@ -192,7 +189,6 @@ export function useOrgProjects() {
   const query = useQuery({
     queryKey: ORG_PROJECTS_QUERY_KEY,
     queryFn: fetchOrgProjects,
-    // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
