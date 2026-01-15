@@ -273,7 +273,8 @@ export default function Home() {
   );
 
   const { data: dashboardData, isLoading: queryLoading, error: queryError } = useDashboard();
-  const loading = !isMounted || queryLoading;
+  const hasData = dashboardData !== undefined && dashboardData !== null;
+  const loading = !isMounted || (!hasData && queryLoading);
   const error = queryError?.message ?? null;
 
   const breadcrumbs = [

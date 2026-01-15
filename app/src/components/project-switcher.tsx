@@ -26,6 +26,7 @@ export function ProjectSwitcher() {
   const { isMobile } = useSidebar();
   const { currentProject, projects, loading, switchProject } =
     useProjectContext();
+  const hasData = currentProject !== null && projects !== null;
 
   // HYDRATION FIX: Track client mount state to prevent hydration errors
   // with synchronous localStorage restoration.
@@ -89,7 +90,7 @@ export function ProjectSwitcher() {
     }
   };
 
-  if (!isMounted || loading) {
+  if (!isMounted || (!hasData && loading)) {
     return (
       <SidebarMenu>
         <SidebarMenuItem>

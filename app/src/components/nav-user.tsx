@@ -20,10 +20,9 @@ import { clearQueryCache } from "@/lib/query-provider";
 export function NavUser() {
   const { data: session, isPending } = useSession();
   const user = session?.user;
+  const hasData = user !== undefined && user !== null;
   const { theme, setTheme } = useTheme();
 
-  // HYDRATION FIX: Track client mount state to prevent hydration errors
-  // with synchronous localStorage restoration.
   const isMounted = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -37,13 +36,12 @@ export function NavUser() {
   const handleLogout = async () => {
     // Clear all caches to prevent data leakage between sessions
     clearProjectsCache();
-    clearQueryCache(); // Clear React Query cache and localStorage
+    clearQueryCache();
     await signOut();
     window.location.href = "/sign-in";
   };
 
-  // Always show skeleton during SSR and initial client render to prevent hydration mismatch
-  if (!isMounted || isPending) {
+  if (!isMounted || (!hasData && isPending)) {
     return <Skeleton className="h-8 w-8 rounded-lg" />;
   }
 
