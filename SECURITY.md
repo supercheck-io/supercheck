@@ -8,7 +8,7 @@ We take security seriously. If you discover a security vulnerability, please rep
 
 ### How to Report
 
-Email security concerns to: **security@supercheck.io**
+Email security concerns to: **hello@supercheck.io**
 
 Include:
 

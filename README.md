@@ -1,4 +1,4 @@
-# <img src="./supercheck-logo.png" alt="Supercheck Logo" width="36" height="36" style="vertical-align: middle; margin-right: 2px;"> Supercheck
+<h1><img src="./supercheck-logo.png" alt="Supercheck Logo" width="40" height="40" align="top"> Supercheck</h1>
 
 **Open Source AI-Powered Test Automation & Monitoring Platform**
 
