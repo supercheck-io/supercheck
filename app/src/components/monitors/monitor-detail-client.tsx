@@ -181,12 +181,11 @@ export function MonitorDetailClient({
   const resultsPerPage = 10;
 
   // React Query hooks for data fetching with caching
-  const { stats: monitorStats, isRestoring: statsRestoring } = useMonitorStats(monitor.id, selectedLocation);
+  const { stats: monitorStats } = useMonitorStats(monitor.id, selectedLocation);
   const {
     results: paginatedTableResults,
     pagination: paginationMeta,
     isFetching: isLoadingResults,
-    isRestoring: resultsRestoring,
   } = useMonitorResults(monitor.id, {
     page: currentPage,
     limit: resultsPerPage,
