@@ -1,6 +1,4 @@
-<img src="./supercheck-logo.png" alt="Supercheck Logo" width="75">
-
-# Supercheck
+# <img src="./supercheck-logo.png" alt="Supercheck Logo" width="36" height="36" style="vertical-align: middle; margin-right: 2px;"> Supercheck
 
 **Open Source AI-Powered Test Automation & Monitoring Platform**
 
@@ -18,6 +16,8 @@ Empowering development and SRE teams with a scalable, distributed, and robust pl
 ## Features
 
 **Automate** — Browser (Playwright), API, database, and performance (k6) tests with AI-powered test creation and fix
+
+**Extension** — Record Playwright end-to-end tests directly from your browser using our [Browser Extension](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
 
 **Monitor** — HTTP, website, ping, port, and synthetic monitors from multiple geographic regions
 
