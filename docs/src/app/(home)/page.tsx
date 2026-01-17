@@ -188,15 +188,15 @@ export default function HomePage() {
 
       <header className="fixed top-0 left-0 right-0 z-50 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b border-gray-200/50 dark:border-gray-800/50">
         <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center space-x-3">
+          <Link href="/" className="flex items-center gap-2">
             <Image
               src="/supercheck-logo.png"
               alt="Supercheck"
-              width={40}
-              height={40}
+              width={28}
+              height={28}
               className="rounded-lg"
             />
-            <span className="font-bold text-gray-900 dark:text-white text-lg">
+            <span className="font-bold text-gray-900 dark:text-white text-xl">
               Supercheck
             </span>
           </Link>

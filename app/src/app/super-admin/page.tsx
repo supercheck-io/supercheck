@@ -61,7 +61,7 @@ export default function AdminDashboard() {
   const { setBreadcrumbs } = useBreadcrumbs();
 
   const isMounted = useSyncExternalStore(
-    () => () => {},
+    () => () => { },
     () => true,
     () => false
   );
@@ -183,7 +183,7 @@ export default function AdminDashboard() {
   if (isInitialLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <SuperCheckLoading size="lg" message="Loading admin dashboard..." />
+        <SuperCheckLoading size="md" message="Loading admin dashboard..." />
       </div>
     );
   }
@@ -572,7 +572,7 @@ export default function AdminDashboard() {
                       minHeight: "600px",
                     }}
                   >
-                    <SuperCheckLoading size="lg" message="Loading Queue Dashboard..." />
+                    <SuperCheckLoading size="md" message="Loading Queue Dashboard..." />
                   </div>
                 ) : null}
 

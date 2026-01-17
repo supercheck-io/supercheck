@@ -26,9 +26,9 @@ export function SuperCheckLoading({
     // Config: Logo size and Spinner size
     // Spinner is tighter to logo now
     const sizeConfig = {
-        sm: { logo: 24, spinner: 40, stroke: 'border-[2px]' },
-        md: { logo: 32, spinner: 48, stroke: 'border-[3px]' },
-        lg: { logo: 48, spinner: 72, stroke: 'border-[4px]' },
+        sm: { logo: 24, spinner: 44, stroke: 'border-[3px]' },
+        md: { logo: 32, spinner: 60, stroke: 'border-[4px]' },
+        lg: { logo: 48, spinner: 84, stroke: 'border-[6px]' },
     };
 
     const config = sizeConfig[size];
@@ -73,7 +73,7 @@ export function FullPageLoading({
 }) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-            <SuperCheckLoading size="lg" message={message} />
+            <SuperCheckLoading size="md" message={message} />
         </div>
     );
 }

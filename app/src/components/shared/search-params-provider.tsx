@@ -44,7 +44,7 @@ export function SearchParamsProvider({
 }: SearchParamsProviderProps) {
   const defaultFallback = (
     <div className="flex min-h-[400px] items-center justify-center">
-      <SuperCheckLoading size="lg" message={loadingMessage} />
+      <SuperCheckLoading size="md" message={loadingMessage} />
     </div>
   );
 

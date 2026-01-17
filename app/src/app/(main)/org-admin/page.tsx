@@ -123,7 +123,7 @@ export default function OrgAdminDashboard() {
     <Suspense
       fallback={
         <div className="flex min-h-[400px] items-center justify-center">
-          <SuperCheckLoading size="lg" message="Loading organization..." />
+          <SuperCheckLoading size="md" message="Loading organization..." />
         </div>
       }
     >
@@ -139,7 +139,7 @@ function OrgAdminDashboardContent() {
   const [activeTab, setActiveTab] = useState(defaultTab);
 
   const isMounted = useSyncExternalStore(
-    () => () => {},
+    () => () => { },
     () => true,
     () => false
   );
@@ -196,7 +196,7 @@ function OrgAdminDashboardContent() {
     return () => setBreadcrumbs([]);
   }, [setBreadcrumbs]);
 
-  const handleTabChange = (_value: string) => {};
+  const handleTabChange = (_value: string) => { };
 
   const handleCreateProject = async (formData?: CreateProjectFormData) => {
     const projectData = formData || {
@@ -323,7 +323,7 @@ function OrgAdminDashboardContent() {
   if (isInitialLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <SuperCheckLoading size="lg" message="Loading organization..." />
+        <SuperCheckLoading size="md" message="Loading organization..." />
       </div>
     );
   }

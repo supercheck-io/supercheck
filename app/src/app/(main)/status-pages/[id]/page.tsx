@@ -42,7 +42,7 @@ export default function StatusPagePage() {
   if (!isMounted || isRestoring || (!hasData && isLoading)) {
     return (
       <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">
-        <SuperCheckLoading size="lg" message="Loading status page..." />
+        <SuperCheckLoading size="md" message="Loading status page..." />
       </div>
     );
   }
@@ -54,7 +54,7 @@ export default function StatusPagePage() {
     if (error) {
       return (
         <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center">
-          <SuperCheckLoading size="lg" message="Redirecting..." />
+          <SuperCheckLoading size="md" message="Redirecting..." />
         </div>
       );
     }
