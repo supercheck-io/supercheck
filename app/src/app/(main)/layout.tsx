@@ -14,6 +14,7 @@ import { SetupChecker } from "@/components/setup-checker";
 import { ProjectContextProvider, type ProjectContext } from "@/hooks/use-project-context";
 import { NavUser } from "@/components/nav-user";
 import { DemoBadge } from "@/components/demo-badge";
+import { CommunityLinks } from "@/components/community-links";
 import { SubscriptionGuard } from "@/components/subscription-guard";
 import { AuthGuard } from "@/components/auth-guard";
 import { DataPrefetcher } from "@/components/data-prefetcher";
@@ -109,10 +110,11 @@ export default async function MainLayout({
                     />
                     <BreadcrumbDisplay />
                   </div>
-                  <div className="flex items-center gap-6 px-4">
+                  <div className="flex items-center gap-4 px-4">
                     <DemoBadge />
                     <CommandSearch />
                     <ParallelThreads />
+                    <CommunityLinks />
                     <NavUser />
                   </div>
                 </header>

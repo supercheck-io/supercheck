@@ -1,4 +1,4 @@
-import { useQuery, useIsRestoring } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 interface AdminStatus {
   isAdmin: boolean;
@@ -34,24 +34,24 @@ export async function fetchAdminStatus(): Promise<AdminStatus> {
 }
 
 export function useAdminStatus() {
-  const isRestoring = useIsRestoring();
   const { data, isPending, isFetching, error, isFetched } = useQuery({
     queryKey: ADMIN_STATUS_QUERY_KEY,
     queryFn: fetchAdminStatus,
-    // Uses global defaults: staleTime (30min), gcTime (24h)
+    // Admin status needs fresh data on mount to ensure consistent sidebar visibility
+    staleTime: 0,
+    gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
     refetchOnReconnect: false,
     retry: 1,
   });
 
-  // Only show loading when actually fetching initial data, not when cache is being restored
-  const isInitialLoading = isPending && isFetching && !isRestoring;
+  // Loading when pending and fetching (initial load)
+  const isLoading = isPending && isFetching;
 
   return {
     isAdmin: data?.isAdmin ?? false,
     isOrgAdmin: data?.isOrgAdmin ?? false,
-    isLoading: isInitialLoading,
+    isLoading,
     isFetched,
     error: error as Error | null,
     // Combined check for showing any admin menu

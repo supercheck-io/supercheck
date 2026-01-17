@@ -46,6 +46,7 @@ x-common-env: &common-env # Database Configuration
   STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-localhost}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
+  SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
   # Parallel Execution Capacity (self-hosted mode)
   # Cloud mode uses plan limits: Plus=5/50, Pro=10/100
   # For self-hosted, match RUNNING_CAPACITY to WORKER_REPLICAS (each worker handles 1 job)

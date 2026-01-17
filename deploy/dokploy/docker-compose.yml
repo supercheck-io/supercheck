@@ -23,6 +23,7 @@ x-common-env: &common-env # Database Configuration
   BETTER_AUTH_URL: ${APP_URL}
   BETTER_AUTH_SECRET: ${AUTH_SECRET}
   NODE_ENV: production
+  SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
 
   # Parallel Execution Capacity
   RUNNING_CAPACITY: ${RUNNING_CAPACITY:-2}

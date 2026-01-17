@@ -11,8 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **Supercheck Recorder extension** — Browser extension for Chromium based browsers to record user interactions and generate Playwright tests
 - Extension auto-connect feature from Playground to Recorder with seamless handshake
 
+
 ### Changed
 - Enhanced React Query caching strategy for faster page loads
+- Updated new logo and added community links to the navigation header
 
 ### Fixed
 - Race condition in cache restoration during page navigation

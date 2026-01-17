@@ -11,7 +11,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { CheckIcon } from "@/components/logo/supercheck-logo";
+import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 
 interface RecordButtonProps {
   projectId: string;
@@ -253,7 +253,7 @@ export function RecordButton({
               <div className="flex items-center gap-2 rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 p-4">
                 <MousePointerClick className="h-6 w-6 text-primary animate-pulse" />
                 <div className="flex items-center gap-2 rounded-md bg-background border px-3 py-2 shadow-sm">
-                  <CheckIcon className="h-5 w-5" />
+                  <SupercheckLogo className="h-5 w-5" />
                   <span className="text-sm font-medium">Supercheck Recorder</span>
                 </div>
               </div>

@@ -146,7 +146,14 @@ S3_ENDPOINT=http://minio:9000
 # ────────────────────────────────────────────────────────────
 # WORKER_REPLICAS=1
 # RUNNING_CAPACITY=1
+# WORKER_REPLICAS=1
+# RUNNING_CAPACITY=1
 # WORKER_LOCATION=local
+
+# ────────────────────────────────────────────────────────────
+# OPTIONAL: UI Configuration
+# ────────────────────────────────────────────────────────────
+# SHOW_COMMUNITY_LINKS=true
 
 # ────────────────────────────────────────────────────────────
 # OPTIONAL: Advanced Configuration

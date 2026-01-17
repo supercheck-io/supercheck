@@ -41,7 +41,7 @@ export function ParallelThreads() {
   return (
     <>
       <div
-        className="flex items-center mr-2 border border-border rounded-md px-3 py-1.5 cursor-pointer hover:bg-accent/50 transition-colors group"
+        className="flex items-center border border-border rounded-md px-3 py-1.5 cursor-pointer hover:bg-accent/50 transition-colors group"
         onClick={() => setActiveDialogTab("running")}
         title="Click to manage parallel executions"
       >
@@ -55,8 +55,8 @@ export function ParallelThreads() {
             <div className="flex items-center justify-between mb-1">
               <span
                 className={`font-medium text-[11px] ${runningCount > 0
-                    ? "text-blue-600 dark:text-blue-500"
-                    : "text-muted-foreground"
+                  ? "text-blue-600 dark:text-blue-500"
+                  : "text-muted-foreground"
                   }`}
               >
                 RUNNING
@@ -77,8 +77,8 @@ export function ParallelThreads() {
             <div className="flex items-center justify-between mb-1">
               <span
                 className={`font-medium text-[11px] ${queuedCount > 0
-                    ? "text-amber-600 dark:text-amber-500"
-                    : "text-muted-foreground"
+                  ? "text-amber-600 dark:text-amber-500"
+                  : "text-muted-foreground"
                   }`}
               >
                 QUEUED

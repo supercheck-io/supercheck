@@ -32,6 +32,10 @@ export async function GET() {
     // Demo mode flag
     demoMode: process.env.DEMO_MODE === "true",
 
+    // Community links visibility (GitHub star, Discord invite)
+    // Independent setting that can be controlled separately from demo/self-hosted mode
+    showCommunityLinks: process.env.SHOW_COMMUNITY_LINKS === "true",
+
     // Application limits
     limits: {
       maxJobNotificationChannels: parseInt(

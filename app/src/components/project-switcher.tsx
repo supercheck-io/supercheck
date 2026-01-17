@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useSyncExternalStore } from "react";
 import { ChevronsUpDown, Search, Loader2 } from "lucide-react";
-import { CheckIcon } from "@/components/logo/supercheck-logo";
+import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { useProjectContext } from "@/hooks/use-project-context";
 
 import {
@@ -33,7 +33,7 @@ export function ProjectSwitcher() {
   // By defaulting to loading/skeleton branch during initial hydration,
   // we ensure the client render matches the server perfectly.
   const isMounted = useSyncExternalStore(
-    () => () => {},
+    () => () => { },
     () => true,
     () => false
   );
@@ -96,7 +96,7 @@ export function ProjectSwitcher() {
         <SidebarMenuItem>
           <SidebarMenuButton size="lg" disabled>
             <div className="text-foreground flex items-center justify-center">
-              <CheckIcon className="size-7" />
+              <SupercheckLogo className="size-7" />
             </div>
             <div className="grid flex-1 text-left text-sm leading-tight">
               <span className="truncate font-medium">Supercheck</span>
@@ -124,7 +124,7 @@ export function ProjectSwitcher() {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground group-data-[collapsible=icon]:ml-2.5 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
             >
               <div className="text-foreground flex items-center justify-center">
-                <CheckIcon className="size-7" />
+                <SupercheckLogo className="size-7" />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">Supercheck</span>

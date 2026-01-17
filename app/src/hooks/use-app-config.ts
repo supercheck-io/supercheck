@@ -10,6 +10,7 @@ export interface AppConfig {
     google: { enabled: boolean };
   };
   demoMode: boolean;
+  showCommunityLinks: boolean;
   limits: {
     maxJobNotificationChannels: number;
     maxMonitorNotificationChannels: number;
@@ -27,6 +28,7 @@ const DEFAULT_CONFIG: AppConfig = {
     google: { enabled: false },
   },
   demoMode: false,
+  showCommunityLinks: false,
   limits: {
     maxJobNotificationChannels: 10,
     maxMonitorNotificationChannels: 10,
@@ -48,28 +50,33 @@ export async function fetchAppConfig(): Promise<AppConfig> {
 }
 
 export function useAppConfig() {
-  const { data: config, isLoading, error, isFetched } = useQuery({
+  const { data: config, isPending, isFetching, error, isFetched } = useQuery({
     queryKey: APP_CONFIG_QUERY_KEY,
     queryFn: fetchAppConfig,
-    // Uses global defaults: staleTime (30min), gcTime (24h)
+    // App config rarely changes, cache for 30 min but mark as stale immediately
+    // This allows showing cached data while refetching in background
+    staleTime: 0,
+    gcTime: 30 * 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
     refetchOnReconnect: false,
     retry: 2,
-    initialData: DEFAULT_CONFIG,
-    initialDataUpdatedAt: 0,
   });
 
+  // Use fetched config or default while loading
   const effectiveConfig = config ?? DEFAULT_CONFIG;
+  
+  // Loading until query completes (isPending is true when no data yet)
+  const isLoading = isPending && isFetching;
 
   return {
     config: effectiveConfig,
-    isLoading: isLoading && !config,
+    isLoading,
     isFetched,
     error: error as Error | null,
     isSelfHosted: effectiveConfig.hosting?.selfHosted ?? true,
     isCloudHosted: effectiveConfig.hosting?.cloudHosted ?? false,
     isDemoMode: effectiveConfig.demoMode ?? false,
+    showCommunityLinks: effectiveConfig.showCommunityLinks ?? false,
     isGithubEnabled: effectiveConfig.authProviders?.github?.enabled ?? false,
     isGoogleEnabled: effectiveConfig.authProviders?.google?.enabled ?? false,
     maxJobNotificationChannels: effectiveConfig.limits?.maxJobNotificationChannels ?? 10,
@@ -78,3 +85,4 @@ export function useAppConfig() {
     statusPageDomain: effectiveConfig.statusPage?.domain ?? "supercheck.io",
   };
 }
+

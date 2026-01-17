@@ -40,12 +40,14 @@ x-common-env: &common-env # Database Configuration
 
   # App Configuration
   NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+  APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+  BETTER_AUTH_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
 
   # Status Page Domain Configuration
   STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-localhost}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
+  SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
   # Scaling Configuration
   # Default: 1 worker for single-server self-hosted deployments
   # Scale by setting WORKER_REPLICAS and RUNNING_CAPACITY to the same value

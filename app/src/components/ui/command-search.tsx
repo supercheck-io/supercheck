@@ -127,7 +127,7 @@ export function CommandSearch({ className }: CommandSearchProps) {
       <Button
         variant="outline"
         onClick={() => setOpen(true)}
-        className="h-8 px-2 min-w-[96px] justify-between mr-2 hover:bg-accent/50 transition-colors"
+        className="h-8 px-2 min-w-[96px] justify-between hover:bg-accent/50 transition-colors"
       >
         <div className="flex items-center space-x-1">
           <SearchIcon className="h-3.5 w-3.5 text-muted-foreground" />

@@ -35,7 +35,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { NavUser } from "@/components/nav-user";
-import { CheckIcon } from "@/components/logo/supercheck-logo";
+import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { K6Logo } from "@/components/logo/k6-logo";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { Home } from "lucide-react";
@@ -279,7 +279,7 @@ export function RunDetails({
       {isNotificationView && (
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <CheckIcon className="h-8 w-8" />
+            <SupercheckLogo className="h-8 w-8" />
             <div className="flex items-center gap-2 text-sm">
               <Link
                 href="/"

@@ -73,7 +73,7 @@ import {
 } from "@/db/schema";
 import { NavUser } from "@/components/nav-user";
 import Link from "next/link";
-import { CheckIcon } from "@/components/logo/supercheck-logo";
+import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { Home } from "lucide-react";
 import { TruncatedTextWithTooltip } from "@/components/ui/truncated-text-with-tooltip";
 import {
@@ -642,7 +642,7 @@ export function MonitorDetailClient({
         {isNotificationView && (
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <CheckIcon className="h-8 w-8" />
+              <SupercheckLogo className="h-8 w-8" />
               <div className="flex items-center gap-2 text-sm">
                 <Link
                   href="/"
