@@ -1,0 +1,32 @@
+# Supercheck Dokploy Template Configuration
+# This file configures domains, environment variables, and mounts for Dokploy
+
+[variables]
+# Auto-generated values using Dokploy helpers
+main_domain = "${domain}"
+postgres_user = "${username}"
+postgres_password = "${password:32}"
+redis_password = "${password:24}"
+minio_user = "${username}"
+minio_password = "${password:32}"
+auth_secret = "${base64:64}"
+encrypt_key = "${base64:32}"
+
+[config]
+# Domain configuration - routes to the app service on port 3000
+[[config.domains]]
+serviceName = "app"
+port = 3000
+host = "${main_domain}"
+
+# Environment variables injected into all services
+[config.env]
+APP_URL = "https://${main_domain}"
+POSTGRES_USER = "${postgres_user}"
+POSTGRES_PASSWORD = "${postgres_password}"
+POSTGRES_DB = "supercheck"
+REDIS_PASSWORD = "${redis_password}"
+MINIO_USER = "${minio_user}"
+MINIO_PASSWORD = "${minio_password}"
+AUTH_SECRET = "${auth_secret}"
+ENCRYPT_KEY = "${encrypt_key}"

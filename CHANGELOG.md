@@ -5,6 +5,21 @@ All notable changes to Supercheck are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 
+## [1.2.3] - 2026-01-17
+
+### Added
+- **Supercheck Recorder extension** — Browser extension for Chromium based browsers to record user interactions and generate Playwright tests
+- Extension auto-connect feature from Playground to Recorder with seamless handshake
+
+### Changed
+- Enhanced React Query caching strategy for faster page loads
+
+### Fixed
+- Race condition in cache restoration during page navigation
+- Unnecessary loading spinners when cached data is available
+
+---
+
 ## [1.2.2] - 2026-01-07
 
 ### Added

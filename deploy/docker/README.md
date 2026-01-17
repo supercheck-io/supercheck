@@ -2,6 +2,40 @@
 
 Production-ready Docker Compose files for self-hosting SuperCheck.
 
+## Prerequisites
+
+> **⚠️ Modern Docker Compose Required**: These configurations require the Docker Compose plugin (the `docker compose` command with a space). The legacy `docker-compose` V1 command (with hyphen) is **not supported**.
+
+**Check your version:**
+```bash
+docker compose version
+# Should show: Docker Compose version v2.x.x or higher
+```
+
+**Install Docker with Compose V2:**
+- **Mac/Windows**: Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (includes Compose V2)
+- **Linux**: Use Docker's official install script:
+  ```bash
+  curl -fsSL https://get.docker.com | sh
+  sudo usermod -aG docker $USER
+  newgrp docker
+  ```
+
+<details>
+<summary><strong>🔧 Troubleshooting: Common Errors</strong></summary>
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `unknown shorthand flag: 'f'` | Docker Compose plugin not installed | Install Docker using official method above |
+| `'name' does not match any of the regexes` | Using legacy `docker-compose` (with hyphen) | Use `docker compose` (with space) |
+| `docker compose: command not found` | Compose plugin missing | Reinstall Docker using official method |
+
+**Ubuntu/Debian users**: The `docker.io` package from apt doesn't include Compose V2. Use Docker's official install script instead.
+
+</details>
+
+---
+
 ## Recommended Setup
 
 For production deployments, we recommend using **external managed services** for PostgreSQL, Redis, and S3. This provides automatic backups, high availability, and easier maintenance.

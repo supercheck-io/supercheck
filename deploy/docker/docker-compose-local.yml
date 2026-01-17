@@ -77,6 +77,8 @@ x-common-env: &common-env # Database Configuration
   S3_K6_JOB_BUCKET_NAME: ${S3_K6_JOB_BUCKET_NAME:-k6-job-artifacts}
   # Status page bucket
   S3_STATUS_BUCKET_NAME: ${S3_STATUS_BUCKET_NAME:-status-page-artifacts}
+  # Requirements bucket
+  S3_REQUIREMENTS_BUCKET_NAME: ${S3_REQUIREMENTS_BUCKET_NAME:-test-requirement-artifacts}
   S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
   S3_OPERATION_TIMEOUT: ${S3_OPERATION_TIMEOUT:-10000}
   S3_MAX_RETRIES: ${S3_MAX_RETRIES:-3}
@@ -343,7 +345,7 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=supercheck
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
