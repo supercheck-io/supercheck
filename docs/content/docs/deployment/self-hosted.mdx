@@ -38,6 +38,16 @@ flowchart TB
 For true multi-location monitoring, see [Multi-Location Workers](/docs/deployment/multi-location).
 </Callout>
 
+<Callout type="warning">
+**Docker Prerequisites:** This guide requires the modern Docker Compose plugin (the `docker compose` command with a space). The legacy `docker-compose` command (with hyphen) is not supported.
+
+```bash
+# Verify your installation
+docker compose version
+# Should show: Docker Compose version v2.x.x or higher
+```
+</Callout>
+
 ## Choose Your Deployment
 
 <Cards>

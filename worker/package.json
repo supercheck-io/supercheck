@@ -1,6 +1,6 @@
 {
   "name": "@supercheck-io/worker",
-  "version": "0.1.0",
+  "version": "1.2.2",
   "description": "Supercheck - Distributed test execution and job processing worker service",
   "license": "MIT",
   "author": {

@@ -46,6 +46,7 @@ x-common-env: &common-env # Database Configuration
   STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-localhost}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
+  SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
   # Parallel Execution Capacity (self-hosted mode)
   # Cloud mode uses plan limits: Plus=5/50, Pro=10/100
   # For self-hosted, match RUNNING_CAPACITY to WORKER_REPLICAS (each worker handles 1 job)
@@ -77,6 +78,8 @@ x-common-env: &common-env # Database Configuration
   S3_K6_JOB_BUCKET_NAME: ${S3_K6_JOB_BUCKET_NAME:-k6-job-artifacts}
   # Status page bucket
   S3_STATUS_BUCKET_NAME: ${S3_STATUS_BUCKET_NAME:-status-page-artifacts}
+  # Requirements bucket
+  S3_REQUIREMENTS_BUCKET_NAME: ${S3_REQUIREMENTS_BUCKET_NAME:-test-requirement-artifacts}
   S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
   S3_OPERATION_TIMEOUT: ${S3_OPERATION_TIMEOUT:-10000}
   S3_MAX_RETRIES: ${S3_MAX_RETRIES:-3}
@@ -343,7 +346,7 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=supercheck
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]

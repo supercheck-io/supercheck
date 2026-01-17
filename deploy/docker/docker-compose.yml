@@ -40,12 +40,14 @@ x-common-env: &common-env # Database Configuration
 
   # App Configuration
   NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+  APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+  BETTER_AUTH_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
 
   # Status Page Domain Configuration
   STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-localhost}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
+  SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
   # Scaling Configuration
   # Default: 1 worker for single-server self-hosted deployments
   # Scale by setting WORKER_REPLICAS and RUNNING_CAPACITY to the same value
@@ -258,7 +260,7 @@ x-common-env: &common-env # Database Configuration
 services:
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.2.1-canary.25
+    image: ghcr.io/supercheck-io/supercheck/app:1.2.2
     ports:
       - "3000:3000"
     environment:
@@ -293,7 +295,7 @@ services:
   # Tests run in isolated Docker containers (Playwright/K6), not inside worker
   # Playwright Docker best practices: https://playwright.dev/docs/docker
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.2.1-canary.25
+    image: ghcr.io/supercheck-io/supercheck/worker:1.2.2
     # init: Use tini as PID 1 to avoid zombie processes (Playwright recommendation)
     init: true
     environment:
@@ -360,7 +362,7 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
       - POSTGRES_DB=${DB_NAME:-supercheck}
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]

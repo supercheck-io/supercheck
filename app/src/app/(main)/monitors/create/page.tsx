@@ -47,7 +47,7 @@ export default async function CreateMonitorPage({ searchParams }: CreateMonitorP
         <Suspense
           fallback={
             <div className="flex min-h-[400px] items-center justify-center">
-              <SuperCheckLoading size="lg" message="Loading monitor wizard..." />
+              <SuperCheckLoading size="md" message="Loading monitor wizard..." />
             </div>
           }
         >
@@ -69,32 +69,32 @@ export default async function CreateMonitorPage({ searchParams }: CreateMonitorP
         ]} />
         <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
           <CardContent>
-        <div className="p-2 mt-4">
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold">Create  Monitor</h1>
-            <MonitorTypesPopover />
-          </div>
+            <div className="p-2 mt-4">
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-semibold">Create  Monitor</h1>
+                <MonitorTypesPopover />
+              </div>
               <p className="text-muted-foreground text-sm mb-6">Select uptime monitor type to get started</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {monitorTypes.map((type) => (
-              <Link
-                key={type.value}
-                href={`/monitors/create?type=${type.value}`}
-                className="block p-4 border rounded-lg hover:border-primary transition-colors"
-              >
-                <div className="flex items-center space-x-3">
-                  {type.icon && <type.icon className={`h-6 w-6 ${type.color}`} />}
-                  <div>
-                    <h3 className="font-medium">{type.label}</h3>
-                    <p className="text-sm text-muted-foreground">{type.description}</p>
-                  </div>
-                </div>
-              </Link>
-            ))}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {monitorTypes.map((type) => (
+                  <Link
+                    key={type.value}
+                    href={`/monitors/create?type=${type.value}`}
+                    className="block p-4 border rounded-lg hover:border-primary transition-colors"
+                  >
+                    <div className="flex items-center space-x-3">
+                      {type.icon && <type.icon className={`h-6 w-6 ${type.color}`} />}
+                      <div>
+                        <h3 className="font-medium">{type.label}</h3>
+                        <p className="text-sm text-muted-foreground">{type.description}</p>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -119,7 +119,7 @@ export default async function CreateMonitorPage({ searchParams }: CreateMonitorP
       <Suspense
         fallback={
           <div className="flex min-h-[400px] items-center justify-center">
-            <SuperCheckLoading size="lg" message="Loading monitor wizard..." />
+            <SuperCheckLoading size="md" message="Loading monitor wizard..." />
           </div>
         }
       >

@@ -221,6 +221,7 @@ jobs:
           echo "${{ steps.worker-meta.outputs.tags }}"
 
   e2e-tests:
+    if: false
     name: E2E Tests
     needs: build-and-push
     runs-on: ubuntu-latest

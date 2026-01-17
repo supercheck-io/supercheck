@@ -1,0 +1,23 @@
+{
+    "id": "supercheck",
+    "name": "Supercheck",
+    "version": "1.2.2",
+    "description": "Open Source AI-Powered Test Automation & Monitoring Platform. Playwright tests, K6 load tests, synthetic monitors, and status pages.",
+    "logo": "supercheck.svg",
+    "links": {
+        "github": "https://github.com/supercheck-io/supercheck",
+        "website": "https://supercheck.io/",
+        "docs": "https://supercheck.io/docs/self-hosting"
+    },
+    "tags": [
+        "monitoring",
+        "testing",
+        "playwright",
+        "k6",
+        "status-page",
+        "uptime",
+        "synthetic",
+        "ai",
+        "automation"
+    ]
+}

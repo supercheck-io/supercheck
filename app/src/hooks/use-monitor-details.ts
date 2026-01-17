@@ -128,7 +128,7 @@ export function useMonitorStats(monitorId: string, location: string = "all") {
     staleTime: 30 * 1000,  // Monitor stats update frequently (30s)
     // gcTime uses global default (24h)
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',  // Always refetch on mount - monitor data must be fresh
     refetchOnReconnect: false,
     placeholderData: keepPreviousData,
   });
@@ -144,6 +144,7 @@ export function useMonitorStats(monitorId: string, location: string = "all") {
   return {
     stats: query.data,
     isLoading: isActuallyLoading,
+    isRestoring,  // Expose for component-level hydration safety
     error: query.error as Error | null,
     refetch: query.refetch,
     invalidate,
@@ -183,7 +184,7 @@ export function useMonitorResults(
     staleTime: 30 * 1000,  // Monitor results update frequently (30s)
     // gcTime uses global default (24h)
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',  // Always refetch on mount - monitor data must be fresh
     refetchOnReconnect: false,
     placeholderData: keepPreviousData,
   });
@@ -200,6 +201,7 @@ export function useMonitorResults(
     results: query.data?.data ?? [],
     pagination: query.data?.pagination ?? null,
     isLoading: isActuallyLoading,
+    isRestoring,  // Expose for component-level hydration safety
     isFetching: query.isFetching,
     error: query.error as Error | null,
     refetch: query.refetch,

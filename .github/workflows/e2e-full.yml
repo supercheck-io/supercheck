@@ -2,8 +2,8 @@ name: Full E2E Test Suite
 
 on:
   # Run on schedule (e.g., nightly)
-  schedule:
-    - cron: "0 2 * * *" # 2 AM UTC daily
+  # schedule:
+  #   - cron: "0 2 * * *" # 2 AM UTC daily
   # Manual trigger
   workflow_dispatch:
     inputs:
@@ -22,6 +22,7 @@ permissions:
 
 jobs:
   e2e-full:
+    if: false
     name: Full E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 60

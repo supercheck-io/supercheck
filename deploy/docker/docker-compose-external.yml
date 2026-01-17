@@ -52,6 +52,7 @@ x-common-env: &common-env # Database Configuration - External PostgreSQL
   BETTER_AUTH_URL: ${BETTER_AUTH_URL}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
+  SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
   RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1} # 1 worker replica × 1 concurrent run (keep in sync with replicas)
   QUEUED_CAPACITY: ${QUEUED_CAPACITY:-10} # Queue size for single worker
   # Note: MAX_CONCURRENT_EXECUTIONS is hardcoded to 1 in worker code. Scale via worker replicas instead.
@@ -289,7 +290,7 @@ services:
 
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.2.1-canary.25
+    image: ghcr.io/supercheck-io/supercheck/app:1.2.2
     expose:
       - "3000"
     environment:
@@ -353,7 +354,7 @@ services:
   # Worker (NestJS Runner) - Container-based execution with Docker socket mounting
   # Playwright Docker best practices: https://playwright.dev/docs/docker
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.2.1-canary.25
+    image: ghcr.io/supercheck-io/supercheck/worker:1.2.2
     # init: Use tini as PID 1 to avoid zombie processes (Playwright recommendation)
     init: true
     environment:

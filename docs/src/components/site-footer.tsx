@@ -59,6 +59,7 @@ const sections = [
         title: "Resources",
         links: [
             { name: "Live Demo", href: "https://demo.supercheck.io" },
+            { name: "Chrome Extension", href: "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe" },
             { name: "YouTube", href: "https://www.youtube.com/@supercheck-io" },
             { name: "GitHub", href: "https://github.com/supercheck-io/supercheck" },
         ],

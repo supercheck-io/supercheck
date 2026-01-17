@@ -213,90 +213,90 @@ function AlertsPage() {
         <Card className="shadow-sm hover:shadow-md transition-shadow duration-200 m-4">
           <CardContent className="p-6">
             <Tabs defaultValue="history" className="space-y-4">
-                <TabsList>
-                  <TabsTrigger value="providers">
-                    <Mail className="h-4 w-4 mr-2" />
-                    Notification Channels
-                  </TabsTrigger>
-                  <TabsTrigger value="history">
-                    <BellRing className="h-4 w-4 mr-2" />
-                    Alert History
-                  </TabsTrigger>
-                </TabsList>
+              <TabsList>
+                <TabsTrigger value="providers">
+                  <Mail className="h-4 w-4 mr-2" />
+                  Notification Channels
+                </TabsTrigger>
+                <TabsTrigger value="history">
+                  <BellRing className="h-4 w-4 mr-2" />
+                  Alert History
+                </TabsTrigger>
+              </TabsList>
 
-                <TabsContent value="providers" className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="text-2xl font-semibold">
-                        Notification Channels
-                      </CardTitle>
-                      <CardDescription>
-                        Configure how you want to receive alerts
-                      </CardDescription>
-                    </div>
-                    <Button
-                      onClick={() => setIsCreateDialogOpen(true)}
-                      disabled={!canCreate}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Channel
-                    </Button>
+              <TabsContent value="providers" className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-2xl font-semibold">
+                      Notification Channels
+                    </CardTitle>
+                    <CardDescription>
+                      Configure how you want to receive alerts
+                    </CardDescription>
                   </div>
+                  <Button
+                    onClick={() => setIsCreateDialogOpen(true)}
+                    disabled={!canCreate}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Channel
+                  </Button>
+                </div>
 
-                  {providers.length === 0 && !providersLoading ? (
+                {providers.length === 0 && !providersLoading ? (
+                  <DashboardEmptyState
+                    className="min-h-[60vh]"
+                    title="No notification channels"
+                    description="Add your first notification channel to start receiving alerts"
+                    icon={<BellRing className="h-12 w-12" />}
+                    action={
+                      <Button
+                        onClick={() => setIsCreateDialogOpen(true)}
+                        disabled={!canCreate}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Channel
+                      </Button>
+                    }
+                  />
+                ) : (
+                  <NotificationChannelsComponent
+                    onEditChannel={handleEditChannel}
+                    onDeleteChannel={handleDeleteChannel}
+                    providersData={providers.map((p) => ({
+                      id: p.id,
+                      name: p.name,
+                      type: p.type,
+                      config: p.config,
+                      isEnabled: p.isEnabled,
+                      createdAt: p.createdAt,
+                      updatedAt: p.updatedAt || p.createdAt,
+                      lastUsed: p.lastUsed,
+                    }))}
+                    refreshTrigger={0}
+                  />
+                )}
+              </TabsContent>
+
+              <TabsContent value="history" className="space-y-4">
+                <div className="h-full flex-1 flex-col md:flex">
+                  {(alertHistory.length === 0 && !historyLoading) ? (
                     <DashboardEmptyState
                       className="min-h-[60vh]"
-                      title="No notification channels"
-                      description="Add your first notification channel to start receiving alerts"
+                      title="No alerts found"
+                      description="Alerts will appear here when your monitors or jobs trigger notifications"
                       icon={<BellRing className="h-12 w-12" />}
-                      action={
-                        <Button
-                          onClick={() => setIsCreateDialogOpen(true)}
-                          disabled={!canCreate}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add Channel
-                        </Button>
-                      }
                     />
                   ) : (
-                    <NotificationChannelsComponent
-                      onEditChannel={handleEditChannel}
-                      onDeleteChannel={handleDeleteChannel}
-                      providersData={providers.map((p) => ({
-                        id: p.id,
-                        name: p.name,
-                        type: p.type,
-                        config: p.config,
-                        isEnabled: p.isEnabled,
-                        createdAt: p.createdAt,
-                        updatedAt: p.updatedAt || p.createdAt,
-                        lastUsed: p.lastUsed,
-                      }))}
-                      refreshTrigger={0}
+                    <DataTable
+                      columns={columns}
+                      data={alertHistory}
+                      isLoading={historyLoading}
                     />
                   )}
-                </TabsContent>
-
-                <TabsContent value="history" className="space-y-4">
-                  <div className="h-full flex-1 flex-col md:flex">
-                    {(alertHistory.length === 0 && !historyLoading) ? (
-                      <DashboardEmptyState
-                        className="min-h-[60vh]"
-                        title="No alerts found"
-                        description="Alerts will appear here when your monitors or jobs trigger notifications"
-                        icon={<BellRing className="h-12 w-12" />}
-                      />
-                    ) : (
-                      <DataTable
-                        columns={columns}
-                        data={alertHistory}
-                        isLoading={historyLoading}
-                      />
-                    )}
-                  </div>
-                </TabsContent>
-              </Tabs>
+                </div>
+              </TabsContent>
+            </Tabs>
 
             <Dialog
               open={isCreateDialogOpen}
@@ -387,7 +387,7 @@ export default function AlertsPageWrapper() {
     <Suspense
       fallback={
         <div className="flex min-h-[400px] items-center justify-center">
-          <SuperCheckLoading size="lg" message="Loading alerts..." />
+          <SuperCheckLoading size="md" message="Loading alerts..." />
         </div>
       }
     >

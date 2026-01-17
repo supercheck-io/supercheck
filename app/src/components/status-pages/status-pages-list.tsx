@@ -84,7 +84,7 @@ type StatusPage = {
 
 export default function StatusPagesList() {
   const isMounted = useSyncExternalStore(
-    () => () => {},
+    () => () => { },
     () => true,
     () => false
   );
@@ -147,7 +147,7 @@ export default function StatusPagesList() {
   }) => {
     // OPTIMISTIC UPDATE: Add the new status page to cache immediately (no flicker)
     const queryKey = getStatusPagesListQueryKey(projectId);
-    
+
     // Convert Date objects to ISO strings to match the API response format
     // The cache expects strings for dates, not Date objects
     const newStatusPage = {
@@ -157,7 +157,7 @@ export default function StatusPagesList() {
       organizationId: currentProject?.organizationId ?? '',
       projectId: projectId,
     };
-    
+
     queryClient.setQueryData(queryKey, (oldData: PaginatedResponse<StatusPage> | undefined) => {
       if (!oldData) {
         // If no existing data, create a new response structure
@@ -166,7 +166,7 @@ export default function StatusPagesList() {
           pagination: { total: 1, page: 1, limit: 20, totalPages: 1 },
         };
       }
-      
+
       // Add new item to the beginning of the list
       return {
         ...oldData,
@@ -177,15 +177,15 @@ export default function StatusPagesList() {
         },
       };
     });
-    
+
     // Close dialog immediately (UI feels instant)
     setIsCreateDialogOpen(false);
     toast.success("Status page created successfully");
-    
+
     // Background revalidation: Ensure server data is in sync
     // Uses 'none' refetchType to just mark as stale without immediate refetch
     // Next navigation or window focus will get fresh data
-    queryClient.invalidateQueries({ 
+    queryClient.invalidateQueries({
       queryKey,
       refetchType: 'none' // Don't refetch immediately, just mark stale
     });
@@ -200,11 +200,11 @@ export default function StatusPagesList() {
     if (!deletingPage) return;
     const deletingId = deletingPage.id;
     const queryKey = getStatusPagesListQueryKey(projectId);
-    
+
     // OPTIMISTIC UPDATE: Remove the item from cache immediately
     // Snapshot previous value for rollback on error
     const previousData = queryClient.getQueryData(queryKey);
-    
+
     queryClient.setQueryData(queryKey, (oldData: PaginatedResponse<StatusPage> | undefined) => {
       if (!oldData) return oldData;
       return {
@@ -216,7 +216,7 @@ export default function StatusPagesList() {
         },
       };
     });
-    
+
     // Close dialog immediately for instant UI feedback
     setIsDeleteDialogOpen(false);
     setDeletingPage(null);
@@ -300,7 +300,7 @@ export default function StatusPagesList() {
   if (!isMounted || isRestoring || (!hasData && isLoading)) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
-        <SuperCheckLoading size="lg" message="Loading status pages..." />
+        <SuperCheckLoading size="md" message="Loading status pages..." />
       </div>
     );
   }

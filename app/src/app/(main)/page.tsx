@@ -72,7 +72,7 @@ import { K6Logo } from "@/components/logo/k6-logo";
 import { K6AnalyticsTab } from "@/components/dashboard/k6-analytics-tab";
 import { PlaywrightAnalyticsTab } from "@/components/dashboard/playwright-analytics-tab";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
-import { CheckIcon } from "@/components/logo/supercheck-logo";
+import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { useDashboard, type DashboardData } from "@/hooks/use-dashboard";
 import { useRequirementsStats } from "@/hooks/use-requirements-stats";
 // Types are now exported from useDashboard hook
@@ -267,7 +267,7 @@ const formatCompactNumber = (value: number): string => {
 
 export default function Home() {
   const isMounted = useSyncExternalStore(
-    () => () => {},
+    () => () => { },
     () => true,
     () => false
   );
@@ -586,6 +586,10 @@ export default function Home() {
         <PageBreadcrumbs items={breadcrumbs} />
         <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
           <div className="flex flex-col items-center text-center max-w-md space-y-6">
+            <div className="relative flex h-16 w-16 items-center justify-center">
+              <div className="absolute inset-0 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+              <SupercheckLogo className="h-8 w-8 animate-pulse text-primary" />
+            </div>
             <div className="space-y-2">
               <h1 className="text-3xl font-bold text-foreground">
                 Dashboard Error
@@ -907,7 +911,7 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
           <DashboardEmptyState
             title="No Project Activity"
             description="Your project dashboard is currently empty. Head over to the Quick Create section to set up your project resources."
-            icon={<CheckIcon className="h-16 w-16" />}
+            icon={<SupercheckLogo className="h-16 w-16" />}
             action={
               <Button asChild>
                 <Link href="/create">Quick Create</Link>
@@ -1081,7 +1085,7 @@ function DashboardTabs({ dashboardData, chartData, chartConfig }: DashboardTabsP
                             {formatCompactNumber(jobs.executionTime.processedRuns)}{" "}
                             runs • Last 30 days
                           </p>
-                         
+
                         </>
                       ) : (
                         <p className="text-sm text-muted-foreground py-2">

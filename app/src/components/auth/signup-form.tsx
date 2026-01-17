@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CheckIcon } from "@/components/logo/supercheck-logo";
+import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { Loader2, Eye, EyeOff, Mail } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect } from "react";
@@ -121,7 +121,7 @@ export function SignupForm({
                 className="flex flex-col items-center gap-3 font-medium"
               >
                 <div className="flex size-14 items-center justify-center rounded-md">
-                  <CheckIcon className="size-12" />
+                  <SupercheckLogo className="size-12" />
                 </div>
                 <span className="sr-only">Supercheck</span>
               </Link>

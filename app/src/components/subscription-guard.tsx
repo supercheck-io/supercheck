@@ -112,7 +112,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   if (!isConfigFetched && !isSelfHosted) {
     return (
       <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
-        <SuperCheckLoading size="lg" message="Loading configuration..." />
+        <SuperCheckLoading size="md" message="Loading configuration..." />
       </div>
     );
   }
@@ -134,7 +134,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   if (!isFetched || isSubscriptionLoading) {
     return (
       <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
-        <SuperCheckLoading size="lg" message="Checking access..." />
+        <SuperCheckLoading size="md" message="Checking access..." />
       </div>
     );
   }
@@ -144,7 +144,7 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   if (!subscriptionStatus?.isActive) {
     return (
       <div className="flex min-h-[calc(100vh-200px)] items-center justify-center p-4">
-        <SuperCheckLoading size="lg" message="Checking access..." />
+        <SuperCheckLoading size="md" message="Checking access..." />
       </div>
     );
   }

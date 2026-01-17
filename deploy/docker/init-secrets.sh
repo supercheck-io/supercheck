@@ -52,9 +52,9 @@ cat > "$ENV_FILE" << EOF
 # Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 # ============================================================
 
-# ------------------------------------------------------------
+# ────────────────────────────────────────────────────────────
 # REQUIRED: OAuth Provider (at least one)
-# ------------------------------------------------------------
+# ────────────────────────────────────────────────────────────
 # GitHub OAuth (https://github.com/settings/developers)
 # - Homepage URL: http://localhost:3000 (or your domain)
 # - Callback URL: http://localhost:3000/api/auth/callback/github
@@ -66,49 +66,112 @@ GITHUB_CLIENT_SECRET=
 # GOOGLE_CLIENT_ID=
 # GOOGLE_CLIENT_SECRET=
 
-# ------------------------------------------------------------
+# ────────────────────────────────────────────────────────────
 # OPTIONAL: Domain Configuration (for HTTPS deployment)
-# ------------------------------------------------------------
+# ────────────────────────────────────────────────────────────
 # Uncomment and set these for production with domain
 # APP_DOMAIN=app.yourdomain.com
 # ACME_EMAIL=admin@yourdomain.com
+# STATUS_PAGE_DOMAIN=yourdomain.com
 
-# ------------------------------------------------------------
-# AUTO-GENERATED: Security Secrets (do not change)
-# ------------------------------------------------------------
+# ────────────────────────────────────────────────────────────
+# AUTO-GENERATED: Security Secrets (do not modify)
+# ────────────────────────────────────────────────────────────
 BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
 SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY}
 DB_PASSWORD=${DB_PASSWORD}
 REDIS_PASSWORD=${REDIS_PASSWORD}
 
-# Updated Redis URL with new password
-REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+# Database connection
 DATABASE_URL=postgresql://postgres:${DB_PASSWORD}@postgres:5432/supercheck
+DB_HOST=postgres
+DB_PORT=5432
+DB_USER=postgres
+DB_NAME=supercheck
+
+# Redis connection
+REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379
+REDIS_HOST=redis
+REDIS_PORT=6379
+# REDIS_TLS_ENABLED=false
 
 # MinIO/S3 Credentials (auto-generated)
 AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
 AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
+S3_ENDPOINT=http://minio:9000
 
-# ------------------------------------------------------------
+# ────────────────────────────────────────────────────────────
 # OPTIONAL: Email Notifications (SMTP)
-# ------------------------------------------------------------
+# ────────────────────────────────────────────────────────────
+# Required for alerts and team invitations
 # SMTP_HOST=smtp.gmail.com
 # SMTP_PORT=587
 # SMTP_USER=your-email@gmail.com
 # SMTP_PASSWORD=your-app-password
 # SMTP_FROM_EMAIL=notifications@yourdomain.com
+# SMTP_SECURE=false
 
-# ------------------------------------------------------------
-# OPTIONAL: AI Features (OpenAI)
-# ------------------------------------------------------------
-# OPENAI_API_KEY=sk-your-api-key
+# ────────────────────────────────────────────────────────────
+# OPTIONAL: AI Features
+# ────────────────────────────────────────────────────────────
+# OpenAI (default provider)
+# AI_PROVIDER=openai
 # AI_MODEL=gpt-4o-mini
+# OPENAI_API_KEY=sk-your-api-key
 
-# ------------------------------------------------------------
+# Anthropic
+# AI_PROVIDER=anthropic
+# AI_MODEL=claude-3-5-haiku-20241022
+# ANTHROPIC_API_KEY=sk-ant-your-key
+
+# Google Gemini
+# AI_PROVIDER=gemini
+# AI_MODEL=gemini-2.5-flash
+# GOOGLE_GENERATIVE_AI_API_KEY=your-key
+
+# Azure OpenAI
+# AI_PROVIDER=azure
+# AI_MODEL=gpt-4o-mini
+# AZURE_RESOURCE_NAME=your-resource
+# AZURE_API_KEY=your-key
+# AZURE_OPENAI_DEPLOYMENT=your-deployment
+
+# OpenRouter (400+ models)
+# AI_PROVIDER=openrouter
+# AI_MODEL=anthropic/claude-3.5-haiku
+# OPENROUTER_API_KEY=sk-or-your-key
+
+# ────────────────────────────────────────────────────────────
 # OPTIONAL: Worker Scaling
-# ------------------------------------------------------------
+# ────────────────────────────────────────────────────────────
 # WORKER_REPLICAS=1
 # RUNNING_CAPACITY=1
+# WORKER_LOCATION=local
+
+# ────────────────────────────────────────────────────────────
+# OPTIONAL: UI Configuration
+# ────────────────────────────────────────────────────────────
+# SHOW_COMMUNITY_LINKS=true
+
+# ────────────────────────────────────────────────────────────
+# OPTIONAL: Advanced Configuration
+# ────────────────────────────────────────────────────────────
+# Test execution settings
+# TEST_EXECUTION_TIMEOUT_MS=300000
+# JOB_EXECUTION_TIMEOUT_MS=3600000
+# CONTAINER_CPU_LIMIT=1.5
+# CONTAINER_MEMORY_LIMIT_MB=2048
+
+# Playwright settings
+# PLAYWRIGHT_RETRIES=1
+# PLAYWRIGHT_TRACE=retain-on-failure
+# PLAYWRIGHT_SCREENSHOT=on
+# PLAYWRIGHT_VIDEO=retain-on-failure
+
+# Organization limits
+# MAX_PROJECTS_PER_ORG=10
+# MAX_DOCUMENT_SIZE_MB=10
+# MAX_DOCUMENTS_PER_PROJECT=100
 EOF
 
 echo -e "${GREEN}✅ Created .env file at: ${ENV_FILE}${NC}"

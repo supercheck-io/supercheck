@@ -35,7 +35,7 @@ export default async function OnboardingLayout({
         <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
           <div className="container mx-auto px-4 py-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <CheckIcon className="h-8 w-8" />
+              <CheckIcon className="h-7 w-7" />
               <span className="font-semibold text-lg">Supercheck</span>
             </div>
             <div className="flex items-center gap-4">

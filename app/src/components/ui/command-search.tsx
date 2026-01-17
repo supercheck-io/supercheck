@@ -19,7 +19,7 @@ import {
   EthernetPort,
   Variable,
   Tally4,
-  RefreshCw,
+  ClipboardList,
   Target,
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
@@ -127,7 +127,7 @@ export function CommandSearch({ className }: CommandSearchProps) {
       <Button
         variant="outline"
         onClick={() => setOpen(true)}
-        className="h-8 px-2 min-w-[96px] justify-between mr-2 hover:bg-accent/50 transition-colors"
+        className="h-8 px-2 min-w-[96px] justify-between hover:bg-accent/50 transition-colors"
       >
         <div className="flex items-center space-x-1">
           <SearchIcon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -176,7 +176,7 @@ export function CommandSearch({ className }: CommandSearchProps) {
                   <span>Jobs</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("runs")}>
-                  <RefreshCw className="mr-2 h-4 w-4 !text-teal-600" />
+                  <ClipboardList className="mr-2 h-4 w-4 !text-teal-600" />
                   <span>Runs</span>
                 </CommandItem>
                 <CommandItem onSelect={() => handleCommand("variables")}>

@@ -28,6 +28,8 @@ docker compose -f deploy/docker/docker-compose.yml up -d
 ```
 
 > [!NOTE]
+> **Modern Docker Compose required.** Use `docker compose` (not `docker-compose`). See the [docker/README.md](docker/README.md) for troubleshooting.
+>
 > The default configuration sets `SELF_HOSTED=true`, which enables unlimited features. If you are deploying manually or running locally without Docker Compose, ensure you set `SELF_HOSTED=true` in your environment variables.
 
 ## Documentation

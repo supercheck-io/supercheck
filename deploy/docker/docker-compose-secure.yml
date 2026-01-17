@@ -64,6 +64,7 @@ x-common-env: &common-env # Database Configuration
   BETTER_AUTH_URL: ${BETTER_AUTH_URL:-https://${APP_DOMAIN:-demo.supercheck.io}}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-CHANGE_THIS_GENERATE_32_CHAR_HEX}
   NODE_ENV: ${NODE_ENV:-production}
+  SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
   # Parallel Execution Capacity (self-hosted mode uses these env vars)
   # Cloud mode uses plan limits: Plus=5/50, Pro=10/100
   RUNNING_CAPACITY: ${RUNNING_CAPACITY:-1} # Max concurrent executions (match WORKER_REPLICAS)
@@ -293,7 +294,7 @@ services:
 
   # App (Next.js Frontend) - Handles migrations internally
   app:
-    image: ghcr.io/supercheck-io/supercheck/app:1.2.1-canary.25
+    image: ghcr.io/supercheck-io/supercheck/app:1.2.2
     expose:
       - "3000"
     environment:
@@ -364,7 +365,7 @@ services:
   # Tests run in isolated Docker containers (Playwright/K6), not inside worker
   # Playwright Docker best practices: https://playwright.dev/docs/docker
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.2.1-canary.25
+    image: ghcr.io/supercheck-io/supercheck/worker:1.2.2
     # init: Use tini as PID 1 to avoid zombie processes (Playwright recommendation)
     init: true
     environment:

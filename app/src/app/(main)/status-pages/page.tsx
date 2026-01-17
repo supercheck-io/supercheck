@@ -21,7 +21,7 @@ export default function StatusPagesPage() {
           <Suspense
             fallback={
               <div className="flex min-h-[400px] items-center justify-center">
-                <SuperCheckLoading size="lg" message="Loading status pages..." />
+                <SuperCheckLoading size="md" message="Loading status pages..." />
               </div>
             }
           >

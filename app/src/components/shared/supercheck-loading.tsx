@@ -2,6 +2,8 @@
 
 import { cn } from "@/lib/utils";
 
+import { SupercheckLogo } from "@/components/logo/supercheck-logo";
+
 interface SuperCheckLoadingProps {
     message?: string;
     size?: "sm" | "md" | "lg";
@@ -24,9 +26,9 @@ export function SuperCheckLoading({
     // Config: Logo size and Spinner size
     // Spinner is tighter to logo now
     const sizeConfig = {
-        sm: { logo: 24, spinner: 40, stroke: 'border-[2px]' },
-        md: { logo: 32, spinner: 48, stroke: 'border-[3px]' },
-        lg: { logo: 48, spinner: 72, stroke: 'border-[4px]' },
+        sm: { logo: 24, spinner: 44, stroke: 'border-[3px]' },
+        md: { logo: 32, spinner: 60, stroke: 'border-[4px]' },
+        lg: { logo: 48, spinner: 84, stroke: 'border-[6px]' },
     };
 
     const config = sizeConfig[size];
@@ -49,7 +51,7 @@ export function SuperCheckLoading({
 
                 {/* Static logo in center */}
                 <div className="relative z-10">
-                    <SuperCheckLogo size={config.logo} />
+                    <SupercheckLogo width={config.logo} height={config.logo} />
                 </div>
             </div>
 
@@ -58,35 +60,6 @@ export function SuperCheckLoading({
                 {message}
             </p>
         </div>
-    );
-}
-
-/**
- * SuperCheckLogo - The main SuperCheck logo component
- * Green checkmark in a circle
- */
-function SuperCheckLogo({ size = 24 }: { size?: number }) {
-    return (
-        <svg
-            width={size}
-            height={size}
-            viewBox="0 0 32 32"
-            fill="none"
-        >
-            {/* Main circle */}
-            <circle
-                cx="16"
-                cy="16"
-                r="16"
-                fill="#50b748"
-            />
-
-            {/* White checkmark */}
-            <path
-                d="M13.52 23.383L6.158 16.02l2.828-2.828 4.533 4.535 9.617-9.617 2.828 2.828L13.52 23.383z"
-                fill="white"
-            />
-        </svg>
     );
 }
 
@@ -100,7 +73,9 @@ export function FullPageLoading({
 }) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-            <SuperCheckLoading size="lg" message={message} />
+            <SuperCheckLoading size="md" message={message} />
         </div>
     );
 }
+
+

@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CheckIcon } from "@/components/logo/supercheck-logo";
+import { SupercheckLogo } from "@/components/logo/supercheck-logo";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -102,7 +102,7 @@ export function LoginForm({
             <div className="flex flex-col items-center gap-3 text-center">
 
               <div className="flex size-14 items-center justify-center rounded-md">
-                <CheckIcon className="size-12" />
+                <SupercheckLogo className="size-12" />
               </div>
               <span className="sr-only">Supercheck</span>
 

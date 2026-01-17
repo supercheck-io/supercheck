@@ -27,15 +27,15 @@ export function SiteHeader({ showPricing = true, showDocs = true }: SiteHeaderPr
   return (
     <header className="sticky top-0 z-50 border-b border-fd-border bg-fd-background/80 backdrop-blur-sm">
       <div className="container flex h-14 items-center justify-between">
-        <Link href="/" className="flex items-center gap-2 font-semibold">
+        <Link href="/" className="flex items-center gap-2">
           <Image
             src="/supercheck-logo.png"
             alt="Supercheck Logo"
-            width={32}
-            height={32}
+            width={28}
+            height={28}
             className="rounded-md"
           />
-          <span>Supercheck</span>
+          <span className="font-bold text-xl">Supercheck</span>
         </Link>
         <div className="flex items-center gap-4">
           {showDocs && (
@@ -96,11 +96,11 @@ export function baseOptions(): BaseLayoutProps {
           <Image
             src="/supercheck-logo.png"
             alt="Supercheck Logo"
-            width={32}
-            height={32}
+            width={28}
+            height={28}
             className="rounded-md"
           />
-          <span className="font-semibold">Supercheck Docs</span>
+          <span className="font-bold text-xl">Supercheck</span>
         </>
       ),
     },

@@ -18,7 +18,7 @@ export default function JobsPage() {
           <Suspense
             fallback={
               <div className="flex min-h-[400px] items-center justify-center">
-                <SuperCheckLoading size="lg" message="Loading jobs..." />
+                <SuperCheckLoading size="md" message="Loading jobs..." />
               </div>
             }
           >
