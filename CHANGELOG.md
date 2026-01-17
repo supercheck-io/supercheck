@@ -5,26 +5,11 @@ All notable changes to Supercheck are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 
-## [1.2.3] - 2026-01-17
+## [1.2.2] - 2026-01-17
 
 ### Added
 - **Supercheck Recorder extension** — Browser extension for Chromium based browsers to record user interactions and generate Playwright tests
 - Extension auto-connect feature from Playground to Recorder with seamless handshake
-
-
-### Changed
-- Enhanced React Query caching strategy for faster page loads
-- Updated new logo and added community links to the navigation header
-
-### Fixed
-- Race condition in cache restoration during page navigation
-- Unnecessary loading spinners when cached data is available
-
----
-
-## [1.2.2] - 2026-01-07
-
-### Added
 - Requirements management system with AI-powered extraction from documents
 - Microsoft Teams notification integration via Power Automate webhooks
 - Super admin CSV export for user management
@@ -33,10 +18,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Centralized AI provider configuration system
 
 ### Changed
+- Enhanced React Query caching strategy for faster page loads
+- Updated new logo and added community links to the navigation header
 - Enhanced webhook URL validation with allowlist for Teams
 - Improved text sanitization for security
 
 ### Fixed
+- Race condition in cache restoration during page navigation
+- Unnecessary loading spinners when cached data is available
 - CVE-2026-0621: ReDoS vulnerability in @modelcontextprotocol/sdk (GHSA-8r9q-7v3j-jr4g) by downgrading shadcn CLI to v2.5.0
 - Configurable CNAME target for self-hosted custom domains ([#153](https://github.com/supercheck-io/supercheck/issues/153))
 - Traefik updated to v3.6.6 for Docker 29+ API compatibility ([#152](https://github.com/supercheck-io/supercheck/issues/152))
