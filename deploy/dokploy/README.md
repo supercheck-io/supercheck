@@ -4,7 +4,7 @@ One-click deployment template for Supercheck on Dokploy.
 
 ## Quick Start
 
-### Via Dokploy Templates (After PR Merged)
+### Via Dokploy Templates
 
 1. In Dokploy, go to **Templates**
 2. Search for "Supercheck"

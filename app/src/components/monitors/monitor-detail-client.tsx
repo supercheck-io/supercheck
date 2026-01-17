@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback, useSyncExternalStore } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { canEditMonitors } from "@/lib/rbac/client-permissions";
 import { Role } from "@/lib/rbac/permissions-client";
 import { LoadingBadge, Spinner } from "@/components/ui/spinner";
@@ -163,13 +163,7 @@ export function MonitorDetailClient({
   const queryClient = useQueryClient();
   const { recentMonitorResultsLimit } = useAppConfig();
 
-  // HYDRATION FIX: Track client mount state to prevent hydration errors
-  // Server will return false, Client will return true after mounting
-  const isMounted = useSyncExternalStore(
-    () => () => { },
-    () => true,
-    () => false
-  );
+
 
   const [monitor, setMonitor] = useState<MonitorWithResults>(initialMonitor);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -204,8 +198,7 @@ export function MonitorDetailClient({
     isLoading: permissionsLoading,
   } = useMonitorPermissions(monitor.id);
 
-  // Combined restoring state for hydration safety
-  const isRestoring = statsRestoring || resultsRestoring;
+
 
   // Copy to clipboard handler
   const handleCopy = useCallback((text: string, label: string) => {
