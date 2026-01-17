@@ -13,6 +13,15 @@ The `docker/` folder contains Docker Compose configurations for running SuperChe
 | `docker-compose-external.yml` | Use external managed services (PostgreSQL, Redis, S3) |
 | `docker-compose-secure.yml` | Production deployment with Traefik SSL |
 
+## Platform Guides
+
+Specific guides for deployment platforms:
+
+| Platform | Guide |
+|----------|-------|
+| **Coolify** | [Deploy on Coolify](coolify/README.md) |
+| **Dokploy** | [Deploy on Dokploy](dokploy/README.md) |
+
 ## Quick Start
 
 ```bash

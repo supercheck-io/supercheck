@@ -57,7 +57,7 @@ export function CommunityLinks() {
             <Button
                 variant="outline"
                 size="sm"
-                className="h-8 gap-1.5"
+                className="h-8 gap-1.5 border-muted-foreground/30 text-muted-foreground hover:text-foreground hover:border-border"
                 asChild
             >
                 <a
@@ -75,7 +75,7 @@ export function CommunityLinks() {
             <Button
                 variant="outline"
                 size="sm"
-                className="h-8 gap-1.5"
+                className="h-8 gap-1.5 border-muted-foreground/30 text-muted-foreground hover:text-foreground hover:border-border"
                 asChild
             >
                 <a
