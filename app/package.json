@@ -1,6 +1,6 @@
 {
   "name": "@supercheck-io/app",
-  "version": "1.2.3",
+  "version": "1.2.2",
   "description": "Supercheck - Comprehensive Automation & Monitoring for Modern Apps (Frontend & API)",
   "license": "MIT",
   "private": false,

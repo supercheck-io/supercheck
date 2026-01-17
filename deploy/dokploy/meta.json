@@ -1,7 +1,7 @@
 {
     "id": "supercheck",
     "name": "Supercheck",
-    "version": "1.2.3",
+    "version": "1.2.2",
     "description": "Open Source AI-Powered Test Automation & Monitoring Platform. Playwright tests, K6 load tests, synthetic monitors, and status pages.",
     "logo": "supercheck.svg",
     "links": {

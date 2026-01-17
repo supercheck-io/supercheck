@@ -33,7 +33,7 @@
 
 services:
   worker:
-    image: ghcr.io/supercheck-io/supercheck/worker:1.2.3
+    image: ghcr.io/supercheck-io/supercheck/worker:1.2.2
     init: true
     environment:
       # Database connection (required)
