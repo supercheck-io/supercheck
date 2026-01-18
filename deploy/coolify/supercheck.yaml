@@ -23,11 +23,12 @@ x-common-env: &common-env # Database Configuration
   REDIS_URL: redis://:${SERVICE_PASSWORD_REDIS:-supercheck-redis-password}@redis:6379
   REDIS_TLS_ENABLED: false
 
-  # App Configuration (Coolify auto-generates URLs via SERVICE_URL_*)
-  NEXT_PUBLIC_APP_URL: ${SERVICE_URL_SUPERCHECK}
-  APP_URL: ${SERVICE_URL_SUPERCHECK}
-  BETTER_AUTH_URL: ${SERVICE_URL_SUPERCHECK}
+  # App Configuration - Coolify auto-generates SERVICE_URL_APP (matches generated URL protocol)
+  NEXT_PUBLIC_APP_URL: ${SERVICE_URL_APP}
+  APP_URL: ${SERVICE_URL_APP}
+  BETTER_AUTH_URL: ${SERVICE_URL_APP}
   BETTER_AUTH_SECRET: ${SERVICE_BASE64_64_AUTH:-supercheck-auth-secret-change-me-in-production-32chars}
+  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN}
   NODE_ENV: production
   SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
 
@@ -221,6 +222,8 @@ services:
     image: ghcr.io/supercheck-io/supercheck/app:latest
     environment:
       <<: *common-env
+      # Tell Coolify to expose this service on port 3000
+      SERVICE_FQDN_APP_3000: ""
     depends_on:
       postgres:
         condition: service_healthy
@@ -270,7 +273,6 @@ services:
       retries: 3
       start_period: 60s
     deploy:
-      replicas: 2
       resources:
         limits:
           cpus: "1.8"

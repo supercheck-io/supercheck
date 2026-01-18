@@ -2,169 +2,110 @@
 
 Deploy Supercheck on [Coolify](https://coolify.io) using Docker Compose.
 
-> **Note:** The one-click service is not yet available in Coolify's catalog (requires 1k GitHub stars). Please follow the manual deployment steps below.
-
-## Prerequisites
-
-- **Coolify v4.x** installed and running
-- **Domain name** pointing to your Coolify server (required for SSL and authentication)
-- **4 vCPU / 8 GB RAM** minimum server resources
+---
 
 ## Quick Start
 
-### Step 1: Create a Docker Compose Service
+### 1. Create Service
 
-1. Open your Coolify dashboard
-2. Navigate to your **Project** → **Environment**
-3. Click **+ New** → **Docker Compose**
-4. Select **Empty Compose** as the source
+1. Open Coolify dashboard
+2. Go to **Projects** → Select your project → **+ New** → **Docker Compose**
+3. Select **Empty Compose**
 
-### Step 2: Add the Compose Configuration
+![IMAGE](image1.png)
+ 
 
-1. Copy the contents of [`supercheck.yaml`](./supercheck.yaml)
-2. Paste into the **Docker Compose** editor
+### 2. Add Configuration
+
+1. Click **Edit Compose File**
+2. Paste the contents of [`supercheck.yaml`](./supercheck.yaml)
 3. Click **Save**
 
-> **Raw file URL:**  
-> `https://raw.githubusercontent.com/supercheck-io/supercheck/main/deploy/coolify/supercheck.yaml`
+### 3. Deploy
 
-### Step 3: Configure Environment Variables
+1. Click **Deploy**
+2. Wait for all services to show **Running (healthy)**
+3. Click the generated URL next to the **App** service to access your instance
 
-The template includes sensible defaults. You only need to set these in the **Environment Variables** tab:
+![IMAGE](image4.png)
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SERVICE_URL_SUPERCHECK` | *(required)* | Your app URL (e.g., `https://supercheck.yourdomain.com`) |
-| `SERVICE_USER_POSTGRES` | `supercheck` | PostgreSQL username |
-| `SERVICE_PASSWORD_POSTGRES` | `supercheck-db-password` | PostgreSQL password |
-| `SERVICE_PASSWORD_REDIS` | `supercheck-redis-password` | Redis password |
-| `SERVICE_USER_MINIO` | `minioadmin` | MinIO username |
-| `SERVICE_PASSWORD_MINIO` | `minioadmin` | MinIO password |
-| `SERVICE_BASE64_64_AUTH` | *(auto-generated)* | Auth secret (Coolify generates this) |
-| `SERVICE_BASE64_64_ENCRYPTION` | *(auto-generated)* | Encryption key (Coolify generates this) |
+---
 
-> **Tip:** For production, generate secure passwords:
-> ```bash
-> openssl rand -base64 32  # For passwords
-> openssl rand -base64 64  # For auth secret
-> ```
+## OAuth Setup (Required)
 
-### Step 4: Configure Domain
+You need OAuth to create your first account.
 
-1. In the service list, find the **app** service
-2. Click to configure its **Domains**
-3. Set the domain (e.g., `supercheck.yourdomain.com`)
-4. Ensure your DNS A record points to the Coolify server
-5. HTTPS is automatically enabled via Caddy
+### GitHub OAuth
 
-### Step 5: Deploy
+1. Go to [github.com/settings/developers](https://github.com/settings/developers) → **New OAuth App**
 
-1. Click **Deploy** in the top right
-2. Wait for all services to become healthy (2-5 minutes)
-3. Access your instance at your configured domain
+2. Fill in:
+   - **Application name:** `Supercheck`
+   - **Homepage URL:** Your Coolify-generated URL (e.g., `http://app-xxx.sslip.io`)
+   - **Callback URL:** Same URL + `/api/auth/callback/github`
 
-## Architecture
+   > ⚠️ **Note:** Copy the exact URL shown in Coolify (HTTP or HTTPS).
 
-| Service | Image | Resources | Purpose |
-|---------|-------|-----------|---------|
-| PostgreSQL 18 | `postgres:18` | 1 CPU / 1.5 GB | Database |
-| Redis 8 | `redis:8` | 0.5 CPU / 512 MB | Job queue |
-| MinIO | `minio/minio:latest` | 0.5 CPU / 1 GB | Object storage |
-| App | `ghcr.io/.../app:latest` | 1.5 CPU / 3 GB | Web application |
-| Worker ×2 | `ghcr.io/.../worker:latest` | 1.8 CPU / 3 GB each | Test execution |
+3. Copy **Client ID** and generate **Client Secret**
 
-**Total**: ~6 vCPU / 12 GB RAM (minimum 4 vCPU / 8 GB for smaller deployments)
+4. In Coolify → **Environment Variables** → Add:
+   ```
+   GITHUB_CLIENT_ID=your_client_id
+   GITHUB_CLIENT_SECRET=your_client_secret
+   ```
 
-## Default Credentials (Change in Production!)
+5. Click **Save** → **Restart** the App service
 
-| Service | Username | Password |
-|---------|----------|----------|
-| PostgreSQL | `supercheck` | `supercheck-db-password` |
-| Redis | - | `supercheck-redis-password` |
-| MinIO | `minioadmin` | `minioadmin` |
+![IMAGE](image2.png)
 
-## Optional Configuration
+![IMAGE](image3.png)
 
-### Email Notifications (SMTP)
+![IMAGE](image5.png)
 
-| Variable | Description |
-|----------|-------------|
-| `SMTP_HOST` | SMTP server (e.g., `smtp.resend.com`) |
-| `SMTP_PORT` | Port (default: `587`) |
-| `SMTP_USER` | SMTP username |
-| `SMTP_PASSWORD` | SMTP password |
-| `SMTP_FROM_EMAIL` | Sender email address |
+---
 
-### OAuth Login
+## Advanced Configuration
 
-| Variable | Description |
-|----------|-------------|
-| `GITHUB_CLIENT_ID` | GitHub OAuth Client ID |
-| `GITHUB_CLIENT_SECRET` | GitHub OAuth Client Secret |
-| `GOOGLE_CLIENT_ID` | Google OAuth Client ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth Client Secret |
+### Custom Domain
 
-### AI Features
+To use your own domain instead of the auto-generated sslip.io URL:
+
+1. **Add DNS records:**
+   - `app.yourdomain.com` → A record → Server IP
+   - `*.yourdomain.com` → A record → Server IP (for status pages)
+
+2. **In Coolify:** Click on **App** service → Scroll to bottom → Add domain
+
+3. **Update OAuth callback URL** to match new domain
+
+4. **Redeploy**
+
+### Status Pages (Requires Custom Domain)
+
+Status pages use subdomains (e.g., `status.yourdomain.com`) which require **wildcard DNS**.
+
+> ❌ **Note:** Status pages do **NOT** work with the default `sslip.io` URL because Coolify doesn't automatically configure wildcard routing for it. You **must** use a custom domain.
+
+1. **Add Wildcard DNS:** `*.yourdomain.com` → A record → Server IP
+2. **In Coolify:** Add `https://*.yourdomain.com:3000` to App domains
+3. **Set Env Var:** `STATUS_PAGE_DOMAIN=yourdomain.com`
+
+Status pages will then be accessible at `https://{slug}.yourdomain.com`
+
+### Optional Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `AI_PROVIDER` | Provider: `openai`, `anthropic`, `gemini` (default: `openai`) |
-| `AI_MODEL` | Model ID (default: `gpt-4o-mini`) |
-| `OPENAI_API_KEY` | OpenAI API key |
-| `ANTHROPIC_API_KEY` | Anthropic API key |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | Google Gemini API key |
+| `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` | Email notifications |
+| `OPENAI_API_KEY` | AI features |
+| `RUNNING_CAPACITY` | Max concurrent tests (default: 2) |
 
-### Capacity Tuning
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RUNNING_CAPACITY` | `2` | Max concurrent test executions |
-| `QUEUED_CAPACITY` | `10` | Max queued jobs |
+---
 
 ## Troubleshooting
 
-### Services fail to start
-
-1. Check that `SERVICE_URL_SUPERCHECK` is set correctly
-2. Verify domain DNS is properly configured
-3. Review service logs in Coolify for specific errors
-4. Ensure server has at least 8 GB RAM
-
-### Authentication errors
-
-1. Ensure `SERVICE_URL_SUPERCHECK` matches your configured domain exactly (including `https://`)
-2. Verify SSL certificate is valid (Coolify handles this automatically via Caddy)
-3. Check browser console for CORS or cookie errors
-
-### Database connection issues
-
-1. Wait for PostgreSQL to become healthy before accessing the app
-2. Check that `SERVICE_USER_POSTGRES` and `SERVICE_PASSWORD_POSTGRES` are set
-3. Review PostgreSQL logs for connection errors
-
-### Worker not processing jobs
-
-1. Verify Docker socket is mounted (`/var/run/docker.sock`)
-2. Check Redis connection and password
-3. Review worker logs for connection errors
-
-## Updating
-
-The template uses `latest` tags for app and worker images. To update:
-
-1. Open your Docker Compose service in Coolify
-2. Click **Redeploy** to pull the latest images
-
-## Files
-
-| File | Purpose |
-|------|---------|
-| `supercheck.yaml` | Main Docker Compose template |
-| `supercheck.svg` | Logo for Coolify catalog |
-| `README.md` | This documentation |
-
-## Support
-
-- **Documentation**: https://supercheck.io/docs
-- **GitHub**: https://github.com/supercheck-io/supercheck
-- **Issues**: https://github.com/supercheck-io/supercheck/issues
+| Issue | Fix |
+|-------|-----|
+| Connection timeout | Ensure ports 80/443 are open on firewall |
+| OAuth error | Verify callback URL matches exactly |
+| Status pages redirect to login | Set `STATUS_PAGE_DOMAIN` |
