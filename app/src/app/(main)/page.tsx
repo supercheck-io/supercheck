@@ -73,6 +73,7 @@ import { K6AnalyticsTab } from "@/components/dashboard/k6-analytics-tab";
 import { PlaywrightAnalyticsTab } from "@/components/dashboard/playwright-analytics-tab";
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state";
 import { SupercheckLogo } from "@/components/logo/supercheck-logo";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import { useDashboard, type DashboardData } from "@/hooks/use-dashboard";
 import { useRequirementsStats } from "@/hooks/use-requirements-stats";
 // Types are now exported from useDashboard hook
@@ -625,20 +626,16 @@ export default function Home() {
     );
   }
 
-  // Handle missing data or system check
-  // Shows empty state for:
-  // 1. Missing dashboard data (should be loading instead if fetching)
-  // 2. Missing system status
-  // 3. No project context (should ideally not happen due to AuthGuard but acts as safety net)
+  // Handle missing data edge case
+  // This is a safety net for rare cases where data is missing after loading completes.
+  // Shows spinner instead of duplicate empty state (the real empty state is in the Overview tab).
   if (!dashboardData || !chartData || !dashboardData.system) {
     return (
       <div className="overflow-hidden">
         <PageBreadcrumbs items={breadcrumbs} />
-        <DashboardEmptyState
-          title="Welcome to your Dashboard"
-          description="Your project overview will appear here once data is available. Get started by creating a monitor or running a test."
-          icon={<LayoutDashboard className="h-10 w-10 text-muted-foreground" />}
-        />
+        <div className="flex min-h-[60vh] items-center justify-center">
+          <SuperCheckLoading size="md" message="Loading dashboard..." />
+        </div>
       </div>
     );
   }
