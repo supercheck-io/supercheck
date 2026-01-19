@@ -1,4 +1,4 @@
-# ![Coolify](https://img.shields.io/badge/-Coolify-6B16ED?logo=coolify&logoColor=white&style=flat-square) Supercheck on Coolify
+# <img src="https://img.shields.io/badge/-Coolify-6B16ED?logo=coolify&logoColor=white&style=flat-square" alt="Coolify" /> Supercheck on Coolify
 
 Deploy Supercheck on [Coolify](https://coolify.io) using Docker Compose.
 
@@ -8,21 +8,21 @@ Deploy Supercheck on [Coolify](https://coolify.io) using Docker Compose.
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1️⃣ Create a Service Stack
+### Create a Service Stack
 
 1. Navigate to your **Coolify Dashboard**.
 2. Go to **Projects** → Select your project → **+ New Resource**.
 3. Choose **Docker Compose** and select **Empty Compose**.
 
-### 2️⃣ Configure the Stack
+### Configure the Stack
 
 1. Click on **Edit Compose File**.
 2. Copy and paste the contents of [`supercheck.yaml`](./supercheck.yaml).
 3. Click **Save**.
 
-### 3️⃣ Deployment
+### Deployment
 
 1. Click **Deploy**.
 2. Monitor the deployment until all services show **Running (healthy)**.
@@ -30,9 +30,9 @@ Deploy Supercheck on [Coolify](https://coolify.io) using Docker Compose.
 
 ---
 
-## ⚙️ Post-Deployment Setup
+## Post-Deployment Setup
 
-### 🔐 OAuth Configuration (Required)
+### OAuth Configuration (Required)
 
 Supercheck uses OAuth for account creation and authentication.
 
@@ -50,7 +50,7 @@ Supercheck uses OAuth for account creation and authentication.
    ```
 5. **Save** and **Restart** the App service to apply changes.
 
-### 👤 Create Super Admin (Optional)
+### Create Super Admin (Optional)
 
 1. **Sign Up**: Log in to your Supercheck instance using GitHub.
 2. **Promote to Super Admin**:
@@ -62,7 +62,7 @@ Supercheck uses OAuth for account creation and authentication.
 
 ---
 
-### 🔮 Future Updates (Optional)
+### Future Updates (Optional)
 
 Update the image tag for `app` and `worker` services if you want a specific version other than `latest` (e.g., `1.2.2-canary.25`) and redeploy.
 
@@ -72,7 +72,7 @@ For the **latest stable version**, simply redeploy.
 
 ---
 
-## 📋 Configuration
+## Configuration
 
 | Variable | Description | Default |
 |:---|:---|:---|
@@ -85,7 +85,7 @@ For the **latest stable version**, simply redeploy.
 
 ---
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 | Issue | Resolution |
 |:---|:---|
@@ -95,21 +95,21 @@ For the **latest stable version**, simply redeploy.
 
 ---
 
-## ⚠️ Limitations
+## Limitations
 
 > **External Status Pages**
 > Custom domains for status pages are not supported out-of-the-box in this deployment method due to Coolify's Traefik proxy limitations. If you require this feature, we recommend using our [Standard Docker Compose](https://supercheck.io/docs/deployment/self-hosted) method.
 
 ---
 
-## 🤝 Support & Community
+## Support & Community
 
 - [GitHub Issues](https://github.com/supercheck-io/supercheck/issues) - Report bugs and feature requests.
 - [Discord Community](https://discord.com/channels/1454737396884312210/1454824456139837580) - Get help and connect with other users.
 
 ---
 
-## 📸 Screenshots
+## Screenshots
 
 <div align="center">
   <img src="image1.png" width="800" alt="Choose Docker Compose Empty" />
