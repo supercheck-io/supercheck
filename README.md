@@ -70,8 +70,8 @@ Self-host Supercheck on your own infrastructure:
 
 | Option | Description | Guide |
 |--------|-------------|-------|
-| <img src="https://img.shields.io/badge/-Coolify-6B16ED?logo=coolify&logoColor=white&style=flat-square" alt="Coolify" /> | One-click deploy on [Coolify](https://coolify.io) | [Deploy →](./deploy/coolify/README.md) |
-| <img src="https://img.shields.io/badge/-Docker-2496ED?logo=docker&logoColor=white&style=flat-square" alt="Docker" /> | Manual deployment with Docker | [Deploy →](https://supercheck.io/docs/deployment) |
+| [![Deploy with Coolify](https://img.shields.io/badge/Deploy%20with-Coolify-6B16ED?logo=coolify&logoColor=white)](./deploy/coolify/README.md) | One-click deploy on [Coolify](https://coolify.io) | [Deploy →](./deploy/coolify/README.md) |
+| [![Deploy with Docker](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-2496ED?logo=docker&logoColor=white)](https://supercheck.io/docs/deployment) | Manual deployment with Docker | [Deploy →](https://supercheck.io/docs/deployment) |
 
 > **Want official Coolify template?** [⭐ Star this repo](https://github.com/supercheck-io/supercheck) — Coolify requires 1,000+ stars for official catalog inclusion ([see PR](https://github.com/coollabsio/coolify/pull/7962)).
 

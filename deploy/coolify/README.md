@@ -1,4 +1,6 @@
-# <img src="https://img.shields.io/badge/-Coolify-6B16ED?logo=coolify&logoColor=white&style=flat-square" alt="Coolify" /> Supercheck on Coolify
+# Supercheck on Coolify
+
+[![Deploy with Coolify](https://img.shields.io/badge/Deploy%20with-Coolify-6B16ED?logo=coolify&logoColor=white)](./README.md) 
 
 Deploy Supercheck on [Coolify](https://coolify.io) using Docker Compose.
 
@@ -98,7 +100,7 @@ For the **latest stable version**, simply redeploy.
 ## Limitations
 
 > **External Status Pages**
-> Custom domains for status pages are not supported out-of-the-box in this deployment method due to Coolify's Traefik proxy limitations. If you require this feature, we recommend using our [Standard Docker Compose](https://supercheck.io/docs/deployment/self-hosted) method.
+> are not supported out-of-the-box in this deployment method due to Coolify's Traefik proxy limitations with sub-domain routing. If you require this feature, we recommend using our [Standard Docker Compose](https://supercheck.io/docs/deployment/self-hosted) method. You can still use the internal status pages provided by Supercheck.
 
 ---
 
