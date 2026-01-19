@@ -5,9 +5,8 @@
 Empowering development and SRE teams with a scalable, distributed, and robust platform to drive faster delivery and higher software quality.
 
 [![Deploy with Coolify](https://img.shields.io/badge/Deploy%20with-Coolify-6B16ED?logo=coolify&logoColor=white)](./deploy/coolify/README.md)
-[![Deploy with Docker](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-2496ED?logo=docker&logoColor=white)](./deploy/docker/)
+[![Deploy with Docker](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-2496ED?logo=docker&logoColor=white)](https://supercheck.io/docs/deployment)
 [![Website](https://img.shields.io/badge/Website-supercheck.io-orange?logo=firefox)](https://supercheck.io)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey?logo=docker)](https://supercheck.io)
 [![Monitoring](https://img.shields.io/badge/Synthetic-Monitor-brightgreen?logo=speedtest&logoColor=white)](https://supercheck.io)
 [![Testing](https://img.shields.io/badge/Testing-Playwright-45ba4b?logo=googlechrome&logoColor=white)](https://playwright.dev)
 [![Load Testing](https://img.shields.io/badge/Load%20Testing-Grafana%20k6-7D64FF?logo=k6)](https://k6.io)
@@ -71,8 +70,8 @@ Self-host Supercheck on your own infrastructure:
 
 | Option | Description | Guide |
 |--------|-------------|-------|
-| ![Coolify](https://img.shields.io/badge/-Coolify-6B16ED?logo=coolify&logoColor=white&style=flat-square) | One-click deploy on [Coolify](https://coolify.io) | [Deploy →](./deploy/coolify/README.md) |
-| ![Docker](https://img.shields.io/badge/-Docker-2496ED?logo=docker&logoColor=white&style=flat-square) | Manual deployment with Docker | [Deploy →](https://supercheck.io/docs/deployment) |
+| <img src="https://img.shields.io/badge/-Coolify-6B16ED?logo=coolify&logoColor=white&style=flat-square" alt="Coolify" /> | One-click deploy on [Coolify](https://coolify.io) | [Deploy →](./deploy/coolify/README.md) |
+| <img src="https://img.shields.io/badge/-Docker-2496ED?logo=docker&logoColor=white&style=flat-square" alt="Docker" /> | Manual deployment with Docker | [Deploy →](https://supercheck.io/docs/deployment) |
 
 > **Want official Coolify template?** [⭐ Star this repo](https://github.com/supercheck-io/supercheck) — Coolify requires 1,000+ stars for official catalog inclusion ([see PR](https://github.com/coollabsio/coolify/pull/7962)).
 
