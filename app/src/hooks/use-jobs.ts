@@ -86,6 +86,7 @@ export function getJobsListQueryKey(projectId: string | null) {
 const jobsHook = createDataHook<Job, CreateJobData, UpdateJobData>({
   queryKey: JOBS_QUERY_KEY,
   endpoint: "/api/jobs",
+  staleTime: 30 * 1000,  // 30 seconds - job status changes frequently with runs
   refetchOnWindowFocus: false,
   singleItemField: "job",
 });

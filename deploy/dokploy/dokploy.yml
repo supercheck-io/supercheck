@@ -25,6 +25,7 @@ x-common-env: &common-env # Database Configuration
   BETTER_AUTH_SECRET: ${AUTH_SECRET:-supercheck-auth-secret-change-me-in-production-32chars}
   NODE_ENV: production
   SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
+  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN:-}
 
   # Parallel Execution Capacity
   RUNNING_CAPACITY: ${RUNNING_CAPACITY:-2}
@@ -157,6 +158,8 @@ services:
         reservations:
           cpus: "0.5"
           memory: 1G
+    networks:
+      - dokploy-network
 
   # Redis Cache & Queue
   redis:
@@ -186,6 +189,8 @@ services:
         reservations:
           cpus: "0.25"
           memory: 256M
+    networks:
+      - dokploy-network
 
   # MinIO Object Storage
   minio:
@@ -210,9 +215,11 @@ services:
         reservations:
           cpus: "0.25"
           memory: 512M
+    networks:
+      - dokploy-network
 
   # App (Next.js Frontend + API)
-  # Note: Dokploy requires single port format (- 3000), not mapped format (- 3000:3000)
+  # Dokploy handles domain routing via Traefik
   app:
     image: ghcr.io/supercheck-io/supercheck/app:latest
     environment:
@@ -241,6 +248,8 @@ services:
         reservations:
           cpus: "0.5"
           memory: 1G
+    networks:
+      - dokploy-network
 
   # Worker (NestJS Test Runner)
   worker:
@@ -278,9 +287,15 @@ services:
           memory: 1G
     security_opt:
       - no-new-privileges:true
+    networks:
+      - dokploy-network
 
 volumes:
   postgres-data:
   redis-data:
   minio-data:
   worker-reports:
+
+networks:
+  dokploy-network:
+    external: true

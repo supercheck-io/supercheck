@@ -1,6 +1,6 @@
 # documentation: https://supercheck.io/docs/self-hosting
 # slogan: Open Source AI-Powered Test Automation & Monitoring Platform
-# tags: automation, playwright, k6, testing, monitoring, ai, uptime, synthetic-monitors, status-pages
+# tags: automation, playwright, k6, testing, monitoring, ai, uptime, synthetic-monitors
 # logo: svgs/supercheck.svg
 # port: 3000
 
@@ -9,26 +9,26 @@
 
 # YAML anchors for shared configuration
 x-common-env: &common-env # Database Configuration
-  DATABASE_URL: postgresql://${SERVICE_USER_POSTGRES:-supercheck}:${SERVICE_PASSWORD_POSTGRES:-supercheck-db-password}@postgres:5432/${POSTGRES_DB:-supercheck}
-  DB_HOST: postgres
+  DATABASE_URL: postgresql://postgres:postgres@supercheck-db:5432/supercheck
+  DB_HOST: supercheck-db
   DB_PORT: 5432
-  DB_USER: ${SERVICE_USER_POSTGRES:-supercheck}
-  DB_PASSWORD: ${SERVICE_PASSWORD_POSTGRES:-supercheck-db-password}
-  DB_NAME: ${POSTGRES_DB:-supercheck}
+  DB_USER: postgres
+  DB_PASSWORD: postgres
+  DB_NAME: supercheck
 
   # Redis Configuration
-  REDIS_HOST: redis
+  REDIS_HOST: supercheck-redis
   REDIS_PORT: 6379
-  REDIS_PASSWORD: ${SERVICE_PASSWORD_REDIS:-supercheck-redis-password}
-  REDIS_URL: redis://:${SERVICE_PASSWORD_REDIS:-supercheck-redis-password}@redis:6379
+  REDIS_PASSWORD: supercheck-redis-password
+  REDIS_URL: redis://:supercheck-redis-password@supercheck-redis:6379
   REDIS_TLS_ENABLED: false
 
-  # App Configuration - Coolify auto-generates SERVICE_URL_APP (matches generated URL protocol)
+  # App Configuration
+  # Coolify auto-provides SERVICE_URL_APP - override in Coolify Environment Variables if needed
   NEXT_PUBLIC_APP_URL: ${SERVICE_URL_APP}
   APP_URL: ${SERVICE_URL_APP}
   BETTER_AUTH_URL: ${SERVICE_URL_APP}
   BETTER_AUTH_SECRET: ${SERVICE_BASE64_64_AUTH:-supercheck-auth-secret-change-me-in-production-32chars}
-  STATUS_PAGE_DOMAIN: ${STATUS_PAGE_DOMAIN}
   NODE_ENV: production
   SHOW_COMMUNITY_LINKS: ${SHOW_COMMUNITY_LINKS:-true}
 
@@ -140,17 +140,18 @@ x-common-env: &common-env # Database Configuration
 
 services:
   # PostgreSQL Database
-  postgres:
+  supercheck-db:
     image: postgres:18
     environment:
-      POSTGRES_USER: ${SERVICE_USER_POSTGRES:-supercheck}
-      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES:-supercheck-db-password}
-      POSTGRES_DB: ${POSTGRES_DB:-supercheck}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: supercheck
+      PGPASSWORD: postgres
     volumes:
-      - supercheck-postgres-data:/var/lib/postgresql
+      - supercheck-postgres-data-v10:/var/lib/postgresql
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${SERVICE_USER_POSTGRES:-supercheck}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
       timeout: 5s
       retries: 15
@@ -165,21 +166,14 @@ services:
           memory: 1G
 
   # Redis Cache & Queue
-  redis:
+  supercheck-redis:
     image: redis:8
-    command: sh -c "rm -rf /data/* && redis-server --requirepass \"${SERVICE_PASSWORD_REDIS:-supercheck-redis-password}\" --maxmemory 512mb --maxmemory-policy noeviction --save '' --appendonly no --protected-mode yes --bind 0.0.0.0 --tcp-keepalive 300"
+    command: sh -c "rm -rf /data/* && redis-server --requirepass \"supercheck-redis-password\" --maxmemory 512mb --maxmemory-policy noeviction --save '' --appendonly no --protected-mode no --bind 0.0.0.0 --tcp-keepalive 300"
     volumes:
-      - supercheck-redis-data:/data
+      - supercheck-redis-data-v2:/data
     restart: unless-stopped
     healthcheck:
-      test:
-        [
-          "CMD",
-          "redis-cli",
-          "-a",
-          "${SERVICE_PASSWORD_REDIS:-supercheck-redis-password}",
-          "ping",
-        ]
+      test: ["CMD", "redis-cli", "-a", "supercheck-redis-password", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -222,12 +216,10 @@ services:
     image: ghcr.io/supercheck-io/supercheck/app:latest
     environment:
       <<: *common-env
-      # Tell Coolify to expose this service on port 3000
-      SERVICE_FQDN_APP_3000: ""
     depends_on:
-      postgres:
+      supercheck-db:
         condition: service_healthy
-      redis:
+      supercheck-redis:
         condition: service_healthy
       minio:
         condition: service_healthy
@@ -238,6 +230,8 @@ services:
       timeout: 10s
       retries: 5
       start_period: 120s
+    networks:
+      - coolify
     deploy:
       resources:
         limits:
@@ -257,11 +251,11 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - supercheck-worker-reports:/worker/report
     depends_on:
-      postgres:
+      supercheck-db:
         condition: service_healthy
       app:
         condition: service_healthy
-      redis:
+      supercheck-redis:
         condition: service_healthy
       minio:
         condition: service_healthy
@@ -284,7 +278,11 @@ services:
       - no-new-privileges:true
 
 volumes:
-  supercheck-postgres-data:
-  supercheck-redis-data:
+  supercheck-postgres-data-v10:
+  supercheck-redis-data-v2:
   supercheck-minio-data:
   supercheck-worker-reports:
+
+networks:
+  coolify:
+    external: true

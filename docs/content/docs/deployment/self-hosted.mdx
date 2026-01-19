@@ -6,6 +6,334 @@ icon: Container
 
 Deploy Supercheck on your own infrastructure with Docker Compose. All data stays on your servers.
 
+<Callout type="info">
+For true multi-location monitoring, see [Multi-Location Workers](/docs/deployment/multi-location).
+</Callout>
+
+## Quick Start
+
+[![Deploy on Coolify](https://img.shields.io/badge/Deploy%20on-Coolify-6B16ED?style=for-the-badge&logo=coolify&logoColor=white)](https://github.com/supercheck-io/supercheck/blob/main/deploy/coolify/README.md)
+
+One-click deployment on [Coolify](https://coolify.io) — the easiest way to self-host.
+
+---
+
+## Docker Compose
+
+Choose your deployment type:
+
+<Tabs items={['Local Testing', 'Production (HTTPS)']}>
+  <Tab value="Local Testing">
+    Best for local development, testing, or internal networks without a domain.
+
+    ### 1. Install Docker
+
+    <Tabs items={['macOS', 'Windows', 'Linux']}>
+      <Tab value="macOS">
+        Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Mac.
+      </Tab>
+      <Tab value="Windows">
+        Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Windows.
+      </Tab>
+      <Tab value="Linux">
+        ```bash
+        curl -fsSL https://get.docker.com | sh
+        sudo usermod -aG docker $USER
+        newgrp docker
+        ```
+      </Tab>
+    </Tabs>
+
+    ### 2. Clone and Configure
+
+    ```bash
+    git clone https://github.com/supercheck-io/supercheck.git
+    cd supercheck/deploy/docker
+
+    # Generate secure secrets
+    ./init-secrets.sh
+    ```
+
+    Edit `.env` and add your [OAuth credentials](#oauth-setup):
+
+    ```bash
+    GITHUB_CLIENT_ID=your-github-client-id
+    GITHUB_CLIENT_SECRET=your-github-client-secret
+    ```
+
+    ### 3. Deploy
+
+    ```bash
+    docker compose up -d
+    ```
+
+    ### 4. Access
+
+    Open `http://localhost:3000`, sign in with OAuth, then create your admin:
+
+    ```bash
+    docker compose exec app npm run setup:admin your-email@example.com
+    ```
+  </Tab>
+
+  <Tab value="Production (HTTPS)">
+    For production with HTTPS, custom domain, and status pages.
+
+    ### 1. Install Docker
+
+    <Tabs items={['macOS', 'Windows', 'Linux']}>
+      <Tab value="macOS">
+        Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Mac.
+      </Tab>
+      <Tab value="Windows">
+        Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Windows.
+      </Tab>
+      <Tab value="Linux">
+        ```bash
+        curl -fsSL https://get.docker.com | sh
+        sudo usermod -aG docker $USER
+        newgrp docker
+        ```
+      </Tab>
+    </Tabs>
+
+    ### 2. Configure DNS
+
+    Add these records at your domain provider:
+
+    | Type | Name | Value |
+    |------|------|-------|
+    | A | `app` | Your Server IP |
+    | A | `*` | Your Server IP |
+
+    <Callout type="info">
+    The wildcard (`*`) record enables status page subdomains like `status.yourdomain.com`.
+    </Callout>
+
+    Verify DNS:
+    ```bash
+    dig +short app.yourdomain.com
+    ```
+
+    ### 3. Clone and Configure
+
+    ```bash
+    git clone https://github.com/supercheck-io/supercheck.git
+    cd supercheck/deploy/docker
+
+    # Generate secure secrets
+    ./init-secrets.sh
+    ```
+
+    Edit `.env`:
+
+    ```bash
+    # Domain (required)
+    APP_DOMAIN=app.yourdomain.com
+    ACME_EMAIL=admin@yourdomain.com
+    STATUS_PAGE_DOMAIN=yourdomain.com
+
+    # OAuth (required)
+    GITHUB_CLIENT_ID=your-github-client-id
+    GITHUB_CLIENT_SECRET=your-github-client-secret
+    ```
+
+    ### 4. Deploy
+
+    ```bash
+    docker compose -f docker-compose-secure.yml up -d
+    ```
+
+    ### 5. Access
+
+    Open `https://app.yourdomain.com`, sign in with OAuth, then create your admin:
+
+    ```bash
+    docker compose -f docker-compose-secure.yml exec app npm run setup:admin your-email@example.com
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## OAuth Setup
+
+<Callout type="warning">
+At least one OAuth provider (GitHub or Google) is required.
+</Callout>
+
+<Accordions>
+  <Accordion title="GitHub OAuth">
+    1. Go to [GitHub Developer Settings](https://github.com/settings/developers)
+    2. Click **OAuth Apps** → **New OAuth App**
+    3. Set Homepage URL: `https://app.yourdomain.com` (or `http://localhost:3000` for local)
+    4. Set Callback URL: `https://app.yourdomain.com/api/auth/callback/github`
+    5. Copy Client ID and generate Client Secret
+    6. Add to `.env`:
+       ```bash
+       GITHUB_CLIENT_ID=your-client-id
+       GITHUB_CLIENT_SECRET=your-client-secret
+       ```
+  </Accordion>
+  <Accordion title="Google OAuth">
+    1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+    2. Create a project → **APIs & Services** → **Credentials**
+    3. Configure OAuth consent screen (External)
+    4. Create **OAuth client ID** (Web application)
+    5. Set redirect URI: `https://app.yourdomain.com/api/auth/callback/google`
+    6. Add to `.env`:
+       ```bash
+       GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+       GOOGLE_CLIENT_SECRET=your-client-secret
+       ```
+  </Accordion>
+</Accordions>
+
+---
+
+## Optional Configuration
+
+<Accordions>
+  <Accordion title="Email (SMTP)">
+    Required for alerts and team invitations.
+
+    ```bash
+    SMTP_HOST=smtp.gmail.com
+    SMTP_PORT=587
+    SMTP_USER=your-email@gmail.com
+    SMTP_PASSWORD=your-app-password
+    SMTP_FROM_EMAIL=notifications@yourdomain.com
+    ```
+
+    **Recommended providers:** [Resend](https://resend.com), [SendGrid](https://sendgrid.com), [AWS SES](https://aws.amazon.com/ses/)
+  </Accordion>
+</Accordions>
+
+### AI Configuration
+
+Enable AI-powered test creation, fixes, and performance analysis. Choose your provider:
+
+<Tabs items={['OpenAI', 'Azure OpenAI', 'Anthropic', 'Gemini', 'Vertex AI', 'Bedrock', 'OpenRouter']}>
+  <Tab value="OpenAI">
+    **Recommended for most users.**
+    
+    ```bash
+    AI_PROVIDER=openai
+    AI_MODEL=gpt-4o-mini
+    OPENAI_API_KEY=sk-your-api-key
+    ```
+  </Tab>
+  <Tab value="Azure OpenAI">
+    Enterprise-grade OpenAI hosting.
+
+    ```bash
+    AI_PROVIDER=azure
+    AZURE_RESOURCE_NAME=your-resource-name
+    AZURE_API_KEY=your-api-key
+    AZURE_OPENAI_DEPLOYMENT=your-deployment-name
+    ```
+  </Tab>
+  <Tab value="Anthropic">
+    Claude models (Haiku, Sonnet, Opus).
+
+    ```bash
+    AI_PROVIDER=anthropic
+    AI_MODEL=claude-3-5-haiku-20241022
+    ANTHROPIC_API_KEY=sk-ant-your-key
+    ```
+  </Tab>
+  <Tab value="Gemini">
+    Google AI Studio (API Key).
+
+    ```bash
+    AI_PROVIDER=gemini
+    AI_MODEL=gemini-2.5-flash
+    GOOGLE_GENERATIVE_AI_API_KEY=your-api-key
+    ```
+  </Tab>
+  <Tab value="Vertex AI">
+    Google Cloud Vertex AI. Requires GCP project.
+
+    ```bash
+    AI_PROVIDER=google-vertex
+    AI_MODEL=gemini-2.5-flash
+    GOOGLE_VERTEX_PROJECT=your-project-id
+    # Ensure ADC or GOOGLE_APPLICATION_CREDENTIALS are set in the container
+    ```
+  </Tab>
+  <Tab value="Bedrock">
+    AWS Bedrock.
+
+    ```bash
+    AI_PROVIDER=bedrock
+    AI_MODEL=anthropic.claude-3-5-haiku-20241022-v1:0
+    BEDROCK_AWS_REGION=us-east-1
+    BEDROCK_AWS_ACCESS_KEY_ID=your-access-key
+    BEDROCK_AWS_SECRET_ACCESS_KEY=your-secret-key
+    ```
+  </Tab>
+  <Tab value="OpenRouter">
+    Access to 400+ models via single API.
+
+    ```bash
+    AI_PROVIDER=openrouter
+    AI_MODEL=anthropic/claude-3.5-haiku
+    OPENROUTER_API_KEY=your-api-key
+    ```
+  </Tab>
+</Tabs>
+
+
+---
+
+## Operations
+
+### Scaling Workers
+
+Workers run Playwright and k6 tests in isolated Docker containers.
+
+```bash
+# Scale to 2 workers
+WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
+```
+
+| Configuration | Workers | Concurrent Tests | Minimum Server |
+|---------------|---------|------------------|----------------|
+| **Small** | 1 | 1 | 2 vCPU / 4GB |
+| **Medium** | 2 | 2 | 4 vCPU / 8GB |
+| **Large** | 4 | 4 | 8 vCPU / 16GB |
+
+### Backups
+
+<Callout type="error">
+**Critical:** Your data is in Docker volumes. Back up regularly!
+</Callout>
+
+```bash
+# Create backup
+docker compose exec postgres pg_dump -U postgres supercheck > backup-$(date +%Y%m%d).sql
+
+# Restore backup
+cat backup.sql | docker compose exec -T postgres psql -U postgres supercheck
+```
+
+### Updates
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+### Troubleshooting
+
+```bash
+docker compose logs app      # View app logs
+docker compose ps            # Check service status
+```
+
+---
+
+## Architecture
+
 ```mermaid
 %%{init: {'themeVariables': { 'fontSize': '13px'}}}%%
 flowchart TB
@@ -32,560 +360,6 @@ flowchart TB
     style W1 fill:#10b981,stroke:#047857,color:#fff
     style W2 fill:#10b981,stroke:#047857,color:#fff
     style WN fill:#10b981,stroke:#047857,color:#fff
-```
-
-<Callout type="info">
-For true multi-location monitoring, see [Multi-Location Workers](/docs/deployment/multi-location).
-</Callout>
-
-<Callout type="warning">
-**Docker Prerequisites:** This guide requires the modern Docker Compose plugin (the `docker compose` command with a space). The legacy `docker-compose` command (with hyphen) is not supported.
-
-```bash
-# Verify your installation
-docker compose version
-# Should show: Docker Compose version v2.x.x or higher
-```
-</Callout>
-
-## Choose Your Deployment
-
-<Cards>
-  <Card
-    icon={<Laptop className="text-sky-500" />}
-    title="Without Domain"
-    description="HTTP only — Best for local testing or internal networks"
-    href="#option-1-without-domain"
-  />
-  <Card
-    icon={<Globe className="text-emerald-500" />}
-    title="With Domain"
-    description="HTTPS + Status Pages — Recommended for production"
-    href="#option-2-with-domain"
-  />
-</Cards>
-
-| Feature | Without Domain | With Domain |
-|---------|----------------|-------------|
-| SSL/HTTPS | ❌ HTTP only | ✅ Automatic |
-| Status Pages | ❌ No | ✅ Yes |
-| Custom Domain | ❌ No | ✅ Yes |
-
----
-
-## <span style={{color: '#0ea5e9'}}>Option 1: Without Domain</span>
-
-Best for local testing or internal networks.
-
-### 1. Install Docker
-
-<Callout type="info">
-Already have Docker or Docker Desktop installed? [Skip to Clone and Configure](#2-clone-and-configure).
-</Callout>
-
-<Tabs items={['macOS', 'Windows', 'Linux']}>
-  <Tab value="macOS">
-    Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Mac.
-    
-    After installation, start Docker Desktop from your Applications folder.
-  </Tab>
-  <Tab value="Windows">
-    Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Windows.
-    
-    After installation, start Docker Desktop from the Start menu.
-  </Tab>
-  <Tab value="Linux">
-    ```bash
-    curl -fsSL https://get.docker.com | sh
-    sudo usermod -aG docker $USER
-    newgrp docker  # Apply group changes without logout
-    ```
-  </Tab>
-</Tabs>
-
-### 2. Clone and Configure
-
-```bash
-git clone https://github.com/supercheck-io/supercheck.git
-cd supercheck/deploy/docker
-
-# Auto-generate secure secrets
-./init-secrets.sh
-```
-
-Edit `.env` and add your OAuth credentials (see [OAuth Setup](#oauth-setup) for details):
-
-```bash
-# ─────────────────────────────────────────────────────────────────
-# OAuth Authentication (at least one provider is required)
-# See OAuth Setup section below for how to obtain these
-# ─────────────────────────────────────────────────────────────────
-GITHUB_CLIENT_ID=your-github-client-id
-GITHUB_CLIENT_SECRET=your-github-client-secret
-```
-
-### 3. Deploy
-
-```bash
-docker compose up -d
-```
-
-### 4. Create Admin
-
-1. Sign up at `http://localhost:3000` using GitHub or Google OAuth
-2. Promote your account to super admin:
-
-```bash
-docker compose exec app npm run setup:admin your-email@example.com
-```
-
----
-
-## <span style={{color: '#10b981'}}>Option 2: With Domain</span>
-
-For production with HTTPS and status pages.
-
-### 1. Install Docker
-
-<Callout type="info">
-Already have Docker or Docker Desktop installed? [Skip to Configure DNS](#2-configure-dns).
-</Callout>
-
-<Tabs items={['macOS', 'Windows', 'Linux']}>
-  <Tab value="macOS">
-    Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Mac.
-    
-    After installation, start Docker Desktop from your Applications folder.
-  </Tab>
-  <Tab value="Windows">
-    Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Windows.
-    
-    After installation, start Docker Desktop from the Start menu.
-  </Tab>
-  <Tab value="Linux">
-    ```bash
-    curl -fsSL https://get.docker.com | sh
-    sudo usermod -aG docker $USER
-    newgrp docker  # Apply group changes without logout
-    ```
-  </Tab>
-</Tabs>
-
-### 2. Configure DNS
-
-Before deploying, point your domain to your server by adding DNS records through your **domain provider** (e.g., Cloudflare, GoDaddy, Namecheap, or wherever you purchased your domain).
-
-<Steps>
-  <Step>
-    **Find Your Server's IP Address**
-    
-    You'll need your server's public IP address. Run this on your server:
-    ```bash
-    curl -4 ifconfig.me
-    ```
-  </Step>
-  <Step>
-    **Log in to Your Domain Provider**
-    
-    Go to your domain registrar's website and navigate to the DNS management section. This is usually labeled as "DNS Settings", "Manage DNS", or "DNS Records".
-  </Step>
-  <Step>
-    **Add the Following DNS Records**
-    
-    | Type | Name | Value | TTL |
-    |------|------|-------|-----|
-    | A | `app` | Your Server IP (e.g., `203.0.113.50`) | Auto or 3600 |
-    | A | `*` | Your Server IP (e.g., `203.0.113.50`) | Auto or 3600 |
-
-    <Callout type="info">
-    The wildcard (`*`) record enables custom subdomains for status pages (e.g., `status.yourdomain.com`, `api-status.yourdomain.com`).
-    </Callout>
-  </Step>
-  <Step>
-    **Wait for DNS Propagation**
-    
-    DNS changes can take a few minutes to propagate. Verify your records are active:
-    ```bash
-    # Should return your server IP
-    dig +short app.yourdomain.com
-    ```
-  </Step>
-</Steps>
-
-### 3. Clone and Configure
-
-```bash
-git clone https://github.com/supercheck-io/supercheck.git
-cd supercheck/deploy/docker
-
-# Auto-generate secure secrets
-./init-secrets.sh
-```
-
-Edit `.env` and add your domain and OAuth credentials:
-
-```bash
-# ─────────────────────────────────────────────────────────────────
-# Domain Configuration (required for HTTPS)
-# ─────────────────────────────────────────────────────────────────
-APP_DOMAIN=app.yourdomain.com
-ACME_EMAIL=admin@yourdomain.com  # For Let's Encrypt SSL certificate
-STATUS_PAGE_DOMAIN=yourdomain.com  # Base domain for status pages
-
-# ─────────────────────────────────────────────────────────────────
-# OAuth Authentication (at least one provider is required)
-# See OAuth Setup section below for how to obtain these
-# ─────────────────────────────────────────────────────────────────
-GITHUB_CLIENT_ID=your-github-client-id
-GITHUB_CLIENT_SECRET=your-github-client-secret
-```
-
-<Callout type="info">
-**Status Page Custom Domains:** The `STATUS_PAGE_DOMAIN` is used as the CNAME target when users configure custom domains for their status pages. Users will point their CNAME records to this domain.
-</Callout>
-
-### 4. Deploy
-
-```bash
-docker compose -f docker-compose-secure.yml up -d
-```
-
-### 5. Create Admin
-
-1. Sign up at `https://app.yourdomain.com` using GitHub or Google OAuth
-2. Promote your account to super admin:
-
-```bash
-docker compose -f docker-compose-secure.yml exec app npm run setup:admin your-email@example.com
-```
-
----
-
-## OAuth Setup
-
-<Callout type="warning">
-At least one OAuth provider (GitHub or Google) is required for authentication.
-</Callout>
-
-### GitHub OAuth
-
-<Steps>
-  <Step>
-    Go to [GitHub Developer Settings](https://github.com/settings/developers)
-  </Step>
-  <Step>
-    Click **OAuth Apps** → **New OAuth App**
-  </Step>
-  <Step>
-    Configure the app:
-    - Homepage URL: `https://app.yourdomain.com`
-    - Callback URL: `https://app.yourdomain.com/api/auth/callback/github`
-  </Step>
-  <Step>
-    Copy Client ID and generate Client Secret, add to `.env`:
-    
-    ```bash
-    GITHUB_CLIENT_ID=your-client-id
-    GITHUB_CLIENT_SECRET=your-client-secret
-    ```
-  </Step>
-</Steps>
-
-### Google OAuth
-
-<Steps>
-  <Step>
-    Go to [Google Cloud Console](https://console.cloud.google.com/) and create a project
-  </Step>
-  <Step>
-    Navigate to **APIs & Services** → **Credentials**
-  </Step>
-  <Step>
-    Configure OAuth consent screen (select External)
-  </Step>
-  <Step>
-    Create **OAuth client ID** (Web application) with redirect URI:
-    `https://app.yourdomain.com/api/auth/callback/google`
-  </Step>
-  <Step>
-    Copy credentials and add to `.env`:
-    
-    ```bash
-    GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
-    GOOGLE_CLIENT_SECRET=your-client-secret
-    ```
-  </Step>
-</Steps>
-
-<Callout type="info">
-For local development, use `http://localhost:3000` for all URLs.
-</Callout>
-
----
-
-## Optional Features
-
-### Email (SMTP)
-
-Required for alerts and team invitations.
-
-```bash
-# ─────────────────────────────────────────────────────────────────
-# Email Configuration (SMTP)
-# Required for alerts and team invitations
-# ─────────────────────────────────────────────────────────────────
-SMTP_HOST=smtp.gmail.com           # Your SMTP server
-SMTP_PORT=587                       # Usually 587 for TLS
-SMTP_USER=your-email@gmail.com      # SMTP username
-SMTP_PASSWORD=your-app-password     # SMTP password (use app password for Gmail)
-SMTP_FROM_EMAIL=notifications@yourdomain.com
-```
-
-<Callout type="tip">
-**Popular SMTP Providers:** [Resend](https://resend.com), [SendGrid](https://sendgrid.com), [AWS SES](https://aws.amazon.com/ses/)
-</Callout>
-
-### AI Features
-
-Enable AI-powered features: AI Create and AI Fix for Playwright and k6 tests, plus AI Analyze for k6 performance run insights.
-
-Supercheck supports multiple AI providers. Choose one based on your requirements:
-
-<Tabs items={['OpenAI (Default)', 'Azure OpenAI', 'Anthropic', 'Google Gemini', 'Google Vertex AI', 'AWS Bedrock', 'OpenRouter']}>
-  <Tab value="OpenAI (Default)">
-    ```bash
-    # ─────────────────────────────────────────────────────────────────
-    # OpenAI Configuration (Recommended for quick setup)
-    # ─────────────────────────────────────────────────────────────────
-    AI_PROVIDER=openai
-    AI_MODEL=gpt-4o-mini
-    OPENAI_API_KEY=sk-your-openai-api-key
-    ```
-    
-    Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys).
-  </Tab>
-  <Tab value="Azure OpenAI">
-    ```bash
-    # ─────────────────────────────────────────────────────────────────
-    # Azure OpenAI Configuration (Enterprise compliance)
-    # ─────────────────────────────────────────────────────────────────
-    AI_PROVIDER=azure
-    AI_MODEL=gpt-4o-mini
-    AZURE_RESOURCE_NAME=your-resource-name
-    AZURE_API_KEY=your-azure-api-key
-    AZURE_OPENAI_DEPLOYMENT=your-deployment-name
-    AZURE_API_VERSION=2024-06-01
-    ```
-    
-    <Callout type="tip">
-    **Production**: Use Managed Identity with Microsoft Entra ID instead of API keys for enhanced security.
-    </Callout>
-  </Tab>
-  <Tab value="Anthropic">
-    ```bash
-    # ─────────────────────────────────────────────────────────────────
-    # Anthropic (Claude) Configuration
-    # ─────────────────────────────────────────────────────────────────
-    AI_PROVIDER=anthropic
-    AI_MODEL=claude-3-5-haiku-20241022
-    ANTHROPIC_API_KEY=sk-ant-your-anthropic-key
-    ```
-    
-    Get your API key from [Anthropic Console](https://console.anthropic.com/).
-  </Tab>
-  <Tab value="Google Gemini">
-    ```bash
-    # ─────────────────────────────────────────────────────────────────
-    # Google Gemini Configuration (Recommended - simple API key)
-    # ─────────────────────────────────────────────────────────────────
-    AI_PROVIDER=gemini
-    AI_MODEL=gemini-2.5-flash
-    GOOGLE_GENERATIVE_AI_API_KEY=your-google-ai-api-key
-    ```
-    
-    Get your API key from [Google AI Studio](https://aistudio.google.com/apikey).
-
-    <Callout type="tip">
-    **Recommended for most users**: Simple API key setup, works just like OpenAI.
-    </Callout>
-  </Tab>
-  <Tab value="Google Vertex AI">
-    ```bash
-    # ─────────────────────────────────────────────────────────────────
-    # Google Vertex AI Configuration (GCP Enterprise)
-    # ─────────────────────────────────────────────────────────────────
-    AI_PROVIDER=google-vertex
-    AI_MODEL=gemini-2.5-flash
-    GOOGLE_VERTEX_PROJECT=your-gcp-project-id
-    GOOGLE_VERTEX_LOCATION=us-central1
-    ```
-    
-    Setup in [Google Cloud Console](https://console.cloud.google.com/vertex-ai).
-
-    <Callout type="tip">
-    **Enterprise on GCP**: Use service accounts with ADC for authentication.
-    </Callout>
-  </Tab>
-  <Tab value="AWS Bedrock">
-    ```bash
-    # ─────────────────────────────────────────────────────────────────
-    # AWS Bedrock Configuration
-    # Uses BEDROCK_* prefix to avoid conflicts with S3 credentials
-    # ─────────────────────────────────────────────────────────────────
-    AI_PROVIDER=bedrock
-    AI_MODEL=anthropic.claude-3-5-haiku-20241022-v1:0
-    BEDROCK_AWS_REGION=us-east-1
-    # For non-AWS environments only:
-    # BEDROCK_AWS_ACCESS_KEY_ID=your-access-key
-    # BEDROCK_AWS_SECRET_ACCESS_KEY=your-secret-key
-    ```
-    
-    <Callout type="tip">
-    **Production on AWS**: Use IAM roles with temporary credentials. The SDK automatically uses instance credentials.
-    </Callout>
-  </Tab>
-  <Tab value="OpenRouter">
-    ```bash
-    # ─────────────────────────────────────────────────────────────────
-    # OpenRouter Configuration (unified gateway to 400+ models)
-    # ─────────────────────────────────────────────────────────────────
-    AI_PROVIDER=openrouter
-    AI_MODEL=anthropic/claude-3.5-haiku
-    OPENROUTER_API_KEY=sk-or-your-openrouter-key
-    ```
-    
-    Get your API key from [OpenRouter](https://openrouter.ai/keys).
-
-    <Callout type="tip">
-    **Best for developers**: Access 400+ models with one API key, automatic failover, and cost optimization.
-    </Callout>
-  </Tab>
-</Tabs>
-
-<Callout type="warning">
-**Security Best Practices:**
-- Never commit API keys to version control
-- Use different keys for dev, staging, and production environments
-- Rotate API keys every 90 days
-- Use secrets managers (AWS Secrets Manager, Azure Key Vault, GCP Secret Manager) in production
-</Callout>
-
----
-
-## Resource Requirements
-
-### Base Infrastructure
-
-All deployments require these minimum resources for the core services:
-
-| Component | CPU | Memory | Storage | Notes |
-|-----------|-----|--------|---------|-------|
-| App (Next.js) | 1 vCPU | 2GB | - | UI + API server |
-| PostgreSQL | 0.5 vCPU | 1GB | 10GB+ | Primary database |
-| Redis | 0.25 vCPU | 256MB | - | Queue + cache |
-| MinIO | 0.5 vCPU | 1GB | 30GB+ | Artifact storage (grows with usage) |
-
-<Callout type="info">
-**Minimum single-server deployment:** 4 vCPU / 8GB RAM covers all base services plus 1 worker.
-</Callout>
-
-### Worker Scaling
-
-Workers run Playwright browser tests and k6 load tests. Each worker requires **2 vCPU / 4GB RAM** (includes spawned test containers).
-
-```bash
-# Scale to 2 workers
-WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
-```
-
-| Workers | Concurrent Tests | Additional Resources |
-|---------|------------------|---------------------|
-| 1 | 1 | +2 vCPU / 4GB |
-| 2 | 2 | +4 vCPU / 8GB |
-| 4 | 4 | +8 vCPU / 16GB |
-
----
-
-## Data Persistence & Backups
-
-<Callout type="error">
-**Critical:** When using local PostgreSQL (included in `docker-compose.yml` and `docker-compose-secure.yml`), your data is stored in Docker named volumes. This data can be lost if:
-- Docker is reinstalled or reset
-- You run `docker compose down -v` (the `-v` flag removes volumes)
-- The Docker storage location changes during OS upgrades
-- You run compose from a different directory without setting `COMPOSE_PROJECT_NAME`
-</Callout>
-
-### Recommended: Regular Backups
-
-Set up automated daily backups for production deployments:
-
-```bash
-# Create a backup (includes date in filename)
-docker compose exec postgres pg_dump -U postgres supercheck > backup-$(date +%Y%m%d).sql
-
-# Restore from a specific backup file
-cat backup-20260104.sql | docker compose exec -T postgres psql -U postgres supercheck
-```
-
-<Callout type="tip">
-**For maximum data safety**, consider using `docker-compose-external.yml` with a managed PostgreSQL service (Neon, Supabase, AWS RDS). Managed databases include automatic backups, point-in-time recovery, and high availability.
-</Callout>
-
-### Using External Services
-
-If you prefer managed services for reliability and automatic backups, use `docker-compose-external.yml` which connects to external PostgreSQL, Redis, and S3 instead of running them locally.
-
-**Prerequisites:**
-1. External PostgreSQL database (Neon, Supabase, AWS RDS, etc.)
-2. External Redis instance (Upstash, Redis Cloud, etc.)
-3. External S3-compatible storage (AWS S3, Cloudflare R2, etc.)
-
-<Callout type="info">
-**S3 Buckets:** Supercheck will automatically create the required buckets on startup if your credentials have permission. If using AWS S3 with restricted IAM policies, pre-create these buckets: `playwright-test-artifacts`, `playwright-job-artifacts`, `playwright-monitor-artifacts`, `k6-test-artifacts`, `k6-job-artifacts`, `status-page-artifacts`, `test-requirement-artifacts`.
-</Callout>
-
-```bash
-# Use external services configuration
-docker compose -f docker-compose-external.yml up -d
-```
-
-Required environment variables (add to `.env`):
-```bash
-# Domain & SSL (required)
-APP_DOMAIN=app.yourdomain.com
-ACME_EMAIL=admin@yourdomain.com
-
-# Database (required)
-DATABASE_URL=postgresql://user:pass@your-db-host:5432/supercheck
-
-# Redis (required) - set REDIS_TLS_ENABLED=true for cloud providers
-REDIS_URL=redis://:password@your-redis-host:6379
-REDIS_TLS_ENABLED=true
-
-# S3 Storage (required)
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-S3_ENDPOINT=https://s3.us-east-1.amazonaws.com
-
-# OAuth (at least one required)
-GITHUB_CLIENT_ID=your-client-id
-GITHUB_CLIENT_SECRET=your-client-secret
-```
-
----
-
-## Maintenance
-
-**Update:**
-```bash
-docker compose pull && docker compose up -d
-```
-
-**Troubleshoot:**
-```bash
-docker compose logs app
-docker compose ps
 ```
 
 ---

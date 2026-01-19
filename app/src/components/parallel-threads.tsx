@@ -109,7 +109,7 @@ export function ParallelThreads() {
 // Loading skeleton for parallel executions component
 function LoadingSkeleton() {
   return (
-    <div className="flex items-center mr-2 border border-border rounded-md px-3 py-1.5">
+    <div className="flex items-center border border-border rounded-md px-3 py-1.5">
       <div className="flex items-center text-[11px]">
         <div className="flex flex-col mr-3 text-[10px] font-semibold text-muted-foreground leading-tight">
           <span>PARALLEL</span>
