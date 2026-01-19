@@ -76,7 +76,7 @@ export function useNotificationProviders() {
     queryKey,
     queryFn: () => fetchNotificationProviders(projectId),
     enabled: !!projectId,
-    // Uses global defaults: staleTime (30min), gcTime (24h)
+    staleTime: 30 * 1000,  // 30 seconds - alerts need to be responsive
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
@@ -116,7 +116,7 @@ export function useAlertHistory() {
     queryKey,
     queryFn: () => fetchAlertHistory(projectId),
     enabled: !!projectId,
-    // Uses global defaults: staleTime (30min), gcTime (24h)
+    staleTime: 30 * 1000,  // 30 seconds - alert history should be responsive
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,

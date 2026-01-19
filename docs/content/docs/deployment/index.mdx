@@ -4,40 +4,40 @@ description: Self-host Supercheck with Docker Compose
 icon: Server
 ---
 
-Deploy Supercheck on your own infrastructure with Docker Compose. Self-hosted mode includes unlimited features.
+Deploy Supercheck on your own infrastructure. Self-hosted mode includes **unlimited features** with all your data staying on your servers.
 
 ## Quick Deploy
 
-```bash
-git clone https://github.com/supercheck-io/supercheck.git
-cd supercheck/deploy/docker
-docker compose -f docker-compose-secure.yml up -d
-```
+[![Deploy on Coolify](https://img.shields.io/badge/Deploy%20on-Coolify-6B16ED?style=for-the-badge&logo=coolify&logoColor=white)](https://github.com/supercheck-io/supercheck/blob/main/deploy/coolify/README.md)
 
-Access at `https://your-domain.com` after DNS is configured.
+One-click deployment on [Coolify](https://coolify.io) — the recommended way to get started.
 
-## Requirements
-
-- Docker Engine 20.10+
-- 4 vCPU / 8GB RAM minimum
-- Domain with DNS A records pointing to your server
-
-## Self-Hosted Setup
+## Docker Compose
 
 <Cards>
   <Card
     icon={<Container className="text-sky-500" />}
     title="Single Location"
-    description="All services on one server - simple and quick"
-    href="./deployment/self-hosted"
+    description="All services on one server — simple and quick"
+    href="/docs/deployment/self-hosted"
   />
   <Card
     icon={<MapPin className="text-emerald-500" />}
     title="Multi-Location"
     description="Workers in multiple regions for global coverage"
-    href="./deployment/multi-location"
+    href="/docs/deployment/multi-location"
   />
 </Cards>
+
+## Requirements
+
+| Requirement | Minimum |
+|-------------|---------|
+| Docker Engine | 20.10+ |
+| CPU | 4 vCPU |
+| Memory | 8GB RAM |
+| Storage | 50GB |
+| Domain | Optional (required for HTTPS) |
 
 ## Services
 
@@ -48,4 +48,4 @@ Access at `https://your-domain.com` after DNS is configured.
 | **postgres** | Database |
 | **redis** | Job queues |
 | **minio** | Artifact storage (S3-compatible) |
-| **traefik** | HTTPS reverse proxy |
+| **traefik** | HTTPS reverse proxy (production only) |
