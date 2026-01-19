@@ -62,7 +62,7 @@ Empowering development and SRE teams with a scalable, distributed, and robust pl
           └───────────────────┘ └─────────────────┘ └───────────────────┘
 ```
 
-**Stack**: [Next.js 16](https://github.com/vercel/next.js) · [React 19](https://github.com/facebook/react) · [NestJS](https://github.com/nestjs/nest) · [Playwright](https://github.com/microsoft/playwright) · [Grafana k6](https://github.com/grafana/k6) · [PostgreSQL](https://github.com/postgres/postgres) · [Redis](https://github.com/redis/redis) · [MinIO](https://github.com/minio/minio) · [BullMQ](https://github.com/taskforcesh/bullmq)
+**Stack**: Next.js · React · NestJS · Playwright · Grafana k6 · PostgreSQL · Redis · MinIO · BullMQ
 
 ## Deployment
 
@@ -70,8 +70,8 @@ Self-host Supercheck on your own infrastructure:
 
 | Option | Description | Guide |
 |--------|-------------|-------|
-| [![Deploy with Coolify](https://img.shields.io/badge/Deploy%20with-Coolify-6B16ED?logo=coolify&logoColor=white)](./deploy/coolify/README.md) | One-click deploy on [Coolify](https://coolify.io) | [Deploy →](./deploy/coolify/README.md) |
-| [![Deploy with Docker](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-2496ED?logo=docker&logoColor=white)](https://supercheck.io/docs/deployment) | Manual deployment with Docker | [Deploy →](https://supercheck.io/docs/deployment) |
+| [![Deploy with Coolify](https://img.shields.io/badge/Deploy%20with-Coolify-6B16ED?logo=coolify&logoColor=white)](./deploy/coolify/README.md) | One-click deploy on [Coolify](https://coolify.io) | [Read Guide ↗](./deploy/coolify/README.md) |
+| [![Deploy with Docker](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-2496ED?logo=docker&logoColor=white)](https://supercheck.io/docs/deployment) | Manual deployment with Docker | [Read Guide ↗](https://supercheck.io/docs/deployment) |
 
 > **Want official Coolify template?** [⭐ Star this repo](https://github.com/supercheck-io/supercheck) — Coolify requires 1,000+ stars for official catalog inclusion ([see PR](https://github.com/coollabsio/coolify/pull/7962)).
 
@@ -81,7 +81,7 @@ Full documentation available at **[supercheck.io/docs](https://supercheck.io/doc
 
 | Topic | Description |
 |-------|-------------|
-| [Automate](https://supercheck.io/docs/automate) | Browser, API, and database tests |
+| [Automate](https://supercheck.io/docs/automate) | Browser, API, database, and performance tests |
 | [Monitor](https://supercheck.io/docs/monitors) | HTTP, ping, port, and synthetic monitoring |
 | [Communicate](https://supercheck.io/docs/communicate) | Alerts, dashboards, and status pages |
 | [Admin](https://supercheck.io/docs/admin) | User management, RBAC, and audit trails |
@@ -90,7 +90,7 @@ Full documentation available at **[supercheck.io/docs](https://supercheck.io/doc
 
 ## Community
 
-- [GitHub Issues](https://github.com/supercheck-io/supercheck/issues)
-- [GitHub Discussions](https://github.com/supercheck-io/supercheck/discussions)
-- [Security](SECURITY.md) — Vulnerability reporting
+[![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/UVe327CSbm)
+[![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/issues)
+[![GitHub Discussions](https://img.shields.io/badge/GitHub-Discussions-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/discussions)
 
