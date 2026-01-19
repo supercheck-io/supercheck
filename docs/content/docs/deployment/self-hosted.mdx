@@ -69,8 +69,9 @@ Choose your deployment type:
 
     ### 4. Access
 
-    Open `http://localhost:3000`, sign in with OAuth, then create your admin:
+    Open `http://localhost:3000` and sign in with OAuth.
 
+    **Create Super Admin (Optional):**
     ```bash
     docker compose exec app npm run setup:admin your-email@example.com
     ```
@@ -110,7 +111,11 @@ Choose your deployment type:
     The wildcard (`*`) record enables status page subdomains like `status.yourdomain.com`.
     </Callout>
 
-    Verify DNS:
+    <Callout type="warning">
+    **Cloudflare Users**: If using Cloudflare proxy (orange cloud), set SSL/TLS mode to **"Full"** or **"Full (Strict)"** in your Cloudflare Dashboard. The default "Flexible" mode causes redirect loops. Other DNS providers may have similar TLS/SSL settings.
+    </Callout>
+
+    Verify DNS propagation:
     ```bash
     dig +short app.yourdomain.com
     ```
@@ -146,8 +151,9 @@ Choose your deployment type:
 
     ### 5. Access
 
-    Open `https://app.yourdomain.com`, sign in with OAuth, then create your admin:
+    Open `https://app.yourdomain.com` and sign in with OAuth.
 
+    **Create Super Admin (Optional):**
     ```bash
     docker compose -f docker-compose-secure.yml exec app npm run setup:admin your-email@example.com
     ```

@@ -110,10 +110,9 @@ For true geographic distribution, deploy workers in each region.
       <Tab value="Production (Secure)">
         If you are using `docker-compose-secure.yml` (recommended), you need to expose the ports in that file.
 
-        > [!CAUTION]
-        > **Security Warning**: Exposing database ports (5432, 6379, 9000) to the public internet is dangerous.
-        > You **MUST** use a firewall (like `ufw` or AWS Security Groups) to whitelist ONLY the IP addresses of your worker servers.
-        > Alternatively, use a VPN (WireGuard/Tailscale) to connect workers privately.
+        <Callout type="warning">
+        **Security Notice**: See the [Security Notice](#security-notice) section below before exposing these ports.
+        </Callout>
 
         Edit `docker-compose-secure.yml`:
 
@@ -151,10 +150,6 @@ For true geographic distribution, deploy workers in each region.
         ```
       </Tab>
     </Tabs>
-
-    <Callout type="warning">
-    Use firewall rules to restrict access to your worker server IPs only.
-    </Callout>
   </Step>
 
   <Step>
