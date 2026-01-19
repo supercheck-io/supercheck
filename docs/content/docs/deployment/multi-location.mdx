@@ -106,20 +106,51 @@ For true geographic distribution, deploy workers in each region.
 
     Update your Docker Compose to expose database services for remote workers:
 
-    ```yaml
-    services:
-      postgres:
-        ports:
-          - "5432:5432"
-      
-      redis:
-        ports:
-          - "6379:6379"
-      
-      minio:
-        ports:
-          - "9000:9000"
-    ```
+    <Tabs items={['Production (Secure)', 'Testing (Insecure)']}>
+      <Tab value="Production (Secure)">
+        If you are using `docker-compose-secure.yml` (recommended), you need to expose the ports in that file.
+
+        > [!CAUTION]
+        > **Security Warning**: Exposing database ports (5432, 6379, 9000) to the public internet is dangerous.
+        > You **MUST** use a firewall (like `ufw` or AWS Security Groups) to whitelist ONLY the IP addresses of your worker servers.
+        > Alternatively, use a VPN (WireGuard/Tailscale) to connect workers privately.
+
+        Edit `docker-compose-secure.yml`:
+
+        ```yaml
+        services:
+          postgres:
+            ports:
+              - "5432:5432"
+          
+          redis:
+            ports:
+              - "6379:6379"
+          
+          minio:
+            ports:
+              - "9000:9000"
+        ```
+      </Tab>
+      <Tab value="Testing (Insecure)">
+        For local testing or internal networks `docker-compose.yml`:
+
+        ```yaml
+        services:
+          postgres:
+            ports:
+              - "5432:5432"
+          
+          redis:
+            ports:
+              - "6379:6379"
+          
+          minio:
+            ports:
+              - "9000:9000"
+        ```
+      </Tab>
+    </Tabs>
 
     <Callout type="warning">
     Use firewall rules to restrict access to your worker server IPs only.
@@ -246,6 +277,19 @@ AWS_SECRET_ACCESS_KEY=YOUR_MINIO_SECRET_KEY
 # Scale to 2 workers per location
 WORKER_REPLICAS=2 docker compose up -d
 ```
+
+---
+
+## Security Notice
+
+<Callout type="error">
+**Important**: Multi-location deployments require exposing database ports (PostgreSQL, Redis, MinIO) over the network. You are responsible for securing these connections using appropriate measures such as:
+- **VPN** (WireGuard, Tailscale)
+- **Firewall rules** (UFW, iptables, Cloud Security Groups)
+- **Encrypted tunnels**
+
+Detailed network security configuration is beyond the scope of this documentation. Please consult your infrastructure provider's security best practices.
+</Callout>
 
 ---
 

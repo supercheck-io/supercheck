@@ -51,7 +51,7 @@ Choose your deployment type:
     cd supercheck/deploy/docker
 
     # Generate secure secrets
-    ./init-secrets.sh
+    bash init-secrets.sh
     ```
 
     Edit `.env` and add your [OAuth credentials](#oauth-setup):
@@ -122,7 +122,7 @@ Choose your deployment type:
     cd supercheck/deploy/docker
 
     # Generate secure secrets
-    ./init-secrets.sh
+    bash init-secrets.sh
     ```
 
     Edit `.env`:
@@ -311,10 +311,10 @@ WORKER_REPLICAS=2 RUNNING_CAPACITY=2 docker compose up -d
 
 ```bash
 # Create backup
-docker compose exec postgres pg_dump -U postgres supercheck > backup-$(date +%Y%m%d).sql
+docker compose exec postgres pg_dump -U postgres supercheck > backup.sql
 
 # Restore backup
-cat backup.sql | docker compose exec -T postgres psql -U postgres supercheck
+docker compose exec -T postgres psql -U postgres supercheck < backup.sql
 ```
 
 ### Updates

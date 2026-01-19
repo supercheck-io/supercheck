@@ -17,7 +17,7 @@ git clone https://github.com/supercheck-io/supercheck.git
 cd supercheck/deploy/docker
 
 # Generate secure secrets
-./init-secrets.sh
+bash init-secrets.sh
 
 # Start services
 docker compose up -d

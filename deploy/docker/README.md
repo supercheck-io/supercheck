@@ -9,7 +9,7 @@ git clone https://github.com/supercheck-io/supercheck.git
 cd supercheck/deploy/docker
 
 # Generate secure secrets
-./init-secrets.sh
+bash init-secrets.sh
 
 # Edit .env with your OAuth credentials
 nano .env
@@ -88,10 +88,10 @@ WORKER_REPLICAS=2 docker compose up -d
 
 ```bash
 # Create backup
-docker compose exec postgres pg_dump -U postgres supercheck > backup-$(date +%Y%m%d).sql
+docker compose exec postgres pg_dump -U postgres supercheck > backup.sql
 
 # Restore backup
-cat backup.sql | docker compose exec -T postgres psql -U postgres supercheck
+docker compose exec -T postgres psql -U postgres supercheck < backup.sql
 ```
 
 ---
