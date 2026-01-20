@@ -42,7 +42,8 @@ graph TD
 
 ## Permission Matrix
 
-### Organization Resources
+<Tabs items={['Organization', 'Project', 'Tests & Jobs', 'Monitors & Status Pages', 'Test Runs', 'API Keys', 'Notifications', 'Tags']}>
+<Tab value="Organization">
 
 | Resource | Super Admin | Org Owner | Org Admin | Project Admin | Project Editor | Project Viewer |
 |----------|:-----------:|:---------:|:---------:|:-------------:|:--------------:|:--------------:|
@@ -53,7 +54,8 @@ graph TD
 | **Manage members** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **Remove members** | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
 
-### Project Resources
+</Tab>
+<Tab value="Project">
 
 | Resource | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
 |----------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
@@ -67,7 +69,8 @@ graph TD
 *\* Project Admin and Project Editor permissions apply only to their assigned projects.*
 </Callout>
 
-### Tests & Jobs
+</Tab>
+<Tab value="Tests & Jobs">
 
 | Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
 |--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
@@ -77,7 +80,8 @@ graph TD
 | **Delete** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | **Run/Trigger** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 
-### Monitors & Status Pages
+</Tab>
+<Tab value="Monitors & Status Pages">
 
 | Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
 |--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
@@ -87,7 +91,8 @@ graph TD
 | **Pause/Resume** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Delete** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 
-### Test Runs
+</Tab>
+<Tab value="Test Runs">
 
 | Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
 |--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
@@ -95,7 +100,8 @@ graph TD
 | **Cancel** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Delete** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 
-### API Keys
+</Tab>
+<Tab value="API Keys">
 
 | Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
 |--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
@@ -104,7 +110,8 @@ graph TD
 | **Edit** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Delete** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 
-### Notifications
+</Tab>
+<Tab value="Notifications">
 
 | Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
 |--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
@@ -113,7 +120,8 @@ graph TD
 | **Edit** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Delete** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 
-### Tags
+</Tab>
+<Tab value="Tags">
 
 | Action | Super Admin | Org Owner | Org Admin | Project Admin* | Project Editor* | Project Viewer |
 |--------|:-----------:|:---------:|:---------:|:--------------:|:---------------:|:--------------:|
@@ -121,6 +129,9 @@ graph TD
 | **Create** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Edit** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **Delete** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+
+</Tab>
+</Tabs>
 
 ## Variables & Secrets
 

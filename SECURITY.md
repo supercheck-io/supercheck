@@ -17,14 +17,10 @@ Include:
 - Potential impact
 - Suggested fix (if any)
 
-
 ## Security Best Practices
 
 When deploying Supercheck:
 
-- Use environment variables for all secrets
 - Enable HTTPS in production
-- Keep dependencies updated
-- Use strong passwords and API keys
+- Use strong passwords
 - Restrict database and Redis access
-- Regular security audits recommended

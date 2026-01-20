@@ -675,13 +675,13 @@ export function NotificationProviderForm({
                   <FormLabel>Incoming Webhook URL</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="https://xxxxx.webhook.office.com/webhookb2/..."
+                      placeholder="https://xxx.environment.api.powerplatform.com:443/powerautomate/..."
                       {...field}
                       disabled={isSubmitting || isTesting}
                     />
                   </FormControl>
                   <div className="text-sm text-muted-foreground">
-                    Create an Incoming Webhook in your Teams channel settings.
+                    Create a Workflow webhook in Power Automate from your Teams channel.
                   </div>
                   <FormMessage />
                 </FormItem>

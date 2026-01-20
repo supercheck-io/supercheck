@@ -353,3 +353,17 @@
   background-size: 20px 20px;
   background-position: 0 0;
 }
+
+/* === CHATWOOT WIDGET CUSTOMIZATIONS === */
+/*
+ * Minimal customizations for the Chatwoot live chat widget.
+ * Only position and alignment - let Chatwoot handle icon sizing.
+ */
+
+/* Position bubble and center content */
+.woot-widget-bubble {
+  bottom: 10px !important;
+  right: 10px !important;
+}
+
+

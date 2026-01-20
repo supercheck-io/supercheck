@@ -4,23 +4,21 @@ description: Multi-channel notifications for failures and recoveries
 icon: Bell
 ---
 
-Alerts notify you when monitors fail, tests break, or services recover. Configure multiple notification channels and use smart thresholds to avoid alert fatigue while ensuring you never miss critical issues.
+Alerts notify you when monitors fail, tests break, or services recover. Configure multiple notification channels and use smart thresholds to avoid alert fatigue.
 
 ## Notification Providers
 
-Supercheck supports five notification channels. You can configure multiple providers and attach different ones to different monitors and jobs.
-
 <Cards>
 <Card icon={<Mail className="text-rose-500" />} title="Email">
-Professional HTML emails via SMTP with detailed status information and direct links to dashboards
+Professional HTML emails via SMTP with detailed status information
 </Card>
 
 <Card icon={<MessageSquare className="text-purple-500" />} title="Slack">
-Rich formatted messages to channels or DMs with status badges, fields, and action links
+Rich formatted messages to channels or DMs with status badges
 </Card>
 
 <Card icon={<Webhook className="text-orange-500" />} title="Webhook">
-JSON payloads to any HTTP endpoint for custom integrations and automation
+JSON payloads to any HTTP endpoint for custom integrations
 </Card>
 
 <Card icon={<Send className="text-sky-500" />} title="Telegram">
@@ -30,108 +28,94 @@ Bot messages to chats or groups with Markdown formatting
 <Card icon={<Hash className="text-indigo-500" />} title="Discord">
 Embedded messages to server channels with color-coded status
 </Card>
+
+<Card icon={<Users className="text-blue-500" />} title="Microsoft Teams">
+Adaptive Card notifications via Power Automate workflows
+</Card>
 </Cards>
 
 ## Setting Up Providers
 
-### Add a Notification Provider
-
 1. Go to **Alerts → Notification Channels**
 2. Click **Add Provider**
-3. Select the provider type
-4. Enter the required credentials
-5. Click **Test** to verify the connection
-6. Save the provider
+3. Select the provider type and enter credentials
+4. Click **Test** to verify the connection
+5. Save the provider
 
-![Notification Channels](/screenshots/notification-channels.png)
-
-### Attach Providers to Monitors/Jobs
-
-After creating providers, attach them to monitors or jobs:
-
-1. Edit a monitor or job
-2. Go to the **Alerts** section
-3. Select which providers should receive notifications
-4. Configure alert types (failure, recovery, etc.)
-5. Save
+After creating providers, attach them to monitors or jobs in their **Alerts** settings.
 
 ## Alert Types
 
-### Monitor Alerts
+<Tabs items={['Monitors', 'Jobs']}>
+<Tab value="Monitors">
 
-| Alert Type | Trigger | Color |
-|------------|---------|-------|
-| **Monitor Failure** | Consecutive failures exceed threshold | Red |
-| **Monitor Recovery** | Consecutive successes after being down | Green |
-| **SSL Expiring** | Certificate expires within configured days | Yellow |
+| Alert | Trigger | Severity |
+|-------|---------|----------|
+| **Failure** | Consecutive failures reach threshold | Error |
+| **Recovery** | Consecutive successes reach threshold after being down | Success |
+| **SSL Expiring** | Certificate expires within configured days | Warning |
 
-### Job Alerts
+</Tab>
+<Tab value="Jobs">
 
-| Alert Type | Trigger | Color |
-|------------|---------|-------|
-| **Job Failure** | One or more tests in the job failed | Red |
-| **Job Success** | All tests passed (optional) | Green |
-| **Job Timeout** | Job exceeded maximum execution time | Red |
+| Alert | Trigger | Severity |
+|-------|---------|----------|
+| **Failure** | One or more tests in the job failed | Error |
+| **Success** | All tests passed (optional) | Success |
+| **Timeout** | Job exceeded maximum execution time | Error |
 
-## Threshold Logic
+</Tab>
+</Tabs>
+
+## Threshold Configuration
 
 Thresholds prevent alert noise from transient issues like network blips or brief service hiccups.
 
-```mermaid
-flowchart TD
-    A[Check] --> B{Result}
-    B -->|Pass| C{Was Down?}
-    B -->|Fail| D{Threshold?}
-    C -->|No| E[Reset]
-    C -->|Yes| F{Recovery?}
-    D -->|No| G[Count++]
-    D -->|Yes| H{Alerted?}
-    F -->|No| I[Count++]
-    F -->|Yes| J[Recovery Alert]
-    H -->|No| K[Failure Alert]
-    H -->|Yes| L[Skip]
+<Tabs items={['How It Works', 'Example']}>
+<Tab value="How It Works">
 
-    style A fill:#3b82f6,stroke:#1e40af,color:#fff
-    style K fill:#ef4444,stroke:#b91c1c,color:#fff
-    style J fill:#10b981,stroke:#047857,color:#fff
-```
+**Failure Threshold**
 
-### How Thresholds Work
+The number of consecutive failures required before sending the first failure alert. This prevents alerts from single network blips.
 
-**Failure Threshold:** Number of consecutive failures before sending an alert.
+**Recovery Threshold**
 
-**Recovery Threshold:** Number of consecutive successes before sending a recovery alert.
+The number of consecutive successes required before sending a recovery alert. This ensures the service is truly stable before confirming recovery.
 
-### Example: Failure Threshold = 3
-
-| Check # | Result | Failure Count | Alert Sent? |
-|---------|--------|---------------|-------------|
-| 1 | ❌ Fail | 1/3 | No |
-| 2 | ❌ Fail | 2/3 | No |
-| 3 | ❌ Fail | 3/3 | **Yes - Failure Alert** |
-| 4 | ❌ Fail | 4 (already alerted) | No (max 3 alerts per sequence) |
-| 5 | ✅ Pass | Reset to 0 | No (checking recovery threshold) |
-| 6 | ✅ Pass | 2/2 recovery | **Yes - Recovery Alert** |
-
-### Alert Limiting
+**Alert Limiting**
 
 To prevent notification spam during extended outages:
-- **Maximum 3 failure alerts** per failure sequence
-- **Maximum 3 recovery alerts** per recovery sequence
-- Counter resets when status changes
+- Maximum **3 alerts** per failure or recovery sequence
+- First alert sent when threshold is reached
+- Counter resets when status changes (from up→down or down→up)
 
-<Callout type="info">
-**Recommended thresholds:**
-- **Failure:** 2-3 for most services (balances speed vs. false positives)
-- **Recovery:** 2 to confirm the service is truly stable
-- Use threshold of 1 only for extremely critical services
-</Callout>
+</Tab>
+<Tab value="Example">
+
+**Configuration:** Failure Threshold = 3, Recovery Threshold = 2
+
+| Check | Result | Consecutive Count | Alert Sent |
+|-------|--------|-------------------|------------|
+| 1 | ❌ Fail | 1 failure | — |
+| 2 | ❌ Fail | 2 failures | — |
+| 3 | ❌ Fail | 3 failures ✓ | **Failure Alert** |
+| 4 | ❌ Fail | 4 failures | — |
+| 5 | ✅ Pass | 1 success | — |
+| 6 | ✅ Pass | 2 successes ✓ | **Recovery Alert** |
+
+**Notes:**
+- Check 3: Failure threshold (3) reached → first failure alert sent
+- Check 4: Already alerted, no new alert until exponential interval
+- Check 5: Status changed to passing, failure counter resets, recovery counter starts
+- Check 6: Recovery threshold (2) reached → recovery alert sent
+
+</Tab>
+</Tabs>
 
 ## Provider Configuration
 
-### Email (SMTP)
-
-Email alerts use professional HTML templates with your branding.
+<Tabs items={['Email', 'Slack', 'Discord', 'Telegram', 'Microsoft Teams', 'Webhook']}>
+<Tab value="Email">
 
 **Required environment variables:**
 
@@ -143,78 +127,55 @@ SMTP_PASSWORD=your-api-key
 SMTP_FROM_EMAIL=alerts@yourdomain.com
 ```
 
-**Email content includes:**
-- Alert type and severity (color-coded header)
-- Monitor/job name and project
-- Status, response time, and error details
-- Direct link to dashboard
-- Timestamp and location
+**Supported providers:** Resend, SendGrid, Mailgun, Amazon SES, Gmail, Office 365
 
-**Supported SMTP providers:**
-- Resend, SendGrid, Mailgun, Amazon SES
-- Any SMTP server (Gmail, Office 365, self-hosted)
-
-### Slack
-
-Send rich formatted messages to Slack channels or direct messages.
-
-**Setup:**
+</Tab>
+<Tab value="Slack">
 
 1. Go to [Slack API](https://api.slack.com/messaging/webhooks) and create an Incoming Webhook
 2. Select the channel to post to
-3. Copy the webhook URL (starts with `https://hooks.slack.com/`)
+3. Copy the webhook URL
 4. Add the URL in Supercheck
 
-**Message format:**
-- Color-coded sidebar (red for failure, green for recovery)
-- Title with alert type
-- Fields for status, response time, location
-- Footer with timestamp
-- Link to dashboard
+**Example:** `https://hooks.slack.com/services/T00000000/B00000000/XXXX`
 
-### Discord
+</Tab>
+<Tab value="Discord">
 
-Send embedded messages to Discord server channels.
-
-**Setup:**
-
-1. In Discord, go to Server Settings → Integrations → Webhooks
+1. In Discord, go to **Server Settings → Integrations → Webhooks**
 2. Create a new webhook and select the channel
 3. Copy the webhook URL
 4. Add the URL in Supercheck
 
-**Message format:**
-- Embedded message with color-coded border
-- Title and description
-- Fields for key information
-- Timestamp in footer
+**Example:** `https://discord.com/api/webhooks/000000000000000000/XXXX`
 
-### Telegram
-
-Send messages to Telegram chats or groups via bot.
-
-**Setup:**
+</Tab>
+<Tab value="Telegram">
 
 1. Create a bot with [@BotFather](https://t.me/botfather)
 2. Get your bot token
 3. Get your chat ID (use [@userinfobot](https://t.me/userinfobot))
 4. Add both in Supercheck
 
-**Message format:**
-- Markdown formatted text
-- Bold titles for fields
-- Emoji indicators for status
+</Tab>
+<Tab value="Microsoft Teams">
 
-### Custom Webhook
+1. Go to the Teams channel where you want notifications
+2. Click **•••** → **Workflows** → **Create a workflow**
+3. Select **Post to a channel when a webhook request is received**
+4. Copy the webhook URL
+5. Add the URL in Supercheck
 
-Send JSON payloads to any HTTP endpoint for custom integrations.
+**Example:** `https://prod-00.westus.environment.api.powerplatform.com:443/powerautomate/...`
+
+</Tab>
+<Tab value="Webhook">
 
 **Configuration:**
-- **URL:** Your endpoint (must accept POST requests)
+- **URL:** Your endpoint (must accept POST)
 - **Method:** POST, PUT, or PATCH
-- **Headers:** Optional custom headers (e.g., authentication)
 
-**Payload structure:**
+**Payload:**
 
 ```json
 {
@@ -222,100 +183,52 @@ Send JSON payloads to any HTTP endpoint for custom integrations.
   "message": "Monitor failed after 3 consecutive failures",
   "fields": [
     { "name": "Status", "value": "Down" },
-    { "name": "Response Time", "value": "5.2s" },
-    { "name": "Location", "value": "us-east" },
-    { "name": "Error", "value": "Connection timeout" }
+    { "name": "Response Time", "value": "5.2s" }
   ],
   "color": "#dc2626",
-  "footer": "sent by supercheck",
-  "timestamp": 1705312200,
-  "originalPayload": {
-    "monitorId": "...",
-    "type": "monitor_failure",
-    "severity": "error"
-  },
-  "provider": "webhook",
-  "version": "1.0"
+  "timestamp": 1705312200
 }
 ```
 
-**Use cases:**
-- PagerDuty, Opsgenie, or other incident management
-- Custom dashboards and monitoring systems
-- Automation workflows (Zapier, n8n, Make)
-- Internal alerting systems
+</Tab>
+</Tabs>
 
 ## Alert History
 
-Track all alerts sent from your organization:
+Track all alerts from **Alerts → History**:
 
-![Alert History](/screenshots/alert-history.png)
-
-**History includes:**
 - Alert type and severity
 - Target (monitor or job name)
 - Notification channels used
-- Delivery status (sent, failed)
+- Delivery status
 - Timestamp
-
-Use alert history to:
-- Verify alerts are being delivered
-- Debug notification issues
-- Review incident timelines
-- Audit alert patterns
 
 ## Alert Samples
 
-### Email Alerts
+<Tabs items={['Email', 'Slack', 'Discord']}>
+<Tab value="Email">
 
-Professional HTML emails with detailed information:
-
-**Job Failure Email:**
 <div style={{maxWidth: '320px'}}>
 ![Job Failure Email](/screenshots/alert-email-job.png)
 </div>
 
-**Monitor Alert Email:**
 <div style={{maxWidth: '320px'}}>
 ![Monitor Alert Email](/screenshots/alert-email-monitor.png)
 </div>
 
-### Slack Alerts
-
-Rich formatted messages with status badges:
+</Tab>
+<Tab value="Slack">
 
 <div style={{maxWidth: '400px'}}>
 ![Slack Alert](/screenshots/alert-slack.png)
 </div>
 
-### Discord Alerts
-
-Embedded messages with color-coded status:
+</Tab>
+<Tab value="Discord">
 
 <div style={{maxWidth: '400px'}}>
 ![Discord Alert](/screenshots/alert_discord.png)
 </div>
 
-## Best Practices
-
-### Channel Strategy
-- **Use multiple channels** for critical services (Slack + Email)
-- **Separate channels by severity** — Critical to PagerDuty, warnings to Slack
-- **Team-specific channels** — Route alerts to relevant teams
-
-### Threshold Configuration
-- **Start with threshold 2-3** and adjust based on false positive rate
-- **Use higher thresholds** for flaky services or high-latency endpoints
-- **Use threshold 1** only for services where any failure is critical
-
-### Alert Hygiene
-- **Test alerts before going live** — Use the test button when configuring
-- **Review alert history regularly** — Look for patterns and noise
-- **Update thresholds** as services stabilize or change
-- **Document escalation paths** — Who responds to which alerts
-
-### Avoiding Alert Fatigue
-- **Don't alert on everything** — Focus on actionable issues
-- **Use recovery alerts sparingly** — Only for services where recovery confirmation matters
-- **Group related monitors** — One alert for a service, not one per endpoint
-- **Set appropriate check intervals** — More frequent checks = more potential alerts
+</Tab>
+</Tabs>

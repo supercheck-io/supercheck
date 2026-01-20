@@ -225,20 +225,20 @@ export default function EditMonitorPage({
     httpConfig_method:
       formType === "http_request"
         ? (monitor.config?.method as
-            | "GET"
-            | "POST"
-            | "PUT"
-            | "DELETE"
-            | "PATCH"
-            | "HEAD"
-            | "OPTIONS") || "GET"
+          | "GET"
+          | "POST"
+          | "PUT"
+          | "DELETE"
+          | "PATCH"
+          | "HEAD"
+          | "OPTIONS") || "GET"
         : "GET",
     httpConfig_expectedStatusCodes:
       formType === "http_request" || formType === "website"
         ? monitor.config?.expectedStatusCodes || "200-299"
         : "200-299",
     httpConfig_headers:
-      formType === "http_request" && monitor.config?.headers
+      (formType === "http_request" || formType === "website") && monitor.config?.headers
         ? JSON.stringify(monitor.config.headers, null, 2)
         : "",
     httpConfig_body:
@@ -264,6 +264,8 @@ export default function EditMonitorPage({
       formType === "port_check"
         ? (monitor.config?.protocol as "tcp" | "udp") || "tcp"
         : "tcp",
+    portConfig_expectClosed:
+      formType === "port_check" ? monitor.config?.expectClosed || false : false,
 
     // Website SSL-specific
     websiteConfig_enableSslCheck:

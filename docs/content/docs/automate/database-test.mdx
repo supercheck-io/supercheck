@@ -79,10 +79,4 @@ test.describe('database read health check', () => {
 | Value check | `status = 'active'` |
 | Not null | `email IS NOT NULL` |
 
-## Best Practices
 
-- Use **read-only** database users
-- Store credentials as **secrets** with `getSecret().toString()`
-- Set appropriate **query timeouts**
-- Use **SSH tunnels** for private databases
-- Always close connections in a `finally` block

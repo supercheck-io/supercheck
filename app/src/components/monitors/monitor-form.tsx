@@ -160,6 +160,7 @@ const formSchema = z
       .max(65535, "Port must be 65535 or less")
       .optional(),
     portConfig_protocol: z.enum(["tcp", "udp"]).default("tcp"),
+    portConfig_expectClosed: z.boolean().default(false), // When true, expects port to be closed
     // Website SSL checking
     websiteConfig_enableSslCheck: z.boolean().default(false),
     websiteConfig_sslDaysUntilExpirationWarning: z.coerce
@@ -334,6 +335,7 @@ const creationDefaultValues: FormValues = {
   httpConfig_authToken: "",
   portConfig_port: 80, // Default port instead of undefined
   portConfig_protocol: "tcp", // Default protocol instead of undefined
+  portConfig_expectClosed: false, // Default expects port to be open
   websiteConfig_enableSslCheck: false, // Default to false instead of undefined
   websiteConfig_sslDaysUntilExpirationWarning: 30, // Default to 30 days instead of undefined
   syntheticConfig_testId: "", // Default for synthetic monitors
@@ -498,6 +500,7 @@ export function MonitorForm({
         httpConfig_authToken: "",
         portConfig_port: typeToUse === "port_check" ? 80 : 80, // Always provide default
         portConfig_protocol: typeToUse === "port_check" ? "tcp" : "tcp", // Always provide default
+        portConfig_expectClosed: false, // Default to expecting port open
         websiteConfig_enableSslCheck: typeToUse === "website" ? false : false, // Always provide default
         websiteConfig_sslDaysUntilExpirationWarning:
           typeToUse === "website" ? 30 : 30, // Always provide default
@@ -762,6 +765,24 @@ export function MonitorForm({
         timeoutSeconds: 30, // Default timeout
       };
 
+      // Add custom headers if provided (e.g., custom User-Agent to bypass Cloudflare)
+      if (
+        sanitizedData.httpConfig_headers &&
+        sanitizedData.httpConfig_headers.trim()
+      ) {
+        try {
+          const parsedHeaders = JSON.parse(sanitizedData.httpConfig_headers);
+          if (typeof parsedHeaders === "object" && parsedHeaders !== null) {
+            config.headers = parsedHeaders;
+          }
+        } catch (e) {
+          console.warn("Failed to parse headers as JSON:", e);
+          throw new Error(
+            'Headers must be valid JSON format, e.g., {"User-Agent": "Custom Agent"}'
+          );
+        }
+      }
+
       // Add auth if configured
       if (
         sanitizedData.httpConfig_authType &&
@@ -823,6 +844,7 @@ export function MonitorForm({
       config = {
         port: sanitizedData.portConfig_port,
         protocol: sanitizedData.portConfig_protocol || "tcp",
+        expectClosed: sanitizedData.portConfig_expectClosed || false,
         timeoutSeconds: 10, // Default timeout for port checks
       };
     } else if (data.type === "ping_host") {
@@ -1219,7 +1241,6 @@ export function MonitorForm({
                             <PopoverContent
                               className="w-56 text-xs"
                               side="right"
-                              align="start"
                             >
                               <div className="space-y-2">
                                 <p className="font-semibold text-foreground">
@@ -1316,31 +1337,92 @@ export function MonitorForm({
 
               {/* Target field for non-synthetic monitors */}
               {type !== "synthetic_test" && (
-                <FormField
-                  control={form.control}
-                  name="target"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Target</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder={
-                            type
-                              ? targetPlaceholders[type]
-                              : "Select Check Type for target hint"
-                          }
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
+                <div className={(type === "port_check" || type === "ping_host") ? "grid grid-cols-1 md:grid-cols-2 gap-4" : ""}>
+                  <FormField
+                    control={form.control}
+                    name="target"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Target</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder={
+                              type
+                                ? targetPlaceholders[type]
+                                : "Select Check Type for target hint"
+                            }
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Expected Status dropdown for port_check - same row as Target */}
+                  {type === "port_check" && (
+                    <FormField
+                      control={form.control}
+                      name="portConfig_expectClosed"
+                      render={({ field }) => (
+                        <FormItem>
+                          <div className="flex items-center gap-2">
+                            <FormLabel>Expected Status</FormLabel>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                  <Info className="h-4 w-4" />
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-115" side="right">
+                                <p className="text-sm font-medium mb-2">Port Status Monitoring</p>
+                                <div className="text-xs text-muted-foreground space-y-1.5">
+                                  <p><strong>Port is Open:</strong> Pass when port accepts connections.</p>
+                                  <p><strong>Port is Closed:</strong> Pass when port refuses connections (security monitoring).</p>
+                                </div>
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                          <FormControl>
+                            <Select
+                              onValueChange={(value) => field.onChange(value === "closed")}
+                              value={field.value ? "closed" : "open"}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select expected status" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="open">
+                                  <div className="flex items-center gap-2">
+                                    <span className="h-2 w-2 rounded-full bg-green-500" />
+                                    <span>Port is Open</span>
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="closed">
+                                  <div className="flex items-center gap-2">
+                                    <span className="h-2 w-2 rounded-full bg-red-500" />
+                                    <span>Port is Closed</span>
+                                  </div>
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   )}
-                />
+                </div>
               )}
 
               {/* Conditional fields based on type (formerly method) */}
               {type === "http_request" && (
-                <div className="space-y-4 pt-2">
+                <div className="space-y-4 pt-4">
                   {/* <h3 className=" font-medium">HTTP Request Settings</h3> */}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1496,12 +1578,32 @@ export function MonitorForm({
                             : "md:col-span-2"
                             }`}
                         >
-                          <FormLabel>
-                            HTTP Headers{" "}
-                            <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                              Optional
-                            </span>
-                          </FormLabel>
+                          <div className="flex items-center gap-2">
+                            <FormLabel>
+                              HTTP Headers{" "}
+                              <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                Optional
+                              </span>
+                            </FormLabel>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                  <Info className="h-4 w-4" />
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-76" side="top">
+                                <p className="text-sm font-medium mb-2">Custom HTTP Headers</p>
+                                <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
+                                  <li>Custom User-Agent to bypass bot detection</li>
+                                  <li>Accept headers for content negotiation</li>
+                                  <li>Custom API keys or tokens</li>
+                                </ul>
+                              </PopoverContent>
+                            </Popover>
+                          </div>
                           <FormControl>
                             <Textarea
                               placeholder='{ "Authorization": "Bearer ..." }'
@@ -1853,14 +1955,14 @@ export function MonitorForm({
                                 </SelectContent>
                               </Select>
                             </div>
-                            <FormDescription>
+                            {/* <FormDescription>
                               {isCustomStatusCode
                                 ? "Enter specific status codes (e.g., 200, 404, 500-599)"
                                 : "Current selection: " +
                                 (statusCodePresets.find(
                                   (p) => p.value === currentValue
                                 )?.label || "Any 2xx (Success)")}
-                            </FormDescription>
+                            </FormDescription> */}
                             <FormMessage />
                           </FormItem>
                         );
@@ -1935,6 +2037,50 @@ export function MonitorForm({
                       </div>
                     </div>
                   </div>
+
+                  {/* HTTP Headers Section - Full width */}
+                  <FormField
+                    control={form.control}
+                    name="httpConfig_headers"
+                    render={({ field }) => (
+                      <FormItem>
+                        <div className="flex items-center gap-2">
+                          <FormLabel>
+                            HTTP Headers{" "}
+                            <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                              Optional
+                            </span>
+                          </FormLabel>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                className="text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                <Info className="h-4 w-4" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-76" side="top">
+                              <p className="text-sm font-medium mb-2">Custom HTTP Headers</p>
+                              <ul className="text-xs text-muted-foreground list-disc list-inside space-y-1">
+                                <li>Custom User-Agent to bypass bot detection</li>
+                                <li>Accept headers for content negotiation</li>
+                                <li>Custom API keys or tokens</li>
+                              </ul>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                        <FormControl>
+                          <Textarea
+                            placeholder='{ "User-Agent": "Custom Agent" }'
+                            {...field}
+                            rows={2}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
                   {/* Authentication and Content Validation sections side by side for Website */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
@@ -2160,7 +2306,7 @@ export function MonitorForm({
 
               {type === "port_check" && (
                 <div className="space-y-4 pt-4">
-                  {/* <h3 className="text-lg font-medium">Port Check Settings</h3> */}
+                  {/* Port and Protocol row */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
                       control={form.control}

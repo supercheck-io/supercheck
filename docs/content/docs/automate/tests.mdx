@@ -53,7 +53,10 @@ For browser tests, consider recording with [Playwright Codegen](https://playwrig
 
 See [Playground](/docs/automate/playground) for details.
 
-## Browser Test Example
+## Test Examples
+
+<Tabs items={['Browser Test', 'API Test', 'Performance Test']}>
+<Tab value="Browser Test">
 
 ```typescript
 /**
@@ -91,7 +94,8 @@ test.describe('UI smoke test', () => {
 
 📚 [Playwright Writing Tests](https://playwright.dev/docs/writing-tests) | [Locators Guide](https://playwright.dev/docs/locators)
 
-## API Test Example
+</Tab>
+<Tab value="API Test">
 
 ```typescript
 /**
@@ -128,7 +132,8 @@ test.describe('API health check', () => {
 
 📚 [Playwright API Testing](https://playwright.dev/docs/api-testing)
 
-## Performance Test Example
+</Tab>
+<Tab value="Performance Test">
 
 ```javascript
 /**
@@ -175,6 +180,9 @@ export default function () {
 ```
 
 📚 [k6 Documentation](https://grafana.com/docs/k6/latest/) | [k6 Thresholds](https://grafana.com/docs/k6/latest/using-k6/thresholds/)
+
+</Tab>
+</Tabs>
 
 ## Tags
 

@@ -1407,6 +1407,7 @@ export class MonitorService {
   }> {
     const port = config?.port;
     const protocol = (config?.protocol || 'tcp').toLowerCase();
+    const expectClosed = config?.expectClosed === true; // When true, success = port is closed
     const timeout =
       (config?.timeoutSeconds ?? TIMEOUTS_SECONDS.PORT_CHECK_DEFAULT) * 1000;
 
@@ -1432,7 +1433,7 @@ export class MonitorService {
     }
 
     this.logger.debug(
-      `Port Check: ${target}, Port: ${port}, Protocol: ${protocol}, Timeout: ${timeout}ms`,
+      `Port Check: ${target}, Port: ${port}, Protocol: ${protocol}, ExpectClosed: ${expectClosed}, Timeout: ${timeout}ms`,
     );
 
     const startTime = process.hrtime.bigint();
@@ -1467,17 +1468,33 @@ export class MonitorService {
           });
         });
 
-        // If we reach here, connection was successful
+        // If we reach here, connection was successful (port is open)
         const endTime = process.hrtime.bigint();
         responseTimeMs = Math.round(Number(endTime - startTime) / 1000000);
-        status = 'up';
-        isUp = true;
-        details = {
-          port,
-          protocol,
-          connectionSuccessful: true,
-          responseTimeMs,
-        };
+
+        if (expectClosed) {
+          // Port was expected to be closed, but it's open - this is a failure
+          status = 'down';
+          isUp = false;
+          details = {
+            port,
+            protocol,
+            connectionSuccessful: true,
+            responseTimeMs,
+            expectClosed: true,
+            errorMessage: 'Port is open but was expected to be closed',
+          };
+        } else {
+          // Normal behavior - open port is success
+          status = 'up';
+          isUp = true;
+          details = {
+            port,
+            protocol,
+            connectionSuccessful: true,
+            responseTimeMs,
+          };
+        }
       } else if (protocol === 'udp') {
         // UDP port check using dgram module
         const dgram = await import('dgram');
@@ -1533,20 +1550,37 @@ export class MonitorService {
           });
         });
 
-        // If we reach here, UDP send was successful
+        // If we reach here, UDP send was successful (port appears open)
         const endTime = process.hrtime.bigint();
         responseTimeMs = Math.round(Number(endTime - startTime) / 1000000);
-        status = 'up';
-        isUp = true;
-        details = {
-          port,
-          protocol,
-          packetSent: true,
-          responseTimeMs,
-          note: "UDP packet sent successfully. Note: UDP checks are inherently unreliable - no response doesn't guarantee the port is closed.",
-          warning:
-            'UDP monitoring has limitations - consider using TCP where possible',
-        };
+
+        if (expectClosed) {
+          // Port was expected to be closed, but it appears open - this is a failure
+          status = 'down';
+          isUp = false;
+          details = {
+            port,
+            protocol,
+            packetSent: true,
+            responseTimeMs,
+            expectClosed: true,
+            errorMessage: 'Port appears open but was expected to be closed',
+            note: "UDP packet sent successfully. Note: UDP checks are inherently unreliable.",
+          };
+        } else {
+          // Normal behavior - open port is success
+          status = 'up';
+          isUp = true;
+          details = {
+            port,
+            protocol,
+            packetSent: true,
+            responseTimeMs,
+            note: "UDP packet sent successfully. Note: UDP checks are inherently unreliable - no response doesn't guarantee the port is closed.",
+            warning:
+              'UDP monitoring has limitations - consider using TCP where possible',
+          };
+        }
       }
     } catch (error) {
       const endTime = process.hrtime.bigint();
@@ -1559,22 +1593,39 @@ export class MonitorService {
       if (getErrorMessage(error).includes('timeout')) {
         status = 'timeout';
         details.errorMessage = `Connection timeout after ${timeout}ms`;
+        isUp = false; // Timeout is failure regardless of expectClosed
       } else if (error.code === 'ECONNREFUSED') {
-        status = 'down';
-        details.errorMessage =
-          'Connection refused - port is closed or service not running';
+        if (expectClosed) {
+          // Port is closed as expected - this is SUCCESS!
+          status = 'up';
+          isUp = true;
+          details.connectionRefused = true;
+          details.expectClosed = true;
+          // Clear error message since this is expected behavior
+          delete details.errorMessage;
+        } else {
+          // Normal behavior - connection refused is failure
+          status = 'down';
+          isUp = false;
+          details.errorMessage =
+            'Connection refused - port is closed or service not running';
+        }
       } else if (error.code === 'EHOSTUNREACH') {
         status = 'down';
         details.errorMessage = 'Host unreachable';
+        isUp = false;
       } else if (error.code === 'ENETUNREACH') {
         status = 'down';
         details.errorMessage = 'Network unreachable';
+        isUp = false;
       } else {
         status = 'error';
         details.errorMessage = getErrorMessage(error);
+        isUp = false;
       }
 
-      isUp = false;
+      // Only set isUp = false if not already set by expectClosed logic above
+      // (this line is moved inside each branch now)
       details.port = port;
       details.protocol = protocol;
       details.responseTimeMs = responseTimeMs;

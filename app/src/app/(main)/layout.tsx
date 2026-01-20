@@ -22,6 +22,7 @@ import { MonacoPrefetcher } from "@/components/monaco-prefetcher";
 import { RecorderAutoConnect } from "@/components/recorder/RecorderAutoConnect";
 import { getCurrentUser, getActiveOrganization, getUserProjects } from "@/lib/session";
 import { getCurrentProjectContext } from "@/lib/project-context";
+import { SupportChat } from "@/components/support/support-chat";
 
 export default async function MainLayout({
   children,
@@ -88,6 +89,7 @@ export default async function MainLayout({
 
   return (
     <AuthGuard initialSession={initialSession}>
+      <SupportChat />
       <MonacoPrefetcher />
       <RecorderAutoConnect />
       <BreadcrumbProvider>

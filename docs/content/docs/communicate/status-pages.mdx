@@ -32,7 +32,8 @@ Users can click any incident to view the full timeline of updates:
 
 Users can subscribe to receive notifications when incidents are created, updated, or resolved.
 
-### Email Subscription
+<Tabs items={['Email', 'Slack', 'Webhook', 'RSS']}>
+<Tab value="Email">
 
 ![Email Subscription](/screenshots/status-page-subscribe-email.png)
 
@@ -42,7 +43,8 @@ Users can subscribe to receive notifications when incidents are created, updated
 4. Check inbox for verification email
 5. Click verification link to activate subscription
 
-### Slack Integration
+</Tab>
+<Tab value="Slack">
 
 ![Slack Subscription](/screenshots/status-page-subscribe-slack.png)
 
@@ -60,7 +62,8 @@ Send incident notifications directly to a Slack channel:
 - Affected services and status updates
 - Direct link to status page
 
-### Webhook Integration
+</Tab>
+<Tab value="Webhook">
 
 For custom integrations, subscribe via webhook:
 
@@ -68,11 +71,13 @@ For custom integrations, subscribe via webhook:
 2. Enter your webhook endpoint URL
 3. Receive JSON payloads for all incident events
 
-### RSS Feed
+</Tab>
+<Tab value="RSS">
 
 Subscribe via RSS for feed readers and monitoring tools.
 
----
+</Tab>
+</Tabs>
 
 ## Managing Status Pages
 
@@ -104,15 +109,14 @@ Your page is created in **draft mode**. Configure components and settings before
 3. Click **Publish** to make the page public
 4. Share the URL with your users
 
----
-
 ## Components
 
 Components represent individual services or features on your status page.
 
 ![Components Tab](/screenshots/status-page-components.png)
 
-### Adding Components
+<Tabs items={['Adding Components', 'Status Types']}>
+<Tab value="Adding Components">
 
 1. Go to **Components** tab
 2. Click **Add Component**
@@ -124,7 +128,16 @@ Components represent individual services or features on your status page.
 
 ![Add Component](/screenshots/status-page-add-component.png)
 
-### Component Status Types
+**Linked Monitors**
+
+Associate monitors with components for reference. Linked monitors appear in the Overview tab and help you track which monitors relate to each service.
+
+<Callout type="info">
+Component status is managed manually. Update component status when creating or resolving incidents.
+</Callout>
+
+</Tab>
+<Tab value="Status Types">
 
 | Status | Color | Description |
 |--------|-------|-------------|
@@ -134,15 +147,8 @@ Components represent individual services or features on your status page.
 | **Major Outage** | Red | Service completely down |
 | **Under Maintenance** | Blue | Scheduled maintenance in progress |
 
-### Linked Monitors
-
-Associate monitors with components for reference. Linked monitors appear in the Overview tab and help you track which monitors relate to each service.
-
-<Callout type="info">
-Component status is managed manually. Update component status when creating or resolving incidents.
-</Callout>
-
----
+</Tab>
+</Tabs>
 
 ## Incidents
 
@@ -150,7 +156,8 @@ Incidents communicate service disruptions to your users.
 
 ![Incidents Tab](/screenshots/status-page-incidents.png)
 
-### Creating an Incident
+<Tabs items={['Creating Incidents', 'Workflow', 'Impact']}>
+<Tab value="Creating Incidents">
 
 1. Go to **Incidents** tab
 2. Click **Create Incident**
@@ -165,7 +172,23 @@ Incidents communicate service disruptions to your users.
 
 ![Create Incident](/screenshots/status-page-create-incident.png)
 
-### Incident Status Workflow
+**Incident Updates**
+
+1. Open an existing incident
+2. Click **Add Update**
+3. Write update message
+4. Update status if changed
+5. Choose whether to notify subscribers
+
+**Scheduled Maintenance**
+
+1. Create incident with **Scheduled** status
+2. Set start and end times
+3. Enable automatic status transitions
+4. Configure reminder notifications
+
+</Tab>
+<Tab value="Workflow">
 
 ```mermaid
 flowchart LR
@@ -189,7 +212,8 @@ flowchart LR
 | **Resolved** | Issue completely resolved |
 | **Scheduled** | Planned maintenance |
 
-### Impact Levels
+</Tab>
+<Tab value="Impact">
 
 | Impact | Description |
 |--------|-------------|
@@ -198,28 +222,8 @@ flowchart LR
 | **Major** | Significant impact on service |
 | **Critical** | Complete service outage |
 
-### Incident Updates
-
-Add updates to keep users informed:
-
-1. Open an existing incident
-2. Click **Add Update**
-3. Write update message
-4. Update status if changed
-5. Choose whether to notify subscribers
-
-### Scheduled Maintenance
-
-Communicate planned maintenance in advance:
-
-1. Create incident with **Scheduled** status
-2. Set start and end times
-3. Enable automatic status transitions
-4. Configure reminder notifications
-
-The system automatically updates status during the maintenance window.
-
----
+</Tab>
+</Tabs>
 
 ## Subscribers
 
@@ -243,28 +247,29 @@ Subscribers receive notifications for:
 - Incident resolution
 - Scheduled maintenance reminders
 
----
-
 ## Settings
 
 Configure branding and notification settings.
 
 ![Settings Tab](/screenshots/status-page-settings.png)
 
-### Branding
+<Tabs items={['Branding', 'Notifications', 'Custom Domains']}>
+<Tab value="Branding">
 
 - **Logo** — Header logo for status page
 - **Favicon** — Browser tab icon
 - **Status Colors** — Customize colors for each status type
 - **Custom Domain** — Use your own domain (e.g., `status.yourcompany.com`)
 
-### Notifications
+</Tab>
+<Tab value="Notifications">
 
 - **Subscriber Types** — Enable/disable email, webhook, Slack subscriptions
 - **RSS Feed** — Enable RSS feed for subscribers
 - **Email Footer** — Custom text in notification emails
 
-### Custom Domains
+</Tab>
+<Tab value="Custom Domains">
 
 Use your own domain (e.g., `status.yourcompany.com`) instead of the default subdomain.
 
@@ -315,10 +320,6 @@ flowchart LR
   </Step>
 </Steps>
 
-#### DNS Verification
-
-Supercheck verifies your domain by checking that your CNAME record points to the correct target. When you click **Verify DNS**, it resolves your domain and confirms it points to your Supercheck domain.
-
 #### Troubleshooting
 
 | Issue | Solution |
@@ -332,40 +333,5 @@ Supercheck verifies your domain by checking that your CNAME record points to the
 **Test DNS Propagation:** Use [dnschecker.org](https://dnschecker.org) to verify your CNAME record has propagated globally.
 </Callout>
 
----
-
-## Best Practices
-
-### Incident Communication
-
-```mermaid
-flowchart LR
-    A[Detect Issue] --> B[Create Incident] --> C[Post Updates] --> D[Resolve]
-    style A fill:#ef4444,stroke:#b91c1c,color:#fff
-    style D fill:#10b981,stroke:#047857,color:#fff
-```
-
-**Tips for effective incident communication:**
-- **Be transparent** — Share what you know, even if incomplete
-- **Update regularly** — Post updates every 30-60 minutes during active incidents
-- **Use clear language** — Avoid technical jargon your users won't understand
-- **Set expectations** — Provide estimated resolution times when possible
-
-### Organizing Components
-
-- **Use clear names** — "Website" and "API" are better than internal service names
-- **Keep it focused** — 5-15 components is ideal for most status pages
-- **Add descriptions** — Help users understand what each component does
-
-### Managing Subscribers
-
-- **Enable all channels** — Let users choose email, Slack, or webhooks
-- **Enable RSS** — Technical users often prefer RSS feeds
-- **Review regularly** — Check the Subscribers tab to see engagement
-- **One-click unsubscribe** — Users can unsubscribe anytime via email link
-
-### Custom Domain Tips
-
-- **Use a subdomain** — `status.yourcompany.com` is the industry standard
-- **Test before sharing** — Verify your custom domain works before announcing it
-- **Allow DNS time** — Wait 15-30 minutes for DNS changes to propagate
+</Tab>
+</Tabs>
