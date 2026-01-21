@@ -81,4 +81,37 @@ export class DbService implements OnModuleInit {
       return null;
     }
   }
+
+  /**
+   * Gets all variables for a project
+   * Used for resolving variables in synthetic monitor execution
+   * @param projectId The project ID
+   * @returns Array of project variable records
+   */
+  async getProjectVariables(projectId: string): Promise<
+    {
+      key: string;
+      value: string;
+      encryptedValue: string | null;
+      isSecret: boolean;
+    }[]
+  > {
+    try {
+      const variables = await this.db.query.projectVariables.findMany({
+        where: eq(schema.projectVariables.projectId, projectId),
+        columns: {
+          key: true,
+          value: true,
+          encryptedValue: true,
+          isSecret: true,
+        },
+      });
+      return variables;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get project variables for ${projectId}: ${(error as Error).message}`,
+      );
+      return [];
+    }
+  }
 }

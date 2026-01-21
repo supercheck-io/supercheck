@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { CreateJob } from "./create-job";
 import { AlertSettings } from "@/components/alerts/alert-settings";
 import { Button } from "@/components/ui/button";
+import { Loader2, SaveIcon } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -323,7 +324,7 @@ export function JobCreationWizardK6() {
                 context="job"
               />
 
-              <div className="flex justify-between space-x-4 mt-6">
+              <div className="flex justify-end gap-4 mt-6">
                 <Button
                   type="button"
                   variant="outline"
@@ -333,6 +334,11 @@ export function JobCreationWizardK6() {
                   Back
                 </Button>
                 <Button onClick={handleAlertsNext} disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <SaveIcon className="mr-2 h-4 w-4" />
+                  )}
                   {isSubmitting ? "Creating..." : "Create Job"}
                 </Button>
               </div>

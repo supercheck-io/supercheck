@@ -57,6 +57,8 @@ import {
   getErrorMessage,
 } from '../common/validation';
 import { RedisService } from '../execution/services/redis.service';
+import { VariableResolverService } from '../common/services/variable-resolver.service';
+
 
 // Use the Monitor type from schema
 type Monitor = z.infer<typeof monitorsSelectSchema>;
@@ -86,8 +88,10 @@ export class MonitorService {
     private readonly executionService: ExecutionService,
     private readonly locationService: LocationService,
     private readonly usageTrackerService: UsageTrackerService,
-    private readonly redisService: RedisService, // Added for aggregation coordination
+    private readonly redisService: RedisService,
+    private readonly variableResolverService: VariableResolverService,
   ) {}
+
 
   async executeMonitor(
     jobData: MonitorJobDataDto,
@@ -2437,6 +2441,41 @@ export class MonitorService {
         };
       }
 
+      // 3.5. Resolve project variables and prepend helper functions
+      // This enables getVariable() and getSecret() to work in synthetic monitors
+      const projectId = test.projectId;
+      if (projectId) {
+        try {
+          const variableResolution =
+            await this.variableResolverService.resolveProjectVariables(
+              projectId,
+            );
+
+          if (variableResolution.errors?.length) {
+            this.logger.warn(
+              `[${monitorId}] Variable resolution warnings: ${variableResolution.errors.join(', ')}`,
+            );
+          }
+
+          // Generate and prepend the getVariable/getSecret function implementations
+          const variableFunctionCode =
+            this.variableResolverService.generateVariableFunctions(
+              variableResolution.variables,
+              variableResolution.secrets,
+            );
+          decodedScript = variableFunctionCode + '\n' + decodedScript;
+
+          this.logger.debug(
+            `[${monitorId}] Applied ${Object.keys(variableResolution.variables).length} variables and ${Object.keys(variableResolution.secrets).length} secrets`,
+          );
+        } catch (varError) {
+          // Log the error but continue execution - tests without variables should still work
+          this.logger.warn(
+            `[${monitorId}] Failed to resolve variables, continuing without them: ${getErrorMessage(varError)}`,
+          );
+        }
+      }
+
       // 4. Execute test using existing ExecutionService
       this.logger.log(
         `[${monitorId}] Executing Playwright test: ${test.title}`,
@@ -2450,6 +2489,7 @@ export class MonitorService {
         true,
         true,
       ); // Bypass concurrency check and use unique execution IDs for monitor executions
+
 
       // Use actual test execution time if available, otherwise fall back to total time
       const responseTimeMs =

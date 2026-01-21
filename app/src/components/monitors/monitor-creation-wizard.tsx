@@ -21,7 +21,7 @@ import type { LocationConfig } from "@/lib/location-service";
 import { useAppConfig } from "@/hooks/use-app-config";
 import { useQueryClient } from "@tanstack/react-query";
 import { MONITORS_QUERY_KEY } from "@/hooks/use-monitors";
-import { Loader2 } from "lucide-react";
+import { Loader2, SaveIcon } from "lucide-react";
 
 type WizardStep = "monitor" | "location" | "alerts";
 
@@ -416,7 +416,7 @@ export function MonitorCreationWizard() {
               <Button variant="outline" onClick={handleBackFromLocation}>
                 Back
               </Button>
-              <Button onClick={handleLocationNext}>Next: Alerts</Button>
+              <Button onClick={handleLocationNext}>Next: Alert Settings</Button>
             </div>
           </CardContent>
         </Card>
@@ -466,7 +466,11 @@ export function MonitorCreationWizard() {
               Back
             </Button>
             <Button onClick={handleCreateMonitor} disabled={isCreating}>
-              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isCreating ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <SaveIcon className="mr-2 h-4 w-4" />
+              )}
               {isCreating ? "Creating..." : "Create Monitor"}
             </Button>
           </div>

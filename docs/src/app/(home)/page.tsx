@@ -268,7 +268,7 @@ export default function HomePage() {
                   className="mx-auto"
                 >
                   <Link
-                    href="https://demo.supercheck.io/"
+                    href="https://demo.supercheck.dev/"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="group mx-auto flex w-fit items-center gap-4 rounded-full border border-white/20 dark:border-white/20 bg-white/10 dark:bg-white/10 px-4 py-2 shadow-md shadow-zinc-950/5 transition-colors duration-300 dark:shadow-zinc-950 backdrop-blur-sm"

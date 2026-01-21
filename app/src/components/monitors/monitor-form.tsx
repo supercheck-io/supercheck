@@ -2390,10 +2390,10 @@ export function MonitorForm({
                   {isSubmitting ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
-                    <SaveIcon className="mr-2 h-4 w-4" />
+                    !hideAlerts && <SaveIcon className="mr-2 h-4 w-4" />
                   )}
                   {hideAlerts
-                    ? "Next: Alerts"
+                    ? "Next: Location Settings"
                     : editMode
                       ? "Update Monitor"
                       : "Create"}
