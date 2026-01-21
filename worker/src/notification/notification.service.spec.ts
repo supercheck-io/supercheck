@@ -113,7 +113,7 @@ describe('NotificationService', () => {
   const teamsProvider: NotificationProvider = {
     id: 'provider-teams',
     type: 'teams',
-    config: { teamsWebhookUrl: 'https://example.webhook.office.com/webhook/xxx' },
+    config: { teamsWebhookUrl: 'https://prod-00.westus.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/xxx' },
   };
 
   beforeEach(async () => {
@@ -519,6 +519,34 @@ describe('NotificationService', () => {
 
       expect(body.attachments[0].content.version).toBe('1.4');
       expect(body.attachments[0].content.type).toBe('AdaptiveCard');
+    });
+
+    it('should send to Power Automate webhook URL', async () => {
+      const powerAutomateProvider: NotificationProvider = {
+        id: 'provider-teams-pa',
+        type: 'teams',
+        config: { teamsWebhookUrl: 'https://prod-00.westus.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/xxx' },
+      };
+
+      await service.sendNotification(powerAutomateProvider, basePayload);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        powerAutomateProvider.config.teamsWebhookUrl,
+        expect.objectContaining({
+          method: 'POST',
+        }),
+      );
+    });
+
+    it('should reject invalid Teams webhook URL', async () => {
+      const invalidProvider: NotificationProvider = {
+        id: 'provider-teams-invalid',
+        type: 'teams',
+        config: { teamsWebhookUrl: 'https://evil.com/webhook' },
+      };
+
+      const result = await service.sendNotification(invalidProvider, basePayload);
+      expect(result).toBe(false);
     });
   });
 

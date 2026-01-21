@@ -515,9 +515,9 @@ export async function GET() {
       })()
     });
 
-    // Enable short-term caching (30s) to reduce CPU load from repeated dashboard requests
-    // Project context is per-request so different projects get different cached responses
-    response.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
+    // NOTE: Removed Cache-Control header to ensure fresh data on every request.
+    // React Query handles client-side caching; HTTP caching was causing stale data issues.
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     
     return response;
 

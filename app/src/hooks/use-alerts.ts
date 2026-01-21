@@ -78,9 +78,9 @@ export function useNotificationProviders() {
     enabled: !!projectId,
     staleTime: 30 * 1000,  // 30 seconds - alerts need to be responsive
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',  // Always refetch on page visit for fresh data
     refetchOnReconnect: false,
-    placeholderData: keepPreviousData,
+    // Note: Removed placeholderData to ensure fresh data is shown immediately after fetch
   });
 
   const invalidate = () =>
@@ -118,9 +118,9 @@ export function useAlertHistory() {
     enabled: !!projectId,
     staleTime: 30 * 1000,  // 30 seconds - alert history should be responsive
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',  // Always refetch on page visit for fresh data
     refetchOnReconnect: false,
-    placeholderData: keepPreviousData,
+    // Note: Removed placeholderData to ensure fresh data is shown immediately after fetch
   });
 
   const invalidate = () =>

@@ -146,7 +146,12 @@ S3_ENDPOINT=http://minio:9000
 # ────────────────────────────────────────────────────────────
 # WORKER_REPLICAS=1
 # RUNNING_CAPACITY=1
-# WORKER_LOCATION=local
+# ────────────────────────────────────────────────────────────
+# OPTIONAL: Customer Support (Cloud Only)
+# ────────────────────────────────────────────────────────────
+# NEXT_PUBLIC_CHATWOOT_BASE_URL=https://app.chatwoot.com
+# NEXT_PUBLIC_CHATWOOT_WEBSITE_TOKEN=your-token
+
 
 # ────────────────────────────────────────────────────────────
 # OPTIONAL: UI Configuration

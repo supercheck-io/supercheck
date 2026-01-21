@@ -917,13 +917,14 @@ export class NotificationService {
         return false;
       }
 
-      // Validate URL format and ensure it's a legitimate Teams webhook
-      // Teams webhooks follow pattern: https://*.webhook.office.com/...
-      const teamsUrlPattern =
-        /^https:\/\/[a-zA-Z0-9-]+\.webhook\.office\.com\//;
-      if (!teamsUrlPattern.test(webhookUrl)) {
+      // Validate URL format - only Power Automate URLs are supported
+      // Format: https://*.environment.api.powerplatform.com[:port]/powerautomate/...
+      const powerAutomateUrlPattern =
+        /^https:\/\/[a-zA-Z0-9.-]+\.environment\.api\.powerplatform\.com(:\d+)?\/powerautomate\//;
+      
+      if (!powerAutomateUrlPattern.test(webhookUrl)) {
         this.logger.error(
-          'Invalid Teams webhook URL format. Must be a valid https://*.webhook.office.com/ URL',
+          'Invalid Teams webhook URL format. Must be a Power Automate URL (*.environment.api.powerplatform.com/powerautomate/...)',
         );
         return false;
       }

@@ -143,12 +143,18 @@ sequenceDiagram
 
 ### Triggering from CI/CD
 
+<Tabs items={['cURL', 'GitHub Actions', 'GitLab CI']}>
+<Tab value="cURL">
+
 **Basic trigger:**
 
 ```bash
 curl -X POST https://your-instance.com/api/jobs/{jobId}/trigger \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
+
+</Tab>
+<Tab value="GitHub Actions">
 
 **GitHub Actions example:**
 
@@ -159,6 +165,9 @@ curl -X POST https://your-instance.com/api/jobs/{jobId}/trigger \
       -H "Authorization: Bearer ${{ secrets.SUPERCHECK_API_KEY }}"
 ```
 
+</Tab>
+<Tab value="GitLab CI">
+
 **GitLab CI example:**
 
 ```yaml
@@ -166,6 +175,9 @@ test:
   script:
     - curl -X POST $SUPERCHECK_TRIGGER_URL -H "Authorization: Bearer $SUPERCHECK_API_KEY"
 ```
+
+</Tab>
+</Tabs>
 
 ### API Key Security
 
@@ -235,25 +247,3 @@ If a job exceeds the maximum execution time:
 - **K6 Performance Jobs:** Maximum runtime of **60 minutes** per job execution
 - **Individual Tests:** Each test within a job is also subject to its own timeout (5 minutes for Playwright, 60 minutes for K6)
 </Callout>
-
-## Best Practices
-
-### Job Organization
-- **Group related tests** — Put tests for the same feature or flow in one job
-- **Keep jobs focused** — Smaller jobs are easier to debug when they fail
-- **Use descriptive names** — Include what the job tests (e.g., "Checkout Flow - Production")
-
-### Scheduling
-- **Stagger schedules** — Don't run all jobs at the same time
-- **Match frequency to risk** — Critical paths need more frequent testing
-- **Consider time zones** — Schedule during low-traffic periods for load-sensitive tests
-
-### Alerts
-- **Always enable failure alerts** for production jobs
-- **Use multiple channels** for critical jobs (Slack + email)
-- **Set up escalation** — Different channels for different severity levels
-
-### CI/CD Integration
-- **Run after deployments** — Trigger jobs in your deployment pipeline
-- **Block deployments on failure** — Use job results as deployment gates
-- **Keep API keys secure** — Store in CI/CD secrets, never in code

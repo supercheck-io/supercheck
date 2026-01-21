@@ -249,9 +249,13 @@ export function CreateJob({
                   {isSubmitting ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   ) : (
-                    <SaveIcon className="h-4 w-4 mr-2" />
+                    !hideAlerts && <SaveIcon className="h-4 w-4 mr-2" />
                   )}
-                  {isSubmitting ? "Processing..." : "Next: Alert Settings"}
+                  {isSubmitting
+                    ? "Processing..."
+                    : hideAlerts
+                      ? "Next: Alert Settings"
+                      : "Create Job"}
                 </Button>
               </div>
             </form>

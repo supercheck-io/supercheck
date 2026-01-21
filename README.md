@@ -62,8 +62,6 @@ Empowering development and SRE teams with a scalable, distributed, and robust pl
           └───────────────────┘ └─────────────────┘ └───────────────────┘
 ```
 
-**Stack**: Next.js · React · NestJS · Playwright · Grafana k6 · PostgreSQL · Redis · MinIO · BullMQ
-
 ## Deployment
 
 Self-host Supercheck on your own infrastructure:
@@ -73,7 +71,7 @@ Self-host Supercheck on your own infrastructure:
 | [![Deploy with Coolify](https://img.shields.io/badge/Deploy%20with-Coolify-6B16ED?logo=coolify&logoColor=white)](./deploy/coolify/README.md) | One-click deploy on [Coolify](https://coolify.io) | [Read Guide ↗](./deploy/coolify/README.md) |
 | [![Deploy with Docker](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-2496ED?logo=docker&logoColor=white)](https://supercheck.io/docs/deployment) | Manual deployment with Docker | [Read Guide ↗](https://supercheck.io/docs/deployment) |
 
-> **Want official Coolify template?** [⭐ Star this repo](https://github.com/supercheck-io/supercheck) — Coolify requires 1,000+ stars for official catalog inclusion ([see PR](https://github.com/coollabsio/coolify/pull/7962)).
+> **Want official Coolify template?** [⭐ Star this repo](https://github.com/supercheck-io/supercheck) — Coolify requires 1k stars for official catalog inclusion ([see PR](https://github.com/coollabsio/coolify/pull/7962)).
 
 ## Documentation
 

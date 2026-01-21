@@ -485,13 +485,20 @@ export function AlertSettings({
                           if (response.ok) {
                             const createdProvider = await response.json();
                             setProviders((prev) => [...prev, createdProvider]);
+                            toast.success("Notification channel created successfully");
                             setIsProviderDialogOpen(false);
                           } else {
+                            const errorData = await response.json().catch(() => ({}));
+                            const errorMessage = errorData.error || "Failed to create notification channel";
+                            toast.error(errorMessage);
                             console.error(
-                              "Failed to create notification provider"
+                              "Failed to create notification provider:",
+                              errorMessage
                             );
                           }
                         } catch (error) {
+                          const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
+                          toast.error(errorMessage);
                           console.error(
                             "Error creating notification provider:",
                             error

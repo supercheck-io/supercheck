@@ -51,5 +51,10 @@ declare namespace NodeJS {
     POLAR_WEBHOOK_SECRET: string;
     POLAR_PLUS_PRODUCT_ID: string;
     POLAR_PRO_PRODUCT_ID: string;
+
+    // Chatwoot Customer Support (Cloud Only)
+    NEXT_PUBLIC_CHATWOOT_BASE_URL?: string;
+    NEXT_PUBLIC_CHATWOOT_WEBSITE_TOKEN?: string;
+    CHATWOOT_IDENTITY_VALIDATION_KEY?: string;
   }
 } 

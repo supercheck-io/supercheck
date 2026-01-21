@@ -122,7 +122,7 @@ export function useOrgStats() {
     queryKey: ORG_STATS_QUERY_KEY,
     queryFn: fetchOrgStats,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',
     refetchOnReconnect: false,
   });
 
@@ -144,7 +144,7 @@ export function useOrgDetails() {
     queryKey: ORG_DETAILS_QUERY_KEY,
     queryFn: fetchOrgDetails,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',
     refetchOnReconnect: false,
   });
 
@@ -166,7 +166,7 @@ export function useOrgMembers() {
     queryKey: ORG_MEMBERS_QUERY_KEY,
     queryFn: fetchOrgMembers,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',
     refetchOnReconnect: false,
   });
 
@@ -190,7 +190,7 @@ export function useOrgProjects() {
     queryKey: ORG_PROJECTS_QUERY_KEY,
     queryFn: fetchOrgProjects,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',
     refetchOnReconnect: false,
   });
 

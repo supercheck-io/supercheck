@@ -10,16 +10,29 @@ Variables let you store configuration values and sensitive credentials that your
 
 ## Variables vs Secrets
 
-| Feature | Variables | Secrets |
-|---------|-----------|---------|
-| **Storage** | Plain text | AES-128-GCM encrypted |
-| **Visibility** | Shown in UI | Masked with `***` |
-| **Logging** | Logged normally | Auto-redacted as `[SECRET]` |
-| **Use For** | URLs, timeouts, feature flags | API keys, passwords, tokens |
+<Tabs items={['Variables', 'Secrets']}>
+<Tab value="Variables">
+
+- **Storage:** Plain text
+- **Visibility:** Shown in UI
+- **Logging:** Logged normally
+- **Use For:** URLs, timeouts, feature flags
+
+</Tab>
+<Tab value="Secrets">
+
+- **Storage:** AES-128-GCM encrypted
+- **Visibility:** Masked with `***`
+- **Logging:** Auto-redacted as `[SECRET]`
+- **Use For:** API keys, passwords, tokens
+
+</Tab>
+</Tabs>
 
 ## Creating Variables
 
-### Add a Variable
+<Tabs items={['Add Variable', 'Add Secret']}>
+<Tab value="Add Variable">
 
 1. Go to your project's **Variables** page
 2. Click **Add Variable**
@@ -30,7 +43,8 @@ Variables let you store configuration values and sensitive credentials that your
 
 ![Add Variable](/screenshots/add-variable.png)
 
-### Add a Secret
+</Tab>
+<Tab value="Add Secret">
 
 1. Go to your project's **Variables** page
 2. Click **Add Variable**
@@ -45,11 +59,15 @@ Variables let you store configuration values and sensitive credentials that your
 Once saved, secret values cannot be viewed in the UI. You can only update or delete them.
 </Callout>
 
+</Tab>
+</Tabs>
+
 ## Using Variables in Tests
 
 Access variables and secrets in your test code using the built-in functions:
 
-### getVariable()
+<Tabs items={['getVariable()', 'getSecret()']}>
+<Tab value="getVariable()">
 
 Use for non-sensitive configuration:
 
@@ -67,7 +85,8 @@ const timeout = getVariable('TIMEOUT');
 await page.goto(baseUrl + '/login');
 ```
 
-### getSecret()
+</Tab>
+<Tab value="getSecret()">
 
 Use for sensitive credentials. **Always call `.toString()`** to get the actual value:
 
@@ -94,6 +113,9 @@ const dbPassword = getSecret('DB_PASSWORD').toString();
 <Callout type="warning">
 Always use `.toString()` when reading secrets. Without it, the secret object won't expose the actual value in most contexts.
 </Callout>
+
+</Tab>
+</Tabs>
 
 ### Secret Protection
 
@@ -122,7 +144,8 @@ const actualKey = getSecret('API_KEY').toString();
 
 ## Common Patterns
 
-### Environment-Based Configuration
+<Tabs items={['Environment-Based', 'API Testing', 'Database Testing', 'Feature Flags', 'k6 Performance']}>
+<Tab value="Environment-Based">
 
 ```javascript
 /**
@@ -135,7 +158,8 @@ const baseUrl = getVariable(`${env.toUpperCase()}_URL`);
 await page.goto(baseUrl);
 ```
 
-### API Testing with Playwright
+</Tab>
+<Tab value="API Testing">
 
 ```javascript
 /**
@@ -154,7 +178,8 @@ const response = await request.get(apiUrl + '/users', {
 });
 ```
 
-### Database Testing
+</Tab>
+<Tab value="Database Testing">
 
 ```javascript
 /**
@@ -172,7 +197,8 @@ const pool = new Pool({
 });
 ```
 
-### Feature Flags
+</Tab>
+<Tab value="Feature Flags">
 
 ```javascript
 /**
@@ -188,7 +214,8 @@ if (featureEnabled) {
 }
 ```
 
-### k6 Performance Tests
+</Tab>
+<Tab value="k6 Performance">
 
 ```javascript
 /**
@@ -207,6 +234,9 @@ export default function () {
   });
 }
 ```
+
+</Tab>
+</Tabs>
 
 ## Variable Naming Conventions
 
@@ -232,13 +262,15 @@ Use clear, consistent naming for your variables:
 
 ## Security Features
 
-### Encryption
+<Tabs items={['Encryption', 'Access Control', 'Audit Trail']}>
+<Tab value="Encryption">
 
 - Secrets are encrypted using **AES-128-GCM** with authenticated encryption
 - Encryption keys are derived per-project using HKDF-SHA256
 - Values are encrypted at rest in the database
 
-### Access Control
+</Tab>
+<Tab value="Access Control">
 
 Variables follow your project's role-based permissions:
 
@@ -249,27 +281,13 @@ Variables follow your project's role-based permissions:
 | **Editor** | ✅ | ✅ | ✅ | ❌ | ✅ |
 | **Viewer** | ✅ | ❌ | ❌ | ❌ | ❌ |
 
-### Audit Trail
+</Tab>
+<Tab value="Audit Trail">
 
 All variable operations are logged:
 - Who created, updated, or deleted variables
 - When changes were made
 - Variable keys (not secret values)
 
-## Best Practices
-
-### Organization
-- **Use descriptive names** that indicate purpose
-- **Add descriptions** for team documentation
-- **Group related variables** by naming convention
-
-### Security
-- **Never commit secrets** to version control
-- **Use secrets for all credentials** even in development
-- **Rotate secrets regularly** for production environments
-- **Limit access** using project roles
-
-### Testing
-- **Use separate variables** for each environment
-- **Don't hardcode values** that might change
-- **Document required variables** for your test suite
+</Tab>
+</Tabs>

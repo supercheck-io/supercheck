@@ -42,6 +42,7 @@ import { StandardizedErrorHandler } from '../common/errors/standardized-error-ha
 import { ResourceManagerService } from '../common/resources/resource-manager.service';
 import { LocationService } from '../common/location/location.service';
 import { RedisService } from '../execution/services/redis.service';
+import { VariableResolverService } from '../common/services/variable-resolver.service';
 
 describe('MonitorService', () => {
   let service: MonitorService;
@@ -209,8 +210,20 @@ describe('MonitorService', () => {
         { provide: ResourceManagerService, useValue: mockResourceManager },
         { provide: LocationService, useValue: mockLocationService },
         { provide: RedisService, useValue: mockRedisService },
+        {
+          provide: VariableResolverService,
+          useValue: {
+            resolveProjectVariables: jest.fn().mockResolvedValue({
+              variables: {},
+              secrets: {},
+              errors: undefined,
+            }),
+            generateVariableFunctions: jest.fn().mockReturnValue(''),
+          },
+        },
       ],
     }).compile();
+
 
     service = module.get<MonitorService>(MonitorService);
   });

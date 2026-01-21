@@ -18,6 +18,7 @@ import { CredentialSecurityService } from '../common/security/credential-securit
 import { StandardizedErrorHandler } from '../common/errors/standardized-error-handler';
 import { ResourceManagerService } from '../common/resources/resource-manager.service';
 import { LocationModule } from '../common/location/location.module';
+import { VariableResolverService } from '../common/services/variable-resolver.service';
 
 // Define job options for monitor execution queues
 // Monitor checks are typically short-lived (< 1 minute), but we set reasonable limits
@@ -48,7 +49,9 @@ const commonProviders = [
   CredentialSecurityService,
   StandardizedErrorHandler,
   ResourceManagerService,
+  VariableResolverService,
 ];
+
 
 /**
  * Valid WORKER_LOCATION values:

@@ -34,7 +34,8 @@ Create a new project to organize your tests, jobs, and monitors.
 
 Invite and manage team members with role-based access control.
 
-### Invite Member
+<Tabs items={['Invite Member', 'Email Invitation', 'Accept Invitation', 'Signup']}>
+<Tab value="Invite Member">
 
 1. Go to **Admin → Members**
 2. Click **Invite Member**
@@ -43,29 +44,36 @@ Invite and manage team members with role-based access control.
 
 ![Invite Member Dialog](/screenshots/org-admin-member-intvite-dialog.png)
 
-### Email Invitation
+</Tab>
+<Tab value="Email Invitation">
 
 The invited member receives an email with a link to join your organization.
 
 ![Email Invitation](/screenshots/org-admin-member-email-invitation.png)
 
-### Accept Invitation
+</Tab>
+<Tab value="Accept Invitation">
 
 New members accept the invitation to join the organization.
 
 ![Accept Invitation](/screenshots/org-admin-member-invite-aceptance.png)
 
+</Tab>
+<Tab value="Signup">
+
 After accepting the invitation, new members can sign up or sign in to join the organization.
 
 ![Invitation Signup](/screenshots/org-admin-member-invite-signup.png)
 
-
+</Tab>
+</Tabs>
 
 ## Roles
 
 The system uses a 6-role RBAC system with specialized roles for organization and project management.
 
-### Organization Roles
+<Tabs items={['Organization Roles', 'Project Roles']}>
+<Tab value="Organization Roles">
 
 | Role | Permissions |
 |------|-------------|
@@ -73,13 +81,17 @@ The system uses a 6-role RBAC system with specialized roles for organization and
 | **Org Owner** | Full organization control, billing, and member management. |
 | **Org Admin** | Managing members and organization settings (cannot delete org). |
 
-### Project Roles
+</Tab>
+<Tab value="Project Roles">
 
 | Role | Permissions |
 |------|-------------|
 | **Project Admin** | Full control of assigned projects (create/edit/delete resources). |
 | **Project Editor** | Create and edit resources in assigned projects (cannot delete). |
 | **Project Viewer** | Read-only access to assigned projects. |
+
+</Tab>
+</Tabs>
 
 ## Audit Log
 

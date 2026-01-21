@@ -1,4 +1,6 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
+import { DASHBOARD_QUERY_KEY } from "./use-dashboard";
 
 export interface Test {
   id: string;
@@ -49,6 +51,7 @@ const testsHook = createDataHook<Test, CreateTestData, UpdateTestData>({
   queryKey: TESTS_QUERY_KEY,
   endpoint: "/api/tests",
   refetchOnWindowFocus: false,
+  refetchOnMount: 'always',  // Always refetch on page visit for fresh data
   singleItemField: "test",
 });
 
@@ -78,11 +81,34 @@ export function useTest(testId: string | null) {
 }
 
 export function useTestMutations() {
+  const queryClient = useQueryClient();
   const baseMutations = testsHook.useMutations();
 
+  // Wrap base mutations to also invalidate dashboard (cross-entity invalidation)
+  const createTest = {
+    ...baseMutations.create,
+    mutateAsync: async (...args: Parameters<typeof baseMutations.create.mutateAsync>) => {
+      const result = await baseMutations.create.mutateAsync(...args);
+      // Cross-entity: Dashboard shows Total Tests count
+      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
+      return result;
+    },
+  };
+
+  const deleteTest = {
+    ...baseMutations.remove,
+    mutateAsync: async (...args: Parameters<typeof baseMutations.remove.mutateAsync>) => {
+      const result = await baseMutations.remove.mutateAsync(...args);
+      // Cross-entity: Dashboard shows Total Tests count
+      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
+      return result;
+    },
+  };
+
   return {
-    createTest: baseMutations.create,
+    createTest,
     updateTest: baseMutations.update,
-    deleteTest: baseMutations.remove,
+    deleteTest,
   };
 }
+

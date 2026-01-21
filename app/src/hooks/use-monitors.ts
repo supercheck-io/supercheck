@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createDataHook, type PaginatedResponse } from "./lib/create-data-hook";
+import { DASHBOARD_QUERY_KEY } from "./use-dashboard";
 
 export interface MonitorAlertConfig {
   enabled: boolean;
@@ -78,6 +79,7 @@ const monitorsHook = createDataHook<Monitor, CreateMonitorData, UpdateMonitorDat
   endpoint: "/api/monitors",
   staleTime: 30 * 1000,
   refetchOnWindowFocus: false,
+  refetchOnMount: 'always',  // Always refetch on page visit - monitor status changes server-side
   singleItemField: "monitor",
 });
 
@@ -166,13 +168,34 @@ export function useMonitorMutations() {
     onSettled: (_data, _err, variables) => {
       queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
       queryClient.invalidateQueries({ queryKey: [...MONITOR_QUERY_KEY, variables.id], refetchType: 'all' });
+      // Cross-entity: Dashboard shows Active Monitors count
+      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
     },
   });
 
+  // Wrap base mutations to also invalidate dashboard (cross-entity invalidation)
+  const createMonitor = {
+    ...baseMutations.create,
+    mutateAsync: async (...args: Parameters<typeof baseMutations.create.mutateAsync>) => {
+      const result = await baseMutations.create.mutateAsync(...args);
+      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
+      return result;
+    },
+  };
+
+  const deleteMonitor = {
+    ...baseMutations.remove,
+    mutateAsync: async (...args: Parameters<typeof baseMutations.remove.mutateAsync>) => {
+      const result = await baseMutations.remove.mutateAsync(...args);
+      queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY, refetchType: 'all' });
+      return result;
+    },
+  };
+
   return {
-    createMonitor: baseMutations.create,
+    createMonitor,
     updateMonitor: baseMutations.update,
-    deleteMonitor: baseMutations.remove,
+    deleteMonitor,
     toggleMonitor,
   };
 }

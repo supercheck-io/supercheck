@@ -423,26 +423,25 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
       throw new Error(urlValidation.error || "Invalid webhook URL");
     }
 
-    // Validate that the URL is a Teams webhook URL
+    // Validate that the URL is a Power Automate Teams webhook URL
     try {
       const parsedUrl = new URL(webhookUrl);
       const hostname = parsedUrl.hostname.toLowerCase();
-      // Allowed Teams webhook hosts - exact match or legitimate subdomains
-      const allowedTeamsHosts = [
-        'webhook.office.com',
-        'outlook.office.com',
-      ];
-      if (!allowedTeamsHosts.includes(hostname) && 
-          !hostname.endsWith('.webhook.office.com') && 
-          !hostname.endsWith('.outlook.office.com')) {
-        throw new Error("URL must be a valid Teams webhook URL (webhook.office.com or outlook.office.com)");
+      
+      // Only Power Automate webhook URLs are supported
+      if (!hostname.endsWith('.environment.api.powerplatform.com')) {
+        throw new Error("URL must be a valid Power Automate webhook URL (*.environment.api.powerplatform.com)");
+      }
+      // Validate the path starts with /powerautomate/
+      if (!parsedUrl.pathname.startsWith('/powerautomate/')) {
+        throw new Error("Power Automate webhook URL must have /powerautomate/ path");
       }
       // Enforce HTTPS protocol
       if (parsedUrl.protocol !== 'https:') {
         throw new Error("Teams webhook URL must use HTTPS");
       }
     } catch (parseError) {
-      if (parseError instanceof Error && parseError.message.includes('Teams')) {
+      if (parseError instanceof Error && parseError.message.includes('Power Automate')) {
         throw parseError;
       }
       throw new Error("Invalid URL format");

@@ -70,17 +70,7 @@ flowchart TB
 
 ---
 
-## Setup Options
-
-### <span style={{color: '#0ea5e9'}}>Option A: Single Location (Default)</span>
-
-For most self-hosted deployments, a single location is sufficient. The main docker-compose uses `WORKER_LOCATION=local` which processes all regional queues from one server.
-
-**No changes needed** - just deploy using the standard guide.
-
----
-
-### <span style={{color: '#10b981'}}>Option B: Multi-Location (3 Regions)</span>
+## Setup
 
 For true geographic distribution, deploy workers in each region.
 

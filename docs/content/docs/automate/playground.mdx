@@ -141,7 +141,8 @@ Start with pre-built templates for common testing scenarios. Templates provide w
 
 ### Available Templates
 
-**Browser Test Templates:**
+<Tabs items={['Browser', 'API', 'Database', 'Custom', 'Performance']}>
+<Tab value="Browser">
 
 | Category | Templates |
 |----------|-----------|
@@ -149,7 +150,8 @@ Start with pre-built templates for common testing scenarios. Templates provide w
 | **Auth Flows** | Auth flow (login + logout) |
 | **Responsive & Devices** | Mobile/responsive layout, Device emulation (geo, locale, timezone) |
 
-**API Test Templates:**
+</Tab>
+<Tab value="API">
 
 | Category | Templates |
 |----------|-----------|
@@ -158,20 +160,23 @@ Start with pre-built templates for common testing scenarios. Templates provide w
 | **Authentication** | Authenticated request |
 | **API Coverage** | Comprehensive API Test |
 
-**Database Test Templates:**
+</Tab>
+<Tab value="Database">
 
 | Category | Templates |
 |----------|-----------|
 | **Database Checks** | SELECT health check, Safe UPDATE with RETURNING, Database Discovery & Query |
 | **Transactions** | Insert with rollback |
 
-**Custom Test Templates:**
+</Tab>
+<Tab value="Custom">
 
 | Category | Templates |
 |----------|-----------|
 | **Cross-layer** | Custom test fixtures, Form with API stubbing, Device emulation showcase, API + UI end-to-end, GitHub API + Browser Integration |
 
-**Performance Test Templates (k6):**
+</Tab>
+<Tab value="Performance">
 
 | Category | Templates |
 |----------|-----------|
@@ -180,6 +185,9 @@ Start with pre-built templates for common testing scenarios. Templates provide w
 | **Resilience** | Spike + Recovery, Stress Test, Breakpoint Test |
 | **Reliability** | Soak/Endurance |
 | **API Coverage** | API Checklist (GET + POST + auth), Checks & Assertions |
+
+</Tab>
+</Tabs>
 
 ### Using Templates
 
@@ -241,26 +249,6 @@ await page.fill('#password', password);
 Variables are resolved server-side before execution. Secrets are encrypted and automatically redacted from logs and screenshots.
 
 See [Variables](/docs/automate/variables) for setup instructions.
-
-## Best Practices
-
-### Writing Reliable Tests
-- **Use stable selectors** — Prefer `data-testid`, `aria-label`, or semantic selectors over CSS classes
-- **Add explicit waits** — Use `waitForSelector` or `waitForURL` instead of fixed delays
-- **Keep tests focused** — Test one user flow per test for easier debugging
-- **Use descriptive names** — Name tests clearly so failures are easy to understand
-
-### Using AI Effectively
-- **Start with AI Create** for new tests, then refine manually
-- **Use AI Fix** for quick selector and timing fixes
-- **Review AI suggestions** before accepting—AI is helpful but not perfect
-- **Provide context** in prompts for better AI-generated code
-
-### Debugging Failures
-- **Check screenshots** first to see the visual state
-- **Use trace viewer** to step through the test
-- **Review network tab** for API issues
-- **Check console logs** for JavaScript errors
 
 ## Learn More
 

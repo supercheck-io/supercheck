@@ -10,7 +10,10 @@ Super Admin provides platform-level management for self-hosted deployments, incl
 
 There are two ways to enable super admin access:
 
-### Option 1: Environment Variable (Recommended)
+<Tabs items={['Environment Variable', 'Manual Script', 'Revoking Access']}>
+<Tab value="Environment Variable">
+
+### Recommended
 
 Set the `SUPER_ADMIN_EMAIL` environment variable in your deployment:
 
@@ -18,9 +21,14 @@ Set the `SUPER_ADMIN_EMAIL` environment variable in your deployment:
 SUPER_ADMIN_EMAIL=admin@yourdomain.com
 ```
 
-The user with this email is automatically promoted to super admin on login.
+The user with this email is promoted to super admin when the application starts. 
 
-### Option 2: Manual Script
+<Callout type="info">
+**Note:** If the user has just signed up, you may need to **restart the application container** for the promotion to take effect, as this check runs during startup.
+</Callout>
+
+</Tab>
+<Tab value="Manual Script">
 
 Run the bootstrap script inside the app container:
 
@@ -28,13 +36,17 @@ Run the bootstrap script inside the app container:
 docker compose exec app npm run setup:admin admin@yourdomain.com
 ```
 
-### Revoking Super Admin
+</Tab>
+<Tab value="Revoking Access">
 
 To downgrade a super admin to organization admin:
 
 ```bash
 docker compose exec app npm run revoke:admin admin@yourdomain.com
 ```
+
+</Tab>
+</Tabs>
 
 ## Overview
 
@@ -79,7 +91,8 @@ Manage all users across the platform:
 - **Ban/Unban** — Suspend accounts with a reason (banned users cannot log in)
 - **Impersonate** — Log in as any user for troubleshooting
 
-### Impersonation
+<Tabs items={['Impersonation', 'Banning Users']}>
+<Tab value="Impersonation">
 
 1. Go to **Super Admin → Users**
 2. Find the user and click the menu (**⋮**)
@@ -89,8 +102,8 @@ Manage all users across the platform:
 
 ![Impersonate User Dialog](/screenshots/super-admin-impersonate-user.png)
 
-While impersonating:
-- A banner at the bottom shows "Impersonating" with the user's email
+**Using Impersonation:**
+- a banner at the bottom shows "Impersonating" with the user's email
 - Click **Stop** to return to your admin session
 - You see the platform exactly as the user would
 
@@ -100,7 +113,8 @@ While impersonating:
 **Security Notice**: All impersonation sessions are logged for audit purposes. The original admin ID is preserved throughout the session.
 </Callout>
 
-### Banning Users
+</Tab>
+<Tab value="Banning Users">
 
 To suspend a user account:
 
@@ -117,6 +131,9 @@ To suspend a user account:
 </Callout>
 
 Banned users see a "403 Account suspended" message when attempting to log in.
+
+</Tab>
+</Tabs>
 
 ## Scheduler Control
 

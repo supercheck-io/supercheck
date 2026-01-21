@@ -277,6 +277,25 @@ export default function RequirementsPage() {
                                         {selectedRequirement.title}
                                     </SheetTitle>
                                     <div className="flex items-center space-x-2">
+                                        {/* External Link */}
+                                        {(selectedRequirement.externalUrl || selectedRequirement.externalId) && (
+                                            <a
+                                                href={selectedRequirement.externalUrl || "#"}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                onClick={(e) => e.stopPropagation()}
+                                                title={selectedRequirement.externalProvider ? `Open in ${selectedRequirement.externalProvider}` : "Open external link"}
+                                                className="mr-2"
+                                            >
+                                                <Badge
+                                                    variant="outline"
+                                                    className="flex items-center gap-1.5 hover:bg-muted cursor-pointer font-normal text-xs py-0.5 h-8 px-3"
+                                                >
+                                                    <ExternalLink className="h-3 w-3" />
+                                                    <span>{selectedRequirement.externalProvider || "External Link"}</span>
+                                                </Badge>
+                                            </a>
+                                        )}
                                         {/* Edit Button */}
                                         {canEditRequirement && (
                                             <Button
@@ -540,33 +559,7 @@ export default function RequirementsPage() {
 
 
 
-                                        {/* External Link - styled like CI/CD trigger in Jobs */}
-                                        {/* External Link - styled like CI/CD trigger in Jobs */}
-                                        {(selectedRequirement.externalUrl || selectedRequirement.externalId) && (
-                                            <div className="space-y-2 bg-card p-4 rounded-lg border border-border/40">
-                                                <h3 className="text-xs font-medium text-muted-foreground">External Link</h3>
-                                                <div className="flex items-center gap-3">
-                                                    {selectedRequirement.externalProvider && (
-                                                        <Badge variant="outline" className="font-normal">
-                                                            {selectedRequirement.externalProvider}
-                                                        </Badge>
-                                                    )}
-                                                    {selectedRequirement.externalUrl ? (
-                                                        <a
-                                                            href={selectedRequirement.externalUrl}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="text-sm text-blue-500 hover:underline flex items-center gap-1 font-medium"
-                                                        >
-                                                            {selectedRequirement.externalId || "Open Link"}
-                                                            <ExternalLink className="h-3 w-3" />
-                                                        </a>
-                                                    ) : (
-                                                        <span className="text-sm font-medium">{selectedRequirement.externalId}</span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
+
 
                                         {/* Stats - Grid specific to Requirements */}
                                         <div className="grid grid-cols-3 gap-4">

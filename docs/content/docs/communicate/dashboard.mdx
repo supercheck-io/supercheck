@@ -8,7 +8,12 @@ The Dashboard provides a comprehensive view of your project's health with real-t
 
 ![Dashboard](/screenshots/dashboard.png)
 
-## Overview Tab
+The Dashboard provides a comprehensive view of your project's health with real-time insights into tests, jobs, monitors, and detailed analytics for both Playwright and K6 performance tests.
+
+![Dashboard](/screenshots/dashboard.png)
+
+<Tabs items={['Overview', 'K6 Analytics', 'Playwright Analytics']}>
+<Tab value="Overview">
 
 The Overview tab shows key project metrics at a glance.
 
@@ -45,9 +50,8 @@ Stacked area chart showing job triggers by type:
 #### Uptime Trend
 Line chart showing monitor uptime percentage over 30 days. Track reliability trends over time.
 
----
-
-## K6 Analytics Tab
+</Tab>
+<Tab value="K6 Analytics">
 
 The K6 Analytics tab provides detailed performance metrics for your load tests.
 
@@ -91,7 +95,7 @@ When a specific job is selected and has 2+ runs, click **Compare Runs** to open 
 - **Compare To (Right)** — Select the run to compare with the baseline
 
 Each run in the dropdown displays:
-- Pass/fail status indicator (green checkmark or red X)
+- Pass/fail status indicator
 - Run date and time
 - P95 response time
 - Run ID
@@ -102,72 +106,39 @@ The comparison table shows metrics from both runs with calculated delta values:
 
 | Metric | Description | Better When |
 |--------|-------------|-------------|
-| **P95 Response Time** | 95th percentile latency | Lower |
-| **P99 Response Time** | 99th percentile latency | Lower |
-| **Avg Response Time** | Mean latency | Lower |
-| **Total Requests** | Total HTTP requests made | Higher (more throughput) |
-| **Failed Requests** | Number of failed requests | Lower |
-| **Request Rate** | Requests per second | Higher (more throughput) |
-| **Peak VUs** | Maximum virtual users reached | Context-dependent |
-| **Duration** | Test execution time | Context-dependent |
+| **P95 / P99 / Avg Response** | Latency percentiles | Lower |
+| **Total / Failed Requests** | Request counts | Higher / Lower |
+| **Request Rate** | Requests per second | Higher |
+| **Peak VUs** | Maximum virtual users | Context-dependent |
 
 Delta values are color-coded:
-- **Green** — Improvement (lower latency or higher throughput)
-- **Red** — Regression (higher latency or lower throughput)
-- Percentage changes displayed for additional context
-
----
+- **Green** — Improvement
+- **Red** — Regression
 
 ### View k6 Reports
 
-Click **View k6 Reports** to compare the detailed k6 HTML reports side-by-side. This button is always visible when two runs are selected.
+Click **View k6 Reports** to compare the detailed k6 HTML reports side-by-side.
 
 ![K6 Report Comparison](/screenshots/dashboard-k6-report-comparision.png)
 
-The side-by-side view displays:
-- Full k6 HTML report for the baseline run (left)
-- Full k6 HTML report for the comparison run (right)
-- If a report is not available for a run, a placeholder message is shown instead
-- Click **Back to Metrics** to return to the comparison table
-
-Use this view to drill into detailed request timings, thresholds, checks, and HTTP response details for each run.
-
----
-
 ### AI Analyze
 
-Click **AI Analyze** to generate an AI-powered performance comparison report. This feature analyzes both runs and provides insights on performance differences, potential causes, and recommendations.
+Click **AI Analyze** to generate an AI-powered performance comparison report.
 
 ![AI Performance Analysis](/screenshots/dashboard-k6-ai-report-comparision.png)
 
-#### How It Works
-
-1. Click the **AI Analyze** button (purple sparkles icon)
-2. The analysis streams in real-time as it's generated
-3. View the detailed markdown report in the analysis viewer
-
-#### Analysis Report Contents
-
-The AI generates a professional performance comparison report that includes:
-- **Executive Summary** — High-level findings and conclusions
-- **Metric Comparison** — Detailed analysis of response times, throughput, and error rates
-- **Performance Insights** — What improved, what regressed, and by how much
-- **Potential Causes** — AI-identified reasons for performance changes
-- **Recommendations** — Actionable steps to improve performance
-
-#### Report Actions
-
-- **Copy** — Copy the full report to clipboard
-- **Download** — Download as a markdown file (`.md`)
-- **Close** — Return to the comparison dialog
+**Features:**
+- **Metric Comparison** — Detailed analysis of response times and throughput
+- **Performance Insights** — What improved and what regressed
+- **Potential Causes** — AI-identified reasons for changes
+- **Recommendations** — Actionable steps for improvement
 
 <Callout type="info">
-AI Analyze requires an OpenAI API key configured in your environment. See [AI Features](/docs/deployment/self-hosted#ai-features) for setup instructions.
+AI Analyze requires an OpenAI API key configured in your environment.
 </Callout>
 
----
-
-## Playwright Analytics Tab
+</Tab>
+<Tab value="Playwright Analytics">
 
 The Playwright Analytics tab provides insights into your browser test execution patterns and duration trends.
 
@@ -185,34 +156,16 @@ The Playwright Analytics tab provides insights into your browser test execution 
 | **Total Runs** | Number of Playwright test executions in the selected period |
 | **Passed** | Successful runs with pass rate percentage |
 | **Failed** | Failed runs (highlighted if attention needed) |
-| **Avg Duration** | Average test execution time per run |
-| **P95 Duration** | 95th percentile execution time (slowest 5% of runs) |
+| **Avg / P95 Duration** | Execution time statistics |
 | **Total Duration** | Cumulative execution time in minutes |
 
 ### Charts
 
 #### Run Frequency
-Stacked bar chart showing daily test run distribution:
-- **Green bars** — Passed runs
-- **Red bars** — Failed runs
-
-Use this to identify testing patterns, coverage gaps, and failure spikes.
+Stacked bar chart showing daily test run distribution (Passed vs Failed). Use this to identify testing patterns and failure spikes.
 
 #### Execution Time Trend
-Area chart showing test duration over time. Monitor for:
-- Performance regressions in your test suite
-- Flaky tests causing variable execution times
-- Infrastructure issues affecting test speed
+Area chart showing test duration over time. Monitor for performance regressions, flaky tests, or infrastructure issues.
 
----
-
-## Best Practices
-
-- **Review daily** — Check key metrics for anomalies
-- **Investigate failures** — Use Job Runs chart to spot patterns
-- **Track uptime** — Monitor Uptime Trend for SLA compliance
-- **Balance triggers** — Use Job Activity to ensure scheduled runs are working
-- **Compare before deploying** — Use K6 Run Comparison to validate performance before releases
-- **Use AI Analyze** — Get quick insights when comparing K6 performance runs
-- **Monitor P95 trends** — Catch performance regressions early
-- **Download reports** — Save AI analysis reports for documentation and post-mortems
+</Tab>
+</Tabs>

@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Loader2, SaveIcon } from "lucide-react";
 
 import { toast } from "sonner";
 import { Test } from "./schema";
@@ -335,12 +336,17 @@ export function JobCreationWizard() {
               context="job"
             />
 
-            <div className="flex justify-end gap-6 pt-4">
-              <Button variant="outline" onClick={handleAlertsBack}>
+            <div className="flex justify-end gap-4 pt-4">
+              <Button variant="outline" onClick={handleAlertsBack} disabled={isSubmitting}>
                 Back
               </Button>
               <Button onClick={handleAlertsNext} disabled={isSubmitting}>
-                {isSubmitting ? "Creating Job..." : "Create Job"}
+                {isSubmitting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <SaveIcon className="mr-2 h-4 w-4" />
+                )}
+                {isSubmitting ? "Creating..." : "Create Job"}
               </Button>
             </div>
           </CardContent>

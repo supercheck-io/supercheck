@@ -121,6 +121,7 @@ export type MonitorConfig = {
   };
   port?: number;
   protocol?: "tcp" | "udp";
+  expectClosed?: boolean; // When true, monitor passes if port is closed (connection refused)
   enableSslCheck?: boolean;
   sslDaysUntilExpirationWarning?: number;
   sslCheckFrequencyHours?: number;

@@ -46,6 +46,7 @@ const runsHook = createDataHook<Run>({
   endpoint: "/api/runs",
   staleTime: 5 * 1000,
   refetchOnWindowFocus: false,
+  refetchOnMount: 'always',  // Always refetch on page visit - run status changes during execution
   singleItemField: "run",
 });
 

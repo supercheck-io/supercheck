@@ -60,7 +60,9 @@ export const VALIDATION_PATTERNS = {
   telegramBotToken: /^\d+:[A-Za-z0-9_-]+$/,
   telegramChatId: /^-?\d+$/,
   discordWebhook: /^https:\/\/(discord\.com|discordapp\.com)\/api\/webhooks\//,
-  teamsWebhook: /^https:\/\/[a-zA-Z0-9-]+\.webhook\.office\.com\//,
+  // Microsoft Teams Power Automate webhook URLs
+  // Format: https://*.environment.api.powerplatform.com[:port]/powerautomate/...
+  teamsWebhook: /^https:\/\/[a-zA-Z0-9.-]+\.environment\.api\.powerplatform\.com(?::\d+)?\/powerautomate\//,
   httpUrl: /^https?:\/\/.+/,
 } as const;
 
