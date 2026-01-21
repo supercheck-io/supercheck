@@ -18,7 +18,7 @@ Empowering development and SRE teams with a scalable, distributed, and robust pl
 
 **Automate** — Browser (Playwright), API, database, and performance (k6) tests with AI-powered test creation and fix
 
-**Extension** — Record Playwright end-to-end tests directly from your browser using our [Browser Extension](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe)
+**Extension** — Record Playwright end-to-end tests directly from your browser using our Browser Extensions for [Chrome](https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe) and [Edge](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)
 
 **Monitor** — HTTP, website, ping, port, and synthetic monitors from multiple geographic regions
 
@@ -70,8 +70,6 @@ Self-host Supercheck on your own infrastructure:
 |--------|-------------|-------|
 | [![Deploy with Coolify](https://img.shields.io/badge/Deploy%20with-Coolify-6B16ED?logo=coolify&logoColor=white)](./deploy/coolify/README.md) | One-click deploy on [Coolify](https://coolify.io) | [Read Guide ↗](./deploy/coolify/README.md) |
 | [![Deploy with Docker](https://img.shields.io/badge/Deploy%20with-Docker%20Compose-2496ED?logo=docker&logoColor=white)](https://supercheck.io/docs/deployment) | Manual deployment with Docker | [Read Guide ↗](https://supercheck.io/docs/deployment) |
-
-> **Want official Coolify template?** [⭐ Star this repo](https://github.com/supercheck-io/supercheck) — Coolify requires 1k stars for official catalog inclusion ([see PR](https://github.com/coollabsio/coolify/pull/7962)).
 
 ## Documentation
 
