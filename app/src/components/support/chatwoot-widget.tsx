@@ -59,13 +59,22 @@ declare global {
 function validateBaseUrl(url: string): string | null {
     try {
         const parsed = new URL(url);
-        // Only allow https in production, http for localhost
+        // Allow HTTPS for all hosts
+        // Allow HTTP only for localhost development to prevent MITM on remote hosts
         // This implicitly blocks javascript:, data:, and other dangerous protocols
-        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-            console.error("[Chatwoot] Invalid protocol in baseUrl - only https and http allowed");
-            return null;
+        if (parsed.protocol === "https:") {
+            return parsed.origin;
         }
-        return parsed.origin;
+        if (
+            parsed.protocol === "http:" &&
+            (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1")
+        ) {
+            return parsed.origin;
+        }
+        console.error(
+            "[Chatwoot] Invalid protocol/host - only HTTPS allowed, or HTTP for localhost"
+        );
+        return null;
     } catch {
         console.error("[Chatwoot] Invalid baseUrl format");
         return null;
