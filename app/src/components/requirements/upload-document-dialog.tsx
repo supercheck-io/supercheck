@@ -35,6 +35,8 @@ import {
 import { toast } from "sonner";
 import { extractRequirementsFromDocument } from "@/actions/extract-requirements";
 import { createRequirement } from "@/actions/requirements";
+import { REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 
 interface ExtractedRequirement {
@@ -200,6 +202,7 @@ export function UploadDocumentDialog({
     onOpenChange,
     onComplete,
 }: UploadDocumentDialogProps) {
+    const queryClient = useQueryClient();
     const [state, setState] = useState<UploadState>("idle");
     const [progress, setProgress] = useState(0);
     const [file, setFile] = useState<File | null>(null);
@@ -340,6 +343,7 @@ export function UploadDocumentDialog({
 
             // Invalidate React Query cache to refresh requirements list
             // Don't auto-close - let user read "What's Next" instructions
+            await queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
             onComplete?.();
         } catch (err) {
             console.error("Error creating requirements:", err);
@@ -517,73 +521,73 @@ export function UploadDocumentDialog({
                                     </p>
                                 </div>
                             ) : (
-                            <ScrollArea className="h-[320px] border rounded-lg">
-                                <div className="p-3 space-y-2">
-                                    {extractedRequirements.map((req) => (
-                                        <div
-                                            key={req.id}
-                                            className={cn(
-                                                "flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-all duration-200",
-                                                req.selected
-                                                    ? "bg-primary/5 border-primary/30 shadow-sm"
-                                                    : "bg-muted/20 hover:bg-muted/40 border-transparent"
-                                            )}
-                                            onClick={() => toggleRequirement(req.id)}
-                                        >
-                                            <Checkbox
-                                                checked={req.selected}
-                                                onCheckedChange={() => toggleRequirement(req.id)}
-                                                className="mt-0.5"
-                                            />
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                                                    <span className="font-medium">{req.title}</span>
-                                                    <PriorityBadge priority={req.priority} />
-                                                    {req.tags.map((tag) => (
-                                                        <Badge key={tag} variant="secondary" className="text-xs">
-                                                            {tag}
-                                                        </Badge>
-                                                    ))}
-                                                </div>
-                                                {req.description && (
-                                                    <p className="text-sm text-muted-foreground line-clamp-2">
-                                                        {req.description}
-                                                    </p>
+                                <ScrollArea className="h-[320px] border rounded-lg">
+                                    <div className="p-3 space-y-2">
+                                        {extractedRequirements.map((req) => (
+                                            <div
+                                                key={req.id}
+                                                className={cn(
+                                                    "flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-all duration-200",
+                                                    req.selected
+                                                        ? "bg-primary/5 border-primary/30 shadow-sm"
+                                                        : "bg-muted/20 hover:bg-muted/40 border-transparent"
                                                 )}
+                                                onClick={() => toggleRequirement(req.id)}
+                                            >
+                                                <Checkbox
+                                                    checked={req.selected}
+                                                    onCheckedChange={() => toggleRequirement(req.id)}
+                                                    className="mt-0.5"
+                                                />
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                                                        <span className="font-medium">{req.title}</span>
+                                                        <PriorityBadge priority={req.priority} />
+                                                        {req.tags.map((tag) => (
+                                                            <Badge key={tag} variant="secondary" className="text-xs">
+                                                                {tag}
+                                                            </Badge>
+                                                        ))}
+                                                    </div>
+                                                    {req.description && (
+                                                        <p className="text-sm text-muted-foreground line-clamp-2">
+                                                            {req.description}
+                                                        </p>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </ScrollArea>
+                                        ))}
+                                    </div>
+                                </ScrollArea>
                             )}
 
                             {extractedRequirements.length > 0 && (
-                            <div className="flex items-center justify-between pt-2 border-t">
-                                <span className="text-sm text-muted-foreground">
-                                    {selectedCount} of {extractedRequirements.length} selected
-                                </span>
-                                <div className="flex gap-2">
-                                    <Button variant="outline" onClick={handleClose}>
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        onClick={handleCreateRequirements}
-                                        disabled={selectedCount === 0}
-                                        className="gap-2"
-                                    >
-                                        <Plus className="h-4 w-4" />
-                                        Create {selectedCount} Requirements
-                                    </Button>
+                                <div className="flex items-center justify-between pt-2 border-t">
+                                    <span className="text-sm text-muted-foreground">
+                                        {selectedCount} of {extractedRequirements.length} selected
+                                    </span>
+                                    <div className="flex gap-2">
+                                        <Button variant="outline" onClick={handleClose}>
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            onClick={handleCreateRequirements}
+                                            disabled={selectedCount === 0}
+                                            className="gap-2"
+                                        >
+                                            <Plus className="h-4 w-4" />
+                                            Create {selectedCount} Requirements
+                                        </Button>
+                                    </div>
                                 </div>
-                            </div>
                             )}
 
                             {extractedRequirements.length === 0 && (
-                            <div className="flex justify-center pt-4">
-                                <Button variant="outline" onClick={resetState}>
-                                    Try Another Document
-                                </Button>
-                            </div>
+                                <div className="flex justify-center pt-4">
+                                    <Button variant="outline" onClick={resetState}>
+                                        Try Another Document
+                                    </Button>
+                                </div>
                             )}
                         </div>
                     )}
@@ -608,7 +612,7 @@ export function UploadDocumentDialog({
                             <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-green-500/10 flex items-center justify-center">
                                 <CheckCircle2 className="h-7 w-7 text-green-500" />
                             </div>
-                            
+
                             <p className="text-lg font-semibold text-green-500 mb-1">
                                 Requirements created successfully!
                             </p>
@@ -622,7 +626,7 @@ export function UploadDocumentDialog({
                                     <Lightbulb className="h-4 w-4 text-amber-500" />
                                     <span className="font-medium text-sm">What&apos;s Next?</span>
                                 </div>
-                                
+
                                 <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
                                     <div className="flex items-start gap-2.5">
                                         <div className="w-5 h-5 rounded-full bg-muted text-muted-foreground border flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">1</div>

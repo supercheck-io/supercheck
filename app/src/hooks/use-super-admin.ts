@@ -75,7 +75,7 @@ export function useSuperAdminStats() {
     queryFn: fetchSuperAdminStats,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',
     refetchOnReconnect: false,
   });
 
@@ -98,7 +98,7 @@ export function useSuperAdminUsers() {
     queryFn: fetchSuperAdminUsers,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',
     refetchOnReconnect: false,
   });
 
@@ -121,7 +121,7 @@ export function useSuperAdminOrganizations() {
     queryFn: fetchSuperAdminOrganizations,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',
     refetchOnReconnect: false,
   });
 

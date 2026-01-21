@@ -269,9 +269,9 @@ export function RequirementForm({
                 await saveRequirementTags(targetId);
             }
 
-            queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
+            await queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
             if (targetId) {
-                queryClient.invalidateQueries({ queryKey: ["requirement-linked-tests", targetId], refetchType: 'all' });
+                await queryClient.invalidateQueries({ queryKey: ["requirement-linked-tests", targetId], refetchType: 'all' });
             }
 
             if (onSuccess && targetId) {

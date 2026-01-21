@@ -88,6 +88,7 @@ const jobsHook = createDataHook<Job, CreateJobData, UpdateJobData>({
   endpoint: "/api/jobs",
   staleTime: 30 * 1000,  // 30 seconds - job status changes frequently with runs
   refetchOnWindowFocus: false,
+  refetchOnMount: 'always',  // Always refetch on page visit - job status changes when runs complete
   singleItemField: "job",
 });
 

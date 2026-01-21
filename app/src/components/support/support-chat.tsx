@@ -1,9 +1,22 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
 import { useSession } from "@/utils/auth-client";
 import { useImpersonationStatus } from "@/hooks/use-impersonation-status";
 import { ChatwootWidget } from "./chatwoot-widget";
+
+// Routes where the chat widget should be hidden (external/public pages)
+const HIDDEN_ROUTES = [
+    "/notification-", // notification-monitor, notification-run
+    "/status/",       // public status pages
+    "/sign-in",       // auth pages
+    "/sign-up",
+    "/forgot-password",
+    "/reset-password",
+    "/verify-email",
+    "/onboarding",    // onboarding flow
+];
 
 interface HostingModeResponse {
     selfHosted: boolean;
@@ -53,8 +66,12 @@ export function SupportChat() {
     const { data: session } = useSession();
     const { isImpersonating, isLoading: isImpersonationLoading } = useImpersonationStatus();
     const isHydrated = useHydrated();
+    const pathname = usePathname();
     const [isCloudMode, setIsCloudMode] = useState<boolean | null>(null);
     const [identityToken, setIdentityToken] = useState<string | null>(null);
+
+    // Check if current route is an external/public page
+    const isExternalPage = HIDDEN_ROUTES.some(route => pathname?.startsWith(route));
 
     // Check config - these are set at build time
     const baseUrl = process.env.NEXT_PUBLIC_CHATWOOT_BASE_URL;
@@ -104,15 +121,17 @@ export function SupportChat() {
     }, [isHydrated, hasChatwootConfig]);
 
     // Don't render if:
-    // 1. Not mounted yet (avoid hydration mismatch)
-    // 2. Still determining hosting mode
-    // 3. Not in cloud mode (self-hosted users don't get chat)
-    // 4. Configuration is missing
-    // 5. No authenticated user
-    // 6. Still loading impersonation status (wait for it)
-    // 7. Admin is impersonating a user (SECURITY: prevent cross-contamination)
+    // 1. Not hydrated yet (avoid hydration mismatch)
+    // 2. On an external/public page (notification, status)
+    // 3. Still determining hosting mode
+    // 4. Not in cloud mode (self-hosted users don't get chat)
+    // 5. Configuration is missing
+    // 6. No authenticated user
+    // 7. Still loading impersonation status (wait for it)
+    // 8. Admin is impersonating a user (SECURITY: prevent cross-contamination)
     if (
         !isHydrated ||
+        isExternalPage ||
         isCloudMode === null ||
         !isCloudMode ||
         !hasChatwootConfig ||

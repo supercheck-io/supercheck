@@ -954,7 +954,7 @@ export function MonitorForm({
       });
 
       // Invalidate Monitors cache to ensure fresh data on monitors page
-      queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
+      await queryClient.invalidateQueries({ queryKey: MONITORS_QUERY_KEY, refetchType: 'all' });
 
       if (editMode) {
         router.push(`/monitors/${id}`);

@@ -53,6 +53,7 @@ const statusPagesHook = createDataHook<StatusPage, CreateStatusPageData, UpdateS
   queryKey: STATUS_PAGES_QUERY_KEY,
   endpoint: "/api/status-pages",
   refetchOnWindowFocus: false,
+  refetchOnMount: 'always',  // Always refetch on page visit for fresh data
   singleItemField: "statusPage",
 });
 
@@ -162,7 +163,7 @@ export function useStatusPageDetail(statusPageId: string | null) {
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
-    placeholderData: keepPreviousData,
+    // Note: Removed placeholderData to ensure fresh data is shown immediately after fetch
   });
 
   const invalidate = () =>

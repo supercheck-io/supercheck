@@ -85,10 +85,10 @@ export function useTags() {
     queryFn: fetchTags,
     // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',  // Always refetch on page visit for fresh data
     refetchOnReconnect: false,
     enabled: !!projectId,
-    placeholderData: keepPreviousData,
+    // Note: Removed placeholderData to ensure fresh data is shown immediately after fetch
   });
 
   const isInitialLoading = result.isPending && result.isFetching && !isRestoring;
@@ -111,9 +111,9 @@ export function useTestTags(testId: string | null): UseQueryResult<Tag[], Error>
     enabled: !!testId && !!projectId,
     // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',  // Always refetch on page visit for fresh data
     refetchOnReconnect: false,
-    placeholderData: keepPreviousData,
+    // Note: Removed placeholderData to ensure fresh data is shown immediately after fetch
   });
 
   return {
@@ -191,9 +191,9 @@ export function useRequirementTags(requirementId: string | null): UseQueryResult
     enabled: !!requirementId && !!projectId,
     // Uses global defaults: staleTime (30min), gcTime (24h)
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',  // Always refetch on page visit for fresh data
     refetchOnReconnect: false,
-    placeholderData: keepPreviousData,
+    // Note: Removed placeholderData to ensure fresh data is shown immediately after fetch
   });
 
   return {

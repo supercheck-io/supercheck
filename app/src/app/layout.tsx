@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/lib/query-provider";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
+import { SupportChat } from "@/components/support/support-chat";
 
 // Use system fonts instead of Google Fonts for offline builds
 const systemFonts = {
@@ -42,6 +43,7 @@ export default function RootLayout({
             disableTransitionOnChange
           >
             {children}
+            <SupportChat />
             <Toaster position="bottom-right" richColors />
           </ThemeProvider>
         </QueryProvider>

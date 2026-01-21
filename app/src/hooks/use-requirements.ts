@@ -52,6 +52,7 @@ const requirementsHook = createDataHook<Requirement>({
   endpoint: "/api/requirements",
   // Inherits staleTime (5min) and gcTime (24h) from factory defaults
   refetchOnWindowFocus: false,
+  refetchOnMount: 'always',  // Always refetch on page visit for fresh data
   singleItemField: "requirement",
 });
 

@@ -201,7 +201,7 @@ export function createDataHook<
       refetchOnWindowFocus,
       refetchOnMount,
       refetchOnReconnect: false,
-      placeholderData: keepPreviousData,
+      // Note: Removed placeholderData to ensure fresh data is shown immediately after fetch
     });
 
     const invalidate = () =>
@@ -248,7 +248,7 @@ export function createDataHook<
       refetchOnWindowFocus: false,
       refetchOnMount: false,
       refetchOnReconnect: false,
-      placeholderData: keepPreviousData,
+      // Note: Removed placeholderData to ensure fresh data is shown immediately after fetch
     });
 
     const invalidate = () =>

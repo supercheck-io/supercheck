@@ -168,6 +168,7 @@ export async function GET(request: NextRequest) {
 
         return {
           id: test.id,
+          name: test.title, // Frontend expects 'name', map from 'title' for compatibility
           title: test.title,
           description: test.description,
           priority: test.priority,

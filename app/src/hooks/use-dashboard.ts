@@ -312,10 +312,10 @@ export function useDashboard() {
     staleTime: 60 * 1000,  // Dashboard data refreshes more frequently (60s)
     // gcTime uses global default (24h)
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    refetchOnMount: 'always',  // Always refetch on page visit for fresh dashboard data
     refetchOnReconnect: false,
     retry: 2,
-    placeholderData: keepPreviousData,
+    // Note: Removed placeholderData to ensure fresh data is shown immediately after fetch
   });
 
   const refetch = () => query.refetch();
