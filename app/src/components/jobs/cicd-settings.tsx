@@ -3,11 +3,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { format } from "date-fns";
-import { 
-  Trash2, 
-  AlertTriangle, 
+import {
+  Trash2,
+  AlertTriangle,
   Key,
   Loader2,
   CheckCircle,
@@ -53,7 +54,7 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
   const [error, setError] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [keyToDelete, setKeyToDelete] = useState<string | null>(null);
-  const [operationLoadingStates, setOperationLoadingStates] = useState<{[keyId: string]: 'toggle' | 'delete' | null}>({});
+  const [operationLoadingStates, setOperationLoadingStates] = useState<{ [keyId: string]: 'toggle' | 'delete' | null }>({});
 
   // Check permissions for API key deletion (using job delete permission as proxy for API key management)
   const { currentProject } = useProjectContext();
@@ -64,9 +65,9 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
     try {
       setIsLoading(true);
       setError(null);
-      
+
       const response = await fetch(`/api/jobs/${jobId}/api-keys`);
-      
+
       if (!response.ok) {
         if (response.status === 403) {
           throw new Error("Access denied. You don't have permission to view API keys for this job.");
@@ -74,7 +75,7 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
         const errorData = await response.json();
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
-      
+
       const data = await response.json();
       setApiKeys(data.apiKeys || []);
     } catch (err) {
@@ -106,7 +107,7 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
 
     try {
       setOperationLoadingStates(prev => ({ ...prev, [keyToDelete]: 'delete' }));
-      
+
       const response = await fetch(`/api/jobs/${jobId}/api-keys/${keyToDelete}`, {
         method: "DELETE",
       });
@@ -132,7 +133,7 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
   const handleToggleEnabled = async (keyId: string, currentEnabled: boolean) => {
     try {
       setOperationLoadingStates(prev => ({ ...prev, [keyId]: 'toggle' }));
-      
+
       const response = await fetch(`/api/jobs/${jobId}/api-keys/${keyId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -157,17 +158,17 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
 
   const getExpiryStatus = (expiresAt: string | null) => {
     if (!expiresAt) return null;
-    
+
     const now = new Date();
     const expiry = new Date(expiresAt);
     const daysUntilExpiry = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     if (daysUntilExpiry < 0) {
       return { status: "expired", text: "Expired", className: "bg-red-100 text-red-800 border-red-200" };
     } else if (daysUntilExpiry <= 7) {
       return { status: "expiring", text: `Expires in ${daysUntilExpiry} day${daysUntilExpiry === 1 ? '' : 's'}`, className: "bg-orange-100 text-orange-800 border-orange-200" };
     }
-    
+
     return null;
   };
 
@@ -208,14 +209,28 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="flex flex-col items-center gap-3">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <div className="text-center">
-                  <p className="text-sm text-muted-foreground">Loading API keys...</p>
-                  <p className="text-xs text-muted-foreground/70 mt-1">Please wait while we fetch your API keys</p>
+            <div className="space-y-2">
+              {/* Skeleton matching API key card structure */}
+              {[...Array(2)].map((_, i) => (
+                <div key={i} className="flex items-center justify-between p-3 border rounded-lg bg-card">
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Skeleton className="h-4 w-4" />
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-4 w-12 rounded-full" />
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <Skeleton className="h-3 w-32" />
+                      <Skeleton className="h-3 w-24" />
+                      <Skeleton className="h-3 w-28" />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Skeleton className="h-8 w-8" />
+                    <Skeleton className="h-8 w-8 ml-1" />
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
           ) : apiKeys.length === 0 ? (
             <div className="text-center py-6">
@@ -233,9 +248,8 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
                 return (
                   <div
                     key={key.id}
-                    className={`flex items-center justify-between p-3 border rounded-lg ${
-                      isExpired ? 'bg-red-50 border-red-200' : 'bg-card'
-                    }`}
+                    className={`flex items-center justify-between p-3 border rounded-lg ${isExpired ? 'bg-red-50 border-red-200' : 'bg-card'
+                      }`}
                   >
                     <div className="flex-1 space-y-1">
                       <div className="flex items-center gap-2">
@@ -268,20 +282,20 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleToggleEnabled(key.id, key.enabled)}
-                          disabled={operationLoadingStates[key.id] === 'toggle'}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleToggleEnabled(key.id, key.enabled)}
+                        disabled={operationLoadingStates[key.id] === 'toggle'}
                         className={key.enabled ? "text-green-600 hover:text-green-700 hover:bg-green-50" : "text-gray-500 hover:text-gray-600 hover:bg-red-50"}
-                          title={key.enabled ? "Disable key" : "Enable key"}
-                        >
-                          {operationLoadingStates[key.id] === 'toggle' ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            key.enabled ? <CheckCircle className="h-4 w-4" /> : <Ban className="h-4 w-4" />
-                          )}
-                        </Button>
+                        title={key.enabled ? "Disable key" : "Enable key"}
+                      >
+                        {operationLoadingStates[key.id] === 'toggle' ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          key.enabled ? <CheckCircle className="h-4 w-4" /> : <Ban className="h-4 w-4" />
+                        )}
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -349,5 +363,4 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
       </AlertDialog>
     </div>
   );
-} 
-    
+}

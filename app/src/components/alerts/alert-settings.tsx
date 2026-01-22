@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { NotificationProviderForm } from "@/components/alerts/notification-provider-form";
 import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { getNotificationProviderConfig } from "@/components/alerts/data";
@@ -512,9 +513,18 @@ export function AlertSettings({
               </div>
 
               {loading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="h-16 bg-muted rounded-lg animate-pulse" />
-                  <div className="h-16 bg-muted rounded-lg animate-pulse" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {/* Skeleton cards matching notification channel card structure */}
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="flex items-center p-3 rounded-lg bg-secondary">
+                      <Skeleton className="w-8 h-8 rounded-full mr-3 shrink-0" />
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-3 w-12" />
+                      </div>
+                      <Skeleton className="ml-2 h-4 w-4 shrink-0" />
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div>

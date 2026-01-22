@@ -119,7 +119,7 @@ function SyntaxHighlightedJSON({ data }: { data: unknown }) {
   };
 
   return (
-    <pre className="text-sm font-mono whitespace-pre overflow-x-auto">
+    <pre className="text-sm font-mono whitespace-pre-wrap break-all">
       {formatValue(data)}
     </pre>
   );
