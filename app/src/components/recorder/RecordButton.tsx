@@ -54,7 +54,7 @@ function detectBrowser(): 'chrome' | 'edge' | 'unsupported' {
 
 // Extension URLs
 const CHROME_WEB_STORE_URL = "https://chromewebstore.google.com/detail/supercheck-recorder/gfmbcelfhhfmifdkccnbgdadibdfhioe";
-const EDGE_ADDONS_URL = "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/0rdckc265vb9";
+const EDGE_ADDONS_URL = "https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem";
 
 export function RecordButton({
   projectId,

@@ -5,7 +5,7 @@ All notable changes to Supercheck are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 
-## [1.2.3] - UNRELEASED
+## [1.2.3] - 2026-01-22
 
 ### Added
 - **Microsoft Edge browser extension** — Supercheck Recorder Extension for [Microsoft Edge](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)
@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Monitor creation wizard button labels and icon inconsistency ([#198](https://github.com/supercheck-io/supercheck/issues/198))
 - New MS Teams webhook URLs not allowed for notifications ([#195](https://github.com/supercheck-io/supercheck/issues/195))
 - Cache invalidation for requirements and cross-entity data consistency
+- Audit Log Details page layout issues ([#164](https://github.com/supercheck-io/supercheck/issues/164))
 
 ---
 
