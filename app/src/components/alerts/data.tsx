@@ -111,7 +111,7 @@ export const notificationProviders = [
   },
   {
     type: "teams",
-    label: "Microsoft Teams",
+    label: "Teams",
     icon: MicrosoftTeamsLogo,
     color: "text-[#6264A7]",
   },

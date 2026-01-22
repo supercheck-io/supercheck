@@ -476,7 +476,7 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
                 type: "FactSet",
                 facts: [
                   { title: "Status", value: "Connected Successfully" },
-                  { title: "Provider", value: "Microsoft Teams" },
+                  { title: "Provider", value: "Teams" },
                 ],
                 spacing: "medium",
               },

@@ -160,11 +160,15 @@ SMTP_FROM_EMAIL=alerts@yourdomain.com
 </Tab>
 <Tab value="Microsoft Teams">
 
+Teams uses Power Automate Workflows to receive webhook notifications.
+
 1. Go to the Teams channel where you want notifications
 2. Click **•••** → **Workflows** → **Create a workflow**
-3. Select **Post to a channel when a webhook request is received**
-4. Copy the webhook URL
-5. Add the URL in Supercheck
+3. Choose a template:
+   - **Send webhook alerts to a channel** — posts to a Teams channel
+4. Follow the prompts to select the destination channel
+5. Copy the generated webhook URL
+6. Add the URL in Supercheck Notification Channel
 
 **Example:** `https://prod-00.westus.environment.api.powerplatform.com:443/powerautomate/...`
 
@@ -205,7 +209,7 @@ Track all alerts from **Alerts → History**:
 
 ## Alert Samples
 
-<Tabs items={['Email', 'Slack', 'Discord']}>
+<Tabs items={['Email', 'Slack', 'Discord', 'Teams']}>
 <Tab value="Email">
 
 <div style={{maxWidth: '320px'}}>
@@ -228,6 +232,17 @@ Track all alerts from **Alerts → History**:
 
 <div style={{maxWidth: '400px'}}>
 ![Discord Alert](/screenshots/alert_discord.png)
+</div>
+
+</Tab>
+<Tab value="Teams">
+
+<div style={{maxWidth: '400px'}}>
+![Teams Job Notification](/screenshots/alert-teams-job.png)
+</div>
+
+<div style={{maxWidth: '400px'}}>
+![Teams Monitor Notification](/screenshots/alert-teams-monitor.png)
 </div>
 
 </Tab>
