@@ -423,25 +423,36 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
       throw new Error(urlValidation.error || "Invalid webhook URL");
     }
 
-    // Validate that the URL is a Power Automate Teams webhook URL
+    // Validate that the URL is a valid Microsoft Teams webhook URL
+    // Supported formats (per Microsoft documentation):
+    // - Power Automate: *.powerplatform.com
+    // - Azure Logic Apps: *.logic.azure.com
+    // - Legacy Connectors: *.webhook.office.com
     try {
       const parsedUrl = new URL(webhookUrl);
       const hostname = parsedUrl.hostname.toLowerCase();
       
-      // Only Power Automate webhook URLs are supported
-      if (!hostname.endsWith('.environment.api.powerplatform.com')) {
-        throw new Error("URL must be a valid Power Automate webhook URL (*.environment.api.powerplatform.com)");
-      }
-      // Validate the path starts with /powerautomate/
-      if (!parsedUrl.pathname.startsWith('/powerautomate/')) {
-        throw new Error("Power Automate webhook URL must have /powerautomate/ path");
-      }
       // Enforce HTTPS protocol
       if (parsedUrl.protocol !== 'https:') {
         throw new Error("Teams webhook URL must use HTTPS");
       }
+      
+      // Check against allowed Microsoft domains
+      const allowedDomains = [
+        '.powerplatform.com',
+        '.logic.azure.com',
+        '.webhook.office.com',
+      ];
+      
+      const isValidDomain = allowedDomains.some(domain => hostname.endsWith(domain));
+      if (!isValidDomain) {
+        throw new Error(
+          "URL must be a valid Microsoft Teams webhook URL. " +
+          "Supported domains: *.powerplatform.com, *.logic.azure.com, *.webhook.office.com"
+        );
+      }
     } catch (parseError) {
-      if (parseError instanceof Error && parseError.message.includes('Power Automate')) {
+      if (parseError instanceof Error && parseError.message.includes('webhook')) {
         throw parseError;
       }
       throw new Error("Invalid URL format");

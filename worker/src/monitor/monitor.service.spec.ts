@@ -224,7 +224,6 @@ describe('MonitorService', () => {
       ],
     }).compile();
 
-
     service = module.get<MonitorService>(MonitorService);
   });
 

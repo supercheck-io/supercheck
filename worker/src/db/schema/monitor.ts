@@ -148,7 +148,6 @@ export const monitorResults = pgTable(
   }),
 );
 
-
 // Zod schemas for monitors
 export const monitorsInsertSchema = createInsertSchema(monitors);
 export const monitorsUpdateSchema = createUpdateSchema(monitors);

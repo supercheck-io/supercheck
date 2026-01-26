@@ -59,7 +59,6 @@ import {
 import { RedisService } from '../execution/services/redis.service';
 import { VariableResolverService } from '../common/services/variable-resolver.service';
 
-
 // Use the Monitor type from schema
 type Monitor = z.infer<typeof monitorsSelectSchema>;
 
@@ -91,7 +90,6 @@ export class MonitorService {
     private readonly redisService: RedisService,
     private readonly variableResolverService: VariableResolverService,
   ) {}
-
 
   async executeMonitor(
     jobData: MonitorJobDataDto,
@@ -1265,7 +1263,10 @@ export class MonitorService {
       }
     } finally {
       // 🔴 CRITICAL: Always release the connection to prevent connection leaks
-      await this.resourceManager.releaseConnection(connectionPool.id, connection);
+      await this.resourceManager.releaseConnection(
+        connectionPool.id,
+        connection,
+      );
     }
 
     this.logger.debug(
@@ -1569,7 +1570,7 @@ export class MonitorService {
             responseTimeMs,
             expectClosed: true,
             errorMessage: 'Port appears open but was expected to be closed',
-            note: "UDP packet sent successfully. Note: UDP checks are inherently unreliable.",
+            note: 'UDP packet sent successfully. Note: UDP checks are inherently unreliable.',
           };
         } else {
           // Normal behavior - open port is success
@@ -2197,7 +2198,8 @@ export class MonitorService {
         testReportS3Url: resultData.testReportS3Url || null,
         // PERFORMANCE: Store executionGroupId as first-class column for indexed lookups
         executionGroupId:
-          (resultData.details as { executionGroupId?: string })?.executionGroupId || null,
+          (resultData.details as { executionGroupId?: string })
+            ?.executionGroupId || null,
       });
     } catch (error) {
       this.logger.error(
@@ -2443,7 +2445,12 @@ export class MonitorService {
 
       // 3.5. Resolve project variables and prepend helper functions
       // This enables getVariable() and getSecret() to work in synthetic monitors
+      // CRITICAL: We MUST always prepend the function definitions, even if empty,
+      // to prevent ReferenceError when user's script calls getVariable/getSecret
+      let resolvedVariables: Record<string, string> = {};
+      let resolvedSecrets: Record<string, string> = {};
       const projectId = test.projectId;
+
       if (projectId) {
         try {
           const variableResolution =
@@ -2457,24 +2464,29 @@ export class MonitorService {
             );
           }
 
-          // Generate and prepend the getVariable/getSecret function implementations
-          const variableFunctionCode =
-            this.variableResolverService.generateVariableFunctions(
-              variableResolution.variables,
-              variableResolution.secrets,
-            );
-          decodedScript = variableFunctionCode + '\n' + decodedScript;
+          resolvedVariables = variableResolution.variables;
+          resolvedSecrets = variableResolution.secrets;
 
           this.logger.debug(
-            `[${monitorId}] Applied ${Object.keys(variableResolution.variables).length} variables and ${Object.keys(variableResolution.secrets).length} secrets`,
+            `[${monitorId}] Resolved ${Object.keys(resolvedVariables).length} variables and ${Object.keys(resolvedSecrets).length} secrets`,
           );
         } catch (varError) {
-          // Log the error but continue execution - tests without variables should still work
+          // Log the error but continue with empty variables/secrets
+          // The function definitions will still be prepended (with empty objects)
           this.logger.warn(
-            `[${monitorId}] Failed to resolve variables, continuing without them: ${getErrorMessage(varError)}`,
+            `[${monitorId}] Failed to resolve variables, continuing with empty variables: ${getErrorMessage(varError)}`,
           );
         }
       }
+
+      // ALWAYS prepend getVariable/getSecret function implementations
+      // This ensures the functions are defined even if there are no variables configured
+      const variableFunctionCode =
+        this.variableResolverService.generateVariableFunctions(
+          resolvedVariables,
+          resolvedSecrets,
+        );
+      decodedScript = variableFunctionCode + '\n' + decodedScript;
 
       // 4. Execute test using existing ExecutionService
       this.logger.log(
@@ -2489,7 +2501,6 @@ export class MonitorService {
         true,
         true,
       ); // Bypass concurrency check and use unique execution IDs for monitor executions
-
 
       // Use actual test execution time if available, otherwise fall back to total time
       const responseTimeMs =
