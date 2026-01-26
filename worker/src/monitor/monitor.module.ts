@@ -52,7 +52,6 @@ const commonProviders = [
   VariableResolverService,
 ];
 
-
 /**
  * Valid WORKER_LOCATION values:
  * - 'local': Development mode - processes ALL queues on a single worker

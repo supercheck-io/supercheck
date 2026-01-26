@@ -11,6 +11,10 @@ import {
   createRetryConfig,
   RetryOptions,
 } from '../common/utils/retry.util';
+import {
+  isValidTeamsWebhookDomain,
+  getTeamsWebhookDomainError,
+} from './notification.constants';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -917,18 +921,6 @@ export class NotificationService {
         return false;
       }
 
-      // Validate URL format - only Power Automate URLs are supported
-      // Format: https://*.environment.api.powerplatform.com[:port]/powerautomate/...
-      const powerAutomateUrlPattern =
-        /^https:\/\/[a-zA-Z0-9.-]+\.environment\.api\.powerplatform\.com(:\d+)?\/powerautomate\//;
-      
-      if (!powerAutomateUrlPattern.test(webhookUrl)) {
-        this.logger.error(
-          'Invalid Teams webhook URL format. Must be a Power Automate URL (*.environment.api.powerplatform.com/powerautomate/...)',
-        );
-        return false;
-      }
-
       // Validate URL is parseable
       let parsedUrl: URL;
       try {
@@ -941,6 +933,16 @@ export class NotificationService {
       // Security: Ensure HTTPS only
       if (parsedUrl.protocol !== 'https:') {
         this.logger.error('Teams webhook URL must use HTTPS');
+        return false;
+      }
+
+      // Check against allowed Microsoft domains (shared constant for DRY)
+      const hostname = parsedUrl.hostname.toLowerCase();
+      const isValidDomain = isValidTeamsWebhookDomain(hostname);
+      if (!isValidDomain) {
+        this.logger.error(
+          `Invalid Teams webhook URL domain: ${hostname}. ${getTeamsWebhookDomainError()}`,
+        );
         return false;
       }
 
@@ -962,9 +964,7 @@ export class NotificationService {
       const sanitizeText = (text: string | undefined | null): string => {
         if (!text) return '';
         // Remove control characters and limit length
-        return text
-          .replace(/[\x00-\x1F\x7F]/g, '')
-          .substring(0, 5000);
+        return text.replace(/[\x00-\x1F\x7F]/g, '').substring(0, 5000);
       };
 
       // Build Adaptive Card payload for Teams
@@ -995,7 +995,12 @@ export class NotificationService {
                 {
                   type: 'FactSet',
                   facts: (formatted.fields || [])
-                    .filter((f) => f?.value && typeof f.value === 'string' && f.value.trim() !== '')
+                    .filter(
+                      (f) =>
+                        f?.value &&
+                        typeof f.value === 'string' &&
+                        f.value.trim() !== '',
+                    )
                     .slice(0, 10) // Teams limits FactSet items
                     .map((f) => ({
                       title: sanitizeText(f.title),

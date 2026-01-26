@@ -110,8 +110,12 @@ export class RequirementCoverageService {
       }
 
       // Count test statuses
-      const passedCount = linkedTests.filter((t) => t.status === 'passed').length;
-      const failedCount = linkedTests.filter((t) => t.status === 'failed').length;
+      const passedCount = linkedTests.filter(
+        (t) => t.status === 'passed',
+      ).length;
+      const failedCount = linkedTests.filter(
+        (t) => t.status === 'failed',
+      ).length;
       const pendingCount = linkedTests.filter((t) => t.status === null).length;
       const failedTest = linkedTests.find((t) => t.status === 'failed');
 

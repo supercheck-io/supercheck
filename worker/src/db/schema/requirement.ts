@@ -94,7 +94,9 @@ export const requirementDocuments = pgTable(
         onDelete: 'cascade',
       }),
     name: varchar('name', { length: 255 }).notNull(),
-    type: varchar('type', { length: 20 }).$type<RequirementDocumentType>().notNull(),
+    type: varchar('type', { length: 20 })
+      .$type<RequirementDocumentType>()
+      .notNull(),
     storagePath: varchar('storage_path', { length: 500 }).notNull(),
     fileSize: integer('file_size'),
     uploadedByUserId: uuid('uploaded_by_user_id').references(() => user.id, {
@@ -104,7 +106,9 @@ export const requirementDocuments = pgTable(
     createdAt: timestamp('created_at').defaultNow(),
   },
   (table) => ({
-    projectIdIdx: index('requirement_documents_project_id_idx').on(table.projectId),
+    projectIdIdx: index('requirement_documents_project_id_idx').on(
+      table.projectId,
+    ),
   }),
 );
 
@@ -123,7 +127,10 @@ export const testRequirements = pgTable(
     createdAt: timestamp('created_at').defaultNow(),
   },
   (table) => ({
-    pk: uniqueIndex('test_requirements_pk').on(table.testId, table.requirementId),
+    pk: uniqueIndex('test_requirements_pk').on(
+      table.testId,
+      table.requirementId,
+    ),
     testIdIdx: index('test_requirements_test_id_idx').on(table.testId),
     requirementIdIdx: index('test_requirements_requirement_id_idx').on(
       table.requirementId,
@@ -159,9 +166,11 @@ export const requirementCoverageSnapshots = pgTable(
     updatedAt: timestamp('updated_at'),
   },
   (table) => ({
-    requirementIdIdx: index('requirement_coverage_snapshots_requirement_id_idx').on(
-      table.requirementId,
+    requirementIdIdx: index(
+      'requirement_coverage_snapshots_requirement_id_idx',
+    ).on(table.requirementId),
+    statusIdx: index('requirement_coverage_snapshots_status_idx').on(
+      table.status,
     ),
-    statusIdx: index('requirement_coverage_snapshots_status_idx').on(table.status),
   }),
 );

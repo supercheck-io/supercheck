@@ -956,7 +956,11 @@ export class ExecutionService implements OnModuleDestroy {
       // This is done asynchronously and errors are logged but don't fail the job
       if (task.jobId && task.organizationId && task.projectId) {
         this.requirementCoverageService
-          .updateCoverageAfterJobRun(task.jobId, task.organizationId, task.projectId)
+          .updateCoverageAfterJobRun(
+            task.jobId,
+            task.organizationId,
+            task.projectId,
+          )
           .catch((err) => {
             this.logger.warn(
               `[${runId}] Failed to update requirement coverage: ${err.message}`,

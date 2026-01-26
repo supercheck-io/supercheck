@@ -113,7 +113,10 @@ describe('NotificationService', () => {
   const teamsProvider: NotificationProvider = {
     id: 'provider-teams',
     type: 'teams',
-    config: { teamsWebhookUrl: 'https://prod-00.westus.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/xxx' },
+    config: {
+      teamsWebhookUrl:
+        'https://prod-00.westus.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/xxx',
+    },
   };
 
   beforeEach(async () => {
@@ -525,7 +528,10 @@ describe('NotificationService', () => {
       const powerAutomateProvider: NotificationProvider = {
         id: 'provider-teams-pa',
         type: 'teams',
-        config: { teamsWebhookUrl: 'https://prod-00.westus.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/xxx' },
+        config: {
+          teamsWebhookUrl:
+            'https://prod-00.westus.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/xxx',
+        },
       };
 
       await service.sendNotification(powerAutomateProvider, basePayload);
@@ -545,7 +551,10 @@ describe('NotificationService', () => {
         config: { teamsWebhookUrl: 'https://evil.com/webhook' },
       };
 
-      const result = await service.sendNotification(invalidProvider, basePayload);
+      const result = await service.sendNotification(
+        invalidProvider,
+        basePayload,
+      );
       expect(result).toBe(false);
     });
   });

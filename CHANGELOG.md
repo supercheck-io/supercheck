@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **Microsoft Edge browser extension** — Supercheck Recorder Extension for [Microsoft Edge](https://microsoftedge.microsoft.com/addons/detail/supercheck-recorder/ngmlkgfgmdnfpddohcbfdgihennolnem)
 - **Upside down monitor** — Monitor for services that should be DOWN ([#197](https://github.com/supercheck-io/supercheck/issues/197))
 - **Custom headers for HTTP monitors** — Pass custom headers in HTTP monitor requests ([#196](https://github.com/supercheck-io/supercheck/issues/196))
-- **Coolify deployment template** — Deployment configuration for [Coolify](https://github.com/supercheck-io/supercheck/blob/main/deploy/coolify/README.md)
+- **Coolify deployment template** — Deployment configuration for Coolify ([#182](https://github.com/supercheck-io/supercheck/issues/182))
 - Variable and secret resolution support for synthetic monitor scripts ([#201](https://github.com/supercheck-io/supercheck/issues/201))
 
 ### Changed

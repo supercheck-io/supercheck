@@ -40,7 +40,9 @@ describe('RequirementCoverageService', () => {
       ],
     }).compile();
 
-    service = module.get<RequirementCoverageService>(RequirementCoverageService);
+    service = module.get<RequirementCoverageService>(
+      RequirementCoverageService,
+    );
     dbService = module.get(DbService);
   });
 
@@ -78,13 +80,19 @@ describe('RequirementCoverageService', () => {
 
   describe('Coverage Status Rules', () => {
     beforeEach(() => {
-      dbService.getRequirementsByJobTests.mockResolvedValue([testRequirementId]);
+      dbService.getRequirementsByJobTests.mockResolvedValue([
+        testRequirementId,
+      ]);
     });
 
     it('should set status to "missing" when no tests are linked', async () => {
       dbService.getLinkedTestsWithStatus.mockResolvedValue([]);
 
-      await service.updateCoverageAfterJobRun(testJobId, testOrgId, testProjectId);
+      await service.updateCoverageAfterJobRun(
+        testJobId,
+        testOrgId,
+        testProjectId,
+      );
 
       expect(dbService.updateRequirementCoverageSnapshot).toHaveBeenCalledWith(
         testRequirementId,
@@ -104,7 +112,11 @@ describe('RequirementCoverageService', () => {
         { testId: 'test-2', status: null },
       ]);
 
-      await service.updateCoverageAfterJobRun(testJobId, testOrgId, testProjectId);
+      await service.updateCoverageAfterJobRun(
+        testJobId,
+        testOrgId,
+        testProjectId,
+      );
 
       expect(dbService.updateRequirementCoverageSnapshot).toHaveBeenCalledWith(
         testRequirementId,
@@ -125,7 +137,11 @@ describe('RequirementCoverageService', () => {
         { testId: 'test-3', status: 'passed' },
       ]);
 
-      await service.updateCoverageAfterJobRun(testJobId, testOrgId, testProjectId);
+      await service.updateCoverageAfterJobRun(
+        testJobId,
+        testOrgId,
+        testProjectId,
+      );
 
       expect(dbService.updateRequirementCoverageSnapshot).toHaveBeenCalledWith(
         testRequirementId,
@@ -145,7 +161,11 @@ describe('RequirementCoverageService', () => {
         { testId: 'test-2', status: 'passed' },
       ]);
 
-      await service.updateCoverageAfterJobRun(testJobId, testOrgId, testProjectId);
+      await service.updateCoverageAfterJobRun(
+        testJobId,
+        testOrgId,
+        testProjectId,
+      );
 
       expect(dbService.updateRequirementCoverageSnapshot).toHaveBeenCalledWith(
         testRequirementId,
@@ -165,7 +185,11 @@ describe('RequirementCoverageService', () => {
         { testId: 'test-2', status: null }, // Pending
       ]);
 
-      await service.updateCoverageAfterJobRun(testJobId, testOrgId, testProjectId);
+      await service.updateCoverageAfterJobRun(
+        testJobId,
+        testOrgId,
+        testProjectId,
+      );
 
       expect(dbService.updateRequirementCoverageSnapshot).toHaveBeenCalledWith(
         testRequirementId,
@@ -185,7 +209,11 @@ describe('RequirementCoverageService', () => {
         { testId: failedTestId, status: 'failed' },
       ]);
 
-      await service.updateCoverageAfterJobRun(testJobId, testOrgId, testProjectId);
+      await service.updateCoverageAfterJobRun(
+        testJobId,
+        testOrgId,
+        testProjectId,
+      );
 
       expect(dbService.updateRequirementCoverageSnapshot).toHaveBeenCalledWith(
         testRequirementId,
@@ -210,9 +238,15 @@ describe('RequirementCoverageService', () => {
         { testId: 'test-1', status: 'passed' },
       ]);
 
-      await service.updateCoverageAfterJobRun(testJobId, testOrgId, testProjectId);
+      await service.updateCoverageAfterJobRun(
+        testJobId,
+        testOrgId,
+        testProjectId,
+      );
 
-      expect(dbService.updateRequirementCoverageSnapshot).toHaveBeenCalledTimes(3);
+      expect(dbService.updateRequirementCoverageSnapshot).toHaveBeenCalledTimes(
+        3,
+      );
     });
 
     it('should skip null requirement IDs', async () => {
@@ -223,7 +257,11 @@ describe('RequirementCoverageService', () => {
       ]);
       dbService.getLinkedTestsWithStatus.mockResolvedValue([]);
 
-      await service.updateCoverageAfterJobRun(testJobId, testOrgId, testProjectId);
+      await service.updateCoverageAfterJobRun(
+        testJobId,
+        testOrgId,
+        testProjectId,
+      );
 
       // Should only be called for valid IDs
       expect(dbService.getLinkedTestsWithStatus).toHaveBeenCalledTimes(2);
@@ -244,7 +282,9 @@ describe('RequirementCoverageService', () => {
     });
 
     it('should not throw when getRequirementsByJobTests fails', async () => {
-      dbService.getRequirementsByJobTests.mockRejectedValue(new Error('DB error'));
+      dbService.getRequirementsByJobTests.mockRejectedValue(
+        new Error('DB error'),
+      );
 
       await expect(
         service.updateCoverageAfterJobRun(testJobId, testOrgId, testProjectId),
@@ -257,11 +297,17 @@ describe('RequirementCoverageService', () => {
         .mockRejectedValueOnce(new Error('Error for req-1'))
         .mockResolvedValueOnce([{ testId: 'test-1', status: 'passed' }]);
 
-      await service.updateCoverageAfterJobRun(testJobId, testOrgId, testProjectId);
+      await service.updateCoverageAfterJobRun(
+        testJobId,
+        testOrgId,
+        testProjectId,
+      );
 
       // Should still try to update req-2
       expect(dbService.getLinkedTestsWithStatus).toHaveBeenCalledTimes(2);
-      expect(dbService.updateRequirementCoverageSnapshot).toHaveBeenCalledTimes(1);
+      expect(dbService.updateRequirementCoverageSnapshot).toHaveBeenCalledTimes(
+        1,
+      );
     });
   });
 });

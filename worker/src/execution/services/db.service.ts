@@ -570,7 +570,10 @@ export class DbService implements OnModuleInit {
       }
 
       // For each test, find the latest completed job run that includes this test
-      const results: Array<{ testId: string; status: 'passed' | 'failed' | null }> = [];
+      const results: Array<{
+        testId: string;
+        status: 'passed' | 'failed' | null;
+      }> = [];
 
       for (const { testId } of linkedTests) {
         // Find jobs that include this test
@@ -591,7 +594,10 @@ export class DbService implements OnModuleInit {
           .from(schema.runs)
           .where(
             and(
-              sql`${schema.runs.jobId} IN (${sql.join(jobIds.map((id) => sql`${id}`), sql`, `)})`,
+              sql`${schema.runs.jobId} IN (${sql.join(
+                jobIds.map((id) => sql`${id}`),
+                sql`, `,
+              )})`,
               sql`${schema.runs.status} IN ('passed', 'failed', 'error')`,
             ),
           )
@@ -644,7 +650,9 @@ export class DbService implements OnModuleInit {
       const existing = await this.db
         .select()
         .from(schema.requirementCoverageSnapshots)
-        .where(eq(schema.requirementCoverageSnapshots.requirementId, requirementId))
+        .where(
+          eq(schema.requirementCoverageSnapshots.requirementId, requirementId),
+        )
         .limit(1);
 
       if (existing.length > 0) {
@@ -660,7 +668,12 @@ export class DbService implements OnModuleInit {
             lastEvaluatedAt: now,
             updatedAt: now,
           })
-          .where(eq(schema.requirementCoverageSnapshots.requirementId, requirementId));
+          .where(
+            eq(
+              schema.requirementCoverageSnapshots.requirementId,
+              requirementId,
+            ),
+          );
       } else {
         await this.db.insert(schema.requirementCoverageSnapshots).values({
           requirementId,
