@@ -11,6 +11,10 @@ import {
   createRetryConfig,
   RetryOptions,
 } from '../common/utils/retry.util';
+import {
+  isValidTeamsWebhookDomain,
+  getTeamsWebhookDomainError,
+} from './notification.constants';
 
 // Utility function to safely get error message
 function getErrorMessage(error: unknown): string {
@@ -917,17 +921,6 @@ export class NotificationService {
         return false;
       }
 
-      // Validate URL format - supports multiple Microsoft webhook URL formats
-      // Per Microsoft documentation:
-      // - Power Automate: *.powerplatform.com
-      // - Azure Logic Apps: *.logic.azure.com
-      // - Legacy Connectors: *.webhook.office.com
-      const allowedDomains = [
-        '.powerplatform.com',
-        '.logic.azure.com',
-        '.webhook.office.com',
-      ];
-
       // Validate URL is parseable
       let parsedUrl: URL;
       try {
@@ -943,15 +936,12 @@ export class NotificationService {
         return false;
       }
 
-      // Check against allowed Microsoft domains
+      // Check against allowed Microsoft domains (shared constant for DRY)
       const hostname = parsedUrl.hostname.toLowerCase();
-      const isValidDomain = allowedDomains.some((domain) =>
-        hostname.endsWith(domain),
-      );
+      const isValidDomain = isValidTeamsWebhookDomain(hostname);
       if (!isValidDomain) {
         this.logger.error(
-          `Invalid Teams webhook URL domain: ${hostname}. ` +
-            'Supported domains: *.powerplatform.com, *.logic.azure.com, *.webhook.office.com',
+          `Invalid Teams webhook URL domain: ${hostname}. ${getTeamsWebhookDomainError()}`,
         );
         return false;
       }

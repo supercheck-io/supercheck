@@ -322,7 +322,7 @@ services:
       - "traefik.enable=true"
 
       # Main app — uses APP_DOMAIN from environment
-      - "traefik.http.routers.app.rule=Host(`${APP_DOMAIN:-app.supercheck.dev}`)"
+      - "traefik.http.routers.app.rule=Host(`${APP_DOMAIN:-demo.supercheck.dev}`)"
       - "traefik.http.routers.app.priority=100"
       - "traefik.http.routers.app.entrypoints=websecure"
       - "traefik.http.routers.app.tls.certresolver=letsencrypt"
@@ -337,7 +337,7 @@ services:
       - "traefik.http.routers.status-pages.service=app"
 
       # HTTP → HTTPS redirect for main app
-      - "traefik.http.routers.app-http.rule=Host(`${APP_DOMAIN:-app.supercheck.dev}`)"
+      - "traefik.http.routers.app-http.rule=Host(`${APP_DOMAIN:-demo.supercheck.dev}`)"
       - "traefik.http.routers.app-http.entrypoints=web"
       - "traefik.http.routers.app-http.middlewares=app-https-redirect"
       - "traefik.http.routers.app-http.service=app"

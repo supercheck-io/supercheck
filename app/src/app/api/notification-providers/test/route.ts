@@ -437,19 +437,13 @@ async function testTeamsConnection(config: NotificationProviderConfig) {
         throw new Error("Teams webhook URL must use HTTPS");
       }
       
-      // Check against allowed Microsoft domains
-      const allowedDomains = [
-        '.powerplatform.com',
-        '.logic.azure.com',
-        '.webhook.office.com',
-      ];
+      // Check against allowed Microsoft domains (shared constant)
+      const { isValidTeamsWebhookDomain, getTeamsWebhookDomainError } = await import(
+        "@/lib/notification-providers/constants"
+      );
       
-      const isValidDomain = allowedDomains.some(domain => hostname.endsWith(domain));
-      if (!isValidDomain) {
-        throw new Error(
-          "URL must be a valid Microsoft Teams webhook URL. " +
-          "Supported domains: *.powerplatform.com, *.logic.azure.com, *.webhook.office.com"
-        );
+      if (!isValidTeamsWebhookDomain(hostname)) {
+        throw new Error(getTeamsWebhookDomainError());
       }
     } catch (parseError) {
       if (parseError instanceof Error && parseError.message.includes('webhook')) {
