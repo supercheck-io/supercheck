@@ -30,37 +30,20 @@ Empowering development and SRE teams with a scalable, distributed, and robust pl
 | Performance | Grafana k6 Cloud | $0.15/VUh | Pay-per-scale; cloud-only execution |
 | Performance | LoadRunner Cloud | $0.15–1.50/VUh | Complex licensing; expensive GUI user pricing |
 | Performance | Gatling Enterprise | From €89/mo | User/generator limits on lower tiers |
-| Monitoring | **Supercheck** | **Free (Open Source)** | Self-hosted; requires own infrastructure |
-| Automation | **Supercheck** | **Free (Open Source)** | Self-hosted; requires own infrastructure |
-| Performance | **Supercheck** | **Free (Open Source)** | Self-hosted; requires own infrastructure |
-
-### Supercheck Advantage
-
-✅ **Unlimited checks & parallels with self-hosted** — no per-run or per-seat fees  
-✅ **Native Playwright** — real browser automation, not limited scripts  
-✅ **Browser recorder** — Chrome & Edge extensions to record tests visually  
-✅ **JavaScript based** — write tests in familiar language, no proprietary scripts  
-✅ **Powered by open source** — built on Playwright & k6 for reliability  
-✅ **100% self-hosted** — your data stays on your infrastructure  
-✅ **Unified platform** — testing + monitoring in one tool  
-✅ **5 test types** — Browser, API, Database, k6 Performance, Custom  
-✅ **CI/CD native** — API triggers, scheduled jobs, webhook alerts  
-✅ **AI-powered** — AI Create, AI Fix, AI Analyze with multi-provider support  
-✅ **Requirement management** — AI extraction from docs with computed coverage  
-✅ **Smart alerts** — thresholds prevent noise from transient failures  
-✅ **Status pages** — branded public pages with incident management
+| All-in-one | **Supercheck** | **Free (Open Source)** | Self-hosted; requires own infrastructure |
 
 > 🚀 **Supercheck Cloud** — Managed cloud version coming soon!
-
 
 ## Features
 
 ### Test Automation
+Write tests in JavaScript — no proprietary scripting languages required.
+
 - **Browser Tests** — Playwright-based UI testing with screenshots, traces, and video recordings
 - **API Tests** — HTTP/GraphQL validation with request/response assertions
 - **Database Tests** — SQL queries against PostgreSQL, MySQL with result validation
 - **Performance Tests** — k6 load testing with multi-region load generators (US, EU, APAC)
-- **Custom Tests** — Node.js scripts for any custom testing scenario
+- **Custom Tests** — Node.js scripts for any testing scenario
 
 ### Monitoring
 - **HTTP / Website** — Endpoint availability with SSL certificate tracking
@@ -69,14 +52,14 @@ Empowering development and SRE teams with a scalable, distributed, and robust pl
 - **Multi-Region** — Execute from US East, EU Central, and Asia Pacific
 
 ### CI/CD Integration
-- **API Triggers** — Trigger test jobs from GitHub Actions, GitLab CI, or any pipeline
-- **Scheduled Jobs** — Cron-based scheduling for nightly regression suites
-- **Webhook Alerts** — Send results to Slack, Discord, Teams, or custom endpoints
+- **API Triggers** — Trigger jobs from GitHub Actions, GitLab CI, or any pipeline
+- **Scheduled Jobs** — Cron-based scheduling for regression suites
+- **Webhook Notifications** — Send results to Slack, Discord, Teams, or custom endpoints
 
 ### AI-Powered
 - **AI Create** — Generate test scripts from plain English descriptions
-- **AI Fix** — Automatically analyze failures and suggest code fixes
-- **AI Analyze** — Performance test insights comparing runs
+- **AI Fix** — Analyze failures and suggest code fixes automatically
+- **AI Analyze** — Performance insights comparing test runs
 
 ### Debugging & Reports
 - **Screenshots** — Captured at each step and on failure
@@ -85,7 +68,7 @@ Empowering development and SRE teams with a scalable, distributed, and robust pl
 - **Network Logs** — Request/response details for debugging
 
 ### Communication
-- **Alerts** — Email, Slack, Discord, Telegram, Teams, Webhooks
+- **Alerts** — Email, Slack, Discord, Telegram, Teams, Webhooks with threshold-based triggers
 - **Status Pages** — Branded public pages with incident management
 - **Dashboards** — Real-time visibility into test and monitor health
 
@@ -98,7 +81,7 @@ Empowering development and SRE teams with a scalable, distributed, and robust pl
 ### Requirements Management
 - **AI Extraction** — Extract requirements from PRDs, PDFs, and DOCX
 - **Computed Coverage** — Status derived from linked test executions
-- **Test Linking** — Many-to-many relationship between requirements and tests
+- **Test Linking** — Many-to-many relationships between requirements and tests
 - **Source Traceability** — Track original document source for each requirement
 
 ### Browser Extensions
