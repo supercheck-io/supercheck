@@ -143,13 +143,6 @@ Full documentation available at **[supercheck.io/docs](https://supercheck.io/doc
 | [Admin](https://supercheck.io/docs/admin) | User management, RBAC, and audit trails |
 
 
-
-## Community
-
-[![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/UVe327CSbm)
-[![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/issues)
-[![GitHub Discussions](https://img.shields.io/badge/GitHub-Discussions-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/discussions)
-
 ## Support
 
 If you find Supercheck useful, please consider:
@@ -157,5 +150,14 @@ If you find Supercheck useful, please consider:
 - ⭐ **Star this repository** — it helps others discover the project
 - 💡 **Suggest features** — start a [discussion](https://github.com/supercheck-io/supercheck/discussions)
 - 📢 **Spread the word** — share with others
+
+## Community
+
+[![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/UVe327CSbm)
+<br>
+[![GitHub Issues](https://img.shields.io/badge/GitHub-Issues-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/issues)
+<br>
+[![GitHub Discussions](https://img.shields.io/badge/GitHub-Discussions-181717?logo=github&logoColor=white)](https://github.com/supercheck-io/supercheck/discussions)
+
 
 
