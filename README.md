@@ -32,12 +32,9 @@ Empowering development and SRE teams with a scalable, distributed, and robust pl
 | Performance | Gatling Enterprise | From €89/mo | User/generator limits on lower tiers |
 | All-in-one | **Supercheck** | **Free (Open Source)** | Self-hosted; requires own infrastructure |
 
-> 🚀 **Supercheck Cloud** — Managed cloud version coming soon!
-
 ## Features
 
 ### Test Automation
-Write tests in JavaScript — no proprietary scripting languages required.
 
 - **Browser Tests** — Playwright-based UI testing with screenshots, traces, and video recordings
 - **API Tests** — HTTP/GraphQL validation with request/response assertions
