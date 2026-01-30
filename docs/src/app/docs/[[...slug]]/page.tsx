@@ -19,10 +19,14 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
+  // Get the file path from slugs - the path corresponds to the slug structure with .mdx extension
+  // For index pages (like deployment/index.mdx), slugs is ['deployment'], so we append index.mdx
+  // For standalone pages (like monitors.mdx), slugs is ['monitors'], so we append .mdx
+  const filePath = page.slugs.length === 0
+    ? 'index.mdx'
+    : `${page.slugs.join('/')}.mdx`;
+
   const MDX = page.data.body;
-  // Get the actual file path from the page source
-  // This correctly handles both standalone files (monitors.mdx) and index files (deployment/index.mdx)
-  const filePath = page.file.path;
 
   return (
     <DocsPage
