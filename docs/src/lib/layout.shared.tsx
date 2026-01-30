@@ -1,5 +1,4 @@
-import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
-import type { LinkItemType } from 'fumadocs-ui/layouts/docs';
+import type { BaseLayoutProps, LinkItemType } from 'fumadocs-ui/layouts/shared';
 import Image from 'next/image';
 import Link from 'next/link';
 
