@@ -358,8 +358,6 @@ export function RunDetails({
 
               {!permissionsLoading && userRole && canManageRuns(userRole) && (
                 <>
-
-
                   <Button
                     variant="outline"
                     size="sm"

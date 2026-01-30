@@ -113,8 +113,13 @@ async function getTestReportContent(testReportS3Url: string): Promise<string | n
       const urlParts = testReportS3Url.replace("s3://", "").split("/");
       bucket = urlParts[0];
       key = urlParts.slice(1).join("/");
+    } else if (testReportS3Url.includes("/")) {
+      // Format: bucket/key - split on first "/"
+      const firstSlashIndex = testReportS3Url.indexOf("/");
+      bucket = testReportS3Url.slice(0, firstSlashIndex);
+      key = testReportS3Url.slice(firstSlashIndex + 1);
     } else {
-      // Assume it's in format bucket/key or just a key
+      // Just a key - use default test bucket
       const testBucketName = process.env.S3_TEST_BUCKET_NAME || "playwright-test-artifacts";
       bucket = testBucketName;
       key = testReportS3Url;
@@ -201,6 +206,14 @@ export async function POST(request: NextRequest) {
       .then((rows) => rows[0]);
 
     if (!monitor) {
+      return NextResponse.json(
+        { success: false, message: "Monitor not found" },
+        { status: 404 }
+      );
+    }
+
+    // Step 5b: Verify monitor belongs to user's organization
+    if (activeOrg && monitor.organizationId !== activeOrg.id) {
       return NextResponse.json(
         { success: false, message: "Monitor not found" },
         { status: 404 }

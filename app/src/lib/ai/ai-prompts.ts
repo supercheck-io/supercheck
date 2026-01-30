@@ -798,16 +798,16 @@ EXPLANATION:
 - High Error Rate: ${hasHighErrorRate ? `YES - Success rate is ${formatMetric(stats24h.successRate, "%")}` : "No"}
 - Recent Failures: ${hasRecentFailures ? `YES - ${downCount} of last ${recentResults.length} checks failed` : "No"}`;
 
-    // Format recent results for context
+    // Format recent results for context (escape error messages to prevent injection)
     const recentResultsSummary = recentResults.slice(0, 5).map((r) => 
-      `- ${r.checkedAt}: ${r.status.toUpperCase()}${r.responseTimeMs ? ` (${r.responseTimeMs}ms)` : ""}${r.errorMessage ? ` - ${r.errorMessage.substring(0, 100)}` : ""}${r.location ? ` [${r.location}]` : ""}`
+      `- ${r.checkedAt}: ${r.status.toUpperCase()}${r.responseTimeMs ? ` (${r.responseTimeMs}ms)` : ""}${r.errorMessage ? ` - ${AISecurityService.escapeForPrompt(r.errorMessage.substring(0, 100))}` : ""}${r.location ? ` [${r.location}]` : ""}`
     ).join("\n");
 
-    // Include HTML report context for synthetic monitors (truncated)
+    // Include HTML report context for synthetic monitors (truncated and escaped)
     const htmlContext = testReportHtml
       ? `
 <HTML_REPORT_CONTEXT>
-${testReportHtml.substring(0, 6000)}
+${AISecurityService.escapeForPrompt(testReportHtml.substring(0, 6000))}
 ${testReportHtml.length > 6000 ? "... [truncated]" : ""}
 </HTML_REPORT_CONTEXT>`
       : "";
@@ -984,9 +984,9 @@ Use clean, professional markdown formatting:
       ? `\n<EXECUTION_LOGS>\n${AISecurityService.escapeForPrompt(run.logs.substring(-3000))}\n</EXECUTION_LOGS>`
       : "";
 
-    // Include HTML report context for Playwright tests (truncated)
+    // Include HTML report context for Playwright tests (truncated and escaped)
     const htmlContext = testReportHtml
-      ? `\n<HTML_REPORT_CONTEXT>\n${testReportHtml.substring(0, 6000)}\n${testReportHtml.length > 6000 ? "... [truncated]" : ""}\n</HTML_REPORT_CONTEXT>`
+      ? `\n<HTML_REPORT_CONTEXT>\n${AISecurityService.escapeForPrompt(testReportHtml.substring(0, 6000))}\n${testReportHtml.length > 6000 ? "... [truncated]" : ""}\n</HTML_REPORT_CONTEXT>`
       : "";
 
     const isK6 = job?.type === "k6";

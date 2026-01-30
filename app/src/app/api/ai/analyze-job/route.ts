@@ -113,8 +113,13 @@ async function getTestReportContent(reportS3Url: string): Promise<string | null>
       const urlParts = reportS3Url.replace("s3://", "").split("/");
       bucket = urlParts[0];
       key = urlParts.slice(1).join("/");
+    } else if (reportS3Url.includes("/")) {
+      // Format: bucket/key - split on first "/"
+      const firstSlashIndex = reportS3Url.indexOf("/");
+      bucket = reportS3Url.slice(0, firstSlashIndex);
+      key = reportS3Url.slice(firstSlashIndex + 1);
     } else {
-      // Assume it's in format bucket/key or just a key
+      // Just a key - use default test bucket
       const testBucketName = process.env.S3_TEST_BUCKET_NAME || "playwright-test-artifacts";
       bucket = testBucketName;
       key = reportS3Url;
@@ -226,7 +231,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Step 6: Fetch associated job data
+    // Step 6: Fetch associated job data and verify org ownership
     let jobData = null;
     if (run.jobId) {
       jobData = await db
@@ -235,6 +240,14 @@ export async function POST(request: NextRequest) {
         .where(eq(jobs.id, run.jobId))
         .limit(1)
         .then((rows) => rows[0]);
+
+      // Verify job belongs to user's organization
+      if (activeOrg && jobData && jobData.organizationId !== activeOrg.id) {
+        return NextResponse.json(
+          { success: false, message: "Run not found" },
+          { status: 404 }
+        );
+      }
     }
 
     // Step 7: For Playwright jobs, fetch HTML report if available
