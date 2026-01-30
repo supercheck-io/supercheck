@@ -1,6 +1,6 @@
 {
   "name": "@supercheck-io/app",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Supercheck - Comprehensive Automation & Monitoring for Modern Apps (Frontend & API)",
   "license": "MIT",
   "private": false,
@@ -30,7 +30,7 @@
     "devops"
   ],
   "engines": {
-    "node": ">=20.0.0",
+    "node": ">=20.9.0",
     "npm": ">=10.0.0"
   },
   "scripts": {
