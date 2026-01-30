@@ -1,6 +1,6 @@
 {
   "name": "@supercheck-io/worker",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Supercheck - Distributed test execution and job processing worker service",
   "license": "MIT",
   "author": {
@@ -27,7 +27,7 @@
     "automation"
   ],
   "engines": {
-    "node": ">=20.0.0",
+    "node": ">=20.9.0",
     "npm": ">=10.0.0"
   },
   "private": false,
@@ -109,5 +109,8 @@
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.51.0"
+  },
+  "overrides": {
+    "lodash": ">=4.17.23"
   }
 }
