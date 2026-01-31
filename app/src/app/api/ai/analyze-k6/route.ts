@@ -2,22 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { AIStreamingService } from "@/lib/ai/ai-streaming-service";
 import { AuthService } from "@/lib/ai/ai-security";
 import { AIPromptBuilder } from "@/lib/ai/ai-prompts";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getActiveOrganization } from "@/lib/session";
 import { usageTracker } from "@/lib/services/usage-tracker";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
-
-// S3 Client configuration
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION || "us-east-1",
-  endpoint: process.env.S3_ENDPOINT || "http://localhost:9000",
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "minioadmin",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "minioadmin",
-  },
-  forcePathStyle: true, // Required for MinIO
-});
+import { getS3FileContent } from "@/lib/s3-proxy";
 
 // Interface for K6 run metrics
 interface K6RunMetrics {
@@ -76,64 +65,6 @@ function validateRequest(body: Record<string, unknown>): AnalyzeK6Request {
   }
 
   return { baselineRun, compareRun };
-}
-
-// Helper function to get S3 file content
-async function getS3FileContent(
-  bucket: string,
-  key: string
-): Promise<string | null> {
-  try {
-    const command = new GetObjectCommand({
-      Bucket: bucket,
-      Key: key,
-    });
-
-    const response = await s3Client.send(command);
-
-    if (!response.Body) {
-      return null;
-    }
-
-    const awsStream = response.Body as {
-      transformToByteArray?: () => Promise<Uint8Array>;
-    };
-
-    if (awsStream.transformToByteArray) {
-      const bytes = await awsStream.transformToByteArray();
-      return new TextDecoder().decode(bytes);
-    }
-
-    const stream = response.Body as ReadableStream;
-    if (stream && typeof stream.getReader === "function") {
-      const reader = stream.getReader();
-      const chunks: Uint8Array[] = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) chunks.push(value);
-      }
-
-      const totalLength = chunks.reduce(
-        (sum, chunk) => sum + chunk.byteLength,
-        0
-      );
-      const result = new Uint8Array(totalLength);
-      let offset = 0;
-      for (const chunk of chunks) {
-        result.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-
-      return new TextDecoder().decode(result);
-    }
-
-    return null;
-  } catch (error) {
-    console.error("Error fetching S3 file %s:", key, error);
-    return null;
-  }
 }
 
 // Fetch k6 HTML report content

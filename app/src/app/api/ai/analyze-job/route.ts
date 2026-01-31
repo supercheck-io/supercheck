@@ -9,19 +9,8 @@ import { logAuditEvent } from "@/lib/audit-logger";
 import { db } from "@/utils/db";
 import { runs, jobs, reports } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getS3FileContentFromUrl, getS3FileContent } from "@/lib/s3-proxy";
 
-
-// S3 Client configuration
-const s3Client = new S3Client({
-  region: process.env.AWS_REGION || "us-east-1",
-  endpoint: process.env.S3_ENDPOINT || "http://localhost:9000",
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || "minioadmin",
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "minioadmin",
-  },
-  forcePathStyle: true, // Required for MinIO
-});
 
 interface AnalyzeJobRequest {
   runId: string;
@@ -42,90 +31,19 @@ function validateRequest(body: Record<string, unknown>): AnalyzeJobRequest {
   return { runId: body.runId };
 }
 
-// Helper function to get S3 file content
-async function getS3FileContent(
-  bucket: string,
-  key: string
-): Promise<string | null> {
-  try {
-    const command = new GetObjectCommand({
-      Bucket: bucket,
-      Key: key,
-    });
-
-    const response = await s3Client.send(command);
-
-    if (!response.Body) {
-      return null;
-    }
-
-    const awsStream = response.Body as {
-      transformToByteArray?: () => Promise<Uint8Array>;
-    };
-
-    if (awsStream.transformToByteArray) {
-      const bytes = await awsStream.transformToByteArray();
-      return new TextDecoder().decode(bytes);
-    }
-
-    const stream = response.Body as ReadableStream;
-    if (stream && typeof stream.getReader === "function") {
-      const reader = stream.getReader();
-      const chunks: Uint8Array[] = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) chunks.push(value);
-      }
-
-      const totalLength = chunks.reduce(
-        (sum, chunk) => sum + chunk.byteLength,
-        0
-      );
-      const result = new Uint8Array(totalLength);
-      let offset = 0;
-      for (const chunk of chunks) {
-        result.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-
-      return new TextDecoder().decode(result);
-    }
-
-    return null;
-  } catch (error) {
-    console.error("[AI Analyze Job] Error fetching S3 file %s:", key, error);
-    return null;
-  }
-}
-
 // Fetch HTML report content from S3
 async function getTestReportContent(reportS3Url: string): Promise<string | null> {
   try {
     if (!reportS3Url) return null;
     
-    // Parse S3 URL: s3://bucket/key or bucket/key format
-    let bucket: string;
-    let key: string;
-    
-    if (reportS3Url.startsWith("s3://")) {
-      const urlParts = reportS3Url.replace("s3://", "").split("/");
-      bucket = urlParts[0];
-      key = urlParts.slice(1).join("/");
-    } else if (reportS3Url.includes("/")) {
-      // Format: bucket/key - split on first "/"
-      const firstSlashIndex = reportS3Url.indexOf("/");
-      bucket = reportS3Url.slice(0, firstSlashIndex);
-      key = reportS3Url.slice(firstSlashIndex + 1);
-    } else {
-      // Just a key - use default test bucket
+    // Check if it's just a key without bucket prefix - use default test bucket
+    if (!reportS3Url.startsWith("s3://") && !reportS3Url.includes("/")) {
       const testBucketName = process.env.S3_TEST_BUCKET_NAME || "playwright-test-artifacts";
-      bucket = testBucketName;
-      key = reportS3Url;
+      return await getS3FileContent(testBucketName, reportS3Url);
     }
     
-    return await getS3FileContent(bucket, key);
+    // Otherwise, parse the full S3 URL
+    return await getS3FileContentFromUrl(reportS3Url);
   } catch (error) {
     console.error("[AI Analyze Job] Error fetching test report:", error);
     return null;

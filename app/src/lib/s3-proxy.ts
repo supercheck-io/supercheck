@@ -252,3 +252,80 @@ export async function checkObjectExists(
 export function getS3Client(): S3Client {
   return s3Client;
 }
+
+/**
+ * Fetch an object from S3/MinIO and return its content as a string
+ * @param bucket - S3 bucket name
+ * @param key - S3 object key
+ * @returns The file content as a string, or null if the file doesn't exist or an error occurs
+ */
+export async function getS3FileContent(
+  bucket: string,
+  key: string
+): Promise<string | null> {
+  try {
+    const command = new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    });
+
+    const response = await s3Client.send(command);
+
+    if (!response.Body) {
+      return null;
+    }
+
+    const buffer = await streamToUint8Array(response.Body);
+    return new TextDecoder().decode(buffer);
+  } catch (error) {
+    // Log error but return null for graceful degradation
+    console.error(`[S3 Proxy] Error fetching ${bucket}/${key}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Parse an S3 URL and extract bucket and key
+ * Supports formats: s3://bucket/key, bucket/key
+ * @param s3Url - The S3 URL to parse
+ * @returns Object with bucket and key, or null if URL is invalid
+ */
+export function parseS3Url(s3Url: string): { bucket: string; key: string } | null {
+  if (!s3Url) return null;
+  
+  try {
+    let bucket: string;
+    let key: string;
+    
+    if (s3Url.startsWith("s3://")) {
+      const urlParts = s3Url.replace("s3://", "").split("/");
+      bucket = urlParts[0];
+      key = urlParts.slice(1).join("/");
+    } else if (s3Url.includes("/")) {
+      // Format: bucket/key - split on first "/"
+      const firstSlashIndex = s3Url.indexOf("/");
+      bucket = s3Url.slice(0, firstSlashIndex);
+      key = s3Url.slice(firstSlashIndex + 1);
+    } else {
+      return null;
+    }
+    
+    if (!bucket || !key) return null;
+    
+    return { bucket, key };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch content from an S3 URL (combines parseS3Url and getS3FileContent)
+ * @param s3Url - The S3 URL (s3://bucket/key or bucket/key format)
+ * @returns The file content as a string, or null if the file doesn't exist or an error occurs
+ */
+export async function getS3FileContentFromUrl(s3Url: string): Promise<string | null> {
+  const parsed = parseS3Url(s3Url);
+  if (!parsed) return null;
+  
+  return getS3FileContent(parsed.bucket, parsed.key);
+}

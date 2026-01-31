@@ -980,8 +980,9 @@ Use clean, professional markdown formatting:
       : "";
 
     // Parse logs if present (limit to last 3000 chars for context)
+    // Note: Use slice(-3000) instead of substring(-3000) because substring treats negative values as 0
     const logsContext = run.logs
-      ? `\n<EXECUTION_LOGS>\n${AISecurityService.escapeForPrompt(run.logs.substring(-3000))}\n</EXECUTION_LOGS>`
+      ? `\n<EXECUTION_LOGS>\n${AISecurityService.escapeForPrompt(run.logs.slice(-3000))}\n</EXECUTION_LOGS>`
       : "";
 
     // Include HTML report context for Playwright tests (truncated and escaped)
