@@ -30,6 +30,8 @@ import {
 } from "lucide-react";
 import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { ReportViewer } from "@/components/shared/report-viewer";
+import { AIMonitorAnalyzeButton } from "@/components/monitors/ai-monitor-analyze-button";
+
 import {
   Card,
   CardContent,
@@ -851,6 +853,8 @@ export function MonitorDetailClient({
                 userRole &&
                 canEditMonitors(userRole) && (
                   <>
+
+
                     <Button
                       variant="outline"
                       size="sm"
@@ -864,6 +868,7 @@ export function MonitorDetailClient({
                       {monitor.status === "paused" ? "Resume" : "Pause"}
                     </Button>
 
+
                     <Button
                       variant="outline"
                       size="sm"
@@ -875,6 +880,9 @@ export function MonitorDetailClient({
                       <Edit3 className="h-4 w-4 mr-1" />
                       <span className="hidden sm:inline">Edit</span>
                     </Button>
+
+
+
                     <Button
                       variant="outline"
                       size="sm"
@@ -884,6 +892,13 @@ export function MonitorDetailClient({
                       <Trash2 className="h-4 w-4 mr-1" />
                       <span className="hidden sm:inline">Delete</span>
                     </Button>
+
+                    <AIMonitorAnalyzeButton
+                      monitorId={monitor.id}
+                      monitorName={monitor.name}
+                      monitorType={monitor.type}
+                    />
+
                   </>
                 )}
 

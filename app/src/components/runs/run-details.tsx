@@ -41,6 +41,8 @@ import { PlaywrightLogo } from "@/components/logo/playwright-logo";
 import { Home } from "lucide-react";
 import { PerformanceTestReport } from "@/components/playground/performance-test-report";
 import type { K6RunStatus } from "@/lib/k6-runs";
+import { AIJobAnalyzeButton } from "./ai-job-analyze-button";
+
 
 // Type based on the actual API response from /api/runs/[runId]
 type RunResponse = {
@@ -355,16 +357,25 @@ export function RunDetails({
               )}
 
               {!permissionsLoading && userRole && canManageRuns(userRole) && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 px-3 flex items-center text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/50"
-                  onClick={() => setShowDeleteDialog(true)}
-                >
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  Delete
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 px-3 flex items-center text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/50"
+                    onClick={() => setShowDeleteDialog(true)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Delete
+                  </Button>
+
+                  <AIJobAnalyzeButton
+                    runId={run.id}
+                    jobName={run.jobName || "Unknown Job"}
+                    jobType={run.jobType || "playwright"}
+                  />
+                </>
               )}
+
             </div>
           )}
         </div>

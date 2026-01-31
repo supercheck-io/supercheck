@@ -85,7 +85,7 @@ export function CommunityLinks() {
                     aria-label="Join our Discord"
                 >
                     <DiscordIcon className="h-4 w-4" />
-                    <span className="hidden lg:inline">Discord</span>
+                    {/* <span className="hidden lg:inline">Discord</span> */}
                 </a>
             </Button>
         </div>

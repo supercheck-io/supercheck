@@ -6,76 +6,46 @@ import { getActiveOrganization } from "@/lib/session";
 import { usageTracker } from "@/lib/services/usage-tracker";
 import { headers } from "next/headers";
 import { logAuditEvent } from "@/lib/audit-logger";
-import { getS3FileContent } from "@/lib/s3-proxy";
+import { db } from "@/utils/db";
+import { runs, jobs, reports } from "@/db/schema";
+import { eq, and, sql } from "drizzle-orm";
+import { getS3FileContentFromUrl, getS3FileContent } from "@/lib/s3-proxy";
 
-// Interface for K6 run metrics
-interface K6RunMetrics {
-  p95ResponseTimeMs?: number | null;
-  p99ResponseTimeMs?: number | null;
-  avgResponseTimeMs?: number | null;
-  totalRequests?: number | null;
-  failedRequests?: number | null;
-  vusMax?: number | null;
-}
 
-interface K6RunData {
+interface AnalyzeJobRequest {
   runId: string;
-  status?: string;
-  startedAt?: string;
-  durationMs?: number | null;
-  requestRate?: number | null;
-  metrics: K6RunMetrics;
-  reportS3Url?: string | null;
-  jobName?: string;
-}
-
-interface AnalyzeK6Request {
-  baselineRun: K6RunData;
-  compareRun: K6RunData;
 }
 
 // Validate request body
-function validateRequest(body: Record<string, unknown>): AnalyzeK6Request {
-  if (!body.baselineRun || typeof body.baselineRun !== "object") {
-    throw new Error("Invalid baselineRun parameter");
-  }
-  if (!body.compareRun || typeof body.compareRun !== "object") {
-    throw new Error("Invalid compareRun parameter");
+function validateRequest(body: Record<string, unknown>): AnalyzeJobRequest {
+  if (!body.runId || typeof body.runId !== "string") {
+    throw new Error("Invalid runId parameter");
   }
 
-  const baselineRun = body.baselineRun as K6RunData;
-  const compareRun = body.compareRun as K6RunData;
-
-  if (!baselineRun.runId || typeof baselineRun.runId !== "string") {
-    throw new Error("Invalid baselineRun.runId parameter");
-  }
-  if (!baselineRun.metrics || typeof baselineRun.metrics !== "object") {
-    throw new Error("Invalid baselineRun.metrics parameter");
-  }
-  if (!compareRun.runId || typeof compareRun.runId !== "string") {
-    throw new Error("Invalid compareRun.runId parameter");
-  }
-  if (!compareRun.metrics || typeof compareRun.metrics !== "object") {
-    throw new Error("Invalid compareRun.metrics parameter");
+  // Validate UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(body.runId)) {
+    throw new Error("Invalid runId format");
   }
 
-  // Optional string validation
-  if (baselineRun.jobName && typeof baselineRun.jobName !== "string") {
-    delete baselineRun.jobName;
-  }
-
-  return { baselineRun, compareRun };
+  return { runId: body.runId };
 }
 
-// Fetch k6 HTML report content
-async function getK6ReportContent(runId: string): Promise<string | null> {
+// Fetch HTML report content from S3
+async function getTestReportContent(reportS3Url: string): Promise<string | null> {
   try {
-    const testBucketName =
-      process.env.S3_TEST_BUCKET_NAME || "playwright-test-artifacts";
-    const reportPath = `${runId}/report/index.html`;
-    return await getS3FileContent(testBucketName, reportPath);
+    if (!reportS3Url) return null;
+    
+    // Check if it's just a key without bucket prefix - use default test bucket
+    if (!reportS3Url.startsWith("s3://") && !reportS3Url.includes("/")) {
+      const testBucketName = process.env.S3_TEST_BUCKET_NAME || "playwright-test-artifacts";
+      return await getS3FileContent(testBucketName, reportS3Url);
+    }
+    
+    // Otherwise, parse the full S3 URL
+    return await getS3FileContentFromUrl(reportS3Url);
   } catch (error) {
-    console.error("[AI Analyze k6] Error fetching report for run %s:", runId, error);
+    console.error("[AI Analyze Job] Error fetching test report:", error);
     return null;
   }
 }
@@ -84,14 +54,10 @@ export async function POST(request: NextRequest) {
   try {
     // Step 1: Parse and validate input
     const body = await request.json();
-    const { baselineRun, compareRun } = validateRequest(body);
+    const { runId } = validateRequest(body);
 
     // Step 2: Authentication and authorization
-    // Validate access to BOTH runs to prevent horizontal privilege escalation
-    const [session] = await Promise.all([
-      AuthService.validateUserAccess(request, baselineRun.runId),
-      AuthService.validateUserAccess(request, compareRun.runId),
-    ]);
+    const session = await AuthService.validateUserAccess(request, runId);
 
     // Step 3: Rate limiting check
     const headersList = await headers();
@@ -107,10 +73,9 @@ export async function POST(request: NextRequest) {
       tier: session.tier,
     });
 
-    // Step 3.5: CRITICAL - Check subscription and AI credits in cloud mode
+    // Step 4: Check subscription and AI credits in cloud mode
     const activeOrg = await getActiveOrganization();
     if (activeOrg) {
-      // Import subscription service
       const { subscriptionService } = await import("@/lib/services/subscription-service");
       
       try {
@@ -131,8 +96,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Atomically consume AI credit (prevents race conditions)
-      // This increments first, then checks limit, and rolls back if exceeded
+      // Atomically consume AI credit
       const creditResult = await usageTracker.consumeAICredit(activeOrg.id, "ai_analyze");
       if (!creditResult.allowed) {
         return NextResponse.json(
@@ -151,63 +115,133 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 4: Fetch K6 HTML reports for both runs (optional, for enhanced analysis)
-    const [baselineReport, compareReport] = await Promise.all([
-      getK6ReportContent(baselineRun.runId),
-      getK6ReportContent(compareRun.runId),
-    ]);
+    // Step 5: Fetch run data with report
+    const runResult = await db
+      .select({
+        id: runs.id,
+        jobId: runs.jobId,
+        status: runs.status,
+        durationMs: runs.durationMs,
+        startedAt: runs.startedAt,
+        completedAt: runs.completedAt,
+        logs: runs.logs,
+        errorDetails: runs.errorDetails,
+        trigger: runs.trigger,
+        reportUrl: reports.s3Url,
+      })
+      .from(runs)
+      .leftJoin(
+        reports,
+        and(
+          sql`${reports.entityId} = ${runs.id}::text`,
+          eq(reports.entityType, "job")
+        )
+      )
+      .where(eq(runs.id, runId))
+      .limit(1);
 
-    // Step 5: Build AI prompt for K6 comparison analysis
-    const prompt = AIPromptBuilder.buildK6AnalyzePrompt({
-      baselineRun,
-      compareRun,
-      baselineReportHtml: baselineReport || undefined,
-      compareReportHtml: compareReport || undefined,
+    const run = runResult[0];
+
+    if (!run) {
+      return NextResponse.json(
+        { success: false, message: "Run not found" },
+        { status: 404 }
+      );
+    }
+
+    // Step 6: Fetch associated job data and verify org ownership
+    let jobData = null;
+    if (run.jobId) {
+      jobData = await db
+        .select()
+        .from(jobs)
+        .where(eq(jobs.id, run.jobId))
+        .limit(1)
+        .then((rows) => rows[0]);
+
+      // Verify job belongs to user's organization
+      if (activeOrg && jobData && jobData.organizationId !== activeOrg.id) {
+        return NextResponse.json(
+          { success: false, message: "Run not found" },
+          { status: 404 }
+        );
+      }
+    }
+
+    // Step 7: For Playwright jobs, fetch HTML report if available
+    let testReportHtml: string | null = null;
+    const isPlaywright = jobData?.jobType === "playwright";
+    const isK6 = jobData?.jobType === "k6";
+    
+    if (isPlaywright && run.reportUrl) {
+      testReportHtml = await getTestReportContent(run.reportUrl);
+    }
+
+    // Step 8: Build AI prompt
+
+    const prompt = AIPromptBuilder.buildJobAnalyzePrompt({
+      run: {
+        id: run.id,
+        status: run.status,
+        durationMs: run.durationMs,
+        startedAt: run.startedAt?.toISOString() || null,
+        completedAt: run.completedAt?.toISOString() || null,
+        errorDetails: run.errorDetails || null,
+        logs: run.logs || null,
+        testCount: null, // Not included in our select
+      },
+      job: jobData ? {
+        id: jobData.id,
+        name: jobData.name,
+        type: jobData.jobType,
+        scriptContent: undefined, // Script content not available on jobs table
+      } : null,
+      testReportHtml: testReportHtml || undefined,
     });
 
-    // Step 6: Generate streaming AI response
+
+    // Step 9: Generate streaming AI response
     const aiResponse = await AIStreamingService.generateStreamingResponse({
       prompt,
       maxTokens: 4000,
       temperature: 0.2,
-      testType: "performance",
+      testType: isK6 ? "performance" : "browser",
     });
 
-    // Step 7: Log audit event (credit already consumed atomically above)
+    // Step 10: Log audit event
     try {
       if (activeOrg) {
         await logAuditEvent({
           userId: session.user.id,
           organizationId: activeOrg.id,
           action: "ai_analyze",
-          resource: "k6_run_comparison",
-          resourceId: `${baselineRun.runId}:${compareRun.runId}`,
+          resource: "job_run",
+          resourceId: runId,
           success: true,
           ipAddress: clientIp,
           metadata: {
-            baselineRunId: baselineRun.runId,
-            compareRunId: compareRun.runId,
+            jobName: jobData?.name || "Unknown",
+            jobType: jobData?.jobType || "unknown",
             model: aiResponse.model,
           },
         });
       }
     } catch (trackingError) {
-      console.error("[AI Analyze K6] Failed to log audit event:", trackingError);
+      console.error("[AI Analyze Job] Failed to log audit event:", trackingError);
     }
 
-
-    // Step 8: Return streaming response with appropriate headers
+    // Step 11: Return streaming response
     return new NextResponse(aiResponse.stream, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
         "X-AI-Model": aiResponse.model,
-        "X-Operation": "analyze-k6",
+        "X-Operation": "analyze-job",
       },
     });
   } catch (error) {
-    console.error("[AI Analyze k6] Streaming failed:", error);
+    console.error("[AI Analyze Job] Streaming failed:", error);
 
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
@@ -249,7 +283,7 @@ export async function POST(request: NextRequest) {
         success: false,
         reason: "generation_failed",
         message:
-          "Failed to generate AI analysis. Please try again or check the comparison manually.",
+          "Failed to generate AI analysis. Please try again or check the run manually.",
       },
       { status: 500 }
     );
@@ -264,7 +298,7 @@ export async function GET() {
     return NextResponse.json({
       status: healthStatus.status,
       timestamp: new Date().toISOString(),
-      service: "ai-analyze-k6-api",
+      service: "ai-analyze-job-api",
       details: healthStatus.details,
     });
   } catch (error) {
@@ -272,7 +306,7 @@ export async function GET() {
       {
         status: "unhealthy",
         timestamp: new Date().toISOString(),
-        service: "ai-analyze-k6-api",
+        service: "ai-analyze-job-api",
         error: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 503 }
