@@ -189,7 +189,7 @@ export async function fetchFromS3(
       headers,
     });
   } catch (error: unknown) {
-    console.error(`[S3 PROXY] Error fetching ${bucket}/${key}:`, error);
+    console.error("[S3 PROXY] Error fetching:", `${bucket}/${key}`, error);
 
     // Handle specific S3 errors
     if (error instanceof Error) {
@@ -279,7 +279,7 @@ export async function getS3FileContent(
     return new TextDecoder().decode(buffer);
   } catch (error) {
     // Log error but return null for graceful degradation
-    console.error(`[S3 Proxy] Error fetching ${bucket}/${key}:`, error);
+    console.error("[S3 Proxy] Error fetching:", `${bucket}/${key}`, error);
     return null;
   }
 }
