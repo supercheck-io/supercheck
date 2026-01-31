@@ -5,6 +5,23 @@ All notable changes to Supercheck are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 
+##  [1.2.4] -  [Unreleased]
+
+### Added
+- **AI Analyze for Monitors** — Generate AI-powered health assessments, performance analysis, and actionable recommendations for any monitor
+- **AI Analyze for Job Runs** — Get AI-powered failure diagnosis and execution insights for Playwright and K6 job runs
+
+### Changed
+- Updated AI Analyze documentation to reflect multi-provider support
+
+### Security
+- Added organization authorization checks to prevent cross-org resource access in AI analysis endpoints
+- Implemented prompt injection protection by escaping user-provided content (error messages, HTML reports) in AI prompts
+- Fixed S3 URL parsing to correctly handle `bucket/key` format
+- Fixed RangeError DoS vulnerability in fast-xml-parser (CVE in numeric entity processing) by upgrading to >=5.3.4
+
+---
+
 ## [1.2.3] - 2026-01-22
 
 ### Added

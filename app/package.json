@@ -189,6 +189,7 @@
     "@types/react": "19.2.0",
     "@types/react-dom": "19.2.0",
     "esbuild": "^0.25.8",
+    "fast-xml-parser": ">=5.3.4",
     "lodash": ">=4.17.23"
   }
 }
