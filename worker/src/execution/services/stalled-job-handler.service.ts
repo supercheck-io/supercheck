@@ -1,6 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import Redis from 'ioredis';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { DbService } from './db.service';
 import { eq, inArray } from 'drizzle-orm';
 import * as schema from '../../db/schema';
@@ -20,21 +23,21 @@ import { TIMEOUTS } from '../../common/constants/timeouts.constants';
  * 4. But the run status in the database was never updated to "error"
  * 5. So the job appears "stuck" in "running" state
  */
+/**
+ * OPTIMIZED (v1.2.4+): Removed unnecessary Redis connection.
+ * This service only queries the database - no Redis needed.
+ * Saves 1 Redis connection per worker pod.
+ */
 @Injectable()
-export class StalledJobHandlerService implements OnModuleInit {
+export class StalledJobHandlerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(StalledJobHandlerService.name);
-  private redisClient: Redis | null = null;
   private monitoringInterval: NodeJS.Timeout | null = null;
 
-  constructor(
-    private readonly dbService: DbService,
-    private readonly configService: ConfigService,
-  ) {}
+  constructor(private readonly dbService: DbService) {}
 
-  async onModuleInit() {
+  onModuleInit() {
     try {
       this.logger.log('Initializing StalledJobHandlerService');
-      await this.setupRedisConnection();
       this.startMonitoring();
     } catch (error) {
       this.logger.error(
@@ -44,51 +47,18 @@ export class StalledJobHandlerService implements OnModuleInit {
     }
   }
 
-  private async setupRedisConnection(): Promise<void> {
-    const host = this.configService.get<string>('REDIS_HOST', 'localhost');
-    const port = this.configService.get<number>('REDIS_PORT', 6379);
-    const password = this.configService.get<string>('REDIS_PASSWORD');
-    const tlsEnabled =
-      this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
-
-    this.redisClient = new Redis({
-      host,
-      port,
-      password,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      tls: tlsEnabled
-        ? {
-            rejectUnauthorized:
-              this.configService.get<string>(
-                'REDIS_TLS_REJECT_UNAUTHORIZED',
-                'true',
-              ) !== 'false',
-          }
-        : undefined,
-    });
-
-    this.redisClient.on('error', (err) => {
-      this.logger.error(`Redis connection error: ${err.message}`, err.stack);
-    });
-
-    this.logger.log('Redis connection established for stalled job monitoring');
-  }
-
   /**
    * Monitor for stalled jobs at regular intervals
    * Check for jobs that were marked as stalled but not properly updated in the database
    */
   private startMonitoring(): void {
-    this.monitoringInterval = setInterval(async () => {
-      try {
-        await this.checkAndHandleStalledJobs();
-      } catch (error) {
+    this.monitoringInterval = setInterval(() => {
+      this.checkAndHandleStalledJobs().catch((error) => {
         this.logger.error(
           `Error in stalled job monitoring: ${(error as Error).message}`,
           (error as Error).stack,
         );
-      }
+      });
     }, TIMEOUTS.STALLED_JOB_CHECK_INTERVAL_MS);
 
     this.logger.log(
@@ -100,11 +70,6 @@ export class StalledJobHandlerService implements OnModuleInit {
    * Check for runs that are still in "running" status but are from stalled jobs
    */
   private async checkAndHandleStalledJobs(): Promise<void> {
-    if (!this.redisClient) {
-      this.logger.warn('Redis client not ready, skipping stalled job check');
-      return;
-    }
-
     try {
       // Find all runs that are still in "running" status
       const activeRuns = await this.dbService.db
@@ -244,19 +209,14 @@ export class StalledJobHandlerService implements OnModuleInit {
   }
 
   /**
-   * Clean up resources
+   * Clean up resources on module destroy
+   * NestJS lifecycle hook - called automatically when module is destroyed
    */
-  destroy(): void {
+  onModuleDestroy(): void {
     if (this.monitoringInterval) {
       clearInterval(this.monitoringInterval);
       this.monitoringInterval = null;
     }
-
-    if (this.redisClient) {
-      this.redisClient.disconnect();
-      this.redisClient = null;
-    }
-
     this.logger.log('StalledJobHandlerService cleaned up');
   }
 }

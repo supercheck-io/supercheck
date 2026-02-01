@@ -9,7 +9,7 @@
  */
 
 import { Worker } from 'bullmq';
-import { getRedisConnection, queueLogger } from '@/lib/queue';
+import { getWorkerConnection, queueLogger } from '@/lib/queue';
 import { processScheduledJob, type ScheduledJobData } from './job-scheduler';
 import { processScheduledMonitor, type MonitorJobData } from './monitor-scheduler';
 import {
@@ -61,10 +61,15 @@ export async function initializeSchedulerWorkers(): Promise<void> {
     try {
       logger.info({}, 'Initializing scheduler workers');
 
-      const baseConnection = await getRedisConnection();
-
-      // BullMQ best practice: Use separate connections per worker for optimal performance
-      // Each worker duplicates the base connection to avoid blocking issues
+      // Get shared base connection for Workers
+      // Per BullMQ docs: Workers CAN share a base connection. BullMQ internally
+      // creates separate blocking connections (via duplicate()) for BRPOPLPUSH/BLMOVE.
+      // Benefits:
+      // - Simplifies connection management (single getWorkerConnection() call)
+      // - Reduces initial connection overhead (one base vs three)
+      // - BullMQ handles internal blocking connections automatically
+      // https://docs.bullmq.io/guide/connections
+      const sharedWorkerConn = await getWorkerConnection();
 
       // Playwright Job Scheduler Worker
       playwrightSchedulerWorker = new Worker<ScheduledJobData>(
@@ -74,7 +79,7 @@ export async function initializeSchedulerWorkers(): Promise<void> {
           return processScheduledJob(job);
         },
         {
-          connection: baseConnection.duplicate(),
+          connection: sharedWorkerConn,
           autorun: false, // Don't start until we're ready
           ...workerSettings,
         }
@@ -100,7 +105,7 @@ export async function initializeSchedulerWorkers(): Promise<void> {
           return processScheduledJob(job);
         },
         {
-          connection: baseConnection.duplicate(),
+          connection: sharedWorkerConn,
           autorun: false,
           ...workerSettings,
         }
@@ -126,7 +131,7 @@ export async function initializeSchedulerWorkers(): Promise<void> {
           return processScheduledMonitor(job);
         },
         {
-          connection: baseConnection.duplicate(),
+          connection: sharedWorkerConn,
           autorun: false,
           ...workerSettings,
         }

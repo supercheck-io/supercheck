@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Redis, RedisOptions } from 'ioredis';
-import { Queue, QueueEvents } from 'bullmq';
+import { Queue } from 'bullmq';
 import { InjectQueue } from '@nestjs/bullmq';
 import { PLAYWRIGHT_QUEUE } from '../constants';
 import { DbService } from './db.service';
@@ -35,8 +35,6 @@ const REDIS_CLEANUP_BATCH_SIZE = 100; // Process keys in smaller batches to redu
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   private redisClient: Redis;
-  private queueEvents: QueueEvents;
-  private queueEventsConnection: Redis;
   private readonly redisOptions: RedisOptions;
   private cleanupInterval: NodeJS.Timeout;
 
@@ -82,9 +80,6 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     this.redisClient.on('connect', () => this.logger.log('Redis Connected'));
     this.redisClient.on('ready', () => this.logger.log('Redis Ready'));
 
-    // Initialize Queue Events listeners
-    this.initializeQueueListeners();
-
     // Set up periodic cleanup for orphaned Redis keys
     this.setupRedisCleanup();
   }
@@ -128,35 +123,6 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`Queue health check failed for ${queueName}:`, error);
       return false;
     }
-  }
-
-  /**
-   * Sets up listeners for Bull queue events for logging and monitoring
-   * Database updates are handled by the job execution processor to avoid race conditions
-   */
-  private initializeQueueListeners() {
-    // Set up QueueEvents
-    this.queueEventsConnection = new Redis(this.redisOptions);
-    this.queueEventsConnection.on('error', (error) =>
-      this.logger.error('QueueEvents connection error:', error),
-    );
-    this.queueEvents = new QueueEvents(PLAYWRIGHT_QUEUE, {
-      connection: this.queueEventsConnection,
-    });
-
-    // Queue event listeners
-    this.queueEvents.on('waiting', ({ jobId }) => {
-      this.logger.debug(`Job ${jobId} is waiting`);
-    });
-    this.queueEvents.on('active', ({ jobId }) => {
-      this.logger.debug(`Job ${jobId} is active`);
-    });
-    this.queueEvents.on('completed', ({ jobId }) => {
-      this.logger.debug(`Job ${jobId} completed`);
-    });
-    this.queueEvents.on('failed', ({ jobId, failedReason }) => {
-      this.logger.error(`Job ${jobId} failed: ${failedReason}`);
-    });
   }
 
   /**
@@ -280,14 +246,6 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     // Clear the cleanup interval
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
-    }
-
-    // Clean up queue event listeners
-    if (this.queueEvents) {
-      await this.queueEvents.close();
-    }
-    if (this.queueEventsConnection) {
-      await this.queueEventsConnection.quit();
     }
 
     // Close Redis connection

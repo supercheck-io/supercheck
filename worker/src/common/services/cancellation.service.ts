@@ -1,53 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import Redis from 'ioredis';
+import { SharedRedisService } from '../redis/shared-redis.service';
 
 /**
  * Service to manage execution cancellation signals
  *
  * Uses Redis to store cancellation flags that workers can check
  * during execution to stop processing when a user cancels a run.
+ *
+ * OPTIMIZED (v1.2.4+): Uses SharedRedisService instead of creating own connection.
+ * Saves 1 Redis connection per worker pod.
  */
 @Injectable()
 export class CancellationService {
   private readonly logger = new Logger(CancellationService.name);
-  private redisClient: Redis | null = null;
   private readonly CANCELLATION_KEY_PREFIX = 'supercheck:cancel:';
   private readonly CANCELLATION_TTL = 3600; // 1 hour TTL for cancellation flags
 
-  constructor(private readonly configService: ConfigService) {
-    this.setupRedisConnection();
-  }
-
-  private setupRedisConnection(): void {
-    const host = this.configService.get<string>('REDIS_HOST', 'localhost');
-    const port = this.configService.get<number>('REDIS_PORT', 6379);
-    const password = this.configService.get<string>('REDIS_PASSWORD');
-    const tlsEnabled =
-      this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
-
-    this.redisClient = new Redis({
-      host,
-      port,
-      password,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      tls: tlsEnabled
-        ? {
-            rejectUnauthorized:
-              this.configService.get<string>(
-                'REDIS_TLS_REJECT_UNAUTHORIZED',
-                'true',
-              ) !== 'false',
-          }
-        : undefined,
-    });
-
-    this.redisClient.on('error', (err) => {
-      this.logger.error(`Redis connection error: ${err.message}`, err.stack);
-    });
-
-    this.logger.log('Cancellation service Redis connection established');
+  constructor(private readonly sharedRedis: SharedRedisService) {
+    this.logger.log('CancellationService initialized (using shared Redis)');
   }
 
   /**
@@ -55,16 +25,9 @@ export class CancellationService {
    * @param runId - The run ID to cancel
    */
   async setCancellationSignal(runId: string): Promise<void> {
-    if (!this.redisClient) {
-      this.logger.warn(
-        'Redis client not ready, cannot set cancellation signal',
-      );
-      return;
-    }
-
     try {
       const key = `${this.CANCELLATION_KEY_PREFIX}${runId}`;
-      await this.redisClient.setex(key, this.CANCELLATION_TTL, '1');
+      await this.sharedRedis.getClient().setex(key, this.CANCELLATION_TTL, '1');
       this.logger.log(`Cancellation signal set for run ${runId}`);
     } catch (error) {
       this.logger.error(
@@ -80,14 +43,9 @@ export class CancellationService {
    * @returns true if cancelled, false otherwise
    */
   async isCancelled(runId: string): Promise<boolean> {
-    if (!this.redisClient) {
-      this.logger.warn('Redis client not ready, assuming not cancelled');
-      return false;
-    }
-
     try {
       const key = `${this.CANCELLATION_KEY_PREFIX}${runId}`;
-      const result = await this.redisClient.get(key);
+      const result = await this.sharedRedis.getClient().get(key);
       return result === '1';
     } catch (error) {
       this.logger.error(
@@ -103,16 +61,9 @@ export class CancellationService {
    * @param runId - The run ID to clear
    */
   async clearCancellationSignal(runId: string): Promise<void> {
-    if (!this.redisClient) {
-      this.logger.warn(
-        'Redis client not ready, cannot clear cancellation signal',
-      );
-      return;
-    }
-
     try {
       const key = `${this.CANCELLATION_KEY_PREFIX}${runId}`;
-      await this.redisClient.del(key);
+      await this.sharedRedis.getClient().del(key);
       this.logger.log(`Cancellation signal cleared for run ${runId}`);
     } catch (error) {
       this.logger.error(
@@ -120,16 +71,5 @@ export class CancellationService {
         (error as Error).stack,
       );
     }
-  }
-
-  /**
-   * Clean up resources
-   */
-  destroy(): void {
-    if (this.redisClient) {
-      this.redisClient.disconnect();
-      this.redisClient = null;
-    }
-    this.logger.log('Cancellation service cleaned up');
   }
 }

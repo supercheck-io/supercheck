@@ -135,6 +135,12 @@ export const MONITOR_REGIONS: MonitorRegion[] = [
 // Singleton instances
 let redisClient: Redis | null = null;
 
+// Shared connection for Workers (BullMQ duplicates internally for blocking ops)
+// Per BullMQ docs: Workers can share a connection - BullMQ creates internal blocking connections
+// https://docs.bullmq.io/guide/connections
+let workerConnection: Redis | null = null;
+let workerConnectionPromise: Promise<Redis> | null = null;
+
 // Region-specific queues
 const playwrightQueues: Record<string, Queue> = {};
 const k6Queues: Record<string, Queue> = {};
@@ -170,6 +176,9 @@ export function buildRedisOptions(
     password: password || undefined,
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
+    // Connection timeout to prevent hanging on "max clients reached"
+    connectTimeout: 10000, // 10 seconds
+    commandTimeout: 5000, // 5 seconds for commands
     // Enable TLS for cloud Redis (Upstash, Redis Cloud, etc.)
     ...(tlsEnabled && {
       tls: {
@@ -177,7 +186,12 @@ export function buildRedisOptions(
       },
     }),
     retryStrategy: (times: number) => {
-      const delay = Math.min(times * 100, 3000);
+      // Give up after 5 retries to prevent infinite blocking
+      if (times > 5) {
+        queueLogger.error({ times }, 'Redis connection failed after max retries');
+        return null; // Stop retrying
+      }
+      const delay = Math.min(times * 500, 3000);
       queueLogger.warn(
         { times, delay },
         `Redis connection retry ${times}, delaying ${delay}ms`
@@ -186,6 +200,84 @@ export function buildRedisOptions(
     },
     ...overrides,
   };
+}
+
+/**
+ * Check if a Redis connection is usable
+ */
+function isConnectionUsable(conn: Redis | null): conn is Redis {
+  if (!conn) return false;
+  const status = conn.status;
+  // 'ready' = connected, 'connecting' = in progress (will be ready soon)
+  // 'connect' = connected but not ready yet
+  return status === 'ready' || status === 'connecting' || status === 'connect';
+}
+
+/**
+ * Get shared connection for Workers
+ * 
+ * Per BullMQ documentation (https://docs.bullmq.io/guide/connections):
+ * - Workers CAN share a connection - BullMQ internally creates separate blocking connections
+ * - "Note that in the third example, even though the ioredis instance is being reused,
+ *    the worker will create a duplicated connection that it needs internally to make
+ *    blocking connections."
+ * 
+ * This provides a base connection that Workers will duplicate internally for BRPOPLPUSH/BLMOVE.
+ * Thread-safe: uses promise to prevent race conditions during initialization.
+ */
+export async function getWorkerConnection(): Promise<Redis> {
+  // Return existing usable connection
+  if (isConnectionUsable(workerConnection)) {
+    return workerConnection;
+  }
+
+  // Return in-progress connection to prevent race conditions
+  if (workerConnectionPromise) {
+    return workerConnectionPromise;
+  }
+
+  // Create new connection with proper error handling
+  // Note: We intentionally keep workerConnectionPromise set until connection is established.
+  // On success, workerConnection is set and future callers use that.
+  // On error, we clear the promise so callers can retry.
+  workerConnectionPromise = (async () => {
+    try {
+      const baseConnection = await getRedisConnection();
+      workerConnection = baseConnection.duplicate();
+      
+      // Wait for connection to be ready (with timeout)
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          resolve(); // Don't reject - connection may still work
+        }, 5000);
+        
+        if (workerConnection!.status === 'ready') {
+          clearTimeout(timeout);
+          resolve();
+          return;
+        }
+        
+        workerConnection!.once('ready', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+        workerConnection!.once('error', (err) => {
+          clearTimeout(timeout);
+          queueLogger.warn({ err }, 'Worker connection error during setup');
+          resolve(); // Don't reject - let BullMQ handle reconnection
+        });
+      });
+      
+      return workerConnection!;
+    } catch (error) {
+      // Clear promise only on error so callers can retry
+      workerConnectionPromise = null;
+      workerConnection = null;
+      throw error;
+    }
+  })();
+
+  return workerConnectionPromise;
 }
 
 /**
@@ -346,22 +438,27 @@ export async function getQueues(): Promise<{
           queueSettings
         );
 
+        // IMPORTANT: QueueEvents MUST have separate connections per BullMQ documentation
+        // https://docs.bullmq.io/guide/connections
+        // "QueueScheduler and QueueEvents cannot [share connections] because they require
+        //  blocking connections to Redis, which makes it impossible to reuse them."
+        //
+        // Each QueueEvents uses blocking XREAD to listen for job events.
+        // Sharing a connection would cause events to be lost or delivered incorrectly.
+
         // Monitor Execution Events - Regional (no GLOBAL)
         const monitorEvents: Record<MonitorRegion, QueueEvents> = {} as Record<
           MonitorRegion,
           QueueEvents
         >;
         for (const region of MONITOR_REGIONS) {
-          const eventsConnection = redisClient!.duplicate();
-          // ioredis connects automatically by default, so we don't need to call connect()
-          // unless lazyConnect: true is set in options (which it isn't)
           monitorEvents[region] = new QueueEvents(`monitor-${region}`, {
-            connection: eventsConnection,
+            connection: redisClient!.duplicate(),
           });
         }
         monitorExecutionEvents = monitorEvents;
 
-        // Create QueueEvents for execution queues
+        // Create QueueEvents for execution queues - each needs its own connection
         const playwrightEvents: Record<string, QueueEvents> = {};
         playwrightEvents["global"] = new QueueEvents("playwright-global", {
           connection: redisClient!.duplicate(),
@@ -424,7 +521,7 @@ export async function getQueues(): Promise<{
         // Set up capacity management with atomic counters (pass queues to prevent circular dependency)
         const { setupCapacityManagement } = await import("./capacity-manager");
 
-        // Create QueueEvents for remaining queues
+        // Create QueueEvents for remaining queues - each needs its own blocking connection
         const jobSchedulerEvents = new QueueEvents(JOB_SCHEDULER_QUEUE, {
           connection: redisClient!.duplicate(),
         });

@@ -12,6 +12,7 @@ import { HealthModule } from './health/health.module';
 import { EmailTemplateModule } from './email-template/email-template.module';
 import { LoggerModule } from './logger/logger.module';
 import { QueueAlertingModule } from './queue-alerting/queue-alerting.module';
+import { SharedRedisModule } from './common/redis/shared-redis.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { QueueAlertingModule } from './queue-alerting/queue-alerting.module';
       envFilePath: '.env',
     }),
     LoggerModule,
+    SharedRedisModule, // Global shared Redis connection for non-blocking ops
     BullModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {

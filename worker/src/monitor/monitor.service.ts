@@ -1222,15 +1222,17 @@ export class MonitorService {
         // Build detailed error message for better debugging
         const errorParts: string[] = [];
         if (error.code) errorParts.push(`Code: ${error.code}`);
-        if (error.message && error.message !== 'Error') errorParts.push(error.message);
+        if (error.message && error.message !== 'Error')
+          errorParts.push(error.message);
         if (error.cause && error.cause instanceof Error) {
           errorParts.push(`Cause: ${error.cause.message}`);
         }
-        const detailedError = errorParts.length > 0 ? errorParts.join(' - ') : 'Unknown network error';
-        
-        this.logger.warn(
-          `HTTP Request to ${target} failed: ${detailedError}`,
-        );
+        const detailedError =
+          errorParts.length > 0
+            ? errorParts.join(' - ')
+            : 'Unknown network error';
+
+        this.logger.warn(`HTTP Request to ${target} failed: ${detailedError}`);
         details.errorMessage = detailedError;
         if (error.response) {
           details.statusCode = error.response.status;

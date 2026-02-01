@@ -26,8 +26,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
-import { Redis } from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
+import { SharedRedisService } from '../common/redis/shared-redis.service';
 import {
   QueueMetrics,
   QueueAlert,
@@ -82,14 +82,16 @@ const MONITORED_QUEUES = [
 @Injectable()
 export class QueueAlertingService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(QueueAlertingService.name);
-  private redisClient: Redis;
   private queues: Map<string, Queue> = new Map();
   private config: QueueAlertingConfig;
   private state: QueueAlertingState;
   private checkInterval: NodeJS.Timeout | null = null;
   private readonly metricsHistoryLimit = 60; // Keep 60 samples (1 hour at 1-minute intervals)
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly sharedRedis: SharedRedisService,
+  ) {
     this.config = this.loadConfig();
     this.state = {
       lastCheckTimestamp: null,
@@ -99,17 +101,16 @@ export class QueueAlertingService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async onModuleInit(): Promise<void> {
+  onModuleInit(): void {
     if (!this.config.enabled) {
       this.logger.log('Queue alerting is disabled');
       return;
     }
 
-    await this.initializeRedis();
     this.initializeQueues();
     this.startMonitoring();
     this.logger.log(
-      `Queue alerting initialized with ${this.queues.size} queues`,
+      `Queue alerting initialized with ${this.queues.size} queues (using shared Redis)`,
     );
   }
 
@@ -233,55 +234,19 @@ export class QueueAlertingService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Initialize Redis connection
-   */
-  private async initializeRedis(): Promise<void> {
-    const host = this.configService.get<string>('REDIS_HOST', 'localhost');
-    const port = parseInt(
-      this.configService.get<string>('REDIS_PORT', '6379'),
-      10,
-    );
-    const password = this.configService.get<string>('REDIS_PASSWORD');
-    const username = this.configService.get<string>('REDIS_USERNAME');
-    const tlsEnabled =
-      this.configService.get<string>('REDIS_TLS_ENABLED', 'false') === 'true';
-
-    this.redisClient = new Redis({
-      host,
-      port,
-      password: password || undefined,
-      username: username || undefined,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-      retryStrategy: (attempt: number) =>
-        Math.min(1000 * Math.pow(2, attempt), 10000),
-      tls: tlsEnabled
-        ? {
-            rejectUnauthorized:
-              this.configService.get<string>(
-                'REDIS_TLS_REJECT_UNAUTHORIZED',
-                'true',
-              ) !== 'false',
-          }
-        : undefined,
-    });
-
-    this.redisClient.on('error', (err) => {
-      this.logger.error('Queue alerting Redis error:', err);
-    });
-
-    await this.redisClient.ping();
-    this.logger.log('Queue alerting Redis connection established');
-  }
-
-  /**
-   * Initialize queue connections
+   * Initialize queue connections using shared Redis connection
+   *
+   * OPTIMIZED (v1.2.4+): Uses SharedRedisService instead of creating own connection.
+   * Each Queue still needs its own connection for BullMQ internals, but we duplicate
+   * from the shared base connection instead of creating completely new connections.
    */
   private initializeQueues(): void {
+    const baseClient = this.sharedRedis.getClient();
+
     for (const queueName of MONITORED_QUEUES) {
       try {
         const queue = new Queue(queueName, {
-          connection: this.redisClient.duplicate(),
+          connection: baseClient.duplicate(),
         });
         this.queues.set(queueName, queue);
         this.state.metricsHistory.set(queueName, []);
@@ -328,6 +293,9 @@ export class QueueAlertingService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Clean up resources
+   *
+   * Note: We don't close the shared Redis connection here - SharedRedisService
+   * manages its own lifecycle. We only close the Queue instances.
    */
   private async cleanup(): Promise<void> {
     for (const [name, queue] of this.queues) {
@@ -339,10 +307,6 @@ export class QueueAlertingService implements OnModuleInit, OnModuleDestroy {
       }
     }
     this.queues.clear();
-
-    if (this.redisClient) {
-      await this.redisClient.quit();
-    }
   }
 
   /**
