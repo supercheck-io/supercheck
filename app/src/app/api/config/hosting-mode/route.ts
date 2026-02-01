@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { isCloudHosted } from "@/lib/feature-flags";
 
+// Force dynamic rendering - SELF_HOSTED is set at runtime in K8s/Docker
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/config/hosting-mode
  * Returns the hosting mode (self-hosted vs cloud) for client-side checks

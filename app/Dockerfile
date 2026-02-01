@@ -39,13 +39,18 @@ WORKDIR /app
 COPY --from=deps-all /app/node_modules ./node_modules
 COPY . .
 
-# Accept build arguments for NEXT_PUBLIC variables
+# Accept build arguments for NEXT_PUBLIC variables (baked into the app at build time)
+# These are Cloud-only features and can be left empty for self-hosted builds
+ARG NEXT_PUBLIC_CHATWOOT_BASE_URL=""
+ARG NEXT_PUBLIC_CHATWOOT_WEBSITE_TOKEN=""
 
 # Build the Next.js application
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 ENV NODE_ENV=production
 
-# Set NEXT_PUBLIC environment variables from build args
+# Set NEXT_PUBLIC environment variables from build args (Next.js requires these at build time)
+ENV NEXT_PUBLIC_CHATWOOT_BASE_URL=$NEXT_PUBLIC_CHATWOOT_BASE_URL
+ENV NEXT_PUBLIC_CHATWOOT_WEBSITE_TOKEN=$NEXT_PUBLIC_CHATWOOT_WEBSITE_TOKEN
 
 # Build with standalone output and static optimization
 # Use a build-time placeholder secret that will be overridden at runtime

@@ -18,9 +18,10 @@ const HIDDEN_ROUTES = [
     "/onboarding",    // onboarding flow
 ];
 
-interface HostingModeResponse {
-    selfHosted: boolean;
-    cloudHosted: boolean;
+interface ChatwootConfigResponse {
+    enabled: boolean;
+    baseUrl: string | null;
+    websiteToken: string | null;
 }
 
 // Hydration-safe mounting detection using useSyncExternalStore (React 18+ best practice)
@@ -67,74 +68,65 @@ export function SupportChat() {
     const { isImpersonating, isLoading: isImpersonationLoading } = useImpersonationStatus();
     const isHydrated = useHydrated();
     const pathname = usePathname();
-    const [isCloudMode, setIsCloudMode] = useState<boolean | null>(null);
+    const [chatwootConfig, setChatwootConfig] = useState<ChatwootConfigResponse | null>(null);
     const [identityToken, setIdentityToken] = useState<string | null>(null);
 
     // Check if current route is an external/public page
     const isExternalPage = HIDDEN_ROUTES.some(route => pathname?.startsWith(route));
 
-    // Check config - these are set at build time
-    const baseUrl = process.env.NEXT_PUBLIC_CHATWOOT_BASE_URL;
-    const token = process.env.NEXT_PUBLIC_CHATWOOT_WEBSITE_TOKEN;
-    const hasChatwootConfig = !!baseUrl && !!token;
-
-    // Fetch config after hydration (only if Chatwoot is configured)
+    // Fetch Chatwoot config from server (runtime values from K8s secrets)
+    // This replaces the build-time NEXT_PUBLIC_* env vars which don't work in K8s
     useEffect(() => {
-        if (!isHydrated || !hasChatwootConfig) return;
+        if (!isHydrated) return;
 
         const fetchConfig = async () => {
             try {
-                // Check hosting mode from server (SELF_HOSTED is a runtime env var)
-                const hostingResponse = await fetch("/api/config/hosting-mode");
-                if (!hostingResponse.ok) {
-                    setIsCloudMode(false);
+                // Fetch Chatwoot config from server (includes cloud mode check)
+                const configResponse = await fetch("/api/config/chatwoot");
+                if (!configResponse.ok) {
+                    setChatwootConfig({ enabled: false, baseUrl: null, websiteToken: null });
                     return;
                 }
-                const hostingData: HostingModeResponse = await hostingResponse.json();
+                const configData: ChatwootConfigResponse = await configResponse.json();
+                setChatwootConfig(configData);
 
-                // Only enable chat if we're in cloud mode
-                if (!hostingData.cloudHosted) {
-                    setIsCloudMode(false);
-                    return;
-                }
-
-                setIsCloudMode(true);
-
-                // Fetch identity token for verified user badge
-                try {
-                    const tokenResponse = await fetch("/api/auth/chatwoot-token");
-                    if (tokenResponse.ok) {
-                        const tokenData = await tokenResponse.json();
-                        setIdentityToken(tokenData.token);
+                // If enabled, also fetch identity token for verified user badge
+                if (configData.enabled) {
+                    try {
+                        const tokenResponse = await fetch("/api/auth/chatwoot-token");
+                        if (tokenResponse.ok) {
+                            const tokenData = await tokenResponse.json();
+                            setIdentityToken(tokenData.token);
+                        }
+                    } catch (e) {
+                        // Identity validation is optional - chat still works without it
+                        console.warn("[Chatwoot] Failed to fetch identity token:", e);
                     }
-                } catch (e) {
-                    // Identity validation is optional - chat still works without it
-                    console.warn("[Chatwoot] Failed to fetch identity token:", e);
                 }
             } catch {
                 // Default to disabling chat on error (fail-safe)
-                setIsCloudMode(false);
+                setChatwootConfig({ enabled: false, baseUrl: null, websiteToken: null });
             }
         };
 
         fetchConfig();
-    }, [isHydrated, hasChatwootConfig]);
+    }, [isHydrated]);
 
     // Don't render if:
     // 1. Not hydrated yet (avoid hydration mismatch)
     // 2. On an external/public page (notification, status)
-    // 3. Still determining hosting mode
-    // 4. Not in cloud mode (self-hosted users don't get chat)
-    // 5. Configuration is missing
-    // 6. No authenticated user
-    // 7. Still loading impersonation status (wait for it)
-    // 8. Admin is impersonating a user (SECURITY: prevent cross-contamination)
+    // 3. Still loading config
+    // 4. Chat not enabled (self-hosted or missing config)
+    // 5. No authenticated user
+    // 6. Still loading impersonation status (wait for it)
+    // 7. Admin is impersonating a user (SECURITY: prevent cross-contamination)
     if (
         !isHydrated ||
         isExternalPage ||
-        isCloudMode === null ||
-        !isCloudMode ||
-        !hasChatwootConfig ||
+        chatwootConfig === null ||
+        !chatwootConfig.enabled ||
+        !chatwootConfig.baseUrl ||
+        !chatwootConfig.websiteToken ||
         !session?.user ||
         isImpersonationLoading ||
         isImpersonating
@@ -155,8 +147,8 @@ export function SupportChat() {
 
     return (
         <ChatwootWidget
-            websiteToken={token}
-            baseUrl={baseUrl}
+            websiteToken={chatwootConfig.websiteToken}
+            baseUrl={chatwootConfig.baseUrl}
             settings={{
                 position: "right",
                 darkMode: "auto",
