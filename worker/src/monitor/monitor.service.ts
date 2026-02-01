@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios'; // Import HttpService
 import { AxiosError, Method } from 'axios'; // Import Method from axios
+import { Agent as HttpAgent } from 'http';
+import { Agent as HttpsAgent } from 'https';
 import { firstValueFrom } from 'rxjs'; // To convert Observable to Promise
 import { MonitorJobDataDto } from './dto/monitor-job.dto';
 import { MonitorExecutionResult } from './types/monitor-result.type';
@@ -1025,6 +1027,10 @@ export class MonitorService {
           this.resourceManager.getResourceStats().limits.maxResponseSizeMB *
           1024 *
           1024,
+        // 🔴 CRITICAL: Force IPv4 to avoid IPv6 timeout issues on some datacenter networks
+        // Hetzner APAC and other regions may have unreachable IPv6, causing ETIMEDOUT errors
+        httpAgent: new HttpAgent({ family: 4 }),
+        httpsAgent: new HttpsAgent({ family: 4 }),
       };
 
       // 🔴 CRITICAL: Secure authentication handling
@@ -1213,14 +1219,24 @@ export class MonitorService {
       responseTimeMs = Math.round(Number(errorTime - startTime) / 1000000);
 
       if (error instanceof AxiosError) {
+        // Build detailed error message for better debugging
+        const errorParts: string[] = [];
+        if (error.code) errorParts.push(`Code: ${error.code}`);
+        if (error.message && error.message !== 'Error') errorParts.push(error.message);
+        if (error.cause && error.cause instanceof Error) {
+          errorParts.push(`Cause: ${error.cause.message}`);
+        }
+        const detailedError = errorParts.length > 0 ? errorParts.join(' - ') : 'Unknown network error';
+        
         this.logger.warn(
-          `HTTP Request to ${target} failed: ${getErrorMessage(error)}`,
+          `HTTP Request to ${target} failed: ${detailedError}`,
         );
-        details.errorMessage = getErrorMessage(error);
+        details.errorMessage = detailedError;
         if (error.response) {
           details.statusCode = error.response.status;
           details.statusText = error.response.statusText;
         }
+
         if (
           error.code === 'ECONNABORTED' ||
           getErrorMessage(error).toLowerCase().includes('timeout')
