@@ -8,6 +8,7 @@ import {
     useState,
     useEffect,
 } from "react";
+import { z } from "zod";
 
 interface TurnstileCaptchaProps {
     /** Callback when CAPTCHA is successfully completed */
@@ -27,10 +28,13 @@ export interface TurnstileCaptchaRef {
     getToken: () => string | null;
 }
 
-interface CaptchaConfig {
-    enabled: boolean;
-    siteKey?: string;
-}
+// Zod schema for runtime validation of CAPTCHA config API response
+const captchaConfigSchema = z.object({
+    enabled: z.boolean(),
+    siteKey: z.string().optional(),
+});
+
+type CaptchaConfig = z.infer<typeof captchaConfigSchema>;
 
 /**
  * Cloudflare Turnstile CAPTCHA Component
@@ -68,10 +72,31 @@ export const TurnstileCaptcha = forwardRef<
 
     // Fetch CAPTCHA configuration on mount
     useEffect(() => {
-        fetch("/api/config/captcha")
-            .then((res) => res.json())
-            .then((data: CaptchaConfig) => setConfig(data))
-            .catch(() => setConfig({ enabled: false }));
+        const fetchConfig = async () => {
+            try {
+                const response = await fetch("/api/config/captcha");
+                if (!response.ok) {
+                    console.warn("[CAPTCHA] Failed to fetch config:", response.status);
+                    setConfig({ enabled: false });
+                    return;
+                }
+                const data = await response.json();
+                // Validate response shape at runtime
+                const parsed = captchaConfigSchema.safeParse(data);
+                if (!parsed.success) {
+                    console.warn("[CAPTCHA] Invalid config response:", parsed.error.message);
+                    setConfig({ enabled: false });
+                    return;
+                }
+                setConfig(parsed.data);
+            } catch (error) {
+                // Fail-safe: disable CAPTCHA on network errors
+                console.warn("[CAPTCHA] Config fetch error:", error instanceof Error ? error.message : "Unknown error");
+                setConfig({ enabled: false });
+            }
+        };
+
+        fetchConfig();
     }, []);
 
     // Expose reset and getToken methods via ref
@@ -104,20 +129,19 @@ export const TurnstileCaptcha = forwardRef<
     }
 
     return (
-        <div className={className}>
-            <Turnstile
-                ref={turnstileRef}
-                siteKey={config.siteKey}
-                onSuccess={handleSuccess}
-                onError={handleError}
-                onExpire={handleExpire}
-                options={{
-                    // Use invisible mode for seamless UX
-                    size: "invisible",
-                    // Auto-detect theme based on user preference
-                    theme: "auto",
-                }}
-            />
-        </div>
+        <Turnstile
+            ref={turnstileRef}
+            siteKey={config.siteKey}
+            onSuccess={handleSuccess}
+            onError={handleError}
+            onExpire={handleExpire}
+            options={{
+                // Use invisible mode for seamless UX
+                size: "invisible",
+                // Auto-detect theme based on user preference
+                theme: "auto",
+            }}
+            className={className}
+        />
     );
 });

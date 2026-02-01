@@ -149,8 +149,8 @@ S3_ENDPOINT=http://minio:9000
 # ────────────────────────────────────────────────────────────
 # OPTIONAL: Customer Support (Cloud Only)
 # ────────────────────────────────────────────────────────────
-# NEXT_PUBLIC_CHATWOOT_BASE_URL=https://app.chatwoot.com
-# NEXT_PUBLIC_CHATWOOT_WEBSITE_TOKEN=your-token
+# CHATWOOT_BASE_URL=https://app.chatwoot.com
+# CHATWOOT_WEBSITE_TOKEN=your-token
 
 
 # ────────────────────────────────────────────────────────────

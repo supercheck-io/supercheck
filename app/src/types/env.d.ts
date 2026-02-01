@@ -53,8 +53,9 @@ declare namespace NodeJS {
     POLAR_PRO_PRODUCT_ID: string;
 
     // Chatwoot Customer Support (Cloud Only)
-    NEXT_PUBLIC_CHATWOOT_BASE_URL?: string;
-    NEXT_PUBLIC_CHATWOOT_WEBSITE_TOKEN?: string;
+    // Server-side only (no NEXT_PUBLIC_ prefix) - pattern matches TURNSTILE_* vars
+    CHATWOOT_BASE_URL?: string;
+    CHATWOOT_WEBSITE_TOKEN?: string;
     CHATWOOT_IDENTITY_VALIDATION_KEY?: string;
   }
 } 

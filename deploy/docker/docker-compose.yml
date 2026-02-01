@@ -74,9 +74,9 @@ x-common-env: &common-env # Database Configuration
   # Valid values: local, us-east, eu-central, asia-pacific
   WORKER_LOCATION: ${WORKER_LOCATION:-local}
 
-  # Customer Support (Cloud Only)
-  NEXT_PUBLIC_CHATWOOT_BASE_URL: ${NEXT_PUBLIC_CHATWOOT_BASE_URL}
-  NEXT_PUBLIC_CHATWOOT_WEBSITE_TOKEN: ${NEXT_PUBLIC_CHATWOOT_WEBSITE_TOKEN}
+  # Customer Support (Cloud Only - not used in self-hosted mode)
+  CHATWOOT_BASE_URL: ${CHATWOOT_BASE_URL:-}
+  CHATWOOT_WEBSITE_TOKEN: ${CHATWOOT_WEBSITE_TOKEN:-}
 
   # AWS S3 / MinIO Configuration
   AWS_REGION: ${AWS_REGION:-us-east-1}
