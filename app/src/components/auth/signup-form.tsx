@@ -254,14 +254,6 @@ export function SignupForm({
               </p>
             )}
 
-            {/* Invisible CAPTCHA - auto-verifies users */}
-            <TurnstileCaptcha
-              ref={captchaRef}
-              onSuccess={handleCaptchaSuccess}
-              onError={handleCaptchaError}
-              onExpire={handleCaptchaExpire}
-            />
-
             {/* Submit Button */}
             <Field>
               <Button type="submit" className="w-full" disabled={isLoading}>
@@ -269,6 +261,14 @@ export function SignupForm({
                 Create account & join
               </Button>
             </Field>
+
+            {/* Invisible CAPTCHA - placed after button to avoid layout shift during async load */}
+            <TurnstileCaptcha
+              ref={captchaRef}
+              onSuccess={handleCaptchaSuccess}
+              onError={handleCaptchaError}
+              onExpire={handleCaptchaExpire}
+            />
 
             {/* Link to sign-in for existing users */}
             <div className="text-center">

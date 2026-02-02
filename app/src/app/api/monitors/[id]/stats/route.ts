@@ -119,7 +119,57 @@ export async function GET(
     const hasAggregates30d = aggregates30d.totalChecks > 0;
 
     // If aggregates exist, use them directly (fast path)
+    // However, if P95 is null in aggregates but we have enough checks,
+    // compute P95 from raw data (individual hourly aggregates may have had < 5 checks each)
     if (hasAggregates24h && hasAggregates30d) {
+      let p95_24h = aggregates24h.p95ResponseMs;
+      let p95_30d = aggregates30d.p95ResponseMs;
+
+      // Compute P95 from raw data if aggregate P95 is null but we have sufficient checks
+      // This handles the case where individual hourly/daily aggregates each had < 5 checks
+      // but the total across all periods is sufficient for a meaningful P95
+      if (p95_24h === null && aggregates24h.totalChecks >= 5) {
+        const responseTimes24h = await db
+          .select({ responseTimeMs: monitorResults.responseTimeMs })
+          .from(monitorResults)
+          .where(
+            and(
+              eq(monitorResults.monitorId, id),
+              gte(monitorResults.checkedAt, last24Hours),
+              eq(monitorResults.isUp, true),
+              sql`${monitorResults.responseTimeMs} is not null`,
+              locationFilter
+                ? eq(monitorResults.location, locationFilter as MonitoringLocation)
+                : sql`1=1`
+            )
+          );
+        const sortedTimes = responseTimes24h
+          .map((r) => r.responseTimeMs!)
+          .sort((a, b) => a - b);
+        p95_24h = calculatePercentile(sortedTimes, 95);
+      }
+
+      if (p95_30d === null && aggregates30d.totalChecks >= 5) {
+        const responseTimes30d = await db
+          .select({ responseTimeMs: monitorResults.responseTimeMs })
+          .from(monitorResults)
+          .where(
+            and(
+              eq(monitorResults.monitorId, id),
+              gte(monitorResults.checkedAt, last30Days),
+              eq(monitorResults.isUp, true),
+              sql`${monitorResults.responseTimeMs} is not null`,
+              locationFilter
+                ? eq(monitorResults.location, locationFilter as MonitoringLocation)
+                : sql`1=1`
+            )
+          );
+        const sortedTimes = responseTimes30d
+          .map((r) => r.responseTimeMs!)
+          .sort((a, b) => a - b);
+        p95_30d = calculatePercentile(sortedTimes, 95);
+      }
+
       return NextResponse.json({
         success: true,
         data: {
@@ -130,7 +180,7 @@ export async function GET(
             ),
             uptimePercentage: aggregates24h.uptimePercentage,
             avgResponseTimeMs: aggregates24h.avgResponseMs,
-            p95ResponseTimeMs: aggregates24h.p95ResponseMs,
+            p95ResponseTimeMs: p95_24h !== null ? Math.round(p95_24h) : null,
           },
           period30d: {
             totalChecks: aggregates30d.totalChecks,
@@ -139,14 +189,16 @@ export async function GET(
             ),
             uptimePercentage: aggregates30d.uptimePercentage,
             avgResponseTimeMs: aggregates30d.avgResponseMs,
-            p95ResponseTimeMs: aggregates30d.p95ResponseMs,
+            p95ResponseTimeMs: p95_30d !== null ? Math.round(p95_30d) : null,
           },
         },
         meta: {
           monitorId: id,
           location: locationFilter || "all",
           calculatedAt: now.toISOString(),
-          source: "aggregates", // Indicates data came from pre-computed aggregates
+          source: p95_24h !== aggregates24h.p95ResponseMs || p95_30d !== aggregates30d.p95ResponseMs
+            ? "aggregates+raw_p95" // Indicates P95 was computed from raw data
+            : "aggregates",
         },
       });
     }

@@ -178,14 +178,6 @@ export default function ForgotPasswordPage() {
             </p>
           )}
 
-          {/* Invisible CAPTCHA - auto-verifies users */}
-          <TurnstileCaptcha
-            ref={captchaRef}
-            onSuccess={handleCaptchaSuccess}
-            onError={handleCaptchaError}
-            onExpire={handleCaptchaExpire}
-          />
-
           {/* Submit Button */}
           <Field>
             <Button
@@ -198,6 +190,14 @@ export default function ForgotPasswordPage() {
               Send reset link
             </Button>
           </Field>
+
+          {/* Invisible CAPTCHA - placed after button to avoid layout shift during async load */}
+          <TurnstileCaptcha
+            ref={captchaRef}
+            onSuccess={handleCaptchaSuccess}
+            onError={handleCaptchaError}
+            onExpire={handleCaptchaExpire}
+          />
 
           {/* Back Link */}
           <div className="text-center">

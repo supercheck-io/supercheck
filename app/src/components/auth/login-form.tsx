@@ -271,14 +271,6 @@ export function LoginForm({
               </p>
             )}
 
-            {/* Invisible CAPTCHA - auto-verifies users */}
-            <TurnstileCaptcha
-              ref={captchaRef}
-              onSuccess={handleCaptchaSuccess}
-              onError={handleCaptchaError}
-              onExpire={handleCaptchaExpire}
-            />
-
             {/* Submit Button */}
             <Field>
               <Button type="submit" className="w-full" disabled={isLoading} data-testid="login-submit-button">
@@ -286,6 +278,14 @@ export function LoginForm({
                 Login
               </Button>
             </Field>
+
+            {/* Invisible CAPTCHA - placed after button to avoid layout shift during async load */}
+            <TurnstileCaptcha
+              ref={captchaRef}
+              onSuccess={handleCaptchaSuccess}
+              onError={handleCaptchaError}
+              onExpire={handleCaptchaExpire}
+            />
           </FieldGroup>
         </form>
       </Form>
