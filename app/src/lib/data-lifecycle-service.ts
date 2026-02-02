@@ -2472,6 +2472,14 @@ export class DataLifecycleService {
     };
   }
 
+  /**
+   * Gets the count of enabled strategies without querying the database.
+   * Used during startup to avoid overwhelming DB connections with TLS handshakes.
+   */
+  getEnabledStrategiesCount(): number {
+    return this.strategies.size;
+  }
+
   async shutdown(): Promise<void> {
     const promises: Promise<void>[] = [];
 
