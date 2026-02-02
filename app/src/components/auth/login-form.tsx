@@ -279,13 +279,6 @@ export function LoginForm({
               </Button>
             </Field>
 
-            {/* Invisible CAPTCHA - placed after button to avoid layout shift during async load */}
-            <TurnstileCaptcha
-              ref={captchaRef}
-              onSuccess={handleCaptchaSuccess}
-              onError={handleCaptchaError}
-              onExpire={handleCaptchaExpire}
-            />
           </FieldGroup>
         </form>
       </Form>
@@ -296,6 +289,14 @@ export function LoginForm({
         <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
         <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
       </FieldDescription>
+
+      {/* Invisible CAPTCHA - placed outside form to avoid any layout shift */}
+      <TurnstileCaptcha
+        ref={captchaRef}
+        onSuccess={handleCaptchaSuccess}
+        onError={handleCaptchaError}
+        onExpire={handleCaptchaExpire}
+      />
     </div>
   );
 }

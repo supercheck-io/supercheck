@@ -262,13 +262,6 @@ export function SignupForm({
               </Button>
             </Field>
 
-            {/* Invisible CAPTCHA - placed after button to avoid layout shift during async load */}
-            <TurnstileCaptcha
-              ref={captchaRef}
-              onSuccess={handleCaptchaSuccess}
-              onError={handleCaptchaError}
-              onExpire={handleCaptchaExpire}
-            />
 
             {/* Link to sign-in for existing users */}
             <div className="text-center">
@@ -292,6 +285,14 @@ export function SignupForm({
         <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
         <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
       </FieldDescription>
+
+      {/* Invisible CAPTCHA - placed outside form to avoid any layout shift */}
+      <TurnstileCaptcha
+        ref={captchaRef}
+        onSuccess={handleCaptchaSuccess}
+        onError={handleCaptchaError}
+        onExpire={handleCaptchaExpire}
+      />
     </div>
   );
 }
