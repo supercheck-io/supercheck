@@ -23,6 +23,16 @@
  * @returns 'require' for SSL connections, undefined for non-SSL
  */
 export function getSSLConfig(): "require" | undefined {
+  const dbSsl = process.env.DB_SSL?.toLowerCase();
+  if (dbSsl) {
+    if (["true", "1", "require"].includes(dbSsl)) {
+      return "require";
+    }
+    if (["false", "0", "disable"].includes(dbSsl)) {
+      return undefined;
+    }
+  }
+
   const isSelfHosted = process.env.SELF_HOSTED?.toLowerCase() === "true";
   return isSelfHosted ? undefined : "require";
 }
