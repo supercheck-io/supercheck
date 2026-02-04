@@ -7,7 +7,7 @@ declare namespace NodeJS {
     DB_USER: string;
     DB_PASSWORD: string;
     DB_NAME: string;
-    DB_SSL?: string;
+    SELF_HOSTED?: string;
 
     // AWS S3 / MinIO Configuration
     AWS_REGION: string;

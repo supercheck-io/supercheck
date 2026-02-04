@@ -70,11 +70,8 @@ Use `./init-secrets.sh` to generate secure defaults, then configure:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` | Email notifications | - |
-| `DB_SSL` | Override database TLS (`true`, `false`, `require`, `disable`) | - |
 | `OPENAI_API_KEY` | AI features | - |
 | `WORKER_REPLICAS` | Number of workers | `1` |
-
-**Note:** If you run cloud mode against a local or non-TLS PostgreSQL (e.g., Docker Compose), set `DB_SSL=false`. For production cloud deployments, keep SSL enabled.
 
 ---
 

@@ -2,7 +2,7 @@
  * Database SSL Configuration Utility
  *
  * Simple, robust SSL detection for PostgreSQL connections:
- * - Self-hosted mode (SELF_HOSTED=true) → SSL OFF (local PostgreSQL)
+ * - Self-hosted mode (SELF_HOSTED=true) → SSL OFF
  * - Cloud mode (SELF_HOSTED=false or not set) → SSL ON
  *
  * @example
@@ -17,22 +17,12 @@
 /**
  * Determines the appropriate SSL configuration for PostgreSQL.
  *
- * - Self-hosted mode (SELF_HOSTED=true): SSL OFF (local PostgreSQL in Docker)
- * - Cloud mode (SELF_HOSTED=false or not set): SSL ON (Neon, PlanetScale, etc.)
+ * - Self-hosted mode: SSL OFF (local PostgreSQL)
+ * - Cloud mode: SSL ON (Neon, etc.)
  *
  * @returns 'require' for SSL connections, undefined for non-SSL
  */
 export function getSSLConfig(): 'require' | undefined {
-  const dbSsl = process.env.DB_SSL?.toLowerCase();
-  if (dbSsl) {
-    if (['true', '1', 'require'].includes(dbSsl)) {
-      return 'require';
-    }
-    if (['false', '0', 'disable'].includes(dbSsl)) {
-      return undefined;
-    }
-  }
-
   const isSelfHosted = process.env.SELF_HOSTED?.toLowerCase() === 'true';
   return isSelfHosted ? undefined : 'require';
 }
