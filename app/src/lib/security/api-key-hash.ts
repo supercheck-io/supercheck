@@ -74,14 +74,37 @@ export function isCliToken(token: string): boolean {
 }
 
 /**
- * Hash an API key for secure storage
- * Uses SHA-256 which is fast enough for API key verification
- * while being computationally infeasible to reverse.
+ * Hash an API key for secure storage using SHA-256.
  *
- * @param apiKey - The plain text API key to hash
- * @returns The hex-encoded hash
+ * SECURITY NOTE - Why SHA-256 is appropriate here (not bcrypt/argon2):
+ * =====================================================================
+ * This function hashes HIGH-ENTROPY API keys, NOT user passwords.
+ *
+ * API keys are generated with crypto.randomBytes(16) = 128 bits of entropy.
+ * Even at 1 billion hashes/second, brute-forcing 2^128 possibilities would
+ * take approximately 10^22 years - longer than the age of the universe.
+ *
+ * Password hashing algorithms (bcrypt, argon2) are designed for LOW-entropy
+ * user-chosen passwords that are vulnerable to dictionary attacks. Using them
+ * here would:
+ * - Add 100-500ms latency per API request verification
+ * - Provide no additional security benefit for high-entropy keys
+ * - Impact performance for high-throughput CI/CD job triggers
+ *
+ * Industry standard: GitHub, Stripe, AWS all use SHA-256 for API keys.
+ *
+ * CodeQL flags this as "insufficient computational effort" but that rule
+ * (CWE-916) is designed for passwords, not cryptographically random tokens.
+ *
+ * @param apiKey - The plain text API key to hash (high-entropy, randomly generated)
+ * @returns The hex-encoded SHA-256 hash
+ *
+ * @see https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+ * @see generateApiKey - generates 128-bit entropy keys
  */
 export function hashApiKey(apiKey: string): string {
+  // lgtm[js/insufficient-password-hash] - API keys have 128-bit entropy, not passwords
+  // codeql[js/insufficient-password-hash] - False positive: high-entropy API keys, not passwords
   return crypto.createHash("sha256").update(apiKey, "utf8").digest("hex");
 }
 
