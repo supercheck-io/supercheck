@@ -45,7 +45,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { createRequirement, updateRequirement, linkTestsToRequirement, unlinkTestFromRequirement, deleteRequirement } from "@/actions/requirements";
-import { REQUIREMENTS_QUERY_KEY } from "@/hooks/use-requirements";
+import { REQUIREMENTS_QUERY_KEY, REQUIREMENT_LINKED_TESTS_QUERY_KEY } from "@/hooks/use-requirements";
 import type { CreateRequirementInput, UpdateRequirementInput } from "@/actions/requirements";
 import { TagSelector, type Tag } from "@/components/ui/tag-selector";
 import { useTags, useTagMutations, useRequirementTags, useSaveRequirementTags } from "@/hooks/use-tags";
@@ -187,9 +187,11 @@ export function RequirementForm({
 
     // Fetch linked tests if in edit mode
     const { data: linkedTests = [] } = useQuery<LinkedTest[]>({
-        queryKey: ["requirement-linked-tests", requirementId],
+        queryKey: [...REQUIREMENT_LINKED_TESTS_QUERY_KEY, requirementId],
         queryFn: async () => requirementId ? getLinkedTests(requirementId) : [],
         enabled: !!requirementId && mode === "edit",
+        staleTime: 0,
+        refetchOnMount: 'always',
     });
 
     // Sync linked tests with selected tests state
@@ -271,7 +273,7 @@ export function RequirementForm({
 
             await queryClient.invalidateQueries({ queryKey: REQUIREMENTS_QUERY_KEY, refetchType: 'all' });
             if (targetId) {
-                await queryClient.invalidateQueries({ queryKey: ["requirement-linked-tests", targetId], refetchType: 'all' });
+                await queryClient.invalidateQueries({ queryKey: [...REQUIREMENT_LINKED_TESTS_QUERY_KEY, targetId], refetchType: 'all' });
             }
 
             if (onSuccess && targetId) {

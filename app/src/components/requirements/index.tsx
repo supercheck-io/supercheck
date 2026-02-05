@@ -61,7 +61,7 @@ import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import { K6Logo } from "@/components/logo/k6-logo";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { useRequirements, useRequirementMutations } from "@/hooks/use-requirements";
+import { useRequirements, useRequirementMutations, REQUIREMENT_LINKED_TESTS_QUERY_KEY } from "@/hooks/use-requirements";
 import { useTags } from "@/hooks/use-tags";
 import { useRequirementPermissions } from "@/hooks/use-rbac-permissions";
 
@@ -99,7 +99,7 @@ export default function RequirementsPage() {
     );
 
     // Fetch requirements with React Query
-    const { requirements: rawRequirements, isLoading, isRestoring: reqIsRestoring, invalidate } = useRequirements();
+    const { requirements: rawRequirements, isLoading, isRestoring: reqIsRestoring } = useRequirements();
     const { deleteRequirement: deleteMutation } = useRequirementMutations();
 
     // Fetch available tags for coloring (used for fallback if tag doesn't have color)
@@ -130,12 +130,12 @@ export default function RequirementsPage() {
     // Fetch linked tests for selected requirement
     const isRestoring = useIsRestoring();
     const linkedTestsQuery = useQuery({
-        queryKey: ["requirement-tests", selectedRequirement?.id],
+        queryKey: [...REQUIREMENT_LINKED_TESTS_QUERY_KEY, selectedRequirement?.id],
         queryFn: () => selectedRequirement ? getLinkedTests(selectedRequirement.id) : [],
         enabled: !!selectedRequirement,
-        // Uses global defaults: staleTime (30min), gcTime (24h)
+        staleTime: 0, // Always consider stale to ensure fresh data when tab is clicked
+        refetchOnMount: 'always', // Always refetch when sheet is opened or tab is clicked
         refetchOnWindowFocus: false,
-        refetchOnMount: false,
         refetchOnReconnect: false,
     });
     const linkedTests = linkedTestsQuery.data ?? [];
@@ -145,12 +145,10 @@ export default function RequirementsPage() {
 
 
     const handleRowClick = useCallback((row: Row<Requirement>) => {
-        // Invalidate cache to get fresh data when opening the sheet
-        invalidate();
         const params = new URLSearchParams(searchParams);
         params.set("id", row.original.id);
         router.push(`/requirements?${params.toString()}`, { scroll: false });
-    }, [searchParams, router, invalidate]);
+    }, [searchParams, router]);
 
     // Handle sheet close
     const handleSheetClose = useCallback(() => {

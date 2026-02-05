@@ -2,7 +2,7 @@
  * Database SSL Configuration Utility
  *
  * Simple, robust SSL detection for PostgreSQL connections:
- * - Self-hosted mode (SELF_HOSTED=true) → SSL OFF (local PostgreSQL)
+ * - Self-hosted mode (SELF_HOSTED=true) → SSL OFF
  * - Cloud mode (SELF_HOSTED=false or not set) → SSL ON
  *
  * @example
@@ -17,8 +17,8 @@
 /**
  * Determines the appropriate SSL configuration for PostgreSQL.
  *
- * - Self-hosted mode (SELF_HOSTED=true): SSL OFF (local PostgreSQL in Docker)
- * - Cloud mode (SELF_HOSTED=false or not set): SSL ON (Neon, PlanetScale, etc.)
+ * - Self-hosted mode: SSL OFF (local PostgreSQL)
+ * - Cloud mode: SSL ON (Neon, etc.)
  *
  * @returns 'require' for SSL connections, undefined for non-SSL
  */

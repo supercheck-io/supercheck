@@ -53,8 +53,9 @@ export async function register() {
       const { initializeDataLifecycleService } = await import('@/lib/job-scheduler');
       const lifecycleService = await initializeDataLifecycleService();
       if (lifecycleService) {
-        const status = await lifecycleService.getStatus();
-        console.log(`[Instrumentation] ✅ Data lifecycle service initialized (${status.enabledStrategies.length} strategies enabled)`);
+        // Use lightweight method that doesn't query database to avoid ECONNRESET during startup
+        const strategiesCount = lifecycleService.getEnabledStrategiesCount();
+        console.log(`[Instrumentation] ✅ Data lifecycle service initialized (${strategiesCount} strategies enabled)`);
       } else {
         console.warn('[Instrumentation] ⚠️ Data lifecycle service failed to initialize');
       }

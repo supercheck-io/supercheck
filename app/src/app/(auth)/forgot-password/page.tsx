@@ -178,14 +178,6 @@ export default function ForgotPasswordPage() {
             </p>
           )}
 
-          {/* Invisible CAPTCHA - auto-verifies users */}
-          <TurnstileCaptcha
-            ref={captchaRef}
-            onSuccess={handleCaptchaSuccess}
-            onError={handleCaptchaError}
-            onExpire={handleCaptchaExpire}
-          />
-
           {/* Submit Button */}
           <Field>
             <Button
@@ -198,6 +190,7 @@ export default function ForgotPasswordPage() {
               Send reset link
             </Button>
           </Field>
+
 
           {/* Back Link */}
           <div className="text-center">
@@ -219,6 +212,14 @@ export default function ForgotPasswordPage() {
         <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
         <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
       </FieldDescription>
+
+      {/* Invisible CAPTCHA - placed outside form to avoid any layout shift */}
+      <TurnstileCaptcha
+        ref={captchaRef}
+        onSuccess={handleCaptchaSuccess}
+        onError={handleCaptchaError}
+        onExpire={handleCaptchaExpire}
+      />
     </div>
   );
 }

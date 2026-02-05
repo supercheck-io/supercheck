@@ -254,14 +254,6 @@ export function SignupForm({
               </p>
             )}
 
-            {/* Invisible CAPTCHA - auto-verifies users */}
-            <TurnstileCaptcha
-              ref={captchaRef}
-              onSuccess={handleCaptchaSuccess}
-              onError={handleCaptchaError}
-              onExpire={handleCaptchaExpire}
-            />
-
             {/* Submit Button */}
             <Field>
               <Button type="submit" className="w-full" disabled={isLoading}>
@@ -269,6 +261,7 @@ export function SignupForm({
                 Create account & join
               </Button>
             </Field>
+
 
             {/* Link to sign-in for existing users */}
             <div className="text-center">
@@ -292,6 +285,14 @@ export function SignupForm({
         <Link href="https://supercheck.io/terms">Terms of Service</Link> and{" "}
         <Link href="https://supercheck.io/privacy">Privacy Policy</Link>.
       </FieldDescription>
+
+      {/* Invisible CAPTCHA - placed outside form to avoid any layout shift */}
+      <TurnstileCaptcha
+        ref={captchaRef}
+        onSuccess={handleCaptchaSuccess}
+        onError={handleCaptchaError}
+        onExpire={handleCaptchaExpire}
+      />
     </div>
   );
 }
