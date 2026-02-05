@@ -51,7 +51,7 @@ export class EmailTemplateService {
   /**
    * Initialize BullMQ queue connection
    */
-  private async initializeQueue(): Promise<void> {
+  private initializeQueue(): void {
     if (this.queue) {
       return;
     }
@@ -179,7 +179,7 @@ export class EmailTemplateService {
     }
 
     // Ensure queue is initialized
-    await this.initializeQueue();
+    this.initializeQueue();
 
     if (!this.queue || !this.queueEvents) {
       const errorMsg = `Queue not initialized for template ${template}. Cannot render email without queue.`;
@@ -289,9 +289,9 @@ export class EmailTemplateService {
   private setCache(key: string, data: RenderedEmail): void {
     // Limit cache size
     if (this.cache.size > 100) {
-      const firstKey = this.cache.keys().next().value;
-      if (firstKey) {
-        this.cache.delete(firstKey);
+      const firstKey = this.cache.keys().next();
+      if (!firstKey.done && firstKey.value) {
+        this.cache.delete(firstKey.value);
       }
     }
 
@@ -304,7 +304,7 @@ export class EmailTemplateService {
    */
   async healthCheck(): Promise<{ healthy: boolean; message: string }> {
     try {
-      await this.initializeQueue();
+      this.initializeQueue();
 
       if (!this.queue) {
         return {

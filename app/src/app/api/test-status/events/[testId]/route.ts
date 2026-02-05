@@ -107,7 +107,22 @@ export async function GET(request: Request) {
       const hub = getQueueEventHub();
       await hub.ready();
 
+      // Track whether the stream has been closed to prevent
+      // 'Controller is already closed' errors from async callbacks
+      let isClosed = false;
+
+      const safeEnqueue = (data: Uint8Array) => {
+        if (isClosed) return;
+        try {
+          controller.enqueue(data);
+        } catch {
+          // Controller was closed between our check and enqueue
+          isClosed = true;
+        }
+      };
+
       const send = async (event: NormalizedQueueEvent) => {
+        if (isClosed) return;
         if (event.category !== "test") {
           return;
         }
@@ -138,16 +153,16 @@ export async function GET(request: Request) {
         }
 
         payload.derivedStatus = deriveFinalStatus(status, reportStatus);
-        controller.enqueue(encoder.encode(serialize(payload)));
+        safeEnqueue(encoder.encode(serialize(payload)));
       };
 
       const unsubscribe = hub.subscribe(send);
-      controller.enqueue(encoder.encode(": connected\n\n"));
+      safeEnqueue(encoder.encode(": connected\n\n"));
 
       const initialReport = await fetchReport(testId);
       if (initialReport) {
         const initStatus = initialReport.status ?? "running";
-        controller.enqueue(
+        safeEnqueue(
           encoder.encode(
             serialize({
               status: initStatus,
@@ -160,16 +175,17 @@ export async function GET(request: Request) {
           )
         );
       } else {
-        controller.enqueue(
+        safeEnqueue(
           encoder.encode(serialize({ status: "waiting", derivedStatus: "waiting", testId }))
         );
       }
 
       const keepAlive = setInterval(() => {
-        controller.enqueue(encoder.encode(": ping\n\n"));
+        safeEnqueue(encoder.encode(": ping\n\n"));
       }, 30000);
 
       const cleanup = () => {
+        isClosed = true;
         clearInterval(keepAlive);
         unsubscribe();
         try {

@@ -303,51 +303,51 @@ describe('DataSanitizer', () => {
 
     it('should redact password fields', () => {
       const data = { username: 'john', password: 'secret123' };
-      const result = sanitizeLogData(data);
+      const result = sanitizeLogData(data) as Record<string, unknown>;
       expect(result.username).toBe('john');
       expect(result.password).toBe('[REDACTED]');
     });
 
     it('should redact token fields', () => {
       const data = { user: 'john', token: 'jwt-token-here' };
-      const result = sanitizeLogData(data);
+      const result = sanitizeLogData(data) as Record<string, unknown>;
       expect(result.token).toBe('[REDACTED]');
     });
 
     it('should redact secret fields', () => {
       const data = { clientSecret: 'abc123', name: 'app' };
-      const result = sanitizeLogData(data);
+      const result = sanitizeLogData(data) as Record<string, unknown>;
       expect(result.clientSecret).toBe('[REDACTED]');
     });
 
     it('should redact apiKey fields', () => {
       const data = { apiKey: 'key123', endpoint: '/api' };
-      const result = sanitizeLogData(data);
+      const result = sanitizeLogData(data) as Record<string, unknown>;
       expect(result.apiKey).toBe('[REDACTED]');
     });
 
     it('should redact api_key fields (snake_case)', () => {
       const data = { api_key: 'key123', endpoint: '/api' };
-      const result = sanitizeLogData(data);
+      const result = sanitizeLogData(data) as Record<string, unknown>;
       expect(result.api_key).toBe('[REDACTED]');
     });
 
     it('should redact accessToken fields', () => {
       const data = { accessToken: 'token', refreshToken: 'refresh' };
-      const result = sanitizeLogData(data);
+      const result = sanitizeLogData(data) as Record<string, unknown>;
       expect(result.accessToken).toBe('[REDACTED]');
       expect(result.refreshToken).toBe('[REDACTED]');
     });
 
     it('should redact authorization fields', () => {
       const data = { authorization: 'Bearer xyz', method: 'GET' };
-      const result = sanitizeLogData(data);
+      const result = sanitizeLogData(data) as Record<string, unknown>;
       expect(result.authorization).toBe('[REDACTED]');
     });
 
     it('should redact cookie fields', () => {
       const data = { cookie: 'session=123', path: '/' };
-      const result = sanitizeLogData(data);
+      const result = sanitizeLogData(data) as Record<string, unknown>;
       expect(result.cookie).toBe('[REDACTED]');
     });
 
@@ -361,7 +361,7 @@ describe('DataSanitizer', () => {
           },
         },
       };
-      const result = sanitizeLogData(data);
+      const result = sanitizeLogData(data) as Record<string, any>;
       expect(result.user.name).toBe('john');
       expect(result.user.credentials.password).toBe('[REDACTED]');
       expect(result.user.credentials.apiKey).toBe('[REDACTED]');
@@ -372,7 +372,7 @@ describe('DataSanitizer', () => {
         { name: 'user1', password: 'pass1' },
         { name: 'user2', password: 'pass2' },
       ];
-      const result = sanitizeLogData(data);
+      const result = sanitizeLogData(data) as Array<Record<string, unknown>>;
       expect(result[0].name).toBe('user1');
       expect(result[0].password).toBe('[REDACTED]');
       expect(result[1].password).toBe('[REDACTED]');
@@ -395,7 +395,7 @@ describe('DataSanitizer', () => {
     it('should truncate very long strings', () => {
       // Use non-alphanumeric content to avoid API key detection
       const longString = 'Hello world! '.repeat(1000);
-      const result = sanitizeLogData(longString);
+      const result = sanitizeLogData(longString) as string;
       expect(result).toContain('[TRUNCATED]');
       expect(result.length).toBeLessThan(longString.length);
     });
@@ -412,7 +412,7 @@ describe('DataSanitizer', () => {
         Token: 'token123',
         APIKEY: 'key456',
       };
-      const result = sanitizeLogData(data);
+      const result = sanitizeLogData(data) as Record<string, unknown>;
       expect(result.PASSWORD).toBe('[REDACTED]');
       expect(result.Token).toBe('[REDACTED]');
       expect(result.APIKEY).toBe('[REDACTED]');

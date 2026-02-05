@@ -6,7 +6,7 @@ import { RedisService } from '../execution/services/redis.service';
 
 describe('HealthService', () => {
   let service: HealthService;
-  let redisService: RedisService;
+  let _redisService: RedisService;
 
   const mockDbService = {
     db: {
@@ -38,7 +38,7 @@ describe('HealthService', () => {
     }).compile();
 
     service = module.get<HealthService>(HealthService);
-    redisService = module.get<RedisService>(RedisService);
+    _redisService = module.get<RedisService>(RedisService);
   });
 
   afterEach(() => {

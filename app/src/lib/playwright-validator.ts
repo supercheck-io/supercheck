@@ -2,6 +2,7 @@ import * as acorn from "acorn";
 import * as walk from "acorn-walk";
 import type { TestType } from "@/db/schema/types";
 import { isK6Script, validateK6Script } from "./k6-validator";
+import { transpileTypeScript } from "./ts-transpiler";
 
 // Strictly allowed modules with expanded safe libraries
 const ALLOWED_MODULES = new Set([
@@ -478,10 +479,27 @@ export class PlaywrightValidationService {
       }
     }
 
-    // 5. Parse into AST with enhanced validation
+    // 5. Transpile TypeScript → JavaScript for AST validation
+    const transpileResult = transpileTypeScript(code);
+    if (!transpileResult.success) {
+      return {
+        valid: false,
+        error: `Syntax error: ${transpileResult.message}. Please check your code structure and fix the syntax issues to proceed.`,
+        line: transpileResult.line,
+        column: transpileResult.column,
+        errorType: "syntax",
+      };
+    }
+    const transpiledCode = transpileResult.code;
+
+    // 6. Parse transpiled JS into AST for structural / security validation.
+    // NOTE: Line numbers from acorn errors refer to transpiled output, not the
+    // original TypeScript source, so we intentionally omit them from the user-
+    // facing error to avoid confusion.  The esbuild step above already catches
+    // real syntax errors with accurate source locations.
     let ast: acorn.Node;
     try {
-      ast = acorn.parse(code, {
+      ast = acorn.parse(transpiledCode, {
         ecmaVersion: 2022,
         sourceType: "module",
         locations: true,
@@ -489,34 +507,16 @@ export class PlaywrightValidationService {
         allowHashBang: false,
       }) as acorn.Node;
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        const lineMatch = err.message.match(/\((\d+):(\d+)\)/);
-        if (lineMatch) {
-          const line = parseInt(lineMatch[1]);
-          const column = parseInt(lineMatch[2]);
-          return {
-            valid: false,
-            error: `Syntax error. Please check your code structure and fix the syntax issue to proceed.`,
-            line,
-            column,
-            errorType: "syntax",
-          };
-        }
-        return {
-          valid: false,
-          error: `Syntax error: ${err.message}. Please check your code structure and fix the syntax issues to proceed.`,
-          errorType: "syntax",
-        };
-      }
+      const message =
+        err instanceof Error ? err.message : "Unknown parsing error";
       return {
         valid: false,
-        error:
-          "Code parsing failed. Please check your code structure and fix any syntax issues to proceed.",
+        error: `Syntax error: ${message}. Please check your code structure and fix the syntax issues to proceed.`,
         errorType: "syntax",
       };
     }
 
-    // 6. Enhanced AST analysis with complexity checks and structural validation
+    // 7. Enhanced AST analysis with complexity checks and structural validation
     try {
       let statementCount = 0;
 

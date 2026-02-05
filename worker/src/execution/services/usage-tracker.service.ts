@@ -221,8 +221,10 @@ export class UsageTrackerService {
         eventName,
         units,
         now,
-      ).catch((err) =>
-        this.logger.warn(`[Usage] Failed to sync to Polar: ${err.message}`),
+      ).catch((err: unknown) =>
+        this.logger.warn(
+          `[Usage] Failed to sync to Polar: ${err instanceof Error ? err.message : String(err)}`,
+        ),
       );
     }
   }

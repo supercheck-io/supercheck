@@ -4,7 +4,7 @@
  * Includes SSRF protection and command injection prevention
  */
 
-import { SECURITY, isInternalHost, INTERNAL_IP_PATTERNS } from '../constants';
+import { SECURITY, isInternalHost } from '../constants';
 
 export interface ValidationResult {
   valid: boolean;
@@ -23,7 +23,9 @@ export function validateTargetUrl(
     const url = new URL(target);
 
     // Check protocol
-    if (!SECURITY.ALLOWED_PROTOCOLS.includes(url.protocol as any)) {
+    if (
+      !SECURITY.ALLOWED_PROTOCOLS.includes(url.protocol as 'http:' | 'https:')
+    ) {
       return {
         valid: false,
         error: 'Only HTTP and HTTPS protocols are allowed',
@@ -47,7 +49,7 @@ export function validateTargetUrl(
     }
 
     return { valid: true };
-  } catch (error) {
+  } catch {
     return { valid: false, error: 'Invalid URL format' };
   }
 }
@@ -114,7 +116,7 @@ export function validatePingTarget(target: string): ValidationResult {
 
   // Check for hostname format
   const hostnameRegex =
-    /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/;
+    /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
   if (!hostnameRegex.test(target)) {
     return { valid: false, error: 'Invalid hostname format' };
   }

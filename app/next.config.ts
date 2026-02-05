@@ -1,6 +1,5 @@
 import type { NextConfig } from "next";
 import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
-import path from "path";
 
 /**
  * Content Security Policy configuration
@@ -129,6 +128,8 @@ const createNextConfig = (phase: string): NextConfig => {
       "canvas",
       // Document processing
       "mammoth",
+      // esbuild has native binaries - must be external for Turbopack compatibility
+      "esbuild",
     ],
     images: {
       remotePatterns: [
@@ -153,7 +154,6 @@ const createNextConfig = (phase: string): NextConfig => {
     // Turbopack configuration (default in Next.js 16+)
     // Turbopack is now the default bundler
     turbopack: {
-      root: path.resolve(__dirname, ".."),
       rules: {
         // Add any Turbopack-specific rules here if needed
       },

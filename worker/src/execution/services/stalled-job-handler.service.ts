@@ -31,10 +31,10 @@ export class StalledJobHandlerService implements OnModuleInit {
     private readonly configService: ConfigService,
   ) {}
 
-  async onModuleInit() {
+  onModuleInit() {
     try {
       this.logger.log('Initializing StalledJobHandlerService');
-      await this.setupRedisConnection();
+      this.setupRedisConnection();
       this.startMonitoring();
     } catch (error) {
       this.logger.error(
@@ -44,7 +44,7 @@ export class StalledJobHandlerService implements OnModuleInit {
     }
   }
 
-  private async setupRedisConnection(): Promise<void> {
+  private setupRedisConnection(): void {
     const host = this.configService.get<string>('REDIS_HOST', 'localhost');
     const port = this.configService.get<number>('REDIS_PORT', 6379);
     const password = this.configService.get<string>('REDIS_PASSWORD');
@@ -80,15 +80,13 @@ export class StalledJobHandlerService implements OnModuleInit {
    * Check for jobs that were marked as stalled but not properly updated in the database
    */
   private startMonitoring(): void {
-    this.monitoringInterval = setInterval(async () => {
-      try {
-        await this.checkAndHandleStalledJobs();
-      } catch (error) {
+    this.monitoringInterval = setInterval(() => {
+      void this.checkAndHandleStalledJobs().catch((error: unknown) => {
         this.logger.error(
-          `Error in stalled job monitoring: ${(error as Error).message}`,
-          (error as Error).stack,
+          `Error in stalled job monitoring: ${error instanceof Error ? error.message : String(error)}`,
+          error instanceof Error ? error.stack : undefined,
         );
-      }
+      });
     }, TIMEOUTS.STALLED_JOB_CHECK_INTERVAL_MS);
 
     this.logger.log(

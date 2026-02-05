@@ -1,4 +1,4 @@
-import { Module, DynamicModule, Logger } from '@nestjs/common';
+import { Module, DynamicModule, Logger, Type } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { K6ExecutionService } from './services/k6-execution.service';
 import {
@@ -120,7 +120,7 @@ export class K6Module {
    */
   private static getQueuesAndProcessors(location: WorkerLocation): {
     queues: { name: string }[];
-    processors: any[];
+    processors: Type[];
   } {
     switch (location) {
       case 'local':

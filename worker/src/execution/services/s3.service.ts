@@ -169,6 +169,7 @@ export class S3Service implements OnModuleInit {
    * @param entityType - The type of entity (test, job, monitor, k6_test, k6_job, status)
    * @returns The bucket name for the given entity type
    */
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
   getBucketForEntityType(entityType: S3EntityType | string): string {
     switch (entityType) {
       // Playwright buckets
@@ -249,7 +250,8 @@ export class S3Service implements OnModuleInit {
         // Only attempt to create bucket in self-hosted mode
         // In cloud mode, buckets should be created via Terraform/Wrangler
         const isSelfHosted =
-          this.configService.get('SELF_HOSTED')?.toLowerCase() === 'true';
+          this.configService.get<string>('SELF_HOSTED')?.toLowerCase() ===
+          'true';
 
         if (!isSelfHosted) {
           const message = `Bucket '${bucketName}' does not exist. Auto-creation is disabled in Cloud mode (SELF_HOSTED!=true). Please create the bucket manually.`;

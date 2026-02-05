@@ -1,4 +1,4 @@
-import { Module, DynamicModule, Logger } from '@nestjs/common';
+import { Module, DynamicModule, Logger, Type } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { HttpModule } from '@nestjs/axios';
 import { MonitorService } from './monitor.service';
@@ -145,7 +145,7 @@ export class MonitorModule {
    */
   private static getQueuesAndProcessors(location: WorkerLocation): {
     queues: { name: string }[];
-    processors: any[];
+    processors: Type[];
   } {
     switch (location) {
       case 'local':

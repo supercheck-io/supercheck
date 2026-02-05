@@ -4,7 +4,6 @@ import { execa } from 'execa';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import * as os from 'os';
 import { S3Service } from '../../execution/services/s3.service';
 import { DbService } from '../../execution/services/db.service';
 import { RedisService } from '../../execution/services/redis.service';
@@ -49,7 +48,7 @@ export interface K6ExecutionResult {
   timedOut: boolean;
   runId: string;
   durationMs: number;
-  summary: any;
+  summary: Record<string, unknown> | null;
   thresholdsPassed: boolean;
   reportUrl: string | null;
   summaryUrl: string | null;
@@ -144,7 +143,7 @@ export class K6ExecutionService {
     );
 
     // Verify k6 installation on startup
-    this.verifyK6Installation();
+    void this.verifyK6Installation();
 
     this.dashboardPortStart = this.configService.get<number>(
       'K6_WEB_DASHBOARD_START_PORT',
@@ -234,7 +233,7 @@ export class K6ExecutionService {
    * Execute a k6 performance test
    */
   async runK6Test(task: K6ExecutionTask): Promise<K6ExecutionResult> {
-    const { runId, testId, script, location } = task;
+    const { runId, testId: _testId, script, location } = task;
     const startTime = Date.now();
 
     const uniqueRunId = `${runId}-${crypto.randomUUID().substring(0, 8)}`;
@@ -386,10 +385,10 @@ export class K6ExecutionService {
           summaryPath = fallbackSummary;
         }
       }
-      let summary: any = null;
+      let summary: Record<string, unknown> | null = null;
       try {
         const summaryContent = await fs.readFile(summaryPath, 'utf8');
-        summary = JSON.parse(summaryContent);
+        summary = JSON.parse(summaryContent) as Record<string, unknown>;
       } catch (error) {
         this.logger.warn(
           `[${runId}] ${timedOut ? 'Summary not available before timeout' : 'Failed to read summary.json'}: ${getErrorMessage(error)}`,
@@ -526,10 +525,13 @@ export class K6ExecutionService {
       );
 
       // Check if any validation checks failed
+      const metrics = summary?.metrics as
+        | Record<string, Record<string, number>>
+        | undefined;
       const checksFailed = timedOut
         ? false
-        : summary?.metrics?.checks?.fails
-          ? summary.metrics.checks.fails > 0
+        : metrics?.checks?.fails
+          ? metrics.checks.fails > 0
           : false;
 
       // Test passes only if BOTH thresholds pass AND all checks pass without a timeout
@@ -716,7 +718,7 @@ export class K6ExecutionService {
     error: string | null;
     timedOut: boolean;
   }> {
-    const startTime = Date.now();
+    const _startTime = Date.now();
     this.logger.log(`[${runId}] Executing in container: k6 ${args.join(' ')}`);
     this.logger.debug(
       `[${runId}] k6 environment variables: ${JSON.stringify(overrideEnv, null, 2)}`,
@@ -879,7 +881,7 @@ export class K6ExecutionService {
    * @returns true if all thresholds passed, false otherwise
    */
   private checkThresholdsFromSummary(
-    summary: any,
+    summary: Record<string, unknown> | null,
     timedOut: boolean,
     exitCode: number,
   ): boolean {
@@ -911,18 +913,21 @@ export class K6ExecutionService {
 
     // Check each metric's thresholds for failures
     // Each threshold has an "ok" property: true=passed, false=failed
-    for (const [metricName, metric] of Object.entries(summary.metrics)) {
+    const summaryMetrics = summary.metrics as Record<string, unknown>;
+    for (const [metricName, metric] of Object.entries(summaryMetrics)) {
       if (!metric || typeof metric !== 'object') {
         continue;
       }
 
-      const metricData = metric as any;
+      const metricData = metric as Record<string, unknown>;
       const thresholds = metricData.thresholds;
 
       // If this metric has thresholds, check if any failed
       if (thresholds && typeof thresholds === 'object') {
-        for (const [thresholdName, threshold] of Object.entries(thresholds)) {
-          const thresholdData = threshold as any;
+        for (const [thresholdName, threshold] of Object.entries(
+          thresholds as Record<string, unknown>,
+        )) {
+          const thresholdData = threshold as Record<string, unknown> | null;
           // If ok is false, this threshold failed
           if (thresholdData && thresholdData.ok === false) {
             this.logger.warn(

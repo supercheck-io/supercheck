@@ -102,7 +102,22 @@ export async function GET(request: Request) {
       const hub = getQueueEventHub();
       await hub.ready();
 
+      // Track whether the stream has been closed to prevent
+      // 'Controller is already closed' errors from async callbacks
+      let isClosed = false;
+
+      const safeEnqueue = (data: Uint8Array) => {
+        if (isClosed) return;
+        try {
+          controller.enqueue(data);
+        } catch {
+          // Controller was closed between our check and enqueue
+          isClosed = true;
+        }
+      };
+
       const sendPayload = async (event: NormalizedQueueEvent) => {
+        if (isClosed) return;
         if (event.category !== "job" || event.queueJobId !== runId) {
           return;
         }
@@ -122,16 +137,16 @@ export async function GET(request: Request) {
           }
         }
 
-        controller.enqueue(encoder.encode(serialize(basePayload)));
+        safeEnqueue(encoder.encode(serialize(basePayload)));
       };
 
       const unsubscribe = hub.subscribe(sendPayload);
 
-      controller.enqueue(encoder.encode(": connected\n\n"));
+      safeEnqueue(encoder.encode(": connected\n\n"));
 
       const initialDetails = await fetchRunDetails(runId);
       if (initialDetails) {
-        controller.enqueue(
+        safeEnqueue(
           encoder.encode(
             serialize({
               ...initialDetails,
@@ -140,16 +155,17 @@ export async function GET(request: Request) {
           )
         );
       } else {
-        controller.enqueue(
+        safeEnqueue(
           encoder.encode(serialize({ status: "waiting", runId }))
         );
       }
 
       const keepAlive = setInterval(() => {
-        controller.enqueue(encoder.encode(": ping\n\n"));
+        safeEnqueue(encoder.encode(": ping\n\n"));
       }, 30000);
 
       const cleanup = () => {
+        isClosed = true;
         clearInterval(keepAlive);
         unsubscribe();
         try {

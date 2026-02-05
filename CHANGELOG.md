@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Added
 - **AI Analyze for Monitors** — Generate AI-powered health assessments and performance analysis for any monitor
 - **AI Analyze for Job Runs** — Get AI-powered failure diagnosis and execution insights for Playwright and K6 runs
+- TypeScript support for Playwright and K6 scripts
+
+### Changed
+— Resolved all ESLint and TypeScript errors across the entire worker codebase
 
 ### Security
 - Fixed DoS vulnerability in fast-xml-parser (CVE) by upgrading to >=5.3.4

@@ -67,7 +67,7 @@ export abstract class MonitorProcessor extends WorkerHost {
   onCompleted(job: Job, results: MonitorExecutionResult[]) {
     // In distributed mode (regional queues), results are saved individually in process()
     // We only need to save here if it was a multi-location execution (legacy)
-    if (job.data.executionLocation) {
+    if ((job.data as MonitorJobDataDto).executionLocation) {
       return;
     }
 
@@ -82,8 +82,8 @@ export abstract class MonitorProcessor extends WorkerHost {
       // Use .catch() instead of void to ensure errors are logged
       this.monitorService.saveMonitorResults(results).catch((error) => {
         this.logger.error(
-          `Failed to save monitor results for legacy/local mode: ${error.message}`,
-          error.stack,
+          `Failed to save monitor results for legacy/local mode: ${error instanceof Error ? error.message : String(error)}`,
+          error instanceof Error ? error.stack : undefined,
         );
       });
     }
@@ -94,7 +94,7 @@ export abstract class MonitorProcessor extends WorkerHost {
     job: Job<MonitorJobDataDto, MonitorExecutionResult, string> | undefined,
     err: Error,
   ) {
-    const monitorId = (job?.data as any)?.monitorId || 'unknown_monitor';
+    const monitorId = job?.data?.monitorId || 'unknown_monitor';
     this.logger.error(
       `Job ${job?.id} (monitor ${monitorId}) has failed with error: ${err.message}`,
       err.stack,

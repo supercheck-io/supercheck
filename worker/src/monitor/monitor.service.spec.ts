@@ -46,9 +46,9 @@ import { VariableResolverService } from '../common/services/variable-resolver.se
 
 describe('MonitorService', () => {
   let service: MonitorService;
-  let httpService: HttpService;
-  let dbService: DbService;
-  let alertService: MonitorAlertService;
+  let _httpService: HttpService;
+  let _dbService: DbService;
+  let _alertService: MonitorAlertService;
 
   const mockHttpService = {
     request: jest.fn(),
@@ -267,7 +267,8 @@ describe('MonitorService', () => {
     describe('Negative Cases', () => {
       it('should handle error status codes', () => {
         // 500 is outside 200-299 range
-        const isSuccess = 500 >= 200 && 500 <= 299;
+        const statusCode = 500;
+        const isSuccess = statusCode >= 200 && statusCode <= 299;
         expect(isSuccess).toBe(false);
       });
 

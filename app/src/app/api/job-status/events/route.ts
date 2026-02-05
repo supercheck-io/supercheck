@@ -39,6 +39,20 @@ export async function GET(request: Request) {
         const hub = getQueueEventHub();
         await hub.ready();
 
+        // Track whether the stream has been closed to prevent
+        // 'Controller is already closed' errors from async callbacks
+        let isClosed = false;
+
+        const safeEnqueue = (data: Uint8Array) => {
+          if (isClosed) return;
+          try {
+            controller.enqueue(data);
+          } catch {
+            // Controller was closed between our check and enqueue
+            isClosed = true;
+          }
+        };
+
         // Cache for run/job metadata to avoid repeated queries
         // Key: runId, Value: { projectId, jobId, jobName, jobType, metadata }
         const runCache = new Map<string, {
@@ -51,6 +65,7 @@ export async function GET(request: Request) {
         } | null>();
 
         const sendEvent = async (event: NormalizedQueueEvent) => {
+          if (isClosed) return;
           // Only send job and test events (Playwright jobs are in 'test' category)
           if (event.category !== "job" && event.category !== "test") {
             return;
@@ -165,24 +180,26 @@ export async function GET(request: Request) {
               hasJobId: !!runData.jobId,
             };
 
-            controller.enqueue(
+            safeEnqueue(
               encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)
             );
           } catch (error) {
-            console.error("Error filtering job event:", error);
-            // Silently skip events that cause errors during authorization
+            if (!isClosed) {
+              console.error("Error filtering job event:", error);
+            }
           }
         };
 
         const unsubscribe = hub.subscribe(sendEvent);
 
-        controller.enqueue(encoder.encode(": connected\n\n"));
+        safeEnqueue(encoder.encode(": connected\n\n"));
 
         const keepAlive = setInterval(() => {
-          controller.enqueue(encoder.encode(": ping\n\n"));
+          safeEnqueue(encoder.encode(": ping\n\n"));
         }, 30000);
 
         const cleanup = () => {
+          isClosed = true;
           clearInterval(keepAlive);
           unsubscribe();
           try {

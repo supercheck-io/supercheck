@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios'; // Import HttpService
-import { AxiosError, Method } from 'axios'; // Import Method from axios
+import { AxiosError, AxiosRequestConfig, Method } from 'axios'; // Import Method from axios
+import * as tls from 'tls';
 import { Agent as HttpAgent } from 'http';
 import { Agent as HttpsAgent } from 'https';
 import { firstValueFrom } from 'rxjs'; // To convert Observable to Promise
@@ -18,7 +19,7 @@ import type {
   monitorResultsSelectSchema,
 } from '../db/schema';
 import type { z } from 'zod';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { MonitorAlertService } from './services/monitor-alert.service';
 import { ValidationService } from '../common/validation/validation.service';
 import {
@@ -50,12 +51,10 @@ import {
 
 // Import shared validation utilities
 import {
-  validateTargetUrl,
   validatePingTarget,
   validatePortCheckTarget,
   isExpectedStatus,
   sanitizeResponseBody,
-  maskCredentials,
   getErrorMessage,
 } from '../common/validation';
 import { RedisService } from '../execution/services/redis.service';
@@ -203,7 +202,7 @@ export class MonitorService {
                 // Merge SSL certificate info into the website check details
                 if (sslResult.details?.sslCertificate) {
                   details.sslCertificate = sslResult.details
-                    .sslCertificate as any;
+                    .sslCertificate as MonitorResultDetails['sslCertificate'];
                 }
 
                 // Handle SSL check results more intelligently
@@ -807,7 +806,7 @@ export class MonitorService {
                 .update(schema.monitorResults)
                 .set({
                   alertsSentForRecovery: alertsSentForRecovery + 1,
-                } as any)
+                } as Partial<typeof schema.monitorResults.$inferInsert>)
                 .where(eq(schema.monitorResults.id, latestResult.id));
             }
 
@@ -954,7 +953,7 @@ export class MonitorService {
   private async performHttpRequest(
     target: string,
     config?: MonitorConfig,
-    errorContext?: ErrorContext,
+    _errorContext?: ErrorContext,
   ): Promise<{
     status: MonitorResultStatus;
     details: MonitorResultDetails;
@@ -986,19 +985,19 @@ export class MonitorService {
 
     // 🟡 Get connection pool for better resource management
     const url = new URL(target);
-    const connectionPool = await this.resourceManager.getConnectionPool(
+    const connectionPool = this.resourceManager.getConnectionPool(
       url.hostname,
       parseInt(url.port) || (url.protocol === 'https:' ? 443 : 80),
       url.protocol as 'http:' | 'https:',
     );
 
-    const connection = await this.resourceManager.acquireConnection(
+    const connection = this.resourceManager.acquireConnection(
       connectionPool.id,
     );
 
     try {
       // Build request configuration
-      const requestConfig: any = {
+      const requestConfig: AxiosRequestConfig = {
         method: httpMethod,
         url: target,
         timeout,
@@ -1067,15 +1066,15 @@ export class MonitorService {
 
           // Secure logging
           this.logger.debug(
-            `Using Basic authentication for user: ${this.credentialSecurityService.maskCredentials(config.auth.username)}`,
+            `Using Basic authentication for user: ${String(this.credentialSecurityService.maskCredentials(config.auth.username))}`,
           );
         } else if (config.auth.type === 'bearer' && config.auth.token) {
-          requestConfig.headers['Authorization'] =
+          (requestConfig.headers as Record<string, string>)['Authorization'] =
             `Bearer ${config.auth.token}`;
 
           // Secure logging
           this.logger.debug(
-            `Using Bearer authentication with token: ${this.credentialSecurityService.maskCredentials(config.auth.token)}`,
+            `Using Bearer authentication with token: ${String(this.credentialSecurityService.maskCredentials(config.auth.token))}`,
           );
         } else {
           this.logger.warn(
@@ -1092,10 +1091,10 @@ export class MonitorService {
         // Helper function to check if header exists (case-insensitive)
         const getHeaderValue = (headerName: string): string | undefined => {
           const lowerHeaderName = headerName.toLowerCase();
-          const headers = requestConfig.headers;
+          const headers = requestConfig.headers as Record<string, string>;
           for (const [key, value] of Object.entries(headers)) {
             if (key.toLowerCase() === lowerHeaderName) {
-              return value as string;
+              return value;
             }
           }
           return undefined;
@@ -1107,9 +1106,11 @@ export class MonitorService {
           // Try to detect content type
           try {
             JSON.parse(config.body);
-            requestConfig.headers['Content-Type'] = 'application/json';
+            (requestConfig.headers as Record<string, string>)['Content-Type'] =
+              'application/json';
           } catch {
-            requestConfig.headers['Content-Type'] = 'text/plain';
+            (requestConfig.headers as Record<string, string>)['Content-Type'] =
+              'text/plain';
           }
         }
 
@@ -1117,7 +1118,7 @@ export class MonitorService {
         const contentType = getHeaderValue('Content-Type') || '';
         if (contentType.includes('application/json')) {
           try {
-            requestConfig.data = JSON.parse(config.body);
+            requestConfig.data = JSON.parse(config.body) as unknown;
           } catch {
             // If JSON parsing fails but content type is JSON, still send as string
             requestConfig.data = config.body;
@@ -1140,7 +1141,7 @@ export class MonitorService {
       connection.trackRequest(responseTimeMs);
 
       // 🔴 CRITICAL: Sanitize response data before processing
-      const sanitizedResponseData =
+      const _sanitizedResponseData =
         this.credentialSecurityService.maskCredentials(
           typeof response.data === 'string'
             ? response.data.substring(
@@ -1222,15 +1223,17 @@ export class MonitorService {
         // Build detailed error message for better debugging
         const errorParts: string[] = [];
         if (error.code) errorParts.push(`Code: ${error.code}`);
-        if (error.message && error.message !== 'Error') errorParts.push(error.message);
+        if (error.message && error.message !== 'Error')
+          errorParts.push(error.message);
         if (error.cause && error.cause instanceof Error) {
           errorParts.push(`Cause: ${error.cause.message}`);
         }
-        const detailedError = errorParts.length > 0 ? errorParts.join(' - ') : 'Unknown network error';
-        
-        this.logger.warn(
-          `HTTP Request to ${target} failed: ${detailedError}`,
-        );
+        const detailedError =
+          errorParts.length > 0
+            ? errorParts.join(' - ')
+            : 'Unknown network error';
+
+        this.logger.warn(`HTTP Request to ${target} failed: ${detailedError}`);
         details.errorMessage = detailedError;
         if (error.response) {
           details.statusCode = error.response.status;
@@ -1279,10 +1282,7 @@ export class MonitorService {
       }
     } finally {
       // 🔴 CRITICAL: Always release the connection to prevent connection leaks
-      await this.resourceManager.releaseConnection(
-        connectionPool.id,
-        connection,
-      );
+      this.resourceManager.releaseConnection(connectionPool.id, connection);
     }
 
     this.logger.debug(
@@ -1615,7 +1615,7 @@ export class MonitorService {
         status = 'timeout';
         details.errorMessage = `Connection timeout after ${timeout}ms`;
         isUp = false; // Timeout is failure regardless of expectClosed
-      } else if (error.code === 'ECONNREFUSED') {
+      } else if ((error as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
         if (expectClosed) {
           // Port is closed as expected - this is SUCCESS!
           status = 'up';
@@ -1631,11 +1631,11 @@ export class MonitorService {
           details.errorMessage =
             'Connection refused - port is closed or service not running';
         }
-      } else if (error.code === 'EHOSTUNREACH') {
+      } else if ((error as NodeJS.ErrnoException).code === 'EHOSTUNREACH') {
         status = 'down';
         details.errorMessage = 'Host unreachable';
         isUp = false;
-      } else if (error.code === 'ENETUNREACH') {
+      } else if ((error as NodeJS.ErrnoException).code === 'ENETUNREACH') {
         status = 'down';
         details.errorMessage = 'Network unreachable';
         isUp = false;
@@ -1707,7 +1707,7 @@ export class MonitorService {
       }
 
       const certificateInfo = await new Promise<{
-        certificate: any;
+        certificate: tls.DetailedPeerCertificate;
         authorized: boolean;
         authorizationError?: Error;
       }>((resolve, reject) => {
@@ -1754,7 +1754,7 @@ export class MonitorService {
             isResolved = true;
             clearTimeout(timeoutHandle);
             socket.destroy();
-            reject(error);
+            reject(error instanceof Error ? error : new Error(String(error)));
           }
         });
       });
@@ -1851,13 +1851,13 @@ export class MonitorService {
       if (getErrorMessage(error).includes('timeout')) {
         status = 'timeout';
         details.errorMessage = `SSL connection timeout after ${timeout}ms`;
-      } else if (error.code === 'ECONNREFUSED') {
+      } else if ((error as NodeJS.ErrnoException).code === 'ECONNREFUSED') {
         status = 'down';
         details.errorMessage = 'Connection refused - SSL service not available';
-      } else if (error.code === 'EHOSTUNREACH') {
+      } else if ((error as NodeJS.ErrnoException).code === 'EHOSTUNREACH') {
         status = 'down';
         details.errorMessage = 'Host unreachable';
-      } else if (error.code === 'ENOTFOUND') {
+      } else if ((error as NodeJS.ErrnoException).code === 'ENOTFOUND') {
         status = 'down';
         details.errorMessage = 'Host not found';
       } else if (getErrorMessage(error).includes('handshake')) {
@@ -1868,13 +1868,18 @@ export class MonitorService {
         status = 'down';
         details.errorMessage =
           'SSL/TLS protocol error - server rejected connection';
-      } else if (error.code === 'DEPTH_ZERO_SELF_SIGNED_CERT') {
+      } else if (
+        (error as NodeJS.ErrnoException).code === 'DEPTH_ZERO_SELF_SIGNED_CERT'
+      ) {
         status = 'down';
         details.errorMessage = 'Self-signed certificate';
-      } else if (error.code === 'CERT_HAS_EXPIRED') {
+      } else if ((error as NodeJS.ErrnoException).code === 'CERT_HAS_EXPIRED') {
         status = 'down';
         details.errorMessage = 'Certificate has expired';
-      } else if (error.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE') {
+      } else if (
+        (error as NodeJS.ErrnoException).code ===
+        'UNABLE_TO_VERIFY_LEAF_SIGNATURE'
+      ) {
         status = 'down';
         details.errorMessage = 'Unable to verify certificate signature';
       } else {
@@ -1915,36 +1920,42 @@ export class MonitorService {
         return true; // First time check
       }
 
-      const monitorConfig = monitor.config as any;
+      const monitorConfig = monitor.config as Record<string, unknown>;
       const sslLastCheckedAt = monitorConfig.sslLastCheckedAt;
-      const sslCheckFrequencyHours =
-        config?.sslCheckFrequencyHours ??
-        monitorConfig.sslCheckFrequencyHours ??
-        SECURITY.SSL_CHECK_FREQUENCY_HOURS;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const sslCheckFrequencyHours = (config?.sslCheckFrequencyHours ??
+        (monitorConfig.sslCheckFrequencyHours as number | undefined) ??
+        SECURITY.SSL_CHECK_FREQUENCY_HOURS) as number;
       const sslDaysUntilExpirationWarning =
-        config?.sslDaysUntilExpirationWarning ??
-        monitorConfig.sslDaysUntilExpirationWarning ??
-        SECURITY.SSL_DEFAULT_WARNING_DAYS;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        (config?.sslDaysUntilExpirationWarning ??
+          (monitorConfig.sslDaysUntilExpirationWarning as number | undefined) ??
+          SECURITY.SSL_DEFAULT_WARNING_DAYS) as number;
 
       if (!sslLastCheckedAt) {
         return true; // Never checked before
       }
 
-      const lastChecked = new Date(sslLastCheckedAt);
+      const lastChecked = new Date(sslLastCheckedAt as string);
       const now = new Date();
       const hoursSinceLastCheck =
         (now.getTime() - lastChecked.getTime()) / (1000 * 60 * 60);
 
       // Check if we have SSL certificate info to determine smart frequency
-      const sslCertificate =
-        monitorConfig.sslCertificate || (monitor.config as any)?.sslCertificate;
-      if (sslCertificate && sslCertificate.daysRemaining !== undefined) {
+      const sslCertificate = monitorConfig.sslCertificate as
+        | Record<string, unknown>
+        | undefined;
+      const daysRemaining =
+        sslCertificate?.daysRemaining != null
+          ? Number(sslCertificate.daysRemaining)
+          : undefined;
+      if (daysRemaining !== undefined) {
         // Smart frequency: check more often when approaching expiration
-        if (sslCertificate.daysRemaining <= sslDaysUntilExpirationWarning) {
+        if (daysRemaining <= sslDaysUntilExpirationWarning) {
           // Check every hour when within warning threshold
           return hoursSinceLastCheck >= 1;
         }
-        if (sslCertificate.daysRemaining <= sslDaysUntilExpirationWarning * 2) {
+        if (daysRemaining <= sslDaysUntilExpirationWarning * 2) {
           // Check every 6 hours when within 2x warning threshold
           return hoursSinceLastCheck >= 6;
         }
@@ -1975,9 +1986,9 @@ export class MonitorService {
       }
 
       const updatedConfig = {
-        ...((monitor.config as any) || {}),
+        ...((monitor.config as Record<string, unknown>) || {}),
         sslLastCheckedAt: new Date().toISOString(),
-      };
+      } as typeof monitor.config;
 
       await this.dbService.db
         .update(schema.monitors)
@@ -1996,7 +2007,7 @@ export class MonitorService {
    */
   private async checkSslExpirationAlert(
     resultData: MonitorExecutionResult,
-    monitor: any,
+    monitor: Monitor | null,
   ): Promise<void> {
     try {
       // Removed debug log
@@ -2019,7 +2030,8 @@ export class MonitorService {
       if (sslCertificate?.daysRemaining !== undefined) {
         const daysUntilExpiration = sslCertificate.daysRemaining;
         const warningThreshold =
-          monitor.config?.sslDaysUntilExpirationWarning ??
+          ((monitor?.config as Record<string, unknown> | undefined)
+            ?.sslDaysUntilExpirationWarning as number | undefined) ??
           SECURITY.SSL_DEFAULT_WARNING_DAYS;
 
         // Removed debug logs
@@ -2118,9 +2130,9 @@ export class MonitorService {
       }
 
       const updatedConfig = {
-        ...((monitor.config as any) || {}),
+        ...((monitor.config as Record<string, unknown>) || {}),
         lastSslAlertSentAt: new Date().toISOString(),
-      };
+      } as typeof monitor.config;
 
       await this.dbService.db
         .update(schema.monitors)
@@ -2272,17 +2284,15 @@ export class MonitorService {
     reason: string;
     metadata: Record<string, unknown>;
   }): Promise<{ alertSent: boolean; alertType?: string }> {
-    const {
-      monitorId,
-      monitor,
-      previousStatus,
-      currentStatus,
-      reason,
-      metadata,
-    } = options;
+    const { monitorId, previousStatus, currentStatus, reason, metadata } =
+      options;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const monitor = options.monitor;
 
     // Don't send alerts if alerts are disabled
-    if (!monitor?.alertConfig?.enabled) {
+    const monitorAlertConfig = (monitor as Record<string, unknown> | null)
+      ?.alertConfig as Record<string, unknown> | undefined;
+    if (!monitorAlertConfig?.enabled) {
       return { alertSent: false };
     }
 
@@ -2300,19 +2310,19 @@ export class MonitorService {
       return { alertSent: false };
     }
 
-    const alertConfig = monitor.alertConfig;
-
     // Determine alert type based on status transition
     let shouldSendAlert = false;
     let alertType: 'recovery' | 'failure' | null = null;
 
     if (currentStatus === 'up' && previousStatus === 'down') {
       // Recovery: only alert when status changes from 'down' to 'up'
-      shouldSendAlert = alertConfig?.alertOnRecovery || false;
+      shouldSendAlert =
+        (monitorAlertConfig?.alertOnRecovery as boolean) || false;
       alertType = 'recovery';
     } else if (currentStatus === 'down' && previousStatus === 'up') {
       // Failure: only alert when status changes from 'up' to 'down'
-      shouldSendAlert = alertConfig?.alertOnFailure || false;
+      shouldSendAlert =
+        (monitorAlertConfig?.alertOnFailure as boolean) || false;
       alertType = 'failure';
     } else if (currentStatus === 'down') {
       // Monitor is down but wasn't from 'up' state

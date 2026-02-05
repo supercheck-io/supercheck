@@ -6,11 +6,7 @@ import {
   PlainNotificationProviderConfig,
 } from '../db/schema';
 import { EmailTemplateService } from '../email-template/email-template.service';
-import {
-  fetchWithRetry,
-  createRetryConfig,
-  RetryOptions,
-} from '../common/utils/retry.util';
+import { fetchWithRetry, createRetryConfig } from '../common/utils/retry.util';
 import {
   isValidTeamsWebhookDomain,
   getTeamsWebhookDomainError,
@@ -492,7 +488,9 @@ export class NotificationService {
   ): Promise<boolean> {
     try {
       // Parse email addresses from config
-      const emailAddresses = this.parseEmailAddresses(config);
+      const emailAddresses = this.parseEmailAddresses(
+        config as Record<string, unknown>,
+      );
       if (emailAddresses.length === 0) {
         throw new Error('No valid email addresses found');
       }
@@ -590,8 +588,8 @@ export class NotificationService {
     }
   }
 
-  private parseEmailAddresses(config: any): string[] {
-    if (!config.emails) {
+  private parseEmailAddresses(config: Record<string, unknown>): string[] {
+    if (!config.emails || typeof config.emails !== 'string') {
       return [];
     }
 
@@ -671,24 +669,24 @@ export class NotificationService {
   }
 
   private async sendSlackNotification(
-    config: any,
+    config: Record<string, unknown>,
     formatted: FormattedNotification,
     // ___payload: NotificationPayload,
   ): Promise<boolean> {
     try {
-      const webhookUrl = config.webhookUrl;
+      const webhookUrl = config.webhookUrl as string | undefined;
       if (!webhookUrl) {
         throw new Error('Slack webhook URL is required');
       }
 
       this.logger.debug(
-        `Sending Slack notification to: ${(webhookUrl as string).substring(0, 50)}...`,
+        `Sending Slack notification to: ${webhookUrl.substring(0, 50)}...`,
       );
 
       const retryConfig = createRetryConfig();
 
       const result = await fetchWithRetry(
-        webhookUrl as string,
+        webhookUrl,
         {
           method: 'POST',
           headers: {
@@ -732,12 +730,12 @@ export class NotificationService {
   }
 
   private async sendWebhookNotification(
-    config: any,
+    config: Record<string, unknown>,
     formatted: FormattedNotification,
     payload: NotificationPayload,
   ): Promise<boolean> {
     try {
-      const webhookUrl = config.url;
+      const webhookUrl = config.url as string | undefined;
       if (!webhookUrl) {
         throw new Error('Webhook URL is required');
       }
@@ -752,7 +750,7 @@ export class NotificationService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-      const response = await fetch(webhookUrl as string, {
+      const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -775,7 +773,7 @@ export class NotificationService {
 
       return true;
     } catch (error) {
-      if (error.name === 'AbortError') {
+      if (error instanceof Error && error.name === 'AbortError') {
         this.logger.error(`Webhook notification timed out after 10 seconds`);
       } else {
         this.logger.error(
@@ -787,12 +785,13 @@ export class NotificationService {
   }
 
   private async sendTelegramNotification(
-    config: any,
+    config: Record<string, unknown>,
     formatted: FormattedNotification,
     // ___payload: NotificationPayload,
   ): Promise<boolean> {
     try {
-      const { botToken, chatId } = config;
+      const botToken = config.botToken as string | undefined;
+      const chatId = config.chatId as string | undefined;
       if (!botToken || !chatId) {
         throw new Error('Telegram bot token and chat ID are required');
       }
@@ -841,12 +840,12 @@ export class NotificationService {
   }
 
   private async sendDiscordNotification(
-    config: any,
+    config: Record<string, unknown>,
     formatted: FormattedNotification,
     // ___payload: NotificationPayload,
   ): Promise<boolean> {
     try {
-      const webhookUrl = config.discordWebhookUrl;
+      const webhookUrl = config.discordWebhookUrl as string | undefined;
       if (!webhookUrl) {
         throw new Error('Discord webhook URL is required');
       }
@@ -854,7 +853,7 @@ export class NotificationService {
       const retryConfig = createRetryConfig();
 
       const result = await fetchWithRetry(
-        webhookUrl as string,
+        webhookUrl,
         {
           method: 'POST',
           headers: {
@@ -909,11 +908,11 @@ export class NotificationService {
    * @see https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook
    */
   private async sendTeamsNotification(
-    config: any,
+    config: Record<string, unknown>,
     formatted: FormattedNotification,
   ): Promise<boolean> {
     try {
-      const webhookUrl = config.teamsWebhookUrl;
+      const webhookUrl = config.teamsWebhookUrl as string | undefined;
 
       // Input validation
       if (!webhookUrl || typeof webhookUrl !== 'string') {
@@ -964,6 +963,7 @@ export class NotificationService {
       const sanitizeText = (text: string | undefined | null): string => {
         if (!text) return '';
         // Remove control characters and limit length
+        // eslint-disable-next-line no-control-regex
         return text.replace(/[\x00-\x1F\x7F]/g, '').substring(0, 5000);
       };
 

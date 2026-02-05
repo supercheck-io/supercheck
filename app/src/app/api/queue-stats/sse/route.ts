@@ -88,7 +88,13 @@ export async function GET(request: NextRequest) {
           if (force || statsJson !== lastStats) {
             lastStats = statsJson;
             const message = createSSEMessage(stats);
-            controller.enqueue(encoder.encode(message));
+            try {
+              controller.enqueue(encoder.encode(message));
+            } catch {
+              // Controller was closed between our check and enqueue
+              aborted = true;
+              return;
+            }
           }
         } catch {
           // Suppress errors to avoid noise
@@ -107,7 +113,8 @@ export async function GET(request: NextRequest) {
             });
             controller.enqueue(encoder.encode(reconnectMessage));
           } catch {
-            // Ignore errors
+            // Controller already closed
+            aborted = true;
           }
           cleanup();
           return true;
