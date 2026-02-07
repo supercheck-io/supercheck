@@ -49,7 +49,7 @@ const sections = [
     {
         title: "Docs",
         links: [
-            { name: "Quick Start", href: "/docs/quickstart" },
+            { name: "Welcome", href: "/docs/app/welcome" },
             { name: "Self-Hosted Setup", href: "/docs/deployment/self-hosted" },
             { name: "Tests", href: "/docs/automate/tests" },
             { name: "Monitors", href: "/docs/monitors" },

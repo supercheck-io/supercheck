@@ -202,7 +202,7 @@ export default function HomePage() {
           </Link>
           <div className="flex items-center gap-1 md:gap-4">
             <Link
-              href="/docs"
+              href="/docs/app/welcome"
               className="p-2 md:px-3 md:py-2 rounded-lg inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition"
               aria-label="Documentation"
             >

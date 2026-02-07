@@ -15,8 +15,8 @@
   },
   "servers": [
     {
-      "url": "https://app.supercheck.io",
-      "description": "Production (Cloud)"
+      "url": "https://demo.supercheck.dev",
+      "description": "Demo"
     },
     {
       "url": "http://localhost:3000",

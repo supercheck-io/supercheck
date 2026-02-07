@@ -14,7 +14,7 @@ All endpoints require `Authorization: Bearer <token>` unless noted otherwise. Re
 Check API and dependency health. **No authentication required.**
 
 ```bash
-curl https://app.supercheck.io/api/health
+curl https://demo.supercheck.dev/api/health
 ```
 
 **Response:**
@@ -33,7 +33,7 @@ curl https://app.supercheck.io/api/health
 List available execution locations. **No authentication required.**
 
 ```bash
-curl https://app.supercheck.io/api/locations
+curl https://demo.supercheck.dev/api/locations
 ```
 
 **Response:**
@@ -195,7 +195,7 @@ Quick status check (lighter than full details).
 Stream live console output via Server-Sent Events (SSE).
 
 ```bash
-curl -N https://app.supercheck.io/api/runs/{runId}/stream \
+curl -N https://demo.supercheck.dev/api/runs/{runId}/stream \
   -H "Authorization: Bearer sck_live_..." \
   -H "Accept: text/event-stream"
 ```
@@ -304,14 +304,14 @@ Create a new monitor.
 {
   "name": "API Health Check",
   "url": "https://api.example.com/health",
-  "type": "http",
+  "type": "http_request",
   "interval": 300,
   "timeout": 30,
   "method": "GET"
 }
 ```
 
-Supported types: `http`, `ping`, `tcp`, `keyword`
+Supported types: `http_request`, `website`, `ping_host`, `port_check`, `synthetic_test`
 
 ### `GET /api/monitors/{id}`
 

@@ -38,7 +38,7 @@ export function SiteHeader({ showPricing = true, showDocs = true }: SiteHeaderPr
         </Link>
         <div className="flex items-center gap-4">
           {showDocs && (
-            <Link href="/docs" className="text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors">
+            <Link href="/docs/app/welcome" className="text-sm text-fd-muted-foreground hover:text-fd-foreground transition-colors">
               Docs
             </Link>
           )}

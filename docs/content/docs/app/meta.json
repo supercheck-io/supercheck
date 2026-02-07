@@ -3,7 +3,9 @@
   "description": "Platform documentation for testing, monitoring, and communication",
   "root": true,
   "icon": "AppWindow",
+  "defaultOpen": true,
   "pages": [
+    "welcome",
     "---Deployment---",
     "deployment",
     "---Communicate---",

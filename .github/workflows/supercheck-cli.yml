@@ -1,0 +1,100 @@
+name: Supercheck CLI
+
+on:
+  workflow_call:
+    inputs:
+      job-id:
+        description: 'Job ID to trigger'
+        required: true
+        type: string
+      wait:
+        description: 'Wait for the run to complete'
+        required: false
+        type: boolean
+        default: true
+      timeout:
+        description: 'Maximum wait time in seconds'
+        required: false
+        type: number
+        default: 300
+      supercheck-url:
+        description: 'Supercheck API URL (for self-hosted)'
+        required: false
+        type: string
+        default: ''
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: '20'
+      cli-version:
+        description: 'Supercheck CLI version (npm tag or semver)'
+        required: false
+        type: string
+        default: 'latest'
+    secrets:
+      SUPERCHECK_TOKEN:
+        description: 'CLI token (sck_live_*) for API access'
+        required: true
+    outputs:
+      run-id:
+        description: 'The run ID created by the job trigger'
+        value: ${{ jobs.supercheck.outputs.run-id }}
+      status:
+        description: 'Final run status (completed, failed, cancelled)'
+        value: ${{ jobs.supercheck.outputs.status }}
+
+permissions:
+  contents: read
+
+jobs:
+  supercheck:
+    name: Run Supercheck Job
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      run-id: ${{ steps.trigger.outputs.run-id }}
+      status: ${{ steps.trigger.outputs.status }}
+
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install Supercheck CLI
+        run: npm install -g @supercheck/cli@${{ inputs.cli-version }}
+
+      - name: Verify Authentication
+        run: supercheck whoami
+        env:
+          SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
+          SUPERCHECK_URL: ${{ inputs.supercheck-url }}
+
+      - name: Trigger Job
+        id: trigger
+        run: |
+          ARGS="$INPUT_JOB_ID"
+          if [ "$INPUT_WAIT" = "true" ]; then
+            ARGS="$ARGS --wait --timeout $INPUT_TIMEOUT"
+          fi
+          ARGS="$ARGS --json"
+
+          echo "Running: supercheck job trigger $ARGS"
+          OUTPUT=$(eval supercheck job trigger "$ARGS" 2>&1) || EXIT_CODE=$?
+
+          # Extract run ID and status from JSON output
+          RUN_ID=$(echo "$OUTPUT" | grep -o '"runId":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
+          STATUS=$(echo "$OUTPUT" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
+
+          echo "run-id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+
+          echo "$OUTPUT"
+          exit ${EXIT_CODE:-0}
+        env:
+          SUPERCHECK_TOKEN: ${{ secrets.SUPERCHECK_TOKEN }}
+          SUPERCHECK_URL: ${{ inputs.supercheck-url }}
+          INPUT_JOB_ID: ${{ inputs.job-id }}
+          INPUT_WAIT: ${{ inputs.wait }}
+          INPUT_TIMEOUT: ${{ inputs.timeout }}

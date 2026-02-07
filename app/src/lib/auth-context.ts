@@ -15,7 +15,7 @@
 
 import { headers } from "next/headers";
 import { db } from "@/utils/db";
-import { apikey, projects, member, projectMembers } from "@/db/schema";
+import { apikey, projects, member, projectMembers, organization } from "@/db/schema";
 import { eq, and, isNull, or, gt } from "drizzle-orm";
 import { verifyApiKey, isCliToken, getApiKeyPrefix } from "@/lib/security/api-key-hash";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
@@ -35,6 +35,10 @@ export interface AuthContext {
   userId: string;
   project: ProjectContext;
   organizationId: string;
+  /** Organization name (available for CLI token auth) */
+  organizationName?: string;
+  /** Organization slug (available for CLI token auth) */
+  organizationSlug?: string;
   /** Whether this request was authenticated via CLI token (vs session cookie) */
   isCliAuth: boolean;
 }
@@ -163,12 +167,19 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
     .select({
       projectId: projects.id,
       projectName: projects.name,
+      projectSlug: projects.slug,
       projectIsDefault: projects.isDefault,
       projectOrgId: projects.organizationId,
+      orgName: organization.name,
+      orgSlug: organization.slug,
       projectRole: projectMembers.role,
       orgRole: member.role,
     })
     .from(projects)
+    .innerJoin(
+      organization,
+      eq(organization.id, projects.organizationId)
+    )
     .leftJoin(
       projectMembers,
       and(
@@ -223,10 +234,13 @@ async function authenticateCliToken(token: string): Promise<AuthContext | null> 
   return {
     userId: matchedKey.userId,
     organizationId: ctx.projectOrgId,
+    organizationName: ctx.orgName ?? undefined,
+    organizationSlug: ctx.orgSlug ?? undefined,
     isCliAuth: true,
     project: {
       id: ctx.projectId,
       name: ctx.projectName ?? "Unknown Project",
+      slug: ctx.projectSlug ?? undefined,
       organizationId: ctx.projectOrgId,
       isDefault: ctx.projectIsDefault ?? false,
       userRole: effectiveRole,

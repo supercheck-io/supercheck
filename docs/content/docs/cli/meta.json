@@ -4,10 +4,13 @@
   "root": true,
   "icon": "Terminal",
   "pages": [
+    "---Getting Started---",
     "installation",
     "authentication",
     "configuration",
+    "---Reference---",
     "commands",
+    "---Integrations---",
     "ci-cd"
   ]
 }

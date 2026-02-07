@@ -24,35 +24,57 @@ import { defineConfig } from '@supercheck/cli'
 export default defineConfig({
   schemaVersion: '1.0',
   project: {
-    organization: 'acme-inc',
-    project: 'web-app',
-    logicalId: 'acme-web-app',
+    organization: '019c1fe3-0a0a-7ae9-884d-61baea139786',
+    project: '019c1fe3-0a0f-7089-97b3-12990d78a9ee',
   },
   api: {
-    baseUrl: process.env.SUPERCHECK_URL ?? 'https://app.supercheck.io',
-  },
-  defaults: {
-    runLocation: 'us-east',
-    timeout: 30,
+    baseUrl: process.env.SUPERCHECK_URL ?? 'https://demo.supercheck.dev',
   },
   tests: {
     playwright: {
       testMatch: '_supercheck_/tests/**/*.pw.ts',
-      browser: 'chromium',
     },
     k6: {
       testMatch: '_supercheck_/tests/**/*.k6.ts',
     },
   },
-  monitors: '_supercheck_/monitors/**/*.ts',
-  statusPages: '_supercheck_/status-pages/**/*.ts',
+  monitors: [
+    {
+      id: '019c3643-9495-7d66-a463-1c0d42d4520e',
+      name: 'API Health Monitor',
+      type: 'http_request',
+      target: 'https://api.example.com/health',
+      frequencyMinutes: 5,
+      enabled: true,
+      config: {
+        method: 'GET',
+        timeoutSeconds: 30,
+        expectedStatusCodes: '200-299',
+        locationConfig: {
+          locations: ['eu-central', 'us-east', 'asia-pacific'],
+        },
+      },
+      alertConfig: {
+        enabled: true,
+        alertOnFailure: true,
+        alertOnRecovery: true,
+        notificationProviders: ['019c22b5-6df9-79b7-b415-db8317b1bd0b', '019c22b5-a812-7acc-9f23-46f7904d2c2a'],
+      },
+    },
+  ],
   jobs: [
     {
+      id: '01912345-abcd-7000-8000-000000000001',
       name: 'Nightly E2E Suite',
-      logicalId: 'nightly-e2e',
-      tests: ['homepage.pw.ts', 'checkout.pw.ts'],
-      schedule: '0 2 * * *',
-      locations: ['us-east', 'eu-central'],
+      tests: ['_supercheck_/tests/019a1234-abcd-7000-8000-000000000001.pw.ts'],
+      jobType: 'playwright',
+      cronSchedule: '0 2 * * *',
+      alertConfig: {
+        enabled: true,
+        alertOnFailure: true,
+        alertOnSuccess: true,
+        notificationProviders: ['019c22b5-6df9-79b7-b415-db8317b1bd0b'],
+      },
     },
   ],
 })
@@ -113,9 +135,9 @@ Tests, monitors, and status page definitions live in the `_supercheck_/` folder:
 my-project/
 ├── _supercheck_/
 │   ├── tests/
-│   │   ├── homepage.pw.ts           # Playwright browser test
-│   │   ├── api-health.pw.ts         # Playwright API test
-│   │   └── load-test.k6.ts          # k6 performance test
+│   │   ├── 019a1234-abcd-7000-8000-000000000001.pw.ts   # Playwright test (UUID filename)
+│   │   ├── 019a1234-abcd-7000-8000-000000000002.pw.ts   # Playwright API test
+│   │   └── 019a1234-abcd-7000-8000-000000000003.k6.ts   # k6 performance test
 │   ├── monitors/
 │   │   └── api-monitor.ts           # Monitor definition
 │   └── status-pages/
@@ -128,8 +150,12 @@ my-project/
 
 | Extension | Runner | Example |
 |-----------|--------|---------|
-| `*.pw.ts` | Playwright | `homepage.pw.ts`, `checkout.pw.ts` |
-| `*.k6.ts` | k6 | `load-test.k6.ts`, `api-stress.k6.ts` |
+| `*.pw.ts` | Playwright | `019a1234-abcd-7000-8000-000000000001.pw.ts` |
+| `*.k6.ts` | k6 | `019a1234-abcd-7000-8000-000000000003.k6.ts` |
+
+<Callout type="info">
+  Test files pulled from the cloud are named using their database UUID (`{uuid}.pw.ts` or `{uuid}.k6.ts`). This ensures stable file paths that survive test renames in the dashboard. The test title is stored in the Supercheck database.
+</Callout>
 
 ## Config Schema Reference
 
@@ -139,27 +165,18 @@ my-project/
 |-------|------|----------|-------------|
 | `organization` | `string` | Yes | Organization slug |
 | `project` | `string` | Yes | Project slug |
-| `logicalId` | `string` | Yes | Unique identifier for reconciliation |
 
 ### `api`
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `baseUrl` | `string` | `https://app.supercheck.io` | API base URL |
-
-### `defaults`
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `runLocation` | `string` | — | Default execution location |
-| `timeout` | `number` | `30` | Default timeout in seconds |
+| `baseUrl` | `string` | `https://demo.supercheck.dev` | API base URL |
 
 ### `tests.playwright`
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `testMatch` | `string` | Glob pattern for Playwright test files |
-| `browser` | `string` | Browser engine (`chromium`, `firefox`, `webkit`) |
 
 ### `tests.k6`
 
@@ -171,11 +188,11 @@ my-project/
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `id` | `string` | Database UUID (present for existing resources, omit for new) |
 | `name` | `string` | Job display name |
-| `logicalId` | `string` | Unique ID for reconciliation |
-| `tests` | `string[]` | Test filenames to include |
-| `schedule` | `string` | Cron expression |
-| `locations` | `string[]` | Execution locations |
+| `jobType` | `string` | Job type (`playwright`, `k6`) |
+| `cronSchedule` | `string` | Cron expression |
+| `alertConfig` | `object` | Alert config with `notificationProviders` (UUIDs), `alertOnFailure`, etc. |
 
 ## Validate & Print
 
@@ -205,4 +222,4 @@ supercheck destroy --dry-run
 supercheck destroy --force
 ```
 
-Resources are reconciled using `logicalId` — the CLI compares your local config with the server state and creates, updates, or deletes resources as needed.
+Resources are reconciled using the database `id` — the CLI compares your local config with the server state and creates, updates, or deletes resources as needed. Resources pulled from the cloud include their `id` (UUID); new resources omit it and are created on deploy.

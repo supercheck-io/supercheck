@@ -141,23 +141,23 @@ supercheck-deploy:
 
 ## Docker
 
-Run the CLI without installing Node.js locally:
+Run the CLI in Docker using the official Node.js image:
 
 ```bash
 # Trigger a job
 docker run --rm \
   -e SUPERCHECK_TOKEN=$SUPERCHECK_TOKEN \
-  supercheck/cli job trigger <job-id> --wait
+  node:20-slim sh -c "npm install -g @supercheck/cli && supercheck job trigger <job-id> --wait"
 
 # Deploy config (mount project directory)
 docker run --rm \
   -e SUPERCHECK_TOKEN=$SUPERCHECK_TOKEN \
   -v $(pwd):/app \
   -w /app \
-  supercheck/cli deploy --force
+  node:20-slim sh -c "npm install -g @supercheck/cli && supercheck deploy --force"
 
 # Health check
-docker run --rm supercheck/cli health
+docker run --rm node:20-slim sh -c "npm install -g @supercheck/cli && supercheck health"
 ```
 
 ### Docker Compose
@@ -165,13 +165,14 @@ docker run --rm supercheck/cli health
 ```yaml title="docker-compose.yml"
 services:
   supercheck:
-    image: supercheck/cli
+    image: node:20-slim
     environment:
       SUPERCHECK_TOKEN: ${SUPERCHECK_TOKEN}
     volumes:
       - .:/app
     working_dir: /app
-    command: deploy --force
+    entrypoint: ["sh", "-c"]
+    command: ["npm install -g @supercheck/cli && supercheck deploy --force"]
 ```
 
 ---

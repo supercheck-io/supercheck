@@ -173,3 +173,8 @@ tmp/
 tasks/
 # Infisical
 .infisical.json
+
+# Supercheck CLI
+supercheck.config.local.ts
+supercheck.config.local.js
+supercheck.config.local.mjs

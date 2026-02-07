@@ -10,7 +10,7 @@ The Supercheck API provides programmatic access to all platform features — job
 
 | Environment | URL |
 |-------------|-----|
-| **Cloud** | `https://app.supercheck.io` |
+| **Cloud** | `https://demo.supercheck.dev` |
 | **Self-Hosted** | Your deployment URL (e.g. `https://supercheck.yourdomain.com`) |
 
 ## Authentication
@@ -18,7 +18,7 @@ The Supercheck API provides programmatic access to all platform features — job
 All API requests require authentication via `Authorization: Bearer <token>` header. See [Authentication](./authentication) for details on token types.
 
 ```bash
-curl https://app.supercheck.io/api/jobs \
+curl https://demo.supercheck.dev/api/jobs \
   -H "Authorization: Bearer sck_live_..."
 ```
 
@@ -64,21 +64,21 @@ The full OpenAPI 3.1 specification is available for SDK generation and tooling:
 
 ```bash
 # TypeScript types
-npx openapi-typescript https://app.supercheck.io/openapi.json -o ./types/supercheck-api.d.ts
+npx openapi-typescript https://demo.supercheck.dev/openapi.json -o ./types/supercheck-api.d.ts
 
 # TypeScript client
 npx openapi-typescript-codegen \
-  --input https://app.supercheck.io/openapi.json \
+  --input https://demo.supercheck.dev/openapi.json \
   --output ./sdk
 
 # Python
 openapi-generator generate \
-  -i https://app.supercheck.io/openapi.json \
+  -i https://demo.supercheck.dev/openapi.json \
   -g python -o ./supercheck-sdk-python
 
 # Go
 openapi-generator generate \
-  -i https://app.supercheck.io/openapi.json \
+  -i https://demo.supercheck.dev/openapi.json \
   -g go -o ./supercheck-sdk-go
 ```
 

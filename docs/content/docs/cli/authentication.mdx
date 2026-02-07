@@ -31,7 +31,7 @@ CLI tokens are the primary authentication method. They are **project-scoped** an
 
 **Via API:**
 ```bash
-curl -X POST https://app.supercheck.io/api/cli-tokens \
+curl -X POST https://demo.supercheck.dev/api/cli-tokens \
   -H "Authorization: Bearer $SUPERCHECK_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name": "CI/CD Pipeline"}'
@@ -69,7 +69,7 @@ Trigger keys (`sck_trigger_*`) provide **limited access** for CI/CD pipelines:
 ```bash
 # Trigger a job using a trigger key
 export SUPERCHECK_TRIGGER_KEY="sck_trigger_..."
-curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
+curl -X POST https://demo.supercheck.dev/api/jobs/<id>/trigger \
   -H "Authorization: Bearer $SUPERCHECK_TRIGGER_KEY"
 ```
 
@@ -78,7 +78,7 @@ curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `SUPERCHECK_TOKEN` | Yes | CLI token for API access |
-| `SUPERCHECK_URL` | No | Base URL (default: `https://app.supercheck.io`) |
+| `SUPERCHECK_URL` | No | Base URL (default: `https://demo.supercheck.dev`) |
 | `SUPERCHECK_ORG` | No | Default organization slug |
 | `SUPERCHECK_PROJECT` | No | Default project slug |
 | `SUPERCHECK_TRIGGER_KEY` | No | Job-specific trigger key |
@@ -87,7 +87,7 @@ curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
 | `NO_PROXY` | No | Hosts to bypass proxy (comma-separated) |
 
 <Callout type="info">
-  `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT` are for config file documentation only. The CLI token itself determines which project you have access to.
+  `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT` override the corresponding fields in `supercheck.config.ts` for config resolution. However, the CLI token itself is project-scoped and determines your actual API access permissions.
 </Callout>
 
 ## Authentication Flow

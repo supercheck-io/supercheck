@@ -26,12 +26,12 @@ supercheck health
 
 ## Docker
 
-Run the CLI in a container without installing Node.js:
+Run the CLI in a container using the official Node.js image:
 
 ```bash
 docker run --rm \
   -e SUPERCHECK_TOKEN=$SUPERCHECK_TOKEN \
-  supercheck/cli job trigger <job-id> --wait
+  node:20-slim sh -c "npm install -g @supercheck/cli && supercheck job trigger <job-id> --wait"
 ```
 
 See [CI/CD Integration](./ci-cd) for Docker-based pipeline examples.

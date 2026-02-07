@@ -367,10 +367,10 @@ supercheck monitor create --name "API Health" --url https://api.example.com/heal
 |------|----------|---------|-------------|
 | `--name` | Yes | — | Monitor name |
 | `--url` | Yes | — | URL to monitor |
-| `--type` | No | `http` | `http`, `ping`, `tcp`, or `keyword` |
+| `--type` | No | `http` | `http`, `website`, `ping`, `port`, `synthetic` |
 | `--interval` | No | `300` | Check interval in seconds |
 | `--timeout` | No | `30` | Request timeout in seconds |
-| `--method` | No | `GET` | HTTP method |
+| `--method` | No | `GET` | HTTP method (for http type) |
 
 ### `supercheck monitor update`
 
