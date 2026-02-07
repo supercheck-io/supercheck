@@ -5,11 +5,11 @@ import { eq, desc, gte, and, count, sql, sum } from "drizzle-orm";
 import { subDays, subHours } from "date-fns";
 import { getQueueStats } from "@/lib/queue-stats";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
-import { requireProjectContext } from '@/lib/project-context';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
 export async function GET() {
   try {
-    const context = await requireProjectContext();
+    const context = await requireAuthContext();
     
     // Use current project context - no need for query params
     const targetProjectId = context.project.id;
@@ -522,6 +522,12 @@ export async function GET() {
     return response;
 
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     // Log error for debugging but avoid logging sensitive data
     console.error("Dashboard API error:", error instanceof Error ? error.message : 'Unknown error');
     

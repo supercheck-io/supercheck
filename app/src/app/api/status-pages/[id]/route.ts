@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { statusPages, statusPageComponents, monitors } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { hasPermission } from "@/lib/rbac/middleware";
-import { requireProjectContext } from "@/lib/project-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { generateProxyUrl } from "@/lib/asset-proxy";
 import { z } from "zod";
 
@@ -34,14 +34,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const { project, organizationId } = await requireProjectContext();
+    const authCtx = await requireAuthContext();
+    const { project, organizationId } = authCtx;
     const targetProjectId = project.id;
 
     // Check permission to view status pages
-    const canView = await hasPermission("status_page", "view", {
-      organizationId,
-      projectId: targetProjectId,
-    });
+    const canView = checkPermissionWithContext("status_page", "view", authCtx);
 
     if (!canView) {
       return NextResponse.json(
@@ -51,10 +49,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     // Check update permission
-    const canUpdate = await hasPermission("status_page", "update", {
-      organizationId,
-      projectId: targetProjectId,
-    });
+    const canUpdate = checkPermissionWithContext("status_page", "update", authCtx);
 
     // Fetch the status page
     const statusPage = await db.query.statusPages.findFirst({
@@ -144,6 +139,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
       canUpdate,
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching status page:", error);
 
     const isDevelopment = process.env.NODE_ENV === "development";

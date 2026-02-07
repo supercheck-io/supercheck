@@ -6,6 +6,7 @@ import { Step, Steps } from "fumadocs-ui/components/steps";
 import { Card, Cards } from "fumadocs-ui/components/card";
 import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 import { Mermaid } from "@/components/mdx/mermaid";
+import { APIPage } from "@/components/api-page";
 import * as icons from "lucide-react";
 
 // use this function to get MDX components, you will need it for rendering MDX
@@ -23,6 +24,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     Accordion,
     Accordions,
     Mermaid,
+    APIPage,
     ...components,
   };
 }

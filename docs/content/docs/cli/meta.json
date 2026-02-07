@@ -1,0 +1,13 @@
+{
+  "title": "Supercheck CLI",
+  "description": "Command-line interface for CI/CD and automation",
+  "root": true,
+  "icon": "Terminal",
+  "pages": [
+    "installation",
+    "authentication",
+    "configuration",
+    "commands",
+    "ci-cd"
+  ]
+}

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/rbac/middleware";
-import { getActiveOrganization } from "@/lib/session";
+import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { usageNotificationService } from "@/lib/services/usage-notification.service";
 
 /**
@@ -9,10 +8,9 @@ import { usageNotificationService } from "@/lib/services/usage-notification.serv
  */
 export async function GET(request: Request) {
   try {
-    await requireAuth();
-    const activeOrg = await getActiveOrganization();
+    const { organizationId } = await requireUserAuthContext();
 
-    if (!activeOrg) {
+    if (!organizationId) {
       return NextResponse.json(
         { error: "No active organization found" },
         { status: 400 }
@@ -24,7 +22,7 @@ export async function GET(request: Request) {
     const offset = parseInt(searchParams.get("offset") || "0");
 
     const notifications = await usageNotificationService.getNotificationHistory(
-      activeOrg.id,
+      organizationId,
       { limit, offset }
     );
 
@@ -37,6 +35,12 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching notification history:", error);
     return NextResponse.json(
       { error: "Failed to fetch notification history" },

@@ -2,19 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { type NotificationProviderConfig } from "@/db/schema";
 import { EmailService } from "@/lib/email-service";
 import { renderTestEmail } from "@/lib/email-renderer";
-import { hasPermission } from "@/lib/rbac/middleware";
-import { requireProjectContext } from "@/lib/project-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 
 export async function POST(req: NextRequest) {
   try {
     // Require authentication and project context
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireAuthContext();
 
-    // Check permission to create notification providers (test requires create permission)
-    const canCreate = await hasPermission("monitor", "create", {
-      organizationId,
-      projectId: project.id,
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid duplicate DB queries
+    const canCreate = checkPermissionWithContext("notification", "create", context);
 
     if (!canCreate) {
       return NextResponse.json(
@@ -57,6 +54,12 @@ export async function POST(req: NextRequest) {
         );
     }
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { success: false, error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error testing connection:", error);
     return NextResponse.json(
       { success: false, error: "Failed to test connection" },

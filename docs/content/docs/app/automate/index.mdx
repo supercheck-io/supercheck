@@ -1,0 +1,144 @@
+---
+title: Automate
+description: Create and schedule automated tests
+icon: Play
+---
+
+Build automated tests for your web applications, APIs, databases, and infrastructure. Write tests in the interactive Playground with AI assistance, then schedule them to run automatically or trigger from your CI/CD pipeline.
+
+## Getting Started
+
+<Cards>
+<Card icon={<FlaskConical className="text-purple-500" />} title="Playground" href="/docs/app/automate/playground">
+Write and debug tests in an interactive editor with AI-powered code generation and automatic error fixing
+</Card>
+
+<Card icon={<Code className="text-blue-500" />} title="Tests" href="/docs/app/automate/tests">
+Save, organize, and manage your test scripts across projects
+</Card>
+</Cards>
+
+## Quick Create
+
+Use the **Create** menu from anywhere in the app to quickly add new tests, jobs, or monitors.
+
+![Quick Create Menu](/screenshots/quick-create.png)
+
+## Test Types
+
+Supercheck supports five test types, each optimized for different testing scenarios:
+
+<Cards>
+<Card icon={<Chrome className="text-sky-500" />} title="Browser Test" href="/docs/app/automate/browser-test">
+Playwright-based UI testing for user flows, form submissions, and visual validation with screenshots and traces
+</Card>
+
+<Card icon={<ArrowLeftRight className="text-teal-500" />} title="API Test" href="/docs/app/automate/api-test">
+HTTP and GraphQL endpoint testing with request/response validation, authentication, and JSON assertions
+</Card>
+
+<Card icon={<Database className="text-cyan-500" />} title="Database Test" href="/docs/app/automate/database-test">
+SQL queries against PostgreSQL, MySQL, and other databases with result validation and data integrity checks
+</Card>
+
+<Card icon={<ChartSpline className="text-violet-500" />} title="Performance Test" href="/docs/app/automate/performance-test">
+k6 load testing with configurable virtual users, duration, and thresholds—run from US, EU, or APAC regions
+</Card>
+
+<Card icon={<SquareFunction className="text-indigo-500" />} title="Custom Test" href="/docs/app/automate/custom-test">
+Node.js scripts for custom scenarios, integrations, or any testing logic not covered by other types
+</Card>
+</Cards>
+
+## Core Concepts
+
+<Cards>
+<Card icon={<CalendarClock className="text-amber-500" />} title="Jobs" href="/docs/app/automate/jobs">
+Group tests together and run them on a schedule, manually, or via API triggers from your CI/CD pipeline
+</Card>
+
+<Card icon={<ClipboardList className="text-emerald-500" />} title="Runs" href="/docs/app/automate/runs">
+View execution history with detailed results, screenshots, traces, and logs for every test run
+</Card>
+
+<Card icon={<Variable className="text-rose-500" />} title="Variables" href="/docs/app/automate/variables">
+Store configuration values and encrypted secrets that your tests can access at runtime
+</Card>
+</Cards>
+
+## Key Features
+
+### AI-Powered Development
+- **AI Create** — Generate test scripts from plain English (beta for browser tests—record first, then enhance)
+- **AI Fix** — Automatically analyze failures and suggest code fixes for selector, timing, and assertion issues
+- **AI Analyze** — Get detailed insights on job runs and monitor health with AI-powered analysis reports
+
+### Rich Test Reports
+- **Screenshots** — Captured at each step and on failure
+- **Traces** — Interactive step-by-step replay with DOM inspection
+- **Videos** — Full browser recordings for visual debugging
+- **Logs** — Console output, network requests, and error details
+
+### Flexible Scheduling
+- **Cron expressions** — Run tests at specific times (nightly, hourly, weekly)
+- **Interval-based** — Run every X minutes or hours
+- **CI/CD triggers** — API endpoints for pipeline integration
+- **Manual execution** — Run on-demand from the UI
+
+### Multi-Region Execution
+- **US East** — Ashburn, Virginia
+- **EU Central** — Nuremberg, Germany  
+- **Asia Pacific** — Singapore
+
+Run performance tests from multiple regions to measure latency and ensure global availability.
+
+### Parallel Execution
+
+Run multiple tests and jobs simultaneously to reduce total execution time. The parallel execution panel in the header shows real-time status of all running and queued executions.
+
+![Parallel Execution Panel](/screenshots/parallel-execution-dialog.png)
+
+**How it works:**
+- Tests and jobs are queued and processed by available workers
+- Multiple executions run in parallel up to your plan's capacity limit
+- View all running executions across your organization in real-time
+- Cancel any running execution if needed
+
+**Capacity limits by plan:**
+
+| Plan | Concurrent Executions | Queued Executions |
+|------|----------------------|-------------------|
+| **Plus** | 5 | 50 |
+| **Pro** | 10 | 100 |
+| **Self-hosted** | Configurable | Configurable |
+
+<Callout type="info">
+The parallel execution indicator appears in the top navigation bar showing **RUNNING** and **QUEUED** counts. Click it to view details and manage executions.
+</Callout>
+
+## Workflow Overview
+
+```mermaid
+flowchart LR
+    A[Write] --> B[Debug] --> C[Save] --> D[Schedule] --> E[Alert] --> F[Monitor]
+
+    style A fill:#6366f1,stroke:#4338ca,color:#fff
+    style B fill:#f59e0b,stroke:#b45309,color:#fff
+    style C fill:#10b981,stroke:#047857,color:#fff
+    style D fill:#3b82f6,stroke:#1e40af,color:#fff
+    style E fill:#ec4899,stroke:#be185d,color:#fff
+    style F fill:#8b5cf6,stroke:#6d28d9,color:#fff
+```
+
+## Next Steps
+
+- **New to testing?** Start with the [Playground](/docs/app/automate/playground) to write your first test
+- **Have existing tests?** Learn about [Jobs](/docs/app/automate/jobs) to schedule automated runs
+- **Need secrets?** Set up [Variables](/docs/app/automate/variables) for API keys and credentials
+
+## External Documentation
+
+For deeper understanding of the testing frameworks:
+
+- **[Playwright Documentation](https://playwright.dev/docs/intro)** — Browser automation for browser, API, and database tests
+- **[k6 Documentation](https://grafana.com/docs/k6/latest/)** — Load testing for performance tests

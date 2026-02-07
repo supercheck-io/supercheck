@@ -3,18 +3,27 @@ import { updateJob } from "@/actions/update-job";
 import { db } from "@/utils/db";
 import { jobs, jobTests, tests as testsTable, testTags, tags } from "@/db/schema";
 import { eq, inArray, asc, and } from "drizzle-orm";
-import { requireAuth, hasPermission } from '@/lib/rbac/middleware';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> }
 ) {
-  const params = await context.params;
+  const params = await routeContext.params;
   try {
-    await requireAuth();
+    const context = await requireAuthContext();
     const jobId = params.id;
+
+    const canView = checkPermissionWithContext("job", "view", context);
+    if (!canView) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
     
-    // First, find the job without filtering by active project
+    // Find the job scoped to the current project
     const jobResult = await db
       .select({
         id: jobs.id,
@@ -32,7 +41,13 @@ export async function GET(
         nextRunAt: jobs.nextRunAt,
       })
       .from(jobs)
-      .where(eq(jobs.id, jobId))
+      .where(
+        and(
+          eq(jobs.id, jobId),
+          eq(jobs.projectId, context.project.id),
+          eq(jobs.organizationId, context.organizationId)
+        )
+      )
       .limit(1);
 
     if (jobResult.length === 0) {
@@ -43,26 +58,6 @@ export async function GET(
     }
 
     const job = jobResult[0];
-    
-    // Now check if user has access to this job's project
-    if (!job.organizationId || !job.projectId) {
-      return NextResponse.json(
-        { error: "Job data incomplete" },
-        { status: 500 }
-      );
-    }
-    
-    const canView = await hasPermission('job', 'view', {
-      organizationId: job.organizationId,
-      projectId: job.projectId
-    });
-    
-    if (!canView) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
-    }
     
     // Get associated tests for this job, ordered by execution sequence
     const testsResult = await db
@@ -126,6 +121,12 @@ export async function GET(
     
     return NextResponse.json(response);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching job:", error);
     return NextResponse.json(
       { error: "Failed to fetch job" },
@@ -136,17 +137,22 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> }
 ) {
-  const params = await context.params;
+  const params = await routeContext.params;
   const jobId = params.id;
 
   try {
-    const { userId, project, organizationId } = await requireAuth().then(async () => {
-      // We need project and org context as well for the updateJob action
-      const { requireProjectContext } = await import("@/lib/project-context");
-      return await requireProjectContext();
-    });
+    const context = await requireAuthContext();
+    const { userId, project, organizationId } = context;
+
+    const canUpdate = checkPermissionWithContext("job", "update", context);
+    if (!canUpdate) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
 
     const rawData = await request.json();
 
@@ -192,6 +198,12 @@ export async function PATCH(
       );
     }
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error partially updating job:", error);
     return NextResponse.json(
       { error: "Failed to update job" },
@@ -202,10 +214,33 @@ export async function PATCH(
 
 export async function PUT(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> }
 ) {
-  const params = await context.params;
+  const params = await routeContext.params;
   try {
+    const context = await requireAuthContext();
+
+    const canUpdate = checkPermissionWithContext("job", "update", context);
+    if (!canUpdate) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
+
+    // Verify job belongs to current project before updating
+    const existingJob = await db.query.jobs.findFirst({
+      where: and(
+        eq(jobs.id, params.id),
+        eq(jobs.projectId, context.project.id),
+        eq(jobs.organizationId, context.organizationId)
+      ),
+    });
+
+    if (!existingJob) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
+
     const body = await request.json();
     const result = await updateJob({
       jobId: params.id,
@@ -221,6 +256,12 @@ export async function PUT(
       );
     }
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error updating job:", error);
     return NextResponse.json(
       { error: "Failed to update job" },

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, hasPermission } from '@/lib/rbac/middleware';
-import { Role } from '@/lib/rbac/permissions';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { runs, jobs } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 export async function GET(
   request: NextRequest,
@@ -17,18 +17,31 @@ export async function GET(
   }
 
   try {
-    await requireAuth();
+    const authCtx = await requireAuthContext();
+
+    const canView = checkPermissionWithContext('run', 'view', authCtx);
+    if (!canView) {
+      return NextResponse.json(
+        { error: 'Access denied' },
+        { status: 403 }
+      );
+    }
     
     // Find the run and its associated job to get project and organization IDs
     const result = await db
       .select({
         runId: runs.id,
-        projectId: jobs.projectId,
-        organizationId: jobs.organizationId
+        projectId: runs.projectId,
+        organizationId: jobs.organizationId,
       })
       .from(runs)
       .leftJoin(jobs, eq(runs.jobId, jobs.id))
-      .where(eq(runs.id, runId))
+      .where(
+        and(
+          eq(runs.id, runId),
+          eq(runs.projectId, authCtx.project.id),
+        )
+      )
       .limit(1);
 
     if (result.length === 0) {
@@ -44,28 +57,8 @@ export async function GET(
       );
     }
 
-    // Check if user has permission to view runs
-    const hasViewPermission = await hasPermission('run', 'view', {
-      organizationId: run.organizationId,
-      projectId: run.projectId
-    });
-
-    if (!hasViewPermission) {
-      return NextResponse.json(
-        { error: 'Access denied' },
-        { status: 403 }
-      );
-    }
-
-    // Get user's effective role for the response
-    const hasDeletePermission = await hasPermission('run', 'delete', {
-      organizationId: run.organizationId,
-      projectId: run.projectId
-    });
-
-    // If user can delete runs, they have management permissions (PROJECT_ADMIN or higher)
-    // Otherwise they only have view permissions (PROJECT_VIEWER or PROJECT_EDITOR without delete)
-    const userRole = hasDeletePermission ? Role.PROJECT_ADMIN : Role.PROJECT_VIEWER;
+    const hasDeletePermission = checkPermissionWithContext('run', 'delete', authCtx);
+    const userRole = authCtx.project.userRole;
 
     return NextResponse.json({
       success: true,
@@ -78,6 +71,13 @@ export async function GET(
 
   } catch (error) {
     console.error('Error fetching run permissions:', error);
+
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     
     if (error instanceof Error) {
       if (error.message === 'Authentication required') {

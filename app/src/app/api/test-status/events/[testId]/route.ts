@@ -3,7 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { reports, tests, runs } from "@/db/schema";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
-import { requireProjectContext } from "@/lib/project-context";
+import { requireAuthContext } from "@/lib/auth-context";
 
 const encoder = new TextEncoder();
 
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
   // Require authentication and project context
   let projectContext;
   try {
-    projectContext = await requireProjectContext();
+    projectContext = await requireAuthContext();
   } catch {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

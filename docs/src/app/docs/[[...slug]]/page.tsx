@@ -27,6 +27,23 @@ export default async function Page(props: PageProps<'/docs/[[...slug]]'>) {
     : `${page.slugs.join('/')}.mdx`;
 
   const MDX = page.data.body;
+  const isFullWidth = page.data.full === true;
+
+  if (isFullWidth) {
+    return (
+      <DocsPage full>
+        <DocsTitle>{page.data.title}</DocsTitle>
+        <DocsDescription>{page.data.description}</DocsDescription>
+        <DocsBody>
+          <MDX
+            components={getMDXComponents({
+              a: createRelativeLink(source, page),
+            })}
+          />
+        </DocsBody>
+      </DocsPage>
+    );
+  }
 
   return (
     <DocsPage

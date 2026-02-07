@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, hasPermission } from '@/lib/rbac/middleware';
+import { hasPermission } from '@/lib/rbac/middleware';
+import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { db } from '@/utils/db';
 import { projects, projectMembers, user } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -14,7 +15,7 @@ export async function GET(
 ) {
   const resolvedParams = await params;
   try {
-    await requireAuth();
+    await requireUserAuthContext();
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
@@ -74,24 +75,13 @@ export async function GET(
     });
     
   } catch (error) {
-    console.error('Failed to get project members:', error);
-    
-    if (error instanceof Error) {
-      if (error.message === 'Authentication required') {
-        return NextResponse.json(
-          { error: 'Authentication required' },
-          { status: 401 }
-        );
-      }
-      
-      if (error.message.includes('not found')) {
-        return NextResponse.json(
-          { error: 'Project not found or access denied' },
-          { status: 404 }
-        );
-      }
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
     }
-    
+    console.error('Failed to get project members:', error);
     return NextResponse.json(
       { error: 'Failed to fetch project members' },
       { status: 500 }
@@ -109,7 +99,7 @@ export async function POST(
 ) {
   const resolvedParams = await params;
   try {
-    await requireAuth();
+    await requireUserAuthContext();
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
@@ -128,7 +118,6 @@ export async function POST(
     
     const organizationId = projectData[0].organizationId;
     
-    // Build permission context
     // Check permission
     const canInvite = await hasPermission('member', 'create', { organizationId, projectId });
     if (!canInvite) {
@@ -211,24 +200,13 @@ export async function POST(
     }, { status: 201 });
     
   } catch (error) {
-    console.error('Failed to add project member:', error);
-    
-    if (error instanceof Error) {
-      if (error.message === 'Authentication required') {
-        return NextResponse.json(
-          { error: 'Authentication required' },
-          { status: 401 }
-        );
-      }
-      
-      if (error.message.includes('not found')) {
-        return NextResponse.json(
-          { error: 'Project not found or access denied' },
-          { status: 404 }
-        );
-      }
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
     }
-    
+    console.error('Failed to add project member:', error);
     return NextResponse.json(
       { error: 'Failed to add project member' },
       { status: 500 }
@@ -246,7 +224,7 @@ export async function PUT(
 ) {
   const resolvedParams = await params;
   try {
-    await requireAuth();
+    await requireUserAuthContext();
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
@@ -265,8 +243,6 @@ export async function PUT(
     
     const organizationId = projectData[0].organizationId;
     
-    // Build permission context
-        
     // Check permission
     const canManage = await hasPermission('member', 'update', { organizationId, projectId });
     if (!canManage) {
@@ -318,24 +294,13 @@ export async function PUT(
     });
     
   } catch (error) {
-    console.error('Failed to update project member:', error);
-    
-    if (error instanceof Error) {
-      if (error.message === 'Authentication required') {
-        return NextResponse.json(
-          { error: 'Authentication required' },
-          { status: 401 }
-        );
-      }
-      
-      if (error.message.includes('not found')) {
-        return NextResponse.json(
-          { error: 'Project not found or access denied' },
-          { status: 404 }
-        );
-      }
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
     }
-    
+    console.error('Failed to update project member:', error);
     return NextResponse.json(
       { error: 'Failed to update project member' },
       { status: 500 }
@@ -353,7 +318,7 @@ export async function DELETE(
 ) {
   const resolvedParams = await params;
   try {
-    await requireAuth();
+    await requireUserAuthContext();
     const projectId = resolvedParams.id;
     
     // Get project to determine organization
@@ -372,8 +337,6 @@ export async function DELETE(
     
     const organizationId = projectData[0].organizationId;
     
-    // Build permission context
-        
     // Check permission
     const canManage = await hasPermission('member', 'update', { organizationId, projectId });
     if (!canManage) {
@@ -410,24 +373,13 @@ export async function DELETE(
     });
     
   } catch (error) {
-    console.error('Failed to remove project member:', error);
-    
-    if (error instanceof Error) {
-      if (error.message === 'Authentication required') {
-        return NextResponse.json(
-          { error: 'Authentication required' },
-          { status: 401 }
-        );
-      }
-      
-      if (error.message.includes('not found')) {
-        return NextResponse.json(
-          { error: 'Project not found or access denied' },
-          { status: 404 }
-        );
-      }
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
     }
-    
+    console.error('Failed to remove project member:', error);
     return NextResponse.json(
       { error: 'Failed to remove project member' },
       { status: 500 }

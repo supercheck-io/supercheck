@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { auditLogs, user } from "@/db/schema";
 import { desc, eq, and, ilike, count, SQL } from "drizzle-orm";
-import { requireAuth, getUserOrgRole } from '@/lib/rbac/middleware';
-import { getActiveOrganization } from '@/lib/session';
+import { getUserOrgRole } from '@/lib/rbac/middleware';
+import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { Role } from '@/lib/rbac/permissions';
 import { createLogger } from '@/lib/logger/pino-config';
 
@@ -11,12 +11,9 @@ const logger = createLogger({ module: 'audit-api' });
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = await requireAuth();
+    const { userId, organizationId } = await requireUserAuthContext();
     
-    // Get current organization context
-    const activeOrg = await getActiveOrganization();
-    
-    if (!activeOrg) {
+    if (!organizationId) {
       logger.warn('No active organization found for audit request');
       return NextResponse.json(
         { success: false, error: "No active organization found" },
@@ -25,7 +22,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if a user has permission to view audit logs (org admin or higher)
-    const userRole = await getUserOrgRole(userId, activeOrg.id);
+    const userRole = await getUserOrgRole(userId, organizationId);
     // Only org admins, owners, and super admins can view audit logs
     const canViewAuditLogs = userRole === Role.ORG_ADMIN || userRole === Role.ORG_OWNER || userRole === Role.SUPER_ADMIN;
     
@@ -49,7 +46,7 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
 
     // Build where clause
-    let whereClause: SQL<unknown> = eq(auditLogs.organizationId, activeOrg.id);
+    let whereClause: SQL<unknown> = eq(auditLogs.organizationId, organizationId);
     
     // Add search filter
     const searchConditions: SQL<unknown>[] = [];
@@ -101,7 +98,7 @@ export async function GET(request: NextRequest) {
     const uniqueActions = await db
       .selectDistinct({ action: auditLogs.action })
       .from(auditLogs)
-      .where(eq(auditLogs.organizationId, activeOrg.id))
+      .where(eq(auditLogs.organizationId, organizationId))
       .orderBy(auditLogs.action);
 
     const totalPages = Math.ceil(totalCount / limit);
@@ -137,6 +134,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response);
 
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { success: false, error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     logger.error({ err: error }, 'Audit API error');
     return NextResponse.json(
       { 

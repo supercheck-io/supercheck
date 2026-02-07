@@ -4,7 +4,7 @@ import { generateProxyUrl } from "@/lib/asset-proxy";
 import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { requireProjectContext } from "@/lib/project-context";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { requirePermissions } from "@/lib/rbac/middleware";
 import { v4 as uuidv4 } from "uuid";
 
@@ -47,7 +47,7 @@ export async function POST(request: Request, context: RouteContext) {
     const statusPageId = params.id;
 
     // Check authentication and permissions
-    const { organizationId, project } = await requireProjectContext();
+    const { organizationId, project } = await requireAuthContext();
     await requirePermissions(
       { status_page: ["update"] },
       { organizationId, projectId: project.id }
@@ -173,6 +173,12 @@ export async function POST(request: Request, context: RouteContext) {
       type: uploadType,
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("[UPLOAD] Error uploading file:", error);
 
     return NextResponse.json(

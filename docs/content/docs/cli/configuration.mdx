@@ -1,0 +1,208 @@
+---
+title: Configuration
+description: supercheck.config.ts reference and project structure
+---
+
+## Config File
+
+Supercheck CLI uses a **TypeScript configuration file** with full IntelliSense via `defineConfig()`.
+
+```
+./supercheck.config.ts            # Project configuration (checked into repo)
+./supercheck.config.local.ts      # Local overrides (gitignored, optional)
+```
+
+<Callout type="warn">
+  Config files must **never** contain tokens. The CLI scans for token patterns (`sck_live_*`, `sck_trigger_*`, `sck_test_*`) and rejects any config containing them.
+</Callout>
+
+## Full Example
+
+```ts title="supercheck.config.ts"
+import { defineConfig } from '@supercheck/cli'
+
+export default defineConfig({
+  schemaVersion: '1.0',
+  project: {
+    organization: 'acme-inc',
+    project: 'web-app',
+    logicalId: 'acme-web-app',
+  },
+  api: {
+    baseUrl: process.env.SUPERCHECK_URL ?? 'https://app.supercheck.io',
+  },
+  defaults: {
+    runLocation: 'us-east',
+    timeout: 30,
+  },
+  tests: {
+    playwright: {
+      testMatch: '_supercheck_/tests/**/*.pw.ts',
+      browser: 'chromium',
+    },
+    k6: {
+      testMatch: '_supercheck_/tests/**/*.k6.ts',
+    },
+  },
+  monitors: '_supercheck_/monitors/**/*.ts',
+  statusPages: '_supercheck_/status-pages/**/*.ts',
+  jobs: [
+    {
+      name: 'Nightly E2E Suite',
+      logicalId: 'nightly-e2e',
+      tests: ['homepage.pw.ts', 'checkout.pw.ts'],
+      schedule: '0 2 * * *',
+      locations: ['us-east', 'eu-central'],
+    },
+  ],
+})
+```
+
+## Configuration Precedence
+
+Settings are resolved in this order (highest to lowest priority):
+
+1. **CLI flags** — `--url`, `--config`, etc.
+2. **Environment variables** — `SUPERCHECK_URL`, `SUPERCHECK_ORG`, `SUPERCHECK_PROJECT`
+3. **`supercheck.config.local.ts`** — Local overrides (deep-merged)
+4. **`supercheck.config.ts`** — Project defaults
+
+## Config Path Override
+
+```bash
+# Use a specific config file
+supercheck deploy --config ./configs/staging.config.ts
+```
+
+Supported formats: `.ts`, `.js`, `.mjs`
+
+## Self-Hosted Configuration
+
+Standard Supercheck self-hosted deployments use **Traefik + Let's Encrypt** for automatic TLS — no certificate configuration needed.
+
+```bash
+# Self-hosted setup (that's all you need!)
+export SUPERCHECK_URL="https://supercheck.yourdomain.com"
+export SUPERCHECK_TOKEN="sck_live_..."
+
+supercheck whoami
+```
+
+<Callout type="info">
+  If using Cloudflare proxy, set SSL/TLS mode to "**Full (strict)**" in Cloudflare Dashboard.
+</Callout>
+
+### Corporate Proxy Configuration
+
+For environments behind HTTP proxies:
+
+```bash
+export HTTPS_PROXY="http://proxy.corp.com:8080"
+export NO_PROXY="localhost,127.0.0.1,.internal.corp.com"
+
+supercheck job trigger abc123 --wait
+```
+
+## Project Structure
+
+### `_supercheck_/` Folder
+
+Tests, monitors, and status page definitions live in the `_supercheck_/` folder:
+
+```
+my-project/
+├── _supercheck_/
+│   ├── tests/
+│   │   ├── homepage.pw.ts           # Playwright browser test
+│   │   ├── api-health.pw.ts         # Playwright API test
+│   │   └── load-test.k6.ts          # k6 performance test
+│   ├── monitors/
+│   │   └── api-monitor.ts           # Monitor definition
+│   └── status-pages/
+│       └── main-status.ts           # Status page definition
+├── supercheck.config.ts
+└── package.json
+```
+
+### File Naming Convention
+
+| Extension | Runner | Example |
+|-----------|--------|---------|
+| `*.pw.ts` | Playwright | `homepage.pw.ts`, `checkout.pw.ts` |
+| `*.k6.ts` | k6 | `load-test.k6.ts`, `api-stress.k6.ts` |
+
+## Config Schema Reference
+
+### `project`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization` | `string` | Yes | Organization slug |
+| `project` | `string` | Yes | Project slug |
+| `logicalId` | `string` | Yes | Unique identifier for reconciliation |
+
+### `api`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `baseUrl` | `string` | `https://app.supercheck.io` | API base URL |
+
+### `defaults`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `runLocation` | `string` | — | Default execution location |
+| `timeout` | `number` | `30` | Default timeout in seconds |
+
+### `tests.playwright`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `testMatch` | `string` | Glob pattern for Playwright test files |
+| `browser` | `string` | Browser engine (`chromium`, `firefox`, `webkit`) |
+
+### `tests.k6`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `testMatch` | `string` | Glob pattern for k6 test files |
+
+### `jobs[]`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `string` | Job display name |
+| `logicalId` | `string` | Unique ID for reconciliation |
+| `tests` | `string[]` | Test filenames to include |
+| `schedule` | `string` | Cron expression |
+| `locations` | `string[]` | Execution locations |
+
+## Validate & Print
+
+```bash
+# Validate config syntax and schema
+supercheck config validate
+
+# Print resolved configuration (with env var expansion)
+supercheck config print
+```
+
+## Monitoring-as-Code Commands
+
+```bash
+# Preview changes between config and server state
+supercheck diff
+
+# Deploy config to Supercheck (create/update/delete resources)
+supercheck deploy
+supercheck deploy --dry-run      # Preview without applying
+supercheck deploy --no-delete    # Skip deletions
+supercheck deploy --force        # Skip confirmation
+
+# Tear down all managed resources
+supercheck destroy
+supercheck destroy --dry-run
+supercheck destroy --force
+```
+
+Resources are reconciled using `logicalId` — the CLI compares your local config with the server state and creates, updates, or deletes resources as needed.

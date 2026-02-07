@@ -2,21 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { tests, testTags, tags } from '@/db/schema';
 import { and, eq } from 'drizzle-orm';
-import { hasPermission } from '@/lib/rbac/middleware';
-import { requireProjectContext } from '@/lib/project-context';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireAuthContext();
+    const { project, organizationId } = context;
 
     // Check permission to view tests
-    const canView = await hasPermission('test', 'view', {
-      organizationId,
-      projectId: project.id
-    });
+    const canView = checkPermissionWithContext('test', 'view', context);
 
     if (!canView) {
       return NextResponse.json(
@@ -57,6 +55,12 @@ export async function GET(
 
     return NextResponse.json(testTagsResult);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     console.error('Error fetching test tags:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -67,13 +71,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireAuthContext();
+    const { project, organizationId } = context;
 
     // Check permission to update tests
-    const canUpdate = await hasPermission('test', 'update', {
-      organizationId,
-      projectId: project.id
-    });
+    const canUpdate = checkPermissionWithContext('test', 'update', context);
 
     if (!canUpdate) {
       return NextResponse.json(
@@ -137,6 +139,12 @@ export async function POST(
 
     return NextResponse.json(updatedTags);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     console.error('Error updating test tags:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
@@ -147,13 +155,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireAuthContext();
+    const { project, organizationId } = context;
 
     // Check permission to update tests
-    const canUpdate = await hasPermission('test', 'update', {
-      organizationId,
-      projectId: project.id
-    });
+    const canUpdate = checkPermissionWithContext('test', 'update', context);
 
     if (!canUpdate) {
       return NextResponse.json(
@@ -196,6 +202,12 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     console.error('Error removing test tag:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

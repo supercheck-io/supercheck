@@ -9,8 +9,8 @@ import {
   type PlainNotificationProviderConfig,
 } from "@/db/schema";
 import { eq, desc, and, count, sql } from "drizzle-orm";
-import { hasPermission } from "@/lib/rbac/middleware";
-import { requireProjectContext } from "@/lib/project-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import {
   decryptNotificationProviderConfig,
   encryptNotificationProviderConfig,
@@ -25,13 +25,11 @@ export async function GET(
 ) {
   try {
     const { id } = await context.params;
-    const { project, organizationId } = await requireProjectContext();
+    const authContext = await requireAuthContext();
+    const { project, organizationId } = authContext;
 
-    // Check permission to view notification providers
-    const canView = await hasPermission("monitor", "view", {
-      organizationId,
-      projectId: project.id,
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid duplicate DB queries
+    const canView = checkPermissionWithContext("notification", "view", authContext);
 
     if (!canView) {
       return NextResponse.json(
@@ -84,6 +82,12 @@ export async function GET(
 
     return NextResponse.json(enhancedProvider);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching notification provider:", error);
     return NextResponse.json(
       { error: "Failed to fetch notification provider" },
@@ -98,12 +102,10 @@ export async function PUT(
 ) {
   try {
     const { id } = await context.params;
-    const { userId, project, organizationId } = await requireProjectContext();
+    const authContext = await requireAuthContext();
+    const { userId, project, organizationId } = authContext;
 
-    const canUpdate = await hasPermission("monitor", "update", {
-      organizationId,
-      projectId: project.id,
-    });
+    const canUpdate = checkPermissionWithContext("notification", "update", authContext);
 
     if (!canUpdate) {
       return NextResponse.json(
@@ -200,6 +202,12 @@ export async function PUT(
       maskedFields,
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error updating notification provider:", error);
     return NextResponse.json(
       { error: "Failed to update notification provider" },
@@ -214,12 +222,10 @@ export async function DELETE(
 ) {
   try {
     const { id } = await context.params;
-    const { project, organizationId } = await requireProjectContext();
+    const authContext = await requireAuthContext();
+    const { project, organizationId } = authContext;
 
-    const canDelete = await hasPermission("monitor", "delete", {
-      organizationId,
-      projectId: project.id,
-    });
+    const canDelete = checkPermissionWithContext("notification", "delete", authContext);
 
     if (!canDelete) {
       return NextResponse.json(
@@ -288,6 +294,12 @@ export async function DELETE(
       message: "Notification provider deleted successfully",
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error deleting notification provider:", error);
     return NextResponse.json(
       { error: "Failed to delete notification provider" },

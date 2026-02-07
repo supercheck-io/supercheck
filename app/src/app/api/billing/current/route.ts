@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/rbac/middleware";
-import { getActiveOrganization } from "@/lib/session";
+import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { db } from "@/utils/db";
 import {
@@ -19,10 +18,9 @@ import { getPlanPricing } from "@/lib/feature-flags";
  */
 export async function GET() {
   try {
-    await requireAuth();
-    const activeOrg = await getActiveOrganization();
+    const { organizationId } = await requireUserAuthContext();
 
-    if (!activeOrg) {
+    if (!organizationId) {
       return NextResponse.json(
         { error: "No active organization found" },
         { status: 400 }
@@ -31,7 +29,7 @@ export async function GET() {
 
     // Get organization details with subscription info
     const org = await db.query.organization.findFirst({
-      where: eq(organization.id, activeOrg.id),
+      where: eq(organization.id, organizationId),
     });
 
     if (!org) {
@@ -43,11 +41,11 @@ export async function GET() {
 
     // Get plan limits (use safe version that doesn't throw for unsubscribed users)
     const plan = await subscriptionService.getOrganizationPlanSafe(
-      activeOrg.id
+      organizationId
     );
 
     // Get current usage (use safe version)
-    const usage = await subscriptionService.getUsageSafe(activeOrg.id);
+    const usage = await subscriptionService.getUsageSafe(organizationId);
 
     // Get current resource counts
     const [monitorCount, statusPageCount, projectCount, memberCount] =
@@ -55,19 +53,19 @@ export async function GET() {
         db
           .select({ count: monitors.id })
           .from(monitors)
-          .where(eq(monitors.organizationId, activeOrg.id)),
+          .where(eq(monitors.organizationId, organizationId)),
         db
           .select({ count: statusPages.id })
           .from(statusPages)
-          .where(eq(statusPages.organizationId, activeOrg.id)),
+          .where(eq(statusPages.organizationId, organizationId)),
         db
           .select({ count: projects.id })
           .from(projects)
-          .where(eq(projects.organizationId, activeOrg.id)),
+          .where(eq(projects.organizationId, organizationId)),
         db
           .select({ count: member.userId })
           .from(member)
-          .where(eq(member.organizationId, activeOrg.id)),
+          .where(eq(member.organizationId, organizationId)),
       ]);
 
     // Calculate billing period
@@ -188,6 +186,12 @@ export async function GET() {
       },
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching billing information:", error);
     return NextResponse.json(
       { error: "Failed to fetch billing information" },

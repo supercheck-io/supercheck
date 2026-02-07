@@ -13,8 +13,8 @@ import {
 import { eq, desc } from "drizzle-orm";
 import { fetchFromS3 } from "@/lib/s3-proxy";
 import { notFound } from "next/navigation";
-import { hasPermission, requireAuth } from "@/lib/rbac/middleware";
-import { requireProjectContext } from "@/lib/project-context";
+import { hasPermission } from "@/lib/rbac/middleware";
+import { requireAuthContext, requireUserAuthContext, isAuthError } from "@/lib/auth-context";
 
 type AccessContext = {
   organizationId: string | null;
@@ -127,10 +127,16 @@ async function resolveAccessContext(
 }
 
 export async function GET(request: Request) {
-  // Require authentication
+  // Require authentication (supports both Bearer tokens and session cookies)
   try {
-    await requireAuth();
-  } catch {
+    await requireUserAuthContext();
+  } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     return NextResponse.json(
       { error: "Authentication required" },
       { status: 401 }
@@ -290,7 +296,7 @@ export async function GET(request: Request) {
       permissionResource === "test"
     ) {
       try {
-        const projectContext = await requireProjectContext();
+        const projectContext = await requireAuthContext();
         accessContext = {
           organizationId: projectContext.organizationId,
           projectId: projectContext.project.id,

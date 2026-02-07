@@ -1,0 +1,541 @@
+---
+title: API Endpoints
+description: Complete reference for all Supercheck REST API endpoints
+---
+
+All endpoints require `Authorization: Bearer <token>` unless noted otherwise. Request and response bodies are JSON.
+
+---
+
+## System
+
+### `GET /api/health`
+
+Check API and dependency health. **No authentication required.**
+
+```bash
+curl https://app.supercheck.io/api/health
+```
+
+**Response:**
+
+```json
+{
+  "status": "ok",
+  "database": "connected",
+  "redis": "connected",
+  "storage": "connected"
+}
+```
+
+### `GET /api/locations`
+
+List available execution locations. **No authentication required.**
+
+```bash
+curl https://app.supercheck.io/api/locations
+```
+
+**Response:**
+
+```json
+{
+  "locations": [
+    { "id": "us-east", "name": "US East", "region": "us-east-1" },
+    { "id": "eu-central", "name": "EU Central", "region": "eu-central-1" }
+  ]
+}
+```
+
+---
+
+## CLI Tokens
+
+### `GET /api/cli-tokens`
+
+List CLI tokens for the current project.
+
+### `POST /api/cli-tokens`
+
+Create a CLI token. Returns the plain token value once.
+
+**Body:**
+
+```json
+{ "name": "CI/CD Pipeline", "expiresIn": 7776000 }
+```
+
+### `PATCH /api/cli-tokens/{id}`
+
+Enable, disable, or rename a token.
+
+**Body:**
+
+```json
+{ "enabled": false }
+```
+
+### `DELETE /api/cli-tokens/{id}`
+
+Permanently revoke a token.
+
+---
+
+## Jobs
+
+### `GET /api/jobs`
+
+List all jobs in the current project.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | integer | `1` | Page number |
+| `limit` | integer | `50` | Items per page (max 100) |
+
+### `POST /api/jobs`
+
+Create a new job.
+
+**Body:**
+
+```json
+{
+  "name": "Nightly E2E Suite",
+  "description": "Run all browser tests nightly",
+  "cronSchedule": "0 2 * * *",
+  "timeoutSeconds": 300,
+  "retryCount": 0,
+  "tests": []
+}
+```
+
+### `GET /api/jobs/{id}`
+
+Get job details by ID.
+
+### `PATCH /api/jobs/{id}`
+
+Update job configuration. Only provided fields are changed.
+
+**Body:**
+
+```json
+{
+  "name": "Updated Name",
+  "status": "paused",
+  "cronSchedule": "0 3 * * *"
+}
+```
+
+### `DELETE /api/jobs/{id}`
+
+Delete a job.
+
+### `POST /api/jobs/{id}/trigger`
+
+Trigger a job run. Supports both CLI tokens and trigger keys.
+
+**Response:**
+
+```json
+{ "runId": "uuid", "message": "Job triggered" }
+```
+
+### `POST /api/jobs/run`
+
+Run a job immediately, bypassing the schedule.
+
+**Body:**
+
+```json
+{ "jobId": "uuid" }
+```
+
+**Response:**
+
+```json
+{ "runId": "uuid", "message": "Job started" }
+```
+
+---
+
+## Runs
+
+### `GET /api/runs`
+
+List job runs with optional filters.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `page` | integer | Page number |
+| `limit` | integer | Items per page |
+| `jobId` | uuid | Filter by job |
+| `status` | string | `running`, `completed`, `failed`, `cancelled` |
+
+### `GET /api/runs/{runId}`
+
+Get run details.
+
+### `DELETE /api/runs/{runId}`
+
+Delete a run record.
+
+### `GET /api/runs/{runId}/status`
+
+Quick status check (lighter than full details).
+
+**Response:**
+
+```json
+{ "id": "uuid", "status": "completed" }
+```
+
+### `GET /api/runs/{runId}/stream`
+
+Stream live console output via Server-Sent Events (SSE).
+
+```bash
+curl -N https://app.supercheck.io/api/runs/{runId}/stream \
+  -H "Authorization: Bearer sck_live_..." \
+  -H "Accept: text/event-stream"
+```
+
+**Events:**
+
+The stream uses named Server-Sent Events:
+
+```
+event: ready
+data: {}
+
+event: console
+data: {"line": "Running test 1/5..."}
+
+event: heartbeat
+data: {}
+
+event: complete
+data: {"status": "completed"}
+
+event: error
+data: {"message": "Execution failed"}
+```
+
+### `POST /api/runs/{runId}/cancel`
+
+Cancel a running execution.
+
+---
+
+## Tests
+
+### `GET /api/tests`
+
+List tests with optional search and type filters.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `page` | integer | Page number |
+| `limit` | integer | Items per page |
+| `search` | string | Search by title |
+| `testType` | string | `playwright` or `k6` |
+
+### `POST /api/tests`
+
+Create a new test.
+
+**Body:**
+
+```json
+{
+  "title": "Homepage Load Test",
+  "script": "import { test } from '@playwright/test';\n...",
+  "testType": "playwright",
+  "description": "Verify homepage loads correctly"
+}
+```
+
+### `GET /api/tests/{id}`
+
+Get test details.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `includeScript` | boolean | Include the script content |
+
+### `PATCH /api/tests/{id}`
+
+Update a test. Only provided fields are changed.
+
+**Body:**
+
+```json
+{
+  "title": "Updated Title",
+  "script": "...",
+  "description": "Updated description"
+}
+```
+
+### `DELETE /api/tests/{id}`
+
+Delete a test.
+
+---
+
+## Monitors
+
+### `GET /api/monitors`
+
+List all monitors.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | integer | `1` | Page number |
+| `limit` | integer | `50` | Items per page |
+
+### `POST /api/monitors`
+
+Create a new monitor.
+
+**Body:**
+
+```json
+{
+  "name": "API Health Check",
+  "url": "https://api.example.com/health",
+  "type": "http",
+  "interval": 300,
+  "timeout": 30,
+  "method": "GET"
+}
+```
+
+Supported types: `http`, `ping`, `tcp`, `keyword`
+
+### `GET /api/monitors/{id}`
+
+Get monitor details.
+
+### `PATCH /api/monitors/{id}`
+
+Update a monitor.
+
+**Body:**
+
+```json
+{
+  "interval": 60,
+  "active": false
+}
+```
+
+### `DELETE /api/monitors/{id}`
+
+Delete a monitor.
+
+### `GET /api/monitors/{id}/results`
+
+Get recent check results.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | integer | `20` | Number of results |
+
+**Response:**
+
+```json
+{
+  "results": [
+    {
+      "timestamp": "2024-01-15T10:30:00Z",
+      "status": "up",
+      "responseTime": 142,
+      "statusCode": 200,
+      "location": "us-east"
+    }
+  ]
+}
+```
+
+### `GET /api/monitors/{id}/stats`
+
+Get performance statistics.
+
+**Response:**
+
+```json
+{
+  "uptimePercent": 99.95,
+  "avgResponseTime": 156.3,
+  "p95ResponseTime": 342.1,
+  "totalChecks": 8640,
+  "successfulChecks": 8636,
+  "failedChecks": 4
+}
+```
+
+---
+
+## Variables
+
+### `GET /api/variables`
+
+List all project variables. Secret values are redacted.
+
+### `POST /api/variables`
+
+Create a variable.
+
+**Body:**
+
+```json
+{
+  "key": "API_BASE_URL",
+  "value": "https://api.example.com",
+  "isSecret": false,
+  "description": "Base URL for API tests"
+}
+```
+
+### `GET /api/variables/{id}`
+
+Get a variable by ID.
+
+### `PUT /api/variables/{id}`
+
+Update a variable.
+
+**Body:**
+
+```json
+{
+  "key": "API_BASE_URL",
+  "value": "https://api-v2.example.com",
+  "isSecret": false
+}
+```
+
+### `DELETE /api/variables/{id}`
+
+Delete a variable.
+
+---
+
+## Tags
+
+### `GET /api/tags`
+
+List all tags.
+
+### `POST /api/tags`
+
+Create a tag.
+
+**Body:**
+
+```json
+{ "name": "production", "color": "#3B82F6" }
+```
+
+### `DELETE /api/tags/{id}`
+
+Delete a tag.
+
+---
+
+## Notification Providers
+
+### `GET /api/notification-providers`
+
+List notification providers.
+
+### `POST /api/notification-providers`
+
+Create a notification provider.
+
+**Body:**
+
+```json
+{
+  "name": "Slack Alerts",
+  "type": "slack",
+  "config": {
+    "name": "Slack Alerts",
+    "webhookUrl": "https://hooks.slack.com/services/..."
+  }
+}
+```
+
+Supported types: `email`, `slack`, `webhook`, `telegram`, `discord`, `teams`
+
+### `GET /api/notification-providers/{id}`
+
+Get provider details.
+
+### `PUT /api/notification-providers/{id}`
+
+Update a provider (full replacement).
+
+**Body:**
+
+```json
+{
+  "name": "Updated Slack Alerts",
+  "type": "slack",
+  "config": {
+    "name": "Updated Slack Alerts",
+    "webhookUrl": "https://hooks.slack.com/services/..."
+  }
+}
+```
+
+### `DELETE /api/notification-providers/{id}`
+
+Delete a notification provider.
+
+### `POST /api/notification-providers/test`
+
+Send a test notification to verify configuration.
+
+**Body:**
+
+```json
+{
+  "type": "slack",
+  "config": { "webhookUrl": "https://hooks.slack.com/services/..." }
+}
+```
+
+**Response:**
+
+```json
+{ "success": true, "message": "Test notification sent" }
+```
+
+---
+
+## Alerts
+
+### `GET /api/alerts/history`
+
+View alert history.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | integer | `1` | Page number |
+| `limit` | integer | `50` | Items per page |
+
+---
+
+## Audit
+
+### `GET /api/audit`
+
+View audit logs. Requires admin permissions.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `page` | integer | Page number |
+| `limit` | integer | Items per page |
+| `action` | string | Filter by action type |

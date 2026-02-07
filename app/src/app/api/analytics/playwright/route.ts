@@ -3,8 +3,8 @@ import { db } from "@/utils/db";
 import { jobs, runs } from "@/db/schema";
 import { eq, and, desc, gte, count, sql, avg } from "drizzle-orm";
 import { subDays } from "date-fns";
-import { hasPermission } from '@/lib/rbac/middleware';
-import { requireProjectContext } from '@/lib/project-context';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
 /**
  * Playwright Analytics API
@@ -18,11 +18,11 @@ import { requireProjectContext } from '@/lib/project-context';
  */
 export async function GET(request: NextRequest) {
   try {
-    const { project, organizationId } = await requireProjectContext();
-    const targetProjectId = project.id;
+    const context = await requireAuthContext();
+    const targetProjectId = context.project.id;
     
     // Check permissions
-    const canView = await hasPermission('project', 'view', { organizationId, projectId: targetProjectId });
+    const canView = checkPermissionWithContext('project', 'view', context);
     if (!canView) {
       return NextResponse.json(
         { error: 'Insufficient permissions' },
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
         .where(
           and(
             eq(jobs.projectId, targetProjectId),
-            eq(jobs.organizationId, organizationId),
+            eq(jobs.organizationId, context.organizationId),
             eq(jobs.jobType, 'playwright')
           )
         )
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
           and(
             ...baseRunConditions,
             eq(jobs.jobType, 'playwright'),
-            eq(jobs.organizationId, organizationId)
+            eq(jobs.organizationId, context.organizationId)
           )
         )
         .orderBy(desc(runs.startedAt))
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
           and(
             ...baseRunConditions,
             eq(jobs.jobType, 'playwright'),
-            eq(jobs.organizationId, organizationId)
+            eq(jobs.organizationId, context.organizationId)
           )
         ),
 
@@ -132,7 +132,7 @@ export async function GET(request: NextRequest) {
           and(
             ...baseRunConditions,
             eq(jobs.jobType, 'playwright'),
-            eq(jobs.organizationId, organizationId)
+            eq(jobs.organizationId, context.organizationId)
           )
         )
         .groupBy(sql`DATE(${runs.startedAt})`)
@@ -224,6 +224,12 @@ export async function GET(request: NextRequest) {
     return response;
 
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     console.error("Playwright Analytics API error:", error instanceof Error ? error.message : 'Unknown error');
     return NextResponse.json(
       { error: "Failed to fetch Playwright analytics data" },

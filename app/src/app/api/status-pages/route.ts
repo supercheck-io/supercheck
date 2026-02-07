@@ -3,7 +3,7 @@ import { db } from "@/utils/db";
 import { statusPages } from "@/db/schema";
 import { desc, eq, and } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireProjectContext } from "@/lib/project-context";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 
 /**
  * GET /api/status-pages
@@ -12,7 +12,7 @@ import { requireProjectContext } from "@/lib/project-context";
  */
 export async function GET() {
   try {
-    const context = await requireProjectContext();
+    const context = await requireAuthContext();
 
     // Use current project context
     const targetProjectId = context.project.id;
@@ -65,6 +65,12 @@ export async function GET() {
       },
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching status pages:", error);
 
     // Return more detailed error information in development

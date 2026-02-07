@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
-import { requireProjectContext } from "@/lib/project-context";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { db } from "@/utils/db";
 import { runs, jobs, tests, projects } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -98,7 +99,8 @@ async function getJobCached(jobId: string): Promise<{ name: string; jobType: str
  */
 export async function GET(request: Request) {
   try {
-    const { organizationId } = await requireProjectContext();
+    const authCtx = await requireAuthContext();
+    const { organizationId, project } = authCtx;
 
     if (!organizationId) {
       return NextResponse.json(
@@ -106,6 +108,21 @@ export async function GET(request: Request) {
         { status: 404 }
       );
     }
+
+    // Check view permission via context
+    const canView = checkPermissionWithContext("job", "view", authCtx);
+    if (!canView) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
+
+    // Determine scope: org-level admins see all projects in the org;
+    // project-level users only see events for their current project.
+    const userRole = project.userRole.toLowerCase();
+    const isOrgLevelRole = userRole.startsWith("org_");
+    const scopedProjectId = isOrgLevelRole ? null : project.id;
 
     const headers = {
       "Content-Type": "text/event-stream",
@@ -162,6 +179,11 @@ export async function GET(request: Request) {
             const project = await getProjectCached(run.projectId);
 
             if (!project || project.organizationId !== organizationId) {
+              return;
+            }
+
+            // Project-level users only see their own project's events
+            if (scopedProjectId && run.projectId !== scopedProjectId) {
               return;
             }
 
@@ -252,20 +274,18 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("Error setting up executions SSE stream:", error);
 
-    if (error instanceof Error) {
-      if (error.message === "Authentication required") {
-        return NextResponse.json(
-          { error: "Authentication required" },
-          { status: 401 }
-        );
-      }
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
 
-      if (error.message.includes("not found") || error.message.includes("No active project")) {
-        return NextResponse.json(
-          { error: "No active project found" },
-          { status: 404 }
-        );
-      }
+    if (error instanceof Error && (error.message.includes("not found") || error.message.includes("No active project"))) {
+      return NextResponse.json(
+        { error: "No active project found" },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json(

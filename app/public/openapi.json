@@ -1,0 +1,1537 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Supercheck API",
+    "version": "1.0.0",
+    "description": "API for test automation, monitoring, and CI/CD integration. Supercheck provides Playwright browser testing, k6 performance testing, uptime monitoring, and alerting — all managed via API or CLI.",
+    "contact": {
+      "name": "Supercheck",
+      "url": "https://supercheck.io"
+    },
+    "license": {
+      "name": "AGPL-3.0",
+      "url": "https://github.com/supercheck-io/supercheck/blob/main/LICENSE"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://app.supercheck.io",
+      "description": "Production (Cloud)"
+    },
+    {
+      "url": "http://localhost:3000",
+      "description": "Local Development"
+    }
+  ],
+  "security": [
+    { "bearerAuth": [] }
+  ],
+  "tags": [
+    { "name": "Authentication", "description": "CLI token management and verification" },
+    { "name": "Jobs", "description": "Job scheduling and execution" },
+    { "name": "Runs", "description": "Job run management and monitoring" },
+    { "name": "Tests", "description": "Test script management" },
+    { "name": "Monitors", "description": "Uptime and performance monitoring" },
+    { "name": "Variables", "description": "Project environment variables" },
+    { "name": "Tags", "description": "Resource tagging" },
+    { "name": "Notifications", "description": "Notification provider management" },
+    { "name": "Alerts", "description": "Alert history" },
+    { "name": "Audit", "description": "Audit log access" },
+    { "name": "System", "description": "Health checks and metadata" }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Health check",
+        "description": "Returns the health status of the API and its dependencies (database, Redis, storage).",
+        "tags": ["System"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Health status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "enum": ["ok", "degraded"] },
+                    "database": { "type": "string" },
+                    "redis": { "type": "string" },
+                    "storage": { "type": "string" }
+                  },
+                  "required": ["status"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/locations": {
+      "get": {
+        "operationId": "listLocations",
+        "summary": "List execution locations",
+        "description": "Returns available geographic locations for test and monitor execution.",
+        "tags": ["System"],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Available locations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "locations": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Location" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cli-tokens": {
+      "get": {
+        "operationId": "listCliTokens",
+        "summary": "List CLI tokens",
+        "description": "List all CLI tokens for the current project. Also used by `supercheck whoami` to verify the current token.",
+        "tags": ["Authentication"],
+        "responses": {
+          "200": {
+            "description": "List of CLI tokens",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "tokens": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/CliToken" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "operationId": "createCliToken",
+        "summary": "Create a CLI token",
+        "description": "Create a new CLI token for API access. The plain token value is returned only once in the response.",
+        "tags": ["Authentication"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "description": "Human-readable token name", "example": "CI/CD Pipeline" },
+                  "expiresIn": { "type": "integer", "description": "Optional expiration duration in seconds (min 3600 = 1 hour, max 31536000 = 1 year)", "example": 7776000, "minimum": 3600, "maximum": 31536000 }
+                },
+                "required": ["name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Token created. The `key` field contains the plain token — store it securely, it cannot be retrieved again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "token": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "name": { "type": "string" },
+                        "key": { "type": "string", "description": "Plain token value (shown only once)", "example": "sck_live_a1b2c3d4e5f6789012345678901234ab" },
+                        "start": { "type": "string", "description": "Display prefix for identification" },
+                        "enabled": { "type": "boolean" },
+                        "expiresAt": { "type": "string", "format": "date-time", "nullable": true },
+                        "createdAt": { "type": "string", "format": "date-time" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "description": "Duplicate token name within this project" }
+        }
+      }
+    },
+    "/api/cli-tokens/{id}": {
+      "parameters": [
+        { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "patch": {
+        "operationId": "updateCliToken",
+        "summary": "Update a CLI token",
+        "description": "Enable, disable, or rename a CLI token.",
+        "tags": ["Authentication"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": { "type": "boolean" },
+                  "name": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CliToken" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteCliToken",
+        "summary": "Revoke a CLI token",
+        "description": "Permanently delete a CLI token. This action cannot be undone.",
+        "tags": ["Authentication"],
+        "responses": {
+          "200": { "description": "Token revoked" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "operationId": "listJobs",
+        "summary": "List jobs",
+        "description": "List all jobs in the current project with pagination.",
+        "tags": ["Jobs"],
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/Limit" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of jobs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/PaginatedResponse" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": { "$ref": "#/components/schemas/Job" }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "operationId": "createJob",
+        "summary": "Create a job",
+        "description": "Create a new job with optional scheduling and test configuration.",
+        "tags": ["Jobs"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "example": "Nightly E2E Suite" },
+                  "description": { "type": "string" },
+                  "cronSchedule": { "type": "string", "example": "0 2 * * *" },
+                  "timeoutSeconds": { "type": "integer", "default": 300 },
+                  "retryCount": { "type": "integer", "default": 0 },
+                  "config": { "type": "object" },
+                  "tests": { "type": "array", "items": { "type": "string" } }
+                },
+                "required": ["name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Job created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Job" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/jobs/{id}": {
+      "parameters": [
+        { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "get": {
+        "operationId": "getJob",
+        "summary": "Get job details",
+        "tags": ["Jobs"],
+        "responses": {
+          "200": {
+            "description": "Job details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Job" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "operationId": "updateJob",
+        "summary": "Update a job",
+        "description": "Update job configuration. Only provided fields are changed.",
+        "tags": ["Jobs"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "cronSchedule": { "type": "string" },
+                  "timeoutSeconds": { "type": "integer" },
+                  "retryCount": { "type": "integer" },
+                  "status": { "type": "string", "enum": ["active", "paused"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Job updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Job" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteJob",
+        "summary": "Delete a job",
+        "tags": ["Jobs"],
+        "responses": {
+          "200": { "description": "Job deleted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/jobs/{id}/trigger": {
+      "parameters": [
+        { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "post": {
+        "operationId": "triggerJob",
+        "summary": "Trigger job execution",
+        "description": "Trigger a job run. Supports both CLI tokens (`sck_live_*`) and trigger keys (`sck_trigger_*`).",
+        "tags": ["Jobs"],
+        "responses": {
+          "200": {
+            "description": "Job triggered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "runId": { "type": "string", "format": "uuid" },
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/jobs/run": {
+      "post": {
+        "operationId": "runJob",
+        "summary": "Run a job immediately",
+        "description": "Execute a job immediately, bypassing the cron schedule.",
+        "tags": ["Jobs"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "jobId": { "type": "string", "format": "uuid" }
+                },
+                "required": ["jobId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Job started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "runId": { "type": "string", "format": "uuid" },
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/runs": {
+      "get": {
+        "operationId": "listRuns",
+        "summary": "List runs",
+        "description": "List job runs with optional filters for job ID and status.",
+        "tags": ["Runs"],
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/Limit" },
+          { "name": "jobId", "in": "query", "schema": { "type": "string", "format": "uuid" }, "description": "Filter by job ID" },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["running", "completed", "failed", "cancelled"] }, "description": "Filter by status" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/PaginatedResponse" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": { "$ref": "#/components/schemas/Run" }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/runs/{runId}": {
+      "parameters": [
+        { "name": "runId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "get": {
+        "operationId": "getRun",
+        "summary": "Get run details",
+        "tags": ["Runs"],
+        "responses": {
+          "200": {
+            "description": "Run details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Run" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteRun",
+        "summary": "Delete a run",
+        "tags": ["Runs"],
+        "responses": {
+          "200": { "description": "Run deleted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/runs/{runId}/status": {
+      "parameters": [
+        { "name": "runId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "get": {
+        "operationId": "getRunStatus",
+        "summary": "Get run status",
+        "description": "Quick status check for a run without full details.",
+        "tags": ["Runs"],
+        "responses": {
+          "200": {
+            "description": "Run status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "format": "uuid" },
+                    "status": { "type": "string", "enum": ["running", "completed", "failed", "cancelled"] }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/runs/{runId}/stream": {
+      "parameters": [
+        { "name": "runId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "get": {
+        "operationId": "streamRunOutput",
+        "summary": "Stream run output (SSE)",
+        "description": "Stream live console output from a running job execution using Server-Sent Events.",
+        "tags": ["Runs"],
+        "responses": {
+          "200": {
+            "description": "SSE event stream",
+            "content": {
+              "text/event-stream": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/runs/{runId}/cancel": {
+      "parameters": [
+        { "name": "runId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "post": {
+        "operationId": "cancelRun",
+        "summary": "Cancel a run",
+        "tags": ["Runs"],
+        "responses": {
+          "200": { "description": "Run cancelled" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/tests": {
+      "get": {
+        "operationId": "listTests",
+        "summary": "List tests",
+        "description": "List all tests in the current project with optional search and type filters.",
+        "tags": ["Tests"],
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/Limit" },
+          { "name": "search", "in": "query", "schema": { "type": "string" }, "description": "Search by title" },
+          { "name": "testType", "in": "query", "schema": { "type": "string", "enum": ["playwright", "k6"] }, "description": "Filter by test type" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of tests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/PaginatedResponse" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": { "$ref": "#/components/schemas/Test" }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "operationId": "createTest",
+        "summary": "Create a test",
+        "description": "Create a new test with a script file. Supported types: `playwright` (browser/API tests) and `k6` (performance tests).",
+        "tags": ["Tests"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string", "example": "Homepage Load Test" },
+                  "script": { "type": "string", "description": "Test script content" },
+                  "testType": { "type": "string", "enum": ["playwright", "k6"], "default": "playwright" },
+                  "description": { "type": "string" }
+                },
+                "required": ["title", "script"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Test created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Test" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/tests/{id}": {
+      "parameters": [
+        { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "get": {
+        "operationId": "getTest",
+        "summary": "Get test details",
+        "tags": ["Tests"],
+        "parameters": [
+          { "name": "includeScript", "in": "query", "schema": { "type": "boolean" }, "description": "Include the script content in the response" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Test details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Test" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "operationId": "updateTest",
+        "summary": "Update a test",
+        "tags": ["Tests"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "script": { "type": "string" },
+                  "description": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Test updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Test" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTest",
+        "summary": "Delete a test",
+        "tags": ["Tests"],
+        "responses": {
+          "200": { "description": "Test deleted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/monitors": {
+      "get": {
+        "operationId": "listMonitors",
+        "summary": "List monitors",
+        "tags": ["Monitors"],
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/Limit" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of monitors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    { "$ref": "#/components/schemas/PaginatedResponse" },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": { "$ref": "#/components/schemas/Monitor" }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "operationId": "createMonitor",
+        "summary": "Create a monitor",
+        "description": "Create a new uptime or performance monitor.",
+        "tags": ["Monitors"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "example": "API Health Check" },
+                  "url": { "type": "string", "format": "uri", "example": "https://api.example.com/health" },
+                  "type": { "type": "string", "enum": ["http", "ping", "tcp", "keyword"], "default": "http" },
+                  "interval": { "type": "integer", "description": "Check interval in seconds", "default": 300 },
+                  "timeout": { "type": "integer", "description": "Request timeout in seconds", "default": 30 },
+                  "method": { "type": "string", "enum": ["GET", "POST", "HEAD"], "default": "GET" }
+                },
+                "required": ["name", "url"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Monitor created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Monitor" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/monitors/{id}": {
+      "parameters": [
+        { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "get": {
+        "operationId": "getMonitor",
+        "summary": "Get monitor details",
+        "tags": ["Monitors"],
+        "responses": {
+          "200": {
+            "description": "Monitor details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Monitor" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "operationId": "updateMonitor",
+        "summary": "Update a monitor",
+        "tags": ["Monitors"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "url": { "type": "string", "format": "uri" },
+                  "interval": { "type": "integer" },
+                  "timeout": { "type": "integer" },
+                  "method": { "type": "string" },
+                  "active": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Monitor updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Monitor" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteMonitor",
+        "summary": "Delete a monitor",
+        "tags": ["Monitors"],
+        "responses": {
+          "200": { "description": "Monitor deleted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/monitors/{id}/results": {
+      "parameters": [
+        { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "get": {
+        "operationId": "getMonitorResults",
+        "summary": "Get monitor check results",
+        "tags": ["Monitors"],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Check results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/MonitorResult" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/monitors/{id}/stats": {
+      "parameters": [
+        { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "get": {
+        "operationId": "getMonitorStats",
+        "summary": "Get monitor statistics",
+        "description": "Returns performance statistics including uptime percentage, average response time, and p95 latency.",
+        "tags": ["Monitors"],
+        "responses": {
+          "200": {
+            "description": "Monitor statistics",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MonitorStats" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/variables": {
+      "get": {
+        "operationId": "listVariables",
+        "summary": "List variables",
+        "description": "List all environment variables for the current project. Secret values are redacted.",
+        "tags": ["Variables"],
+        "responses": {
+          "200": {
+            "description": "List of variables",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Variable" }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "operationId": "createVariable",
+        "summary": "Create a variable",
+        "tags": ["Variables"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": { "type": "string", "example": "API_BASE_URL" },
+                  "value": { "type": "string", "example": "https://api.example.com" },
+                  "isSecret": { "type": "boolean", "default": false },
+                  "description": { "type": "string" }
+                },
+                "required": ["key", "value"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Variable created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Variable" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/variables/{id}": {
+      "parameters": [
+        { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "get": {
+        "operationId": "getVariable",
+        "summary": "Get a variable",
+        "tags": ["Variables"],
+        "responses": {
+          "200": {
+            "description": "Variable details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Variable" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "operationId": "updateVariable",
+        "summary": "Update a variable",
+        "tags": ["Variables"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "key": { "type": "string" },
+                  "value": { "type": "string" },
+                  "isSecret": { "type": "boolean" },
+                  "description": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Variable updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Variable" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteVariable",
+        "summary": "Delete a variable",
+        "tags": ["Variables"],
+        "responses": {
+          "200": { "description": "Variable deleted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/tags": {
+      "get": {
+        "operationId": "listTags",
+        "summary": "List tags",
+        "tags": ["Tags"],
+        "responses": {
+          "200": {
+            "description": "List of tags",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Tag" }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "operationId": "createTag",
+        "summary": "Create a tag",
+        "tags": ["Tags"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "example": "production" },
+                  "color": { "type": "string", "example": "#3B82F6" }
+                },
+                "required": ["name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Tag created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Tag" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/tags/{id}": {
+      "parameters": [
+        { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "delete": {
+        "operationId": "deleteTag",
+        "summary": "Delete a tag",
+        "tags": ["Tags"],
+        "responses": {
+          "200": { "description": "Tag deleted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/notification-providers": {
+      "get": {
+        "operationId": "listNotificationProviders",
+        "summary": "List notification providers",
+        "tags": ["Notifications"],
+        "responses": {
+          "200": {
+            "description": "List of notification providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/NotificationProvider" }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "operationId": "createNotificationProvider",
+        "summary": "Create a notification provider",
+        "tags": ["Notifications"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "example": "Slack Alerts" },
+                  "type": { "type": "string", "enum": ["email", "slack", "webhook", "telegram", "discord", "teams"] },
+                  "config": { "type": "object", "description": "Provider-specific configuration (e.g. webhookUrl for Slack)" }
+                },
+                "required": ["name", "type", "config"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Provider created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/NotificationProvider" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/notification-providers/{id}": {
+      "parameters": [
+        { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+      ],
+      "get": {
+        "operationId": "getNotificationProvider",
+        "summary": "Get notification provider details",
+        "tags": ["Notifications"],
+        "responses": {
+          "200": {
+            "description": "Provider details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/NotificationProvider" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "operationId": "updateNotificationProvider",
+        "summary": "Update a notification provider",
+        "tags": ["Notifications"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "type": { "type": "string" },
+                  "config": { "type": "object" }
+                },
+                "required": ["name", "type", "config"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Provider updated",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/NotificationProvider" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "operationId": "deleteNotificationProvider",
+        "summary": "Delete a notification provider",
+        "tags": ["Notifications"],
+        "responses": {
+          "200": { "description": "Provider deleted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/notification-providers/test": {
+      "post": {
+        "operationId": "testNotificationProvider",
+        "summary": "Send a test notification",
+        "description": "Send a test notification to verify provider configuration before saving.",
+        "tags": ["Notifications"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": { "type": "string", "enum": ["email", "slack", "webhook", "telegram", "discord", "teams"] },
+                  "config": { "type": "object" }
+                },
+                "required": ["type", "config"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Test result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "message": { "type": "string" },
+                    "error": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/alerts/history": {
+      "get": {
+        "operationId": "getAlertHistory",
+        "summary": "Get alert history",
+        "description": "View the history of triggered alerts.",
+        "tags": ["Alerts"],
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/Limit" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Alert history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/AlertEvent" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/audit": {
+      "get": {
+        "operationId": "getAuditLogs",
+        "summary": "Get audit logs",
+        "description": "View audit trail of organization actions. Requires admin permissions.",
+        "tags": ["Audit"],
+        "parameters": [
+          { "$ref": "#/components/parameters/Page" },
+          { "$ref": "#/components/parameters/Limit" },
+          { "name": "action", "in": "query", "schema": { "type": "string" }, "description": "Filter by action type" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit log entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/AuditEntry" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "description": "Insufficient permissions (admin required)" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "CLI token (`sck_live_*`) for full API access, or trigger key (`sck_trigger_*`) for job trigger endpoint only."
+      }
+    },
+    "parameters": {
+      "Page": {
+        "name": "page",
+        "in": "query",
+        "schema": { "type": "integer", "default": 1, "minimum": 1 },
+        "description": "Page number for pagination"
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "schema": { "type": "integer", "default": 50, "minimum": 1, "maximum": 100 },
+        "description": "Items per page"
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Authentication required or token invalid",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": { "type": "string", "example": "Unauthorized" }
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": { "type": "string", "example": "Not found" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "PaginatedResponse": {
+        "type": "object",
+        "properties": {
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "total": { "type": "integer" },
+              "page": { "type": "integer" },
+              "limit": { "type": "integer" },
+              "totalPages": { "type": "integer" },
+              "hasNextPage": { "type": "boolean" },
+              "hasPrevPage": { "type": "boolean" }
+            }
+          }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "status": { "type": "string", "enum": ["active", "paused", "running"] },
+          "cronSchedule": { "type": "string", "nullable": true },
+          "timeoutSeconds": { "type": "integer" },
+          "retryCount": { "type": "integer" },
+          "lastRunAt": { "type": "string", "format": "date-time", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Run": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "jobId": { "type": "string", "format": "uuid" },
+          "jobName": { "type": "string" },
+          "status": { "type": "string", "enum": ["running", "completed", "failed", "cancelled"] },
+          "trigger": { "type": "string", "enum": ["manual", "scheduled", "api", "ci"] },
+          "duration": { "type": "integer", "description": "Duration in milliseconds", "nullable": true },
+          "result": { "type": "object", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "completedAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
+      },
+      "Test": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "title": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "testType": { "type": "string", "enum": ["playwright", "k6"] },
+          "script": { "type": "string", "description": "Only included when `includeScript=true`" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Monitor": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "type": { "type": "string", "enum": ["http", "ping", "tcp", "keyword"] },
+          "status": { "type": "string", "enum": ["up", "down", "degraded", "pending"] },
+          "interval": { "type": "integer", "description": "Check interval in seconds" },
+          "timeout": { "type": "integer" },
+          "method": { "type": "string" },
+          "active": { "type": "boolean" },
+          "lastCheckAt": { "type": "string", "format": "date-time", "nullable": true },
+          "responseTime": { "type": "integer", "description": "Last response time in ms", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "MonitorResult": {
+        "type": "object",
+        "properties": {
+          "timestamp": { "type": "string", "format": "date-time" },
+          "status": { "type": "string", "enum": ["up", "down"] },
+          "responseTime": { "type": "integer", "description": "Response time in ms" },
+          "statusCode": { "type": "integer", "nullable": true },
+          "location": { "type": "string" }
+        }
+      },
+      "MonitorStats": {
+        "type": "object",
+        "properties": {
+          "uptimePercent": { "type": "number", "format": "float" },
+          "avgResponseTime": { "type": "number", "format": "float" },
+          "p95ResponseTime": { "type": "number", "format": "float" },
+          "totalChecks": { "type": "integer" },
+          "successfulChecks": { "type": "integer" },
+          "failedChecks": { "type": "integer" }
+        }
+      },
+      "Variable": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "key": { "type": "string" },
+          "value": { "type": "string", "description": "Redacted for secrets" },
+          "isSecret": { "type": "boolean" },
+          "description": { "type": "string", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Tag": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "color": { "type": "string", "nullable": true }
+        }
+      },
+      "CliToken": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "start": { "type": "string", "description": "Display prefix (e.g. sck_live_a1b2...)" },
+          "enabled": { "type": "boolean" },
+          "expiresAt": { "type": "string", "format": "date-time", "nullable": true },
+          "lastRequest": { "type": "string", "format": "date-time", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "NotificationProvider": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["email", "slack", "webhook", "telegram", "discord", "teams"] },
+          "enabled": { "type": "boolean" },
+          "config": { "type": "object" },
+          "lastUsed": { "type": "string", "format": "date-time", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AlertEvent": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "type": { "type": "string" },
+          "message": { "type": "string" },
+          "severity": { "type": "string", "enum": ["info", "warning", "critical"] },
+          "resourceId": { "type": "string", "format": "uuid" },
+          "resourceType": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AuditEntry": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "action": { "type": "string" },
+          "userId": { "type": "string", "format": "uuid" },
+          "userName": { "type": "string" },
+          "details": { "type": "object" },
+          "ipAddress": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Location": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "region": { "type": "string" }
+        }
+      }
+    }
+  }
+}

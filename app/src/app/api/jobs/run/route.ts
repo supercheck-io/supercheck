@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { runs, JobTrigger, tests, jobs } from "@/db/schema";
 import type { JobType, K6Location } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import crypto from "crypto";
 import {
   addJobToQueue,
@@ -10,11 +10,12 @@ import {
   JobExecutionTask,
   K6ExecutionTask,
 } from "@/lib/queue";
-import { requireProjectContext } from '@/lib/project-context';
-import { hasPermission } from '@/lib/rbac/middleware';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { logAuditEvent } from '@/lib/audit-logger';
 import { applyVariablesToTestScripts, decodeTestScript } from "@/lib/job-execution-utils";
 import { validateK6Script } from "@/lib/k6-validator";
+import { subscriptionService } from "@/lib/services/subscription-service";
 
 const DEFAULT_K6_LOCATION: K6Location = "eu-central";
 
@@ -33,7 +34,8 @@ export async function POST(request: Request) {
 
   try {
     // Check authentication and get project context
-    const { userId, project, organizationId } = await requireProjectContext();
+    const authCtx = await requireAuthContext();
+    const { userId, project, organizationId } = authCtx;
     
     const data = await request.json();
     jobId = data.jobId as string;
@@ -78,6 +80,28 @@ export async function POST(request: Request) {
         { status: 404 }
       );
     }
+
+    // SECURITY: Validate active subscription before allowing execution
+    if (!jobDetails[0].organizationId) {
+      return NextResponse.json(
+        { error: "Organization not found" },
+        { status: 404 }
+      );
+    }
+
+    try {
+      await subscriptionService.blockUntilSubscribed(jobDetails[0].organizationId);
+      await subscriptionService.requireValidPolarCustomer(jobDetails[0].organizationId);
+    } catch (subscriptionError) {
+      const errorMessage =
+        subscriptionError instanceof Error
+          ? subscriptionError.message
+          : "Subscription validation failed";
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: 402 }
+      );
+    }
     
     // Verify job belongs to current project
     if (jobDetails[0].projectId !== project.id) {
@@ -89,7 +113,7 @@ export async function POST(request: Request) {
     }
     
     // Check permission to trigger jobs
-    const canTriggerJobs = await hasPermission('job', 'trigger', { organizationId, projectId: project.id });
+    const canTriggerJobs = checkPermissionWithContext('job', 'trigger', authCtx);
     
     if (!canTriggerJobs) {
       console.warn(`User ${userId} attempted to trigger job ${jobId} without TRIGGER_JOBS permission`);
@@ -109,7 +133,7 @@ export async function POST(request: Request) {
     // Normalize location if needed (mainly for k6, but useful for consistency)
     const resolvedLocation = isPerformanceJob
       ? normalizeK6Location(requestedLocation)
-      : requestedLocation || "US"; // Default to US for Playwright if not specified
+      : undefined;
 
     runId = crypto.randomUUID();
     const startTime = new Date();
@@ -121,7 +145,7 @@ export async function POST(request: Request) {
       status: "queued", // Start as queued, will be updated after capacity reservation
       startedAt: startTime,
       trigger, // Include trigger value
-      location: resolvedLocation as K6Location,
+      location: (resolvedLocation ?? null) as K6Location | null,
       metadata: {
         jobType,
         ...(isPerformanceJob
@@ -129,10 +153,7 @@ export async function POST(request: Request) {
               executionEngine: "k6",
               location: resolvedLocation,
             }
-          : { 
-              executionEngine: "playwright",
-              location: resolvedLocation 
-            }),
+          : { executionEngine: "playwright" }),
       },
     });
 
@@ -159,7 +180,13 @@ export async function POST(request: Request) {
             type: tests.type,
           })
           .from(tests)
-          .where(eq(tests.id, test.id))
+          .where(
+            and(
+              eq(tests.id, test.id),
+              eq(tests.projectId, project.id),
+              eq(tests.organizationId, organizationId),
+            ),
+          )
           .limit(1);
         
         if (testResult.length > 0 && testResult[0].script) {
@@ -383,9 +410,9 @@ export async function POST(request: Request) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
 
     // Handle authentication/authorization errors
-    if (errorMessage === 'Authentication required') {
+    if (isAuthError(error)) {
       return NextResponse.json(
-        { error: 'Authentication required' },
+        { error: error instanceof Error ? error.message : 'Authentication required' },
         { status: 401 }
       );
     }

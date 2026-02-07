@@ -1,0 +1,130 @@
+---
+title: API Test
+description: HTTP and GraphQL endpoint testing
+icon: ArrowLeftRight
+---
+
+Validate REST APIs and GraphQL endpoints with HTTP requests and response assertions. API tests use Playwright's request context for reliable HTTP testing.
+
+## Example
+
+```typescript
+/**
+ * API health probe with contract checks.
+ * 
+ * Purpose:
+ * - Verify that the API is up and running (status 200)
+ * - Check that the response headers are correct (Content-Type)
+ * - Validate the structure and data types of the response body
+ * 
+ * @see https://playwright.dev/docs/api-testing
+ */
+import { expect, test } from '@playwright/test';
+
+const API_URL = 'https://jsonplaceholder.typicode.com';
+
+test.describe('API health check', () => {
+  test('health endpoint responds with expected payload', async ({ request }) => {
+    // Send GET request
+    const response = await request.get(API_URL + '/posts/1');
+
+    // Basic status checks
+    expect(response.ok()).toBeTruthy();
+    expect(response.status()).toBe(200);
+    expect(response.headers()['content-type']).toContain('application/json');
+
+    // Validate JSON structure
+    const body = await response.json();
+    expect(body).toMatchObject({ id: 1 });
+    expect(typeof body.title).toBe('string');
+  });
+});
+```
+
+📚 [Playwright API Testing](https://playwright.dev/docs/api-testing)
+
+## Create Test
+
+1. Go to **Create → API Test**
+2. Write your test script
+3. Click **Run** to validate
+4. **Save** when passing
+
+## HTTP Methods
+
+```typescript
+/**
+ * API CRUD operations using Playwright's request context.
+ * @see https://playwright.dev/docs/api-testing
+ */
+const API_URL = 'https://jsonplaceholder.typicode.com';
+
+// GET - Retrieve resource
+const getResponse = await request.get(API_URL + '/posts/1');
+
+// POST - Create resource
+const postResponse = await request.post(API_URL + '/posts', {
+  data: { title: 'New Post', body: 'Content', userId: 1 }
+});
+
+// PUT - Update resource
+const putResponse = await request.put(API_URL + '/posts/1', {
+  data: { title: 'Updated', body: 'New content', userId: 1 }
+});
+
+// DELETE - Remove resource
+const deleteResponse = await request.delete(API_URL + '/posts/1');
+```
+
+## Assertions
+
+```typescript
+/**
+ * Common API response assertions.
+ */
+// Status code
+expect(response.status()).toBe(200);
+expect(response.ok()).toBeTruthy();
+
+// JSON body
+const data = await response.json();
+expect(data.id).toBeDefined();
+expect(data).toMatchObject({ id: 1 });
+expect(typeof data.title).toBe('string');
+
+// Headers
+expect(response.headers()['content-type']).toContain('application/json');
+```
+
+## Using Variables
+
+```typescript
+/**
+ * Using project variables and secrets for API testing.
+ * 
+ * - getVariable() returns plain text configuration values
+ * - getSecret() returns encrypted values (use .toString() to access)
+ * 
+ * @see /docs/app/automate/variables
+ */
+const baseUrl = getVariable('API_BASE_URL');
+const apiKey = getSecret('API_KEY').toString();
+
+const response = await request.get(`${baseUrl}/users`, {
+  headers: { 'Authorization': `Bearer ${apiKey}` }
+});
+
+expect(response.ok()).toBeTruthy();
+```
+
+## Tips
+
+- Use `getSecret().toString()` for API keys (auto-redacted in logs)
+- Set appropriate timeouts for slow endpoints
+- Validate response structure, not just status codes
+- Use Playwright's `request` context instead of `fetch` for better integration
+
+## Learn More
+
+- **[Playwright API Testing](https://playwright.dev/docs/api-testing)** — Complete API testing guide
+- **[Playwright Request Context](https://playwright.dev/docs/api/class-apirequestcontext)** — API reference

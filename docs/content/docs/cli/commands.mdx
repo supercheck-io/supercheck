@@ -1,0 +1,597 @@
+---
+title: Command Reference
+description: Complete reference for all Supercheck CLI commands
+---
+
+## Global Flags
+
+These flags are available on all commands:
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output in JSON format (for CI/CD scripting) |
+| `--quiet` | Suppress non-essential output (only IDs and errors) |
+| `--debug` | Enable debug logging |
+| `-v` | Show version |
+| `--config <path>` | Path to config file |
+
+## Exit Codes
+
+| Code | Meaning | Example |
+|------|---------|---------|
+| `0` | Success | Job completed successfully |
+| `1` | General error | Test failed, monitor down |
+| `2` | Authentication error | Invalid token, expired token |
+| `3` | Configuration error | Missing config, invalid schema |
+| `4` | Network / API error | API unreachable, 5xx response |
+| `5` | Timeout | Operation exceeded timeout |
+
+---
+
+## Authentication
+
+### `supercheck login`
+
+Authenticate with a CLI token.
+
+```bash
+supercheck login --token <token>
+supercheck login --token <token> --url https://supercheck.yourdomain.com
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--token <token>` | Yes | CLI token (`sck_live_*`) |
+| `--url <url>` | No | API base URL for self-hosted |
+
+The token is verified against the API before being stored locally.
+
+### `supercheck whoami`
+
+Display the current authentication context.
+
+```bash
+supercheck whoami
+```
+
+Shows token name, user, project, organization, and expiry.
+
+### `supercheck logout`
+
+Clear stored credentials.
+
+```bash
+supercheck logout
+```
+
+---
+
+## Configuration
+
+### `supercheck init`
+
+Initialize a new project with `supercheck.config.ts` and `_supercheck_/` folder.
+
+```bash
+supercheck init
+supercheck init --force    # Overwrite existing config
+```
+
+### `supercheck config validate`
+
+Validate the configuration file schema.
+
+```bash
+supercheck config validate
+```
+
+### `supercheck config print`
+
+Print the resolved configuration with environment variable expansion.
+
+```bash
+supercheck config print
+```
+
+---
+
+## Jobs
+
+### `supercheck job list`
+
+List all jobs in the current project.
+
+```bash
+supercheck job list
+supercheck job list --page 2 --limit 10
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--page` | `1` | Page number |
+| `--limit` | `50` | Items per page |
+
+### `supercheck job get`
+
+Get job details.
+
+```bash
+supercheck job get <job-id>
+```
+
+### `supercheck job create`
+
+Create a new job.
+
+```bash
+supercheck job create --name "Nightly E2E" --schedule "0 2 * * *" --timeout 600
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--name` | Yes | Job name |
+| `--description` | No | Job description |
+| `--schedule` | No | Cron expression |
+| `--timeout` | No | Timeout in seconds (default: 300) |
+| `--retries` | No | Retry count (default: 0) |
+
+### `supercheck job update`
+
+Update job configuration.
+
+```bash
+supercheck job update <job-id> --name "Updated Name" --status paused
+```
+
+| Flag | Description |
+|------|-------------|
+| `--name` | Job name |
+| `--description` | Job description |
+| `--schedule` | Cron expression |
+| `--timeout` | Timeout in seconds |
+| `--retries` | Retry count |
+| `--status` | `active` or `paused` |
+
+### `supercheck job delete`
+
+Delete a job with confirmation.
+
+```bash
+supercheck job delete <job-id>
+supercheck job delete <job-id> --force    # Skip confirmation
+```
+
+### `supercheck job run`
+
+Run a job immediately, bypassing the cron schedule.
+
+```bash
+supercheck job run --id <job-id>
+```
+
+### `supercheck job trigger`
+
+Trigger a job and optionally wait for completion.
+
+```bash
+supercheck job trigger <job-id>
+supercheck job trigger <job-id> --wait --timeout 300
+supercheck job trigger <job-id> --wait --json
+```
+
+| Flag | Description |
+|------|-------------|
+| `--wait` | Wait for the run to complete |
+| `--timeout` | Maximum wait time in seconds (default: 300) |
+
+---
+
+## Runs
+
+### `supercheck run list`
+
+List job runs with optional filters.
+
+```bash
+supercheck run list
+supercheck run list --job <job-id> --status failed --limit 20
+```
+
+| Flag | Description |
+|------|-------------|
+| `--page` | Page number |
+| `--limit` | Items per page |
+| `--job` | Filter by job ID |
+| `--status` | Filter by status (`running`, `completed`, `failed`, `cancelled`) |
+
+### `supercheck run get`
+
+Get run details.
+
+```bash
+supercheck run get <run-id>
+```
+
+### `supercheck run status`
+
+Quick status check for a run.
+
+```bash
+supercheck run status <run-id>
+```
+
+### `supercheck run stream`
+
+Stream live console output from a running execution via SSE.
+
+```bash
+supercheck run stream <run-id>
+supercheck run stream <run-id> --idle-timeout 120
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--idle-timeout` | `60` | Seconds to wait before timing out if no data received (min: 10) |
+
+### `supercheck run cancel`
+
+Cancel a running execution.
+
+```bash
+supercheck run cancel <run-id>
+```
+
+---
+
+## Tests
+
+### `supercheck test list`
+
+List tests with optional search and type filters.
+
+```bash
+supercheck test list
+supercheck test list --search "checkout" --type playwright
+```
+
+| Flag | Description |
+|------|-------------|
+| `--page` | Page number |
+| `--limit` | Items per page |
+| `--search` | Search by title |
+| `--type` | Filter by type (`playwright`, `k6`) |
+
+### `supercheck test get`
+
+Get test details.
+
+```bash
+supercheck test get <test-id>
+supercheck test get <test-id> --include-script
+```
+
+### `supercheck test create`
+
+Create a new test from a script file.
+
+```bash
+supercheck test create --title "Homepage Check" --file ./_supercheck_/tests/homepage.pw.ts --type playwright
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--title` | Yes | Test title |
+| `--file` | Yes | Path to test script |
+| `--type` | No | `playwright` (default) or `k6` |
+| `--description` | No | Test description |
+
+### `supercheck test update`
+
+Update a test.
+
+```bash
+supercheck test update <test-id> --title "Updated Title" --file ./updated-script.pw.ts
+```
+
+### `supercheck test delete`
+
+Delete a test with confirmation.
+
+```bash
+supercheck test delete <test-id>
+supercheck test delete <test-id> --force
+```
+
+### `supercheck test validate`
+
+Validate a test script without creating it.
+
+```bash
+supercheck test validate --file ./_supercheck_/tests/homepage.pw.ts --type playwright
+```
+
+---
+
+## Monitors
+
+### `supercheck monitor list`
+
+List all monitors.
+
+```bash
+supercheck monitor list
+supercheck monitor list --page 2 --limit 10
+```
+
+### `supercheck monitor get`
+
+Get monitor details.
+
+```bash
+supercheck monitor get <monitor-id>
+```
+
+### `supercheck monitor status`
+
+Get current monitor status (quick view).
+
+```bash
+supercheck monitor status <monitor-id>
+```
+
+### `supercheck monitor results`
+
+Get recent check results.
+
+```bash
+supercheck monitor results <monitor-id> --limit 20
+```
+
+### `supercheck monitor stats`
+
+Get performance statistics.
+
+```bash
+supercheck monitor stats <monitor-id>
+```
+
+### `supercheck monitor create`
+
+Create a new monitor.
+
+```bash
+supercheck monitor create --name "API Health" --url https://api.example.com/health --type http --interval 300
+```
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--name` | Yes | — | Monitor name |
+| `--url` | Yes | — | URL to monitor |
+| `--type` | No | `http` | `http`, `ping`, `tcp`, or `keyword` |
+| `--interval` | No | `300` | Check interval in seconds |
+| `--timeout` | No | `30` | Request timeout in seconds |
+| `--method` | No | `GET` | HTTP method |
+
+### `supercheck monitor update`
+
+Update a monitor.
+
+```bash
+supercheck monitor update <monitor-id> --interval 60 --active false
+```
+
+### `supercheck monitor delete`
+
+Delete a monitor with confirmation.
+
+```bash
+supercheck monitor delete <monitor-id>
+supercheck monitor delete <monitor-id> --force
+```
+
+---
+
+## Variables
+
+### `supercheck var list`
+
+List project variables.
+
+```bash
+supercheck var list
+```
+
+### `supercheck var get`
+
+Get a variable by key name.
+
+```bash
+supercheck var get <key>
+```
+
+### `supercheck var set`
+
+Create or update a variable.
+
+```bash
+supercheck var set <key> <value>
+supercheck var set API_KEY sk-secret-value --secret
+supercheck var set DB_URL postgres://... --description "Database connection string"
+```
+
+| Flag | Description |
+|------|-------------|
+| `--secret` | Mark as secret (value will be encrypted) |
+| `--description` | Variable description |
+
+### `supercheck var delete`
+
+Delete a variable by key name.
+
+```bash
+supercheck var delete <key>
+```
+
+---
+
+## Tags
+
+### `supercheck tag list`
+
+List tags.
+
+```bash
+supercheck tag list
+```
+
+### `supercheck tag create`
+
+Create a tag.
+
+```bash
+supercheck tag create <name>
+supercheck tag create <name> --color "#3B82F6"
+```
+
+### `supercheck tag delete`
+
+Delete a tag.
+
+```bash
+supercheck tag delete <id>
+```
+
+---
+
+## Notification Providers
+
+### `supercheck notification list`
+
+List notification providers.
+
+```bash
+supercheck notification list
+```
+
+### `supercheck notification get`
+
+Get provider details.
+
+```bash
+supercheck notification get <id>
+```
+
+### `supercheck notification create`
+
+Create a notification provider.
+
+```bash
+supercheck notification create --type slack --name "Slack Alerts" \
+  --config '{"webhookUrl":"https://hooks.slack.com/..."}'
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--type` | Yes | `email`, `slack`, `webhook`, `telegram`, `discord`, `teams` |
+| `--name` | Yes | Provider name |
+| `--config` | No | JSON configuration string |
+
+### `supercheck notification update`
+
+Update a notification provider.
+
+```bash
+supercheck notification update <id> --name "Updated Name" --config '{...}'
+```
+
+### `supercheck notification delete`
+
+Delete a notification provider.
+
+```bash
+supercheck notification delete <id>
+supercheck notification delete <id> --force
+```
+
+### `supercheck notification test`
+
+Send a test notification to verify configuration.
+
+```bash
+supercheck notification test --type slack --config '{"webhookUrl":"https://hooks.slack.com/..."}'
+```
+
+---
+
+## Alerts & Audit
+
+### `supercheck alert history`
+
+View alert history.
+
+```bash
+supercheck alert history
+```
+
+### `supercheck audit`
+
+View audit logs (admin only).
+
+```bash
+supercheck audit
+supercheck audit --page 2 --limit 50 --action "notification_provider_created"
+```
+
+---
+
+## Monitoring-as-Code
+
+### `supercheck diff`
+
+Preview changes between local config and server state.
+
+```bash
+supercheck diff
+```
+
+### `supercheck deploy`
+
+Push configuration to the Supercheck API.
+
+```bash
+supercheck deploy
+supercheck deploy --dry-run      # Preview without applying
+supercheck deploy --no-delete    # Skip deletions
+supercheck deploy --force        # Skip confirmation
+```
+
+### `supercheck destroy`
+
+Tear down all managed resources.
+
+```bash
+supercheck destroy
+supercheck destroy --dry-run
+supercheck destroy --force
+```
+
+---
+
+## Utilities
+
+### `supercheck health`
+
+Check API health.
+
+```bash
+supercheck health
+supercheck health --url https://supercheck.yourdomain.com
+```
+
+### `supercheck locations`
+
+List available execution locations.
+
+```bash
+supercheck locations
+```

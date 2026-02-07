@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/rbac/middleware';
+import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { getUserOrganizations } from '@/lib/session';
 
 /**
@@ -8,7 +8,7 @@ import { getUserOrganizations } from '@/lib/session';
  */
 export async function GET() {
   try {
-    const { userId } = await requireAuth();
+    const { userId } = await requireUserAuthContext();
     
     const userOrganizations = await getUserOrganizations(userId);
     
@@ -17,15 +17,13 @@ export async function GET() {
       data: userOrganizations
     });
   } catch (error) {
-    console.error('Failed to get organizations:', error);
-    
-    if (error instanceof Error && error.message === 'Authentication required') {
+    if (isAuthError(error)) {
       return NextResponse.json(
-        { error: 'Authentication required' },
+        { error: error instanceof Error ? error.message : 'Authentication required' },
         { status: 401 }
       );
     }
-    
+    console.error('Failed to get organizations:', error);
     return NextResponse.json(
       { error: 'Failed to fetch organizations' },
       { status: 500 }

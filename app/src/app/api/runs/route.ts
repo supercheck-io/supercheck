@@ -3,15 +3,15 @@ import { db } from "@/utils/db";
 import { runs, jobs, reports, TestRunStatus } from "@/db/schema";
 import { desc, eq, and, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
-import { requireProjectContext } from '@/lib/project-context';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
 export async function GET(request: NextRequest) {
   try {
     // Require authentication and project context
-    const context = await requireProjectContext();
+    const context = await requireAuthContext();
 
     // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
-    // that would happen with hasPermission() after requireProjectContext()
+    // that would happen with hasPermission() after requireAuthContext()
     const canView = checkPermissionWithContext('job', 'view', context);
 
     if (!canView) {
@@ -52,7 +52,14 @@ export async function GET(request: NextRequest) {
     if (jobId) filters.push(eq(runs.jobId, jobId));
     if (status) {
       // Validate status is a valid TestRunStatus
-      const validStatuses: TestRunStatus[] = ["running", "passed", "failed", "error"];
+      const validStatuses: TestRunStatus[] = [
+        "queued",
+        "running",
+        "passed",
+        "failed",
+        "error",
+        "blocked",
+      ];
       if (!validStatuses.includes(status as TestRunStatus)) {
         return NextResponse.json(
           { error: `Invalid status filter. Valid values are: ${validStatuses.join(', ')}` },
@@ -169,6 +176,12 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     console.error('Error fetching runs:', error);
     return NextResponse.json(
       { error: 'Failed to fetch runs' },

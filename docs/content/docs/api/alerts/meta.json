@@ -1,0 +1,7 @@
+{
+  "title": "Alerts API",
+  "icon": "AlertTriangle",
+  "pages": [
+    "getAlertHistory"
+  ]
+}

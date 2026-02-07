@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { tests, runs, type K6Location } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { hasPermission } from "@/lib/rbac/middleware";
-import { requireProjectContext } from "@/lib/project-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import {
   addK6TestToQueue,
   addTestToQueue,
@@ -28,15 +28,13 @@ type ExecuteContext = {
 
 export async function POST(request: NextRequest, context: ExecuteContext) {
   try {
-    const { project, organizationId } = await requireProjectContext();
+    const authCtx = await requireAuthContext();
+    const { project, organizationId } = authCtx;
     const params = await context.params;
     const testId = params.id;
 
     // Check permission
-    const canExecute = await hasPermission("test", "run", {
-      organizationId,
-      projectId: project.id,
-    });
+    const canExecute = checkPermissionWithContext("test", "run", authCtx);
 
     if (!canExecute) {
       return NextResponse.json(
@@ -199,6 +197,12 @@ export async function POST(request: NextRequest, context: ExecuteContext) {
       location: test.type === "performance" ? resolvedLocation : undefined,
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error executing test:", error);
     return NextResponse.json(
       { error: "Failed to execute test" },

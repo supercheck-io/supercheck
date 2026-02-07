@@ -1,0 +1,12 @@
+{
+  "title": "Runs API",
+  "icon": "Play",
+  "pages": [
+    "listRuns",
+    "getRun",
+    "getRunStatus",
+    "streamRunOutput",
+    "cancelRun",
+    "deleteRun"
+  ]
+}

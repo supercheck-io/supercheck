@@ -14,8 +14,8 @@ import {
   JobType,
 } from "@/db/schema";
 import { desc, eq, inArray, and, asc } from "drizzle-orm";
-import { hasPermission, checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireProjectContext } from "@/lib/project-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import { getNextRunDate } from "@/lib/cron-utils";
 import { scheduleJob } from "@/lib/job-scheduler";
@@ -113,7 +113,7 @@ interface TestResult {
 // SECURITY: Added default pagination to prevent fetching unlimited records
 export async function GET(request: Request) {
   try {
-    const context = await requireProjectContext();
+    const context = await requireAuthContext();
 
     // Use current project context
     const targetProjectId = context.project.id;
@@ -309,6 +309,12 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { success: false, error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Failed to fetch jobs:", error);
     return NextResponse.json(
       { success: false, error: "Failed to fetch jobs" },
@@ -329,7 +335,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Regular job creation - use project context
-    const { userId, project, organizationId } = await requireProjectContext();
+    const context = await requireAuthContext();
+    const { userId, project, organizationId } = context;
     const jobData: JobData = await request.json();
 
     // Validate required fields
@@ -361,12 +368,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build permission context and check access
     // Check permission to create jobs
-    const canCreate = await hasPermission("job", "create", {
-      organizationId,
-      projectId: targetProjectId,
-    });
+    const canCreate = checkPermissionWithContext("job", "create", context);
 
     if (!canCreate) {
       return NextResponse.json(
@@ -549,6 +552,12 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { success: false, error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error creating job:", error);
     return NextResponse.json(
       { success: false, error: "Failed to create job" },
@@ -570,7 +579,8 @@ export async function PUT(request: Request) {
     }
 
     // Get current project context (includes auth verification)
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireAuthContext();
+    const { project, organizationId } = context;
 
     // Validate required fields
     if (!jobData.name || !jobData.cronSchedule || !jobData.description) {
@@ -613,12 +623,8 @@ export async function PUT(request: Request) {
       );
     }
 
-    // Build permission context and check access
     // Check permission to update jobs
-    const canEdit = await hasPermission("job", "update", {
-      organizationId,
-      projectId: project.id,
-    });
+    const canEdit = checkPermissionWithContext("job", "update", context);
 
     if (!canEdit) {
       return NextResponse.json(
@@ -666,20 +672,18 @@ export async function PUT(request: Request) {
     console.error("Error updating job:", error);
 
     // Handle authentication/authorization errors
-    if (error instanceof Error) {
-      if (error.message === "Authentication required") {
-        return NextResponse.json(
-          { success: false, error: "Authentication required" },
-          { status: 401 }
-        );
-      }
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { success: false, error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
 
-      if (error.message.includes("not found")) {
-        return NextResponse.json(
-          { success: false, error: "Resource not found or access denied" },
-          { status: 404 }
-        );
-      }
+    if (error instanceof Error && error.message.includes("not found")) {
+      return NextResponse.json(
+        { success: false, error: "Resource not found or access denied" },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json(

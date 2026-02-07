@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getQueueStats } from "@/lib/queue-stats";
-import { requireProjectContext } from "@/lib/project-context";
+import { requireAuthContext } from "@/lib/auth-context";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
 
 // SSE Configuration
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   // SECURITY: Require authentication for queue stats
   let organizationId: string;
   try {
-    const projectContext = await requireProjectContext();
+    const projectContext = await requireAuthContext();
     organizationId = projectContext.organizationId;
   } catch {
     // Return 401 for unauthenticated requests

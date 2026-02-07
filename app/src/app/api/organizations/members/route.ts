@@ -2,18 +2,15 @@ import { NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { member, user as userTable, invitation } from '@/db/schema';
 import { eq, desc, and } from 'drizzle-orm';
-import { requireAuth } from '@/lib/rbac/middleware';
-import { getActiveOrganization, getCurrentUser } from '@/lib/session';
 import { getUserOrgRole } from '@/lib/rbac/middleware';
+import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { Role } from '@/lib/rbac/permissions';
 
 export async function GET() {
   try {
-    await requireAuth();
-    const currentUser = await getCurrentUser();
-    const activeOrg = await getActiveOrganization();
+    const { userId, organizationId } = await requireUserAuthContext();
     
-    if (!currentUser || !activeOrg) {
+    if (!organizationId) {
       return NextResponse.json(
         { error: 'No active organization found' },
         { status: 400 }
@@ -21,7 +18,7 @@ export async function GET() {
     }
 
     // Check if user is org admin
-    const orgRole = await getUserOrgRole(currentUser.id, activeOrg.id);
+    const orgRole = await getUserOrgRole(userId, organizationId);
     const isOrgAdmin = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
     
     if (!isOrgAdmin) {
@@ -44,7 +41,7 @@ export async function GET() {
         })
         .from(member)
         .innerJoin(userTable, eq(member.userId, userTable.id))
-        .where(eq(member.organizationId, activeOrg.id))
+        .where(eq(member.organizationId, organizationId))
         .orderBy(desc(member.id)), // UUIDv7 is time-ordered (PostgreSQL 18+)
 
       // Get pending invitations for this organization
@@ -60,7 +57,7 @@ export async function GET() {
         })
         .from(invitation)
         .innerJoin(userTable, eq(invitation.inviterId, userTable.id))
-        .where(eq(invitation.organizationId, activeOrg.id))
+        .where(eq(invitation.organizationId, organizationId))
         .orderBy(desc(invitation.expiresAt)),
 
       // Get current user's role in the organization
@@ -68,8 +65,8 @@ export async function GET() {
         .select({ role: member.role })
         .from(member)
         .where(and(
-          eq(member.userId, currentUser.id),
-          eq(member.organizationId, activeOrg.id)
+          eq(member.userId, userId),
+          eq(member.organizationId, organizationId)
         ))
         .limit(1),
     ]);
@@ -83,6 +80,12 @@ export async function GET() {
       }
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     console.error('Error fetching organization members:', error);
     return NextResponse.json(
       { error: 'Failed to fetch organization members' },

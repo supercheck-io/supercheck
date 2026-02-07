@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
 import { tests } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import { requireAuth, hasPermission } from '@/lib/rbac/middleware';
+import { eq, and } from "drizzle-orm";
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
 declare const Buffer: {
   from(data: string, encoding: string): { toString(encoding: string): string };
@@ -40,22 +41,36 @@ async function decodeTestScript(base64Script: string): Promise<string> {
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> }
 ) {
-  const params = await context.params;
+  const params = await routeContext.params;
   const testId = params.id;
 
   try {
-    await requireAuth();
+    const context = await requireAuthContext();
+
+    // Check permission to view tests
+    const canView = checkPermissionWithContext('test', 'view', context);
+    if (!canView) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions' },
+        { status: 403 }
+      );
+    }
     
-    // First, find the test without filtering by active project
+    // Find the test scoped to current project
     const result = await db
       .select()
       .from(tests)
-      .where(eq(tests.id, testId))
+      .where(
+        and(
+          eq(tests.id, testId),
+          eq(tests.projectId, context.project.id),
+          eq(tests.organizationId, context.organizationId)
+        )
+      )
       .limit(1);
 
-    // If no test was found, return 404
     if (result.length === 0) {
       return NextResponse.json(
         { error: "Test not found" },
@@ -64,26 +79,6 @@ export async function GET(
     }
 
     const test = result[0];
-    
-    // Now check if user has access to this test's project
-    if (!test.organizationId || !test.projectId) {
-      return NextResponse.json(
-        { error: "Test data incomplete" },
-        { status: 500 }
-      );
-    }
-    
-    const canView = await hasPermission('test', 'view', {
-      organizationId: test.organizationId,
-      projectId: test.projectId
-    });
-    
-    if (!canView) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      );
-    }
 
     // Decode the base64 script before returning
     const decodedScript = await decodeTestScript(test.script || "");
@@ -100,6 +95,12 @@ export async function GET(
       createdAt: test.createdAt,
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching test:", error);
     return NextResponse.json(
       { error: "Failed to fetch test" },
@@ -110,18 +111,22 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> }
 ) {
-  const params = await context.params;
+  const params = await routeContext.params;
   const testId = params.id;
 
   try {
-    const { userId } = await requireAuth();
+    const context = await requireAuthContext();
     const body = await request.json();
 
-    // First check if test exists and get its project context
+    // Find test scoped to current project
     const existingTest = await db.query.tests.findFirst({
-      where: eq(tests.id, testId),
+      where: and(
+        eq(tests.id, testId),
+        eq(tests.projectId, context.project.id),
+        eq(tests.organizationId, context.organizationId)
+      ),
     });
 
     if (!existingTest) {
@@ -129,10 +134,7 @@ export async function PUT(
     }
 
     // Check permissions
-    const canUpdate = await hasPermission("test", "update", {
-      organizationId: existingTest.organizationId || undefined,
-      projectId: existingTest.projectId || undefined,
-    });
+    const canUpdate = checkPermissionWithContext("test", "update", context);
 
     if (!canUpdate) {
       return NextResponse.json(
@@ -157,6 +159,12 @@ export async function PUT(
 
     return NextResponse.json(updatedTest);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error(`Error updating test ${testId}:`, error);
     return NextResponse.json(
       { error: "Failed to update test" },
@@ -167,11 +175,11 @@ export async function PUT(
 
 export async function PATCH(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> }
 ) {
   // NOTE: This API intentionally deviates from strict REST semantics.
   // PATCH is the canonical endpoint for partial updates and internally reuses
   // the same handler as PUT, which also behaves as a partial update for
   // backward-compatibility with older clients. New consumers should prefer PATCH.
-  return PUT(request, context);
+  return PUT(request, routeContext);
 }

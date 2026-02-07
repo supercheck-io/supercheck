@@ -1,0 +1,118 @@
+---
+title: Authentication
+description: CLI tokens, security, and authentication methods
+---
+
+## Token Types
+
+Supercheck uses prefixed tokens to identify the type and scope of access:
+
+| Token Type | Prefix | Purpose | Scope |
+|------------|--------|---------|-------|
+| **CLI Token (PAT)** | `sck_live_` | CLI & API access | Project-scoped |
+| **Trigger Key** | `sck_trigger_` | CI/CD job triggers | Single job |
+| **Test Token** | `sck_test_` | Development/testing | Project-scoped |
+
+<Callout type="info">
+  Legacy trigger keys with `job_` prefix are fully supported. Existing integrations will continue to work.
+</Callout>
+
+## CLI Tokens
+
+CLI tokens are the primary authentication method. They are **project-scoped** and inherit the creating user's RBAC permissions.
+
+### Creating a Token
+
+**Via Dashboard:**
+1. Go to **Organization Admin → CLI Tokens**
+2. Click **Create Token**
+3. Enter a name and optional expiry date
+4. Copy the token — it is shown only once
+
+**Via API:**
+```bash
+curl -X POST https://app.supercheck.io/api/cli-tokens \
+  -H "Authorization: Bearer $SUPERCHECK_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "CI/CD Pipeline"}'
+```
+
+### Token Security
+
+- **Hashed storage** — Only the SHA-256 hash is stored in the database
+- **One-time display** — The plain token is returned only at creation time
+- **Prefix validation** — Tokens must have a recognized prefix before any API call
+- **Verify-then-persist** — `login --token` verifies against the API before saving locally
+- **Config scanning** — The CLI rejects config files containing token patterns
+- **Audit trail** — All token creation/revocation events are logged
+
+### Managing Tokens
+
+```bash
+# Show current auth context
+supercheck whoami
+
+# Logout and clear stored credentials
+supercheck logout
+```
+
+Tokens can also be enabled, disabled, or revoked from the dashboard without deleting them.
+
+## Trigger Keys
+
+Trigger keys (`sck_trigger_*`) provide **limited access** for CI/CD pipelines:
+
+- Can only trigger a single specific job
+- Cannot access other API resources
+- Rejected by `requireAuthContext` for general API calls
+
+```bash
+# Trigger a job using a trigger key
+export SUPERCHECK_TRIGGER_KEY="sck_trigger_..."
+curl -X POST https://app.supercheck.io/api/jobs/<id>/trigger \
+  -H "Authorization: Bearer $SUPERCHECK_TRIGGER_KEY"
+```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SUPERCHECK_TOKEN` | Yes | CLI token for API access |
+| `SUPERCHECK_URL` | No | Base URL (default: `https://app.supercheck.io`) |
+| `SUPERCHECK_ORG` | No | Default organization slug |
+| `SUPERCHECK_PROJECT` | No | Default project slug |
+| `SUPERCHECK_TRIGGER_KEY` | No | Job-specific trigger key |
+| `HTTP_PROXY` | No | Proxy URL for HTTP requests |
+| `HTTPS_PROXY` | No | Proxy URL for HTTPS requests |
+| `NO_PROXY` | No | Hosts to bypass proxy (comma-separated) |
+
+<Callout type="info">
+  `SUPERCHECK_ORG` and `SUPERCHECK_PROJECT` are for config file documentation only. The CLI token itself determines which project you have access to.
+</Callout>
+
+## Authentication Flow
+
+The CLI resolves authentication in this order:
+
+1. `Authorization: Bearer <token>` header
+2. If token starts with `sck_live_` or `sck_test_` → CLI token auth
+3. If token starts with `sck_trigger_` → **rejected** for general API (trigger-only)
+4. If no Bearer token → falls back to session cookie auth (browser only)
+
+## Rate Limits
+
+| Token Type | Limit | Window |
+|------------|-------|--------|
+| CLI Token (`sck_live_*`) | 1000 req/min | Per user |
+| Trigger Key (`sck_trigger_*`) | 60 req/min | Per key |
+| Unauthenticated | 10 req/min | Per IP |
+
+The CLI automatically handles rate limiting with exponential backoff. Rate limit headers (`Retry-After`, `X-RateLimit-*`) are parsed and honored.
+
+## Best Practices
+
+- **Use environment variables** for tokens in CI/CD — never hardcode in config files
+- **Rotate tokens regularly** — create new tokens and revoke old ones
+- **Use separate tokens** per environment (staging, production)
+- **Set expiry dates** on tokens used in temporary pipelines
+- **Prefer trigger keys** when only job triggering is needed (least-privilege)

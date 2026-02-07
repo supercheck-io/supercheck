@@ -1,0 +1,11 @@
+{
+  "title": "Variables API",
+  "icon": "Variable",
+  "pages": [
+    "listVariables",
+    "getVariable",
+    "createVariable",
+    "updateVariable",
+    "deleteVariable"
+  ]
+}

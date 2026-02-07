@@ -1,0 +1,9 @@
+{
+  "title": "Tags API",
+  "icon": "Tag",
+  "pages": [
+    "listTags",
+    "createTag",
+    "deleteTag"
+  ]
+}

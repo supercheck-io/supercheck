@@ -3,7 +3,7 @@ import { db } from "@/utils/db";
 import { tests, testTags, tags } from "@/db/schema";
 import { desc, eq, and, inArray, like, count } from "drizzle-orm";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireProjectContext } from "@/lib/project-context";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { subscriptionService } from "@/lib/services/subscription-service";
 import type { TestType } from "@/db/schema/types";
 
@@ -60,7 +60,7 @@ async function decodeTestScript(base64Script: string): Promise<string> {
  */
 export async function GET(request: NextRequest) {
   try {
-    const context = await requireProjectContext();
+    const context = await requireAuthContext();
 
     // Use current project context - no need for query params or fallbacks
     const targetProjectId = context.project.id;
@@ -199,6 +199,12 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching tests:", error);
 
     // Return more detailed error information in development
@@ -216,7 +222,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const context = await requireProjectContext();
+    const context = await requireAuthContext();
 
     // SECURITY: Validate subscription before allowing test creation
     await subscriptionService.blockUntilSubscribed(context.organizationId);
@@ -224,6 +230,19 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { title, description, priority, type, script } = body;
+
+    const normalizeTestType = (value: unknown): TestType => {
+      if (typeof value !== "string") return "browser";
+      const normalized = value.trim().toLowerCase();
+      if (normalized === "playwright") return "browser";
+      if (normalized === "k6") return "performance";
+      if (normalized === "browser") return "browser";
+      if (normalized === "api") return "api";
+      if (normalized === "database") return "database";
+      if (normalized === "custom") return "custom";
+      if (normalized === "performance") return "performance";
+      return "browser";
+    };
 
     // Validate required fields
     if (!title) {
@@ -253,8 +272,8 @@ export async function POST(request: NextRequest) {
         title,
         description: description || null,
         priority: priority || "medium",
-        type: type || "e2e",
-        script: script || null,
+        type: normalizeTestType(type),
+        script: (typeof script === "string" ? script : ""),
         projectId: targetProjectId,
         organizationId: context.organizationId,
         createdByUserId: context.userId,
@@ -283,6 +302,12 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error creating test:", error);
 
     const isDevelopment = process.env.NODE_ENV === "development";

@@ -1,0 +1,13 @@
+{
+  "title": "Monitors API",
+  "icon": "Activity",
+  "pages": [
+    "listMonitors",
+    "getMonitor",
+    "createMonitor",
+    "updateMonitor",
+    "deleteMonitor",
+    "getMonitorResults",
+    "getMonitorStats"
+  ]
+}

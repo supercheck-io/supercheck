@@ -1,0 +1,11 @@
+{
+  "title": "Tests API",
+  "icon": "FlaskConical",
+  "pages": [
+    "listTests",
+    "getTest",
+    "createTest",
+    "updateTest",
+    "deleteTest"
+  ]
+}

@@ -7,18 +7,14 @@ import {
   monitorNotificationSettings,
 } from "@/db/schema";
 import { MonitorType, MonitorStatus } from "@/db/schema/types";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import {
   scheduleMonitor,
   deleteScheduledMonitor,
 } from "@/lib/monitor-scheduler";
 import { MonitorJobData } from "@/lib/queue";
-import {
-  requireAuth,
-  hasPermission,
-  getUserOrgRole,
-} from "@/lib/rbac/middleware";
-import { isSuperAdmin } from "@/lib/admin";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
 
 // Hardcoded limit for charts and metrics display
@@ -27,9 +23,9 @@ const RECENT_RESULTS_LIMIT = 100;
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> }
 ) {
-  const params = await context.params;
+  const params = await routeContext.params;
   const { id } = params;
   if (!id) {
     return NextResponse.json(
@@ -39,43 +35,24 @@ export async function GET(
   }
 
   try {
-    const { userId } = await requireAuth();
+    const context = await requireAuthContext();
 
-    // First, find the monitor without filtering by active project
+    // Check permission via context (works for both session and CLI auth)
+    const canView = checkPermissionWithContext("monitor", "view", context);
+    if (!canView) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to view this monitor" },
+        { status: 403 }
+      );
+    }
+
+    // Find the monitor scoped to current project
     const monitor = await db.query.monitors.findFirst({
-      where: eq(monitors.id, id),
+      where: and(eq(monitors.id, id), eq(monitors.projectId, context.project.id)),
     });
 
     if (!monitor) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
-    }
-
-    // Check if user has access to this monitor
-    const userIsSuperAdmin = await isSuperAdmin();
-
-    if (!userIsSuperAdmin && monitor.organizationId && monitor.projectId) {
-      // First, check if user is a member of the organization
-      const orgRole = await getUserOrgRole(userId, monitor.organizationId);
-
-      if (!orgRole) {
-        return NextResponse.json(
-          { error: "Access denied: Not a member of this organization" },
-          { status: 403 }
-        );
-      }
-
-      // Check if user has permission to view monitors
-      const canView = await hasPermission("monitor", "view", {
-        organizationId: monitor.organizationId,
-        projectId: monitor.projectId,
-      });
-
-      if (!canView) {
-        return NextResponse.json(
-          { error: "Insufficient permissions to view this monitor" },
-          { status: 403 }
-        );
-      }
     }
 
     const recentResults = await db
@@ -103,6 +80,12 @@ export async function GET(
 
     return NextResponse.json(responseMonitor);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error(`Error fetching monitor ${id}:`, error);
     return NextResponse.json(
       { error: "Failed to fetch monitor data" },
@@ -113,9 +96,9 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> }
 ) {
-  const params = await context.params;
+  const params = await routeContext.params;
   const { id } = params;
   if (!id) {
     return NextResponse.json(
@@ -125,7 +108,8 @@ export async function PUT(
   }
 
   try {
-    const { userId } = await requireAuth();
+    const authCtx = await requireAuthContext();
+    const userId = authCtx.userId;
 
     const rawData = await request.json();
     const validationResult = monitorsUpdateSchema.safeParse(rawData);
@@ -139,37 +123,22 @@ export async function PUT(
 
     const updateData = validationResult.data;
 
-    // First, find the monitor without filtering by active project
+    // Check permission via context
+    const canUpdate = checkPermissionWithContext("monitor", "update", authCtx);
+    if (!canUpdate) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
+
+    // Find the monitor scoped to current project
     const currentMonitor = await db.query.monitors.findFirst({
-      where: eq(monitors.id, id),
+      where: and(eq(monitors.id, id), eq(monitors.projectId, authCtx.project.id)),
     });
 
     if (!currentMonitor) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
-    }
-
-    // Now check if user has access to this monitor's project
-    const userIsSuperAdmin = await isSuperAdmin();
-
-    if (!userIsSuperAdmin) {
-      if (!currentMonitor.organizationId || !currentMonitor.projectId) {
-        return NextResponse.json(
-          { error: "Monitor data incomplete" },
-          { status: 500 }
-        );
-      }
-
-      const canUpdate = await hasPermission("monitor", "update", {
-        organizationId: currentMonitor.organizationId,
-        projectId: currentMonitor.projectId,
-      });
-
-      if (!canUpdate) {
-        return NextResponse.json(
-          { error: "Insufficient permissions" },
-          { status: 403 }
-        );
-      }
     }
 
     // Validate frequency bounds (1 minute minimum, 1440 minutes = 24 hours maximum)
@@ -497,6 +466,12 @@ export async function PUT(
 
     return NextResponse.json(updatedMonitor);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error(`Error updating monitor ${id}:`, error);
     return NextResponse.json(
       { error: "Failed to update monitor" },
@@ -540,9 +515,9 @@ function deepMerge<
 
 export async function PATCH(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  routeContext: { params: Promise<{ id: string }> }
 ) {
-  const params = await context.params;
+  const params = await routeContext.params;
   const { id } = params;
   if (!id) {
     return NextResponse.json(
@@ -552,41 +527,27 @@ export async function PATCH(
   }
 
   try {
-    const { userId } = await requireAuth();
+    const authCtx = await requireAuthContext();
+    const userId = authCtx.userId;
 
     const rawData = await request.json();
 
-    // First, find the monitor without filtering by active project
+    // Check permission via context
+    const canUpdate = checkPermissionWithContext("monitor", "update", authCtx);
+    if (!canUpdate) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
+
+    // Find the monitor scoped to current project
     const currentMonitor = await db.query.monitors.findFirst({
-      where: eq(monitors.id, id),
+      where: and(eq(monitors.id, id), eq(monitors.projectId, authCtx.project.id)),
     });
 
     if (!currentMonitor) {
       return NextResponse.json({ error: "Monitor not found" }, { status: 404 });
-    }
-
-    // Now check if user has access to this monitor's project
-    const userIsSuperAdmin = await isSuperAdmin();
-
-    if (!userIsSuperAdmin) {
-      if (!currentMonitor.organizationId || !currentMonitor.projectId) {
-        return NextResponse.json(
-          { error: "Monitor data incomplete" },
-          { status: 500 }
-        );
-      }
-
-      const canUpdate = await hasPermission("monitor", "update", {
-        organizationId: currentMonitor.organizationId,
-        projectId: currentMonitor.projectId,
-      });
-
-      if (!canUpdate) {
-        return NextResponse.json(
-          { error: "Insufficient permissions" },
-          { status: 403 }
-        );
-      }
     }
 
     const updatePayload: Partial<{
@@ -717,6 +678,12 @@ export async function PATCH(
 
     return NextResponse.json(updatedMonitor);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error(`Error partially updating monitor ${id}:`, error);
     return NextResponse.json(
       { error: "Failed to update monitor" },

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/utils/db";
 import { jobs, runs } from "@/db/schema";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
-import { requireProjectContext } from "@/lib/project-context";
+import { requireAuthContext } from "@/lib/auth-context";
 
 const encoder = new TextEncoder();
 
@@ -54,7 +54,7 @@ export async function GET(request: Request) {
 
   let projectContext: { project: { id: string }; organizationId: string };
   try {
-    const context = await requireProjectContext();
+    const context = await requireAuthContext();
     projectContext = { project: context.project, organizationId: context.organizationId };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Authentication required";

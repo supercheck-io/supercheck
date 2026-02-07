@@ -7,8 +7,8 @@ import {
   type PlainNotificationProviderConfig,
 } from "@/db/schema";
 import { desc, eq, and, sql, inArray } from "drizzle-orm";
-import { hasPermission, checkPermissionWithContext } from "@/lib/rbac/middleware";
-import { requireProjectContext } from "@/lib/project-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
 import {
   decryptNotificationProviderConfig,
@@ -20,14 +20,14 @@ import type { NotificationProviderType } from "@/db/schema";
 
 export async function GET() {
   try {
-    const context = await requireProjectContext();
+    const context = await requireAuthContext();
 
     // Use current project and organization context
     const targetProjectId = context.project.id;
     const targetOrganizationId = context.organizationId;
 
     // PERFORMANCE: Use checkPermissionWithContext to avoid 5-8 duplicate DB queries
-    const canView = checkPermissionWithContext("monitor", "view", context);
+    const canView = checkPermissionWithContext("notification", "view", context);
 
     if (!canView) {
       return NextResponse.json(
@@ -94,6 +94,12 @@ export async function GET() {
 
     return NextResponse.json(enhancedProviders);
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error fetching notification providers:", error);
     return NextResponse.json(
       { error: "Failed to fetch notification providers" },
@@ -104,7 +110,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, project, organizationId } = await requireProjectContext();
+    const context = await requireAuthContext();
+    const { userId, project, organizationId } = context;
 
     const rawData = await req.json();
 
@@ -112,11 +119,8 @@ export async function POST(req: NextRequest) {
     const targetProjectId = project.id;
     const targetOrganizationId = organizationId;
 
-    // Check permission to create notification providers
-    const canCreate = await hasPermission("monitor", "create", {
-      organizationId: targetOrganizationId,
-      projectId: targetProjectId,
-    });
+    // PERFORMANCE: Use checkPermissionWithContext to avoid duplicate DB queries
+    const canCreate = checkPermissionWithContext("notification", "create", context);
 
     if (!canCreate) {
       return NextResponse.json(
@@ -222,6 +226,12 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
     console.error("Error creating notification provider:", error);
     return NextResponse.json(
       { error: "Failed to create notification provider" },

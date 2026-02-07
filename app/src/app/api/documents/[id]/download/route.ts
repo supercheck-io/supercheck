@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import { db } from "@/utils/db";
 import { requirementDocuments } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { fetchFromS3 } from "@/lib/s3-proxy";
 
 const BUCKET_NAME = process.env.S3_REQUIREMENTS_BUCKET_NAME || "test-requirement-artifacts";
@@ -29,12 +29,10 @@ export async function GET(
       });
     }
 
-    const { project, organizationId } = await requireProjectContext();
+    const authCtx = await requireAuthContext();
+    const { project, organizationId } = authCtx;
 
-    const canView = await hasPermission("requirement", "view", {
-      organizationId,
-      projectId: project.id,
-    });
+    const canView = checkPermissionWithContext("requirement", "view", authCtx);
 
     if (!canView) {
       return new Response(JSON.stringify({ error: "Insufficient permissions" }), {
@@ -67,6 +65,12 @@ export async function GET(
       contentDisposition: `attachment; filename="${doc.name}"`,
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Authentication required" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
     console.error("[Documents Download] Error:", error);
     return new Response(JSON.stringify({ error: "Failed to download document" }), {
       status: 500,

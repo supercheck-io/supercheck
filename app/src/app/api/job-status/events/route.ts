@@ -1,8 +1,8 @@
 
 import { NextResponse } from "next/server";
 import { getQueueEventHub, NormalizedQueueEvent } from "@/lib/queue-event-hub";
-import { requireProjectContext } from "@/lib/project-context";
-import { hasPermission } from "@/lib/rbac/middleware";
+import { requireAuthContext, isAuthError } from "@/lib/auth-context";
+import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { db } from "@/utils/db";
 import { runs, jobs, tests } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -12,13 +12,11 @@ const encoder = new TextEncoder();
 export async function GET(request: Request) {
   try {
     // Require authentication and get project context
-    const { project, organizationId } = await requireProjectContext();
+    const context = await requireAuthContext();
+    const { project, organizationId } = context;
 
     // Check permission to view jobs
-    const canView = await hasPermission("job", "view", {
-      organizationId,
-      projectId: project.id,
-    });
+    const canView = checkPermissionWithContext("job", "view", context);
 
     if (!canView) {
       return NextResponse.json(
@@ -218,20 +216,18 @@ export async function GET(request: Request) {
     console.error("Error setting up job-status SSE stream:", error);
 
     // Handle authentication/authorization errors
-    if (error instanceof Error) {
-      if (error.message === "Authentication required") {
-        return NextResponse.json(
-          { error: "Authentication required" },
-          { status: 401 }
-        );
-      }
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
 
-      if (error.message.includes("not found") || error.message.includes("No active project")) {
-        return NextResponse.json(
-          { error: "No active project found" },
-          { status: 404 }
-        );
-      }
+    if (error instanceof Error && (error.message.includes("not found") || error.message.includes("No active project"))) {
+      return NextResponse.json(
+        { error: "No active project found" },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json(

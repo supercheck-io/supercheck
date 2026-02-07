@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, hasPermission, getUserRole } from "@/lib/rbac/middleware";
-import { getActiveOrganization, getUserProjects } from "@/lib/session";
+import { hasPermission, getUserRole } from "@/lib/rbac/middleware";
+import { requireUserAuthContext, isAuthError } from "@/lib/auth-context";
+import { getUserProjects } from "@/lib/session";
 import { getCurrentProjectContext } from "@/lib/project-context";
 import { db } from "@/utils/db";
 import { projects, projectMembers } from "@/db/schema";
@@ -15,16 +16,15 @@ import { subscriptionService } from "@/lib/services/subscription-service";
  */
 export async function GET(request: NextRequest) {
   try {
-    const { userId } = await requireAuth();
+    const { userId, organizationId: authOrgId } = await requireUserAuthContext();
 
-    // Get organization ID from query params or use active organization
+    // Get organization ID from query params or use auth context organization
     const { searchParams } = new URL(request.url);
     const organizationId = searchParams.get("organizationId");
 
     let targetOrgId = organizationId;
     if (!targetOrgId) {
-      const activeOrg = await getActiveOrganization();
-      if (!activeOrg) {
+      if (!authOrgId) {
         // User has no organization - this is likely a new user
         // Return empty projects array instead of error to trigger setup flow
         return NextResponse.json({
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
           message: "No organization found - user needs setup",
         });
       }
-      targetOrgId = activeOrg.id;
+      targetOrgId = authOrgId;
     }
 
     const canView = await hasPermission("project", "view", {
@@ -60,24 +60,13 @@ export async function GET(request: NextRequest) {
       currentProject: currentProject,
     });
   } catch (error) {
-    console.error("Failed to get projects:", error);
-
-    if (error instanceof Error) {
-      if (error.message === "Authentication required") {
-        return NextResponse.json(
-          { error: "Authentication required" },
-          { status: 401 }
-        );
-      }
-
-      if (error.message.includes("not found")) {
-        return NextResponse.json(
-          { error: "Organization not found or access denied" },
-          { status: 404 }
-        );
-      }
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
     }
-
+    console.error("Failed to get projects:", error);
     return NextResponse.json(
       { error: "Failed to fetch projects" },
       { status: 500 }
@@ -91,7 +80,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await requireAuth();
+    const { userId, organizationId: authOrgId } = await requireUserAuthContext();
 
     const body = await request.json();
     const { name, slug, description, organizationId } = body;
@@ -105,14 +94,13 @@ export async function POST(request: NextRequest) {
 
     let targetOrgId = organizationId;
     if (!targetOrgId) {
-      const activeOrg = await getActiveOrganization();
-      if (!activeOrg) {
+      if (!authOrgId) {
         return NextResponse.json(
           { error: "No active organization found" },
           { status: 400 }
         );
       }
-      targetOrgId = activeOrg.id;
+      targetOrgId = authOrgId;
     }
 
     // Get user role for security
@@ -209,24 +197,13 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("Failed to create project:", error);
-
-    if (error instanceof Error) {
-      if (error.message === "Authentication required") {
-        return NextResponse.json(
-          { error: "Authentication required" },
-          { status: 401 }
-        );
-      }
-
-      if (error.message.includes("not found")) {
-        return NextResponse.json(
-          { error: "Organization not found or access denied" },
-          { status: 404 }
-        );
-      }
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
     }
-
+    console.error("Failed to create project:", error);
     return NextResponse.json(
       { error: "Failed to create project" },
       { status: 500 }

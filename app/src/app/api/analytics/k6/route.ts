@@ -3,8 +3,8 @@ import { db } from "@/utils/db";
 import { k6PerformanceRuns, jobs } from "@/db/schema";
 import { eq, and, desc, gte, count, sql, avg } from "drizzle-orm";
 import { subDays } from "date-fns";
-import { hasPermission } from '@/lib/rbac/middleware';
-import { requireProjectContext } from '@/lib/project-context';
+import { checkPermissionWithContext } from '@/lib/rbac/middleware';
+import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 
 /**
  * K6 Analytics API
@@ -20,11 +20,12 @@ import { requireProjectContext } from '@/lib/project-context';
  */
 export async function GET(request: NextRequest) {
   try {
-    const { project, organizationId } = await requireProjectContext();
-    const targetProjectId = project.id;
+    const context = await requireAuthContext();
+    const { organizationId } = context;
+    const targetProjectId = context.project.id;
     
     // Check permissions
-    const canView = await hasPermission('project', 'view', { organizationId, projectId: targetProjectId });
+    const canView = checkPermissionWithContext('project', 'view', context);
     if (!canView) {
       return NextResponse.json(
         { error: 'Insufficient permissions' },
@@ -348,6 +349,12 @@ export async function GET(request: NextRequest) {
     return response;
 
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     console.error("K6 Analytics API error:", error instanceof Error ? error.message : 'Unknown error');
     return NextResponse.json(
       { error: "Failed to fetch K6 analytics data" },

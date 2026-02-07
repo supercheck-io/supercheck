@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/utils/db';
 import { member, user as userTable, projectMembers, projects } from '@/db/schema';
 import { eq, and, inArray } from 'drizzle-orm';
-import { requireAuth } from '@/lib/rbac/middleware';
-import { getActiveOrganization, getCurrentUser } from '@/lib/session';
 import { getUserOrgRole } from '@/lib/rbac/middleware';
+import { requireUserAuthContext, isAuthError } from '@/lib/auth-context';
 import { Role } from '@/lib/rbac/permissions';
 import { logAuditEvent } from '@/lib/audit-logger';
 
@@ -14,11 +13,9 @@ export async function PUT(
 ) {
   const resolvedParams = await params;
   try {
-    await requireAuth();
-    const currentUser = await getCurrentUser();
-    const activeOrg = await getActiveOrganization();
+    const { userId, organizationId } = await requireUserAuthContext();
     
-    if (!currentUser || !activeOrg) {
+    if (!organizationId) {
       return NextResponse.json(
         { error: 'No active organization found' },
         { status: 400 }
@@ -26,7 +23,7 @@ export async function PUT(
     }
 
     // Check if user is org admin
-    const orgRole = await getUserOrgRole(currentUser.id, activeOrg.id);
+    const orgRole = await getUserOrgRole(userId, organizationId);
     const isOrgAdmin = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
     
     if (!isOrgAdmin) {
@@ -57,7 +54,7 @@ export async function PUT(
       .innerJoin(userTable, eq(member.userId, userTable.id))
       .where(and(
         eq(member.userId, resolvedParams.memberId),
-        eq(member.organizationId, activeOrg.id)
+        eq(member.organizationId, organizationId)
       ))
       .limit(1);
 
@@ -76,7 +73,7 @@ export async function PUT(
     }
 
     // Prevent users from changing their own role
-    if (resolvedParams.memberId === currentUser.id) {
+    if (resolvedParams.memberId === userId) {
       return NextResponse.json(
         { error: 'Cannot change your own role' },
         { status: 403 }
@@ -95,7 +92,7 @@ export async function PUT(
       })
       .where(and(
         eq(member.userId, resolvedParams.memberId),
-        eq(member.organizationId, activeOrg.id)
+        eq(member.organizationId, organizationId)
       ));
 
     // Get current project assignments for audit logging
@@ -109,7 +106,7 @@ export async function PUT(
       .where(
         and(
           eq(projectMembers.userId, resolvedParams.memberId),
-          eq(projects.organizationId, activeOrg.id)
+          eq(projects.organizationId, organizationId)
         )
       );
 
@@ -121,7 +118,7 @@ export async function PUT(
       const orgProjectIds = await db
         .select({ id: projects.id })
         .from(projects)
-        .where(eq(projects.organizationId, activeOrg.id));
+        .where(eq(projects.organizationId, organizationId));
       
       if (orgProjectIds.length > 0) {
         await db
@@ -141,7 +138,7 @@ export async function PUT(
           .from(projects)
           .where(
             and(
-              eq(projects.organizationId, activeOrg.id),
+              eq(projects.organizationId, organizationId),
               inArray(projects.id, projectAssignments.map((p: { projectId: string }) => p.projectId))
             )
           );
@@ -158,18 +155,18 @@ export async function PUT(
       }
     } else if (role === 'project_viewer') {
       // For project_viewer, remove all specific project assignments since they get access to all
-      const orgProjectIds = await db
+      const orgProjectIds2 = await db
         .select({ id: projects.id })
         .from(projects)
-        .where(eq(projects.organizationId, activeOrg.id));
+        .where(eq(projects.organizationId, organizationId));
       
-      if (orgProjectIds.length > 0) {
+      if (orgProjectIds2.length > 0) {
         await db
           .delete(projectMembers)
           .where(
             and(
               eq(projectMembers.userId, resolvedParams.memberId),
-              inArray(projectMembers.projectId, orgProjectIds.map(p => p.id))
+              inArray(projectMembers.projectId, orgProjectIds2.map(p => p.id))
             )
           );
       }
@@ -186,7 +183,7 @@ export async function PUT(
       .where(
         and(
           eq(projectMembers.userId, resolvedParams.memberId),
-          eq(projects.organizationId, activeOrg.id)
+          eq(projects.organizationId, organizationId)
         )
       ) : [];
 
@@ -220,8 +217,8 @@ export async function PUT(
 
     // Log the audit event with detailed project information
     await logAuditEvent({
-      userId: currentUser.id,
-      organizationId: activeOrg.id,
+      userId,
+      organizationId,
       action,
       resource: 'member',
       resourceId: resolvedParams.memberId,
@@ -232,7 +229,6 @@ export async function PUT(
         newRole: role,
         roleChanged,
         projectsChanged,
-        organizationName: activeOrg.name,
         projectChanges: {
           added: addedProjects.map(p => ({ id: p.projectId, name: p.projectName })),
           removed: removedProjects.map(p => ({ id: p.projectId, name: p.projectName })),
@@ -254,6 +250,12 @@ export async function PUT(
       }
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     console.error('Error updating member role:', error);
     return NextResponse.json(
       { error: 'Failed to update member role' },
@@ -268,11 +270,9 @@ export async function DELETE(
 ) {
   const resolvedParams = await params;
   try {
-    await requireAuth();
-    const currentUser = await getCurrentUser();
-    const activeOrg = await getActiveOrganization();
+    const { userId: currentUserId, organizationId: delOrgId } = await requireUserAuthContext();
     
-    if (!currentUser || !activeOrg) {
+    if (!delOrgId) {
       return NextResponse.json(
         { error: 'No active organization found' },
         { status: 400 }
@@ -280,8 +280,8 @@ export async function DELETE(
     }
 
     // Check if user is org admin
-    const orgRole = await getUserOrgRole(currentUser.id, activeOrg.id);
-    const isOrgAdmin = orgRole === Role.ORG_ADMIN || orgRole === Role.ORG_OWNER;
+    const delOrgRole = await getUserOrgRole(currentUserId, delOrgId);
+    const isOrgAdmin = delOrgRole === Role.ORG_ADMIN || delOrgRole === Role.ORG_OWNER;
     
     if (!isOrgAdmin) {
       return NextResponse.json(
@@ -302,7 +302,7 @@ export async function DELETE(
       .innerJoin(userTable, eq(member.userId, userTable.id))
       .where(and(
         eq(member.userId, resolvedParams.memberId),
-        eq(member.organizationId, activeOrg.id)
+        eq(member.organizationId, delOrgId)
       ))
       .limit(1);
 
@@ -321,7 +321,7 @@ export async function DELETE(
     }
 
     // Prevent users from removing themselves
-    if (resolvedParams.memberId === currentUser.id) {
+    if (resolvedParams.memberId === currentUserId) {
       return NextResponse.json(
         { error: 'Cannot remove yourself from the organization' },
         { status: 403 }
@@ -333,13 +333,13 @@ export async function DELETE(
       .delete(member)
       .where(and(
         eq(member.userId, resolvedParams.memberId),
-        eq(member.organizationId, activeOrg.id)
+        eq(member.organizationId, delOrgId)
       ));
 
     // Log the audit event
     await logAuditEvent({
-      userId: currentUser.id,
-      organizationId: activeOrg.id,
+      userId: currentUserId,
+      organizationId: delOrgId,
       action: 'member_removed',
       resource: 'member',
       resourceId: resolvedParams.memberId,
@@ -347,7 +347,6 @@ export async function DELETE(
         removedUserName: existingMember[0].userName,
         removedUserEmail: existingMember[0].userEmail,
         removedUserRole: existingMember[0].role,
-        organizationName: activeOrg.name
       },
       success: true
     });
@@ -361,6 +360,12 @@ export async function DELETE(
       }
     });
   } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
     console.error('Error removing member:', error);
     return NextResponse.json(
       { error: 'Failed to remove member' },
