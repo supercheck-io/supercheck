@@ -2523,6 +2523,7 @@ export class MonitorService {
         {
           testId: test.id,
           code: decodedScript,
+          secrets: resolvedSecrets,
         },
         true,
         true,

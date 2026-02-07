@@ -143,15 +143,16 @@ export function DataTableToolbar<TData>({
                           {`// Variables
 const baseUrl = getVariable('BASE_URL');
 // Secrets
-const apiKey = getSecret('API_KEY').toString();
+const apiKey = getSecret('API_KEY');
+const apiKeyValue = apiKey.valueOf();
 
 // In Playwright
 await page.goto(getVariable(baseUrl));
 await page.fill('#password', apiKey);
 
 // In k6
-  http.get(\`\${baseUrl}/protected\`, {
-    headers: { Authorization: \`Bearer \${apiKey}\` }
+  http.get(`\${baseUrl}/protected`, {
+    headers: { Authorization: `Bearer \${apiKeyValue}` }
 })`}
                         </pre>
                         <Button
@@ -163,16 +164,17 @@ await page.fill('#password', apiKey);
 const baseUrl = getVariable('BASE_URL');
 
 // Secrets
-const apiKey = getSecret('API_KEY').toString();
+const apiKey = getSecret('API_KEY');
+const apiKeyValue = apiKey.valueOf();
 
 // In Playwright
 await page.goto(getVariable(baseUrl));
 await page.fill('#password', apiKey);
 
 // In k6
-  http.get(\`\${baseUrl}/protected\`, {
-    headers: { Authorization: \`Bearer \${apiKey}\` }
-}`)
+  http.get(`\${baseUrl}/protected`, {
+    headers: { Authorization: `Bearer \${apiKeyValue}` }
+})`)
                           }
                         >
                           {copiedCode ===
@@ -180,15 +182,16 @@ await page.fill('#password', apiKey);
 const baseUrl = getVariable('BASE_URL');
 
 // Secrets
-const apiKey = getSecret('API_KEY').toString();
+const apiKey = getSecret('API_KEY');
+const apiKeyValue = apiKey.valueOf();
 
 // In Playwright
 await page.goto(getVariable(baseUrl));
 await page.fill('#password', apiKey);
 
 // In k6
-  http.get(\`\${baseUrl}/protected\`, {
-    headers: { Authorization: \`Bearer \${apiKey}\` }
+  http.get(`\${baseUrl}/protected`, {
+    headers: { Authorization: `Bearer \${apiKeyValue}` }
 })` ? (
                             <Check className="h-3 w-3 text-green-500" />
                           ) : (

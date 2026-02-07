@@ -478,6 +478,7 @@ export class ExecutionService implements OnModuleDestroy {
             s3ReportKeyPrefix,
             entityType,
             processReportFiles: true,
+            redactValues: task.secrets ? Object.values(task.secrets) : undefined,
           });
 
           if (uploadResult.success) {
@@ -541,6 +542,7 @@ export class ExecutionService implements OnModuleDestroy {
           s3ReportKeyPrefix,
           entityType,
           processReportFiles: true,
+          redactValues: task.secrets ? Object.values(task.secrets) : undefined,
         });
 
         if (uploadResult.success) {
@@ -876,6 +878,7 @@ export class ExecutionService implements OnModuleDestroy {
         s3ReportKeyPrefix,
         entityType: 'job',
         processReportFiles: true,
+        redactValues: task.secrets ? Object.values(task.secrets) : undefined,
       });
 
       if (uploadResult.success) {

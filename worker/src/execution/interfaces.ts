@@ -57,6 +57,8 @@ export interface TestExecutionTask {
   // as the worker service doesn't share the filesystem
   code: string;
   // testPath: string; // Original field - needs adaptation
+  variables?: Record<string, string>; // Resolved variables for the test
+  secrets?: Record<string, string>; // Resolved secrets for the test
   runId?: string | null;
   organizationId?: string;
   projectId?: string;

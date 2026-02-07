@@ -1198,9 +1198,10 @@ declare type ReadStream = any;
 /**
  * Protected secret value that prevents accidental exposure while maintaining functionality.
  * 
- * This interface ensures that sensitive values cannot be accidentally logged, serialized,
- * or exposed through common inspection methods, while still working seamlessly with
- * Playwright methods and other APIs that require the actual secret value.
+ * ProtectedString extends the native String class, ensuring that:
+ * - Playwright's fill(), goto(), setExtraHTTPHeaders() etc. work seamlessly (via instanceof String)
+ * - console.log(), JSON.stringify(), template literals show "[SECRET]" (via toString/toJSON/toPrimitive)
+ * - No .toString() call needed — pass directly to Playwright APIs
  * 
  * @example
  * ```typescript
@@ -1208,10 +1209,12 @@ declare type ReadStream = any;
  * console.log(token);              // Outputs: "[SECRET]"
  * String(token);                   // Returns: "[SECRET]"
  * JSON.stringify({token});         // {"token":"[SECRET]"}
+ * `Bearer ${token}`;              // "Bearer [SECRET]"
  * 
- * // But works perfectly for actual usage:
+ * // Works perfectly with Playwright — no .toString() needed:
+ * await page.fill('#password', token);   // Fills actual token value
  * await page.setExtraHTTPHeaders({
- *   'Authorization': `Bearer ${token}` // Uses actual token value
+ *   'Authorization': `Bearer ${token}`  // NOTE: template literal masks the value
  * });
  * ```
  */
@@ -1328,10 +1331,12 @@ declare function getVariable<T = string>(
  * // Safe for logging - will show "[SECRET]" instead of actual value
  * console.log(`Using token: ${apiToken}`);
  * 
- * // Works seamlessly with Playwright and other APIs
+ * // Works seamlessly with Playwright — no .toString() needed
  * await page.fill('#password', password);
+ * 
+ * // For HTTP headers that need the actual value, use valueOf():
  * await page.setExtraHTTPHeaders({
- *   'Authorization': `Bearer ${apiToken}`
+ *   'Authorization': `Bearer ${apiToken.valueOf()}`
  * });
  * ```
  * 

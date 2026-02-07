@@ -24,6 +24,7 @@ export interface ReportUploadOptions {
   s3ReportKeyPrefix: string;
   entityType: 'test' | 'job' | 'monitor';
   processReportFiles?: boolean;
+  redactValues?: string[];
 }
 
 /**
@@ -56,6 +57,7 @@ export class ReportUploadService {
       s3ReportKeyPrefix,
       entityType,
       processReportFiles = true,
+      redactValues,
     } = options;
 
     const testBucket = this.s3Service.getBucketForEntityType(entityType);
@@ -83,6 +85,7 @@ export class ReportUploadService {
         entityType,
         testId,
         processReportFiles,
+        redactValues,
       );
 
       if (result.success) {
@@ -111,6 +114,7 @@ export class ReportUploadService {
           entityType,
           testId,
           processReportFiles,
+          redactValues,
         );
 
         if (result.success) {
@@ -149,6 +153,7 @@ export class ReportUploadService {
     entityType: string,
     testId: string,
     processReportFiles: boolean,
+    redactValues?: string[],
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const reportFiles = await fs.readdir(dirPath);
@@ -156,6 +161,11 @@ export class ReportUploadService {
       // Verify index.html exists
       if (!reportFiles.includes('index.html')) {
         return { success: false, error: 'No index.html found' };
+      }
+
+      // Redact report files if redact values are provided, regardless of other processing flags
+      if (redactValues && redactValues.length > 0) {
+        await this._redactReportFiles(dirPath, redactValues);
       }
 
       // Process report files if needed (fix trace URLs for S3)
@@ -185,6 +195,94 @@ export class ReportUploadService {
         error: error instanceof Error ? error.message : String(error),
       };
     }
+  }
+
+  /**
+   * Redact sensitive values from report artifacts before upload.
+   * This prevents secrets from appearing in HTML reports and trace metadata.
+   */
+  private async _redactReportFiles(
+    reportDir: string,
+    redactValues?: string[],
+  ): Promise<void> {
+    if (!redactValues || redactValues.length === 0) {
+      return;
+    }
+
+    const values = Array.from(
+      new Set(
+        redactValues
+          .filter((value) => typeof value === 'string' && value.length > 0)
+          .flatMap((value) => [value, encodeURIComponent(value), encodeURI(value)]),
+      ),
+    );
+
+    if (values.length === 0) {
+      return;
+    }
+
+    const textExtensions = new Set([
+      '.html',
+      '.htm',
+      '.json',
+      '.txt',
+      '.js',
+      '.map',
+      '.css',
+      '.trace',
+      '.log',
+      '.xml',
+      '.csv',
+    ]);
+
+    const redactInFile = async (filePath: string): Promise<void> => {
+      try {
+        const ext = path.extname(filePath).toLowerCase();
+        const baseName = path.basename(filePath).toLowerCase();
+
+        if (baseName.includes('trace') && ext === '.zip') {
+          // Remove trace archives to avoid leaking secrets in trace viewer
+          await fs.unlink(filePath);
+          return;
+        }
+
+        if (!textExtensions.has(ext)) {
+          return;
+        }
+
+        const content = await fs.readFile(filePath, 'utf-8');
+        let redacted = content;
+
+        for (const value of values) {
+          if (!value) continue;
+          redacted = redacted.replaceAll(value, '[SECRET]');
+        }
+
+        if (redacted !== content) {
+          await fs.writeFile(filePath, redacted, 'utf-8');
+        }
+      } catch (error) {
+        this.logger.debug(
+          `Failed to redact file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    };
+
+    const walk = async (dir: string): Promise<void> => {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await walk(fullPath);
+          continue;
+        }
+        if (entry.isFile()) {
+          await redactInFile(fullPath);
+        }
+      }
+    };
+
+    await walk(reportDir);
   }
 
   /**

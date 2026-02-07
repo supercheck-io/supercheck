@@ -308,7 +308,7 @@ export const MonacoEditorClient = memo(
                     { value: "fetch(url, {" },
                     {
                       value:
-                        '  headers: { "Authorization": `Bearer ${secret}` }',
+                        '  headers: { "Authorization": `Bearer ${secret.valueOf()}` }',
                     },
                     { value: "});" },
                     { value: "```" },

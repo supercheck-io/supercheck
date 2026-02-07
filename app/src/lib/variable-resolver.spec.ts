@@ -395,15 +395,13 @@ describe('Variable Resolver', () => {
     });
 
     describe('Secret Handling', () => {
-      it('should return raw string value for secrets', () => {
+      it('should return a ProtectedString for secrets that masks value in toString', () => {
         const result = generateVariableFunctions({}, { SECRET: 'value' });
         
-        // Secrets now return raw string values for proper usage in template literals,
-        // HTTP headers, form fills, etc.
+        // Secrets are wrapped in ProtectedString (extends String) for protection
         expect(result).toContain('function getSecret');
-        expect(result).toContain('return value');
-        // Should not contain the old protected object pattern
-        expect(result).not.toContain('protectedSecret');
+        expect(result).toContain('class ProtectedString extends String');
+        expect(result).toContain('return new ProtectedString(value)');
       });
 
       it('should embed secret values in the generated function', () => {
@@ -420,6 +418,35 @@ describe('Variable Resolver', () => {
         expect(result).toContain("'number'");
         expect(result).toContain("'boolean'");
         expect(result).toContain("'string'");
+      });
+
+      it('should return raw string when type is explicitly string', () => {
+        const result = generateVariableFunctions({}, { SECRET: 'value' });
+        
+        // When options.type === 'string', return the raw value (bypasses protection)
+        expect(result).toContain("case 'string'");
+        expect(result).toContain('return value');
+      });
+
+      it('should include valueOf that returns actual secret value', () => {
+        const result = generateVariableFunctions({}, { SECRET: 'value' });
+        
+        // valueOf returns actual value for Playwright compatibility
+        expect(result).toContain('valueOf() { return this.#v; }');
+      });
+
+      it('should include toString that returns [SECRET]', () => {
+        const result = generateVariableFunctions({}, { SECRET: 'value' });
+        
+        // toString masks the value for console.log protection
+        expect(result).toContain("toString() { return '[SECRET]'; }");
+      });
+
+      it('should include toJSON that returns [SECRET]', () => {
+        const result = generateVariableFunctions({}, { SECRET: 'value' });
+        
+        // toJSON masks the value for JSON.stringify protection
+        expect(result).toContain("toJSON() { return '[SECRET]'; }");
       });
     });
 

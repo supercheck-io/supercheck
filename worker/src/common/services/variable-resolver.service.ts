@@ -183,6 +183,31 @@ function getVariable(key, options = {}) {
   return value;
 }
 
+// ProtectedString extends String so that:
+// - instanceof String === true (Playwright's tString validator accepts it and extracts via valueOf())
+// - toString() / Symbol.toPrimitive('string') return '[SECRET]' (masks in console.log, template literals, traces)
+// - valueOf() returns the actual secret value (used by Playwright fill, setExtraHTTPHeaders, etc.)
+// - toJSON() returns '[SECRET]' (masks in JSON.stringify)
+class ProtectedString extends String {
+  #v;
+  constructor(val) {
+    super('[SECRET]');
+    this.#v = val;
+  }
+  valueOf() { return this.#v; }
+  toString() { return '[SECRET]'; }
+  toJSON() { return '[SECRET]'; }
+  [Symbol.toPrimitive](hint) {
+    if (hint === 'string') return '[SECRET]';
+    return this.#v;
+  }
+  get [Symbol.toStringTag]() { return 'ProtectedSecret'; }
+  // Node.js util.inspect custom symbol
+  get [Symbol.for('nodejs.util.inspect.custom')]() {
+    return () => '[SECRET]';
+  }
+}
+
 function getSecret(key, options = {}) {
   const secrets = {${secretEntries}};
   
@@ -195,7 +220,7 @@ function getSecret(key, options = {}) {
     return options.default !== undefined ? options.default : '';
   }
   
-  // Handle type conversion
+  // Handle type conversion - returns raw values for explicit type requests
   if (options.type) {
     switch (options.type) {
       case 'number':
@@ -207,16 +232,17 @@ function getSecret(key, options = {}) {
       case 'boolean':
         return value.toLowerCase() === 'true' || value === '1';
       case 'string':
-      default:
         return value;
+      default:
+        break;
     }
   }
   
-  // Return the actual string value directly
-  // This allows secrets to work with template literals, HTTP headers, form fills, etc.
-  // Security note: secrets are already embedded in the script at execution time,
-  // so returning the raw value doesn't introduce additional exposure
-  return value;
+  // Return a ProtectedString that:
+  // - Works with Playwright fill(), goto(), setExtraHTTPHeaders() (via instanceof String + valueOf)
+  // - Masks value in console.log, template literals, JSON.stringify (via toString/toPrimitive/toJSON)
+  // - No .toString() call needed by users — just pass directly to Playwright APIs
+  return new ProtectedString(value);
 }
 `;
   }

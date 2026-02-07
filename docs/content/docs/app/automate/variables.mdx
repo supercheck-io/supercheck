@@ -88,30 +88,30 @@ await page.goto(baseUrl + '/login');
 </Tab>
 <Tab value="getSecret()">
 
-Use for sensitive credentials. **Always call `.toString()`** to get the actual value:
+Use for sensitive credentials. **Pass directly to Playwright APIs** — no `.toString()` needed:
 
 ```javascript
 /**
- * Secrets are encrypted and require .toString() to access the value.
- * This ensures secrets are protected from accidental logging.
+ * Secrets are encrypted and protected from accidental logging.
+ * Pass them directly to Playwright APIs — they work seamlessly.
  */
 
-// API authentication
-const apiKey = getSecret('API_KEY').toString();
-await page.setExtraHTTPHeaders({
-  'Authorization': `Bearer ${apiKey}`
-});
-
-// Form login
-const password = getSecret('TEST_PASSWORD').toString();
+// Form login — pass secret directly
+const password = getSecret('TEST_PASSWORD');
 await page.fill('#password', password);
 
-// Database connection
-const dbPassword = getSecret('DB_PASSWORD').toString();
+// API authentication — use valueOf() for actual value in template literals
+const apiKey = getSecret('API_KEY');
+await page.setExtraHTTPHeaders({
+  'Authorization': `Bearer ${apiKey.valueOf()}`
+});
+
+// Database connection — use { type: 'string' } when raw string is needed
+const dbPassword = getSecret('DB_PASSWORD', { type: 'string' });
 ```
 
-<Callout type="warning">
-Always use `.toString()` when reading secrets. Without it, the secret object won't expose the actual value in most contexts.
+<Callout type="info">
+Secrets are protected from accidental exposure in `console.log()`, template literals, and `JSON.stringify()`. They show `[SECRET]` instead of the actual value. Use `.valueOf()` or `{ type: 'string' }` when you need the raw value.
 </Callout>
 
 </Tab>
@@ -124,7 +124,7 @@ Secrets are automatically protected from accidental exposure:
 ```javascript
 /**
  * Secret values are masked in logs and console output.
- * The actual value is only accessible via .toString().
+ * No .toString() needed — pass directly to Playwright APIs.
  */
 
 // These all show [SECRET] instead of the actual value
@@ -132,8 +132,11 @@ console.log(getSecret('API_KEY'));           // "[SECRET]"
 console.log(`Key: ${getSecret('API_KEY')}`); // "Key: [SECRET]"
 JSON.stringify({ key: getSecret('API_KEY') }); // {"key":"[SECRET]"}
 
-// Use .toString() to get the actual value for operations
-const actualKey = getSecret('API_KEY').toString();
+// Use valueOf() to get the actual value when needed
+const actualKey = getSecret('API_KEY').valueOf();
+
+// Or pass directly to Playwright — it extracts the value automatically
+await page.fill('#api-key', getSecret('API_KEY'));
 ```
 
 **Secrets work normally in:**
@@ -167,13 +170,15 @@ await page.goto(baseUrl);
  * @see https://playwright.dev/docs/api-testing
  */
 const apiUrl = getVariable('API_URL');
-const apiToken = getSecret('API_TOKEN').toString();
-const apiKey = getSecret('API_KEY').toString();
+const apiToken = getSecret('API_TOKEN');
+const apiKey = getSecret('API_KEY');
+const apiTokenValue = apiToken.valueOf();
+const apiKeyValue = apiKey.valueOf();
 
 const response = await request.get(apiUrl + '/users', {
   headers: {
-    'Authorization': `Bearer ${apiToken}`,
-    'X-API-Key': apiKey
+    'Authorization': `Bearer ${apiTokenValue}`,
+    'X-API-Key': apiKeyValue
   }
 });
 ```
@@ -193,7 +198,7 @@ const pool = new Pool({
   port: parseInt(getVariable('DB_PORT')),
   database: getVariable('DB_NAME'),
   user: getVariable('DB_USER'),
-  password: getSecret('DB_PASSWORD').toString()
+  password: getSecret('DB_PASSWORD', { type: 'string' })
 });
 ```
 
@@ -227,7 +232,7 @@ import http from 'k6/http';
 
 export default function () {
   const baseUrl = getVariable('API_URL');
-  const apiKey = getSecret('API_KEY').toString();
+  const apiKey = getSecret('API_KEY', { type: 'string' });
   
   http.get(`${baseUrl}/protected`, {
     headers: { Authorization: `Bearer ${apiKey}` }
