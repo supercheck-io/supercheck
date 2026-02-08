@@ -16,10 +16,24 @@ import {
   ChartSpline,
   BookOpenText,
   Chromium,
+  Sparkles,
+  Terminal,
 } from "lucide-react";
 import { SiteFooter } from "../../components/site-footer";
 
 const features = [
+  {
+    icon: Sparkles,
+    title: "AI-Powered Creation, Fix & Analysis",
+    description:
+      "Create, debug, and analyze Playwright tests, k6 scripts, and monitors with AI assistance.",
+  },
+  {
+    icon: Terminal,
+    title: "CLI & Monitoring-as-Code",
+    description:
+      "Define tests, monitors, and jobs in code. Deploy with supercheck deploy, integrate with any CI/CD pipeline.",
+  },
   {
     icon: Zap,
     title: "Parallel Execution",
@@ -189,11 +203,11 @@ export default function HomePage() {
                 className="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition"
                 aria-label="Toggle theme"
               >
-                  {isDark ? (
-                    <Sun className="size-5" />
-                  ) : (
-                    <Moon className="size-5" />
-                  )}
+                {isDark ? (
+                  <Sun className="size-5" />
+                ) : (
+                  <Moon className="size-5" />
+                )}
               </button>
             )}
           </div>
@@ -235,15 +249,13 @@ export default function HomePage() {
                 <h1
                   className="mt-16 text-balance text-3xl font-bold leading-tight text-gray-900 dark:text-white md:text-5xl lg:text-6xl animate-fade-in-up [animation-delay:200ms]"
                 >
-                  Open Source AI-Powered Test Automation & Monitoring Platform
+                  Open-Source Testing, Monitoring, and Reliability — as Code
                 </h1>
 
                 <p
                   className="mx-auto mt-8 max-w-4xl text-balance text-xl leading-relaxed text-gray-600 dark:text-gray-300 animate-fade-in-up [animation-delay:400ms]"
                 >
-                  Empowering development and SRE teams with a scalable,
-                  distributed, and robust platform to drive faster delivery and
-                  higher software quality.
+                  Unified platform for AI-powered Playwright & k6 testing, uptime monitoring, and status pages.
                 </p>
 
               </div>
