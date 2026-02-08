@@ -11,14 +11,11 @@ services = [
 	{ binding = "WORKER_SELF_REFERENCE", service = "supercheck-web" }
 ]
 
-# [vars]
-# MY_VAR = "my-variable"
+# Custom domains — Cloudflare manages DNS records and SSL certificates automatically
+[[routes]]
+pattern = "supercheck.io"
+custom_domain = true
 
-# [[kv_namespaces]]
-# binding = "MY_KV_NAMESPACE"
-# id = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "my-database"
-# database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+[[routes]]
+pattern = "www.supercheck.io"
+custom_domain = true
