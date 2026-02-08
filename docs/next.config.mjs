@@ -1,4 +1,5 @@
 import { createMDX } from 'fumadocs-mdx/next';
+import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare';
 import { resolve } from 'path';
 
 const withMDX = createMDX();
@@ -10,5 +11,7 @@ const config = {
     unoptimized: true,
   },
 };
+
+initOpenNextCloudflareForDev();
 
 export default withMDX(config);
