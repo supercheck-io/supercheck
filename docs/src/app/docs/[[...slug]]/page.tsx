@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { source, getPageImage } from '@/lib/source';
+import { source } from '@/lib/source';
 import { getMDXComponents } from '@/mdx-components';
 import { notFound, redirect } from 'next/navigation';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
@@ -105,8 +105,5 @@ export async function generateMetadata(
   return {
     title: page.data.title,
     description: page.data.description,
-    openGraph: {
-      images: getPageImage(page).url,
-    },
   };
 }

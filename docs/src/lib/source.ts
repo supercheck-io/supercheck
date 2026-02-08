@@ -18,15 +18,6 @@ export const source = loader({
   },
 });
 
-export function getPageImage(page: InferPageType<typeof source>) {
-  const segments = [...page.slugs, 'image.png'];
-
-  return {
-    segments,
-    url: `/og/docs/${segments.join('/')}`,
-  };
-}
-
 export async function getLLMText(page: InferPageType<typeof source>) {
   const processed = await page.data.getText('processed');
 
