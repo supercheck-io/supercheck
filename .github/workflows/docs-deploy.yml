@@ -1,0 +1,64 @@
+name: Deploy Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+  workflow_dispatch:
+
+concurrency:
+  group: docs-deploy-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy-docs:
+    name: Build & Deploy Docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./docs
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Build for Cloudflare Workers
+        working-directory: ./docs
+        run: npm run build:worker
+
+      - name: Deploy to Cloudflare Workers
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: ./docs
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy preview
+        if: github.event_name == 'pull_request'
+        working-directory: ./docs
+        run: npx wrangler versions upload
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

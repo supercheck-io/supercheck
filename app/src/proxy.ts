@@ -1,17 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Lightweight proxy for status page subdomain and custom domain routing
- * (Renamed from middleware to proxy in Next.js 16)
+ * Unified proxy for Next.js 16+
+ * 
+ * Handles both:
+ * 1. CORS for API routes (migrated from middleware.ts)
+ * 2. Status page subdomain and custom domain routing
  *
- * Responsibility: ONLY domain detection and URL rewriting
+ * CORS Handling:
+ * - Allows OpenAPI documentation playground to make requests from different origins
+ * - Only applied to /api/* routes for allowed origins
+ *
+ * Status Page Routing:
  * - Detects UUID subdomains (e.g., f134b5f9f2b048069deaf7cfb924a0b3.supercheck.io)
  * - Detects custom domains (e.g., status.acmecorp.com)
  * - Rewrites to /status/[subdomain] for status page routes
  * - All authentication is handled by layout/route handlers
  *
  * Why this approach?
- * - Proxy stays fast and focused (one job: subdomain/custom domain routing)
+ * - Next.js 16+ requires single proxy file (no separate middleware.ts)
+ * - Proxy stays fast and focused
  * - Auth logic in layout follows Next.js best practices
  * - Avoids proxy-induced redirect loops
  * - Database lookup for custom domains happens in route handler (not proxy)
@@ -26,6 +34,93 @@ import { NextRequest, NextResponse } from "next/server";
  * - Add security headers to responses
  * - Rate limiting should be handled at infrastructure level (Cloudflare, ALB, etc.)
  */
+
+// ============================================================================
+// CORS Configuration (migrated from middleware.ts)
+// ============================================================================
+
+/**
+ * Get allowed origins for CORS
+ * Includes development, production, and configurable origins
+ */
+const getAllowedOrigins = (): string[] => {
+  const origins = [
+    // Development
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:3002',
+    // Production docs
+    'https://demo.supercheck.dev',
+    'https://supercheck.io',
+    'https://docs.supercheck.io',
+    'https://www.supercheck.io',
+    // Future production
+    'https://app.supercheck.io'
+  ];
+  
+  // Add APP_URL if set
+  const appUrl = process.env.APP_URL;
+  if (appUrl) {
+    origins.push(appUrl);
+  }
+  
+  // Add TRUSTED_ORIGINS if set
+  const trustedOrigins = process.env.TRUSTED_ORIGINS;
+  if (trustedOrigins) {
+    const trusted = trustedOrigins.split(',').map(o => o.trim()).filter(Boolean);
+    origins.push(...trusted);
+  }
+  
+  return origins;
+};
+
+/**
+ * Handle CORS for API routes
+ * Returns a response if CORS handling is complete, null if request should continue
+ */
+function handleCors(request: NextRequest): NextResponse | null {
+  const origin = request.headers.get('origin');
+  const pathname = request.nextUrl.pathname;
+  
+  // Only apply CORS to API routes
+  if (!pathname.startsWith('/api/')) {
+    return null;
+  }
+  
+  const allowedOrigins = getAllowedOrigins();
+  const isAllowedOrigin = origin && allowedOrigins.includes(origin);
+  
+  // Handle preflight requests (OPTIONS)
+  if (request.method === 'OPTIONS') {
+    const response = new NextResponse(null, { status: 204 });
+    
+    if (isAllowedOrigin) {
+      response.headers.set('Access-Control-Allow-Origin', origin);
+      response.headers.set('Access-Control-Allow-Credentials', 'true');
+    }
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Project-Id');
+    response.headers.set('Access-Control-Max-Age', '86400'); // Cache preflight for 24 hours
+    response.headers.set('Vary', 'Origin');
+    
+    return response;
+  }
+  
+  // For actual API requests, add CORS headers and pass through
+  const response = NextResponse.next();
+  
+  if (isAllowedOrigin) {
+    response.headers.set('Access-Control-Allow-Origin', origin);
+    response.headers.set('Access-Control-Allow-Credentials', 'true');
+  }
+  response.headers.set('Vary', 'Origin');
+  
+  return response;
+}
+
+// ============================================================================
+// Status Page Routing Configuration
+// ============================================================================
 
 // Pre-compile regex patterns for performance
 const VALID_SUBDOMAIN_PATTERN = /^[a-zA-Z0-9-]{1,63}$/;
@@ -138,11 +233,16 @@ function getMainAppHostname(): string | null {
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Fast path: Skip proxy for static assets and API routes
-  // API routes and internal Next.js routes should never be rewritten
-  // These are shared functionality accessed from any domain
-  if (pathname.startsWith("/api/") || pathname.startsWith("/_next/")) {
+  // Fast path: Skip proxy for internal Next.js routes
+  if (pathname.startsWith("/_next/")) {
     return NextResponse.next();
+  }
+
+  // Handle CORS for API routes first
+  // This was migrated from middleware.ts as Next.js 16 requires single proxy file
+  const corsResponse = handleCors(request);
+  if (corsResponse) {
+    return corsResponse;
   }
 
   // Get clean hostname efficiently
