@@ -4,20 +4,14 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "build:worker": "opennextjs-cloudflare build",
     "dev": "next dev",
     "start": "next start",
     "postinstall": "fumadocs-mdx",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "generate-docs": "tsx scripts/generate-docs.mts",
     "lint": "eslint"
   },
   "dependencies": {
     "@orama/orama": "^3.1.16",
-    "framer-motion": "^12.23.24",
     "fumadocs-core": "^16.5.1",
     "fumadocs-mdx": "13.0.8",
     "fumadocs-openapi": "^10.3.2",
@@ -35,7 +29,6 @@
     "lodash-es": ">=4.17.23"
   },
   "devDependencies": {
-    "@opennextjs/cloudflare": "^1.13.0",
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4.1.14",
     "@types/mdx": "^2.0.13",
@@ -47,7 +40,6 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
-    "wrangler": "^4.59.2"
+    "typescript": "^5.9.3"
   }
 }

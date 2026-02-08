@@ -1,6 +1,4 @@
 import { createMDX } from 'fumadocs-mdx/next';
-import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare';
-import { resolve } from 'path';
 
 const withMDX = createMDX();
 
@@ -10,8 +8,14 @@ const config = {
   images: {
     unoptimized: true,
   },
+  experimental: {
+    // Tree-shake barrel re-exports from these packages
+    optimizePackageImports: [
+      'lucide-react',
+      'fumadocs-ui',
+      'fumadocs-core',
+    ],
+  },
 };
-
-initOpenNextCloudflareForDev();
 
 export default withMDX(config);
