@@ -337,10 +337,17 @@ export class StandardizedErrorHandler {
    * Map common errors to standardized format
    */
   mapError(error: unknown, context?: ErrorContext): StandardError {
-    const err = error as Record<string, unknown>;
+    const isErrorObject = error !== null && error !== undefined && typeof error === 'object';
+    const err = (isErrorObject ? error : {}) as Record<string, unknown>;
     const code = typeof err.code === 'string' ? err.code : undefined;
-    const message =
-      typeof err.message === 'string' ? err.message : 'Unknown error occurred';
+    let message: string;
+    if (isErrorObject && typeof err.message === 'string') {
+      message = err.message as string;
+    } else if (typeof error === 'string') {
+      message = error;
+    } else {
+      message = 'Unknown error occurred';
+    }
 
     // Network errors
     if (code === 'ENOTFOUND' || code === 'ECONNREFUSED') {

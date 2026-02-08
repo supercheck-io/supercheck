@@ -1,9 +1,10 @@
 {
   "title": "Runs API",
-  "icon": "Play",
+  "icon": "ClipboardList",
   "pages": [
     "listRuns",
     "getRun",
+    "getRunPermissions",
     "getRunStatus",
     "streamRunOutput",
     "cancelRun",

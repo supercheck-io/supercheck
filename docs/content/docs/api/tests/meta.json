@@ -4,8 +4,12 @@
   "pages": [
     "listTests",
     "getTest",
+    "getTestTags",
     "createTest",
     "updateTest",
-    "deleteTest"
+    "deleteTest",
+    "executeTest",
+    "replaceTestTags",
+    "deleteTestTag"
   ]
 }

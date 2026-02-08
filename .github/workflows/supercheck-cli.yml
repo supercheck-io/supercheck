@@ -74,18 +74,18 @@ jobs:
       - name: Trigger Job
         id: trigger
         run: |
-          ARGS="$INPUT_JOB_ID"
+          ARGS=("$INPUT_JOB_ID")
           if [ "$INPUT_WAIT" = "true" ]; then
-            ARGS="$ARGS --wait --timeout $INPUT_TIMEOUT"
+            ARGS+=("--wait" "--timeout" "$INPUT_TIMEOUT")
           fi
-          ARGS="$ARGS --json"
+          ARGS+=("--json")
 
-          echo "Running: supercheck job trigger $ARGS"
-          OUTPUT=$(eval supercheck job trigger "$ARGS" 2>&1) || EXIT_CODE=$?
+          echo "Running: supercheck job trigger ${ARGS[*]}"
+          OUTPUT=$(supercheck job trigger "${ARGS[@]}" 2>&1) || EXIT_CODE=$?
 
-          # Extract run ID and status from JSON output
-          RUN_ID=$(echo "$OUTPUT" | grep -o '"runId":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
-          STATUS=$(echo "$OUTPUT" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
+          # Extract run ID and status from JSON output using node (already available)
+          RUN_ID=$(echo "$OUTPUT" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log(d.runId||'')}catch{console.log('')}" || true)
+          STATUS=$(echo "$OUTPUT" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log(d.status||'')}catch{console.log('')}" || true)
 
           echo "run-id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"

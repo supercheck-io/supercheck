@@ -81,29 +81,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // SECURITY: Validate active subscription before allowing execution
-    if (!jobDetails[0].organizationId) {
-      return NextResponse.json(
-        { error: "Organization not found" },
-        { status: 404 }
-      );
-    }
-
-    try {
-      await subscriptionService.blockUntilSubscribed(jobDetails[0].organizationId);
-      await subscriptionService.requireValidPolarCustomer(jobDetails[0].organizationId);
-    } catch (subscriptionError) {
-      const errorMessage =
-        subscriptionError instanceof Error
-          ? subscriptionError.message
-          : "Subscription validation failed";
-      return NextResponse.json(
-        { error: errorMessage },
-        { status: 402 }
-      );
-    }
-    
-    // Verify job belongs to current project
+    // SECURITY: Verify job belongs to current project before any other checks.
+    // This prevents information leakage (e.g. billing state) for jobs the caller doesn't own.
     if (jobDetails[0].projectId !== project.id) {
       console.error("Job does not belong to current project:", { jobId, jobProjectId: jobDetails[0].projectId, currentProjectId: project.id });
       return NextResponse.json(
@@ -120,6 +99,29 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Insufficient permissions to trigger jobs" },
         { status: 403 }
+      );
+    }
+
+    // SECURITY: Validate active subscription before allowing execution.
+    // Use organizationId from the authenticated context to avoid IDOR.
+    if (!organizationId) {
+      return NextResponse.json(
+        { error: "Organization not found" },
+        { status: 404 }
+      );
+    }
+
+    try {
+      await subscriptionService.blockUntilSubscribed(organizationId);
+      await subscriptionService.requireValidPolarCustomer(organizationId);
+    } catch (subscriptionError) {
+      const errorMessage =
+        subscriptionError instanceof Error
+          ? subscriptionError.message
+          : "Subscription validation failed";
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: 402 }
       );
     }
     

@@ -66,6 +66,8 @@ const ESBUILD_OPTIONS = {
 export function transpileTypeScript(source: string): TranspileResult {
   try {
     // Lazy-load esbuild to avoid Jest jsdom environment issues.
+    // Static `import { transformSync } from "esbuild"` breaks in jsdom because
+    // esbuild's WASM/native bindings are incompatible with the jsdom global scope.
     const { transformSync } = require("esbuild") as typeof import("esbuild");
 
     const result = transformSync(source, ESBUILD_OPTIONS);

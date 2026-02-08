@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateJob } from "@/actions/update-job";
 import { db } from "@/utils/db";
-import { jobs, jobTests, tests as testsTable, testTags, tags } from "@/db/schema";
+import { jobs, jobTests, runs, reports, tests as testsTable, testTags, tags } from "@/db/schema";
 import { eq, inArray, asc, and } from "drizzle-orm";
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
+import { logAuditEvent } from '@/lib/audit-logger';
+import { deleteScheduledJob } from '@/lib/job-scheduler';
+import { createS3CleanupService, type ReportDeletionInput } from '@/lib/s3-cleanup';
 
 export async function GET(
   request: NextRequest,
@@ -268,4 +271,181 @@ export async function PUT(
       { status: 500 }
     );
   }
-} 
+}
+
+/**
+ * DELETE /api/jobs/[id]
+ * Deletes a job with full cleanup (runs, reports, scheduler, S3, audit logging).
+ * Mirrors the logic from the deleteJob server action.
+ */
+export async function DELETE(
+  _request: NextRequest,
+  routeContext: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await routeContext.params;
+    const context = await requireAuthContext();
+    const { userId, project, organizationId } = context;
+
+    const canDelete = checkPermissionWithContext("job", "delete", context);
+    if (!canDelete) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to delete jobs" },
+        { status: 403 }
+      );
+    }
+
+    // Transaction: verify ownership, clean up related data, delete
+    const transactionResult = await db.transaction(async (tx) => {
+      const [existingJob] = await tx
+        .select({ id: jobs.id, name: jobs.name, cronSchedule: jobs.cronSchedule })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.id, id),
+            eq(jobs.projectId, project.id),
+            eq(jobs.organizationId, organizationId)
+          )
+        )
+        .limit(1);
+
+      if (!existingJob) {
+        return { success: false as const, error: "Job not found" };
+      }
+
+      // Collect S3 report URLs from job-level and run-level reports
+      const jobReports = await tx
+        .select({ s3Url: reports.s3Url, reportPath: reports.reportPath, entityId: reports.entityId, entityType: reports.entityType })
+        .from(reports)
+        .where(and(eq(reports.entityId, id), eq(reports.entityType, "job")));
+
+      const jobRuns = await tx
+        .select({ id: runs.id })
+        .from(runs)
+        .where(
+          and(
+            eq(runs.jobId, id),
+            eq(runs.projectId, project.id)
+          )
+        );
+
+      const runIds = jobRuns.map((r) => r.id);
+      let runReports: { s3Url: string | null; reportPath: string; entityId: string; entityType: string }[] = [];
+      if (runIds.length > 0) {
+        runReports = await tx
+          .select({ s3Url: reports.s3Url, reportPath: reports.reportPath, entityId: reports.entityId, entityType: reports.entityType })
+          .from(reports)
+          .where(
+            and(
+              inArray(reports.entityId, runIds),
+              eq(reports.entityType, "job")
+            )
+          );
+      }
+
+      const allReportInputs: ReportDeletionInput[] = [
+        ...jobReports.map((r) => ({
+          reportPath: r.reportPath || undefined,
+          s3Url: r.s3Url || undefined,
+          entityId: r.entityId,
+          entityType: (r.entityType || "job") as ReportDeletionInput["entityType"],
+        })),
+        ...runReports.map((r) => ({
+          reportPath: r.reportPath || undefined,
+          s3Url: r.s3Url || undefined,
+          entityId: r.entityId,
+          entityType: (r.entityType || "job") as ReportDeletionInput["entityType"],
+        })),
+      ];
+
+      // Delete in dependency order, scoped to org/project for defense-in-depth
+      if (runIds.length > 0) {
+        await tx.delete(reports).where(
+          and(
+            inArray(reports.entityId, runIds),
+            eq(reports.entityType, "job")
+          )
+        );
+      }
+      await tx.delete(reports).where(and(eq(reports.entityId, id), eq(reports.entityType, "job")));
+      await tx.delete(runs).where(
+        and(
+          eq(runs.jobId, id),
+          eq(runs.projectId, project.id)
+        )
+      );
+      await tx.delete(jobTests).where(eq(jobTests.jobId, id));
+      await tx.delete(jobs).where(
+        and(
+          eq(jobs.id, id),
+          eq(jobs.projectId, project.id),
+          eq(jobs.organizationId, organizationId)
+        )
+      );
+
+      return {
+        success: true as const,
+        job: existingJob,
+        reportInputs: allReportInputs,
+        runCount: runIds.length,
+      };
+    });
+
+    if (!transactionResult.success) {
+      return NextResponse.json(
+        { error: transactionResult.error },
+        { status: 404 }
+      );
+    }
+
+    // Post-transaction cleanup (non-blocking)
+
+    // Unschedule from BullMQ
+    try {
+      await deleteScheduledJob(id);
+    } catch (err) {
+      console.warn(`Failed to unschedule job ${id}:`, err);
+    }
+
+    // S3 cleanup with bounded timeout
+    if (transactionResult.reportInputs.length > 0) {
+      try {
+        const s3 = createS3CleanupService();
+        const S3_CLEANUP_TIMEOUT_MS = 10_000;
+        await Promise.race([
+          s3.deleteReports(transactionResult.reportInputs),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('S3 cleanup timed out')), S3_CLEANUP_TIMEOUT_MS)
+          ),
+        ]);
+      } catch (err) {
+        console.warn(`S3 cleanup failed for job ${id}:`, err);
+      }
+    }
+
+    await logAuditEvent({
+      userId,
+      organizationId,
+      action: "job_deleted",
+      resource: "job",
+      resourceId: id,
+      metadata: {
+        jobName: transactionResult.job.name,
+        projectId: project.id,
+        runsDeleted: transactionResult.runCount,
+      },
+      success: true,
+    });
+
+    return NextResponse.json({ success: true, message: "Job deleted successfully" });
+  } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
+    console.error("Error deleting job:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}

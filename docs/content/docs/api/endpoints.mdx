@@ -238,7 +238,8 @@ List tests with optional search and type filters.
 | `page` | integer | Page number |
 | `limit` | integer | Items per page |
 | `search` | string | Search by title |
-| `testType` | string | `playwright` or `k6` |
+| `type` | string | Filter by test type (`browser`, `performance`, `api`, `playwright`, `k6`) |
+| `includeScript` | boolean | Include decoded script content (default: `false`) |
 
 ### `POST /api/tests`
 
@@ -250,7 +251,7 @@ Create a new test.
 {
   "title": "Homepage Load Test",
   "script": "import { test } from '@playwright/test';\n...",
-  "testType": "playwright",
+  "type": "playwright",
   "description": "Verify homepage loads correctly"
 }
 ```
@@ -280,6 +281,59 @@ Update a test. Only provided fields are changed.
 ### `DELETE /api/tests/{id}`
 
 Delete a test.
+
+### `POST /api/tests/{id}/execute`
+
+Execute a single test. Creates a run and enqueues the test for execution.
+
+**Body (optional, for k6 tests):**
+
+```json
+{
+  "location": "us-east"
+}
+```
+
+| Location | Description |
+|----------|-------------|
+| `us-east` | US East |
+| `eu-central` | EU Central |
+| `asia-pacific` | Asia Pacific |
+| `global` | Global (default) |
+
+---
+
+## Trigger Keys
+
+### `GET /api/jobs/{id}/api-keys`
+
+List all API trigger keys for a job.
+
+### `POST /api/jobs/{id}/api-keys`
+
+Create a new trigger key for a job.
+
+**Body:**
+
+```json
+{
+  "name": "CI Pipeline Key",
+  "expiresIn": 2592000
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Key name (required, 1-100 chars) |
+| `expiresIn` | integer | Expiry in seconds (optional, 60-31536000) |
+
+### `PATCH /api/jobs/{id}/api-keys/{keyId}`
+
+Update a trigger key (enable, disable, or rename).
+
+### `DELETE /api/jobs/{id}/api-keys/{keyId}`
+
+Permanently revoke a trigger key.
 
 ---
 

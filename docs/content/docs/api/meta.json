@@ -9,8 +9,10 @@
     "endpoints",
     "errors",
     "---OpenAPI---",
+    "system",
     "cli-tokens",
     "jobs",
+    "trigger-keys",
     "runs",
     "tests",
     "variables",
@@ -19,6 +21,6 @@
     "notifications",
     "alerts",
     "audit",
-    "system"
+    "status-pages"
   ]
 }

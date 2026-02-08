@@ -1,0 +1,10 @@
+{
+  "title": "CLI Tokens",
+  "icon": "KeyRound",
+  "pages": [
+    "listCliTokens",
+    "createCliToken",
+    "updateCliToken",
+    "deleteCliToken"
+  ]
+}

@@ -65,6 +65,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 
 interface CliToken {
   id: string;
@@ -630,8 +631,7 @@ export function CliTokensTable() {
           <CardContent>
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mb-3" />
-                <p className="text-sm text-muted-foreground">Loading tokens...</p>
+                <SuperCheckLoading size="sm" message="Loading tokens..." />
               </div>
             ) : tokens.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -783,16 +783,40 @@ export function CliTokensTable() {
             </CardHeader>
             <CardContent className="space-y-2">
               <div className="space-y-1.5">
-                <code className="block text-xs font-mono text-muted-foreground bg-background rounded-md px-3 py-2 border">
-                  npm install -g @supercheck/cli
-                </code>
-                <code className="block text-xs font-mono text-muted-foreground bg-background rounded-md px-3 py-2 border">
-                  supercheck login --token &lt;your-token&gt;
-                </code>
-                <code className="block text-xs font-mono text-muted-foreground bg-background rounded-md px-3 py-2 border">
-                  supercheck whoami
-                </code>
+                {[
+                  "npm install -g @supercheck/cli",
+                  "supercheck login --token <your-token>",
+                  "supercheck whoami",
+                ].map((command, index) => (
+                  <div
+                    key={index}
+                    className="group flex items-center justify-between bg-background rounded-md px-3 py-2 border"
+                  >
+                    <code className="text-xs font-mono text-muted-foreground">
+                      {command}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        navigator.clipboard.writeText(command);
+                        toast.success("Command copied to clipboard");
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
               </div>
+              <a
+                href="https://docs.supercheck.dev/cli/installation"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-2"
+              >
+                View CLI documentation →
+              </a>
             </CardContent>
           </Card>
 
@@ -854,7 +878,7 @@ export function CliTokensTable() {
                 className="bg-red-600 hover:bg-red-700"
               >
                 {tokenToDelete &&
-                operationLoadingStates[tokenToDelete] === "delete" ? (
+                  operationLoadingStates[tokenToDelete] === "delete" ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
                     Revoking...

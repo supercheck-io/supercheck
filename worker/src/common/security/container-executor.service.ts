@@ -18,7 +18,6 @@ import { ConfigService } from '@nestjs/config';
 import { execa } from 'execa';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-// fs sync import available if needed for future container operations
 import { randomUUID } from 'crypto';
 import { CancellationService } from '../services/cancellation.service';
 

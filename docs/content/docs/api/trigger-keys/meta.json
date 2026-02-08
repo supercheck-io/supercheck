@@ -1,0 +1,10 @@
+{
+  "title": "Trigger Keys",
+  "icon": "Key",
+  "pages": [
+    "listJobApiKeys",
+    "createJobApiKey",
+    "updateJobApiKey",
+    "deleteJobApiKey"
+  ]
+}

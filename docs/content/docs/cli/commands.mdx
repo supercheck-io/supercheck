@@ -184,6 +184,21 @@ supercheck job trigger <job-id> --wait --json
 | `--wait` | Wait for the run to complete |
 | `--timeout` | Maximum wait time in seconds (default: 300) |
 
+### `supercheck job keys`
+
+Manage trigger keys for a job.
+
+```bash
+# List keys for a job
+supercheck job keys <job-id>
+
+# Create a new trigger key
+supercheck job keys create <job-id> --name "CI Trigger"
+
+# Revoke a trigger key
+supercheck job keys delete <job-id> <key-id>
+```
+
 ---
 
 ## Runs
@@ -202,7 +217,7 @@ supercheck run list --job <job-id> --status failed --limit 20
 | `--page` | Page number |
 | `--limit` | Items per page |
 | `--job` | Filter by job ID |
-| `--status` | Filter by status (`running`, `completed`, `failed`, `cancelled`) |
+| `--status` | Filter by status (`queued`, `running`, `passed`, `failed`, `error`, `blocked`) |
 
 ### `supercheck run get`
 
@@ -210,6 +225,14 @@ Get run details.
 
 ```bash
 supercheck run get <run-id>
+```
+
+### `supercheck run permissions`
+
+Get run access permissions.
+
+```bash
+supercheck run permissions <run-id>
 ```
 
 ### `supercheck run status`
@@ -302,12 +325,38 @@ supercheck test delete <test-id>
 supercheck test delete <test-id> --force
 ```
 
+### `supercheck test execute`
+
+Execute a test immediately.
+
+```bash
+supercheck test execute <test-id>
+supercheck test execute <test-id> --location us-east
+```
+
+### `supercheck test tags`
+
+List tags for a test.
+
+```bash
+supercheck test tags <test-id>
+```
+
 ### `supercheck test validate`
 
 Validate a test script without creating it.
 
 ```bash
 supercheck test validate --file ./_supercheck_/tests/homepage.pw.ts --type playwright
+```
+
+### `supercheck test status`
+
+Stream live status events for a test.
+
+```bash
+supercheck test status <test-id>
+supercheck test status <test-id> --idle-timeout 120
 ```
 
 ---
@@ -360,14 +409,14 @@ supercheck monitor stats <monitor-id>
 Create a new monitor.
 
 ```bash
-supercheck monitor create --name "API Health" --url https://api.example.com/health --type http --interval 300
+supercheck monitor create --name "API Health" --url https://api.example.com/health --type http_request --interval 300
 ```
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
 | `--name` | Yes | — | Monitor name |
 | `--url` | Yes | — | URL to monitor |
-| `--type` | No | `http` | `http`, `website`, `ping`, `port`, `synthetic` |
+| `--type` | No | `http_request` | `http_request`, `website`, `ping_host`, `port_check`, `synthetic_test` |
 | `--interval` | No | `300` | Check interval in seconds |
 | `--timeout` | No | `30` | Request timeout in seconds |
 | `--method` | No | `GET` | HTTP method (for http type) |
@@ -545,6 +594,18 @@ supercheck audit --page 2 --limit 50 --action "notification_provider_created"
 ---
 
 ## Monitoring-as-Code
+
+### `supercheck pull`
+
+Pull remote resources into local config and files.
+
+```bash
+supercheck pull
+supercheck pull --dry-run
+supercheck pull --force
+supercheck pull --tests-only
+supercheck pull --config-only
+```
 
 ### `supercheck diff`
 

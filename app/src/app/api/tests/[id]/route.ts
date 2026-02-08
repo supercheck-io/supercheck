@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/utils/db";
-import { tests } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { tests, jobTests, jobs, monitors } from "@/db/schema";
+import { eq, and, count, sql } from "drizzle-orm";
 import { checkPermissionWithContext } from '@/lib/rbac/middleware';
 import { requireAuthContext, isAuthError } from '@/lib/auth-context';
+import { logAuditEvent } from '@/lib/audit-logger';
 
 declare const Buffer: {
   from(data: string, encoding: string): { toString(encoding: string): string };
@@ -182,4 +183,129 @@ export async function PATCH(
   // the same handler as PUT, which also behaves as a partial update for
   // backward-compatibility with older clients. New consumers should prefer PATCH.
   return PUT(request, routeContext);
+}
+
+/**
+ * DELETE /api/tests/[id]
+ * Deletes a test. Blocks if the test is referenced by jobs or synthetic monitors.
+ */
+export async function DELETE(
+  _request: NextRequest,
+  routeContext: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await routeContext.params;
+    const context = await requireAuthContext();
+    const { project, organizationId } = context;
+
+    const canDelete = checkPermissionWithContext('test', 'delete', context);
+    if (!canDelete) {
+      return NextResponse.json(
+        { error: 'Insufficient permissions to delete tests' },
+        { status: 403 }
+      );
+    }
+
+    // Use a transaction to prevent race conditions between usage checks and delete
+    const txResult = await db.transaction(async (tx) => {
+      // Verify test exists and belongs to current project/org
+      const [existingTest] = await tx
+        .select({ id: tests.id, title: tests.title, type: tests.type })
+        .from(tests)
+        .where(
+          and(
+            eq(tests.id, id),
+            eq(tests.projectId, project.id),
+            eq(tests.organizationId, organizationId)
+          )
+        )
+        .limit(1);
+
+      if (!existingTest) {
+        return { success: false as const, status: 404, error: 'Test not found' };
+      }
+
+      // Block deletion if test is used in any jobs (scoped to current org/project)
+      const [jobUsage] = await tx
+        .select({ count: count() })
+        .from(jobTests)
+        .innerJoin(jobs, eq(jobTests.jobId, jobs.id))
+        .where(
+          and(
+            eq(jobTests.testId, id),
+            eq(jobs.projectId, project.id),
+            eq(jobs.organizationId, organizationId)
+          )
+        );
+
+      if ((jobUsage?.count ?? 0) > 0) {
+        return {
+          success: false as const,
+          status: 409,
+          error: 'Cannot delete test',
+          details: `This test is used by ${jobUsage.count} job(s). Remove it from all jobs first.`,
+        };
+      }
+
+      // Block deletion if test is used as a synthetic monitor (scoped to current org/project)
+      const [monitorUsage] = await tx
+        .select({ count: count() })
+        .from(monitors)
+        .where(
+          and(
+            eq(monitors.type, 'synthetic_test'),
+            eq(monitors.projectId, project.id),
+            eq(monitors.organizationId, organizationId),
+            sql`${monitors.config}->>'testId' = ${id}`
+          )
+        );
+
+      if ((monitorUsage?.count ?? 0) > 0) {
+        return {
+          success: false as const,
+          status: 409,
+          error: 'Cannot delete test',
+          details: `This test is used by ${monitorUsage.count} synthetic monitor(s). Delete the monitor(s) first.`,
+        };
+      }
+
+      // Delete scoped to org/project for defense-in-depth
+      await tx.delete(tests).where(
+        and(
+          eq(tests.id, id),
+          eq(tests.projectId, project.id),
+          eq(tests.organizationId, organizationId)
+        )
+      );
+
+      return { success: true as const, test: existingTest };
+    });
+
+    if (!txResult.success) {
+      const response: Record<string, string> = { error: txResult.error };
+      if ('details' in txResult && txResult.details) response.details = txResult.details;
+      return NextResponse.json(response, { status: txResult.status });
+    }
+
+    await logAuditEvent({
+      userId: context.userId,
+      organizationId,
+      action: 'test_deleted',
+      resource: 'test',
+      resourceId: id,
+      metadata: { testTitle: txResult.test.title, testType: txResult.test.type, projectId: project.id },
+      success: true,
+    });
+
+    return NextResponse.json({ success: true, message: 'Test deleted successfully' });
+  } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Authentication required' },
+        { status: 401 }
+      );
+    }
+    console.error('Error deleting test:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 }

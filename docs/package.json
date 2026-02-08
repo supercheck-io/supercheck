@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "build": "next build",
+    "build": "next build && next-on-pages",
     "dev": "next dev",
     "start": "next start",
     "postinstall": "fumadocs-mdx",
@@ -30,6 +30,7 @@
     "lodash-es": ">=4.17.23"
   },
   "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.5",
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4.1.14",
     "@types/mdx": "^2.0.13",

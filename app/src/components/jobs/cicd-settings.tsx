@@ -28,6 +28,7 @@ import { ApiKeyDialog } from "./api-key-dialog";
 import { useProjectContext } from "@/hooks/use-project-context";
 import { canDeleteJobs } from "@/lib/rbac/client-permissions";
 import { normalizeRole } from "@/lib/rbac/role-normalizer";
+import { SuperCheckLoading } from "@/components/shared/supercheck-loading";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -230,8 +231,7 @@ export function CicdSettings({ jobId, onChange }: CicdSettingsProps) {
           <CardContent>
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mb-3" />
-                <p className="text-sm text-muted-foreground">Loading API keys...</p>
+                <SuperCheckLoading size="sm" message="Loading API keys..." />
               </div>
             ) : apiKeys.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">

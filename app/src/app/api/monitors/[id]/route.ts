@@ -16,6 +16,7 @@ import { MonitorJobData } from "@/lib/queue";
 import { checkPermissionWithContext } from "@/lib/rbac/middleware";
 import { requireAuthContext, isAuthError } from "@/lib/auth-context";
 import { logAuditEvent } from "@/lib/audit-logger";
+import { createS3CleanupService, type ReportDeletionInput } from "@/lib/s3-cleanup";
 
 // Hardcoded limit for charts and metrics display
 // This is NOT for the table - table uses paginated /results endpoint
@@ -689,5 +690,126 @@ export async function PATCH(
       { error: "Failed to update monitor" },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * DELETE /api/monitors/[id]
+ * Deletes a monitor with full cleanup (scheduler, S3 reports, audit logging).
+ * Mirrors the logic from the deleteMonitor server action.
+ */
+export async function DELETE(
+  _request: NextRequest,
+  routeContext: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await routeContext.params;
+    const context = await requireAuthContext();
+    const { userId, project, organizationId } = context;
+
+    const canDelete = checkPermissionWithContext("monitor", "delete", context);
+    if (!canDelete) {
+      return NextResponse.json(
+        { error: "Insufficient permissions to delete monitors" },
+        { status: 403 }
+      );
+    }
+
+    // Transaction: verify ownership, collect S3 report URLs, delete DB records
+    const transactionResult = await db.transaction(async (tx) => {
+      const [existingMonitor] = await tx
+        .select({ id: monitors.id, name: monitors.name, type: monitors.type, target: monitors.target })
+        .from(monitors)
+        .where(
+          and(
+            eq(monitors.id, id),
+            eq(monitors.projectId, project.id),
+            eq(monitors.organizationId, organizationId)
+          )
+        )
+        .limit(1);
+
+      if (!existingMonitor) {
+        return { success: false as const, error: "Monitor not found" };
+      }
+
+      // Collect S3 report URLs for cleanup
+      const resultsWithReports = await tx
+        .select({ testReportS3Url: monitorResults.testReportS3Url })
+        .from(monitorResults)
+        .where(eq(monitorResults.monitorId, id));
+
+      const reportInputs: ReportDeletionInput[] = resultsWithReports
+        .filter((r) => !!r.testReportS3Url)
+        .map((r) => ({
+          s3Url: r.testReportS3Url || undefined,
+          entityId: id,
+          entityType: "monitor" as const,
+        }));
+
+      // Delete monitor results and the monitor itself
+      await tx.delete(monitorResults).where(eq(monitorResults.monitorId, id));
+      await tx.delete(monitors).where(eq(monitors.id, id));
+
+      return {
+        success: true as const,
+        monitor: existingMonitor,
+        reportInputs,
+      };
+    });
+
+    if (!transactionResult.success) {
+      return NextResponse.json(
+        { error: transactionResult.error },
+        { status: 404 }
+      );
+    }
+
+    // Post-transaction cleanup (non-blocking)
+
+    // Unschedule from Redis
+    try {
+      await deleteScheduledMonitor(id);
+    } catch (err) {
+      console.warn(`Failed to unschedule monitor ${id}:`, err);
+    }
+
+    // S3 cleanup (fire-and-forget)
+    if (transactionResult.reportInputs.length > 0) {
+      void (async () => {
+        try {
+          const s3 = createS3CleanupService();
+          await s3.deleteReports(transactionResult.reportInputs);
+        } catch (err) {
+          console.warn(`S3 cleanup failed for monitor ${id}:`, err);
+        }
+      })();
+    }
+
+    await logAuditEvent({
+      userId,
+      organizationId,
+      action: "monitor_deleted",
+      resource: "monitor",
+      resourceId: id,
+      metadata: {
+        monitorName: transactionResult.monitor.name,
+        monitorType: transactionResult.monitor.type,
+        monitorTarget: transactionResult.monitor.target,
+        projectId: project.id,
+      },
+      success: true,
+    });
+
+    return NextResponse.json({ success: true, message: "Monitor deleted successfully" });
+  } catch (error) {
+    if (isAuthError(error)) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Authentication required" },
+        { status: 401 }
+      );
+    }
+    console.error("Error deleting monitor:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -86,6 +86,7 @@ app/e2e/auth-state.json
 test-results/
 
 ## Next.js
+.next/
 app/.next/
 app/.swc/
 app/out/
@@ -164,7 +165,6 @@ certs/
 tmp/
 .tmp/
 .cache/
-.next/cache/
 
 # Sentry CLI
 .sentryclirc
