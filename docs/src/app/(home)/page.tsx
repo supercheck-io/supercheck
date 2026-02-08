@@ -24,13 +24,13 @@ import { SiteFooter } from "../../components/site-footer";
 const features = [
   {
     icon: Sparkles,
-    title: "AI-Powered Creation, Fix & Analysis",
+    title: "AI-Powered",
     description:
       "Create, debug, and analyze Playwright tests, k6 scripts, and monitors with AI assistance.",
   },
   {
     icon: Terminal,
-    title: "CLI & Monitoring-as-Code",
+    title: "Supercheck CLI",
     description:
       "Define tests, monitors, and jobs in code. Deploy with supercheck deploy, integrate with any CI/CD pipeline.",
   },
@@ -226,7 +226,7 @@ export default function HomePage() {
                     href="https://demo.supercheck.dev/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group mx-auto flex w-fit items-center gap-4 rounded-full border border-white/20 dark:border-white/20 bg-white/10 dark:bg-white/10 px-4 py-2 shadow-md shadow-zinc-950/5 transition-colors duration-300 dark:shadow-zinc-950 backdrop-blur-sm"
+                    className="group mx-auto flex w-fit items-center gap-4 rounded-full border border-gray-200 dark:border-white/10 bg-white/60 dark:bg-zinc-900/50 px-4 py-2 shadow-md shadow-zinc-950/5 transition-colors duration-300 hover:bg-white/80 dark:hover:bg-zinc-800/50 dark:shadow-zinc-950 backdrop-blur-md"
                   >
                     <span className="text-base text-gray-900 dark:text-gray-100">
                       Checkout Live Demo
@@ -247,15 +247,15 @@ export default function HomePage() {
                 </div>
 
                 <h1
-                  className="mt-16 text-balance text-3xl font-bold leading-tight text-gray-900 dark:text-white md:text-5xl lg:text-6xl animate-fade-in-up [animation-delay:200ms]"
+                  className="mt-16 text-balance text-4xl font-extrabold leading-tight text-gray-900 dark:text-white md:text-5xl lg:text-6xl animate-fade-in-up [animation-delay:200ms]"
                 >
-                  Open-Source Testing, Monitoring, and Reliability — as Code
+                  Open-Source Testing, Monitoring, and Reliability — <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 dark:from-indigo-400 dark:via-purple-400 dark:to-pink-400">as Code</span>
                 </h1>
 
                 <p
-                  className="mx-auto mt-8 max-w-4xl text-balance text-xl leading-relaxed text-gray-600 dark:text-gray-300 animate-fade-in-up [animation-delay:400ms]"
+                  className="mx-auto mt-6 max-w-4xl text-balance text-lg md:text-xl leading-relaxed text-gray-600 dark:text-gray-300 animate-fade-in-up [animation-delay:400ms]"
                 >
-                  Unified platform for AI-powered Playwright & k6 testing, uptime monitoring, and status pages.
+                  The unified platform for AI-powered Playwright testing, multi-region k6 load testing & uptime monitoring, and subscriber-ready status pages.
                 </p>
 
               </div>
