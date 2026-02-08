@@ -1,21 +1,11 @@
+# Cloudflare Pages configuration for static site deployment
+# https://developers.cloudflare.com/pages/functions/wrangler-configuration/
+
 name = "supercheck-web"
-main = ".open-next/worker.js"
+pages_build_output_dir = "out"
+
+# Compatibility settings
 compatibility_date = "2026-02-08"
-compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
-workers_dev = true
-preview_urls = true
 
-assets = { directory = ".open-next/assets", binding = "ASSETS" }
-
-services = [
-	{ binding = "WORKER_SELF_REFERENCE", service = "supercheck-web" }
-]
-
-# Custom domains — Cloudflare manages DNS records and SSL certificates automatically
-[[routes]]
-pattern = "supercheck.io"
-custom_domain = true
-
-[[routes]]
-pattern = "www.supercheck.io"
-custom_domain = true
+# Preview deployments are enabled by default for GitHub integration
+# Each branch push creates a preview URL: <branch>.<project>.pages.dev

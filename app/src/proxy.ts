@@ -47,11 +47,10 @@ const getAllowedOrigins = (): string[] => {
   const origins = [
     // Development
     'http://localhost:3000',
-    'http://localhost:3001',
-    'http://localhost:3002',
     // Production docs
     'https://demo.supercheck.dev',
     'https://supercheck.io',
+    'https://supercheck.pages.dev',
     'https://docs.supercheck.io',
     'https://www.supercheck.io',
     // Future production

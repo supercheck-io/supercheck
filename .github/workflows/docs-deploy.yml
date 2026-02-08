@@ -1,58 +1,77 @@
 name: Deploy Docs
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "docs/**"
-  pull_request:
-    branches: [main]
-    paths:
-      - "docs/**"
-  workflow_dispatch:
+    push:
+        branches: [main]
+        paths:
+            - "docs/**"
+    pull_request:
+        branches: [main]
+        paths:
+            - "docs/**"
+    workflow_dispatch:
 
 concurrency:
-  group: docs-deploy-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+    group: docs-deploy-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
 
 env:
-  NODE_VERSION: "20"
+    NODE_VERSION: "20"
 
 permissions:
-  contents: read
-  deployments: write
+    contents: read
+    deployments: write
+    pull-requests: write
 
 jobs:
-  deploy-docs:
-    name: Build & Deploy Docs
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    deploy-docs:
+        name: Build & Deploy Docs
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-          cache-dependency-path: docs/package-lock.json
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+                  cache: "npm"
+                  cache-dependency-path: docs/package-lock.json
 
-      - name: Install dependencies
-        working-directory: ./docs
-        run: npm ci --prefer-offline --no-audit
+            - name: Install dependencies
+              working-directory: ./docs
+              run: npm ci --prefer-offline --no-audit
 
-      - name: Build for Cloudflare Workers
-        working-directory: ./docs
-        run: npm run build:worker
+            - name: Build static site
+              working-directory: ./docs
+              run: npm run build
 
-      # Production deployment — runs on main push or manual trigger
-      - name: Deploy to Cloudflare Workers
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: docs
-          command: deploy
+            # Deploy to Cloudflare Pages
+            # - Main branch: Production at supercheck.pages.dev / supercheck.io
+            # - PRs: Preview at <branch>.supercheck.pages.dev
+            - name: Deploy to Cloudflare Pages
+              uses: cloudflare/wrangler-action@v3
+              id: deploy
+              with:
+                  apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+                  accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+                  workingDirectory: docs
+                  command: pages deploy out --project-name=supercheck --branch=${{ github.head_ref || github.ref_name }} --commit-dirty=true
+
+            # Comment preview URL on PRs
+            - name: Comment preview URL on PR
+              if: github.event_name == 'pull_request'
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const deploymentUrl = '${{ steps.deploy.outputs.deployment-url }}';
+                      if (deploymentUrl) {
+                        github.rest.issues.createComment({
+                          issue_number: context.issue.number,
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          body: `📚 **Docs Preview:** ${deploymentUrl}`
+                        });
+                      }
